@@ -2878,6 +2878,7 @@ export class ManipulationFeature extends EditorFeature {
         ...(["toggle", "content"].includes(popupElementRole(target) ?? "") ? {popupRole: popupElementRole(target) as "toggle" | "content"} : {}),
         placement: this.editor.features.layout.getPlacementState(target),
         grouping: this.editor.features.board.groupingState(target),
+        spatialGrouping: includeSelection ? this.editor.features.transformation.groupingState([target]) : undefined,
         canMoveUp: movable && target.previousElementSibling !== null,
         canMoveDown: movable && target.nextElementSibling !== null,
         alignment,
@@ -2901,7 +2902,10 @@ export class ManipulationFeature extends EditorFeature {
   private getElementsStyleState(properties: string[] = [], elements: Element[]) {
     if(!elements.length) return this.getStyleState(properties, null, false)
     const styles = elements.map(element => this.getStyleState(properties, element, false))
-    return {...styles[0], inline: commonValues(styles.map(state => state.inline)),
+    const target = styles[0].target
+    const grouping = $.isMultiElementSelection ? $.selectedElements : elements.length === 1 ? elements : []
+    return {...styles[0], target: target && {...target, spatialGrouping: this.editor.features.transformation.groupingState(grouping)},
+      inline: commonValues(styles.map(state => state.inline)),
       hasInlineStyles: styles.some(state => state.hasInlineStyles),
       authoredProperties: [...(styles[0].authoredProperties ?? [])].filter(name => styles.every(state => state.authoredProperties?.includes(name))),
       computed: commonValues(styles.map(state => state.computed))}
@@ -3387,6 +3391,7 @@ export class ManipulationFeature extends EditorFeature {
       || element.matches("style,script,link,meta,template") || slideLayoutRole(element))
       || Array.from(fragment.childNodes).some(node => node instanceof Text && node.data.trim())) return false
     const items = elements as (HTMLElement | SVGSVGElement)[]
+    this.editor.features.transformation.preparePastedGroups(items)
     const previous = this.layoutPastes.get(root)
     const last = previous?.key === key && previous.elements.length === items.length
       && previous.elements.every(element => element.parentElement === root) ? previous.elements : null

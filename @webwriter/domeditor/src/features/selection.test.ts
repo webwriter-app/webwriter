@@ -5572,17 +5572,32 @@ it("toggles an item in a freeform multi-selection on modifier-click", () => {
   const second = el("p", "second")
   expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
   for(const target of [first, second]) target.dispatchEvent(new MouseEvent("pointerdown", {
-    bubbles: true, cancelable: true, button: 0, ctrlKey: true,
+    bubbles: true, cancelable: true, button: 0, ctrlKey: true, metaKey: true,
   }))
   expect($.selectedElements).toEqual([first, second])
 
   first.dispatchEvent(new MouseEvent("pointerdown", {
-    bubbles: true, cancelable: true, button: 0, ctrlKey: true,
+    bubbles: true, cancelable: true, button: 0, ctrlKey: true, metaKey: true,
   }))
   expect($.selectedElements).toEqual([second])
   expect(first).not.toHaveClass("◆element-selected")
   expect(second).toHaveClass("◆element-selected")
   expect(editor.toHTML(true)).not.toContain("◆element-selected")
+})
+
+it("toggles all members of a saved canvas group together on modifier-click", () => {
+  const first = el("p", "first"), second = el("p", "second"), outside = el("p", "outside")
+  expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+  $.selectElements([first, second])
+  expect(editor.features.transformation.setSpatialGrouping("group")).toBe(true)
+  feature.selectElement(outside)
+  const toggle = (target: Element) => target.dispatchEvent(new PointerEvent("pointerdown", {
+    bubbles: true, cancelable: true, button: 0, ctrlKey: true, metaKey: true,
+  }))
+  toggle(second)
+  expect($.selectedElements).toEqual([first, second, outside])
+  toggle(first)
+  expect($.selectedElements).toEqual([outside])
 })
 
 

@@ -6563,11 +6563,11 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "setFloatSticky" | "setFullWidth", enabled: boolean} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"} | {type: "openAttribution"} | {type: "setBoardGrouping", mode: "none" | "new" | "left" | "right"}>).detail
-    if(!action || !["setFloat", "setFloatSticky", "setFullWidth", "moveFloat", "movePlacement", "setCaption", "openAttribution", "setBoardGrouping"].includes(action.type)) return
+    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "setFloatSticky" | "setFullWidth", enabled: boolean} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"} | {type: "openAttribution"} | {type: "setBoardGrouping", mode: "none" | "new" | "left" | "right"} | {type: "setSpatialGrouping", mode: "group" | "ungroup"}>).detail
+    if(!action || !["setFloat", "setFloatSticky", "setFullWidth", "moveFloat", "movePlacement", "setCaption", "openAttribution", "setBoardGrouping", "setSpatialGrouping"].includes(action.type)) return
     this.layoutError = ""
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
-    const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setCaption" && action.type !== "openAttribution" && action.type !== "setBoardGrouping"
+    const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setCaption" && action.type !== "openAttribution" && action.type !== "setBoardGrouping" && action.type !== "setSpatialGrouping"
     void this.execute(topLevel ? {...action, topLevel: true} : action).then(changed => {
       if(changed === false && action.type === "setFloat") this.layoutError = "The selection changed or floating is unavailable. Select the element again."
     }).catch(error => { this.layoutError = error instanceof Error ? error.message : String(error) })
@@ -7524,6 +7524,9 @@ export class DomEditor extends LitElement {
             && typeof grouping.canUngroup === "boolean" && typeof grouping.canJoinLeft === "boolean" && typeof grouping.canJoinRight === "boolean"
             ? {grouping: {grouped: grouping.grouped, canCreate: grouping.canCreate, canUngroup: grouping.canUngroup,
               canJoinLeft: grouping.canJoinLeft, canJoinRight: grouping.canJoinRight}} : {}),
+          ...(isRecord(value.target.spatialGrouping) && typeof value.target.spatialGrouping.canGroup === "boolean"
+            && typeof value.target.spatialGrouping.canUngroup === "boolean"
+            ? {spatialGrouping: {canGroup: value.target.spatialGrouping.canGroup, canUngroup: value.target.spatialGrouping.canUngroup}} : {}),
           ...(value.target.documentRoot === true ? {documentRoot: true as const} : {})}
         : undefined
     if(target === undefined

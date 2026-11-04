@@ -363,6 +363,34 @@ describe("layout host and toolbox integration", () => {
     expect(buttons.every(button => button.disabled)).toBe(true)
   })
 
+  it.each(["canvas", "slides"] as const)("routes Group and Ungroup below Placement in the %s Style drawer", async mode => {
+    const {editor, editorWindow} = await mountEditor()
+    sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true), documentLayout: {mode, canConvert: true, zoom: 100}})
+    const toolbox = await settle(editor)
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    const state = styleState("flex")
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue({
+      ...state, target: {...state.target!, spatialGrouping: {canGroup: true, canUngroup: false}},
+    })
+    await (editor as any).refreshElementStyleState()
+    await toolbox.updateComplete
+    const row = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Style"] [aria-label="Grouping"]')!
+    expect(row.previousElementSibling?.textContent).toBe("Grouping")
+    expect(row.previousElementSibling?.previousElementSibling?.getAttribute("aria-label")).toBe("Placement")
+    const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>("button"))
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Group", "Ungroup"])
+    expect(buttons.every(button => button.querySelector("svg"))).toBe(true)
+    expect(buttons.map(button => button.disabled)).toEqual([false, true])
+    execute.mockClear().mockResolvedValue(true)
+    buttons[0].click()
+    toolbox.elementStyle = {...state, target: {...state.target!, spatialGrouping: {canGroup: false, canUngroup: true}}}
+    await toolbox.updateComplete
+    expect(buttons.map(button => button.disabled)).toEqual([true, false])
+    buttons[1].click()
+    expect(execute.mock.calls.map(([action]) => action)).toEqual(["group", "ungroup"].map(mode => ({type: "setSpatialGrouping", mode})))
+  })
+
   it("places layout controls inside Style below the presets without a separate drawer", async () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})

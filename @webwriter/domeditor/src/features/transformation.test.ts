@@ -868,10 +868,11 @@ describe("freeform group transformation", () => {
       target.style.cssText = `position:absolute;left:${x}px;top:0px;width:100px;height:50px`
       vi.spyOn(target, "getBoundingClientRect").mockImplementation(() => {
         const matrix = new DOMMatrix(target.style.transform || undefined)
-        const width = Math.abs(matrix.a) * 100 + Math.abs(matrix.c) * 50
-        const height = Math.abs(matrix.b) * 100 + Math.abs(matrix.d) * 50
-        return new DOMRect(100 + parseFloat(target.style.left) + 50 - width / 2,
-          100 + parseFloat(target.style.top) + 25 - height / 2, width, height)
+        const cssWidth = parseFloat(target.style.width), cssHeight = parseFloat(target.style.height)
+        const width = Math.abs(matrix.a) * cssWidth + Math.abs(matrix.c) * cssHeight
+        const height = Math.abs(matrix.b) * cssWidth + Math.abs(matrix.d) * cssHeight
+        return new DOMRect(100 + parseFloat(target.style.left) + cssWidth / 2 - width / 2,
+          100 + parseFloat(target.style.top) + cssHeight / 2 - height / 2, width, height)
       })
     }
     if(mode === "slides") editor.features.slides.ensureContent()
@@ -979,6 +980,135 @@ describe("freeform group transformation", () => {
     expect(last.getBoundingClientRect().top - first.getBoundingClientRect().top).toBeCloseTo(200)
     expect(first.getBoundingClientRect().left).toBeCloseTo(last.getBoundingClientRect().left)
     expect($.selectedElements).toEqual([first, last])
+  })
+
+  it.each(["canvas", "slides"] as const)("persists non-adjacent %s groups and drills into an individual member", async mode => {
+    const {first, last, outside, parent} = group(mode)
+    const children = Array.from(parent.childNodes)
+    const button = feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-group")!
+    expect(button).toHaveAttribute("aria-label", "Group")
+    editor.doc.syncFromDOM()
+    button.click()
+    const id = first.getAttribute("data-ww-group")
+    expect(id).toBeTruthy()
+    expect(last).toHaveAttribute("data-ww-group", id)
+    expect(outside).not.toHaveAttribute("data-ww-group")
+    expect(Array.from(parent.childNodes)).toEqual(children)
+    expect(editor.doc.body.toString()).toContain(`data-ww-group="${id}"`)
+    expect(editor.toHTML(true)).not.toContain("transform-overlay-group")
+    expect(button).toHaveAttribute("aria-label", "Ungroup")
+
+    editor.features.selection.selectElement(outside)
+    const press = () => first.firstElementChild!.dispatchEvent(pointer("pointerdown", {pointerId: 31, clientX: 150, clientY: 125}))
+    press(); end()
+    expect($.selectedElements).toEqual([first, last])
+    press(); end()
+    expect($.selectedElement).toBe(first)
+    expect(button.hidden).toBe(true)
+    const outline = () => editor.appendix.querySelector<HTMLElement>('[part~="transform-overlay-group-context"]')
+    expect(outline()?.style.width).toBe("300px")
+    expect(outline()).toHaveAttribute("aria-label", "Select group")
+    const edge = outline()!.querySelector<HTMLElement>('[part~="transform-overlay-edge-right"]')!
+    const pointerDown = pointer("pointerdown", {cancelable: true})
+    edge.dispatchEvent(pointerDown)
+    expect(pointerDown.defaultPrevented).toBe(true)
+    edge.click()
+    expect($.selectedElements).toEqual([first, last])
+    expect(outline()).toBeNull()
+    press(); end()
+    expect(editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.spatialGrouping)
+      .toEqual({canGroup: false, canUngroup: true})
+    expect(feature.actions.setSpatialGrouping({type: "setSpatialGrouping", mode: "ungroup"})).toBe(true)
+    expect(last).not.toHaveAttribute("data-ww-group")
+    expect(outline()).toBeNull()
+    await mutationsDelivered()
+    editor.doc.undo()
+    expect(last).toHaveAttribute("data-ww-group", id)
+    await mutationsDelivered()
+    expect(outline()).not.toBeNull()
+    editor.doc.redo()
+    expect(last).not.toHaveAttribute("data-ww-group")
+  })
+
+  it.each(["canvas", "slides"] as const)("resizes, rotates and deletes a saved %s group as a unit", async mode => {
+    const {first, last, outside} = group(mode)
+    expect(feature.setSpatialGrouping("group")).toBe(true)
+    expect(feature.overlay.querySelectorAll(".◆transform-overlay-scale:not([hidden])")).toHaveLength(8)
+    start("scale-down-right")
+    move(550, 175)
+    end()
+    for(const target of [first, last]) {
+      expect(target.style.width).toBe("150px")
+      expect(target.style.height).toBe("80px") // The 25px pointer delta snaps to 30px.
+      expect(target.style.transform).toBe("")
+    }
+    expect(first.getBoundingClientRect().left).toBeCloseTo(100)
+    expect(last.getBoundingClientRect().left).toBeCloseTo(400)
+    expect(feature.overlay.style.width).toBe("450px")
+    start("rotator", 325, 70)
+    move(410, 140)
+    end()
+    expect(new DOMMatrix(first.style.transform).b).toBeCloseTo(1)
+    expect(new DOMMatrix(last.style.transform).b).toBeCloseTo(1)
+    expect(feature.overlay.style.transform).toBe("rotate(90deg)")
+    expect(parseFloat(feature.overlay.style.width)).toBeCloseTo(450)
+    expect(first.getAttribute("data-ww-group-rotation")).toBe("90")
+    expect(editor.toHTML(true)).toContain('data-ww-group-rotation="90"')
+    expect(editor.doc.body.toString()).toContain("transform: matrix(0, 1")
+    const rotated = editor.doc.body.toString()
+    editor.features.selection.selectElement(first)
+    const outline = editor.appendix.querySelector<HTMLElement>('[part~="transform-overlay-group-context"]')!
+    expect(outline.style.transform).toBe("rotate(90deg)")
+    outline.click()
+    expect(feature.overlay.style.transform).toBe("rotate(90deg)")
+
+    const transforms = [first.style.transform, last.style.transform]
+    expect([first.style.width, last.style.width]).toEqual(["150px", "150px"])
+    expect(parseFloat(feature.overlay.style.width)).toBeCloseTo(450)
+    start("scale-right-right", 325, 365)
+    move(325, 455)
+    end()
+    for(const [index, target] of [first, last].entries()) {
+      expect(parseFloat(target.style.width)).toBeCloseTo(180)
+      expect(target.style.height).toBe("80px")
+      expect(target.style.transform).toBe(transforms[index])
+    }
+    expect(feature.overlay.style.transform).toBe("rotate(90deg)")
+    expect(parseFloat(feature.overlay.style.width)).toBeCloseTo(540)
+
+    await mutationsDelivered()
+    editor.doc.undo()
+    expect(editor.doc.body.toString()).toBe(rotated)
+    editor.doc.undo()
+    expect(first.hasAttribute("data-ww-group-rotation")).toBe(false)
+    editor.doc.redo()
+    expect(editor.doc.body.toString()).toBe(rotated)
+    expect(first.getAttribute("data-ww-group-rotation")).toBe("90")
+    feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!.click()
+    expect(first.isConnected).toBe(false)
+    expect(last.isConnected).toBe(false)
+    expect(outside.isConnected).toBe(true)
+  })
+
+  it("keeps membership scoped to one slide and refreshes it after a remote edit", async () => {
+    const {first, last, parent} = group("slides")
+    expect(feature.setSpatialGrouping("group")).toBe(true)
+    const otherSlide = parent.cloneNode() as HTMLElement
+    const elsewhere = first.cloneNode() as HTMLElement
+    otherSlide.removeAttribute("id")
+    parent.after(otherSlide)
+    otherSlide.append(elsewhere)
+    expect(feature.groupSelectionPeers(first)).toEqual([first, last])
+    $.selectElements([first, elsewhere])
+    expect(feature.setSpatialGrouping("group")).toBe(false)
+    editor.features.selection.selectElement(first)
+    last.id = "last-group-member"
+    editor.doc.syncFromDOM()
+    const [shared] = [...editor.doc.body.createTreeWalker(node => node instanceof Y.XmlElement && node.getAttribute("id") === last.id)]
+    editor.doc.doc.transact(() => (shared as Y.XmlElement).removeAttribute("data-ww-group"), "remote-test")
+    await mutationsDelivered()
+    expect(feature.groupSelectionPeers(first)).toEqual([first])
+    expect(editor.appendix.querySelector('[part~="transform-overlay-group-context"]')).toBeNull()
   })
 
   it.each(["Escape", "pointercancel", "removed", "replaced", "remote", "concurrent", "disable", "destroy"])("cancels every member and cleans markers on %s", async outcome => {

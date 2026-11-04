@@ -79,6 +79,22 @@ function clipboardItem(html: string) {
 }
 
 describe("pasting positioned layout items", () => {
+  it("pastes a spatial group as a new group without joining it to the original", () => {
+    const {source, sourceRoot} = canvasDeck()
+    const peer = source.cloneNode(true) as HTMLElement
+    peer.style.left = "240px"
+    sourceRoot.append(peer)
+    $.selectElements([source, peer])
+    expect(editor.features.transformation.setSpatialGrouping("group")).toBe(true)
+    const html = editor.serializeClipboardFragment($.copy()).clipboardHTML
+    nativePaste(html)
+    const [, , firstCopy, secondCopy] = positioned(sourceRoot)
+    expect(editor.features.transformation.groupSelectionPeers(firstCopy)).toEqual([firstCopy, secondCopy])
+    expect(editor.features.transformation.groupSelectionPeers(source)).toEqual([source, peer])
+    nativePaste(clipboardHTML(source))
+    expect(positioned(sourceRoot).at(-1)!.hasAttribute("data-ww-group")).toBe(false)
+  })
+
   it.each(["canvas", "slides"] as const)("offsets each native paste from the last copy in %s while retaining original authored descendants", mode => {
     const {sourceRoot, source} = mode === "canvas"
       ? canvasDeck()

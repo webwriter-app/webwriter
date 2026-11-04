@@ -214,7 +214,7 @@ export class DomEditorToolbox extends EditingControls {
     .float-button-group button[aria-pressed="true"], .float-button-group button:focus-visible {position: relative; z-index: 1}
     .float-button-group svg {display: block; width: 1.25rem; height: 1.25rem}
     .float-button-group .float-move svg {width: .875rem; height: .875rem}
-    .float-button-group[aria-label="Placement"] button {min-height: 1.55rem; padding: .15rem .2rem}
+    .float-button-group:is([aria-label="Placement"], .placement-action-group) button {min-height: 1.55rem; padding: .15rem .2rem}
     .float-button-group[aria-label="Placement"] .float-move {padding-inline: .1rem}
     .placement-action-group button:disabled {opacity: .4; cursor: default}
     .float-button-group.placement-action-group button:hover:not(:disabled) {background: #edf3f9}
@@ -1595,6 +1595,18 @@ export class DomEditorToolbox extends EditingControls {
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "movePlacement", direction}, bubbles: true, composed: true,
+              }))}>${ribbonIcon(icon)}</button>`)}
+          </div>
+          <span class="float-placement-label">Grouping</span>
+          <div class="float-button-group placement-action-group" role="group" aria-label="Grouping">
+            ${([
+              {mode: "group", label: "Group", icon: "Group", enabled: target?.spatialGrouping?.canGroup},
+              {mode: "ungroup", label: "Ungroup", icon: "NoGroup", enabled: target?.spatialGrouping?.canUngroup},
+            ] as const).map(({mode, label, icon, enabled}) => html`<button type="button" aria-label=${label} title=${label}
+              ?disabled=${!enabled || this.historyState.preview !== null || this.htmlPending}
+              @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+              @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
+                detail: {type: "setSpatialGrouping", mode}, bubbles: true, composed: true,
               }))}>${ribbonIcon(icon)}</button>`)}
           </div>
           ` : nothing}
