@@ -2196,7 +2196,20 @@ export class SelectionFeature extends EditorFeature {
 
   /** Places a collapsed document selection, even if a widget or a table
    * previously owned editing focus. Existing caret rendering follows it. */
-  selectDropRange(range: Range, {scrollIntoView = true} = {}) {
+  selectDropRange(range: Range, {scrollIntoView = true, preview = false} = {}) {
+    const selection = preview ? document.getSelection() : null
+    const caret = preview ? this.selectionCaret : null
+    if(selection?.isCollapsed && selection.rangeCount === 1 && selection.focusNode === range.startContainer
+      && selection.focusOffset === range.startOffset && !this.#capturedElement && !this.#selectedSection
+      && !this.isInDragSelection && !this.editor.features.table.hasCellSelection
+      && caret?.matches('[part~="selection-caret-text"]:not([visibility="hidden"])')
+      && !document.body.matches(".◆math-boundary-caret, .◆popup-boundary-caret") && !focusedWidgetHost()) {
+      const rect = caretRect(range.startContainer, range.startOffset)
+      caret.style.left = `${fixedClientX(rect.left)}px`
+      caret.style.top = `${rect.top}px`
+      caret.style.height = `${rect.height}px`
+      return
+    }
     if(focusedWidgetHost()) focusEditorWindow()
     this.#releaseCaptureSelection()
     this.clearSelectedSection()
