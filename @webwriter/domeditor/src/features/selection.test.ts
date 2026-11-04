@@ -3211,6 +3211,8 @@ describe("processSelection()", () => {
     expect(p).not.toHaveClass("◆style-target-hovered")
   })
   it("previews the body as the style target without a selection", () => {
+    initialParagraph?.remove()
+    initialParagraph = null
     document.getSelection()?.removeAllRanges()
 
     feature.actions.hoverStyleTarget({type: "hoverStyleTarget", hovered: true})
