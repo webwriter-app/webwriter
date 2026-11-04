@@ -1,8 +1,8 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, closestAlignment, fixedClientX, clearInlinePlacement, editingFlowRoot, figureSelectionTarget, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
+import { $, closestAlignment, fixedClientX, clearInlinePlacement, editingFlowRoot, figureSelectionTarget, findContainingBlock, findScrollingAncestor, findStackingContainer, flowSibling, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {SVG_NAMESPACE, standaloneGraphicShape} from "../graphic"
-import {boardLayoutRole, isSlide} from "../document-layout"
+import {boardLayoutRole, documentLayoutMode, isSlide} from "../document-layout"
 import {alignmentFromStyles, floatSideFromStyles, type FloatSide} from "../element-styles"
 import {mediaCropInsets} from "../media"
 import {captionIconSource} from "../caption-icon"
@@ -90,6 +90,7 @@ export class TransformationFeature extends EditorFeature {
   #target: TransformElement | null = null
   #group: TransformElement[] = []
   #gesture: Gesture | null = null
+  #floatAnchorLine: SVGLineElement | null = null
   #movementOverlay: SVGSVGElement | null = null
   #movementPeers: {root: HTMLElement, boxes: {item: HTMLElement | SVGSVGElement, rect: DOMRect}[],
     horizontal: {value: number, kind: string}[], vertical: {value: number, kind: string}[]} | null = null
@@ -105,6 +106,7 @@ export class TransformationFeature extends EditorFeature {
   }
   readonly #refreshViewportControls = () => {
     this.#movementPeers = null
+    if(this.#floatAnchorLine?.style.display === "") this.#refreshGeometry()
     // The anchored frame follows scrolling natively. Its upright control stems
     // still switch sides together when their top row crosses the viewport edge.
     if(this.#anchored && this.target) setPart(this.overlay, "transform-overlay-at-top", this.target.getBoundingClientRect().top < 42)
@@ -333,6 +335,14 @@ export class TransformationFeature extends EditorFeature {
     overlay.setAttribute("part", "transform-overlay transform-overlay-hidden")
     overlay.setAttribute("visibility", "hidden")
     overlay.contentEditable = "false"
+    const floatAnchor = document.createElementNS(SVG_NAMESPACE, "svg")
+    floatAnchor.setAttribute("part", "transform-overlay-float-anchor")
+    floatAnchor.setAttribute("aria-hidden", "true")
+    this.#floatAnchorLine = document.createElementNS(SVG_NAMESPACE, "line")
+    this.#floatAnchorLine.setAttribute("vector-effect", "non-scaling-stroke")
+    this.#floatAnchorLine.style.display = "none"
+    floatAnchor.append(this.#floatAnchorLine)
+    overlay.append(floatAnchor)
     const control = (name: string, title: string, mode?: Mode) => this.#createControl(name, title, mode)
     const mover = control("mover", "Move", "move")
     const caption = control("caption", "Add caption or cycle caption position")
@@ -746,7 +756,7 @@ export class TransformationFeature extends EditorFeature {
       if(!this.#gesture) this.#syncControlParts()
       return
     }
-    const {rect, width, height, matrix, styles} = this.boxGeometry(target)
+    const {rect, width, height, matrix, styles, corners} = this.boxGeometry(target)
     const overlay = this.overlay
     if(this.#observedTarget !== target) {
       this.#resizeObserver?.disconnect()
@@ -758,6 +768,7 @@ export class TransformationFeature extends EditorFeature {
     // has no box. Its own controls own that geometry; do not draw at BODY@0.
     if(rect.width <= 0 || rect.height <= 0) {
       overlay.setAttribute("visibility", "hidden")
+      this.#floatAnchorLine!.style.display = "none"
       this.editor.features.selection.clearTransformCaret()
       this.#syncControlParts()
       return
@@ -768,6 +779,7 @@ export class TransformationFeature extends EditorFeature {
     const anchored = !this.#gesture && !this.#isFreeformItem(target) && !this.boxTransformed(target)
       && !floats.length && !captionedFigureContent(target) && (!crop || crop === "none")
     const style = getComputedStyle(target)
+    this.#positionFloatAnchor(target, style.float, corners[0], matrix)
     const position = (style.position || "static") as "static" | "relative" | "absolute" | "fixed" | "sticky"
     const block = findContainingBlock(target as HTMLElement, position)
     const corner = block instanceof Element ? block.getBoundingClientRect()
@@ -817,6 +829,47 @@ export class TransformationFeature extends EditorFeature {
     this.orderer.setAttribute("data-z-order", style.zIndex === "auto" ? "0" : style.zIndex || "0")
     if(!this.#gesture) this.#syncControlParts()
     this.#updateContextMarkers()
+  }
+
+  #positionFloatAnchor(target: TransformElement, side: string, start: {x: number, y: number}, matrix: DOMMatrix) {
+    const line = this.#floatAnchorLine!
+    const parent = renderedParentElement(target)
+    if((side !== "left" && side !== "right") || documentLayoutMode() !== "document" || !parent
+      || !matrix.is2D || Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) < 1e-8) {
+      line.style.display = "none"
+      return
+    }
+
+    // A float can be pushed down by earlier floats or pinned during scroll.
+    // Locate its insertion point from the surrounding in-flow content.
+    const adjacent = (direction: "next" | "previous") => {
+      for(let node = flowSibling(target, direction); node; node = flowSibling(node, direction)) {
+        if(node instanceof Element) {
+          const rect = node.getBoundingClientRect()
+          if(rect.width && rect.height) return {rect, block: !getComputedStyle(node).display.startsWith("inline")}
+        }
+        else if(node instanceof Text && node.data.trim()) {
+          const range = document.createRange()
+          range.selectNodeContents(node)
+          const rect = Array.from(range.getClientRects?.() ?? []).at(direction === "next" ? 0 : -1)
+          if(rect) return {rect, block: false}
+        }
+      }
+    }
+    const next = adjacent("next")
+    const previous = next ? undefined : adjacent("previous")
+    const anchor = next ?? previous
+    const edge = side === "left" ? "right" : "left"
+    const parentRect = parent.getBoundingClientRect()
+    const parentStyle = getComputedStyle(parent)
+    const inset = (edge: string) => (parseFloat(parentStyle.getPropertyValue(`padding-${edge}`)) || 0)
+      + (parseFloat(parentStyle.getPropertyValue(`border-${edge}-width`)) || 0)
+    const x = anchor?.block ? anchor.rect[edge] : parentRect[edge] + (side === "left" ? -1 : 1) * inset(edge)
+    const y = next?.rect.top ?? previous?.rect.bottom ?? parentRect.top + inset("top")
+    const end = this.#vector(matrix.inverse(), x - start.x, y - start.y)
+    line.setAttribute("x2", String(end.x))
+    line.setAttribute("y2", String(end.y))
+    line.style.removeProperty("display")
   }
 
   #positionCropControls(target: TransformElement, width: number, height: number, rect: DOMRect, matrix: DOMMatrix) {
@@ -1761,6 +1814,7 @@ export class TransformationFeature extends EditorFeature {
     const overlay = document.body.shadowRoot?.querySelector<HTMLElement>("#◆transform-overlay")
     if(overlay) {
       if(overlay.getAttribute("visibility") !== "hidden") overlay.setAttribute("visibility", "hidden")
+      this.#floatAnchorLine!.style.display = "none"
       setPart(overlay, "transform-overlay-content-selected", false)
       overlay.querySelectorAll("[data-open]").forEach(control => control.removeAttribute("data-open"))
       this.#syncControlParts()
@@ -1799,6 +1853,7 @@ export class TransformationFeature extends EditorFeature {
     this.clearTransform()
     this.#anchors.destroy()
     document.body.shadowRoot?.querySelector("#◆transform-overlay")?.remove()
+    this.#floatAnchorLine = null
   }
 
   captureListeners: DocumentListenerMap = {

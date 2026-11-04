@@ -1915,6 +1915,17 @@ body::part(transform-overlay) {
 body::part(transform-overlay-hidden) {
   display: none !important;
 }
+body::part(transform-overlay-float-anchor) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  stroke: var(--sl-color-primary-400);
+  stroke-width: 1px;
+  stroke-dasharray: 5px 4px;
+}
 body::part(transform-overlay-content-selected) {
   --ww-transform-color: var(--sl-color-gray-400, #94a3b8);
   --ww-transform-hover-color: var(--sl-color-gray-300, #cbd5e1);

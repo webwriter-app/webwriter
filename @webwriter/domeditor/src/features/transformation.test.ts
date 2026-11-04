@@ -118,6 +118,50 @@ it("anchors ordinary flow frames and retains measured geometry during transforma
   expect(feature.overlay.getAttribute("part")).not.toContain(binding)
 })
 
+it.each(["left", "right"])("connects a %s float to the opposite edge of its live flow anchor", async side => {
+  document.body.innerHTML = `<main><p id="before">Before</p><aside style="float:${side}">Selected float</aside>
+    <!-- Keep this comment --><aside class="ww-float-left">Another float</aside><p id="after">After</p></main>`
+  const target = document.querySelector("aside")!
+  const before = document.querySelector<HTMLElement>("#before")!
+  const after = document.querySelector<HTMLElement>("#after")!
+  const floatLeft = side === "left" ? 40 : 710
+  mockRect(target, {left: floatLeft, top: 250})
+  mockRect(before, {left: 180, top: 75, width: 500})
+  mockRect(after, {left: 200, top: 150, width: 480})
+  selectNode(target)
+  const line = feature.overlay.querySelector<SVGLineElement>('[part="transform-overlay-float-anchor"] line')!
+  expect(line.style.display).toBe("")
+  expect(Number(line.getAttribute("x2")) + floatLeft).toBe(side === "left" ? 680 : 200)
+  expect(Number(line.getAttribute("y2")) + 250).toBe(150)
+  expect(editor.toHTML(true)).not.toContain("transform-overlay-float-anchor")
+  expect(editor.doc.body.toString()).not.toContain("transform-overlay-float-anchor")
+
+  // An edit can move the float after the last flow block without reselecting it.
+  after.after(target)
+  await mutationsDelivered()
+  expect(Number(line.getAttribute("x2")) + floatLeft).toBe(side === "left" ? 680 : 200)
+  expect(Number(line.getAttribute("y2")) + 250).toBe(200)
+  feature.clearTransform()
+  expect(line.style.display).toBe("none")
+})
+
+it("refreshes a pinned float's anchor on scroll and hides it when the float collapses into flow", () => {
+  document.body.innerHTML = '<aside class="ww-float-left" style="position:sticky">Float</aside><p>Prose</p>'
+  const target = document.querySelector("aside")!
+  const prose = document.querySelector("p")!
+  mockRect(target, {left: 25, top: 16})
+  mockRect(prose, {left: 150, top: 120, width: 500})
+  selectNode(target)
+  const line = feature.overlay.querySelector<SVGLineElement>('[part="transform-overlay-float-anchor"] line')!
+  expect(Number(line.getAttribute("y2"))).toBe(104)
+  vi.mocked(prose.getBoundingClientRect).mockReturnValue(new DOMRect(150, -20, 500, 50))
+  document.dispatchEvent(new Event("scroll"))
+  expect(Number(line.getAttribute("y2"))).toBe(-36)
+  target.classList.add("ww-float-none")
+  feature.updateInfo()
+  expect(line.style.display).toBe("none")
+})
+
 it("finishes a stable text resize without reprocessing the unchanged node selection", () => {
   const target = targetElement()
   mockRect(target)

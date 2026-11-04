@@ -749,12 +749,15 @@ export class DomEditorBreadcrumb extends LitElement {
       ?? this.path.flatMap(candidate => candidate.sections ?? []).find(section => this.pathsEqual(section.path, item.path))
       ?? item
     const {position, positionAnchor, float} = current
+    const pinnedFloat = position === "sticky" && Boolean(float)
+    const anchor = positionAnchor && !pinnedFloat
     const balloon = position === "relative" ? "BalloonFilled"
-      : position === "absolute" || position === "fixed" ? "Balloon" : null
-    if(!positionAnchor && !balloon && !float) return ""
+      : position === "absolute" || position === "fixed" || pinnedFloat ? "Balloon" : null
+    const balloonLabel = pinnedFloat ? "Pinned float" : `${position} positioning`
+    if(!anchor && !balloon && !float) return ""
     return html`<sup class="position-icons">
-      ${positionAnchor ? html`<span class="position-icon position-anchor" role="img" aria-label="Positioning anchor" title="Positioning anchor">${ribbonIcon("Anchor")}</span>` : ""}
-      ${balloon ? html`<span class="position-icon position-balloon" role="img" aria-label=${`${position} positioning`} title=${`${position} positioning`}>${ribbonIcon(balloon)}</span>` : ""}
+      ${anchor ? html`<span class="position-icon position-anchor" role="img" aria-label="Positioning anchor" title="Positioning anchor">${ribbonIcon("Anchor")}</span>` : ""}
+      ${balloon ? html`<span class="position-icon position-balloon" role="img" aria-label=${balloonLabel} title=${balloonLabel}>${ribbonIcon(balloon)}</span>` : ""}
       ${float ? html`<span class="position-icon position-float" role="img" aria-label=${float === "far-left" ? "Left float" : "Right float"} title=${float === "far-left" ? "Left float" : "Right float"}>${ribbonIcon(float === "far-left" ? "Float left" : "Float right")}</span>` : ""}
       ${(float === "far-left" && current.floatForcedRight) || (float === "far-right" && current.floatRightInFlow)
         ? html`<float-info placement="right" .side=${float === "far-right" ? "right" : "left"}></float-info>` : ""}
