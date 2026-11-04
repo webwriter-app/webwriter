@@ -4,7 +4,10 @@ import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
 import editorStyleString from "../editor.css?raw"
 import {createProofreader, type ProofreadingIssue} from "../proofreading"
+import {createLocalProofreader} from "../proofreading-worker"
 import {createAccessibilityReviewer, type AccessibilityFinding} from "../accessibility"
+import {DocumentHeadEditor, type DocumentHeadCombobox} from "../components/document-head-editor"
+import type {DocumentHeadAction} from "../document-head"
 import {proofreadingRuns} from "./proofreading"
 import {proofreadingStateChangeEvent} from "../editor-bridge"
 
@@ -205,6 +208,37 @@ describe("proofreading feature", () => {
     document.querySelector("section")!.setAttribute("hidden", "")
     await editor.features.proofreading.checkNow(true)
     expect(batch).not.toHaveBeenCalled()
+  })
+
+  it("rechecks US spelling after selecting UK English and respects an element's US override", async () => {
+    vi.mocked(createProofreader).mockImplementationOnce(createLocalProofreader)
+    content('<p>The colour is green.</p><p lang="en-US">I like this colour.</p>')
+    const feature = editor.features.proofreading
+    const spellingOffsets = () => feature.state().issues
+      .filter(issue => issue.kind === "spelling" && issue.text === "colour")
+      .map(issue => issue.start)
+    await start()
+    expect(spellingOffsets()).toEqual([4, 12])
+
+    const metadata = new DocumentHeadEditor()
+    metadata.state = editor.features.head.state()
+    metadata.addEventListener("document-head-action", event => {
+      const action = (event as CustomEvent<DocumentHeadAction>).detail
+      if(action.type === "setDocumentHeadField") editor.features.head.actions.setDocumentHeadField(action)
+    })
+    editor.addAppendix(metadata)
+    await metadata.updateComplete
+    const picker = metadata.shadowRoot!.querySelector<DocumentHeadCombobox>('document-head-combobox[label="Language"]')!
+    await picker.updateComplete
+    picker.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+    await picker.updateComplete
+    const uk = Array.from(picker.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="option"]'))
+      .find(option => option.querySelector(".option-code")?.textContent === "English (UK)")!
+    uk.click()
+
+    expect(document.documentElement.lang).toBe("en-GB")
+    expect(document.querySelector("p:last-child")?.getAttribute("lang")).toBe("en-US")
+    await vi.waitFor(() => expect(spellingOffsets()).toEqual([12]), {timeout: 3000})
   })
 
   it("supersedes unchecked batches when the live document changes", async () => {
