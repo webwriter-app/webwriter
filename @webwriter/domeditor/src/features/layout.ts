@@ -4,6 +4,7 @@ import {$} from "../utility"
 import {createFigureLayout} from "../figure-layout.js"
 import {createLayoutPrint} from "../document-layout-print.js"
 import {slideLayoutRole} from "../document-layout"
+import {isAuthoredMutation} from "../editor-artifacts"
 
 type PlacementDirection = "front" | "up" | "down" | "back"
 type PlacementItem = {element: HTMLElement | SVGSVGElement, z: number, order: number}
@@ -22,9 +23,9 @@ export class LayoutFeature extends EditorFeature {
     this.figures = createFigureLayout(document)
     this.print = createLayoutPrint(document)
     this.columnMutationObserver = new MutationObserver(records => {
-      if(records.some(record => record.target.getRootNode() === document)) this.syncColumnWidth()
+      if(records.some(isAuthoredMutation)) this.syncColumnWidth()
     })
-    this.columnMutationObserver.observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ["style", "class", "width"]})
+    this.columnMutationObserver.observe(document.body, {subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ["style", "class", "width"]})
     if(typeof ResizeObserver !== "undefined") {
       this.columnResizeObserver = new ResizeObserver(() => this.scheduleColumnWidth())
       this.columnResizeObserver.observe(document.documentElement)
@@ -83,9 +84,11 @@ export class LayoutFeature extends EditorFeature {
   private syncColumnWidth() {
     const body = document.body
     if(!body || !this.isEnabled) return
-    const candidates = Array.from(body.querySelectorAll<HTMLElement | SVGElement>(
+    const floats = Array.from(body.querySelectorAll<HTMLElement | SVGElement>(
       '.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
-      .filter(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList) !== "none")
+      .map(element => ({element, side: floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList)}))
+      .filter(({side}) => side !== "none")
+    const candidates = floats.map(({element}) => element)
     const next = new Set<Element>(candidates)
     for(const element of this.columnFloats) if(!next.has(element)) this.columnResizeObserver?.unobserve(element)
     for(const element of candidates) if(!this.columnFloats.has(element)) this.columnResizeObserver?.observe(element)
@@ -115,38 +118,49 @@ export class LayoutFeature extends EditorFeature {
       // Measure authored sizes independently of the current lane cap. Otherwise
       // a float narrowed by a second lane can never grow again after resizing.
       const widths = new Map<Element, number>()
-      const measurable = explicit.filter(element => (element.parentElement?.getBoundingClientRect().width ?? 0) > 0)
-      if(measurable.length) {
-        const measure = document.createElement("div"), probe = document.createElement("div")
-        measure.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;inset:0 auto auto 0"
-        measure.append(probe)
-        this.editor.addAppendix(measure)
-        try {
-          for(const element of measurable) {
-            const style = element.style, parent = element.parentElement
-            const parentStyle = parent && getComputedStyle(parent)
-            const number = (value: string) => Number.parseFloat(value) || 0
-            measure.style.width = `${Math.max(0, (parent?.getBoundingClientRect().width ?? 0) - number(parentStyle?.paddingLeft ?? "") - number(parentStyle?.paddingRight ?? "") - number(parentStyle?.borderLeftWidth ?? "") - number(parentStyle?.borderRightWidth ?? ""))}px`
-            probe.style.cssText = style.cssText
-            probe.style.setProperty("box-sizing", getComputedStyle(element).boxSizing)
-            probe.style.setProperty("float", "none")
-            probe.style.setProperty("position", "static")
-            const size = style.getPropertyValue("--ww-float-size") || style.getPropertyValue("inline-size") || style.width
-            probe.style.setProperty("inline-size", size && size !== "auto" ? size : "max-content")
-            const maximum = style.getPropertyValue("max-inline-size") || style.maxWidth
-            if(maximum) probe.style.setProperty("max-inline-size", maximum)
-            const measured = probe.getBoundingClientRect().width
-            widths.set(element, measured || element.getBoundingClientRect().width)
-          }
+      const measurements = document.createElement("div")
+      const parents = new Map<Element, number | null>()
+      const number = (value: string) => Number.parseFloat(value) || 0
+      const probes = explicit.flatMap(element => {
+        const parent = element.parentElement
+        if(!parent) return []
+        let width = parents.get(parent)
+        if(width === undefined) {
+          const parentStyle = getComputedStyle(parent)
+          const rect = parent.getBoundingClientRect()
+          width = rect.width > 0 ? Math.max(0, rect.width - number(parentStyle.paddingLeft) - number(parentStyle.paddingRight)
+            - number(parentStyle.borderLeftWidth) - number(parentStyle.borderRightWidth)) : null
+          parents.set(parent, width)
         }
-        finally { measure.remove() }
+        if(width === null) return []
+        const measure = document.createElement("div"), probe = document.createElement("div"), style = element.style
+        measure.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;inset:0 auto auto 0"
+        measure.style.width = `${width}px`
+        probe.style.cssText = style.cssText
+        probe.style.setProperty("box-sizing", getComputedStyle(element).boxSizing)
+        probe.style.setProperty("float", "none")
+        probe.style.setProperty("position", "static")
+        const size = style.getPropertyValue("--ww-float-size") || style.getPropertyValue("inline-size") || style.width
+        probe.style.setProperty("inline-size", size && size !== "auto" ? size : "max-content")
+        const maximum = style.getPropertyValue("max-inline-size") || style.maxWidth
+        if(maximum) probe.style.setProperty("max-inline-size", maximum)
+        measure.append(probe)
+        measurements.append(measure)
+        return [{element, probe}]
+      })
+      if(probes.length) {
+        this.editor.addAppendix(measurements)
+        try {
+          for(const {element, probe} of probes) widths.set(element, probe.getBoundingClientRect().width || element.getBoundingClientRect().width)
+        }
+        finally { measurements.remove() }
       }
       for(const element of explicit) if(!widths.has(element)) widths.set(element, element.getBoundingClientRect().width)
       const width = Math.max(0, ...explicit.map(element => widths.get(element) ?? 0))
       set("--ww-two-column-default-width", explicit.length === candidates.length ? "0px" : null)
       set("--ww-two-column-explicit-width", width ? `${Math.round(width * 100) / 100}px` : null)
       for(const side of ["left", "right"] as const) {
-        const items = candidates.filter(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList) === `far-${side}`)
+        const items = floats.filter(float => float.side === `far-${side}`).map(({element}) => element)
         const sized = items.filter(element => explicit.includes(element))
         const sideWidth = Math.max(0, ...sized.map(element => widths.get(element) ?? 0))
         set(`--ww-${side}-column-default-width`, items.length ? sized.length === items.length ? "0px" : "var(--ww-prose-max, 45rem)" : null)
