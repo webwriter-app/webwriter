@@ -7981,7 +7981,7 @@ describe("unified content transfer", () => {
     source.querySelector("b")!.textContent = "updated"
     const children = Array.from(source.childNodes)
     dropAt(data, mark.firstChild!, 3, operation === "move" ? {} : {[operation]: true})
-    expect(target.innerHTML).toBe('<i>tar<b>updated</b><!--keep--><x-note data-authored="keep"></x-note>get</i>')
+    expect(cloneWithoutEditorMarkers(target, true).innerHTML).toBe('<i>tar<b>updated</b><!--keep--><x-note data-authored="keep"></x-note>get</i>')
     expect(target.firstElementChild).toBe(mark)
     const moved = Array.from(mark.childNodes).slice(1, 4)
     if(operation === "move") {
