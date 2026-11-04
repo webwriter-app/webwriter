@@ -1115,8 +1115,8 @@ export class EditingSelection {
     const before = adjacentElement(parent.childNodes, this.anchorOffset, "before")
     const after = adjacentElement(parent.childNodes, this.anchorOffset, "after")
     const block = (element: Element | null) => element && !isOutOfFlow(element)
-      && (isBlockLike(element) || parent.localName !== "p" && (isAtomicEditingElement(element)
-        || element.localName.includes("-") || element.hasAttribute("is")))
+      && (isBlockLike(element) || parent.localName !== "p" && (element.localName.includes("-")
+        || element.hasAttribute("is") || isAtomicEditingElement(element)))
     if(block(before)) return {element: before!, placement: "after" as const}
     if(block(after)) return {element: after!, placement: "before" as const}
     return null
