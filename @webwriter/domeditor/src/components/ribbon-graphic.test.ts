@@ -63,11 +63,11 @@ describe("graphic ribbon", () => {
 
   it("offers the requested text and line presets and omits removed shapes", () => {
     expect(graphicShapeOptions.filter(option => option.category === "Lines").map(option => option.type)).toEqual([
-      "text-box", "image", "line", "connector", "line-start-arrow", "line-end-arrow", "line-both-arrows",
+      "text-box", "image", "line", "connector", "line-start-arrow", "line-end-arrow", "line-both-arrows", "curved-connector",
     ])
     expect(graphicShapeOptions.some(option => ["rectangle", "polygon", "right-triangle", "not-equal", "multidocument", "line-callout-2"].includes(option.type))).toBe(false)
     expect(graphicShapeOptions.some(option => ["parentheses", "braces", "curved-ribbon-up", "curved-ribbon-down"].includes(option.type))).toBe(false)
-    expect(graphicShapeOptions).toHaveLength(134)
+    expect(graphicShapeOptions).toHaveLength(135)
     expect(graphicShapeOptions.find(option => option.type === "square-rectangle")).toMatchObject({label: "Rectangle"})
     expect(graphicShapeOptions.find(option => option.type === "image")).toMatchObject({label: "Image", icon: "Image", category: "Lines"})
     expect(graphicShapeOptions.filter(option => option.category === "Callouts").at(-1)?.type).toBe("line-callout-1")
@@ -165,6 +165,25 @@ describe("graphic ribbon", () => {
     await toolbox.updateComplete
     expect(toolbox.shapePaint.fill).toBe("#12ab34")
     expect(noFill.getAttribute("aria-pressed")).toBe("false")
+  })
+
+  it("offers connector conversion in the toolbox for an eligible selected shape", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.graphic = {active: true, capture: true, selectionCount: 1, shape: "bezier", canConvertToConnector: true}
+    const listener = vi.fn()
+    toolbox.addEventListener("graphic-parameter-change", listener)
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const button = toolbox.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[layout="shape-paint"] ribbon-button[label="Convert to connector"]')!
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Convert to connector"]')!.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {name: "convert-to-connector", value: "true"}}))
+
+    toolbox.graphic = {active: true, capture: true, selectionCount: 1, shape: "connector", parameters: {routing: "curved"}}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Convert to connector"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[layout="shape-paint"]')).toHaveAttribute("label", "Curved connector")
   })
 
   it("shows the selected shape icon and name and routes edits to that shape", async () => {
@@ -292,8 +311,8 @@ describe("graphic ribbon", () => {
     expect(importButton.nextElementSibling).toHaveAttribute("aria-label", "Rectangle")
     expect(importButton.nextElementSibling).toHaveClass("gallery-row-start")
     expect(importButton.querySelector(".icon-tabler-upload")).not.toBeNull()
-    expect([...gallery.querySelectorAll('button[role="menuitem"]')].slice(0, 8).map(button => button.getAttribute("aria-label"))).toEqual([
-      "Text box", "Image", "Line", "Connector", "Narrow left arrow", "Narrow right arrow", "Narrow left-right arrow", "Import graphic",
+    expect([...gallery.querySelectorAll('button[role="menuitem"]')].slice(0, 9).map(button => button.getAttribute("aria-label"))).toEqual([
+      "Text box", "Image", "Line", "Connector", "Narrow left arrow", "Narrow right arrow", "Narrow left-right arrow", "Curved connector", "Import graphic",
     ])
     const shapeButtons = [...gallery.querySelectorAll('button[role="menuitem"]')].filter(button => button !== importButton)
     const ordered = graphicShapeSections.flatMap(section => section.rows.flat())
@@ -315,7 +334,7 @@ describe("graphic ribbon", () => {
       rows.at(-1)!.push(child.getAttribute("aria-label")!)
     }
     expect(sections.map(rows => rows.map(row => row.length))).toEqual([
-      [7, 11, 11, 11], [11, 9, 9, 11], [10, 7, 10], [11, 11, 5],
+      [8, 11, 11, 11], [11, 9, 9, 11], [10, 7, 10], [11, 11, 5],
     ])
     for(const [index, section] of graphicShapeSections.entries()) {
       keyboard.shadowRoot!.querySelector<HTMLButtonElement>(`.tabs [aria-label="${section.label}"]`)!.click()

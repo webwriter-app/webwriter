@@ -1,4 +1,4 @@
-import {graphicPresetOptions, graphicPresetFillRule, isGraphicPresetType, readGraphicPreset} from "./graphic-shapes"
+import {graphicConnectorRole, graphicPresetOptions, graphicPresetFillRule, isGraphicPresetType, readGraphicPreset} from "./graphic-shapes"
 import {graphicShapePresets, type GraphicShapePreset} from "./graphic-shape-presets"
 
 export const graphicShapeDragType = "application/x-webwriter-graphic-shape"
@@ -117,7 +117,7 @@ export const graphicShapeOptions = [
   ...basicGraphicShapeOptions.filter(option => option.type === "line"),
   ...basicGraphicShapeOptions.filter(option => option.type !== "line" && option.type !== "image" && option.type !== "polygon" && option.type !== "rectangle"),
   ...lineArrowOptions,
-  ...graphicPresetOptions.filter(option => option.category !== "Lines"
+  ...graphicPresetOptions.filter(option => (option.category !== "Lines" || option.type === "curved-connector")
     && !["text-box", "right-triangle", "arc", "not-equal", "multidocument", "line-callout-2", "parentheses", "braces", "curved-ribbon-up", "curved-ribbon-down"].includes(option.type)),
 ]
   .map(option => ({...option,
@@ -241,6 +241,7 @@ export type GraphicSelectionState = {
   mode?: GraphicMode
   selectionCount?: number
   shape?: GraphicShapeType
+  canConvertToConnector?: boolean
   parameters?: Record<string, string>
   options?: {
     grid: boolean
@@ -313,6 +314,7 @@ function primitiveGraphicShapeType(element: Element | null): GraphicShapeType | 
     if(preset) return preset.type
     if(graphicStrokePoints(element)) return "freehand"
     const path = graphicPathGeometry(element)
+    if(path && !path.closed && element.getAttribute("aria-roledescription") === graphicConnectorRole) return "connector"
     return path ? path.kind === "curves" ? "bezier" : "polyline" : null
   }
   if(element.localName === "rect") return "rectangle"

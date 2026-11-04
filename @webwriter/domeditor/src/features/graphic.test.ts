@@ -4429,6 +4429,108 @@ describe("graphic editing", () => {
     expect(document.querySelector("polyline")).toBeNull()
   })
 
+  it.each([
+    {source: '<line x1="20" y1="30" x2="90" y2="40"></line>', tag: "polyline", attribute: "points", geometry: "20,30 90,40", routing: "straight"},
+    {source: '<path d="M 20 30 L 60 90 L 90 40"></path>', tag: "path", attribute: "d", geometry: "M 20 30 L 60 90 L 90 40", routing: "segmented"},
+    {source: '<path d="M 20 30 C 35 5 55 75 60 90 C 65 105 85 65 90 40"></path>', tag: "path", attribute: "d", geometry: "M 20 30 C 35 5 55 75 60 90 C 65 105 85 65 90 40", routing: "curved"},
+  ])("converts $routing geometry in place with native attributes and undo", async ({source, tag, attribute, geometry, routing}) => {
+    const feature = editor.features.graphic
+    feature.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = `<g><!-- Authored group -->${source}<title>Link</title></g>`
+    const group = graphic.querySelector("g")!
+    const original = group.firstElementChild!
+    original.setAttribute("transform", "rotate(15 20 30)")
+    original.setAttribute("aria-label", "Connection to the next step")
+    original.setAttribute("stroke", "purple")
+    original.setAttribute("fill", "none")
+    original.append(document.createComment("Authored child"))
+    const originalType = graphicShapeType(group)
+    await mutationsDelivered()
+    clickShape(original)
+    expect(feature.getState()?.canConvertToConnector).toBe(true)
+
+    feature.actions.setGraphicParameter({type: "setGraphicParameter", name: "convert-to-connector", value: "true"})
+
+    const connector = group.firstElementChild!
+    expect(feature.selectedShape).toBe(group)
+    expect(feature.getState()).toMatchObject({shape: "connector", parameters: {routing}})
+    expect(feature.getState()?.canConvertToConnector).toBeUndefined()
+    expect(connector.localName).toBe(tag)
+    expect(connector).toHaveAttribute(attribute, geometry)
+    expect(connector).toHaveAttribute("transform", "rotate(15 20 30)")
+    expect(connector).toHaveAttribute("aria-label", "Connection to the next step")
+    expect(connector).toHaveAttribute("stroke", "purple")
+    expect(connector.firstChild?.nodeValue).toBe("Authored child")
+    expect(group.querySelector("title")?.textContent).toBe("Link")
+    expect(editor.appendix.querySelector('[data-graphic-handle="connector-end"]')).not.toBeNull()
+    const serialized = new DOMParser().parseFromString(await feature.actions.serializeGraphic({type: "serializeGraphic"}) ?? "", "image/svg+xml")
+    expect(graphicShapeType(serialized.querySelector("g"))).toBe("connector")
+    expect(editor.toHTML(true)).not.toContain("◆graphic-shape-selected")
+
+    await mutationsDelivered()
+    editor.features.history.actions.undo({type: "undo"})
+    expect(graphicShapeType(graphic.querySelector("g"))).toBe(originalType)
+    editor.features.history.actions.redo({type: "redo"})
+    expect(graphicShapeType(graphic.querySelector("g"))).toBe("connector")
+  })
+
+  it.each([
+    "M 20 30 Q 20 30 45 30 L 70 30",
+    "M 20 30 L 60 90 L 90 40 Z",
+    "M 20 30 C 35 5 55 75 60 90 Z",
+  ])("leaves freehand and closed paths ineligible for conversion (%s)", path => {
+    const feature = editor.features.graphic
+    feature.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = `<path fill="none" d="${path}"/>`
+    const shape = graphic.querySelector("path")!
+    clickShape(shape)
+    expect(feature.selectedShape).toBe(shape)
+    expect(feature.getState()?.canConvertToConnector).toBeUndefined()
+    const original = shape.outerHTML
+    feature.actions.setGraphicParameter({type: "setGraphicParameter", name: "convert-to-connector", value: "true"})
+    expect(shape.outerHTML).toBe(original)
+  })
+
+  it("edits curved connector tangents, snaps the end, and follows the attached shape", async () => {
+    const feature = editor.features.graphic
+    feature.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getBoundingClientRect", {value: () => new DOMRect(0, 0, 1600, 900)})
+    feature.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+    const target = graphic.querySelector("rect")!
+    for(const [name, value] of Object.entries({x: "500", y: "300", width: "100", height: "100"})) target.setAttribute(name, value)
+    feature.actions.addGraphicShape({type: "addGraphicShape", shape: "curved-connector", paint: {fill: "red"}})
+    const connector = graphic.querySelector("path")!
+    expect(feature.getState()).toMatchObject({shape: "connector", parameters: {routing: "curved", fill: "none"}})
+    connector.setAttribute("d", "M 200 150 C 300 150 400 350 470 350")
+    clickShape(connector)
+    const drag = (handle: string, from: [number, number], to: [number, number], altKey = false) => {
+      const button = editor.appendix.querySelector(`[data-graphic-handle="${handle}"]`)!
+      button.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, clientX: from[0], clientY: from[1]}))
+      document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, clientX: to[0], clientY: to[1], altKey}))
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+    }
+    drag("path-point-1", [300, 150], [320, 180], true)
+    expect(connector).toHaveAttribute("d", "M 200 150 C 320 180 400 350 470 350")
+    drag("connector-end", [470, 350], [496, 351])
+    expect(connector).toHaveAttribute("d", "M 200 150 C 320 180 430 350 500 350")
+    feature.actions.setGraphicParameter({type: "setGraphicParameter", name: "end-arrow", value: "true"})
+    const marker = connector.getAttribute("marker-end")
+    expect(marker).toMatch(/^url\(#graphic-arrow-\d+\)$/)
+    await mutationsDelivered()
+
+    clickShape(target)
+    feature.actions.setGraphicParameter({type: "setGraphicParameter", name: "x", value: "550"})
+    expect(connector).toHaveAttribute("d", "M 200 150 C 320 180 480 350 550 350")
+    expect(connector).toHaveAttribute("marker-end", marker)
+    await mutationsDelivered()
+    editor.features.history.actions.undo({type: "undo"})
+    expect(connector).toHaveAttribute("d", "M 200 150 C 320 180 430 350 500 350")
+    expect(target).toHaveAttribute("x", "500")
+  })
+
   it("switches connector routing and adds native SVG arrow markers", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "connector"})
     const graphic = document.querySelector("svg")!
@@ -4451,6 +4553,39 @@ describe("graphic editing", () => {
     editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "end-arrow", value: "false"})
     expect(connector).not.toHaveAttribute("marker-end")
     expect(graphic.querySelector("defs")).toBeNull()
+  })
+
+  it("retains connector endpoints and arrow markers when changing to curved routing and back", () => {
+    const feature = editor.features.graphic
+    feature.actions.insertGraphic({type: "insertGraphic", shape: "line-both-arrows"})
+    const graphic = document.querySelector("svg")!
+    const line = graphic.querySelector("polyline")!
+    line.setAttribute("points", "100,100 300,220")
+    const arrows = [line.getAttribute("marker-start"), line.getAttribute("marker-end")]
+    feature.actions.setGraphicParameter({type: "setGraphicParameter", name: "routing", value: "curved"})
+    const curve = feature.selectedShape!
+    expect(curve.localName).toBe("path")
+    expect(curve).toHaveAttribute("d", "M 100 100 C 260 100 140 220 300 220")
+    expect([curve.getAttribute("marker-start"), curve.getAttribute("marker-end")]).toEqual(arrows)
+    feature.actions.setGraphicParameter({type: "setGraphicParameter", name: "routing", value: "straight"})
+    const straight = feature.selectedShape!
+    expect(straight.localName).toBe("polyline")
+    expect(straight).toHaveAttribute("points", "100,100 300,220")
+    expect([straight.getAttribute("marker-start"), straight.getAttribute("marker-end")]).toEqual(arrows)
+  })
+
+  it("keeps a converted line attached at its transformed endpoint", () => {
+    const feature = editor.features.graphic
+    feature.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<rect x="150" y="350" width="100" height="100"/><line x1="200" y1="150" x2="400" y2="150" transform="rotate(90 200 150)"/>'
+    clickShape(graphic.querySelector("line")!)
+    feature.actions.setGraphicParameter({type: "setGraphicParameter", name: "convert-to-connector", value: "true"})
+    const connector = graphic.querySelector("polyline")!
+    clickShape(graphic.querySelector("rect")!)
+    feature.actions.setGraphicParameter({type: "setGraphicParameter", name: "x", value: "200"})
+    expect(connector).toHaveAttribute("points", "200,150 400,100")
+    expect(connector).toHaveAttribute("transform", "rotate(90 200 150)")
   })
 
   it("derives a layer list from live shape roots and safely manages each layer", async () => {

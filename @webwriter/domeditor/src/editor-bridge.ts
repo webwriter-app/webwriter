@@ -941,6 +941,7 @@ const isGraphicSelection = (graphic: UnknownRecord) => graphic.active === true
   && isOptional(graphic.mode, value => value === "select" || value === "draw" || value === "lines" || value === "curves")
   && isOptional(graphic.selectionCount, isNonnegativeInteger)
   && isOptional(graphic.shape, isGraphicShapeType)
+  && isOptional(graphic.canConvertToConnector, isBoolean)
   && isOptional(graphic.parameters, isStringRecord)
   && isOptional(graphic.options, value => isRecord(value)
     && isBoolean(value.grid)

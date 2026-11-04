@@ -7262,7 +7262,7 @@ export class DomEditor extends LitElement {
     const detail = (event as CustomEvent<{name?: unknown, value?: unknown}>).detail
     const allowed = new Set([
       "x", "y", "width", "height", "rotation", "fill", "stroke",
-      "stroke-width", "opacity", "corner-radius", "routing", "start-arrow", "end-arrow",
+      "stroke-width", "opacity", "corner-radius", "routing", "start-arrow", "end-arrow", "convert-to-connector",
       "label", "text-color", "font-size", "inset", "inner-radius", "head-size", "tail-width",
     ])
     if(typeof detail?.name !== "string" || (!allowed.has(detail.name) && !/^adjust-[a-z][a-z -]*$/.test(detail.name)) || typeof detail.value !== "string") {

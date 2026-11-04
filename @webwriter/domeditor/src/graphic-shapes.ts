@@ -1,5 +1,7 @@
 import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyChordPreset, legacyCloudPreset, legacySpeechBubblePresets, isConnectedCalloutType, connectedCalloutTypes, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
 
+export const graphicConnectorRole = "connector"
+
 export type GraphicPresetType = keyof typeof graphicShapePresets
 type Bounds = {x: number, y: number, width: number, height: number}
 type Point = {x: number, y: number}
@@ -272,7 +274,8 @@ function readSpeechBubblePreset(path:string,label:string|null): GraphicPresetSta
 /** No private attributes or parallel document model: recognition and all
  * adjustments derive from the live SVG path, including after reload/undo. */
 export function readGraphicPreset(element: Element | null): GraphicPresetState | null {
-  if(element?.namespaceURI !== "http://www.w3.org/2000/svg" || element.localName !== "path") return null
+  if(element?.namespaceURI !== "http://www.w3.org/2000/svg" || element.localName !== "path"
+    || element.getAttribute("aria-roledescription") === graphicConnectorRole) return null
   const path = element.getAttribute("d") ?? ""
   const label = element.getAttribute("aria-label")
   const previous = cache.get(element)

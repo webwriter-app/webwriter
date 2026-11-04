@@ -1405,7 +1405,8 @@ export class DomEditorToolbox extends EditingControls {
     const selected = count > 0
     const fillUnavailable = selected && (this.graphic.shape === "freehand" || ["polyline", "bezier"].includes(this.graphic.shape ?? "") && this.graphic.parameters?.closed !== "true")
     const disabled = !selected && !this.graphic.capture
-    const option = selected && this.graphic.shape ? graphicShapeOptions.find(option => option.type === this.graphic!.shape) : undefined
+    const type = this.graphic.shape === "connector" && this.graphic.parameters?.routing === "curved" ? "curved-connector" : this.graphic.shape
+    const option = selected && type ? graphicShapeOptions.find(option => option.type === type) : undefined
     const shapeName = this.graphic.shape
       ? this.graphic.shape[0].toUpperCase() + this.graphic.shape.slice(1).replaceAll("-", " ") : "Shape"
     const label = !selected ? "Shape" : count > 1 ? "Shapes" : option?.label ?? shapeName
@@ -1438,6 +1439,12 @@ export class DomEditorToolbox extends EditingControls {
         <label><span>Opacity</span>${this.renderOptionSelect("Shape key opacity", paint.opacity,
           [...new Set(["1", "0.75", "0.5", "0.25", paint.opacity])].map(opacity => ({value: opacity, label: `${Number(opacity) * 100}%`})),
           disabled, value => this.setShapePaint("opacity", value))}</label>
+        ${count === 1 && this.graphic.capture && this.graphic.canConvertToConnector ? html`
+          <ribbon-button label="Convert to connector" icon="Connector" @ribbon-button-click=${(event: Event) => {
+            event.stopPropagation()
+            this.dispatchGraphicParameterValue("convert-to-connector", "true")
+          }}></ribbon-button>
+        ` : nothing}
       </div>
     </ribbon-drawer>`
   }

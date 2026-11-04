@@ -2090,7 +2090,12 @@ export abstract class EditingControls extends LitElement {
         <label class="mark-attribute graphic-parameter">
           <span>Routing</span>
           ${this.renderOptionSelect("Graphic: Connector routing", parameters.routing ?? "orthogonal",
-            [{value: "straight", label: "Straight"}, {value: "orthogonal", label: "Orthogonal"}],
+            [
+              {value: "straight", label: "Straight"},
+              {value: "orthogonal", label: "Orthogonal"},
+              {value: "curved", label: "Curved"},
+              ...(parameters.routing === "segmented" ? [{value: "segmented", label: "Segmented"}] : []),
+            ],
             disabled, value => this.dispatchGraphicParameterValue("routing", value))}
         </label>
         <label class="mark-attribute graphic-parameter graphic-boolean-parameter">

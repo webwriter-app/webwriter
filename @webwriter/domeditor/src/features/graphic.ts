@@ -1,4 +1,4 @@
-import {adjustGraphicPreset, graphicPresetAngle, graphicPresetHandles, graphicPresetPath, graphicPresetFillRule, isGraphicPresetType, readGraphicPreset, writeGraphicPreset} from "../graphic-shapes"
+import {adjustGraphicPreset, graphicConnectorRole, graphicPresetAngle, graphicPresetHandles, graphicPresetPath, graphicPresetFillRule, isGraphicPresetType, readGraphicPreset, writeGraphicPreset} from "../graphic-shapes"
 import {copyGraphicTextLayoutCache, wrapGraphicShapeLabel} from "../graphic-text-layout"
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {EditorFeature, type DocumentListenerMap} from "."
@@ -47,7 +47,7 @@ type Bounds = {x: number, y: number, width: number, height: number}
 type Matrix = {a: number, b: number, c: number, d: number, e: number, f: number}
 type Reflection = {horizontal: boolean, vertical: boolean}
 type GraphicOption = "grid" | "snap" | "guides"
-type ConnectorRouting = "straight" | "orthogonal"
+type ConnectorRouting = "straight" | "orthogonal" | "curved" | "segmented"
 type PortDirection = "n" | "e" | "s" | "w"
 type ConnectorEndpoint = "start" | "end"
 type SnapKind = "object" | "canvas" | "grid"
@@ -108,13 +108,11 @@ type ConnectorBinding = {
 }
 
 type AttachedConnector = {
-  source: SVGPolylineElement
+  source: SVGGraphicsElement
   signature: string
   points: Point[]
-  routing: ConnectorRouting
-  orientation: "horizontal" | "vertical"
   bindings: ConnectorBinding[]
-  preview?: SVGPolylineElement
+  preview?: SVGGraphicsElement
 }
 
 type PortTarget = {
@@ -136,7 +134,6 @@ type ConnectorDrawInteraction = {
   captureTarget: Element | null
   active: boolean
   matrix: Matrix
-  routing: ConnectorRouting
   previewRoot?: SVGSVGElement
   preview?: SVGPolylineElement
   portTarget?: PortTarget | null
@@ -221,6 +218,7 @@ const naturalGraphicShapeSize: Partial<Record<GraphicShapeType, {width: number, 
   polygon: {width: 240, height: 240},
   line: {width: 320, height: 0},
   connector: {width: 320, height: 180},
+  "curved-connector": {width: 320, height: 180},
 }
 const isPolygonShape = (shape: Element | null) => {
   const type = graphicShapeType(shape)
@@ -487,7 +485,10 @@ const shapeBounds = (shape: Element): Bounds => {
       {x: attributeNumber(geometry, "x1"), y: attributeNumber(geometry, "y1")},
       {x: attributeNumber(geometry, "x2"), y: attributeNumber(geometry, "y2")},
     ])
-    case "connector": return boundsForPoints(parsePoints(geometry))
+    case "connector": {
+      const path = graphicPathGeometry(geometry)
+      return path?.kind === "curves" ? cubicBounds(path.points) : boundsForPoints(path?.points ?? parsePoints(geometry))
+    }
     case "freehand": return strokeBounds(graphicStrokePoints(geometry)!)
     case "polyline": return boundsForPoints(graphicPathGeometry(geometry)!.points)
     case "bezier": return cubicBounds(graphicPathGeometry(geometry)!.points)
@@ -596,14 +597,14 @@ function canonicalArrowPoints(shape: Element): Point[] | null {
 const selectionBounds = (shape: Element) => unionBounds([shapeBounds(shape), ...arrowheads(shape).map(head => boundsForPoints(head.points))])
 const visualBounds = (shape: Element) => {
   const bounds = selectionBounds(shape)
+  const matrix = graphicShapeType(shape) === "connector" ? connectorMatrix(shape) : null
   return boundsForPoints([
     {x: bounds.x, y: bounds.y}, {x: bounds.x + bounds.width, y: bounds.y},
     {x: bounds.x + bounds.width, y: bounds.y + bounds.height}, {x: bounds.x, y: bounds.y + bounds.height},
-  ].map(point => rotateAround(point, shapeCenter(shape), rotationOf(shape))))
+  ].map(point => matrix ? applyMatrix(matrix, point) : rotateAround(point, shapeCenter(shape), rotationOf(shape))))
 }
 
 const shapePoints = (shape: Element): Point[] => editableShapePath(shape)?.points ?? (graphicShapeType(shape) === "freehand" ? graphicStrokePoints(shapeGeometry(shape))!
-  : ["polyline", "bezier"].includes(graphicShapeType(shape) ?? "") ? graphicPathGeometry(shapeGeometry(shape))!.points
   : isPolygonShape(shape) || graphicShapeType(shape) === "connector" ? parsePoints(shapeGeometry(shape))
   : graphicShapeType(shape) === "line" ? [
     {x: attributeNumber(shapeGeometry(shape), "x1"), y: attributeNumber(shapeGeometry(shape), "y1")},
@@ -623,7 +624,46 @@ const shapePorts = (shape: Element): Record<PortDirection, Point> => {
   }
 }
 
-const connectorRouting = (connector: Element): ConnectorRouting => parsePoints(connector).length > 2 ? "orthogonal" : "straight"
+const connectorRouting = (shape: Element): ConnectorRouting => {
+  const geometry = shapeGeometry(shape)
+  const path = graphicPathGeometry(geometry)
+  return path ? path.kind === "curves" ? "curved" : "segmented" : parsePoints(geometry).length > 2 ? "orthogonal" : "straight"
+}
+
+const connectorMatrix = (shape: Element): Matrix => {
+  const geometry = shapeGeometry(shape)
+  const graphic = graphicContainerForNode(shape)
+  if(graphic?.clientWidth) {
+    const matrix = geometry.getCTM?.(), viewport = graphic.getCTM?.()
+    if(matrix && viewport) {
+      const local = viewport.inverse().multiply(matrix)
+      if([local.a, local.b, local.c, local.d, local.e, local.f].every(Number.isFinite)) return local
+    }
+  }
+  // Without SVG layout, compose the authored transforms via SVGTransformList.
+  let local = new DOMMatrix()
+  for(let node: Element | null = geometry; node && node !== graphic; node = node.parentElement) {
+    const transforms = (node as SVGGraphicsElement).transform?.baseVal
+    for(let index = (transforms?.numberOfItems ?? 0) - 1; index >= 0; index--) {
+      const {a, b, c, d, e, f} = transforms.getItem(index).matrix
+      local = new DOMMatrix([a, b, c, d, e, f]).multiply(local)
+    }
+  }
+  return local
+}
+
+const connectorConversionPoints = (shape: Element): Point[] => {
+  const type = graphicShapeType(shape)
+  const geometry = shapeGeometry(shape)
+  if(type === "line") {
+    const line = geometry as SVGLineElement
+    const coordinate = (name: "x1" | "y1" | "x2" | "y2") => line[name]?.baseVal?.value ?? attributeNumber(line, name)
+    return [{x: coordinate("x1"), y: coordinate("y1")}, {x: coordinate("x2"), y: coordinate("y2")}]
+  }
+  if(type !== "polyline" && type !== "bezier" && type !== "curved-connector") return []
+  const path = graphicPathGeometry(geometry)
+  return path && !path.closed ? path.points : []
+}
 
 const connectorOrientation = (points: Point[]) => {
   if(points.length > 2) {
@@ -636,23 +676,52 @@ const connectorOrientation = (points: Point[]) => {
   return Math.abs(end.x - start.x) >= Math.abs(end.y - start.y) ? "horizontal" as const : "vertical" as const
 }
 
-const connectorPoints = (start: Point, end: Point, routing: ConnectorRouting, orientation = connectorOrientation([start, end])) => {
+const connectorPoints = (start: Point, end: Point, routing: "straight" | "orthogonal" | "curved", orientation = connectorOrientation([start, end])) => {
   if(routing === "straight") return [start, end]
+  const bend = routing === "curved" ? .8 : .5
   if(orientation === "horizontal") {
-    const x = (start.x + end.x) / 2
-    return [start, {x, y: start.y}, {x, y: end.y}, end]
+    const dx = (end.x - start.x) * bend
+    return [start, {x: start.x + dx, y: start.y}, {x: end.x - dx, y: end.y}, end]
   }
-  const y = (start.y + end.y) / 2
-  return [start, {x: start.x, y}, {x: end.x, y}, end]
+  const dy = (end.y - start.y) * bend
+  return [start, {x: start.x, y: start.y + dy}, {x: end.x, y: end.y - dy}, end]
 }
 
-const setConnectorEndpoints = (
-  connector: Element,
-  start: Point,
-  end: Point,
-  routing = connectorRouting(connector),
-  orientation = connectorOrientation(parsePoints(connector)),
-) => setPoints(connector, connectorPoints(start, end, routing, orientation))
+const markConnectorPath = (path: Element) => {
+  // SVG paths can represent either an editable line or a connection. Give the
+  // connection a semantic role description that travels with the authored SVG.
+  if(!path.hasAttribute("role")) path.setAttribute("role", "graphics-symbol")
+  path.setAttribute("aria-roledescription", graphicConnectorRole)
+}
+
+const setConnectorEndpoints = (shape: Element, start: Point, end: Point, points: Point[]) => {
+  const geometry = shapeGeometry(shape)
+  const path = graphicPathGeometry(geometry)
+  if(path) {
+    const cubic = path.kind === "curves"
+    const next = movePathPoint(points, 0, start, cubic, false)
+    geometry.setAttribute("d", editablePath(movePathPoint(next, next.length - 1, end, cubic, false), path.kind))
+  }
+  else setPoints(geometry, connectorPoints(start, end, points.length > 2 ? "orthogonal" : "straight", connectorOrientation(points)))
+}
+
+function replaceConnectorGeometry(shape: SVGGraphicsElement, tag: "path" | "polyline", points: Point[]) {
+  const geometry = shapeGeometry(shape)
+  const next = document.createElementNS(SVG_NAMESPACE, tag)
+  for(const attribute of geometry.attributes) {
+    if(!attribute.namespaceURI && ["x1", "y1", "x2", "y2", "points", "d"].includes(attribute.name)) continue
+    next.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+  }
+  if(tag === "path") {
+    markConnectorPath(next)
+    next.setAttribute("d", editablePath(points, "curves"))
+  }
+  else next.setAttribute("points", points.map(({x, y}) => `${x},${y}`).join(" "))
+  clearEditorMarkerClasses(next)
+  next.append(...geometry.childNodes)
+  geometry.replaceWith(next)
+  return geometry === shape ? next : shape
+}
 
 const intersects = (left: Bounds, right: Bounds) => left.x <= right.x + right.width
   && left.x + left.width >= right.x
@@ -764,6 +833,12 @@ const setShapeBounds = (shape: Element, next: Bounds, initial: Bounds, initialPo
     return
   }
   switch(graphicShapeType(shape)) {
+    case "connector":
+      if(geometry.localName === "polyline") {
+        setPoints(geometry, initialPoints.map(scalePoint))
+        break
+      }
+      // Path connectors use the same affine transform as other authored paths.
     case "polyline":
     case "bezier":
     case "freehand": {
@@ -808,7 +883,6 @@ const setShapeBounds = (shape: Element, next: Bounds, initial: Bounds, initialPo
       geometry.setAttribute("y2", cleanNumber(points[1]?.y ?? safe.y + safe.height))
       break
     }
-    case "connector":
     case "triangle":
     case "diamond":
     case "hexagon":
@@ -1037,9 +1111,9 @@ export class GraphicFeature extends EditorFeature {
         const primary = this.selectedShape
         this.#setShapeSelection(nextShapes, primary ? replacements.get(primary) as SVGGraphicsElement ?? primary : null)
       }
-      // Colors and opacity do not change bounds. Refitting a resized or
-      // navigated viewport here can change the shape's rendered placement.
-      if(name !== "fill" && name !== "stroke" && name !== "opacity") this.#fitSelectedStandaloneGraphic()
+      // Paint and connector conversion preserve geometry. Refitting a resized
+      // or navigated viewport here can change the shape's rendered placement.
+      if(name !== "fill" && name !== "stroke" && name !== "opacity" && name !== "convert-to-connector") this.#fitSelectedStandaloneGraphic()
       this.editor.doc.stopCapturing()
       this.#refresh()
       this.editor.postSelectionPath()
@@ -1141,6 +1215,7 @@ export class GraphicFeature extends EditorFeature {
       ...(viewportChanged ? {viewport: {zoom: Math.round(viewport.scale * 100)}} : {}),
       ...(parameterShape ? {parameters: this.#parameters(parameterShape)} : {}),
       ...(shape && type ? {shape: type} : {}),
+      ...(shape && !this.#isLocked(shape) && connectorConversionPoints(shape).length > 1 ? {canConvertToConnector: true} : {}),
     }
   }
 
@@ -1930,7 +2005,7 @@ export class GraphicFeature extends EditorFeature {
     if(type === "line-start-arrow" || type === "line-end-arrow" || type === "line-both-arrows") {
       const connector = this.#createShape("connector", index, graphic, sizingGraphic)
       const bounds = this.#shapeInsertionBounds("line", index, sizingGraphic)
-      setConnectorEndpoints(connector, {x: bounds.x, y: bounds.y}, {x: bounds.x + bounds.width, y: bounds.y}, "straight")
+      setPoints(connector, [{x: bounds.x, y: bounds.y}, {x: bounds.x + bounds.width, y: bounds.y}])
       if(type !== "line-end-arrow") this.#setConnectorArrow(connector, "start", true, graphic)
       if(type !== "line-start-arrow") this.#setConnectorArrow(connector, "end", true, graphic)
       return connector
@@ -1942,6 +2017,7 @@ export class GraphicFeature extends EditorFeature {
       shape = document.createElementNS(SVG_NAMESPACE, "path")
       shape.setAttribute("d", graphicPresetPath(type, bounds))
       shape.setAttribute("aria-label", definition.label)
+      if(type === "curved-connector") markConnectorPath(shape)
       shape.setAttribute("fill-rule", graphicPresetFillRule(type))
       shape.setAttribute("fill", definition.open || type === "text-box" ? "none" : "#ffffff")
       shape.setAttribute("stroke", type === "text-box" ? "none" : "#334155")
@@ -2694,7 +2770,6 @@ export class GraphicFeature extends EditorFeature {
       captureTarget: captureTarget ?? null,
       active: false,
       matrix: this.#screenMatrix(graphic),
-      routing: "orthogonal",
     }
     this.#capturePointer(captureTarget, event.pointerId)
   }
@@ -3279,7 +3354,7 @@ export class GraphicFeature extends EditorFeature {
       const connector = this.#createShape("connector") as SVGPolylineElement
       const end = interaction.portTarget?.point ?? interaction.latest.point
       const orientation = interaction.sourcePort === "e" || interaction.sourcePort === "w" ? "horizontal" : "vertical"
-      setConnectorEndpoints(connector, interaction.start, end, interaction.routing, orientation)
+      setPoints(connector, connectorPoints(interaction.start, end, "orthogonal", orientation))
       const firstShape = graphicShapeRoots(interaction.graphic)[0] ?? null
       this.editor.doc.stopCapturing()
       interaction.graphic.insertBefore(connector, firstShape)
@@ -3316,7 +3391,7 @@ export class GraphicFeature extends EditorFeature {
     if(preserveAspectRatio) previewRoot.setAttribute("preserveAspectRatio", preserveAspectRatio)
     this.#positionPreviewRoot(previewRoot, interaction.graphic)
     const preview = this.#createShape("connector") as SVGPolylineElement
-    setConnectorEndpoints(preview, interaction.start, interaction.start, interaction.routing)
+    setPoints(preview, connectorPoints(interaction.start, interaction.start, "orthogonal"))
     previewRoot.append(preview)
     this.editor.addAppendix(previewRoot)
     interaction.previewRoot = previewRoot
@@ -3336,7 +3411,7 @@ export class GraphicFeature extends EditorFeature {
     )
     const end = interaction.portTarget?.point ?? interaction.latest.point
     const orientation = interaction.sourcePort === "e" || interaction.sourcePort === "w" ? "horizontal" : "vertical"
-    setConnectorEndpoints(interaction.preview, interaction.start, end, interaction.routing, orientation)
+    setPoints(interaction.preview, connectorPoints(interaction.start, end, "orthogonal", orientation))
     this.#setPortTarget(interaction.portTarget)
   }
 
@@ -3407,7 +3482,7 @@ export class GraphicFeature extends EditorFeature {
     }
     this.#positionPreviewRoot(previewRoot, graphic)
     interaction.attachedConnectors.forEach(item => {
-      const preview = item.source.cloneNode(true) as SVGPolylineElement
+      const preview = item.source.cloneNode(true) as SVGGraphicsElement
       this.#removeMarkerClasses(preview, true)
       item.preview = preview
       previewRoot.append(preview)
@@ -3665,7 +3740,9 @@ export class GraphicFeature extends EditorFeature {
     const {latest} = interaction
     const geometry = shapeGeometry(shape)
     let point = {x: latest.point.x - (interaction.handleOffset?.x ?? 0), y: latest.point.y - (interaction.handleOffset?.y ?? 0)}
-    if(interaction.rotation && interaction.kind !== "move" && interaction.kind !== "rotate") {
+    const connector = graphicShapeType(shape) === "connector"
+    if(interaction.rotation && interaction.kind !== "move" && interaction.kind !== "rotate"
+      && !(connector && ["path-point", "connector-start", "connector-end"].includes(interaction.kind))) {
       const center = shapeCenter(interaction.items[0].source)
       point = rotateAround(point, center, -interaction.rotation)
     }
@@ -3787,15 +3864,10 @@ export class GraphicFeature extends EditorFeature {
       interaction.portTarget = target
       this.#setPortTarget(target)
       const points = interaction.points
-      const start = interaction.kind === "connector-start" ? target?.point ?? point : points[0] ?? point
-      const end = interaction.kind === "connector-end" ? target?.point ?? point : points.at(-1) ?? point
-      setConnectorEndpoints(
-        shape,
-        start,
-        end,
-        points.length > 2 ? "orthogonal" : "straight",
-        connectorOrientation(points),
-      )
+      const endpoint = applyInverseMatrix(connectorMatrix(interaction.items[0].source), target?.point ?? point)
+      const start = interaction.kind === "connector-start" ? endpoint : points[0]
+      const end = interaction.kind === "connector-end" ? endpoint : points.at(-1)!
+      if(start && end) setConnectorEndpoints(shape, start, end, points)
       return {}
     }
     if(interaction.kind === "path-point" && interaction.vertex !== undefined) {
@@ -3805,10 +3877,11 @@ export class GraphicFeature extends EditorFeature {
       const origin = interaction.points[index]
       if(!origin) return {}
       const snapped = this.#snapPoint(point, interaction, true)
-      const points = mirroredPointEdits(interaction.points, index, snapped.point, interaction.bounds, latest, path.kind === "curves")
+      const local = connector ? applyInverseMatrix(connectorMatrix(interaction.items[0].source), snapped.point) : snapped.point
+      const points = mirroredPointEdits(interaction.points, index, local, interaction.bounds, latest, path.kind === "curves")
         .reduce((points, edit) => movePathPoint(points, edit.index, edit.point, path.kind === "curves", path.closed, latest.altKey), interaction.points)
       geometry.setAttribute("d", editablePath(points, path.kind, path.closed))
-      setRotation(shape, interaction.rotation)
+      if(!connector) setRotation(shape, interaction.rotation)
       syncShapeText(shape)
       return snapped.guides
     }
@@ -4057,11 +4130,12 @@ export class GraphicFeature extends EditorFeature {
     const result: AttachedConnector[] = []
     graphicShapeRoots(graphic).filter(shape => graphicShapeType(shape) === "connector").forEach(source => {
       if(selected.has(source)) return
-      const points = parsePoints(source)
+      const points = shapePoints(source)
       if(points.length < 2) return
+      const matrix = connectorMatrix(source)
       const bindings: ConnectorBinding[] = []
       ;(["start", "end"] as const).forEach(endpoint => {
-        const endpointPoint = endpoint === "start" ? points[0] : points.at(-1)!
+        const endpointPoint = applyMatrix(matrix, endpoint === "start" ? points[0] : points.at(-1)!)
         let best: (ConnectorBinding & {distance: number}) | null = null
         attachable.forEach(shape => {
           const ports = shapePorts(shape)
@@ -4077,11 +4151,9 @@ export class GraphicFeature extends EditorFeature {
         }
       })
       if(bindings.length) result.push({
-        source: source as SVGPolylineElement,
+        source,
         signature: this.#geometrySignature(source),
         points,
-        routing: connectorRouting(source),
-        orientation: connectorOrientation(points),
         bindings,
       })
     })
@@ -4094,13 +4166,14 @@ export class GraphicFeature extends EditorFeature {
       if(!connector.isConnected && connector === item.source) return
       let start = item.points[0]
       let end = item.points.at(-1)!
+      const matrix = connectorMatrix(item.source)
       item.bindings.forEach(binding => {
         const shape = replacements.get(binding.shape) ?? binding.shape
-        const point = shapePorts(shape)[binding.port]
+        const point = applyInverseMatrix(matrix, shapePorts(shape)[binding.port])
         if(binding.endpoint === "start") start = point
         else end = point
       })
-      setConnectorEndpoints(connector, start, end, item.routing, item.orientation)
+      setConnectorEndpoints(connector, start, end, item.points)
     })
   }
 
@@ -4117,7 +4190,7 @@ export class GraphicFeature extends EditorFeature {
 
   #geometrySignature(shape: Element) {
     const geometry = shapeGeometry(shape)
-    const attributes = ["x", "y", "width", "height", "cx", "cy", "r", "rx", "ry", "x1", "y1", "x2", "y2", "points", "d", "aria-label", "transform"]
+    const attributes = ["x", "y", "width", "height", "cx", "cy", "r", "rx", "ry", "x1", "y1", "x2", "y2", "points", "d", "aria-label", "aria-roledescription", "transform"]
     return [shape, ...(geometry === shape ? [] : [geometry])].map(element => attributes
       .map(name => `${name}=${element.getAttribute(name) ?? ""}`)
       .join(";"),
@@ -4695,7 +4768,8 @@ export class GraphicFeature extends EditorFeature {
       : selectionBounds(shape)
     const rotation = multi ? interaction?.frameRotation ?? 0 : rotationOf(shape)
     const center = multi ? {x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2} : shapeCenter(shape)
-    const toClient = (point: Point) => applyMatrix(matrix, rotateAround(point, center, rotation))
+    const local = !multi && graphicShapeType(shape) === "connector" ? connectorMatrix(shape) : null
+    const toClient = (point: Point) => applyMatrix(matrix, local ? applyMatrix(local, point) : rotateAround(point, center, rotation))
     const corners = {
       nw: toClient({x: bounds.x, y: bounds.y}),
       ne: toClient({x: bounds.x + bounds.width, y: bounds.y}),
@@ -4785,6 +4859,12 @@ export class GraphicFeature extends EditorFeature {
     container.dataset.signature = signature
     container.replaceChildren()
     if(!shape) return
+    if(type === "connector") {
+      container.append(
+        this.#createHandle("connector-start", "Reconnect start", "graphic-affordance graphic-affordance-connector-start"),
+        this.#createHandle("connector-end", "Reconnect end", "graphic-affordance graphic-affordance-connector-end"),
+      )
+    }
     const preset = readGraphicPreset(shapeGeometry(shape))
     if(preset && !path) {
       container.append(...graphicPresetHandles(preset).map(handle => this.#createHandle(
@@ -4809,19 +4889,14 @@ export class GraphicFeature extends EditorFeature {
         this.#createHandle("line-end", "Move line end", "graphic-affordance graphic-affordance-line-end"),
       )
     }
-    else if(type === "connector") {
-      container.append(
-        this.#createHandle("connector-start", "Reconnect start", "graphic-affordance graphic-affordance-connector-start"),
-        this.#createHandle("connector-end", "Reconnect end", "graphic-affordance graphic-affordance-connector-end"),
-      )
-    }
     else if(path) {
       const tangents = document.createElementNS(SVG_NAMESPACE, "svg")
       tangents.setAttribute("part", "graphic-outline")
       tangents.classList.add("◆graphic-tangents")
       container.append(tangents)
       path.points.forEach((_, index) => {
-        if(path.kind === "curves" && joined && index === path.points.length - 1) return
+        if(type === "connector" && (index === 0 || index === path.points.length - 1)
+          || path.kind === "curves" && joined && index === path.points.length - 1) return
         const anchor = path.kind === "lines" || index % 3 === 0
         const part = path.kind === "lines" && path.closed ? "graphic-affordance graphic-affordance-vertex" : anchor ? "graphic-anchor" : "graphic-control-point"
         container.append(this.#createHandle(`path-point-${index}`, anchor ? `Move vertex ${path.kind === "lines" ? index + 1 : index / 3 + 1}` : `Adjust curve control ${index}`, part))
@@ -4856,6 +4931,11 @@ export class GraphicFeature extends EditorFeature {
         this.#handleOffsets.delete(handle)
         this.#positionHandle(handle, toClient(point))
       }
+    }
+    if(type === "connector") {
+      const points = shapePoints(shape)
+      if(points[0]) position("connector-start", points[0])
+      if(points.length > 1) position("connector-end", points.at(-1)!)
     }
     const preset = readGraphicPreset(geometry)
     const path = editableShapePath(shape)
@@ -4898,11 +4978,6 @@ export class GraphicFeature extends EditorFeature {
     else if(type === "line") {
       position("line-start", {x: attributeNumber(geometry, "x1"), y: attributeNumber(geometry, "y1")})
       position("line-end", {x: attributeNumber(geometry, "x2"), y: attributeNumber(geometry, "y2")})
-    }
-    else if(type === "connector") {
-      const points = parsePoints(geometry)
-      if(points[0]) position("connector-start", points[0])
-      if(points.length > 1) position("connector-end", points.at(-1)!)
     }
     else if(path) {
       path.points.forEach((point, index) => {
@@ -5231,8 +5306,8 @@ export class GraphicFeature extends EditorFeature {
       ...Object.fromEntries(arrowheads(shape).map(head => [`${head.endpoint}-arrow-size`, cleanNumber(head.size)])),
       ...(type === "connector" ? {
         routing: connectorRouting(shape),
-        "start-arrow": String(shape.hasAttribute("marker-start")),
-        "end-arrow": String(shape.hasAttribute("marker-end")),
+        "start-arrow": String(geometry.hasAttribute("marker-start")),
+        "end-arrow": String(geometry.hasAttribute("marker-end")),
       } : {}),
     }
   }
@@ -5241,18 +5316,34 @@ export class GraphicFeature extends EditorFeature {
     if(name === "label") return this.#setLabel(shape, value)
     const geometry = shapeGeometry(shape)
     const text = shapeText(shape)
+    if(name === "convert-to-connector") {
+      if(value !== "true" || !this.isEnabled || this.editor.isEditingLocked
+        || this.#isLocked(shape) || shape.getAttribute("visibility") === "hidden") return shape
+      const points = connectorConversionPoints(shape)
+      if(points.length < 2 || points.some(point => !Number.isFinite(point.x) || !Number.isFinite(point.y))) return shape
+      this.#cancelInteraction()
+      this.#activePathPoint = null
+      if(points.length === 2) return replaceConnectorGeometry(shape, "polyline", points)
+      markConnectorPath(geometry)
+      return shape
+    }
     if(name === "text-color") {
       if(text && value) text.setAttribute("fill", value)
       else if(text) text.removeAttribute("fill")
       return shape
     }
-    if(name === "routing" && graphicShapeType(shape) === "connector" && (value === "straight" || value === "orthogonal")) {
-      const points = parsePoints(shape)
-      if(points.length > 1) setConnectorEndpoints(shape, points[0], points.at(-1)!, value, connectorOrientation(points))
+    if(name === "routing" && graphicShapeType(shape) === "connector" && (value === "straight" || value === "orthogonal" || value === "curved")) {
+      const routing = connectorRouting(shape)
+      const points = shapePoints(shape)
+      if(points.length < 2 || value === routing) return shape
+      const next = connectorPoints(points[0], points.at(-1)!, value, connectorOrientation(points))
+      if(value === "curved") return replaceConnectorGeometry(shape, "path", next)
+      if(geometry.localName !== "polyline") return replaceConnectorGeometry(shape, "polyline", next)
+      setPoints(geometry, next)
       return shape
     }
     if((name === "start-arrow" || name === "end-arrow") && graphicShapeType(shape) === "connector") {
-      this.#setConnectorArrow(shape as SVGPolylineElement, name === "start-arrow" ? "start" : "end", value === "true")
+      this.#setConnectorArrow(geometry, name === "start-arrow" ? "start" : "end", value === "true")
       return shape
     }
     if(name === "fill" && (graphicShapeType(shape) === "freehand" || ["polyline", "bezier"].includes(graphicShapeType(shape) ?? "") && !graphicPathGeometry(geometry)?.closed)) return shape
@@ -5311,8 +5402,11 @@ export class GraphicFeature extends EditorFeature {
       const point = this.#clientPoint(owner, client.x, client.y)
       for(const shape of graphicShapeRoots(owner).reverse()) {
         if(this.#isLocked(shape) || shape.getAttribute("visibility") === "hidden" || atomicEditingContainer(owner.parentElement, this.editor.schema)) continue
-        const local = rotateAround(point, shapeCenter(shape), -rotationOf(shape))
-        for(const head of arrowheads(shape)) {
+        const heads = arrowheads(shape)
+        if(!heads.length) continue
+        const local = graphicShapeType(shape) === "connector" ? applyInverseMatrix(connectorMatrix(shape), point)
+          : rotateAround(point, shapeCenter(shape), -rotationOf(shape))
+        for(const head of heads) {
           const signs = head.points.map((a, i) => {
             const b = head.points[(i + 1) % 3]
             return (b.x - a.x) * (local.y - a.y) - (b.y - a.y) * (local.x - a.x)
