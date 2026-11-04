@@ -668,7 +668,7 @@ export class MarkFeature extends EditorFeature {
     const observer = new FrameMutationObserver(records => {
       if(!records.some(isAuthoredMutation)) return
       this.queueAutomaticLinks(records)
-      this.queueStateRefresh()
+      if(!this.editor.features.table.deferResizeMutationWork(records, "refreshMarks", this.queueStateRefresh)) this.queueStateRefresh()
     })
     try {
       observer.observe(document.body, {
@@ -2361,7 +2361,7 @@ export class MarkFeature extends EditorFeature {
     if(!isStyleMarkName(property)) throw new TypeError(`Unsupported style mark '${property}'`)
   }
 
-  private queueStateRefresh() {
+  private queueStateRefresh = () => {
     if(this.stateRefreshQueued) return
     this.stateRefreshQueued = true
     queueMicrotask(() => {

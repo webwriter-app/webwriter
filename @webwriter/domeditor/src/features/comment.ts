@@ -185,6 +185,9 @@ export class CommentFeature extends EditorFeature {
     if(FrameMutationObserver) {
       this.observer = new FrameMutationObserver(records => {
         if(!records.some(isAuthoredMutation)) return
+        // With no comment markers there is no comment presentation to refresh
+        // for a column width change. Selection and marks own the resize state.
+        if(this.cachedMarkers?.length === 0 && this.editor.features.table.isResizeStyleBatch(records)) return
         if(records.some(record => record.type !== "attributes")) this.cachedMarkers = null
         this.queueStateRefresh()
       })

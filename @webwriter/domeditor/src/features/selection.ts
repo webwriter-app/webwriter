@@ -855,6 +855,7 @@ export class SelectionFeature extends EditorFeature {
     // The transform frame updates the outline. The authored style observers
     // publish toolbar state, and syncFromDOM mirrors the native selection.
     if(transformed && this.editor.doc.isLocalStyleOnlySync(transaction, transformed)) return
+    if(this.editor.features.table.keepsSelectionDuringResize(transaction)) return
     this.#sharedRefreshQueued = true
     queueMicrotask(() => {
       this.#sharedRefreshQueued = false

@@ -678,8 +678,11 @@ export class DOMEditor {
   #handleBodySchemaChanges = (mutations: MutationRecord[]) => {
     // Selection markers do not change authored flow. Head resources still
     // require a check because their CSS can reposition every body child.
-    if(mutations.some(mutation => document.head.contains(mutation.target) || isAuthoredMutation(mutation))) this.#ensureDocumentContent()
+    if(mutations.some(mutation => document.head.contains(mutation.target) || isAuthoredMutation(mutation))
+      && !this.features.table.deferResizeMutationWork(mutations, "checkContent", this.#checkContentAfterResize)) this.#ensureDocumentContent()
   }
+
+  #checkContentAfterResize = () => { if(!this.#destroyed) this.#ensureDocumentContent() }
 
   /** Restores a static default flow child when none remains in the body.
    * A selection left at BODY or in removed content
