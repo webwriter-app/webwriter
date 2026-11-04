@@ -6553,6 +6553,7 @@ describe("selection invariants", () => {
 
   it("allows a native text click when coordinate hit testing returns no point", () => {
     const paragraph = textDocument()
+    vi.spyOn($, "pointFromCoords").mockReturnValue(undefined)
     $.selectGap(paragraph, "before")
     const down = pointer(paragraph, "pointerdown", 20, 25)
     const mouse = new MouseEvent("mousedown", {bubbles: true, cancelable: true})
