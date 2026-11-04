@@ -866,6 +866,30 @@ describe("canvas document layout", () => {
     expect(slot.style.transform).toBe(before)
   })
 
+  it("grabs the canvas with Space and gives input back when Space is released", () => {
+    document.body.innerHTML = '<input aria-label="Answer">'
+    const input = document.querySelector("input")!
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    const surface = editor.appendix.querySelector<HTMLElement>('[part="canvas-pan-surface"]')!
+    const slot = editor.appendix.querySelector("slot")!
+    $.selectElement(input)
+    const space = (type: "keydown" | "keyup") => document.body.dispatchEvent(new KeyboardEvent(type, {key: " ", code: "Space", bubbles: true, cancelable: true}))
+    space("keydown")
+    expect(surface.hidden).toBe(false)
+    const before = slot.style.transform
+    const down = new PointerEvent("pointerdown", {pointerId: 21, button: 0, bubbles: true, composed: true, cancelable: true, clientX: 20})
+    surface.dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(true)
+    surface.dispatchEvent(new PointerEvent("pointermove", {pointerId: 21, buttons: 1, bubbles: true, composed: true, clientX: 60}))
+    expect(slot.style.transform).not.toBe(before)
+
+    slot.dispatchEvent(new MouseEvent("dblclick", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 400, clientY: 400}))
+    expect(document.body.children).toHaveLength(1)
+    space("keyup")
+    expect(surface.hidden).toBe(true)
+    expect(document.body.classList.contains("◆canvas-panning")).toBe(false)
+  })
+
   it("updates camera overlays once per pan frame without reposting the selection path", async () => {
     editor.features.canvas.actions.startCanvas({type: "startCanvas"})
     await settle()

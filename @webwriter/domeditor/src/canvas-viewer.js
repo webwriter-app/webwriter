@@ -1,6 +1,7 @@
 /** Shared DOM canvas camera. This module has no imports so exports can embed
  * its exact source without an editor dependency or a network request. */
 export const canvasGridSize = 20
+const wheelPanIdleMs = 150
 
 // Tabler outline icons are embedded because this module is also exported standalone.
 export const canvasIcons = {
@@ -16,16 +17,26 @@ export function isCanvasStartingView(element) {
   return element.matches("div.ww-canvas-starting-view:not([is])") && element.parentElement === element.ownerDocument.body
 }
 
+export function createCanvasPanSurface() {
+  const surface = document.createElement("div")
+  surface.setAttribute("part", "canvas-pan-surface")
+  surface.setAttribute("aria-hidden", "true")
+  surface.hidden = true
+  return surface
+}
+
 export class CanvasViewer {
-  constructor(slot, background, controls, onChange = () => {}) {
+  constructor(slot, background, controls, panSurface = null, onChange = () => {}) {
     slot.dispatchEvent(new Event("webwriter-canvas-viewer-dispose"))
     this.body = document.body
     this.slot = slot
     this.background = background
     this.controls = controls
+    this.panSurface = panSurface
     this.onChange = onChange
     this.camera = {x: 32, y: 32, zoom: 1}
     this.panning = null
+    this.wheelPanTimer = null
     this.slotStyle = slot.getAttribute("style")
     Object.assign(slot.style, {display: "block", position: "relative", width: "1280px", height: "720px", transformOrigin: "0 0"})
     this.stylesheet = new CSSStyleSheet()
@@ -49,6 +60,7 @@ export class CanvasViewer {
 
   destroy() {
     this.stopPan()
+    this.stopWheelPan()
     document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.stylesheet)
     if(this.slotStyle === null) this.slot.removeAttribute("style")
     else this.slot.setAttribute("style", this.slotStyle)
@@ -60,6 +72,7 @@ export class CanvasViewer {
     event.stopImmediatePropagation()
     this.panning = {id: event.pointerId, start: {x: event.clientX, y: event.clientY}, camera: {...this.camera}}
     document.body.classList.add("◆canvas-panning")
+    this.updatePanSurface()
     try { this.slot.setPointerCapture(event.pointerId) } catch {}
   }
 
@@ -80,9 +93,26 @@ export class CanvasViewer {
     this.stopPan()
   }
 
+  updatePanSurface() {
+    if(!this.panSurface) return
+    const hidden = !this.active || !this.panning && this.wheelPanTimer === null && !this.body.classList.contains("◆canvas-hand")
+    if(this.panSurface.hidden !== hidden) this.panSurface.hidden = hidden
+  }
+
+  continuesWheelPan(event) {
+    return this.wheelPanTimer !== null && !event.ctrlKey && !event.metaKey
+  }
+
+  stopWheelPan() {
+    if(this.wheelPanTimer !== null) window.clearTimeout(this.wheelPanTimer)
+    this.wheelPanTimer = null
+    this.updatePanSurface()
+  }
+
   wheel(event, respectScrollContainers = true) {
-    // Leave ordinary scrolling to authored scroll containers.
-    if(respectScrollContainers && !event.ctrlKey && !event.metaKey) {
+    const zoom = event.ctrlKey || event.metaKey
+    // A fresh gesture over a scroll container belongs to that container.
+    if(respectScrollContainers && !zoom && !this.continuesWheelPan(event)) {
       let element = event.target instanceof Element ? event.target : null
       while(element && element !== document.body) {
         const style = getComputedStyle(element)
@@ -94,8 +124,15 @@ export class CanvasViewer {
     event.preventDefault()
     event.stopImmediatePropagation()
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1
-    if(event.ctrlKey || event.metaKey) this.zoomAt(this.zoom * Math.exp(-event.deltaY * unit * .002), {x: event.clientX, y: event.clientY})
-    else { this.camera.x -= event.deltaX * unit; this.camera.y -= event.deltaY * unit; this.applyCamera() }
+    if(zoom) this.zoomAt(this.zoom * Math.exp(-event.deltaY * unit * .002), {x: event.clientX, y: event.clientY})
+    else {
+      // Capture listeners can stop widget handlers in this document. The
+      // surface also keeps subsequent events out of embedded browsing contexts.
+      if(this.wheelPanTimer !== null) window.clearTimeout(this.wheelPanTimer)
+      this.wheelPanTimer = window.setTimeout(() => this.stopWheelPan(), wheelPanIdleMs)
+      this.updatePanSurface()
+      this.camera.x -= event.deltaX * unit; this.camera.y -= event.deltaY * unit; this.applyCamera()
+    }
     return true
   }
 
@@ -192,10 +229,15 @@ export class CanvasViewer {
     this.panning = null
     try { if(pan && this.slot?.hasPointerCapture(pan.id)) this.slot.releasePointerCapture(pan.id) } catch {}
     this.removeMarker(this.body, "◆canvas-panning")
+    this.updatePanSurface()
   }
 }
 
 export const canvasControlsStyles = `
+      :host(.ww-canvas) > [part=canvas-pan-surface]:not([hidden]) { position: fixed; inset: 0; z-index: 999; pointer-events: auto; }
+      /* Place the Hand surface above the editor's media shields and under its own toolbar. */
+      :host(.◆canvas-hand) > [part=canvas-pan-surface]:not([hidden]) { z-index: 2147483643; touch-action: none; }
+      :host(.◆canvas-hand) > .◆canvas-controls { z-index: 2147483643; }
       .◆canvas-controls, .◆canvas-controls * { user-select: none; -webkit-user-select: none; }
       .◆canvas-controls { position: fixed; top: 8px; right: 8px; max-width: calc(100vw - 16px); box-sizing: border-box; flex-wrap: wrap; z-index: 1000; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; color: #334155; box-shadow: 0 2px 10px #0001; font: 13px system-ui; }
       .◆canvas-controls[hidden] { display: none; }
@@ -205,7 +247,7 @@ export const canvasControlsStyles = `
       .◆canvas-controls button svg { display: block; width: 14px; height: 14px; }
       .◆canvas-controls output { min-width: 3em; text-align: center; }
 
-@media print { .◆canvas-controls { display: none; } }
+@media print { .◆canvas-controls, [part=canvas-pan-surface] { display: none; } }
 `
 
 const canvasViewportStyles = `
@@ -268,6 +310,7 @@ export function mountCanvasReader() {
   background.setAttribute("part", "canvas-background")
   background.setAttribute("aria-hidden", "true")
   Object.assign(background.style, {position: "fixed", inset: "0", zIndex: "-1", pointerEvents: "none"})
+  const panSurface = createCanvasPanSurface()
   const controls = document.createElement("div")
   controls.className = "◆canvas-controls"
   controls.setAttribute("part", "canvas-controls")
@@ -277,8 +320,8 @@ export function mountCanvasReader() {
   style.textContent = canvasControlsStyles + `
     @media print { [part=canvas-background] { display: none; } }
   `
-  appendix.append(background, controls, style)
-  const viewer = new CanvasViewer(slot, background, controls)
+  appendix.append(background, panSurface, controls, style)
+  const viewer = new CanvasViewer(slot, background, controls, panSurface)
   let hand = false
   const button = (name, label, title = label) => {
     const el = document.createElement("button")
@@ -296,9 +339,18 @@ export function mountCanvasReader() {
   button("actual-size", "100%", "Actual size")
   button("fit-content", "", "Fit content").innerHTML = canvasIcons.fit
   const release = () => viewer.stopPan()
+  const cancelPanning = () => { release(); viewer.stopWheelPan() }
+  const setHand = active => {
+    hand = active
+    handButton.setAttribute("aria-pressed", String(hand))
+    if(hand) body.classList.add("◆canvas-hand")
+    else { viewer.removeMarker(body, "◆canvas-hand"); release() }
+    viewer.stopWheelPan()
+  }
+  const onContent = event => event.composedPath().some(target => target instanceof Element && target !== body && body.contains(target))
   const ownEvent = event => {
     const origin = event.composedPath()[0]
-    if(origin === slot || origin === body || origin === document.documentElement) return true
+    if(origin === panSurface || origin === slot || origin === body || origin === document.documentElement) return true
     if(!(origin instanceof Element) || origin.getRootNode() !== document) return false
     // Widgets and interactive controls own their input, including their light DOM.
     for(let el = origin; el && el !== body; el = el.parentElement) {
@@ -309,7 +361,7 @@ export function mountCanvasReader() {
   }
   const listeners = {
     pointerdown: event => {
-      if(!ownEvent(event)) return
+      if(!ownEvent(event) && !(hand && event.button === 0 && onContent(event))) return
       const origin = event.composedPath()[0]
       if(event.button === 1 || event.button === 0 && (hand || origin === slot || origin === body || origin === document.documentElement)) viewer.startPan(event)
     },
@@ -317,13 +369,9 @@ export function mountCanvasReader() {
     pointerup: event => viewer.endPan(event),
     pointercancel: release,
     lostpointercapture: release,
-    wheel: event => { if(ownEvent(event)) viewer.wheel(event) },
+    wheel: event => { if(ownEvent(event) || viewer.continuesWheelPan(event) && onContent(event)) viewer.wheel(event) },
     keydown: event => {
-      if(event.key !== "Escape" || !ownEvent(event)) return
-      hand = false
-      handButton.setAttribute("aria-pressed", "false")
-      viewer.removeMarker(body, "◆canvas-hand")
-      release()
+      if(event.key === "Escape" && (hand || ownEvent(event))) setHand(false)
     },
     focusin: event => {
       // Appendix and widget shadow focus is retargeted to their light-DOM host.
@@ -334,17 +382,12 @@ export function mountCanvasReader() {
   const click = event => {
     const target = event.target
     if(!(target instanceof HTMLButtonElement)) return
-    if(target.name === "hand") {
-      hand = !hand
-      handButton.setAttribute("aria-pressed", String(hand))
-      if(hand) body.classList.add("◆canvas-hand")
-      else { viewer.removeMarker(body, "◆canvas-hand"); release() }
-    }
-    else viewer.navigate(target.name)
+    if(target.name === "hand") setHand(!hand)
+    else { viewer.stopWheelPan(); viewer.navigate(target.name) }
   }
   for(const [type, handler] of Object.entries(listeners)) document.addEventListener(type, handler, {capture: true, passive: false})
   controls.addEventListener("click", click)
-  window.addEventListener("blur", release)
+  window.addEventListener("blur", cancelPanning)
   const revealHash = () => {
     let id
     try { id = decodeURIComponent(location.hash.slice(1)) } catch { return }
@@ -360,11 +403,11 @@ export function mountCanvasReader() {
     slot.removeEventListener("webwriter-canvas-viewer-dispose", destroy)
     for(const [type, handler] of Object.entries(listeners)) document.removeEventListener(type, handler, true)
     controls.removeEventListener("click", click)
-    window.removeEventListener("blur", release)
+    window.removeEventListener("blur", cancelPanning)
     window.removeEventListener("hashchange", revealHash)
     viewer.destroy()
     viewer.removeMarker(body, "◆canvas-hand")
-    background.remove(); controls.remove(); style.remove()
+    background.remove(); panSurface.remove(); controls.remove(); style.remove()
   }
   const observer = new MutationObserver(() => {
     if(document.body !== body || !body.classList.contains("ww-canvas") || body.classList.contains("ww-slides")

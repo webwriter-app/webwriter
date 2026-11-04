@@ -6836,11 +6836,18 @@ await check("freeform box selections transform as a group", async () => {
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
-await check("canvas wheel panning crosses interactive embeds and restores their hit targets", async () => {
+await check("canvas wheel and hand panning cover interactive embeds and restore their hit targets", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:760px;height:500px;max-width:none"
   frame.srcdoc = `<!doctype html><style>${canvasStyles}</style><body class="ww-canvas">
     <iframe sandbox srcdoc="<button>Embedded control</button>" style="position:absolute;left:180px;top:120px;width:320px;height:180px"></iframe>
+    <video controls style="position:absolute;left:500px;top:330px;width:180px;height:100px"></video>
+    <map-widget style="position:absolute;left:40px;top:40px;width:120px;height:80px"></map-widget>
+    <script>customElements.define("map-widget", class extends HTMLElement {
+      constructor() { super(); const root = this.attachShadow({mode: "open"}); const surface = document.createElement("div");
+        surface.id = "map-surface"; surface.style.cssText = "display:block;width:100%;height:100%;background:#ddd";
+        surface.addEventListener("wheel", event => { this.wheelCalls = (this.wheelCalls || 0) + 1; event.preventDefault() }); root.append(surface) }
+    })</script>
     <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script></body>`
   nativeRootEditor.addAppendix(frame)
   try {
@@ -6862,15 +6869,70 @@ await check("canvas wheel panning crosses interactive embeds and restores their 
     }
     const before = slot.style.transform, authored = editor.toHTML()
     assert(wheelAt(40, 400) && slot.style.transform !== before, "background wheel did not pan")
-    const shield = appendix.querySelector<HTMLElement>('[part="canvas-wheel-pan-shield"]')!
+    const shield = appendix.querySelector<HTMLElement>('[part="canvas-pan-surface"]')!
     assert(appendix.elementFromPoint(x, y) === shield, "the embedded page would receive wheel input during the Canvas gesture")
-    const hand = appendix.querySelector('button[name="hand"]')!, controlRect = hand.getBoundingClientRect()
+    const hand = appendix.querySelector<HTMLButtonElement>('button[name="hand"]')!, controlRect = hand.getBoundingClientRect()
     assert(hand.contains(appendix.elementFromPoint(controlRect.x + controlRect.width / 2, controlRect.y + controlRect.height / 2)),
       "the wheel gesture blocked the Canvas toolbar")
     const panned = slot.style.transform
     assert(wheelAt(x, y) && slot.style.transform !== panned, "the camera stopped at the embedded page")
-    for(let attempt = 0; !shield.hidden && attempt < 20; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    const settleWheel = async () => {
+      for(let attempt = 0; !shield.hidden && attempt < 20; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    await settleWheel()
     assert(shield.hidden && doc.elementFromPoint(x, y) === embed, "the frame did not regain input after the gesture")
+
+    const map = doc.querySelector("map-widget")! as HTMLElement & {wheelCalls?: number}
+    editor.features.selection.captureElement(map)
+    const mapSurface = map.shadowRoot!.querySelector<HTMLElement>("#map-surface")!
+    const mapRect = map.getBoundingClientRect(), mapPoint = {clientX: mapRect.x + mapRect.width / 2, clientY: mapRect.y + mapRect.height / 2}
+    const directMapWheel = () => {
+      const event = new view.WheelEvent("wheel", {...mapPoint, deltaX: 24, deltaY: 12, bubbles: true, composed: true, cancelable: true})
+      mapSurface.dispatchEvent(event)
+      return event
+    }
+    assert(wheelAt(40, 400), "background touchpad wheel did not start a Canvas pan before the map event")
+    const callsBeforePanWheel = map.wheelCalls ?? 0, cameraDuringPanWheel = slot.style.transform
+    assert(directMapWheel().defaultPrevented && (map.wheelCalls ?? 0) === callsBeforePanWheel
+      && slot.style.transform !== cameraDuringPanWheel,
+      "a composed wheel over the captured map reached its handler or failed to pan during the active Canvas gesture")
+    await settleWheel()
+    assert(shield.hidden, "the Canvas wheel gesture did not become idle")
+    const callsBeforeIdleWheel = map.wheelCalls ?? 0, cameraBeforeIdleWheel = slot.style.transform
+    directMapWheel()
+    assert((map.wheelCalls ?? 0) === callsBeforeIdleWheel + 1 && slot.style.transform === cameraBeforeIdleWheel,
+      "an idle wheel over the captured map did not reach its native handler")
+
+    editor.features.selection.captureElement(embed)
+    await layoutFrame()
+    const video = doc.querySelector("video")!
+    const center = (element: Element) => {
+      const rect = element.getBoundingClientRect()
+      return {clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2}
+    }
+    const hit = ({clientX, clientY}: {clientX: number, clientY: number}) => appendix.elementFromPoint(clientX, clientY)
+    assert(hit(center(video))?.matches('[part="media-interaction-shield"]'), "the editor media shield is not reachable")
+    hand.click()
+    assert(hand.contains(hit(center(hand))), "Hand mode blocked its own toolbar")
+    assert(view.getComputedStyle(shield).cursor === "grab", "Hand mode did not show the grab cursor")
+    for(const media of [embed, video]) {
+      const point = center(media)
+      const target = hit(point)
+      assert(target === shield, `Hand mode does not cover ${media.localName}`)
+      const camera = slot.style.transform
+      const pointer = (type: string, clientX: number, buttons: number) => new view.PointerEvent(type, {
+        ...point, clientX, button: 0, buttons, pointerType: "mouse", pointerId: 71, bubbles: true, composed: true, cancelable: true,
+      })
+      const down = pointer("pointerdown", point.clientX, 1)
+      target!.dispatchEvent(down)
+      assert(view.getComputedStyle(shield).cursor === "grabbing", "dragging did not show the grabbing cursor")
+      target!.dispatchEvent(pointer("pointermove", point.clientX + 16, 1))
+      target!.dispatchEvent(pointer("pointerup", point.clientX + 16, 0))
+      assert(down.defaultPrevented && slot.style.transform !== camera, `dragging over ${media.localName} did not pan`)
+    }
+    appendix.querySelector('button[name="hand"]')!.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true}))
+    const framePoint = center(embed)
+    assert(shield.hidden && doc.elementFromPoint(framePoint.clientX, framePoint.clientY) === embed, "Escape did not restore embedded input")
     assert(editor.toHTML() === authored, "panning changed the authored document")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }

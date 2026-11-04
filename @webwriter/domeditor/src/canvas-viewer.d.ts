@@ -5,9 +5,10 @@ export const canvasIcons: {hand: string, fit: string}
 export type CanvasNavigation = "zoom-in" | "zoom-out" | "actual-size" | "fit-content"
 export function canvasStartingView(body?: HTMLElement): HTMLDivElement | null
 export function isCanvasStartingView(element: Element): element is HTMLDivElement
+export function createCanvasPanSurface(): HTMLDivElement
 /** The dependency-free JavaScript module is also embedded verbatim in exports. */
 export class CanvasViewer {
-  constructor(slot: HTMLSlotElement, background: HTMLElement, controls: HTMLElement, onChange?: () => void)
+  constructor(slot: HTMLSlotElement, background: HTMLElement, controls: HTMLElement, panSurface?: HTMLElement | null, onChange?: () => void)
   readonly zoom: number
   readonly active: boolean
   items(): (HTMLElement | SVGSVGElement)[]
@@ -22,6 +23,9 @@ export class CanvasViewer {
   movePan(event: PointerEvent): void
   endPan(event: PointerEvent): void
   stopPan(): void
+  updatePanSurface(): void
+  continuesWheelPan(event: WheelEvent): boolean
+  stopWheelPan(): void
   wheel(event: WheelEvent, respectScrollContainers?: boolean): boolean
   navigate(operation: CanvasNavigation): void
   destroy(): void

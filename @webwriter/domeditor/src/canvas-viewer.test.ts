@@ -152,6 +152,40 @@ describe("standalone canvas reader", () => {
     expect(document.body.classList.contains("◆canvas-panning")).toBe(false)
   })
 
+  it("keeps a background wheel pan when later events target an interactive widget", () => {
+    vi.useFakeTimers()
+    try {
+      reader = mountCanvasReader()!
+      const appendix = document.body.shadowRoot!, slot = appendix.querySelector("slot")!
+      const shield = appendix.querySelector<HTMLElement>('[part="canvas-pan-surface"]')!
+      const map = document.createElement("div")
+      document.querySelector("test-widget")!.attachShadow({mode: "open"}).append(map)
+      const onWheel = vi.fn()
+      map.addEventListener("wheel", onWheel)
+      const wheel = (target: Element) => {
+        const event = new WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true, deltaX: 30, deltaY: -15})
+        target.dispatchEvent(event)
+        return event
+      }
+      expect(wheel(map).defaultPrevented).toBe(false)
+      expect(onWheel).toHaveBeenCalledTimes(1)
+      expect(wheel(slot).defaultPrevented).toBe(true)
+      expect(shield.hidden).toBe(false)
+      vi.advanceTimersByTime(100)
+      const camera = slot.style.transform
+      expect(wheel(map).defaultPrevented).toBe(true)
+      expect(slot.style.transform).not.toBe(camera)
+      expect(onWheel).toHaveBeenCalledTimes(1)
+      vi.advanceTimersByTime(100)
+      expect(shield.hidden).toBe(false)
+      vi.advanceTimersByTime(100)
+      expect(shield.hidden).toBe(true)
+      expect(wheel(map).defaultPrevented).toBe(false)
+      expect(onWheel).toHaveBeenCalledTimes(2)
+    }
+    finally { vi.useRealTimers() }
+  })
+
   it("fits freshly replaced content, including negative coordinates", () => {
     reader = mountCanvasReader()!
     const replacement = document.createElement("p")

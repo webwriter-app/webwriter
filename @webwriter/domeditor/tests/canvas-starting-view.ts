@@ -115,7 +115,7 @@ export async function checkCanvasStartingView() {
       const loaded = new Promise<void>(resolve => preview.addEventListener("load", () => resolve(), {once: true}))
       document.body.append(preview)
       await loaded
-      const output = preview.contentDocument!, outputView = preview.contentWindow! as Window & {firstCamera?: Promise<string>}
+      const output = preview.contentDocument!, outputView = preview.contentWindow! as Window & typeof globalThis & {firstCamera?: Promise<string>}
       const slot = output.body.shadowRoot!.querySelector("slot")!
       const first = await outputView.firstCamera
       assert(first === slot.style.transform, `reader shifted after its first frame (${first} -> ${slot.style.transform})`)
@@ -126,22 +126,46 @@ export async function checkCanvasStartingView() {
       const outputWidget = output.querySelector<HTMLElement>("starting-view-widget")!
       const shadow = outputWidget.attachShadow({mode: "open"})
       shadow.innerHTML = '<slot></slot><button>Shadow action</button><input aria-label="Shadow answer">'
-      const pan = output.body.shadowRoot!.querySelector<HTMLButtonElement>('[name="hand"]')!
-      // Even with the hand tool enabled, widget controls own their input.
-      pan.click()
+      const appendix = output.body.shadowRoot!
+      const pan = appendix.querySelector<HTMLButtonElement>('[name="hand"]')!
       for(const root of [outputWidget, shadow]) {
         const action = root.querySelector<HTMLButtonElement>("button")!, input = root.querySelector<HTMLInputElement>("input")!
         const rect = action.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
         assert(output.elementFromPoint(x, y) === (root === shadow ? outputWidget : action), "starting bounds cover a widget control")
         if(root === shadow) assert(shadow.elementFromPoint(x, y) === action, "widget shadow action is unreachable")
-        const pointer = new (preview.contentWindow as Window & typeof globalThis).PointerEvent("pointerdown", {button: 0, pointerId: 12, clientX: x, clientY: y, bubbles: true, composed: true, cancelable: true})
-        action.dispatchEvent(pointer)
-        assert(!pointer.defaultPrevented && !output.body.classList.contains("◆canvas-panning"), "reader stole widget input")
         let clicked = false
         action.addEventListener("click", () => { clicked = true }, {once: true})
         action.click()
         input.focus()
-        assert(clicked && (root === shadow ? shadow.activeElement : output.activeElement) === input, "widget action or editable input failed")
+        assert(clicked && (root === shadow ? shadow.activeElement : output.activeElement) === input, "widget action or editable input failed with Hand off")
+      }
+      pan.click()
+      const panSurface = appendix.querySelector<HTMLElement>('[part="canvas-pan-surface"]')!
+      assert(panSurface && !panSurface.hidden, "Hand did not show the canvas pan surface")
+      for(const root of [outputWidget, shadow]) {
+        const action = root.querySelector<HTMLButtonElement>("button")!
+        const rect = action.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
+        const hit = appendix.elementFromPoint(x, y)!
+        assert(hit === panSurface, `Hand surface does not cover widget control (${hit?.outerHTML})`)
+        const before = slot.style.transform
+        const pointer = (type: string, clientX: number, clientY: number) => new outputView.PointerEvent(type, {
+          button: 0, buttons: type === "pointerup" ? 0 : 1, pointerId: 12,
+          clientX, clientY, bubbles: true, composed: true, cancelable: true,
+        })
+        hit.dispatchEvent(pointer("pointerdown", x, y))
+        output.dispatchEvent(pointer("pointermove", x + 36, y + 24))
+        output.dispatchEvent(pointer("pointerup", x + 36, y + 24))
+        assert(slot.style.transform !== before, "Hand drag over widget control did not pan the canvas")
+      }
+      pan.click()
+      assert(panSurface.hidden, "Hand off did not hide the canvas pan surface")
+      for(const root of [outputWidget, shadow]) {
+        const action = root.querySelector<HTMLButtonElement>("button")!, input = root.querySelector<HTMLInputElement>("input")!
+        const rect = action.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
+        const hit = output.elementFromPoint(x, y)
+        assert(hit === (root === shadow ? outputWidget : action), "widget hit target was not restored when Hand turned off")
+        input.focus()
+        assert((root === shadow ? shadow.activeElement : output.activeElement) === input, "widget input did not regain focus with Hand off")
       }
       preview.remove()
     }
