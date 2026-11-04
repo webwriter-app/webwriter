@@ -833,6 +833,64 @@ describe("MarkFeature span styles", () => {
     expect(document.getSelection()!.toString()).toBe("bc")
   })
 
+  it.each([true, false])("applies color outside underline regardless of order (color first: %s)", colorFirst => {
+    const paragraph = setContent("<p>Before selected after</p>")
+    selectText(paragraph.firstChild as Text, 7, 15)
+
+    const color = () => feature.setStyleMark("color", "red")
+    const underline = () => feature.toggleMark("u")
+    const commands = colorFirst ? [color, underline] : [underline, color]
+    commands.forEach(command => expect(command()).toBe(true))
+
+    expect(cleanHTML()).toBe('<p>Before <span style="color: red;"><u>selected</u></span> after</p>')
+    expect(document.getSelection()!.toString()).toBe("selected")
+    expect(feature.getStyleState().color).toBe("red")
+    expect(feature.getState().marks).toContain("u")
+  })
+
+  it("recolors only the selected run of an existing underline", () => {
+    const paragraph = setContent('<p><span style="color: blue;"><u id="note" title="Note"><em>abcd</em></u></span></p>')
+    const text = paragraph.querySelector("em")!.firstChild as Text
+    selectText(text, 3, 1)
+
+    expect(feature.setStyleMark("color", "red")).toBe(true)
+
+    const underlines = Array.from(paragraph.querySelectorAll("u"))
+    expect(underlines.map(underline => [underline.innerHTML, underline.parentElement!.style.color])).toEqual([
+      ["<em>a</em>", "blue"],
+      ["<em>bc</em>", "red"],
+      ["<em>d</em>", "blue"],
+    ])
+    expect(underlines.map(underline => [underline.id, underline.title])).toEqual([["note", "Note"], ["", "Note"], ["", "Note"]])
+    expect(document.getSelection()!.toString()).toBe("bc")
+    expect($.isBackwards).toBe(true)
+    expect(feature.setStyleMark("color", "")).toBe(true)
+    expect(paragraph.querySelector("p > u")?.innerHTML).toBe("<em>bc</em>")
+  })
+
+  it("preserves comments at the edges of a recolored underline", () => {
+    const paragraph = setContent("<p><u><!--before-->Text<!--after--></u></p>")
+    const underline = paragraph.querySelector("u")!
+    const [before, text, after] = Array.from(underline.childNodes)
+    selectText(text as Text)
+
+    expect(feature.setStyleMark("color", "red")).toBe(true)
+
+    expect(paragraph.firstElementChild?.firstChild).toBe(before)
+    expect(paragraph.lastElementChild?.firstChild).toBe(after)
+    expect(paragraph.querySelector("span > u")?.textContent).toBe("Text")
+  })
+
+  it("can still recolor text inside an underline with its own inline color", () => {
+    const paragraph = setContent('<p><u style="color: blue">Text</u></p>')
+    selectText(paragraph.querySelector("u")!.firstChild as Text)
+
+    expect(feature.setStyleMark("color", "red")).toBe(true)
+
+    expect(paragraph.querySelector("u")!.style.color).toBe("blue")
+    expect(paragraph.querySelector("u > span")?.getAttribute("style")).toBe("color: red;")
+  })
+
   it("removes only the chosen style and merges equivalent neighboring spans", () => {
     const paragraph = setContent('<p><span style="color: red">ab</span><span style="color: red">cd</span></p>')
     const first = paragraph.firstElementChild!.firstChild as Text

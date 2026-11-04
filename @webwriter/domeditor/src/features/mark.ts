@@ -1509,11 +1509,13 @@ export class MarkFeature extends EditorFeature {
     boundary.append(context.range.extractContents())
     context.range.insertNode(boundary)
 
-    // Generated style spans are split at both selection boundaries. This
-    // keeps their other style properties while isolating the changed run.
+    // Lift the selection out of style spans so their other properties survive.
+    // Color also belongs outside <u>, where the underline can inherit it.
+    const liftUnderline = property === "color" && !!normalizedValue
     while(true) {
       let target = boundary.parentElement
-      while(target && target !== context.block && !this.isStyleMarkSpan(target)) {
+      while(target && target !== context.block && !this.isStyleMarkSpan(target)
+        && !(liftUnderline && target instanceof HTMLElement && target.localName === "u" && !target.style.color)) {
         target = target.parentElement
       }
       if(!target || target === context.block) break
@@ -1521,7 +1523,7 @@ export class MarkFeature extends EditorFeature {
       while(boundary.parentElement && boundary.parentElement !== target) {
         this.promoteBoundary(boundary, true)
       }
-      if(boundary.parentElement === target) this.promoteStyleBoundary(boundary)
+      if(boundary.parentElement === target) this.promoteBoundary(boundary, true)
     }
 
     const styledDescendants = Array.from(boundary.querySelectorAll<HTMLElement>("span[style]")).reverse()
@@ -1842,37 +1844,20 @@ export class MarkFeature extends EditorFeature {
     const after = cloneWithoutEditorMarkers(parent, false) as Element
     while(boundary.nextSibling) after.append(boundary.nextSibling)
 
+    const keepBefore = this.hasContent(before)
     if(preserveParent) {
       const selectedParent = cloneWithoutEditorMarkers(parent, false) as Element
+      if(keepBefore) selectedParent.removeAttribute("id")
       selectedParent.append(...Array.from(boundary.childNodes))
       boundary.append(selectedParent)
     }
 
-    if(this.hasContent(before)) grandparent.insertBefore(before, parent)
+    if(keepBefore) grandparent.insertBefore(before, parent)
     grandparent.insertBefore(boundary, parent)
-    if(this.hasContent(after)) grandparent.insertBefore(after, parent)
-    parent.remove()
-  }
-
-  /** Splits a generated style span while retaining its other properties on the selection. */
-  private promoteStyleBoundary(boundary: Element) {
-    const parent = boundary.parentElement
-    const grandparent = parent?.parentNode
-    if(!parent || !grandparent) return
-
-    const before = cloneWithoutEditorMarkers(parent, false) as Element
-    while(parent.firstChild && parent.firstChild !== boundary) before.append(parent.firstChild)
-
-    const after = cloneWithoutEditorMarkers(parent, false) as Element
-    while(boundary.nextSibling) after.append(boundary.nextSibling)
-
-    const selected = cloneWithoutEditorMarkers(parent, false) as Element
-    selected.append(...Array.from(boundary.childNodes))
-    boundary.append(selected)
-
-    if(this.hasContent(before)) grandparent.insertBefore(before, parent)
-    grandparent.insertBefore(boundary, parent)
-    if(this.hasContent(after)) grandparent.insertBefore(after, parent)
+    if(this.hasContent(after)) {
+      if(keepBefore || preserveParent) after.removeAttribute("id")
+      grandparent.insertBefore(after, parent)
+    }
     parent.remove()
   }
 
@@ -1921,7 +1906,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   private hasContent(element: Element) {
-    return element.textContent!.length > 0 || element.children.length > 0
+    return Array.from(element.childNodes).some(node => !(node instanceof Text) || node.length > 0)
   }
 
   private mergeEquivalentSiblings(wrapper: Element) {

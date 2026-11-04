@@ -1266,6 +1266,56 @@ await check("Ribbon text colors share the toolbox palette and commit chosen colo
   }
 })
 
+await check("underlines match text color in either formatting order", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:250px"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Before selected after</p></body>'
+  fixture.append(frame)
+  const view = frame.contentWindow!
+  try {
+    for(let attempt = 0; !view.editor && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    if(!view.editor) throw new Error(`Formatting editor did not initialize: ${view.editorError}`)
+    const doc = frame.contentDocument!, paragraph = doc.querySelector("p")!, selection = doc.getSelection()!
+    const mark = view.editor.features.mark
+    const mismatches: string[] = []
+    for(const colorFirst of [true, false]) {
+      paragraph.textContent = "Before selected after"
+      const text = paragraph.firstChild!
+      selection.setBaseAndExtent(text, 7, text, 15)
+      const color = () => mark.setStyleMark("color", "red")
+      const underline = () => mark.toggleMark("u")
+      const [first, second] = colorFirst ? [color, underline] : [underline, color]
+      const order = colorFirst ? "color then underline" : "underline then color"
+      assert(first() && second(), `${order}: a formatting command failed`)
+      const underlined = paragraph.querySelector("u")!
+      const textColor = view.getComputedStyle(underlined.querySelector("span") ?? underlined).color
+      const line = view.getComputedStyle(underlined)
+      if(textColor !== "rgb(255, 0, 0)" || line.textDecorationColor !== textColor || line.textDecorationLine !== "underline") {
+        mismatches.push(`${order}: text ${textColor}, underline ${line.textDecorationColor}; ${paragraph.innerHTML}`)
+      }
+      assert(underlined.textContent === "selected" && selection.toString() === "selected", `${order}: selected text changed`)
+    }
+    paragraph.innerHTML = "<u><em>Before selected after</em></u>"
+    const text = paragraph.querySelector("em")!.firstChild!
+    selection.setBaseAndExtent(text, 15, text, 7)
+    assert(mark.setStyleMark("color", "red"), "recoloring part of an underline failed")
+    const runs = Array.from(paragraph.querySelectorAll("u"), element => ({
+      text: element.textContent,
+      textColor: view.getComputedStyle(element.querySelector("em")!).color,
+      lineColor: view.getComputedStyle(element).textDecorationColor,
+    }))
+    const baseColor = view.getComputedStyle(paragraph).color
+    if(JSON.stringify(runs) !== JSON.stringify(["Before ", "selected", " after"].map((text, index) => {
+      const color = index === 1 ? "rgb(255, 0, 0)" : baseColor
+      return {text, textColor: color, lineColor: color}
+    }))) mismatches.push(`partial underline: ${JSON.stringify(runs)}; ${paragraph.innerHTML}`)
+    assert(selection.toString() === "selected" && selection.anchorOffset === 8 && selection.focusOffset === 0,
+      "partial recolor changed the backward selection")
+    assert(!mismatches.length, mismatches.join("\n"))
+  }
+  finally { view.editor?.destroy(); frame.remove() }
+})
+
 await check("Editor UI prevents text selection while preserving editable fields and the document", async () => {
   await Promise.all([
     import("../src/components/ribbon"), import("../src/components/settings-panel"),
