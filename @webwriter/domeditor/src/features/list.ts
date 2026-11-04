@@ -687,6 +687,7 @@ export class ListFeature extends EditorFeature {
       || atomicEditingContainer(range.startContainer, this.editor.schema)
       || atomicEditingContainer(range.endContainer, this.editor.schema)) return false
     const wasEmpty = selection.isCollapsed && this.isEmptyItem(item)
+    this.editor.features.mark.finishAutomaticLinkBeforeBreak()
     if(!selection.isCollapsed) $.delete()
     if(!item.isConnected || !item.contains($.anchor)) return true
     if(wasEmpty) this.liftOrExitEmptyItem(item)
@@ -1319,6 +1320,7 @@ export class ListFeature extends EditorFeature {
     if(!summary || details?.localName !== "details" || details.namespaceURI !== "http://www.w3.org/1999/xhtml"
       || details.hasAttribute("is") || !document.body.contains(details) || !summary.contains(selection.focusNode)
       || !isCaretAtBoundary(summary, "end")) return false
+    this.editor.features.mark.finishAutomaticLinkBeforeBreak()
     this.ensureDetailsBody(details)
     details.open = true
     const first = Array.from(details.childNodes).find(node =>

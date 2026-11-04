@@ -431,6 +431,7 @@ export class MarkFeature extends EditorFeature {
   private linkNodeIDs = new WeakMap<Node, string>()
   private editingLink = false
   private automaticLinkBlock: Element | null = null
+  private automaticLinkTypingBlock: Element | null = null
   private composing = false
   private automaticLinks = new WeakMap<Element, {text: string, href: string}>()
 
@@ -439,6 +440,7 @@ export class MarkFeature extends EditorFeature {
     // Undo/redo restores authored DOM verbatim, including plain URL text.
     this.observer?.takeRecords()
     this.automaticLinkBlock = null
+    this.automaticLinkTypingBlock = null
     this.queueStateRefresh()
   }
 
@@ -463,12 +465,32 @@ export class MarkFeature extends EditorFeature {
     this.queueStateRefresh()
   }
 
-  private applyAutomaticLinks(block: Element) {
+  private trackAutomaticLinkTyping(data: string | null) {
+    if(data) this.automaticLinkTypingBlock = /\s$/u.test(data) ? null : this.editedLinkBlock()
+  }
+
+  allowAutomaticLinksAfterPaste() {
+    this.automaticLinkTypingBlock = null
+  }
+
+  /** Called before a paragraph or line break moves the caret. */
+  finishAutomaticLinkBeforeBreak() {
+    const block = this.automaticLinkTypingBlock
+    if(!block || this.composing || !document.getSelection()?.isCollapsed || block !== this.editedLinkBlock()) return
+    this.automaticLinkTypingBlock = null
+    this.applyAutomaticLinks(block, true)
+  }
+
+  private applyAutomaticLinks(block: Element, beforeBreak = false) {
     if(this.editor.isEditingLocked || !block.isConnected || block !== this.editedLinkBlock()) return
     const selection = document.getSelection()!
     const anchor = this.textOffset(block, selection.anchorNode!, selection.anchorOffset)
     const focus = this.textOffset(block, selection.focusNode!, selection.focusOffset)
     if(anchor === null || focus === null) return
+    const caretContainer = selection.anchorNode instanceof Element ? selection.anchorNode : selection.anchorNode!.parentElement
+    const currentLink = caretContainer?.closest("a")
+    const deferTyping = selection.isCollapsed && this.automaticLinkTypingBlock === block
+      && !(currentLink && this.automaticLinks.has(currentLink))
     let changed = false
     // Only links created here may be reinterpreted as their text is edited.
     const links = Array.from(block.querySelectorAll("a")).filter(link => this.closestBlock(link) === block
@@ -491,6 +513,9 @@ export class MarkFeature extends EditorFeature {
     let text = ""
     let parts: {node: Text, start: number}[] = []
     const flush = () => {
+      const first = parts[0]?.node
+      const runStart = first && (deferTyping || beforeBreak) ? this.textOffset(block, first, 0) : null
+      const caret = runStart === null ? null : anchor - runStart
       const replacements: {node: Text, start: number, end: number, href: string}[] = []
       let partIndex = 0
       for(const match of text.matchAll(automaticLinkPattern)) {
@@ -500,11 +525,16 @@ export class MarkFeature extends EditorFeature {
           for(const character of value) balance += character === open ? 1 : character === close ? -1 : 0
           while(balance < 0 && value.endsWith(close)) { value = value.slice(0, -1); balance++ }
         }
+        const start = match.index!, end = start + value.length
+        if(caret !== null) {
+          if(beforeBreak && end > caret) continue
+          // The current token may grow even after its prefix parses as a URL.
+          if(deferTyping && start < caret && caret <= text.length && !/\s/u.test(text.slice(end, caret))) continue
+        }
         const address = match.groups?.email
           ? `mailto:${encodeURIComponent(value).replace(/%40/g, "@").replace(/%2B/g, "+")}` : value
         const href = normalizeLinkHref(address)
         if(!href) continue
-        const start = match.index!, end = start + value.length
         while(partIndex < parts.length && parts[partIndex].start + parts[partIndex].node.length <= start) partIndex++
         for(let index = partIndex; index < parts.length && parts[index].start < end; index++) {
           const part = parts[index]
@@ -548,6 +578,14 @@ export class MarkFeature extends EditorFeature {
         && (selection.anchorNode !== anchorNode || selection.anchorOffset !== anchorOffset
           || selection.focusNode !== focusNode || selection.focusOffset !== focusOffset)) {
         selection.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
+      }
+      if(beforeBreak) {
+        const link = anchorNode.parentElement?.closest("a")
+        if(link && this.automaticLinks.has(link) && this.textOffset(link, anchorNode, anchorOffset) === link.textContent?.length) {
+          const range = selection.getRangeAt(0)
+          range.setStartAfter(link)
+          range.collapse(true)
+        }
       }
       this.observer?.takeRecords()
     }
@@ -596,10 +634,24 @@ export class MarkFeature extends EditorFeature {
   activeListeners: DocumentListenerMap = {
     beforeinput: event => this.handleBeforeInput(event),
     keydown: event => this.handleShortcut(event),
-    input: event => { if(!(event as InputEvent).isComposing) this.queueAutomaticLinks() },
+    input: event => {
+      const input = event as InputEvent
+      if(input.isComposing) return
+      if(["insertText", "insertReplacementText", "insertCompositionText"].includes(input.inputType)) this.trackAutomaticLinkTyping(input.data)
+      if(input.inputType === "insertFromPaste") this.allowAutomaticLinksAfterPaste()
+      this.queueAutomaticLinks()
+    },
     compositionstart: () => { this.composing = true },
-    compositionend: () => { this.composing = false; this.queueAutomaticLinks() },
-    selectionchange: () => { this.clearStoredMarksIfSelectionChanged(); this.syncFonts() },
+    compositionend: event => {
+      this.composing = false
+      this.trackAutomaticLinkTyping(event.data)
+      this.queueAutomaticLinks()
+    },
+    selectionchange: () => {
+      if(this.automaticLinkTypingBlock && this.automaticLinkTypingBlock !== this.editedLinkBlock()) this.automaticLinkTypingBlock = null
+      this.clearStoredMarksIfSelectionChanged()
+      this.syncFonts()
+    },
   }
 
   enable() {
@@ -635,6 +687,7 @@ export class MarkFeature extends EditorFeature {
     this.observer?.disconnect()
     this.observer = null
     this.automaticLinkBlock = null
+    this.automaticLinkTypingBlock = null
     this.composing = false
     this.stateRefreshQueued = false
     this.clearStoredMarks()
@@ -1661,6 +1714,7 @@ export class MarkFeature extends EditorFeature {
     const svg = this.svgContext()
     if(svg) return this.handleSVGInput(event, svg)
     if(this.editor.features.selection.isCaptureSelection) return
+    if(!event.defaultPrevented && !event.isComposing && event.inputType === "insertParagraph") this.finishAutomaticLinkBeforeBreak()
     this.clearStoredMarksIfSelectionChanged()
     if(event.defaultPrevented
       || this.storedMarks === null && this.storedStyles === null && this.storedAttributes === null && !this.storedPopup

@@ -182,6 +182,7 @@ const expectedChecks = [
   "table commands complete across the real iframe bridge",
   "graphic imports open host pickers synchronously and retry across the iframe bridge",
   "canvas and slide gestures relay pointer dismissal before feature capture",
+  "automatic links wait for Space or Enter during typing and link pasted URLs immediately",
   "link keyboard preserves iframe selections and applies document, web, and reference links",
   "editor command preserves a live selection",
   "node drag borders leave native text and table editing reachable",

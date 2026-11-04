@@ -4724,6 +4724,67 @@ await check("audio insertion retains element selection at the document start", a
   finally { frame.remove() }
 })
 
+await check("automatic links wait for Space or Enter during typing and link pasted URLs immediately", async () => {
+  const frame = document.createElement("iframe")
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p id="space"></p><ul><li id="list"></li></ul><p id="enter"></p><p id="paste"></p></body>'
+  nativeRootEditor.addAppendix(frame)
+  const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor}
+  try {
+    for(let attempt = 0; !view.editor && !view.editorError && attempt < 200; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `autolink editor did not initialize: ${view.editorError ?? "timed out"}`)
+    const doc = frame.contentDocument!, selection = doc.getSelection()!
+    const settle = () => new Promise<void>(resolve => view.setTimeout(resolve, 0))
+    doc.body.focus()
+    const type = async (id: string, value: string) => {
+      const block = doc.getElementById(id)!
+      selection.setPosition(block, 0)
+      for(const character of value) {
+        assert(doc.execCommand("insertText", false, character), `native typing rejected ${character}`)
+        await settle()
+        assert(!block.querySelector("a"), `linked an unfinished token: ${block.innerHTML}`)
+      }
+      assert(block.textContent === value, `typed text changed: ${block.innerHTML}`)
+      return block
+    }
+    const checkLink = (block: Element, value: string) => {
+      const links = block.querySelectorAll("a")
+      assert(links.length === 1 && links[0].textContent === value && links[0].getAttribute("href") === `https://${value}`,
+        `expected one complete link for ${value}: ${block.outerHTML}`)
+    }
+
+    const url = "example.com/path?q=1"
+    const space = await type("space", `${url}.`)
+    assert(doc.execCommand("insertText", false, " "), "native Space failed")
+    await settle()
+    checkLink(space, url)
+    assert(space.textContent?.slice(url.length).replace(/\u00a0/g, " ") === ". ", "Space or punctuation was lost")
+    assert(selection.isCollapsed && !selection.anchorNode?.parentElement?.closest("a"), "Space left the caret inside the link")
+    assert(doc.execCommand("insertText", false, "next"), "typing after Space failed")
+    await settle()
+    checkLink(space, url)
+
+    for(const id of ["enter", "list"]) {
+      const block = await type(id, "example.co")
+      const enter = new view.KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+      doc.body.dispatchEvent(enter)
+      assert(enter.defaultPrevented, "the editor did not handle Enter")
+      await settle()
+      const next = block.nextElementSibling
+      assert(next?.contains(selection.anchorNode) && !next.querySelector("a"), `Enter did not leave the caret in an unlinked continuation of ${block.outerHTML}`)
+      checkLink(block, "example.co")
+    }
+
+    const paste = await type("paste", "replace")
+    selection.selectAllChildren(paste)
+    const clipboardData = new view.DataTransfer()
+    clipboardData.setData("text/plain", url)
+    paste.dispatchEvent(new view.ClipboardEvent("paste", {clipboardData, bubbles: true, cancelable: true}))
+    await settle()
+    checkLink(paste, url)
+  }
+  finally { view.editor?.destroy(); frame.remove() }
+})
+
 await check("link keyboard preserves iframe selections and applies document, web, and reference links", async () => {
   const {LinkKeyboard, linkHistoryKey} = await import("../src/components/link-keyboard")
   const priorHistory = localStorage.getItem(linkHistoryKey)

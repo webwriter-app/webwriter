@@ -1406,6 +1406,24 @@ describe("link keyboard edits", () => {
 
 
 describe("automatic links in the edited text block", () => {
+  it("waits for whitespace while typing a URL across inline formatting", async () => {
+    const block = setContent('<p><em>example</em><!--keep--><strong>.</strong></p>')
+    const emphasis = block.firstChild!, comment = emphasis.nextSibling!, tail = block.lastChild!.firstChild as Text
+    for(const data of ["c", "o", "m", ".", "a", "u", "/", "p", "?", "q", "=", "1", ".", " "]) {
+      tail.appendData(data)
+      $.move(tail, tail.length)
+      block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText", data}))
+      await settle()
+      if(data !== " ") expect(block.querySelector("a")).toBeNull()
+    }
+    const links = Array.from(block.querySelectorAll("a"))
+    expect(links.map(link => link.textContent)).toEqual(["example", ".com.au/p?q=1"])
+    expect(links.map(link => link.getAttribute("href"))).toEqual(Array(2).fill("https://example.com.au/p?q=1"))
+    expect(emphasis.nextSibling).toBe(comment)
+    expect($.anchor!.textContent).toBe(". ")
+    expect($.anchorOffset).toBe(2)
+  })
+
   it("skips Popup toggle text while linking surrounding text", async () => {
     const block = setContent('<p>before.test <span class="ww-popup"><button popovertarget="popup-autolink-test">inside.test</button></span> after.test</p><div class="ww-popup-content" id="popup-autolink-test" popover><p></p></div>')
     const trailing = block.lastChild as Text
@@ -1601,6 +1619,7 @@ describe("automatic links in the edited text block", () => {
     const text = generated.firstChild as Text
     text.data += "/new"
     $.move(text, text.length)
+    block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText", data: "/new"}))
     await settle()
     expect(block.querySelector("a")!.getAttribute("href")).toBe("https://example.test/new")
     expect(block.querySelectorAll("a")).toHaveLength(2)

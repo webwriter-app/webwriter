@@ -443,6 +443,7 @@ export class BoardFeature extends EditorFeature {
   }
   private enterHeading() {
     const scope = this.editingScope(document.getSelection()?.anchorNode ?? null)
+    this.editor.features.mark.finishAutomaticLinkBeforeBreak()
     if(scope && isBoardGroup(scope.parentElement)) {
       const column = Array.from(scope.parentElement.children).find(isBoardColumn)
       if(column) $.move(column.firstElementChild ?? column)
