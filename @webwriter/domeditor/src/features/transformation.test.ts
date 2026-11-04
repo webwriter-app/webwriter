@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest"
 
 import {DOMEditor} from "../domeditor"
 import {$, cloneWithoutEditorMarkers} from "../utility"
+import {markStateChangeEvent, selectionChangeEvent} from "../editor-bridge"
 import {MATH_NAMESPACE} from "../math"
 import * as Y from "yjs"
 
@@ -199,6 +200,51 @@ it("hides transforms for a zero-area widget host and recovers when its live box 
 })
 
 describe("text container resizing", () => {
+  it("coalesces live resize geometry and still processes an unrelated shared change", async () => {
+    const target = targetElement()
+    const other = targetElement()
+    mockRect(target)
+    const frames = new Map<number, FrameRequestCallback>()
+    let nextFrame = 0
+    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(callback => {
+      frames.set(++nextFrame, callback)
+      return nextFrame
+    })
+    vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(id => { frames.delete(id) })
+    const tick = () => {
+      for(const [id, callback] of [...frames]) if(frames.delete(id)) callback(0)
+    }
+    selectNode(target)
+    editor.doc.syncFromDOM()
+    await mutationsDelivered()
+    const handle = feature.overlay.querySelector<HTMLElement>(".◆transform-overlay-scale:not([hidden])")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 9, clientX: 200, clientY: 150}))
+    expect(feature.stableSingleTransformTarget()).toBe(target)
+    await mutationsDelivered()
+    const refresh = vi.spyOn(feature, "updateInfo")
+    const selection = vi.spyOn(editor.features.selection, "processSelection")
+    const direction = handle.dataset.resizeDirection!.includes("right") ? -1 : 1
+    for(const delta of [10, 20]) document.dispatchEvent(pointer("pointermove", {pointerId: 9, clientX: 200 + delta * direction, clientY: 150}))
+    editor.doc.syncFromDOM()
+    await mutationsDelivered()
+    expect(selection).not.toHaveBeenCalled()
+    expect(target.style.maxWidth).toBe("80px")
+    expect(refresh).not.toHaveBeenCalled()
+    tick()
+    expect(refresh).toHaveBeenCalledOnce()
+    expect(feature.overlay.style.width).toBe("80px")
+    tick()
+    expect(refresh).toHaveBeenCalledOnce()
+
+    other.setAttribute("title", "External edit")
+    editor.doc.syncFromDOM()
+    await mutationsDelivered()
+    expect(selection).toHaveBeenCalled()
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 9}))
+    expect(target.style.maxWidth).toBe("")
+    expect(other.title).toBe("External edit")
+  })
+
   describe("document layout", () => {
     it("gives resized popup content an explicit width so its bubble can grow", () => {
       document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Open</button></span></p><div class="ww-popup-content" id="note" popover="auto"><p>Short</p></div>'
@@ -981,6 +1027,101 @@ describe("freeform group transformation", () => {
     expect(first.getBoundingClientRect().top).toBeCloseTo(-25)
     expect(last.getBoundingClientRect().top - first.getBoundingClientRect().top).toBeCloseTo(200)
     expect(first.getBoundingClientRect().left).toBeCloseTo(last.getBoundingClientRect().left)
+    expect($.selectedElements).toEqual([first, last])
+  })
+
+  it("keeps existing outlines during a shared resize and refreshes them when the selection changes", async () => {
+    const {first, last, outside} = group()
+    expect(feature.setSpatialGrouping("group")).toBe(true)
+    await mutationsDelivered()
+    const outlines = () => Array.from(editor.appendix.querySelectorAll('[part~="multi-selection-overlay"]'))
+    const original = outlines()
+    expect(original).toHaveLength(2)
+    start("scale-down-right")
+    move(460, 180)
+    editor.doc.syncFromDOM()
+    await mutationsDelivered()
+    const current = outlines()
+    expect(current).toHaveLength(original.length)
+    current.forEach((outline, index) => expect(outline).toBe(original[index]))
+    expect(first.style.width).not.toBe("100px")
+
+    const post = vi.spyOn(editor, "postHostMessage")
+    $.selectElements([first, outside])
+    editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+    editor.postSelectionPath()
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({type: selectionChangeEvent}))
+    move(470, 190)
+    await mutationsDelivered()
+    expect(first.style.width).toBe("100px")
+    expect($.selectedElements).toEqual([first, outside])
+    expect(last).not.toHaveClass("◆atomic-range-selected")
+    expect(outside).toHaveClass("◆atomic-range-selected")
+    expect(original.every(outline => !outline.isConnected)).toBe(true)
+  })
+
+  it.each(["resize", "rotate", "rotate and cancel"])("publishes mark and selection state once after group %s", async mode => {
+    const {first} = group()
+    expect(feature.setSpatialGrouping("group")).toBe(true)
+    await mutationsDelivered()
+    const initialStyle = first.style.cssText
+    const outlines = () => Array.from(editor.appendix.querySelectorAll('[part~="multi-selection-overlay"]'))
+    const original = outlines()
+    const post = vi.spyOn(editor, "postHostMessage")
+    const events = (type: string) => post.mock.calls.filter(([message]) => (message as {type: string}).type === type)
+    if(mode === "resize") {
+      start("scale-down-right")
+      move(460, 180)
+    }
+    else {
+      start("rotator", 250, 75)
+      move(300, 125)
+    }
+    expect(first.style.cssText).not.toBe(initialStyle)
+    editor.doc.syncFromDOM()
+    await mutationsDelivered()
+    expect(events(markStateChangeEvent)).toHaveLength(0)
+    expect(events(selectionChangeEvent)).toHaveLength(0)
+
+    if(mode !== "rotate and cancel") end()
+    else {
+      document.dispatchEvent(pointer("pointercancel", {pointerId: 31}))
+      expect(first.style.cssText).toBe(initialStyle)
+    }
+    await mutationsDelivered()
+    expect(events(markStateChangeEvent)).toHaveLength(1)
+    expect(events(selectionChangeEvent)).toEqual([[expect.objectContaining({
+      type: selectionChangeEvent, detail: expect.objectContaining({nodeSelected: true}),
+    })]])
+    expect(outlines()).toHaveLength(original.length)
+    outlines().forEach((outline, index) => expect(outline).toBe(original[index]))
+  })
+
+  it.each(["resize", "rotate"] as const)("cancels group %s when another edit changes a gesture-owned style", async mode => {
+    const {first, last} = group()
+    expect(feature.setSpatialGrouping("group")).toBe(true)
+    const initial = first.style.cssText
+    const property = mode === "resize" ? "width" : "transform"
+    const before = last.style.getPropertyValue(property)
+    if(mode === "resize") {
+      start("scale-down-right")
+      move(460, 180)
+    }
+    else {
+      start("rotator", 250, 75)
+      move(300, 125)
+    }
+    expect(last.style.getPropertyValue(property)).not.toBe(before)
+    const concurrent = mode === "resize" ? "210px" : "rotate(5deg)"
+    last.style.setProperty(property, concurrent, "important")
+    move(470, 190)
+    end()
+    await mutationsDelivered()
+
+    expect(first.style.cssText).toBe(initial)
+    expect(last.style.getPropertyValue(property)).toBe(concurrent)
+    expect(last.style.getPropertyPriority(property)).toBe("important")
+    expect(document.body.className).not.toMatch(/◆transform-(?:scaling|rotating)/)
     expect($.selectedElements).toEqual([first, last])
   })
 
@@ -2523,8 +2664,10 @@ describe("transform controls and geometry", () => {
       }
     }
     const pan = vi.spyOn(editor.features.canvas, "panAtEdge").mockReturnValue(true)
+    const minimap = vi.spyOn(editor.features.canvas, "setMinimapRefreshPaused")
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 19, clientX: 150, clientY: 125}))
+    expect(minimap).toHaveBeenLastCalledWith(true)
     document.dispatchEvent(pointer("pointermove", {pointerId: 19, buttons: 1, clientX: 170, clientY: 125}))
     tick()
     expect(pan).toHaveBeenLastCalledWith({x: 170, y: 125})
@@ -2541,6 +2684,7 @@ describe("transform controls and geometry", () => {
     tick()
     expect(pan).toHaveBeenCalledTimes(2)
     expect(document.body).not.toHaveClass("◆transform-moving")
+    expect(minimap).toHaveBeenLastCalledWith(false)
   })
 
   it.each(["resize", "rotate"] as const)("groups a paused %s gesture into one exact undo item", async mode => {
@@ -3233,7 +3377,7 @@ describe("transform controls and geometry", () => {
     expect(feature.overlay.getAttribute("part")).not.toContain("transform-overlay-starting-view")
   })
 
-  it("rotates only an absolute target in canvas layout", () => {
+  it("rotates only an absolute target in canvas layout", async () => {
     document.body.classList.add("ww-canvas")
     const target = targetElement()
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
@@ -3241,6 +3385,7 @@ describe("transform controls and geometry", () => {
     mockRect(target)
     feature.handleRotateStart(new MouseEvent("mousedown", {button: 0, clientX: 150, clientY: 100}))
     feature.handleRotateDrag(new MouseEvent("mousemove", {button: 0, clientX: 200, clientY: 125}))
+    await new Promise(requestAnimationFrame)
     const caret = editor.features.selection.selectionCaret!
     expect(caret.style.transform).toBe(feature.overlay.style.transform)
     expect(new DOMMatrix(caret.style.transform).b).toBeCloseTo(1)
@@ -3254,6 +3399,56 @@ describe("transform controls and geometry", () => {
     feature.handleRotateStart(new MouseEvent("mousedown", {button: 0, clientX: 150, clientY: 100}))
     feature.handleRotateDrag(new MouseEvent("mousemove", {button: 0, clientX: 200, clientY: 125}))
     expect(target.style.getPropertyValue("rotate")).toBe("")
+  })
+
+  it("coalesces ordinary rotation and skips geometry reads and writes within a snapped angle", async () => {
+    document.body.classList.add("ww-canvas")
+    const target = targetElement()
+    Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
+    mockRect(target)
+    selectNode(target)
+    await mutationsDelivered()
+    const {layout, canvas, selection} = editor.features
+    const initial = target.style.cssText
+    const minimap = vi.spyOn(canvas, "setMinimapRefreshPaused")
+    feature.handleRotateStart(new MouseEvent("mousedown", {button: 0, clientX: 150, clientY: 100}))
+    expect(minimap).toHaveBeenLastCalledWith(true)
+    await mutationsDelivered()
+    const refreshLayout = vi.spyOn(layout, "refresh")
+    const refreshFigures = vi.spyOn(layout, "refreshFigureLayout")
+    const update = vi.spyOn(feature, "updateInfo")
+    const process = vi.spyOn(selection, "processSelection")
+    const read = vi.mocked(target.getBoundingClientRect).mockClear()
+    const observer = new MutationObserver(() => {})
+    observer.observe(target, {attributes: true, attributeFilter: ["style"]})
+    try {
+      const drag = (x: number, y: number) => feature.handleRotateDrag(new MouseEvent("mousemove", {clientX: x, clientY: y}))
+      drag(151, 99)
+      expect(observer.takeRecords()).toHaveLength(0)
+      expect(read).not.toHaveBeenCalled()
+      drag(190, 125)
+      expect(target.style.getPropertyValue("rotate")).toBe("90deg")
+      expect(observer.takeRecords().length).toBeGreaterThan(0)
+      read.mockClear()
+      drag(191, 125)
+      drag(192, 126)
+      expect(observer.takeRecords()).toHaveLength(0)
+      expect(read).not.toHaveBeenCalled()
+      expect(update).not.toHaveBeenCalled()
+      expect(refreshLayout).not.toHaveBeenCalled()
+      expect(refreshFigures).not.toHaveBeenCalled()
+      editor.doc.syncFromDOM()
+      await mutationsDelivered()
+      expect(process).not.toHaveBeenCalled()
+      await new Promise(requestAnimationFrame)
+      expect(update).toHaveBeenCalledOnce()
+      expect(new DOMMatrix(feature.overlay.style.transform).b).toBeCloseTo(1)
+      document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Escape"}))
+      expect(target.style.cssText).toBe(initial)
+      expect(minimap).toHaveBeenLastCalledWith(false)
+      expect(document.body).not.toHaveClass("◆transform-rotating")
+    }
+    finally { observer.disconnect() }
   })
 })
 

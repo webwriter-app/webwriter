@@ -966,6 +966,7 @@ export class DOMEditor {
   postSelectionPath(inserted = false) {
     if(this.features.selection.isInDragSelection) return
     if(this.options.reader) { window.dispatchEvent(new Event("webwriter-distribution-selection")); return }
+    if(!inserted && this.features.transformation.deferTransformSelectionState("selectionPathPending")) return
     const body = document.body
     const root = getDocumentRoot(body)
     const inDragSelection = this.features.selection.isInDragSelection
@@ -1151,6 +1152,7 @@ export class DOMEditor {
   /** Sends mark availability and active marks as a DOM-derived bridge event. */
   postMarkState() {
     if(this.options.reader || this.features.selection.isInDragSelection) return
+    if(this.features.transformation.deferTransformSelectionState("markStatePending")) return
     this.features.graphic.rememberTextSelection()
     if(this.features.selection.selectedSectionElement) {
       this.postBridgeEvent(markStateChangeEvent, {

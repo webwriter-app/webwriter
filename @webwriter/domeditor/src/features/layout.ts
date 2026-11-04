@@ -46,7 +46,8 @@ export class LayoutFeature extends EditorFeature {
     this.print = null
     super.disable()
   }
-  refresh() { this.figures?.refresh(); this.syncColumnWidth() }
+  refreshFigureLayout() { this.figures?.refresh() }
+  refresh() { this.refreshFigureLayout(); this.syncColumnWidth() }
   getState() { return null }
 
   /** Wide placement is limited to blocks in the document's main flow. */

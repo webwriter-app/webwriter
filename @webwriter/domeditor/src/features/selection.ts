@@ -12,6 +12,8 @@ import {isAuthoredMutation} from "../editor-artifacts"
 import {isTextFieldInteraction} from "../utility"
 import {createAnchorPositioner} from "../utility"
 import type {ElementSelectionType} from "../editor-bridge"
+import type {BoxGeometry} from "./transformation"
+import type {Transaction} from "yjs"
 
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
@@ -110,6 +112,14 @@ export class SelectionFeature extends EditorFeature {
     if(records.some(isAuthoredMutation)) {
       this.#invalidateFloatCandidates()
       this.#refreshGapCaretInlinePosition()
+      // Geometry changes leave native anchor bindings intact. Refresh the
+      // rules if a mutation could change anchor names or remove a marker.
+      if(this.#atomicOverlays.size && this.editor.features.transformation.isResizingOrRotatingGroup
+        && records.some(record => isAuthoredMutation(record) && (record.attributeName !== "style"
+          || !this.#atomicOverlays.has(record.target as Element) || record.oldValue?.includes("anchor-name")
+          || (record.target as HTMLElement).style?.getPropertyValue("anchor-name")))) {
+        this.#atomicAnchors.refresh()
+      }
       if(this.#atomicOverlays.size || this.#boxDrag?.previews.size) this.#positionAtomicOverlays()
     }
   }
@@ -144,47 +154,70 @@ export class SelectionFeature extends EditorFeature {
 
   /** Ordinary element boxes follow CSS anchors. Transformed layout items
    * and cropped media use their measured geometry. */
-  readonly #positionAtomicOverlays = () => {
+  #positionAtomicOverlays(boxes?: ReadonlyMap<Element, BoxGeometry>, matrices = new WeakMap<Element, DOMMatrix>()) {
     if(this.#atomicOverlayFrame !== null) cancelAnimationFrame(this.#atomicOverlayFrame)
     this.#atomicOverlayFrame = null
+    const transformation = this.editor.features.transformation
+    if(!boxes && !this.#boxDrag && transformation.isResizingOrRotatingGroup
+      && transformation.hasStableGroupSelection(Array.from(this.#atomicOverlays.keys()))) {
+      transformation.refreshGeometry()
+      return
+    }
     let measured = false
     const spatialSelection = $.isMultiElementSelection && (this.editor.features.canvas.active || this.editor.features.slides.active)
+    const updates: (() => void)[] = []
+    // Measure every outline before changing styles or anchor markers. A
+    // group rotation otherwise invalidates layout before each sibling read.
     for(const overlays of [this.#atomicOverlays, this.#boxDrag?.previews]) overlays?.forEach((overlay, element) => {
       if(!document.body.contains(element)) {
-        this.#atomicAnchors.release(overlay)
-        overlay.remove()
-        overlays.delete(element)
+        updates.push(() => {
+          this.#atomicAnchors.release(overlay)
+          overlay.remove()
+          overlays.delete(element)
+        })
         return
       }
       const media = this.editor.features.media.cropTargetFor(element)
       const crop = media ? getComputedStyle(media).getPropertyValue("object-view-box") : "none"
       const cropped = Boolean(media && crop && crop !== "none") && element instanceof HTMLElement
-      const transformed = this.editor.features.transformation.boxTransformed(element)
+      const transformed = transformation.boxTransformed(element, matrices)
+      const box = overlays === this.#atomicOverlays ? boxes?.get(element) : undefined
       if(spatialSelection && overlays === this.#atomicOverlays && transformed
         && (element instanceof HTMLElement || element instanceof SVGSVGElement || mathRoot(element) === element)) {
-        this.#atomicAnchors.release(overlay)
         measured = true
-        const {styles} = this.editor.features.transformation.boxGeometry(element as HTMLElement | SVGSVGElement | MathMLElement)
-        Object.assign(overlay.style, {...styles, left: `${fixedClientX(parseFloat(styles.left))}px`})
+        const {styles} = box ?? transformation.boxGeometry(element as HTMLElement | SVGSVGElement | MathMLElement, true, matrices)
+        const left = `${fixedClientX(parseFloat(styles.left))}px`
+        updates.push(() => {
+          this.#atomicAnchors.release(overlay)
+          Object.assign(overlay.style, {...styles, left})
+        })
         return
       }
-      overlay.style.removeProperty("transform")
       if(!cropped && !transformed) {
-        for(const property of ["left", "top", "width", "height"]) overlay.style.removeProperty(property)
-        this.#atomicAnchors.bind(overlay, element)
+        updates.push(() => {
+          for(const property of ["transform", "left", "top", "width", "height"]) overlay.style.removeProperty(property)
+          this.#atomicAnchors.bind(overlay, element)
+        })
         return
       }
-      this.#atomicAnchors.release(overlay)
       measured = true
-      const rect = cropped ? this.editor.features.transformation.boxGeometry(element as HTMLElement).rect : element.getBoundingClientRect()
-      overlay.style.left = `${fixedClientX(rect.left)}px`
-      overlay.style.top = `${rect.top}px`
-      overlay.style.width = `${rect.width}px`
-      overlay.style.height = `${rect.height}px`
+      const rect = cropped ? (box ?? transformation.boxGeometry(element, true, matrices)).rect : element.getBoundingClientRect()
+      const left = `${fixedClientX(rect.left)}px`
+      updates.push(() => {
+        this.#atomicAnchors.release(overlay)
+        Object.assign(overlay.style, {transform: "", left, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+      })
     })
-    this.#atomicAnchors.refresh()
-    if(measured) {
-      this.#atomicOverlayFrame = requestAnimationFrame(this.#positionAtomicOverlays)
+    updates.forEach(update => update())
+    if(!boxes) this.#atomicAnchors.refresh()
+    if(measured && !boxes) {
+      this.#atomicOverlayFrame = requestAnimationFrame(() => this.#positionAtomicOverlays())
+    }
+  }
+
+  positionGroupOutlines(boxes: ReadonlyMap<Element, BoxGeometry>, matrices: WeakMap<Element, DOMMatrix>) {
+    if(this.#atomicOverlays.size === boxes.size && Array.from(this.#atomicOverlays.keys()).every(element => boxes.has(element))) {
+      this.#positionAtomicOverlays(boxes, matrices)
     }
   }
 
@@ -816,8 +849,12 @@ export class SelectionFeature extends EditorFeature {
     return true
   }
 
-  readonly #handleSharedChange = () => {
+  readonly #handleSharedChange = (transaction: Transaction) => {
     if(this.#sharedRefreshQueued) return
+    const transformed = this.editor.features.transformation.stableSingleTransformTarget()
+    // The transform frame updates the outline. The authored style observers
+    // publish toolbar state, and syncFromDOM mirrors the native selection.
+    if(transformed && this.editor.doc.isLocalStyleOnlySync(transaction, transformed)) return
     this.#sharedRefreshQueued = true
     queueMicrotask(() => {
       this.#sharedRefreshQueued = false
@@ -1022,8 +1059,10 @@ export class SelectionFeature extends EditorFeature {
     const pointerId = this.#boxDrag?.pointerId ?? this.#drag?.pointerId
     const target = this.#boxDrag ? document.body : this.#drag?.target
     this.#boxDrag?.overlay.remove()
-    this.#boxDrag?.previews.forEach(overlay => { this.#atomicAnchors.release(overlay); overlay.remove() })
-    this.#atomicAnchors.refresh()
+    if(this.#boxDrag?.previews.size) {
+      this.#boxDrag.previews.forEach(overlay => { this.#atomicAnchors.release(overlay); overlay.remove() })
+      this.#atomicAnchors.refresh()
+    }
     this.#boxDrag = null
     if(!this.#atomicOverlays.size && this.#atomicOverlayFrame !== null) {
       cancelAnimationFrame(this.#atomicOverlayFrame)
@@ -2081,7 +2120,7 @@ export class SelectionFeature extends EditorFeature {
   positionTransformCaret(element: Element, geometry: Pick<CSSStyleDeclaration, "left" | "top" | "width" | "height" | "transform">, floats = this.floatExclusions(element, element.getBoundingClientRect(), geometry)) {
     const caret = this.selectionCaret
     const captured = this.captureSelectedElement
-    const owner = captured ?? this.selectedSectionElement ?? $.selectedElement
+    const owner = captured ?? this.selectedSectionElement ?? this.editor.features.transformation.stableSingleTransformTarget() ?? $.selectedElement
     const outlineOwner = captured ? figureSelectionTarget(captured) : owner
     if(owner !== element && outlineOwner !== element || !element.isConnected || !caret
       || !caret.classList.contains("◆selection-caret-node") && !caret.classList.contains("◆selection-caret-capture")) return
@@ -2558,17 +2597,27 @@ export class SelectionFeature extends EditorFeature {
       if(retained) $.selectElement(retained, false)
     }
     if($.isMultiElementSelection && !inDragSelection) {
+      const elements = $.selectedElements
+      // The outline observer already follows authored geometry. Keep the
+      // existing presentation when a group drag syncs the same live selection.
+      if(!this.#capturedElement && this.editor.features.transformation.hasStableGroupSelection(elements)
+        && this.#atomicOverlays.size === elements.length && elements.every(element =>
+          this.#atomicOverlays.get(element)?.isConnected && element.classList.contains("◆element-selected")
+          && element.classList.contains("◆atomic-range-selected"))) {
+        this.editor.doc.updateLocalSelection()
+        return
+      }
       this.editor.features.widget.syncLegacyOptions(null)
       this.editor.doc.updateLocalSelection()
       this.#releaseCaptureSelection()
       this.#clearSelections()
       this.editor.features.list.clearSelectionPresentation()
       this.editor.features.canvas.syncSelection(null)
-      this.editor.features.transformation.syncGroupSelection($.selectedElements)
+      this.editor.features.transformation.syncGroupSelection(elements)
       this.editor.features.board.refresh()
       this.editor.features.manipulation.refreshNodeDragTarget(null)
       document.body.classList.add("◆", "◆node-selection-active")
-      for(const element of $.selectedElements) {
+      for(const element of elements) {
         this.#revealDetails(element.parentNode)
         this.#markSelection(element, "◆element-selected", "◆atomic-range-selected")
         const overlay = document.createElement("div")
