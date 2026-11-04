@@ -27,6 +27,19 @@ const control = (name: string) => document.body.shadowRoot!.querySelector<HTMLBu
 const settle = async () => { await new Promise<void>(resolve => setTimeout(resolve, 0)) }
 
 describe("standalone canvas reader", () => {
+  it("uses block sizing for captioned pictures in both canvas modes", () => {
+    document.body.innerHTML = '<figure><picture style="width: 320px"><img alt="Map"></picture><figcaption>Map</figcaption></figure>'
+    const picture = document.querySelector("picture")!
+    editor = new DOMEditor()
+    expect(getComputedStyle(picture).display).toBe("block")
+    editor.destroy(); editor = undefined
+
+    reader = mountCanvasReader()
+    expect(reader).not.toBeNull()
+    expect(getComputedStyle(picture).display).toBe("block")
+    expect(getComputedStyle(picture).width).toBe("320px")
+  })
+
   it("crops the minimap to content, moves the viewport independently, and refreshes only while open", async () => {
     document.body.innerHTML = '<p>Near</p><p>Far</p><div class="ww-canvas-starting-view"></div>'
     const appendix = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})

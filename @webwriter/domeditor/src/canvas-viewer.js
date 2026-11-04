@@ -499,6 +499,9 @@ const canvasViewportStyles = `
  * Keep the camera bounds measurable without letting them cover content. */
 body.ww-canvas > div.ww-canvas-starting-view:not([is]) { visibility: hidden; pointer-events: none; }
 
+/* Picture is inline by default, which ignores saved dimensions in captions. */
+:where(picture) { display: block; width: 100%; height: auto; }
+
 @media screen {
 /* The viewport is finite; the appendix slot supplies an unbounded camera. */
 html.◆canvas-active:has(> body.ww-canvas) {
