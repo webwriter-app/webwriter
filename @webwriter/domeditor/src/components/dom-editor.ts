@@ -46,7 +46,7 @@ import {bindEditingUI, type EditingUIProperties, type EditingUIListeners} from "
 import {editorInteractionStyles} from "./editing-controls.styles"
 import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
 import type {LiveLearnerRibbonItem} from "./ribbon"
-import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
+import type { BreadcrumbSelection, DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type {DomEditorToolbox} from "./toolbox"
 import type {LayoutSelectionState} from "../layouts"
 import type { EditingAction } from "../domeditor"
@@ -7335,23 +7335,17 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private handleBreadcrumbItemSelect = (event: Event) => {
-    const item = (event as CustomEvent<SelectionPathItem>).detail
-    if(!item || !Array.isArray(item.path)) return
-    const path = [...item.path]
-
-    void this.execute({
-      type: "selectNode",
-      path,
+  private selectBreadcrumbTarget(event: Event, type: "selectNode" | "selectSection") {
+    const target = (event as CustomEvent<BreadcrumbSelection<SelectionPathItem | SelectionPathSection>>).detail
+    if(!target || !Array.isArray(target.path)) return
+    void this.execute({type, path: [...target.path]}).then(() => {
+      if(target.openToolbox) this.openEditToolbox(true)
     }).finally(() => this.focusEditor())
   }
 
-  private handleBreadcrumbSectionSelect = (event: Event) => {
-    const section = (event as CustomEvent<SelectionPathSection>).detail
-    if(!section || !Array.isArray(section.path)) return
+  private handleBreadcrumbItemSelect = (event: Event) => this.selectBreadcrumbTarget(event, "selectNode")
 
-    void this.execute({type: "selectSection", path: [...section.path]}).finally(() => this.focusEditor())
-  }
+  private handleBreadcrumbSectionSelect = (event: Event) => this.selectBreadcrumbTarget(event, "selectSection")
 
   private handleBreadcrumbItemHover = (event: Event) => {
     const item = (event as CustomEvent<SelectionPathItem | null>).detail

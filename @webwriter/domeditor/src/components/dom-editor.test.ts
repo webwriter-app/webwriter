@@ -9775,6 +9775,41 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0]})
   })
 
+  it.each([
+    {selector: "button.item[data-path='0,0']", action: {type: "selectNode", path: [0, 0]}},
+    {selector: "button.section-item", action: {type: "selectSection", path: [0]}},
+  ])("opens the Edit toolbox on a double click that triggers $action.type", async ({selector, action}) => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: selectionChangeEvent,
+        detail: {path: [
+          {path: [], name: "Document"},
+          {path: [0, 0], name: "Paragraph", sections: [{path: [0], type: "section", name: "Section"}]},
+        ]},
+      },
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    await breadcrumb.updateComplete
+    const button = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(selector)!
+    const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
+
+    button.dispatchEvent(new MouseEvent("click", {bubbles: true, detail: 1}))
+    await toolbox.updateComplete
+    expect(execute).toHaveBeenCalledWith(action)
+    expect(pane.hidden).toBe(true)
+
+    execute.mockClear()
+    button.dispatchEvent(new MouseEvent("click", {bubbles: true, detail: 2}))
+    await vi.waitFor(() => expect(pane.hidden).toBe(false))
+    expect(execute).toHaveBeenCalledWith(action)
+    expect(toolbox.activeTool).toBe("Edit")
+  })
+
   it("indicates node and capture selection on breadcrumb items", async () => {
     const {editor, editorWindow} = await mountEditor()
     const detail = {

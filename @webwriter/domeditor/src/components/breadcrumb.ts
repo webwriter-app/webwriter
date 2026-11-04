@@ -12,6 +12,10 @@ export type DocumentTreeItem = SelectionPathItem & {
   children: DocumentTreeItem[]
 }
 
+export type BreadcrumbSelection<T extends SelectionPathItem | SelectionPathSection> = T & {
+  openToolbox?: boolean
+}
+
 type BreadcrumbEntry = {
   key: string
   kind: "item" | "separator"
@@ -782,9 +786,9 @@ export class DomEditorBreadcrumb extends LitElement {
     }))
   }
 
-  private selectSection(section: SelectionPathSection) {
-    this.dispatchEvent(new CustomEvent<SelectionPathSection>("breadcrumb-section-select", {
-      detail: {...section, path: [...section.path]},
+  private selectSection(section: SelectionPathSection, openToolbox = false) {
+    this.dispatchEvent(new CustomEvent<BreadcrumbSelection<SelectionPathSection>>("breadcrumb-section-select", {
+      detail: {...section, path: [...section.path], ...(openToolbox ? {openToolbox} : {})},
       bubbles: true,
       composed: true,
     }))
@@ -804,20 +808,21 @@ export class DomEditorBreadcrumb extends LitElement {
             aria-pressed=${this.isSectionSelected(section)}
             @mouseenter=${() => this.dispatchSectionHover(section)}
             @mouseleave=${() => this.dispatchSectionHover(null)}
-            @click=${() => this.selectSection(section)}
+            @click=${(event: MouseEvent) => this.selectSection(section, event.detail === 2)}
           >${section.name}${this.renderPositionIcons(section)}</button>
         `)}
       </span>
     `
   }
 
-  private select(item: SelectionPathItem) {
-    this.dispatchEvent(new CustomEvent<SelectionPathItem>("breadcrumb-item-select", {
+  private select(item: SelectionPathItem, openToolbox = false) {
+    this.dispatchEvent(new CustomEvent<BreadcrumbSelection<SelectionPathItem>>("breadcrumb-item-select", {
       detail: {
         path: [...item.path],
         name: item.name,
         ...(item.icon ? {icon: item.icon} : {}),
         ...(item.iconUrl ? {iconUrl: item.iconUrl} : {}),
+        ...(openToolbox ? {openToolbox} : {}),
       },
       bubbles: true,
       composed: true,
@@ -854,7 +859,7 @@ export class DomEditorBreadcrumb extends LitElement {
           aria-label=${`Select ${entry.item.name}`}
           @mouseenter=${() => this.hover(entry.item)}
           @mouseleave=${() => this.clearHover(entry.item)}
-          @click=${() => this.select(entry.item)}
+          @click=${(event: MouseEvent) => this.select(entry.item, event.detail === 2)}
         >
           ${this.renderItemIcon(entry.item)}
           <span class="item-label">${entry.item.name}</span>
