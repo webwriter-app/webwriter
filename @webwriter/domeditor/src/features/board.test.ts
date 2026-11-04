@@ -623,6 +623,9 @@ describe("Board layout", () => {
     convert("board"); const one = cards()[0]
     board().addCard(columns()[0]); const two = cards()[1]
     board().addColumn(); await settle(); geometry()
+    const controls = () => Array.from(editor.appendix.querySelectorAll('[part~="board-add-card"]'))
+    const originalControls = controls()
+    expect(originalControls).toHaveLength(2)
     const data = new DataTransfer(), handle = grip("Drag card 1 in column 1")
     expect(handle.draggable).toBe(true); expect(one.hasAttribute("draggable")).toBe(false)
     handle.dispatchEvent(dragEvent("dragstart", data))
@@ -636,6 +639,9 @@ describe("Board layout", () => {
     grip("Drag card 2 in column 1").dispatchEvent(dragEvent("dragstart", next))
     columns()[1].dispatchEvent(dragEvent("drop", next, 400, 130)); await settle()
     expect(board().cards(columns()[0])).toEqual([two]); expect(board().cards(columns()[1])).toEqual([one])
+    const remainingControls = controls()
+    expect(remainingControls).toHaveLength(originalControls.length)
+    remainingControls.forEach((control, index) => expect(control).toBe(originalControls[index]))
     expect(document.body.innerHTML).not.toContain("◆board-dragging")
     expect(editor.appendix.querySelector<HTMLElement>("[part=board-drop-indicator]")!.hidden).toBe(true)
   })
