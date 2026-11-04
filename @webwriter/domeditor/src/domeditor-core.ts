@@ -1111,6 +1111,7 @@ export class DOMEditor {
       )
       : null
     const widgetOptions = inDragSelection ? null : this.features.widget.getOptionsState(focusedWidget ? [...elements, focusedWidget] : elements)
+    const widgetConversion = inDragSelection ? null : this.features.widget.getConversionState()
     const canSection = this.features.manipulation.canSectionSelection()
     const selectedElementTypes = inDragSelection ? [] : this.features.manipulation.getSelectedElementTypes()
     const detail: SelectionChangeDetail = {
@@ -1142,6 +1143,7 @@ export class DOMEditor {
       ...(layout ? {layout} : {}),
       ...(elementState ? {element: elementState} : {}),
       ...(widgetOptions ? {widget: widgetOptions} : {}),
+      ...(widgetConversion ? {widgetConversion} : {}),
     }
     this.postBridgeEvent(selectionChangeEvent, detail)
   }

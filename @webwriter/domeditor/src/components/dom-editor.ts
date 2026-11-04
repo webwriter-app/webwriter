@@ -159,6 +159,7 @@ import {
   type RibbonDropPosition,
   type HostDragDetail,
   type HostPointerDetail,
+  type WidgetConversionState,
 } from "../editor-bridge"
 import {elementStylePropertyNames, paragraphStylePropertyNameSet, type FloatSide} from "../element-styles"
 import "./breadcrumb"
@@ -411,6 +412,7 @@ export class DomEditor extends LitElement {
     elementAttributes: {attribute: false, state: true},
     selectedElementTypes: {attribute: false, state: true},
     widgetOptions: {attribute: false, state: true},
+    widgetConversion: {attribute: false, state: true},
     elementStyle: {attribute: false, state: true},
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
@@ -576,6 +578,7 @@ export class DomEditor extends LitElement {
   private selectedElementTypes: SelectedElementTypeState[] = []
   private elementAttributes: ElementAttributeState | null = null
   private widgetOptions: WidgetOptionsState | null = null
+  private widgetConversion: WidgetConversionState | null = null
   private elementStyle: ElementStyleState = {
     target: null,
     inline: {},
@@ -4338,8 +4341,9 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private triggerFileDownload(source: string, name: string) {
-    const url = URL.createObjectURL(new Blob([source], {type: "text/html;charset=utf-8"}))
+  private triggerFileDownload(source: string | Blob, name: string) {
+    const blob = typeof source === "string" ? new Blob([source], {type: "text/html;charset=utf-8"}) : source
+    const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.href = url
     link.download = name
@@ -4721,8 +4725,46 @@ export class DomEditor extends LitElement {
       })
   }
 
+  private async runWidgetFileConversion(direction: "import" | "export", sourceId: string, format: string) {
+    const state = this.widgetConversion
+    const formats = direction === "import" ? state?.imports : state?.exports
+    if(state?.sourceId !== sourceId || !formats?.includes(format)) return
+    const revision = this.frameRevision
+    try {
+      if(direction === "import") {
+        const file = await this.pickFileInput(format)
+        if(!file || !this.isConnected || revision !== this.frameRevision) return
+        if(await this.execute({type: "importWidgetFile", sourceId, format, file}) !== true) {
+          throw new Error("The file could not be imported into the selected widget.")
+        }
+      }
+      else {
+        const file = await this.execute({type: "exportWidgetFile", sourceId, format})
+        if(!this.isConnected || revision !== this.frameRevision) return
+        if(!(file instanceof File)) throw new Error("The selected widget could not export this file.")
+        this.triggerFileDownload(file, file.name)
+      }
+    }
+    catch(error) { if(this.isConnected && revision === this.frameRevision) this.reportFileError(error) }
+    finally { if(this.isConnected && revision === this.frameRevision) this.focusEditor() }
+  }
+
   private handleRibbonButtonClick = (event: Event) => {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
+    if(label?.startsWith("widget-import:") || label?.startsWith("widget-export:")) {
+      const [action, sourceId, format] = label.split(":")
+      void this.runWidgetFileConversion(action === "widget-import" ? "import" : "export", sourceId, format)
+      return
+    }
+    if(label?.startsWith("widget-conversion:")) {
+      const [, sourceId, target] = label.split(":")
+      if(this.widgetConversion?.sourceId !== sourceId || !this.widgetConversion.targets.some(item => item.tag === target)) return
+      void this.execute({type: "convertWidgetElement", sourceId, target})
+        .then(result => { if(result !== true) this.fileError = "The selected element could not be converted." })
+        .catch(error => { this.fileError = `Could not convert the selected element: ${error instanceof Error ? error.message : String(error)}` })
+        .finally(() => this.focusEditor())
+      return
+    }
     if(label === "Spelling" || label === "Grammar") {
       void this.execute({type: "checkProofreading", kind: label === "Spelling" ? "spelling" : "grammar"})
         .catch(error => { this.proofreadingState = {...this.proofreadingState, error: error instanceof Error ? error.message : String(error), loading: false, checking: false} })
@@ -8145,6 +8187,7 @@ export class DomEditor extends LitElement {
       this.selectedElementTypes = structuredClone(event.data.detail.selectedElementTypes ?? [])
       const previousWidget = this.widgetOptions
       this.widgetOptions = event.data.detail.widget ? structuredClone(event.data.detail.widget) : null
+      this.widgetConversion = event.data.detail.widgetConversion ? structuredClone(event.data.detail.widgetConversion) : null
       if(previousWidget?.localName !== this.widgetOptions?.localName
         || JSON.stringify(previousWidget?.path) !== JSON.stringify(this.widgetOptions?.path)) this.selectWidgetElementPackage()
       if(this.stylesVisible()) this.queueElementStyleRefresh()
@@ -8513,6 +8556,7 @@ export class DomEditor extends LitElement {
     this.selectedElementTypes = []
     this.elementAttributes = null
     this.widgetOptions = null
+    this.widgetConversion = null
     this.selectionGap = null
     this.canMark = false
     this.canSection = false
@@ -8621,6 +8665,7 @@ export class DomEditor extends LitElement {
       elementAttributes: this.elementAttributes,
       selectedElementTypes: this.selectedElementTypes,
       widgetOptions: this.widgetOptions,
+      widgetConversion: this.widgetConversion,
       elementStyle: this.elementStyle,
       historyState: this.historyState,
       historyLoading: this.historyLoading,

@@ -35,7 +35,7 @@ import {uiMotionDisabled} from "../utility"
 import "./ai-settings"
 import "./element-attribute-editor"
 import "./element-style-editor"
-import {emptyElementHTML, insertionMenuItems} from "./insertion-menu"
+import {emptyElementHTML, insertionMenuItems, ribbonElementTag} from "./insertion-menu"
 import "./package-search"
 import "./ribbon-button"
 import {type RibbonButton, type RibbonButtonDetails} from "./ribbon-button"
@@ -2214,7 +2214,8 @@ export class AppRibbon extends EditingControls {
     if(
       changed.has("activeMenu") || changed.has("expanded") || changed.has("packages") ||
       changed.has("installedPackages") || changed.has("packageSearchQuery") ||
-      changed.has("localPackages") || changed.has("historyState")
+      changed.has("localPackages") || changed.has("historyState") ||
+      changed.has("widgetConversion") && Boolean(changed.get("widgetConversion")) !== Boolean(this.widgetConversion)
     ) this.scheduleResponsiveLayout()
   }
 
@@ -2278,11 +2279,17 @@ export class AppRibbon extends EditingControls {
       && member?.kind === "widget" && member.tagName ? emptyElementHTML(member.tagName) : undefined
   }
 
+  private packageConversion(pkg: WebWriterPackage, member: PackageMember | undefined) {
+    if(this.widgetConversion && member?.kind === "widget" && !this.busyPackageNames.includes(pkg.name)
+      && this.installedPackages.some(candidate => candidate.name === pkg.name)) return this.widgetConversionAction(member.tagName)
+  }
+
   private renderPackageButton(pkg: WebWriterPackage, slot = "") {
     const members = pkg.members.filter(member => member.insertable)
     const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)
     const management = this.packageManagementMode
     const busy = this.busyPackageNames.includes(pkg.name)
+    const conversion = this.packageConversion(pkg, members[0])
     return html`
       <ribbon-button
         slot=${slot}
@@ -2292,11 +2299,11 @@ export class AppRibbon extends EditingControls {
         label=${pkg.label}
         icon="Packages"
         icon-url=${pkg.iconUrl ?? ""}
-        .action=${packageAction(pkg)}
+        .action=${conversion ?? packageAction(pkg)}
         .dragHTML=${this.packageDragHTML(pkg, members[0])}
         .submenu=${!installed || busy ? this.emptyPackageSubmenu : members.slice(1).map(member => ({
           label: member.label,
-          action: packageMemberAction(member),
+          action: this.packageConversion(pkg, member) ?? packageMemberAction(member),
           dragHTML: this.packageDragHTML(pkg, member),
           icon: "Packages",
           iconUrl: pkg.iconUrl,
@@ -2310,7 +2317,7 @@ export class AppRibbon extends EditingControls {
         ?muted=${!installed}
         .loading=${busy}
         ?disabled=${!busy && !management && !members.length}
-        ?keep-drawer-open=${management || !installed || busy}
+        ?keep-drawer-open=${!conversion && (management || !installed || busy)}
       ></ribbon-button>
     `
   }
@@ -2368,12 +2375,15 @@ export class AppRibbon extends EditingControls {
     const visibleCount = Math.max(0, this.packageVisibleCount - 1)
     const visiblePackages = displayPackages.slice(0, visibleCount)
     const overflowPackages = displayPackages.slice(visibleCount)
+    const hasConversion = (pkg: WebWriterPackage) => pkg.members.some(member => member.insertable && this.packageConversion(pkg, member))
     return html`
       <ribbon-drawer
         label="Packages"
         icon="Packages"
         layout="packages"
         ?expandable=${overflowPackages.length > 0}
+        ?conversion-overflow=${overflowPackages.some(hasConversion)}
+        ?has-conversions=${displayPackages.some(hasConversion)}
         @ribbon-drawer-state-change=${this.handlePackageDrawerState}
         @ribbon-drawer-close-complete=${this.handlePackageDrawerClose}
       >
@@ -2476,6 +2486,21 @@ export class AppRibbon extends EditingControls {
     `
   }
 
+  private markElementConversion(button: RibbonMenuButton) {
+    const item = typeof button === "string" ? {label: button} : button
+    if(!this.widgetConversion) return item
+    const tag = ribbonElementTag(item.label, item.action)
+    return {...item, action: this.widgetConversionAction(tag ?? undefined) ?? item.action}
+  }
+
+  private markElementConversions(buttons: RibbonMenuButton[]): RibbonMenuButton[] {
+    if(!this.widgetConversion) return buttons
+    return buttons.map(button => {
+      const item = this.markElementConversion(button)
+      return item.submenu ? {...item, submenu: this.markElementConversions(item.submenu)} : item
+    })
+  }
+
   private renderInsertionDrawer(drawer: RibbonMenuGroup) {
     const buttonLabel = (button: RibbonMenuButton) => typeof button === "string" ? button : button.label
     const buttonByLabel = (label: string) => {
@@ -2534,15 +2559,16 @@ export class AppRibbon extends EditingControls {
         ? this.mediaSelectionMatches(type)
         : item.label === "List" && this.listType !== null
       const tableDropdown = item.label === "Table" ? this.renderTableSizePicker() : null
+      const action = this.markElementConversion(button).action ?? item.label
       return html`
         <ribbon-button
           slot=${slot}
           variant="insertion"
           label=${item.label}
-          .action=${item.action ?? item.label}
-          shortcut=${this.commandShortcut(item.action ?? item.label)}
+          .action=${action}
+          shortcut=${this.commandShortcut(action)}
           .icon=${item.icon ?? item.label}
-          .submenu=${type ? sourceSubmenu : tableDropdown ? [] : submenu}
+          .submenu=${type ? sourceSubmenu : tableDropdown ? [] : this.markElementConversions(submenu)}
           .dropdown=${tableDropdown}
           ?toggle=${item.label === "List"}
           ?active=${active}
@@ -2730,17 +2756,18 @@ export class AppRibbon extends EditingControls {
       const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)
       return {
         label: pkg.label, italic: this.isDeveloperPackage(pkg), selected: this.isConsoleSelectedPackage(pkg), icon: "Packages", iconUrl: pkg.iconUrl,
-        action: packageAction(pkg),
+        action: this.packageConversion(pkg, pkg.members.find(member => member.insertable)) ?? packageAction(pkg),
         dragHTML: this.packageDragHTML(pkg, pkg.members.find(member => member.insertable)),
         removeAction: installed ? packageToggleAction(pkg) : undefined,
         submenu: !installed || this.busyPackageNames.includes(pkg.name) ? [] : pkg.members.filter(member => member.insertable).slice(1).map(member => ({
-          label: member.label, action: packageMemberAction(member), dragHTML: this.packageDragHTML(pkg, member), icon: "Packages", iconUrl: pkg.iconUrl,
+          label: member.label, action: this.packageConversion(pkg, member) ?? packageMemberAction(member), dragHTML: this.packageDragHTML(pkg, member), icon: "Packages", iconUrl: pkg.iconUrl,
         })),
       }
     }))
     return [{label: "Editing", buttons: [
       {label: "Format", icon: "MarkBold", menuOnly: true, submenuGroups: format},
-      {label: "Insert", icon: "Paragraph", menuOnly: true, submenu: insert},
+      {label: "Insert", icon: "Paragraph", menuOnly: true, submenu: this.markElementConversions(insert)},
+      ...this.widgetConversionGroups.map(({label, icon, buttons}) => ({label, icon, menuOnly: true, submenu: buttons})),
       {label: "Packages", icon: "Packages", menuOnly: true, submenuGroups: [{label: "Packages", buttons: packages,
         content: !this.packagesLoading && !this.filteredPackages.length ? html`<span>No packages</span>` : undefined}],
         submenuHeader: html`<package-search .query=${this.packageSearchQuery} .loading=${this.packagesLoading}
@@ -3277,7 +3304,7 @@ export class AppRibbon extends EditingControls {
 
   protected get currentMenuGroups() {
     if(this.activeMenu !== "Start") {
-      return contextDrawerPolicy({
+      const groups = contextDrawerPolicy({
         menu: this.activeMenu,
         surface: "ribbon",
         paragraphSelected: this.paragraphSelected,
@@ -3293,6 +3320,8 @@ export class AppRibbon extends EditingControls {
         figure: Boolean(this.figure),
         widget: Boolean(this.widgetOptions),
       })
+      return this.activeMenu === "Edit" && this.widgetConversion && !groups.some(group => group.label === "Widget")
+        ? [...groups, {label: "Widget", buttons: []}] : groups
     }
     const packageButtons: RibbonMenuButton[] = this.availablePackages.map(pkg => {
       const members = pkg.members.filter(member => member.insertable)

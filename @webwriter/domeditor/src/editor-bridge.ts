@@ -22,7 +22,7 @@ import type {DocumentHeadElementState, DocumentHeadState} from "./document-head"
 import {isDialogClosedBy, type DialogSelectionState} from "./dialog"
 import {isSectionName, type SectionName} from "./sections"
 import type {ElementAttributeState} from "./element-attributes"
-import {isWidgetOptionsState, type WidgetOptionsState} from "./widget-options"
+import {isWidgetFileFormat, isWidgetOptionsState, type WidgetOptionsState} from "./widget-options"
 import type {LayoutSelectionState} from "./layouts"
 import type {DocumentLayoutState} from "./document-layout"
 import {nodeAtPath} from "./utility"
@@ -470,6 +470,14 @@ export type ElementSelectionType = Pick<ElementAttributeState, "localName" | "na
   path?: number[]
 }
 
+export type WidgetConversionState = {
+  /** The same frame-local identity used by element attributes. */
+  sourceId: string
+  targets: {tag: string, name: string, icon: string, iconUrl?: string}[]
+  imports?: string[]
+  exports?: string[]
+}
+
 export function isElementSelectionType(value: unknown): value is ElementSelectionType {
   return !!value && typeof value === "object"
     && typeof (value as ElementSelectionType).localName === "string"
@@ -538,6 +546,7 @@ export type SelectionChangeDetail = {
   selectedElementTypes?: SelectedElementTypeState[]
   /** Options and actions of the innermost selected widget, when any. */
   widget?: WidgetOptionsState
+  widgetConversion?: WidgetConversionState
   /** Present only when a section was explicitly selected from the breadcrumb. */
   section?: SectionSelectionState
 }
@@ -1001,6 +1010,11 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
         && isString(group.style.context.display) && isString(group.style.context.parentDisplay)
         && (group.widget === undefined || isWidgetOptionsState(group.widget))))
     && (detail.widget === undefined || isWidgetOptionsState(detail.widget))
+    && isOptionalFeature(detail.widgetConversion, conversion => isString(conversion.sourceId)
+      && Array.isArray(conversion.targets) && conversion.targets.every(target => isRecord(target)
+        && isString(target.tag) && isString(target.name) && isString(target.icon) && isOptional(target.iconUrl, isString))
+      && [conversion.imports, conversion.exports].every(formats => formats === undefined
+        || Array.isArray(formats) && formats.every(isWidgetFileFormat)))
     && isOptionalFeature(detail.media, isMediaSelection)
     && isOptionalFeature(detail.dialog, isDialogSelection)
     && isOptionalFeature(detail.table, isTableSelection)

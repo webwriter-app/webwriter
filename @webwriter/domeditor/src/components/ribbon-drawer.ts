@@ -730,6 +730,26 @@ export class RibbonDrawer extends LitElement {
       transform: rotate(225deg);
     }
 
+    :host([conversion-overflow]:not([drawer-open])) .drawer-toggle::after,
+    :host([has-conversions][collapsed]:not([drawer-open])) .drawer-toggle::after {
+      content: "";
+      position: absolute;
+      width: 0.85rem;
+      height: 0.85rem;
+      border: 1px solid currentColor;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    :host([layout="widget"]) .controls {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.15rem;
+    }
+    :host([layout="widget"][drawer-open]) .controls {overflow: auto;}
+    :host([layout="widget"]) ::slotted(*) {flex: 0 0 auto;}
+
     .advanced-count,
     .element-count {
       display: inline-flex; align-items: center; justify-content: center;
@@ -1605,6 +1625,7 @@ export class RibbonDrawer extends LitElement {
           <span class="summary-label">${this.label}${elementCount}</span>
         </div>
        <span class="pane-label">
+         <slot name="heading-icon"></slot>
          ${this.selectableHeading ? html`<button type="button" class="pane-label-button"
            @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
            @click=${() => this.dispatchEvent(new CustomEvent("drawer-heading-select", {bubbles: true, composed: true}))}>

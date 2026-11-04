@@ -34,6 +34,7 @@ export type EditingUIProperties = Pick<EditingControls,
   | "elementAttributes"
   | "selectedElementTypes"
   | "widgetOptions"
+  | "widgetConversion"
   | "elementStyle"
   | "historyState"
   | "historyLoading"

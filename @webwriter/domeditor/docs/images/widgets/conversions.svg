@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="180" viewBox="0 0 480 180" role="img" aria-labelledby="title desc">
+  <title id="title">Convert widget content</title>
+  <desc id="desc">A native HTML list converts to and from a list widget. The widget can also import or export a file.</desc>
+  <g stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="16" y="50" width="124" height="100" rx="5" fill="#f7f5f4"/>
+    <rect x="178" y="50" width="124" height="100" rx="5" fill="#e3f5fd"/>
+    <path d="M340 50h102l22 22v78H340z" fill="#f7f5f4"/>
+    <path d="M442 50v22h22" fill="none"/>
+    <path d="M48 112h62m-62 16h46m108-16h77m-77 16h57m106-16h73m-73 16h51" fill="none" stroke-linecap="round"/>
+  </g>
+  <g fill="#0f2f48" font-family="system-ui, sans-serif" font-size="15" font-weight="600" text-anchor="middle">
+    <text x="78" y="33">Native HTML</text>
+    <text x="240" y="33">Widget</text>
+    <text x="402" y="33">File</text>
+  </g>
+  <g fill="#0f2f48" font-family="ui-monospace, monospace" font-size="15" text-anchor="middle">
+    <text x="78" y="86">&lt;ul&gt;</text>
+    <text x="240" y="86">ww-item-list</text>
+    <text x="402" y="86">JSON / text</text>
+  </g>
+  <g fill="none" stroke="#29a3dd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M148 94h22m-6-6 6 6-6 6m6 8h-22m6-6-6 6 6 6"/>
+    <path d="M310 94h22m-6-6 6 6-6 6m6 8h-22m6-6-6 6 6 6"/>
+  </g>
+</svg>

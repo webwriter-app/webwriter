@@ -5,9 +5,8 @@ import { ribbonIcon } from "../ribbon-icons"
 import {createAnchorPositioner} from "../anchor-positioning.js"
 import {popupAnchorCSS} from "./popup-position"
 import type {PackageKeywordPresentation} from "../package-keywords"
-import "./ribbon-menu"
 import "./qr-code"
-import type {RibbonMenu, RibbonMenuButton, RibbonMenuGroup} from "./ribbon-menu"
+import {isWidgetConversionAction, type RibbonMenu, type RibbonMenuButton, type RibbonMenuGroup} from "./ribbon-menu"
 import {ribbonElementInsertionAction, ribbonElementTag, ribbonInsertionAction, startElementDrag, startRibbonInsertionDrag} from "./insertion-menu"
 
 export type RibbonButtonDetails = {
@@ -68,6 +67,19 @@ export class RibbonButton extends LitElement {
     :host([icon-only]) .button-label { display: none; }
     :host([icon-only]) .main-button { padding: 0.3rem; justify-content: center; }
     :host([icon-only]) .button-icon { width: 1.6rem; height: 1.6rem; }
+    .main-button[data-conversion] .button-label-text {
+      text-decoration: underline dotted currentColor;
+      text-underline-offset: 0.2em;
+    }
+
+    :host([variant="element-conversion"]) {
+      flex: 0 0 1.3rem;
+      width: 1.3rem;
+      min-width: 0;
+      margin-inline-end: 0.25rem;
+    }
+    :host([variant="element-conversion"]) .main-button {padding: 0.1rem; min-height: 1.3rem;}
+    :host([variant="element-conversion"]) .button-icon {width: 1rem; height: 1rem;}
 
     :host {
       display: block;
@@ -1215,7 +1227,7 @@ export class RibbonButton extends LitElement {
     if(source === "pointer") this.insertionHoverPointer = hovered
     else this.insertionHoverFocus = hovered
     const action = this.action || this.label
-    const insertable = !action.startsWith("insert-math:") && !action.startsWith("list-style:") && action !== "element:math"
+    const insertable = !isWidgetConversionAction(action) && !action.startsWith("insert-math:") && !action.startsWith("list-style:") && action !== "element:math"
       && ((this.variant === "insertion" && Boolean(ribbonElementTag(this.label, action)))
         || ribbonInsertionAction(action) || ribbonElementInsertionAction(action))
     const active = insertable && !this.disabled && (this.insertionHoverPointer || this.insertionHoverFocus)
@@ -1278,6 +1290,9 @@ export class RibbonButton extends LitElement {
         const left = menu.left, top = menu.top
         const opensBelow = Math.abs(menu.top - button.bottom + 1) < .5
         submenu.focusEditingLabel()
+        if(this.variant === "element-conversion") {
+          submenu.renderRoot.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus({preventScroll: true})
+        }
         if(opensBelow || top + menu.height === button.top + 1) {
           const placement = opensBelow ? "below" : "above"
           row.setAttribute("data-connected", placement)
@@ -1389,10 +1404,12 @@ export class RibbonButton extends LitElement {
     const hasDropdown = this.hasDropdown
     const showSubmenuTrigger = (hasDropdown || this.openDrawer) && (!this.dropdownOnClick || Boolean(this.iconAction))
     const dragAction = this.action || this.label
-    const dragTag = this.variant === "insertion" || dragAction === "Formula" ? ribbonElementTag(this.label, dragAction) : null
+    const conversion = isWidgetConversionAction(dragAction)
+    const dragTag = !conversion && (this.variant === "insertion" || dragAction === "Formula") ? ribbonElementTag(this.label, dragAction) : null
     const dragPackageInsertion = this.variant === "package" && ribbonInsertionAction(dragAction)
     const shapeGallery = this.submenu.some(item => typeof item !== "string" && item.category)
-    const title = `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
+    const title = dragAction.startsWith("widget-conversion:") ? `Convert to ${this.label}`
+      : `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
       <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}${this.iconAction ? " has-icon-action" : ""}`} @mouseenter=${this.scheduleDetailsShow} @mouseleave=${this.leaveDetails}>
         ${this.iconAction ? html`
@@ -1411,9 +1428,10 @@ export class RibbonButton extends LitElement {
         ` : nothing}
         <button
           class="main-button"
+          ?data-conversion=${conversion}
           type="button"
           draggable=${String(Boolean(dragTag || dragPackageInsertion) && !this.disabled)}
-          aria-label=${this.label}
+          aria-label=${conversion ? title : this.label}
           aria-busy=${this.loading ? "true" : nothing}
           aria-pressed=${this.toggle? String(this.active): nothing}
           aria-haspopup=${this.dropdownOnClick && hasDropdown ? this.dropdown !== null ? "dialog" : "menu" : nothing}
