@@ -27,6 +27,67 @@ const control = (name: string) => document.body.shadowRoot!.querySelector<HTMLBu
 const settle = async () => { await new Promise<void>(resolve => setTimeout(resolve, 0)) }
 
 describe("standalone canvas reader", () => {
+  it("crops the minimap to content, moves the viewport independently, and refreshes only while open", async () => {
+    document.body.innerHTML = '<p>Near</p><p>Far</p><div class="ww-canvas-starting-view"></div>'
+    const appendix = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
+    const slot = document.createElement("slot")
+    appendix.replaceChildren(slot)
+    const rect = (left: number, top: number, width: number, height: number) => ({
+      left, top, width, height, right: left + width, bottom: top + height,
+    } as DOMRect)
+    const camera = () => slot.style.transform.match(/[-\d.]+(?=px|\))/g)?.map(Number) ?? [0, 0, 1]
+    vi.spyOn(slot, "getBoundingClientRect").mockImplementation(() => {
+      const [x, y, zoom] = camera()
+      return rect(x, y, 1280 * zoom, 720 * zoom)
+    })
+    for(const [index, item] of [...document.body.children].entries()) {
+      vi.spyOn(item, "getBoundingClientRect").mockImplementation(() => {
+        const [x, y, zoom] = camera()
+        return rect(x + (index * 500 - 200) * zoom, y + (index * 200 - 50) * zoom, 100 * zoom, 60 * zoom)
+      })
+    }
+    const snapshot = vi.fn(async () => ({
+      meta: {clip: {x: -264, y: -114}, contentX: 2, contentY: 2, vbW: 732, vbH: 392},
+      toRaw: () => "data:image/svg+xml,preview",
+    }))
+    reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
+    const toggle = control("minimap-toggle"), map = control("minimap"), svg = map.querySelector("svg")!
+    const viewport = svg.querySelector(".◆canvas-minimap-camera")!
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    expect(map.hidden).toBe(false)
+    await settle()
+    expect(snapshot).toHaveBeenCalledTimes(1)
+    expect(svg.getAttribute("viewBox")).toBe("0 0 728 388")
+    reader.viewer.zoomAt(1)
+    const initialWidth = Number(viewport.getAttribute("width"))
+    control("zoom-in").click()
+    expect(Number(viewport.getAttribute("width"))).toBeCloseTo(initialWidth / 1.2)
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue(rect(500, 0, 220, 94))
+    const before = viewport.getAttribute("x")
+    map.dispatchEvent(new MouseEvent("click", {detail: 1, clientX: 610 + 182 * 94 / 388, clientY: 47}))
+    expect(viewport.getAttribute("x")).not.toBe(before)
+    expect(reader.viewer.clientPoint(window.innerWidth / 2, window.innerHeight / 2)).toEqual({
+      x: expect.closeTo(282), y: expect.closeTo(80),
+    })
+    document.body.firstElementChild!.classList.add("◆element-selected")
+    await new Promise(resolve => setTimeout(resolve, 160))
+    expect(snapshot).toHaveBeenCalledTimes(1)
+
+    document.body.firstElementChild!.textContent = "Changed while open"
+    await vi.waitFor(() => expect(snapshot).toHaveBeenCalledTimes(2))
+    toggle.click()
+    expect(map.hidden).toBe(true)
+    document.body.firstElementChild!.textContent = "Changed while collapsed"
+    await new Promise(resolve => setTimeout(resolve, 160))
+    expect(snapshot).toHaveBeenCalledTimes(2)
+    toggle.click()
+    expect(map.hidden).toBe(false)
+    await settle()
+    expect(snapshot).toHaveBeenCalledTimes(3)
+    reader.destroy()
+    expect(appendix.querySelector("[part=canvas-minimap]")).toBeNull()
+  })
+
   it("uses only a direct uncustomized starting-view div", () => {
     document.body.innerHTML = '<div class="ww-canvas-starting-view" id="nested"><div></div></div>'
     expect(canvasStartingView()).toBe(document.getElementById("nested"))
@@ -291,6 +352,7 @@ describe("canvas export assets", () => {
       document.designMode = "off"
       new Function(script.textContent!.replace(/^export /gm, ""))()
       expect(document.body.shadowRoot!.querySelector("[part=canvas-controls]")).not.toBeNull()
+      expect(control("minimap-toggle").getAttribute("aria-expanded")).toBe("true")
       // A new editor claims and disposes the reader synchronously.
       editor = new DOMEditor()
       expect(document.body.shadowRoot!.querySelectorAll("[part=canvas-controls]")).toHaveLength(1)

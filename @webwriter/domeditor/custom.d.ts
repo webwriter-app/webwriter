@@ -50,6 +50,15 @@ declare module 'virtual:reference-formatter-source' {
   export default source
 }
 
+declare module 'virtual:canvas-snapdom' {
+  export {snapdom} from '@zumer/snapdom'
+}
+
+declare module 'virtual:canvas-snapdom-source' {
+  const source: string
+  export default source
+}
+
 declare module 'virtual:distribution-reader-sources' {
   const sources: {
     core: string

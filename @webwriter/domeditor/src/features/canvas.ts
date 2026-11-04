@@ -509,7 +509,7 @@ export class CanvasFeature extends EditorFeature {
     click: event => {
       const origin = event.composedPath()[0]
       const target = origin instanceof Element ? origin.closest("button") : null
-      if(!(target instanceof HTMLButtonElement) || !this.controls?.contains(target)) return
+      if(!(target instanceof HTMLButtonElement) || !this.controls?.contains(target) || target.name.startsWith("minimap")) return
       if(target.name === "hand") {
         this.hand = !this.hand
         this.syncHandMode()
@@ -548,7 +548,7 @@ export class CanvasFeature extends EditorFeature {
     if(this.background) this.background.hidden = !this.active
     if(this.active && !this.slot) {
       this.slot = this.editor.appendix.querySelector<HTMLSlotElement>("slot:not([name])")!
-      this.viewer = new CanvasViewer(this.slot, this.background!, this.controls!, this.panSurface, this.cameraChanged)
+      this.viewer = new CanvasViewer(this.slot, this.background!, this.controls!, this.panSurface, this.cameraChanged, this.editor.options.loadCanvasSnapdom)
       if(!this.viewer.startView()) this.viewer.applyCamera()
     }
     else if(!this.active && this.slot) this.restoreSlot()
@@ -588,6 +588,7 @@ export class CanvasFeature extends EditorFeature {
       remove.hidden = !canDeleteStartingView
       group.append(show, remove)
       this.controls!.append(group)
+      this.viewer?.mountMinimap()
     }
     this.controls!.hidden = !this.controls!.childElementCount
     this.editor.postSelectionPath()

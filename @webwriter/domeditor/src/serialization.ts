@@ -1,6 +1,7 @@
 import {createImageMapPopoverController, imageMapHotspotBounds, imageMapHotspotShape, imageMapScale, mountImageMapReader} from "./media"
 import appIconSource from "../../../static/assets/app-icon-transparent.svg?raw"
 import canvasViewerSource from "./canvas-viewer.js?raw"
+import canvasSnapdomSource from "virtual:canvas-snapdom-source"
 import documentViewerSource from "./document-viewer.js?raw"
 import anchorPositioningSource from "./anchor-positioning.js?raw"
 import figureLayoutSource from "./figure-layout.js?raw"
@@ -154,13 +155,15 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
       .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
-  if(documentLayoutMode(root.body) === "canvas") {
+  const canvas = documentLayoutMode(root.body) === "canvas"
+  if(canvas) {
     const script = root.createElement("script")
     script.id = permissions.size ? "webwriter-layout-print" : "webwriter-canvas-viewer"
     script.type = "module"
     // Evaluate the initial camera before the browser paints authored content.
     script.setAttribute("blocking", "render")
-    script.textContent = `${layoutPrintSource}\n${permissions.size ? "" : `${canvasViewerSource}\nmountCanvasReader()\n`}createLayoutPrint(document)\n`
+    script.textContent = `${layoutPrintSource}\n${permissions.size ? "" : `${canvasViewerSource}\n${canvasSnapdomSource}\nmountCanvasReader(loadCanvasSnapdom)\n`}createLayoutPrint(document)\n`
+      .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
   const tags = new Set<string>()
@@ -192,7 +195,8 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     script.id = "webwriter-distribution-reader"
     script.type = "module"
     const actions = permissions.has("insert") ? ["insert"] as const : []
-    script.textContent = `${distributionReaderSources.core}\nconst distributionContext = distributionReader.mountDistributionReader(document, ${JSON.stringify({widgets: packageWidgetSchemaDefinitions(packages).filter(widget => tags.has(widget.tagName))})});\nif(distributionContext) {\n${actions.map(action => `${distributionReaderSources[action as keyof typeof distributionReaderSources]}\ndistributionAction.install(distributionContext);`).join("\n")}\n}`.replace(/<\/script/gi, "<\\/script")
+    const widgets = packageWidgetSchemaDefinitions(packages).filter(widget => tags.has(widget.tagName))
+    script.textContent = `${distributionReaderSources.core}\n${canvas ? canvasSnapdomSource : ""}const distributionContext = distributionReader.mountDistributionReader(document, {widgets: ${JSON.stringify(widgets)}${canvas ? ", loadCanvasSnapdom" : ""}});\nif(distributionContext) {\n${actions.map(action => `${distributionReaderSources[action as keyof typeof distributionReaderSources]}\ndistributionAction.install(distributionContext);`).join("\n")}\n}`.replace(/<\/script/gi, "<\\/script")
     root.head.append(script)
   }
   const known = new Set<string>()

@@ -1,6 +1,6 @@
 import {applyUpdate, encodeStateAsUpdate, encodeStateVector} from "yjs"
 import {SharedDOMDoc} from "./domdoc"
-import {DOMEditor} from "./domeditor-core"
+import {DOMEditor, type DOMEditorOptions} from "./domeditor-core"
 import {$, getContainer, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction} from "./utility"
 import {WidgetDataStorage} from "./widget-data-storage"
 import {effectiveDistribution, hydrateDistributionInstructions, readDistributionConfigs} from "./distribution-dom"
@@ -22,7 +22,7 @@ export type DistributionReaderContext = {
 }
 
 /** Only in-frame primitives are imported here. Authoring controls never enter this graph. */
-export function mountDistributionReader(root: Document, options: {widgets?: import("./schema").WidgetSchemaDefinition[]} = {}): DistributionReaderContext | null {
+export function mountDistributionReader(root: Document, options: Pick<DOMEditorOptions, "widgets" | "loadCanvasSnapdom"> = {}): DistributionReaderContext | null {
   hydrateDistributionInstructions(root)
   const configs = readDistributionConfigs(root)
   if(!configs.length || root.designMode === "on") return null
@@ -218,7 +218,7 @@ export function mountDistributionReader(root: Document, options: {widgets?: impo
     ready = true
     // DOMEditor itself is shared with authoring; only its capability provider differs.
     // No host ribbon, toolbox, bridge initialization or settings enter this path.
-    if(root === document) editor = new DOMEditor({widgets: options.widgets, reader: {allows: (permission, element) => permission === "select"
+    if(root === document) editor = new DOMEditor({...options, reader: {allows: (permission, element) => permission === "select"
       ? ["edit", "move", "delete"].some(action => context.allows(action as DistributionPermission, element))
       // Generic authoring add controls do not carry an approved insertion recipe.
       // Reader insertion continues through the exact items in its palette.

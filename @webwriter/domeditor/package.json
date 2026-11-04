@@ -35,6 +35,7 @@
     "@csstools/css-tokenizer": "^3.0.4",
     "es-module-lexer": "^1.7.0",
     "@tabler/icons": "^3.46.0",
+    "@zumer/snapdom": "3.7.1",
     "lit": "^3.3.2",
     "fontkitten": "^1.0.2",
     "esbuild-wasm": "^0.25.12",

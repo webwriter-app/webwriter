@@ -10,7 +10,7 @@ import { SelectionFeature } from "./features/selection"
 import { ListFeature } from "./features/list"
 import { TransformationFeature } from "./features/transformation"
 import {CanvasFeature} from "./features/canvas"
-import {isCanvasStartingView} from "./canvas-viewer.js"
+import {isCanvasStartingView, type LoadSnapdom} from "./canvas-viewer.js"
 import {SlidesFeature} from "./features/slides"
 import {BoardFeature} from "./features/board"
 import {boardLayoutRole, documentLayoutMode, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "./document-layout"
@@ -175,6 +175,7 @@ export type DOMEditorOptions = {
     allows: (permission: import("./distribution.js").DistributionPermission | "select", element: Element) => boolean
   }
   bundleOfflineModules?: typeof import("./offline-module-bundler").bundleOfflineModules
+  loadCanvasSnapdom?: LoadSnapdom
   appendSerializedAssets?: (root: Document, packages: import("./packages").WebWriterPackage[], importMap?: import("@jspm/import-map").IImportMap | null) => void
   widgetData?: import("./widget-data").WidgetDataOptions
   syncUrl?: string

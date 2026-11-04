@@ -1,7 +1,8 @@
-/** Shared DOM canvas camera. This module has no imports so exports can embed
- * its exact source without an editor dependency or a network request. */
+/** Shared DOM canvas camera. Exports embed this source and supply SnapDOM
+ * locally, without an editor dependency or a network request. */
 export const canvasGridSize = 20
 const wheelPanIdleMs = 150
+const startingViewSelector = "div.ww-canvas-starting-view:not([is])"
 
 // Tabler outline icons are embedded because this module is also exported standalone.
 export const canvasIcons = {
@@ -10,11 +11,11 @@ export const canvasIcons = {
 }
 
 export function canvasStartingView(body = document.body) {
-  return body.querySelector(":scope > div.ww-canvas-starting-view:not([is])")
+  return body.querySelector(`:scope > ${startingViewSelector}`)
 }
 
 export function isCanvasStartingView(element) {
-  return element.matches("div.ww-canvas-starting-view:not([is])") && element.parentElement === element.ownerDocument.body
+  return element.matches(startingViewSelector) && element.parentElement === element.ownerDocument.body
 }
 
 export function createCanvasPanSurface() {
@@ -25,8 +26,222 @@ export function createCanvasPanSurface() {
   return surface
 }
 
+const minimapMinPadding = 64
+const minimapPaddingRatio = .1
+const minimapRefreshDelay = 120
+const minimapExcluded = ".◆editor-only, [data-webwriter-editor-only], script, template"
+const authoredClass = value => (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
+
+class CanvasMinimap {
+  constructor(viewer, loadSnapdom) {
+    this.viewer = viewer
+    this.loadSnapdom = loadSnapdom
+    this.bounds = null
+    this.generation = 0
+    this.running = null
+    this.timer = null
+    this.queued = false
+
+    this.toggle = document.createElement("button")
+    this.toggle.type = "button"
+    this.toggle.name = "minimap-toggle"
+    this.toggle.setAttribute("aria-controls", "◆canvas-minimap")
+    this.toggle.setAttribute("aria-label", "Canvas minimap")
+    this.toggle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
+    this.map = document.createElement("button")
+    this.map.type = "button"
+    this.map.name = "minimap"
+    this.map.id = "◆canvas-minimap"
+    this.map.setAttribute("part", "canvas-minimap")
+    this.map.setAttribute("aria-label", "Center canvas here")
+    this.map.title = "Click to center the canvas"
+    this.map.disabled = true
+    this.map.innerHTML = '<span>Loading minimap…</span><svg aria-hidden="true"><clipPath id="◆canvas-minimap-bounds"><rect width="100%" height="100%"/></clipPath><rect width="100%" height="100%" fill="white"/><g clip-path="url(#◆canvas-minimap-bounds)"><image/><rect class="◆canvas-minimap-camera" vector-effect="non-scaling-stroke"/></g></svg>'
+    this.svg = this.map.querySelector("svg")
+    this.image = this.svg.querySelector("image")
+    this.viewport = this.svg.querySelector(".◆canvas-minimap-camera")
+    this.map.addEventListener("click", event => this.center(event))
+    this.toggle.addEventListener("click", () => this.setOpen(this.map.hidden))
+    this.observer = new MutationObserver(records => {
+      if(records.some(record => this.contentChanged(record, records))) this.schedule()
+    })
+    this.resize = () => this.updateCamera()
+    this.resourceLoaded = event => {
+      if(event.target instanceof Element && event.target.matches('img, link[rel~="stylesheet"]')
+        && !event.target.closest(minimapExcluded)) this.schedule()
+    }
+    window.addEventListener("resize", this.resize)
+  }
+
+  contentChanged(record, records) {
+    const target = record.target instanceof Element ? record.target : record.target.parentElement
+    if(target?.closest(minimapExcluded)) return false
+    if(target && isCanvasStartingView(target)) {
+      return record.attributeName === "is" || record.attributeName === "class"
+        && !record.oldValue?.split(/\s+/).includes("ww-canvas-starting-view")
+    }
+    if(record.type === "childList") {
+      return [...record.addedNodes, ...record.removedNodes].some(node => {
+        if(node instanceof Element) return !node.matches(minimapExcluded) && (target !== document.body || !node.matches(startingViewSelector))
+        return node.nodeType === Node.TEXT_NODE && (target !== document.body && target !== document.head || node.textContent.trim())
+      })
+    }
+    if(record.attributeName === "class") return authoredClass(record.oldValue) !== authoredClass(target.getAttribute("class"))
+    if(record.attributeName === "contenteditable" && !record.oldValue && !target.getAttribute("contenteditable")
+      && (target.classList.contains("◆widget-editable") || records.some(entry => entry.target === target
+        && entry.attributeName === "class" && entry.oldValue?.split(/\s+/).includes("◆widget-editable")))) return false
+    return true
+  }
+
+  setOpen(open) {
+    this.toggle.setAttribute("aria-expanded", String(open))
+    this.toggle.title = open ? "Hide minimap" : "Show minimap"
+    this.map.hidden = !open
+    if(open) {
+      this.observer.observe(document.documentElement, {subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true})
+      document.addEventListener("load", this.resourceLoaded, true)
+      this.updateCamera()
+      void this.refresh()
+    }
+    else {
+      this.generation++
+      this.observer.disconnect()
+      document.removeEventListener("load", this.resourceLoaded, true)
+      clearTimeout(this.timer)
+      this.timer = null
+    }
+  }
+
+  schedule() {
+    if(this.map.hidden) return
+    clearTimeout(this.timer)
+    this.timer = setTimeout(() => {
+      this.timer = null
+      void this.refresh()
+    }, minimapRefreshDelay)
+  }
+
+  usedBounds() {
+    const {slot, zoom} = this.viewer
+    const origin = slot.getBoundingClientRect()
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity
+    for(const item of this.viewer.items()) {
+      if(item.matches(minimapExcluded) || getComputedStyle(item).visibility === "hidden") continue
+      const rect = item.getBoundingClientRect()
+      if(!rect.width || !rect.height) continue
+      left = Math.min(left, rect.left); top = Math.min(top, rect.top)
+      right = Math.max(right, rect.right); bottom = Math.max(bottom, rect.bottom)
+    }
+    if(!Number.isFinite(left)) return null
+    const width = (right - left) / zoom, height = (bottom - top) / zoom
+    const padding = Math.max(minimapMinPadding, Math.max(width, height) * minimapPaddingRatio)
+    return {x: (left - origin.left) / zoom - padding, y: (top - origin.top) / zoom - padding,
+      width: width + 2 * padding, height: height + 2 * padding}
+  }
+
+  async refresh() {
+    if(this.map.hidden || !this.viewer.active) return
+    const generation = this.generation
+    if(this.running === generation) { this.queued = true; return }
+    this.running = generation
+    this.queued = false
+    const current = () => this.generation === generation && this.viewer.active
+    let bounds = null, snapshot = null
+    try {
+      bounds = this.usedBounds()
+      if(bounds) {
+        if(!this.measurements) {
+          this.measurements = document.createElement("div")
+          this.measurements.setAttribute("part", "canvas-minimap-measurements")
+          this.measurements.setAttribute("aria-hidden", "true")
+          this.viewer.slot.getRootNode().append(this.measurements)
+        }
+        this.snapdom ??= Promise.resolve(this.loadSnapdom())
+        const snapdom = await this.snapdom
+        if(!current()) return
+        const {slot} = this.viewer
+        const clip = () => {
+          const {zoom} = this.viewer, rect = slot.getBoundingClientRect()
+          return {x: window.scrollX + rect.left + bounds.x * zoom, y: window.scrollY + rect.top + bounds.y * zoom,
+            width: bounds.width * zoom, height: bounds.height * zoom}
+        }
+        snapshot = await snapdom(slot, {
+          clip: clip(), width: Math.max(1, Math.min(540, 188 * bounds.width / bounds.height)), dpr: 1,
+          exclude: element => element.matches(minimapExcluded) || isCanvasStartingView(element),
+          plugins: [{
+            name: "webwriter-canvas",
+            beforeClone: context => { context.options.clip = clip() },
+            beforeRender: context => {
+              // SnapDOM flattens the slot into a fragment. Recreate its
+              // containing block in the detached capture for absolute items.
+              const wrapper = document.createElement("div")
+              Object.assign(wrapper.style, {position: "relative", width: slot.style.width, height: slot.style.height})
+              wrapper.append(context.clone)
+              context.clone = wrapper
+            },
+          }],
+        })
+      }
+    }
+    catch {
+      // A failed snapshot should not prevent canvas navigation.
+    }
+    finally {
+      if(this.running === generation) {
+        this.running = null
+        if(this.queued) this.schedule()
+      }
+    }
+    if(!current()) return
+    this.bounds = bounds
+    this.map.disabled = !bounds
+    if(!bounds) this.map.firstElementChild.textContent = "Empty canvas"
+    const meta = snapshot?.meta
+    if(meta?.clip && bounds) {
+      this.image.setAttribute("x", meta.clip.x - meta.contentX - bounds.x)
+      this.image.setAttribute("y", meta.clip.y - meta.contentY - bounds.y)
+      this.image.setAttribute("width", meta.vbW)
+      this.image.setAttribute("height", meta.vbH)
+      this.image.setAttribute("href", snapshot.toRaw())
+    }
+    else this.image.removeAttribute("href")
+    if(bounds) this.svg.setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`)
+    this.updateCamera()
+  }
+
+  updateCamera() {
+    if(this.map.hidden || !this.bounds) return
+    const {x, y} = this.viewer.clientPoint(0, 0)
+    this.viewport.setAttribute("x", x - this.bounds.x)
+    this.viewport.setAttribute("y", y - this.bounds.y)
+    this.viewport.setAttribute("width", window.innerWidth / this.viewer.zoom)
+    this.viewport.setAttribute("height", window.innerHeight / this.viewer.zoom)
+  }
+
+  center(event) {
+    if(!this.bounds || this.map.hidden) return
+    const {x, y, width, height} = this.bounds
+    let fx = .5, fy = .5
+    if(event.detail) {
+      const rect = this.svg.getBoundingClientRect(), scale = Math.min(rect.width / width, rect.height / height)
+      if(!scale) return
+      fx = Math.min(1, Math.max(0, .5 + (event.clientX - rect.left - rect.width / 2) / (scale * width)))
+      fy = Math.min(1, Math.max(0, .5 + (event.clientY - rect.top - rect.height / 2) / (scale * height)))
+    }
+    this.viewer.centerOn({x: x + fx * width, y: y + fy * height})
+  }
+
+  destroy() {
+    this.setOpen(false)
+    window.removeEventListener("resize", this.resize)
+    this.map.remove()
+    this.toggle.remove()
+    this.measurements?.remove()
+  }
+}
+
 export class CanvasViewer {
-  constructor(slot, background, controls, panSurface = null, onChange = () => {}) {
+  constructor(slot, background, controls, panSurface = null, onChange = () => {}, loadSnapdom = null) {
     slot.dispatchEvent(new Event("webwriter-canvas-viewer-dispose"))
     this.body = document.body
     this.slot = slot
@@ -34,6 +249,8 @@ export class CanvasViewer {
     this.controls = controls
     this.panSurface = panSurface
     this.onChange = onChange
+    this.loadSnapdom = loadSnapdom
+    this.minimap = null
     this.camera = {x: 32, y: 32, zoom: 1}
     this.panning = null
     this.wheelPanTimer = null
@@ -59,6 +276,7 @@ export class CanvasViewer {
   }
 
   destroy() {
+    this.minimap?.destroy()
     this.stopPan()
     this.stopWheelPan()
     document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.stylesheet)
@@ -148,6 +366,22 @@ export class CanvasViewer {
     return {x: (x - (rect?.left ?? this.camera.x)) / this.zoom, y: (y - (rect?.top ?? this.camera.y)) / this.zoom}
   }
 
+  mountMinimap() {
+    if(!this.loadSnapdom) return
+    const existing = this.minimap
+    this.minimap ??= new CanvasMinimap(this, this.loadSnapdom)
+    this.controls.append(this.minimap.toggle, this.minimap.map)
+    if(!existing) this.minimap.setOpen(true)
+  }
+
+  centerOn(point) {
+    const center = this.clientPoint(window.innerWidth / 2, window.innerHeight / 2)
+    this.stopWheelPan()
+    this.camera.x += (center.x - point.x) * this.zoom
+    this.camera.y += (center.y - point.y) * this.zoom
+    this.applyCamera()
+  }
+
   zoomAt(zoom, point = {x: window.innerWidth / 2, y: window.innerHeight / 2}) {
     if(!Number.isFinite(zoom)) return
     const next = Math.max(.1, Math.min(4, zoom)), ratio = next / this.zoom
@@ -221,6 +455,7 @@ export class CanvasViewer {
     const output = this.controls?.querySelector("output")
     const label = `${Math.round(this.zoom * 100)}%`
     if(output && output.textContent !== label) output.textContent = label
+    this.minimap?.updateCamera()
     this.onChange()
   }
 
@@ -246,6 +481,15 @@ export const canvasControlsStyles = `
       .◆canvas-controls button:disabled { opacity: .5; cursor: default; }
       .◆canvas-controls button svg { display: block; width: 14px; height: 14px; }
       .◆canvas-controls output { min-width: 3em; text-align: center; }
+      .◆canvas-controls button[name=minimap-toggle] { margin-inline-start: auto; }
+      .◆canvas-controls button[name=minimap-toggle][aria-expanded=true] svg { transform: rotate(180deg); }
+      .◆canvas-controls button[part=canvas-minimap] { flex: 0 0 100%; contain: inline-size; min-width: 0; height: 94px; padding: 0; overflow: hidden; background: #f8fafc; box-shadow: inset 0 0 0 1px #e2e8f0; cursor: crosshair; }
+      .◆canvas-controls button[part=canvas-minimap][hidden] { display: none; }
+      .◆canvas-controls button[part=canvas-minimap]:disabled { opacity: 1; cursor: default; color: #64748b; }
+      .◆canvas-controls button[part=canvas-minimap] > svg { width: 100%; height: 100%; pointer-events: none; }
+      .◆canvas-controls button[part=canvas-minimap]:disabled > svg, .◆canvas-controls button[part=canvas-minimap]:enabled > span { display: none; }
+      .◆canvas-minimap-camera { fill: #3b82f620; stroke: #2563eb; stroke-width: 1.5px; }
+      [part=canvas-minimap-measurements] { position: fixed; left: -100000px; top: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 
 @media print { .◆canvas-controls, [part=canvas-pan-surface] { display: none; } }
 `
@@ -295,7 +539,7 @@ body.◆canvas-panning, body.◆canvas-panning * {
 `
 
 /** Mount a disposable reader, keeping content in the body's light DOM. */
-export function mountCanvasReader() {
+export function mountCanvasReader(loadSnapdom) {
   const body = document.body
   const template = body?.children.length === 1 ? body.firstElementChild : null
   if(!body?.classList.contains("ww-canvas") || body.classList.contains("ww-slides")
@@ -321,7 +565,7 @@ export function mountCanvasReader() {
     @media print { [part=canvas-background] { display: none; } }
   `
   appendix.append(background, panSurface, controls, style)
-  const viewer = new CanvasViewer(slot, background, controls, panSurface)
+  const viewer = new CanvasViewer(slot, background, controls, panSurface, undefined, loadSnapdom)
   let hand = false
   const button = (name, label, title = label) => {
     const el = document.createElement("button")
@@ -380,8 +624,8 @@ export function mountCanvasReader() {
     },
   }
   const click = event => {
-    const target = event.target
-    if(!(target instanceof HTMLButtonElement)) return
+    const target = event.target instanceof Element ? event.target.closest("button") : null
+    if(!target || target.name.startsWith("minimap")) return
     if(target.name === "hand") setHand(!hand)
     else { viewer.stopWheelPan(); viewer.navigate(target.name) }
   }
@@ -417,5 +661,6 @@ export function mountCanvasReader() {
   observer.observe(document.documentElement, {childList: true, subtree: true, attributes: true, attributeFilter: ["class"]})
   if(!viewer.startView()) viewer.fit()
   revealHash()
+  viewer.mountMinimap()
   return {viewer, destroy}
 }

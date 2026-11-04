@@ -11,6 +11,7 @@ import type {RibbonButton} from "../src/components/ribbon-button"
 import {$, caretRect, pathFromNode, cloneWithoutEditorMarkers} from "../src/utility"
 import {defaultDocumentTheme, documentThemes, documentWidgetStyleSource} from "../src/document-themes"
 import {boardStyles, canvasStyles, slidesStyles} from "../src/document-layout"
+import {appendSerializedAssets} from "../src/serialization"
 import {floatSideFromStyles} from "../src/element-styles"
 import {initializeEditorMessage, replayHostDrag, replayHostPointer, executeCompleteEvent, executeFailureEvent, selectionChangeEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction, type SelectionChangeDetail} from "../src/editor-bridge"
 import {SharedDOMDoc} from "../src/domdoc"
@@ -7815,6 +7816,11 @@ await check("canvas hotspot clicks preserve the camera in preview and standalone
 await check("exported canvas runs its standalone viewer without editor dependencies", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px;border:0"
+  if(!savedCanvasHTML) {
+    const source = new DOMParser().parseFromString(`<style>${canvasStyles}</style><body class="ww-canvas"><p style="left:-400px;top:-300px;width:200px">Exported canvas</p></body>`, "text/html")
+    appendSerializedAssets(source, [])
+    savedCanvasHTML = `<!doctype html>${source.documentElement.outerHTML}`
+  }
   frame.srcdoc = savedCanvasHTML
   const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
   nativeRootEditor.addAppendix(frame)
@@ -7830,12 +7836,26 @@ await check("exported canvas runs its standalone viewer without editor dependenc
     assert(Math.abs((rect.left + rect.right) / 2 - view.innerWidth / 2) < 1
       && Math.abs((rect.top + rect.bottom) / 2 - view.innerHeight / 2) < 1, "reader did not center fitted content")
     const slot = appendix.querySelector("slot")!
+    const map = appendix.querySelector<HTMLButtonElement>('[part="canvas-minimap"]')!
+    const thumbnail = map.querySelector("image")!
+    for(let i = 0; !thumbnail.hasAttribute("href") && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 20))
+    assert(!map.hidden && thumbnail.getAttribute("href")?.startsWith("data:image/svg+xml"), "saved reader did not render its minimap")
+    assert(!doc.querySelector("[data-snapdom-internal], [part=canvas-minimap]"), "minimap helpers leaked into the authored document")
+    const image = thumbnail.getAttribute("href")
+    const viewport = map.querySelector(".◆canvas-minimap-camera")!
+    const width = Number(viewport.getAttribute("width"))
     const before = slot.style.transform
     appendix.querySelector<HTMLButtonElement>('button[name="zoom-in"]')!.click()
     assert(slot.style.transform !== before && appendix.querySelector("output")!.textContent === "120%", "reader zoom control did not move the camera")
+    assert(Number(viewport.getAttribute("width")) < width && thumbnail.getAttribute("href") === image, "zoom did not update the viewport independently of the snapshot")
     const zoomed = slot.style.transform
     slot.dispatchEvent(new WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true, deltaY: 100}))
     assert(slot.style.transform !== zoomed, "reader did not pan with the wheel")
+    const minimapRect = map.getBoundingClientRect()
+    map.dispatchEvent(new MouseEvent("click", {detail: 1, clientX: minimapRect.left + minimapRect.width / 2, clientY: minimapRect.top + minimapRect.height / 2}))
+    const centered = item.getBoundingClientRect()
+    assert(Math.abs((centered.left + centered.right) / 2 - view.innerWidth / 2) < 1
+      && Math.abs((centered.top + centered.bottom) / 2 - view.innerHeight / 2) < 1, "minimap click did not center the camera")
     appendix.querySelector<HTMLButtonElement>('button[name="fit-content"]')!.click()
     const fitted = item.getBoundingClientRect()
     assert(Math.abs((fitted.left + fitted.right) / 2 - view.innerWidth / 2) < 1
