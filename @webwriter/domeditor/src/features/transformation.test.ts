@@ -653,6 +653,8 @@ describe("resize alignment", () => {
       const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
       expect(handles.map(handle => handle.dataset.resizeDirection)).toEqual([alignment === "right" ? "down-left" : "down-right"])
     }
+    // Happy DOM matches the sticky float rule even without the sticky class.
+    if(tag === "picture") target.style.position = "relative"
     target.classList.add("ww-float-right")
     feature.updateInfo()
     expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-left")!.hidden).toBe(false)
