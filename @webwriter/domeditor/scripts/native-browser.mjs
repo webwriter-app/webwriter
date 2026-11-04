@@ -127,6 +127,7 @@ const expectedChecks = [
   "audio insertion retains element selection at the document start",
   "float previews match projected media bounds",
   "lane media fills available width and resizes with native handles",
+  "pinned floats keep their selection frame aligned while scrolling",
   "wide widgets follow adaptive float lanes",
   "two-column side width follows its widest element",
   "far floats adapt to column margins and survive standalone export",

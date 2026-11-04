@@ -9038,6 +9038,51 @@ await check("lane media fills available width and resizes with native handles", 
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("pinned floats keep their selection frame aligned while scrolling", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1500px;height:600px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><svg viewBox="0 0 720 405"></svg><p style="height:1500px">Reading column</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "pinned float fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, theme = doc.createElement("style")
+    theme.textContent = defaultDocumentTheme.source
+    doc.head.append(theme)
+    const target = doc.querySelector("svg")!
+    assert(editor.features.manipulation.setFloat(target, "far-left"), "could not float the grid")
+    editor.features.selection.captureElement(target)
+    const checkFrames = (label: string) => {
+      const rect = target.getBoundingClientRect()
+      for(const overlay of [editor.features.transformation.overlay, editor.features.selection.selectionCaret!]) {
+        const box = overlay.getBoundingClientRect()
+        for(const edge of ["left", "top", "right", "bottom"] as const) {
+          assert(Math.abs(box[edge] - rect[edge]) < 1, `${label}: ${overlay.getAttribute("part")} ${edge} at ${box[edge]}, expected ${rect[edge]}`)
+        }
+      }
+    }
+    await layoutFrame()
+    checkFrames("before pinning")
+    const initialTop = target.getBoundingClientRect().top
+    assert(editor.features.layout.actions.setFloatSticky({type:"setFloatSticky", enabled:true}), "could not pin the float")
+    await layoutFrame()
+    assert(Math.abs(target.getBoundingClientRect().top - initialTop) < 1,
+      `pinning moved the float down from ${initialTop} to ${target.getBoundingClientRect().top}`)
+    checkFrames("after pinning")
+    view.scrollTo(0, 200); await layoutFrame()
+    const pinnedTop = target.getBoundingClientRect().top
+    assert(view.getComputedStyle(target).position === "sticky" && pinnedTop >= 0 && pinnedTop < 40, "float did not stick")
+    checkFrames("while pinned")
+    view.scrollTo(0, 400); await layoutFrame()
+    assert(target.getBoundingClientRect().top === pinnedTop, "pinned float moved on further scroll")
+    checkFrames("after further scroll")
+    view.scrollTo(0, 0); await layoutFrame()
+    checkFrames("after scrolling back")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("wide widgets follow adaptive float lanes", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1400px;height:900px;border:0;max-width:none"

@@ -187,7 +187,8 @@
 
     .ww-float-sticky:is(.ww-float-left, .ww-float-right) {
       position: sticky;
-      top: var(--ww-page-gutter, 1rem);
+      /* The horizontal gutter can grow past the Base theme's opening margin. */
+      top: min(var(--ww-page-gutter, 1rem), 1.25rem);
       z-index: 2147483647;
     }
 
