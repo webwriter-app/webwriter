@@ -833,6 +833,64 @@ describe("MarkFeature span styles", () => {
     expect(document.getSelection()!.toString()).toBe("bc")
   })
 
+  it.each([true, false])("applies color outside underline regardless of order (color first: %s)", colorFirst => {
+    const paragraph = setContent("<p>Before selected after</p>")
+    selectText(paragraph.firstChild as Text, 7, 15)
+
+    const color = () => feature.setStyleMark("color", "red")
+    const underline = () => feature.toggleMark("u")
+    const commands = colorFirst ? [color, underline] : [underline, color]
+    commands.forEach(command => expect(command()).toBe(true))
+
+    expect(cleanHTML()).toBe('<p>Before <span style="color: red;"><u>selected</u></span> after</p>')
+    expect(document.getSelection()!.toString()).toBe("selected")
+    expect(feature.getStyleState().color).toBe("red")
+    expect(feature.getState().marks).toContain("u")
+  })
+
+  it("recolors only the selected run of an existing underline", () => {
+    const paragraph = setContent('<p><span style="color: blue;"><u id="note" title="Note"><em>abcd</em></u></span></p>')
+    const text = paragraph.querySelector("em")!.firstChild as Text
+    selectText(text, 3, 1)
+
+    expect(feature.setStyleMark("color", "red")).toBe(true)
+
+    const underlines = Array.from(paragraph.querySelectorAll("u"))
+    expect(underlines.map(underline => [underline.innerHTML, underline.parentElement!.style.color])).toEqual([
+      ["<em>a</em>", "blue"],
+      ["<em>bc</em>", "red"],
+      ["<em>d</em>", "blue"],
+    ])
+    expect(underlines.map(underline => [underline.id, underline.title])).toEqual([["note", "Note"], ["", "Note"], ["", "Note"]])
+    expect(document.getSelection()!.toString()).toBe("bc")
+    expect($.isBackwards).toBe(true)
+    expect(feature.setStyleMark("color", "")).toBe(true)
+    expect(paragraph.querySelector("p > u")?.innerHTML).toBe("<em>bc</em>")
+  })
+
+  it("preserves comments at the edges of a recolored underline", () => {
+    const paragraph = setContent("<p><u><!--before-->Text<!--after--></u></p>")
+    const underline = paragraph.querySelector("u")!
+    const [before, text, after] = Array.from(underline.childNodes)
+    selectText(text as Text)
+
+    expect(feature.setStyleMark("color", "red")).toBe(true)
+
+    expect(paragraph.firstElementChild?.firstChild).toBe(before)
+    expect(paragraph.lastElementChild?.firstChild).toBe(after)
+    expect(paragraph.querySelector("span > u")?.textContent).toBe("Text")
+  })
+
+  it("can still recolor text inside an underline with its own inline color", () => {
+    const paragraph = setContent('<p><u style="color: blue">Text</u></p>')
+    selectText(paragraph.querySelector("u")!.firstChild as Text)
+
+    expect(feature.setStyleMark("color", "red")).toBe(true)
+
+    expect(paragraph.querySelector("u")!.style.color).toBe("blue")
+    expect(paragraph.querySelector("u > span")?.getAttribute("style")).toBe("color: red;")
+  })
+
   it("removes only the chosen style and merges equivalent neighboring spans", () => {
     const paragraph = setContent('<p><span style="color: red">ab</span><span style="color: red">cd</span></p>')
     const first = paragraph.firstElementChild!.firstChild as Text
@@ -1275,6 +1333,35 @@ describe("inline references", () => {
 describe("link keyboard edits", () => {
   const currentIdentity = () => feature.getLinkState()!.identity
 
+  it("opens for a selection within one link, including the entire link", () => {
+    const paragraph = setContent('<p>Before <a href="#intro">one <em>two</em><!--keep--></a> after</p>')
+    const anchor = paragraph.querySelector("a")!
+    const first = anchor.firstChild!, last = anchor.querySelector("em")!.firstChild!
+    $.selectRange(first, 1, last, 2)
+    expect(feature.getLinkState()?.text).toBe("ne tw")
+    $.selectRange(last, 3, first, 0)
+    expect(feature.getLinkState()?.text).toBe("one two")
+    $.selectElement(anchor, false)
+    expect(feature.getLinkState()?.href).toBe("#intro")
+  })
+
+  it("keeps the keyboard closed when a selection extends outside a link", () => {
+    const paragraph = setContent('<p>Before <a href="#intro">Link</a><br> after</p>')
+    const text = paragraph.querySelector("a")!.firstChild!
+    $.selectRange(paragraph.firstChild!, 1, text, 2)
+    expect(feature.getLinkState()).toBeNull()
+    $.selectRange(paragraph.lastChild!, 2, text, 1)
+    expect(feature.getLinkState()).toBeNull()
+    $.selectRange(paragraph, 1, paragraph, 3)
+    expect(feature.getLinkState()).toBeNull()
+  })
+
+  it("keeps the keyboard closed across separate links to the same address", () => {
+    const paragraph = setContent('<p><a href="#intro">one</a><a href="#intro">two</a></p>')
+    $.selectRange(paragraph.firstChild!.firstChild!, 0, paragraph.lastChild!.firstChild!, 3)
+    expect(feature.getLinkState()).toBeNull()
+  })
+
   it("lists current authored targets and references without entering widgets", () => {
     const paragraph = setContent('<p><a href="#intro">Text</a></p><h2 id="intro">Introduction</h2><h2 id="odd id">Odd title</h2><custom-box><h2 id="private">Private</h2></custom-box>')
     const source = document.createElement("a")
@@ -1406,26 +1493,58 @@ describe("link keyboard edits", () => {
 
 
 describe("automatic links in the edited text block", () => {
+  it("waits for whitespace while typing a URL across inline formatting", async () => {
+    const block = setContent('<p><em>example</em><!--keep--><strong>.</strong></p>')
+    const emphasis = block.firstChild!, comment = emphasis.nextSibling!, tail = block.lastChild!.firstChild as Text
+    for(const data of ["c", "o", "m", ".", "a", "u", "/", "p", "?", "q", "=", "1", ".", " "]) {
+      tail.appendData(data)
+      $.move(tail, tail.length)
+      block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText", data}))
+      await settle()
+      if(data !== " ") expect(block.querySelector("a")).toBeNull()
+    }
+    const links = Array.from(block.querySelectorAll("a"))
+    expect(links.map(link => link.textContent)).toEqual(["example", ".com.au/p?q=1"])
+    expect(links.map(link => link.getAttribute("href"))).toEqual(Array(2).fill("https://example.com.au/p?q=1"))
+    expect(emphasis.nextSibling).toBe(comment)
+    expect($.anchor!.textContent).toBe(". ")
+    expect($.anchorOffset).toBe(2)
+  })
+
   it("skips Popup toggle text while linking surrounding text", async () => {
-    const block = setContent('<p>before.test <span class="ww-popup"><button popovertarget="popup-autolink-test">inside.test</button></span> after.test</p><div class="ww-popup-content" id="popup-autolink-test" popover><p></p></div>')
+    const block = setContent('<p>before.com <span class="ww-popup"><button popovertarget="popup-autolink-test">inside.com</button></span> after.com</p><div class="ww-popup-content" id="popup-autolink-test" popover><p></p></div>')
     const trailing = block.lastChild as Text
     $.move(trailing, trailing.length)
     block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
     await settle()
     expect(block.querySelector("button a")).toBeNull()
-    expect(Array.from(block.querySelectorAll("a"), link => link.textContent)).toEqual(["before.test", "after.test"])
+    expect(Array.from(block.querySelectorAll("a"), link => link.textContent)).toEqual(["before.com", "after.com"])
   })
 
   it("preserves explicitly written HTTP links and their visible text", async () => {
-    const block = setContent("<p>http://example.test/path</p>")
+    const block = setContent("<p>http://example.com/path</p>")
     $.move(block.firstChild!, block.textContent!.length)
     block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
     await settle()
-    expect(block.querySelector("a")!.getAttribute("href")).toBe("http://example.test/path")
-    expect(block.textContent).toBe("http://example.test/path")
+    expect(block.querySelector("a")!.getAttribute("href")).toBe("http://example.com/path")
+    expect(block.textContent).toBe("http://example.com/path")
   })
 
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)) }
+
+  it("requires an IANA top-level domain for bare URLs, HTTP URLs, and email addresses", async () => {
+    const valid = "example.dev docs.example.co.uk EXAMPLE.NET demo.xn--p1ai https://пример.рф/путь https://example.com./path reader@demo.xn--p1ai"
+    const invalid = "feature.enabled example.test example.com.local example.com.123 example.com..net reader@example.com.123 reader@example.invalid https://intranet/path/example.com https://example.com@localhost https://192.0.2.1"
+    const block = setContent(`<p>${valid} ${invalid}</p>`)
+    $.move(block.firstChild!, block.textContent!.length)
+    await settle()
+
+    expect(Array.from(block.querySelectorAll("a"), link => link.getAttribute("href"))).toEqual([
+      "https://example.dev", "https://docs.example.co.uk", "https://EXAMPLE.NET", "https://demo.xn--p1ai",
+      "https://пример.рф/путь", "https://example.com./path", "mailto:reader@demo.xn--p1ai",
+    ])
+    expect(block.textContent).toBe(`${valid} ${invalid}`)
+  })
 
   it("links bare domains with paths, queries, ports and surrounding punctuation", async () => {
     const block = setContent('<p>Visit example.com, (docs.example.co.uk/a_(b)?q=yes#part); example.org:8443/path! EXAMPLE.NET.</p><p>untouched.com</p>')
@@ -1554,7 +1673,7 @@ describe("automatic links in the edited text block", () => {
   })
 
   it("links URLs after native input, trims punctuation and scans only the edited block", async () => {
-    const block = setContent('<p>Visit https://example.com/a_(b), www.example.org.</p><p>https://untouched.test</p>')
+    const block = setContent('<p>Visit https://example.com/a_(b), www.example.org.</p><p>https://untouched.com</p>')
     const text = block.firstChild as Text
     $.move(text, text.length)
     block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
@@ -1571,12 +1690,12 @@ describe("automatic links in the edited text block", () => {
   })
 
   it("handles direct DOM changes and URLs across formatting without rebuilding wrappers", async () => {
-    const block = setContent('<p><b class="keep">https://exa</b><span title="keep">mple.test</span><!--keep--></p>')
+    const block = setContent('<p><b class="keep">https://exa</b><span title="keep">mple.com</span><!--keep--></p>')
     const bold = block.querySelector("b")!, span = block.querySelector("span")!, comment = block.lastChild!
     $.selectRange(span.firstChild!, 5, bold.firstChild!, 3)
     await settle()
     expect(block.querySelectorAll("a")).toHaveLength(2)
-    expect(Array.from(block.querySelectorAll("a"), link => link.getAttribute("href"))).toEqual(["https://example.test", "https://example.test"])
+    expect(Array.from(block.querySelectorAll("a"), link => link.getAttribute("href"))).toEqual(["https://example.com", "https://example.com"])
     expect(block.querySelector("b")).toBe(bold)
     expect(block.querySelector("span")).toBe(span)
     expect(block.lastChild).toBe(comment)
@@ -1586,23 +1705,24 @@ describe("automatic links in the edited text block", () => {
     linkText.data += "/new"
     $.move(linkText, linkText.length)
     await settle()
-    expect(Array.from(block.querySelectorAll("a"), link => link.getAttribute("href"))).toEqual(["https://example.test/new", "https://example.test/new"])
-    const next = document.createTextNode(" https://second.test")
+    expect(Array.from(block.querySelectorAll("a"), link => link.getAttribute("href"))).toEqual(["https://example.com/new", "https://example.com/new"])
+    const next = document.createTextNode(" https://second.com")
     span.after(next)
     await settle()
     expect(block.querySelectorAll("a")).toHaveLength(3)
   })
 
   it("updates generated links while leaving authored links and excluded content intact", async () => {
-    const block = setContent('<p>https://example.test <a href="https://manual.test">https://label.test</a><code>https://code.test</code><test-widget>https://widget.test</test-widget><span contenteditable="false">https://readonly.test</span></p>')
+    const block = setContent('<p>https://example.com <a href="https://manual.test">https://label.com</a><code>https://code.com</code><test-widget>https://widget.com</test-widget><span contenteditable="false">https://readonly.com</span></p>')
     $.move(block.firstChild!, 10)
     await settle()
     const generated = block.querySelector("a")!, manual = block.querySelectorAll("a")[1]
     const text = generated.firstChild as Text
     text.data += "/new"
     $.move(text, text.length)
+    block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText", data: "/new"}))
     await settle()
-    expect(block.querySelector("a")!.getAttribute("href")).toBe("https://example.test/new")
+    expect(block.querySelector("a")!.getAttribute("href")).toBe("https://example.com/new")
     expect(block.querySelectorAll("a")).toHaveLength(2)
     expect(manual.getAttribute("href")).toBe("https://manual.test")
     expect(block.querySelector("code a, test-widget a, [contenteditable=false] a")).toBeNull()
@@ -1615,7 +1735,7 @@ describe("automatic links in the edited text block", () => {
   })
 
   it("waits for composition and skips disconnected or concurrently changed selection blocks", async () => {
-    const block = setContent('<p>https://example.test</p><p>Keep</p>')
+    const block = setContent('<p>https://example.com</p><p>Keep</p>')
     $.move(block.firstChild!, 5)
     block.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true}))
     await settle()
@@ -1623,10 +1743,10 @@ describe("automatic links in the edited text block", () => {
     block.dispatchEvent(new CompositionEvent("compositionend", {bubbles: true}))
     await settle()
     expect(block.querySelector("a")).not.toBeNull()
-    block.firstChild!.textContent = "https://changed.test"
+    block.firstChild!.textContent = "https://changed.com"
     $.move(document.body.lastElementChild!.firstChild!, 0)
     await settle()
-    expect(block.querySelector("a")!.getAttribute("href")).toBe("https://example.test")
+    expect(block.querySelector("a")!.getAttribute("href")).toBe("https://example.com")
     block.remove()
     await settle()
     expect(block.querySelectorAll("a")).toHaveLength(1)
@@ -1640,16 +1760,16 @@ describe("automatic links in the edited text block", () => {
     const current = (editor.doc.body.get(0) as XmlElement).get(0) as XmlText
     const other = (editor.doc.body.get(1) as XmlElement).get(0) as XmlText
     editor.doc.doc.transact(() => {
-      current.insert(0, "https://remote.test ")
-      other.insert(0, "https://unrelated.test ")
+      current.insert(0, "https://remote.com ")
+      other.insert(0, "https://unrelated.com ")
     }, "remote-test")
     await settle()
-    expect(document.body.firstElementChild!.querySelector("a")!.getAttribute("href")).toBe("https://remote.test")
+    expect(document.body.firstElementChild!.querySelector("a")!.getAttribute("href")).toBe("https://remote.com")
     expect(document.body.lastElementChild!.querySelector("a")).toBeNull()
   })
 
   it("does not reapply a link when undo restores the same plain URL text", async () => {
-    const block = setContent("<p>https://example.test</p>")
+    const block = setContent("<p>https://example.com</p>")
     $.move(block.firstChild!, 10)
     block.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true}))
     await settle()
@@ -1661,7 +1781,7 @@ describe("automatic links in the edited text block", () => {
     expect(block.querySelector("a")).not.toBeNull()
     editor.doc.undo()
     await settle()
-    expect(document.querySelector("p")!.textContent).toBe("https://example.test")
+    expect(document.querySelector("p")!.textContent).toBe("https://example.com")
     expect(document.querySelector("a")).toBeNull()
     editor.doc.redo()
     await settle()
@@ -1673,11 +1793,11 @@ describe("automatic links in the edited text block", () => {
     $.move(block.firstChild!, 0)
     await settle()
     const scan = vi.spyOn(feature as any, "applyAutomaticLinks")
-    document.body.lastElementChild!.firstChild!.textContent = "https://unrelated.test"
+    document.body.lastElementChild!.firstChild!.textContent = "https://unrelated.com"
     await settle()
     expect(scan).not.toHaveBeenCalled()
-    block.firstChild!.textContent = "https://first.test"
-    block.firstChild!.textContent = "https://last.test"
+    block.firstChild!.textContent = "https://first.com"
+    block.firstChild!.textContent = "https://last.com"
     await settle()
     expect(scan).toHaveBeenCalledTimes(1)
     expect(block.querySelectorAll("a")).toHaveLength(1)
@@ -1689,16 +1809,17 @@ describe("automatic links in the edited text block", () => {
     await settle()
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
-    block.firstChild!.textContent = "https://example.test"
-    $.move(block.firstChild!, 20)
+    const url = "https://example.com"
+    block.firstChild!.textContent = url
+    $.move(block.firstChild!, url.length)
     await settle()
     editor.doc.syncFromDOM()
-    expect(editor.doc.body.toString()).toContain('<a href="https://example.test" rel="noopener noreferrer" target="_blank">https://example.test</a>')
+    expect(editor.doc.body.toString()).toContain('<a href="https://example.com" rel="noopener noreferrer" target="_blank">https://example.com</a>')
     editor.doc.undo()
     await settle()
     expect(document.querySelector("a")).toBeNull()
     editor.doc.redo()
     await settle()
-    expect(document.querySelector("a")!.getAttribute("href")).toBe("https://example.test")
+    expect(document.querySelector("a")!.getAttribute("href")).toBe("https://example.com")
   })
 })

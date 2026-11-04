@@ -65,32 +65,38 @@ const languageName = (code: string, fallback = code) => {
   return native && comparable(native) !== comparable(english) ? `${english} (${native})` : english
 }
 
-let cachedOfficialLanguages: LanguageOption[] | undefined
+const englishVariants = [
+  {value: "en-US", label: "English (US)"},
+  {value: "en-GB", label: "English (UK)"},
+  {value: "en-AU", label: "English (Australia)"},
+  {value: "en-CA", label: "English (Canada)"},
+  {value: "en-IN", label: "English (India)"},
+]
+
+let cachedDocumentLanguages: LanguageOption[] | undefined
 let themePickerInstanceCount = 0
 
-/** Nationally official language suggestions ordered by English display name. */
-export function officialLanguageOptions() {
-  if(cachedOfficialLanguages) return cachedOfficialLanguages
-  cachedOfficialLanguages = documentLanguages.map(({code: value, name}) => {
-    const sortLabel = englishLanguageNames.of(value) ?? name
-    return {value, label: languageName(value, name), sortLabel}
-  }).sort((a, b) => a.sortLabel.localeCompare(b.sortLabel, "en", {sensitivity: "base"}) || a.value.localeCompare(b.value))
-  return cachedOfficialLanguages
+/** Nationally official languages and supported English variants, ordered by English display name. */
+export function documentLanguageOptions() {
+  if(cachedDocumentLanguages) return cachedDocumentLanguages
+  cachedDocumentLanguages = [
+    ...documentLanguages.map(({code: value, name}) => ({
+      value, label: languageName(value, name), sortLabel: englishLanguageNames.of(value) ?? name,
+    })),
+    ...englishVariants.map(option => ({...option, sortLabel: option.label})),
+  ].sort((a, b) => a.sortLabel.localeCompare(b.sortLabel, "en", {sensitivity: "base"}) || a.value.localeCompare(b.value))
+  return cachedDocumentLanguages
 }
 
-/** Browser-preferred official languages followed by the alphabetical list. */
+/** Browser-preferred languages followed by the alphabetical list. */
 export function orderedLanguageOptions(
   preferred: readonly string[] = globalThis.navigator?.languages ?? [],
 ) {
-  const alphabetical = officialLanguageOptions()
-  const optionsByValue = new Map(alphabetical.map(option => [option.value, option]))
-  const promotedValues = preferred
-    .map(canonicalLanguage)
-    .map(value => value.split("-")[0])
-    .filter(value => optionsByValue.has(value))
-    .filter((value, index, values) => value && values.indexOf(value) === index)
-  const promoted = promotedValues.map(value => optionsByValue.get(value)!)
-  const promotedSet = new Set(promotedValues)
+  const alphabetical = documentLanguageOptions()
+  const preferredLanguages = new Set(preferred.map(value => canonicalLanguage(value).split("-")[0]))
+  const promoted = [...preferredLanguages].flatMap(language =>
+    alphabetical.filter(option => option.value.split("-")[0] === language))
+  const promotedSet = new Set(promoted.map(option => option.value))
   return {
     promoted,
     alphabetical: alphabetical.filter(option => !promotedSet.has(option.value)),
@@ -100,8 +106,11 @@ export function orderedLanguageOptions(
 /** Metadata presentation of the shared editor combobox. */
 export class DocumentHeadCombobox extends EditorCombobox {
   static styles = [EditorCombobox.styles, css`
-    :host([label="License"]) .listbox {
-      width: max(anchor-size(width), 22rem);
+    :host([label="Language"]) { --metadata-listbox-width: 13rem; }
+
+    :host([label="License"]) .listbox,
+    :host([label="Language"]) .listbox {
+      width: max(anchor-size(width), var(--metadata-listbox-width, 22rem));
       position-area: bottom span-left;
       justify-self: end;
     }

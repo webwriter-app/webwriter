@@ -264,8 +264,8 @@ describe("DOMEditor stylesheets", () => {
   })
 
   it("starts with an editable default paragraph", () => {
-    const bodyRule = Array.from(document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules)))
-      .find(rule => (rule as CSSStyleRule).selectorText === "body") as CSSStyleRule | undefined
+    const rules = document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules)) as CSSStyleRule[]
+    const bodyRule = rules.find(rule => rule.selectorText === "body")
 
     expect(bodyRule?.style.margin).toBe("")
     expect(bodyRule?.style.getPropertyValue("anchor-name")).toBe("--body-anchor")
@@ -360,9 +360,12 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).not.toMatch(/:is\(ul, ol, menu\):empty[\s\S]*?display:\s*list-item;/)
     expect(editorStyleString).toMatch(/:is\(picture, img, video, iframe, embed, object\)\.◆media-empty,\s*body::part\(graphic-image-placeholder\)\s*\{[^}]*border:\s*1px dashed #6b7280;/)
     expect(editorStyleString).not.toMatch(/\.◆media-empty\.◆element-selected\s*\{/)
-    expect(editorStyleString).toMatch(/:is\(picture, audio, video\)\s*\{[^}]*?width:\s*100%;/)
-    expect(editorStyleString).not.toMatch(/:is\(picture, audio, video\)\s*\{[^}]*?(?:height|aspect-ratio):/)
-    expect(editorStyleString).toMatch(/:is\(picture, video\)\s*\{[^}]*?height:\s*auto;/)
+    const mediaWidth = rules.find(rule => rule.selectorText === ":is(picture:where(:not(html.◆canvas-active *)), audio, video)")?.style
+    const mediaHeight = rules.find(rule => rule.selectorText === ":is(picture:where(:not(html.◆canvas-active *)), video)")?.style
+    expect(mediaWidth?.width).toBe("100%")
+    expect(mediaWidth?.height).toBe("")
+    expect(mediaWidth?.getPropertyValue("aspect-ratio")).toBe("")
+    expect(mediaHeight?.height).toBe("auto")
     expect(editorStyleString).toMatch(/:is\(picture, img, video\)\.◆media-empty\s*\{[^}]*?aspect-ratio:\s*16\s*\/\s*9;/)
     expect(editorStyleString).not.toContain("audio.◆media-empty::-webkit-media-controls-enclosure")
     expect(editorStyleString).not.toMatch(/:is\([^)]*audio[^)]*\)\.◆media-empty\s*\{/)

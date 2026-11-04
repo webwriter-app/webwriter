@@ -3262,6 +3262,7 @@ export class ManipulationFeature extends EditorFeature {
   /** A single heading joins an existing text container as inline content.
    * Gaps and whole-element replacements retain its authored heading level. */
   private insertPastedFragment(fragment: DocumentFragment) {
+    this.editor.features.mark.allowAutomaticLinksAfterPaste()
     for(const math of Array.from(fragment.querySelectorAll("math"))) {
       if(math.namespaceURI !== MATH_NAMESPACE) continue
       let ancestor = math.parentElement
@@ -3876,6 +3877,7 @@ export class ManipulationFeature extends EditorFeature {
     else this.ensureTextBlock()
     const element = document.createElement(type)
     if(!this.canInsertAtSelection(element)) return
+    this.editor.features.mark.finishAutomaticLinkBeforeBreak()
     this.insertAtSelection(element)
     if(type !== "br" || !element.isConnected) return
 
@@ -4489,6 +4491,7 @@ export class ManipulationFeature extends EditorFeature {
       const allowedDepth = this.allowedSplitDepth(splitDepth, strict)
       if(allowedDepth === null) return
       return this.withNormalization(() => {
+        this.editor.features.mark.finishAutomaticLinkBeforeBreak()
         $.delete()
         this.splitAtSelection(allowedDepth, strict)
       })

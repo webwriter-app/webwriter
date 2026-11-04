@@ -396,6 +396,7 @@ describe("editor bridge message guards", () => {
         },
         media: {
           type: "video",
+          hasSource: true,
           videoPlaybackWarning: "no-video",
           attributes: {src: "movie.mp4", controls: ""},
           sources: [{index: 0, attributes: {src: "movie.webm", type: "video/webm"}}],
@@ -488,7 +489,7 @@ describe("editor bridge message guards", () => {
       {...message, detail: {...message.detail, media: {type: "img", attributes: []}}},
       {...message, detail: {...message.detail, media: {type: "img", attributes: {width: 640}}}},
       {...message, detail: {...message.detail, media: {type: "img", attributes: {}, hasSource: "yes"}}},
-      {...message, detail: {...message.detail, media: {type: "video", attributes: {}, hasSource: true}}},
+      {...message, detail: {...message.detail, media: {type: "audio", attributes: {}, hasSource: true}}},
       {...message, detail: {...message.detail, media: {type: "img", attributes: {}, sources: []}}},
       {...message, detail: {...message.detail, media: {type: "video", attributes: {}, sources: [{index: -1, attributes: {}}]}}},
       {...message, detail: {...message.detail, media: {type: "audio", attributes: {}, sources: [{index: 0, attributes: {}, sourceKind: "other"}]}}},

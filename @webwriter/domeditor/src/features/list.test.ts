@@ -1679,6 +1679,35 @@ describe("semantic list editing", () => {
     }
   })
 
+  it.each(["ltr", "rtl"])("limits the %s positioned chevron's hit area to its own row", direction => {
+    document.body.innerHTML = `<details><summary style="direction: ${direction}; border: 2px solid; padding: 8px 28px">A heading that wraps onto several lines</summary><p>Body</p></details>`
+    const details = document.querySelector("details")!
+    const summary = details.querySelector("summary")!
+    vi.spyOn(summary, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 200, 76))
+    const computedStyle = window.getComputedStyle.bind(window)
+    const styles = vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
+      if(element === summary && pseudo === "::after") {
+        return {display: "block", backgroundImage: 'url("chevron.svg")', position: "absolute",
+          top: "8px", left: "4px", right: "4px", width: "16px", height: "16px"} as CSSStyleDeclaration
+      }
+      return computedStyle(element, pseudo)
+    })
+    try {
+      const markerX = direction === "ltr" ? 206 : 34
+      const clickAt = (clientX: number, clientY: number) => summary.dispatchEvent(new MouseEvent("click", {
+        clientX, clientY, detail: 1, bubbles: true, cancelable: true,
+      }))
+      clickAt(markerX, 66)
+      clickAt(120, 38)
+      expect(details.open).toBe(false)
+      clickAt(markerX, 38)
+      expect(details.open).toBe(true)
+      clickAt(markerX, 38)
+      expect(details.open).toBe(false)
+    }
+    finally { styles.mockRestore() }
+  })
+
   it("keeps RTL marker activation and non-pointer activation available", () => {
     document.body.innerHTML = '<details><summary style="direction: rtl; padding: 10px">Heading</summary></details>'
     const summary = document.querySelector("summary")!

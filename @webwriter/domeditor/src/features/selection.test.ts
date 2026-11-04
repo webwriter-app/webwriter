@@ -2570,6 +2570,7 @@ describe("processSelection()", () => {
 
   it("positions the native media selection overlay on cropped visible bounds", () => {
     const image = el("img") as HTMLImageElement
+    image.src = "photo.png"
     image.style.setProperty("object-view-box", "inset(10% 20% 30% 40%)")
     vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(90, 30, 80, 60))
     $.selectElement(image)
@@ -2884,7 +2885,7 @@ describe("processSelection()", () => {
     expect(feature.gapCaret!.hasAttribute("visibility")).toBe(false)
   })
   it("includes live trailing margins in gap positions and clears their geometry", () => {
-    const paragraph = el("p")
+    const paragraph = el("p", "Content")
     paragraph.style.marginBottom = "36px"
     $.selectGap(paragraph)
     feature.processSelection()
@@ -2909,7 +2910,7 @@ describe("processSelection()", () => {
     document.body.style.cssText = "--ww-float-width: 100px; --ww-prose-max: 720px; padding: 0 20px; border: 2px solid"
     vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 0, 1004, 500))
     for(const tag of ["p", "interactive-widget"]) {
-      document.body.innerHTML = `<${tag} style="width: 200px; margin-inline: auto"></${tag}>`
+      document.body.innerHTML = `<${tag} style="width: 200px; margin-inline: auto">Content</${tag}>`
       const element = document.body.firstElementChild!
       const bounds = vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(412, 50, 200, 100))
       for(const placement of ["before", "after"] as const) {
@@ -3210,6 +3211,8 @@ describe("processSelection()", () => {
     expect(p).not.toHaveClass("◆style-target-hovered")
   })
   it("previews the body as the style target without a selection", () => {
+    initialParagraph?.remove()
+    initialParagraph = null
     document.getSelection()?.removeAllRanges()
 
     feature.actions.hoverStyleTarget({type: "hoverStyleTarget", hovered: true})
@@ -5646,7 +5649,7 @@ describe("divider selection", () => {
     ] as const) {
       $.selectGap(divider, placement)
       expect(press(into).defaultPrevented).toBe(true)
-      expect($.selectedElement).toBe(divider)
+      expect($.selectedElement, `${into} from the gap ${placement} the divider landed at ${$.anchor?.nodeName}:${$.anchorOffset}`).toBe(divider)
       expect(press(out).defaultPrevented).toBe(true)
       expect($.isGapSelection).toBe(true)
       expect($.anchor).toBe(parent)
@@ -5846,7 +5849,9 @@ describe("selection invariants", () => {
     $.selectElement(toggle)
     editor.features.dialog.refresh()
     Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [content, paragraph]})
-    expect($.pointFromCoords(190, 55, content, editor.schema)?.node === popupText).toBe(true)
+    const popupPoint = $.pointFromCoords(190, 55, content, editor.schema)
+    expect(popupPoint?.node === popupText).toBe(true)
+    expect(popupPoint?.offset).toBe(1)
     pointer(content, "pointerdown", 190, 55)
     pointer(content, "pointerup", 190, 55)
     expect($.anchor === popupText).toBe(true)
@@ -6548,6 +6553,7 @@ describe("selection invariants", () => {
 
   it("allows a native text click when coordinate hit testing returns no point", () => {
     const paragraph = textDocument()
+    vi.spyOn($, "pointFromCoords").mockReturnValue(undefined)
     $.selectGap(paragraph, "before")
     const down = pointer(paragraph, "pointerdown", 20, 25)
     const mouse = new MouseEvent("mousedown", {bubbles: true, cancelable: true})

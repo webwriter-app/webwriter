@@ -7447,7 +7447,7 @@ describe("DomEditor.execute()", () => {
     const scripts = parsed.querySelectorAll("script")
     expect(scripts).toHaveLength(1)
     expect(scripts[0].id).toBe("webwriter-canvas-viewer")
-    expect(scripts[0].textContent).toContain("mountCanvasReader()")
+    expect(scripts[0].textContent).toContain("mountCanvasReader(loadCanvasSnapdom)")
     expect(scripts[0].textContent).not.toContain("untrusted()")
     const policy = parsed.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
     expect(scripts[0].getAttribute("nonce")).toBe(/'nonce-([^']+)'/.exec(policy)![1])

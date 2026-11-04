@@ -11,6 +11,10 @@ const {graphicInputState} = vi.hoisted(() => ({graphicInputState: {
 }}))
 vi.mock("./domeditor", () => ({
   DOMEditor: class {
+    editingLocks = new Set<unknown>()
+    lockEditing(owner: unknown) { this.editingLocks.add(owner) }
+    unlockEditing(owner: unknown) { this.editingLocks.delete(owner) }
+    hasEditingLock(owner: unknown) { return this.editingLocks.has(owner) }
     doc = {disconnectCollaboration: providerDisconnect}
     features = {
       graphic: graphicInputState.graphic,

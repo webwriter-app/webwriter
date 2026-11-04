@@ -687,6 +687,7 @@ export class ListFeature extends EditorFeature {
       || atomicEditingContainer(range.startContainer, this.editor.schema)
       || atomicEditingContainer(range.endContainer, this.editor.schema)) return false
     const wasEmpty = selection.isCollapsed && this.isEmptyItem(item)
+    this.editor.features.mark.finishAutomaticLinkBeforeBreak()
     if(!selection.isCollapsed) $.delete()
     if(!item.isConnected || !item.contains($.anchor)) return true
     if(wasEmpty) this.liftOrExitEmptyItem(item)
@@ -1265,20 +1266,25 @@ export class ListFeature extends EditorFeature {
     if(event.clientY < rect.top || event.clientY > rect.bottom) return null
     const style = getComputedStyle(summary)
     const icon = getComputedStyle(summary, "::after")
-    const pixels = (value: string) => Number.parseFloat(value) || 0
-    // Pico/Base draw a floated ::after chevron instead of a native marker.
-    // Read its current side and size, including RTL and authored padding.
-    const themedMarker = icon.display !== "none" && icon.backgroundImage
-      && icon.backgroundImage !== "none" && (icon.cssFloat === "left" || icon.cssFloat === "right")
+    const hasChevron = icon.display !== "none" && icon.backgroundImage && icon.backgroundImage !== "none"
+    const positionedMarker = hasChevron && icon.position === "absolute"
+    const floatedMarker = hasChevron && (icon.cssFloat === "left" || icon.cssFloat === "right")
+    const zoom = positionedMarker ? summary.currentCSSZoom || 1 : 1
+    const pixels = (value: string) => (Number.parseFloat(value) || 0) * zoom
+    if(positionedMarker) {
+      const top = rect.top + pixels(style.borderTopWidth) + pixels(icon.top)
+      if(event.clientY < top || event.clientY > top + pixels(icon.height)) return null
+    }
     // The native triangle occupies roughly one em. Keep this deliberately
     // narrower than the summary's text inset so clicking its first character
     // cannot be mistaken for disclosure-marker activation.
-    const markerHitWidth = themedMarker ? pixels(icon.width)
+    const markerHitWidth = positionedMarker || floatedMarker ? pixels(icon.width)
       : Math.max(16, pixels(style.fontSize) * 1.125 || 18)
-    const onRight = themedMarker ? icon.cssFloat === "right" : style.direction === "rtl"
+    const onRight = positionedMarker ? style.direction !== "rtl"
+      : floatedMarker ? icon.cssFloat === "right" : style.direction === "rtl"
     const edge = onRight
-      ? rect.right - pixels(style.borderRightWidth) - pixels(style.paddingRight)
-      : rect.left + pixels(style.borderLeftWidth) + pixels(style.paddingLeft)
+      ? rect.right - pixels(style.borderRightWidth) - pixels(positionedMarker ? icon.right : style.paddingRight)
+      : rect.left + pixels(style.borderLeftWidth) + pixels(positionedMarker ? icon.left : style.paddingLeft)
     const inMarker = onRight
       ? event.clientX >= edge - markerHitWidth && event.clientX <= edge
       : event.clientX >= edge && event.clientX <= edge + markerHitWidth
@@ -1319,6 +1325,7 @@ export class ListFeature extends EditorFeature {
     if(!summary || details?.localName !== "details" || details.namespaceURI !== "http://www.w3.org/1999/xhtml"
       || details.hasAttribute("is") || !document.body.contains(details) || !summary.contains(selection.focusNode)
       || !isCaretAtBoundary(summary, "end")) return false
+    this.editor.features.mark.finishAutomaticLinkBeforeBreak()
     this.ensureDetailsBody(details)
     details.open = true
     const first = Array.from(details.childNodes).find(node =>
@@ -1562,7 +1569,7 @@ export class ListFeature extends EditorFeature {
       const endAfterList = range.endContainer === parent && range.endOffset > index
         && children.slice(index + 1, range.endOffset).every(separator)
       const next = children.slice(index + 1).find(node => !separator(node))
-      const endInEmptyParagraph = this.isPlainEmptyParagraph(next) && next.contains(range.endContainer)
+      const endInEmptyParagraph = next !== undefined && this.isPlainEmptyParagraph(next) && next.contains(range.endContainer)
       if((!startInside && !startAtList) || (!endInside && !endAfterList && !endInEmptyParagraph)) return false
     }
     const selected = selectsList ? this.directItems(list) : this.selectedItems().filter(item => item.parentElement === list)

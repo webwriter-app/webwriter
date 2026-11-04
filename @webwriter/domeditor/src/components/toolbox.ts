@@ -1162,8 +1162,9 @@ export class DomEditorToolbox extends EditingControls {
     const widget = Boolean(widgetOptions || localName.includes("-"))
     if(!profile && !widget && !group && !attributes) return nothing
     const mediaStyles = this.media && ["picture", "img", "video"].includes(localName)
-      ? ["object-view-box", "object-fit"] : []
-    const primary = (profile?.primary ?? []).filter(name => !mediaStyles.includes(name))
+      ? this.media.hasSource === false ? ["object-fit"] : ["object-view-box", "object-fit"] : []
+    const primary = (profile?.primary ?? []).filter(name => !mediaStyles.includes(name)
+      && !(this.media?.hasSource === false && name === "object-view-box"))
     const advanced = this.media && ["picture", "img"].includes(this.media.type) ? [] : profile?.advanced ?? []
     const definitions = [...specializedStyleDefinitions, ...elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])]
     const properties = [...new Set([...primary, ...advanced, ...mediaStyles, ...(list ? [listMarkerImageProperty] : [])])]

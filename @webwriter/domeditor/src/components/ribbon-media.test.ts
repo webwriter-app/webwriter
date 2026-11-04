@@ -78,17 +78,24 @@ describe("media ribbon drawer", () => {
     expect(toolbox.shadowRoot!.querySelector(".large-source-warning")).toBeNull()
   })
 
-  it.each(["picture", "img", "video", "audio"] as const)("offers cropping only for visual media: %s", async type => {
+  it.each(["picture", "img", "video", "audio"] as const)("offers cropping only for visual media with a source: %s", async type => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
-    toolbox.media = {type, attributes: {}}
+    toolbox.media = {type, attributes: {src: "media"}, ...(type === "audio" ? {} : {hasSource: true})}
     toolbox.elementStyle = {target: {localName: type, namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
     document.body.append(toolbox)
     await toolbox.updateComplete
     const editor = toolbox.shadowRoot!.querySelector<ElementStyleEditor>('.specialized-options element-style-editor')
     if(editor) await editor.updateComplete
     expect(editor?.shadowRoot!.querySelectorAll('.crop-edges input').length ?? 0).toBe(type === "audio" ? 0 : 4)
+    if(type !== "audio") {
+      toolbox.media = {type, attributes: {}, hasSource: false}
+      await toolbox.updateComplete
+      const editors = Array.from(toolbox.shadowRoot!.querySelectorAll<ElementStyleEditor>('[data-specialized] element-style-editor'))
+      await Promise.all(editors.map(editor => editor.updateComplete))
+      expect(editors.some(editor => editor.shadowRoot!.querySelector('[data-property="object-view-box"]'))).toBe(false)
+    }
   })
 
   it("dispatches the Image insertion command from a Start media button", async () => {

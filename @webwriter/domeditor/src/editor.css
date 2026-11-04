@@ -1864,14 +1864,17 @@ body::part(comment-bubble-hidden) {
 }
 ::highlight(webwriter-spelling) {
   text-decoration: underline wavy #c62828;
+  text-decoration-skip-ink: none;
   text-underline-offset: 0.15em;
 }
 ::highlight(webwriter-grammar) {
   text-decoration: underline wavy #1769aa;
+  text-decoration-skip-ink: none;
   text-underline-offset: 0.15em;
 }
 ::highlight(webwriter-style) {
   text-decoration: underline wavy #7b3fbb;
+  text-decoration-skip-ink: none;
   text-underline-offset: 0.15em;
 }
 body::part(accessibility-issue-outline) {

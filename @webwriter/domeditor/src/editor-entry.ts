@@ -78,6 +78,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   disableAnimations?: boolean
   shortcuts?: Record<string, string>
 }) => {
+  const previewEditingLock = Symbol("preview editing")
   let bookmark: SelectionBookmark | null = null
   const saveSelection = () => {
     bookmark = null
@@ -162,7 +163,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   window.addEventListener("message", event => {
     if(event.source !== window.parent || event.origin !== origin || event.data?.bridgeNonce !== nonce
       || event.data?.type !== editorFrameControlMessage) return
-    const data = event.data as {command?: string, requestId?: string, disabled?: boolean, restoreSelection?: boolean,
+    const data = event.data as {command?: string, requestId?: string, disabled?: boolean, restoreSelection?: boolean, locked?: boolean,
       shortcuts?: Record<string, string>, tags?: string[], username?: string}
     if(data.command === "snapshot") {
       post({type: "editor-frame-response", requestId: data.requestId, html: snapshot(), textNodeRuns: captureSnapshotTextNodeRuns(document.body)})
@@ -173,9 +174,15 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
         tags: (data.tags ?? []).filter(tag => typeof tag === "string" && !!customElements.get(tag))})
     }
     else if(data.command === "save-selection") {
-      saveSelection()
+      if(!editor.hasEditingLock(previewEditingLock)) saveSelection()
+    }
+    else if(data.command === "preview-editing" && typeof data.locked === "boolean") {
+      if(data.locked) editor.lockEditing(previewEditingLock)
+      else editor.unlockEditing(previewEditingLock)
+      if(data.requestId) post({type: "editor-frame-response", requestId: data.requestId})
     }
     else if(data.command === "focus") {
+      if(editor.hasEditingLock(previewEditingLock)) return
       // A queued host pointerdown can arrive after an empty image opened
       // its source controls. Keep their native focus and graphic capture.
       if(editor.features.media.isPlaceholderInteraction) {

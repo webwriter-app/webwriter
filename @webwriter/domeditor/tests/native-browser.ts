@@ -67,6 +67,7 @@ import {checkRemoteWebsite} from "./iframe-policy"
 import {checkLegacyWidgetOptions} from "./legacy-widget-options"
 import {checkShapeRibbonGalleries} from "./shape-gallery"
 import {checkFileActions} from "./file-actions"
+import {checkPreviewEditing} from "./preview-editing"
 import {checkGraphicDragPreviewRotation} from "./graphic-drag-preview-rotation"
 import {checkRibbonSnippetDrop} from "./ribbon-snippet-drop"
 import {checkResizeAlignment} from "./resize-alignment"
@@ -1265,6 +1266,56 @@ await check("Ribbon text colors share the toolbox palette and commit chosen colo
   }
 })
 
+await check("underlines match text color in either formatting order", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:250px"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Before selected after</p></body>'
+  fixture.append(frame)
+  const view = frame.contentWindow!
+  try {
+    for(let attempt = 0; !view.editor && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    if(!view.editor) throw new Error(`Formatting editor did not initialize: ${view.editorError}`)
+    const doc = frame.contentDocument!, paragraph = doc.querySelector("p")!, selection = doc.getSelection()!
+    const mark = view.editor.features.mark
+    const mismatches: string[] = []
+    for(const colorFirst of [true, false]) {
+      paragraph.textContent = "Before selected after"
+      const text = paragraph.firstChild!
+      selection.setBaseAndExtent(text, 7, text, 15)
+      const color = () => mark.setStyleMark("color", "red")
+      const underline = () => mark.toggleMark("u")
+      const [first, second] = colorFirst ? [color, underline] : [underline, color]
+      const order = colorFirst ? "color then underline" : "underline then color"
+      assert(first() && second(), `${order}: a formatting command failed`)
+      const underlined = paragraph.querySelector("u")!
+      const textColor = view.getComputedStyle(underlined.querySelector("span") ?? underlined).color
+      const line = view.getComputedStyle(underlined)
+      if(textColor !== "rgb(255, 0, 0)" || line.textDecorationColor !== textColor || line.textDecorationLine !== "underline") {
+        mismatches.push(`${order}: text ${textColor}, underline ${line.textDecorationColor}; ${paragraph.innerHTML}`)
+      }
+      assert(underlined.textContent === "selected" && selection.toString() === "selected", `${order}: selected text changed`)
+    }
+    paragraph.innerHTML = "<u><em>Before selected after</em></u>"
+    const text = paragraph.querySelector("em")!.firstChild!
+    selection.setBaseAndExtent(text, 15, text, 7)
+    assert(mark.setStyleMark("color", "red"), "recoloring part of an underline failed")
+    const runs = Array.from(paragraph.querySelectorAll("u"), element => ({
+      text: element.textContent,
+      textColor: view.getComputedStyle(element.querySelector("em")!).color,
+      lineColor: view.getComputedStyle(element).textDecorationColor,
+    }))
+    const baseColor = view.getComputedStyle(paragraph).color
+    if(JSON.stringify(runs) !== JSON.stringify(["Before ", "selected", " after"].map((text, index) => {
+      const color = index === 1 ? "rgb(255, 0, 0)" : baseColor
+      return {text, textColor: color, lineColor: color}
+    }))) mismatches.push(`partial underline: ${JSON.stringify(runs)}; ${paragraph.innerHTML}`)
+    assert(selection.toString() === "selected" && selection.anchorOffset === 8 && selection.focusOffset === 0,
+      "partial recolor changed the backward selection")
+    assert(!mismatches.length, mismatches.join("\n"))
+  }
+  finally { view.editor?.destroy(); frame.remove() }
+})
+
 await check("Editor UI prevents text selection while preserving editable fields and the document", async () => {
   await Promise.all([
     import("../src/components/ribbon"), import("../src/components/settings-panel"),
@@ -1910,7 +1961,7 @@ await check("empty Details retains summary height and padding in standalone docu
           const style = savedView.getComputedStyle(element), summaryStyle = savedView.getComputedStyle(summary)
           const box = element.getBoundingClientRect(), heading = summary.getBoundingClientRect()
           const lineHeight = parseFloat(summaryStyle.lineHeight)
-          assert(heading.height >= lineHeight - 1, "empty summary collapsed around its floated disclosure icon")
+          assert(heading.height >= lineHeight - 1, "empty summary collapsed around its disclosure icon")
           assert(heading.top >= box.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop) - 1, "summary lost top padding")
           assert(heading.bottom <= box.bottom - parseFloat(style.borderBottomWidth) - parseFloat(style.paddingBottom) + 1, "summary lost bottom padding")
           if(!element.hasAttribute("style")) assert(Math.abs(box.height - filled.height) < 1, "empty Details height differs from a one-line heading")
@@ -1926,6 +1977,56 @@ await check("empty Details retains summary height and padding in standalone docu
     (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
     frame.remove()
   }
+})
+
+await check("Details chevrons stay beside wrapped summaries", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:360px;height:360px;max-width:none;border:0"
+  frame.srcdoc = `<!doctype html><head><style data-ww-theme="base">${defaultDocumentTheme.source}</style>
+    <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script></head>
+    <body><details><summary>A short heading</summary><p>Body</p></details></body>`
+  fixture.append(frame)
+  try {
+    const view = frame.contentWindow!
+    for(let attempt = 0; attempt < 200 && !view.editor; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `wrapped summary fixture did not initialize: ${view.editorError}`)
+    const doc = frame.contentDocument!, details = doc.querySelector("details")!, summary = details.querySelector("summary")!
+    const themeStyle = doc.querySelector<HTMLStyleElement>("style[data-ww-theme]")!
+    for(const theme of documentThemes.filter(({value}) => value === "base" || value === "pico")) {
+      themeStyle.setAttribute("data-ww-theme", theme.value)
+      themeStyle.textContent = theme.source
+      for(const [direction, zoom] of [["ltr", 1], ["rtl", 1], ["ltr", 1.5]] as const) {
+        doc.documentElement.dir = direction
+        details.style.zoom = String(zoom)
+        summary.textContent = "A short heading"
+        await layoutFrame()
+        const short = summary.getBoundingClientRect()
+        summary.innerHTML = "A longer summary with <strong>inline formatting</strong> that wraps beside the chevron and leaves room to edit the last line."
+        const wrapped = summary.getBoundingClientRect(), icon = view.getComputedStyle(summary, "::after")
+        const range = doc.createRange()
+        range.selectNodeContents(summary)
+        const text = Array.from(range.getClientRects())
+        const lineHeight = parseFloat(view.getComputedStyle(summary).lineHeight) * zoom
+        const rtl = direction === "rtl"
+        const edge = rtl ? wrapped.left + parseFloat(icon.left) * zoom : wrapped.right - parseFloat(icon.right) * zoom
+        const iconWidth = parseFloat(icon.width) * zoom, iconHeight = parseFloat(icon.height) * zoom
+        const x = edge + (rtl ? iconWidth / 2 : -iconWidth / 2), y = wrapped.top + parseFloat(icon.top) * zoom + iconHeight / 2
+        assert(wrapped.height > short.height + lineHeight && icon.backgroundImage !== "none", "summary did not wrap or lost its chevron")
+        assert(Math.abs(y - short.top - iconHeight / 2) < 1, "the chevron moved below the first line")
+        assert(text.every(rect => rtl ? rect.left >= edge + iconWidth : rect.right <= edge - iconWidth), "wrapped text crossed into the chevron gutter")
+        const clickAt = (clientX: number, clientY: number) => summary.dispatchEvent(new MouseEvent("click", {
+          clientX, clientY, detail: 1, bubbles: true, cancelable: true,
+        }))
+        clickAt(x, y + lineHeight)
+        assert(!details.open, "clicking the gutter on a wrapped line toggled Details")
+        clickAt(x, y + iconHeight / 4)
+        assert(details.open, "clicking the visible chevron did not open Details")
+        clickAt(x, y)
+        assert(!details.open, "clicking the visible chevron did not close Details")
+      }
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
 await check("table presets respect whole-table and cell selections without changing layout", async () => {
@@ -3217,6 +3318,89 @@ await check("canvas and slide text exposes eight functional resize handles", asy
         target.replaceWith(doc.createElement("p"))
       }
       editor.destroy()
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("canvas image resizing keeps caption text at its original size", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const imageURL = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="180" height="100"><rect width="180" height="100" fill="#25677d"/></svg>')}`
+    const image = `<img src="${imageURL}" alt="Teal illustration" style="display:block;width:180px;height:100px">`
+    const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    frame.srcdoc = `<!doctype html><body class="ww-canvas"><p style="left:60px;top:380px">Nearby paragraph</p>
+      <figure style="left:60px;top:50px;width:180px">${image}<figcaption><em>Direct image</em></figcaption></figure>
+      <figure style="left:420px;top:50px;width:180px"><figcaption><em>Picture</em></figcaption><picture>${image}</picture></figure>
+      <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+    await loaded
+    const view = frame.contentWindow! as Window & typeof globalThis, doc = frame.contentDocument!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "caption resize fixture did not initialize")
+    const editor = view.editor!, feature = editor.features.transformation
+    editor.features.head.ensureCaptionEnumeration()
+    editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+    for(const figure of doc.querySelectorAll("figure")) {
+      const image = figure.querySelector("img")!, caption = figure.querySelector("figcaption")!
+      const text = doc.createRange()
+      const firstLetter = caption.querySelector("em")!.firstChild!
+      text.setStart(firstLetter, 0)
+      text.setEnd(firstLetter, 1)
+      const textBefore = text.getBoundingClientRect(), imageBefore = image.getBoundingClientRect()
+      const prefixBefore = view.getComputedStyle(caption, "::before").fontSize
+      editor.features.selection.captureElement(figure)
+      const handle = feature.overlay.querySelector<HTMLElement>('[data-resize-direction="down-right"]')!
+      const {right, bottom} = figure.getBoundingClientRect()
+      const factor = image.parentElement?.localName === "picture" ? 0.5 : 1.5
+      handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
+      handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: right, clientY: bottom}))
+      feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: right + 180 * (factor - 1), clientY: bottom + 100 * (factor - 1), shiftKey: true, altKey: true}))
+      feature.handleScaleEnd()
+      await layoutFrame()
+      const textAfter = text.getBoundingClientRect(), imageAfter = image.getBoundingClientRect()
+      assert(Math.abs(textAfter.width - textBefore.width) < 1 && Math.abs(textAfter.height - textBefore.height) < 1,
+        `${caption.textContent}: caption glyphs changed size (${textBefore.width} × ${textBefore.height} to ${textAfter.width} × ${textAfter.height}, ${figure.style.cssText}, ${image.style.cssText}, zoom ${editor.features.canvas.zoom})`)
+      assert(view.getComputedStyle(caption, "::before").fontSize === prefixBefore, "caption numbering changed font size")
+      assert(Math.abs(imageAfter.width - imageBefore.width * factor) < 1 && Math.abs(imageAfter.height - imageBefore.height * factor) < 1, "Shift resize did not preserve image proportions")
+      assert(caption === figure.firstElementChild ? textAfter.bottom <= imageAfter.top : textAfter.top >= imageAfter.bottom, "caption overlaps the image")
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("canvas image resizing keeps crop handles hidden on empty media", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    frame.srcdoc = `<!doctype html><body class="ww-canvas">
+      <figure style="left:40px;top:50px;width:160px"><picture><img></picture><figcaption></figcaption></figure>
+      <figure style="left:440px;top:50px;width:160px"><video controls></video><figcaption>Video</figcaption></figure>
+      <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+    await loaded
+    const view = frame.contentWindow! as Window & typeof globalThis, doc = frame.contentDocument!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "empty media fixture did not initialize")
+    const editor = view.editor!, feature = editor.features.transformation
+    editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+    const crop = feature.overlay.querySelector<HTMLElement>('[part="transform-overlay-crop-frame"]')!
+    for(const figure of doc.querySelectorAll("figure")) {
+      editor.features.selection.captureElement(figure)
+      await layoutFrame()
+      const handle = feature.overlay.querySelector<HTMLElement>('[data-resize-direction="down-right"]')!
+      const {right, bottom, width} = figure.getBoundingClientRect()
+      assert(crop.hidden && crop.getClientRects().length === 0, "empty media exposes crop controls before resizing")
+      handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
+      handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: right, clientY: bottom}))
+      feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: right + 80, clientY: bottom + 45, altKey: true}))
+      assert(crop.hidden && crop.getClientRects().length === 0, "empty media exposes crop controls during resizing")
+      feature.handleScaleEnd()
+      await layoutFrame()
+      assert(figure.getBoundingClientRect().width > width, "empty media could not be resized")
+      assert(crop.hidden && crop.getClientRects().length === 0, "empty media exposes crop controls after resizing")
     }
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
@@ -4723,13 +4907,85 @@ await check("audio insertion retains element selection at the document start", a
   finally { frame.remove() }
 })
 
+await check("automatic links wait for Space or Enter during typing and link pasted URLs immediately", async () => {
+  const frame = document.createElement("iframe")
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p id="space"></p><ul><li id="list"></li></ul><p id="enter"></p><p id="unknown"></p><p id="paste"></p></body>'
+  nativeRootEditor.addAppendix(frame)
+  const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor}
+  try {
+    for(let attempt = 0; !view.editor && !view.editorError && attempt < 200; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `autolink editor did not initialize: ${view.editorError ?? "timed out"}`)
+    const doc = frame.contentDocument!, selection = doc.getSelection()!
+    const settle = () => new Promise<void>(resolve => view.setTimeout(resolve, 0))
+    doc.body.focus()
+    const type = async (id: string, value: string) => {
+      const block = doc.getElementById(id)!
+      selection.setPosition(block, 0)
+      for(const character of value) {
+        assert(doc.execCommand("insertText", false, character), `native typing rejected ${character}`)
+        await settle()
+        assert(!block.querySelector("a"), `linked an unfinished token: ${block.innerHTML}`)
+      }
+      assert(block.textContent === value, `typed text changed: ${block.innerHTML}`)
+      return block
+    }
+    const checkLink = (block: Element, value: string) => {
+      const links = block.querySelectorAll("a")
+      assert(links.length === 1 && links[0].textContent === value && links[0].getAttribute("href") === `https://${value}`,
+        `expected one complete link for ${value}: ${block.outerHTML}`)
+    }
+
+    const url = "example.com/path?q=1"
+    const space = await type("space", `${url}.`)
+    assert(doc.execCommand("insertText", false, " "), "native Space failed")
+    await settle()
+    checkLink(space, url)
+    assert(space.textContent?.slice(url.length).replace(/\u00a0/g, " ") === ". ", "Space or punctuation was lost")
+    assert(selection.isCollapsed && !selection.anchorNode?.parentElement?.closest("a"), "Space left the caret inside the link")
+    assert(doc.execCommand("insertText", false, "next"), "typing after Space failed")
+    await settle()
+    checkLink(space, url)
+
+    for(const id of ["enter", "list"]) {
+      const block = await type(id, "example.co")
+      const enter = new view.KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+      doc.body.dispatchEvent(enter)
+      assert(enter.defaultPrevented, "the editor did not handle Enter")
+      await settle()
+      const next = block.nextElementSibling
+      assert(next?.contains(selection.anchorNode) && !next.querySelector("a"), `Enter did not leave the caret in an unlinked continuation of ${block.outerHTML}`)
+      checkLink(block, "example.co")
+    }
+
+    const unknown = await type("unknown", "example.com.test")
+    assert(doc.execCommand("insertText", false, " "), "native Space failed after an unknown domain")
+    await settle()
+    assert(!unknown.querySelector("a"), `linked part of a domain with an unknown TLD: ${unknown.innerHTML}`)
+
+    const paste = await type("paste", "replace")
+    const pasteText = async (value: string) => {
+      selection.selectAllChildren(paste)
+      const clipboardData = new view.DataTransfer()
+      clipboardData.setData("text/plain", value)
+      paste.dispatchEvent(new view.ClipboardEvent("paste", {clipboardData, bubbles: true, cancelable: true}))
+      await settle()
+    }
+    const invalidURL = "https://example.test/path"
+    await pasteText(invalidURL)
+    assert(paste.textContent === invalidURL && !paste.querySelector("a"), "paste linked a URL with an unknown TLD")
+    await pasteText(url)
+    checkLink(paste, url)
+  }
+  finally { view.editor?.destroy(); frame.remove() }
+})
+
 await check("link keyboard preserves iframe selections and applies document, web, and reference links", async () => {
   const {LinkKeyboard, linkHistoryKey} = await import("../src/components/link-keyboard")
   const priorHistory = localStorage.getItem(linkHistoryKey)
   localStorage.removeItem(linkHistoryKey)
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px;height:200px"
-  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p><a>Link text</a></p><h2 id="intro">Introduction</h2></body>'
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Before <a>Link text</a> after</p><h2 id="intro">Introduction</h2></body>'
   const keyboard = new LinkKeyboard()
   nativeRootEditor.addAppendix(frame)
   nativeRootEditor.addAppendix(keyboard)
@@ -4741,6 +4997,16 @@ await check("link keyboard preserves iframe selections and applies document, web
     const local = view.editor!, doc = frame.contentDocument!, anchor = doc.querySelector("a")!
     const text = anchor.firstChild!, selection = doc.getSelection()!
     await layoutFrame()
+    doc.body.focus()
+    const paragraph = anchor.parentElement!
+    selection.setBaseAndExtent(paragraph, 1, paragraph, 2)
+    keyboard.state = local.features.mark.getLinkState()
+    await keyboard.updateComplete
+    assert(keyboard.shadowRoot!.querySelector('[aria-label="Web address"]'), "selecting the whole link did not open the keyboard")
+    selection.setBaseAndExtent(paragraph.firstChild!, 0, text, 2)
+    keyboard.state = local.features.mark.getLinkState()
+    await keyboard.updateComplete
+    assert(!keyboard.shadowRoot!.querySelector('[aria-label="Web address"]'), "selecting outside the link left the keyboard open")
     doc.body.focus(); selection.setBaseAndExtent(text, 2, text, 2)
     keyboard.state = local.features.mark.getLinkState()
     await keyboard.updateComplete
@@ -4799,15 +5065,15 @@ await check("link keyboard preserves iframe selections and applies document, web
     assert(JSON.parse(anchor.dataset.reference!).title === "Reference source", "reference metadata was not applied")
     assert(anchor.textContent === "Link text" && !doc.body.innerHTML.includes("link-keyboard"), "keyboard changed authored text or leaked UI")
     const automaticBlock = doc.createElement("p"), untouchedBlock = doc.createElement("p")
-    automaticBlock.textContent = "Visit auto.example.test/path and email reader+tag@example.test."
-    untouchedBlock.textContent = "https://untouched.example.test"
+    automaticBlock.textContent = "Visit auto.example.com/path and email reader+tag@example.com."
+    untouchedBlock.textContent = "https://untouched.example.com"
     doc.body.append(automaticBlock, untouchedBlock)
     const automaticText = automaticBlock.firstChild as Text
     selection.setBaseAndExtent(automaticText, automaticText.length, automaticText, automaticText.length)
     automaticBlock.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
     await layoutFrame()
-    assert(automaticBlock.querySelector("a")?.getAttribute("href") === "https://auto.example.test/path", "typed URL was not automatically linked")
-    assert(automaticBlock.querySelectorAll("a")[1]?.getAttribute("href") === "mailto:reader+tag@example.test", "typed email address was not automatically linked with mailto")
+    assert(automaticBlock.querySelector("a")?.getAttribute("href") === "https://auto.example.com/path", "typed URL was not automatically linked")
+    assert(automaticBlock.querySelectorAll("a")[1]?.getAttribute("href") === "mailto:reader+tag@example.com", "typed email address was not automatically linked with mailto")
     assert(!untouchedBlock.querySelector("a"), "automatic linking scanned an unrelated text block")
     assert(selection.anchorNode?.textContent === "." && selection.anchorOffset === 1 && selection.isCollapsed,
       "automatic linking moved the native caret")
@@ -10759,6 +11025,8 @@ await check("recent documents fit one layout card when space is limited", async 
   }
   finally { frame.remove() }
 })
+
+await check("preview blocks native typing in the editor and restores the caret", () => checkPreviewEditing(assert))
 
 await check("toolbox Canvas to Document conversion retains the document selection", async () => {
   const frame = document.createElement("iframe")

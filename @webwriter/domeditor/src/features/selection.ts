@@ -736,6 +736,9 @@ export class SelectionFeature extends EditorFeature {
       return true
     }
     const adjacent = this.#adjacentNavigationElement(direction)
+    // A divider gap inside a cell still addresses the divider. Let atomic
+    // navigation select it before considering a jump out of the table.
+    if(adjacent && $.dividerGap?.element === adjacent) return false
     if($.listGap || $.detailsGap || $.captionedGap?.element.matches("table") || $.blockGap && isContentfulWidget($.blockGap.element, this.editor.schema)) {
       const outer = getContainer($.anchor).closest("ul, ol, dl, menu, details, table")
       if(outer && (!outer.matches("details") || outer.hasAttribute("open")) && this.#atDisclosureEdge(outer, direction, false)) {
