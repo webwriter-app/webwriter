@@ -62,7 +62,8 @@ export default defineConfig(({mode}) => {
     resolve: {
       dedupe: ["yjs"],
     },
-    optimizeDeps: {
+    // Static-route fixtures can opt out of the background dependency crawl.
+    optimizeDeps: process.env.VITEST && process.env.WEBWRITER_TEST_STATIC_ROUTES === "1" ? {noDiscovery: true} : {
       // Lazy review modules and workers can be outside the initial dependency crawl.
       // Discovering these on first use would re-optimize dependencies and reload the page.
       include: ["onnxruntime-web/wasm", "axe-core"],

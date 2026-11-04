@@ -3636,7 +3636,7 @@ describe("graphic editing", () => {
     expect({left: east.style.left, top: east.style.top}).toEqual(fixedEast)
   })
 
-  it("switches a crossed corner and snaps its new moving edges", () => {
+  it("switches a crossed corner and snaps its new moving edges on release before the preview frame", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     Object.defineProperty(graphic, "getBoundingClientRect", {
@@ -3647,6 +3647,7 @@ describe("graphic editing", () => {
     const rectangle = graphic.querySelector("rect")!
     const northwest = editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="resize-nw"]')!
     const southeast = editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="resize-se"]')!
+    const originalWidth = rectangle.getAttribute("width")
 
     northwest.dispatchEvent(new PointerEvent("pointerdown", {
       bubbles: true,
@@ -3661,6 +3662,7 @@ describe("graphic editing", () => {
       clientX: 1053,
       clientY: 597,
     }))
+    expect(rectangle.getAttribute("width")).toBe(originalWidth)
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
     expect(rectangle).toHaveAttribute("x", "920")

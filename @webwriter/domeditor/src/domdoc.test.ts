@@ -481,6 +481,34 @@ afterEach(() => {
 })
 
 describe("content-derived document permalinks", () => {
+  it("shares a batch of cell widths without scanning IDs and still derives a changed caption", async () => {
+    const {owner, shared} = createDocumentShared("", '<table><caption>Results</caption><tbody><tr><td style="color: red">A</td></tr><tr><td>B</td></tr></tbody></table>', "", undefined, true)
+    const table = owner.body.querySelector("table")!
+    const cells = Array.from(table.querySelectorAll("td"))
+    const selectors = vi.spyOn(owner, "querySelectorAll")
+    for(const cell of cells) cell.style.width = "140px"
+    shared.syncFromDOM()
+    await mutationsDelivered()
+    expect(selectors).not.toHaveBeenCalledWith("[id]")
+    const peer = cloneDocumentShared(shared)
+    expect(peer.owner.body.querySelectorAll('td[style*="140px"]')).toHaveLength(2)
+    expect(peer.owner.body.querySelector("td")!.style.color).toBe("red")
+
+    cells[1].removeAttribute("style")
+    shared.syncFromDOM()
+    expect(selectors).not.toHaveBeenCalledWith("[id]")
+    Y.applyUpdate(peer.shared.doc, Y.encodeStateAsUpdate(shared.doc), "remote")
+    expect(peer.owner.body.querySelectorAll('td[style*="140px"]')).toHaveLength(1)
+
+    cells[0].style.width = "160px"
+    table.caption!.firstChild!.textContent = "Updated results"
+    shared.syncFromDOM()
+    Y.applyUpdate(peer.shared.doc, Y.encodeStateAsUpdate(shared.doc), "remote")
+    expect(selectors).toHaveBeenCalledWith("[id]")
+    expect(peer.owner.body.querySelector("table")!.id).toBe("updated-results")
+    expect(peer.owner.body.querySelector("td")!.style.width).toBe("160px")
+  })
+
   it("renders remote paragraph text without inspecting unrelated subtrees", () => {
     const {owner, shared} = createDocumentShared("", '<p>Before</p><section><h2>Unrelated</h2><test-widget arbitrary="keep"></test-widget><!--keep--></section>', "", undefined, true)
     const section = owner.body.querySelector("section")!

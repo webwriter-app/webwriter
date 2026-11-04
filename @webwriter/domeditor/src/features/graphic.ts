@@ -3465,6 +3465,7 @@ export class GraphicFeature extends EditorFeature {
     if(!interaction || event.pointerId !== interaction.pointerId) return
     event.preventDefault()
     event.stopImmediatePropagation()
+    const previewPending = this.#frame !== null
     if(this.#frame !== null) cancelAnimationFrame(this.#frame)
     this.#frame = null
     const sourcesAreCurrent = interaction.items.every(item => item.source.isConnected
@@ -3485,7 +3486,10 @@ export class GraphicFeature extends EditorFeature {
     }
     this.#cleanupInteraction(interaction)
     this.#interaction = null
-    this.#refresh()
+    // If the preview already shows the last resize, the commit's observers can
+    // refresh it before paint. Otherwise advance the controls on release.
+    if(interaction.kind === "resize" && interaction.active && sourcesAreCurrent && !previewPending) this.#scheduleRefresh()
+    else this.#refresh()
     this.editor.postSelectionPath()
   }
 
@@ -3552,7 +3556,7 @@ export class GraphicFeature extends EditorFeature {
       const previews = interaction?.items.flatMap(item => item.preview ? [item.preview] : []) ?? []
       if(!interaction?.active || previews.length !== interaction.items.length || !graphic) return
       interaction.matrix = this.#screenMatrix(graphic)
-      if(interaction.previewRoot) this.#positionPreviewRoot(interaction.previewRoot, graphic)
+      if(interaction.previewRoot) this.#positionPreviewRoot(interaction.previewRoot, graphic, interaction.matrix)
       const guides = this.#applyInteractionSet(previews, interaction)
       const previewMap = new Map<Element, Element>(interaction.items.flatMap(item => item.preview ? [[item.source, item.preview] as const] : []))
       interaction.attachedConnectors.forEach(item => {
@@ -3564,7 +3568,7 @@ export class GraphicFeature extends EditorFeature {
     })
   }
 
-  #positionPreviewRoot(preview: SVGSVGElement, graphic: SVGSVGElement) {
+  #positionPreviewRoot(preview: SVGSVGElement, graphic: SVGSVGElement, matrix?: Matrix) {
     if(standaloneGraphicShape(graphic) || preview.classList.contains("◆graphic-insertion-preview")) {
       const box = graphicViewBox(graphic)
       const matrix = this.#screenMatrix(graphic)
@@ -3576,6 +3580,19 @@ export class GraphicFeature extends EditorFeature {
       })
       if(this.#presentedGraphic === graphic && !preview.classList.contains("◆graphic-insertion-preview")) this.#updateOverflowPresentation(graphic)
       return
+    }
+    // The preview typically retains the same viewport throughout a resize.
+    // Compare live matrices so scrolling, CSS transforms and camera changes
+    // can still reposition it without resetting its styles on every move.
+    if(matrix && this.#interaction?.kind === "resize" && preview.isConnected && preview.style.transformBox === "border-box"
+      && preview.style.width === `${graphic.clientWidth}px` && preview.style.height === `${graphic.clientHeight}px`) {
+      const actual = preview.getScreenCTM?.()
+      if(actual && Math.abs(matrix.a - actual.a) < 1e-6 && Math.abs(matrix.b - actual.b) < 1e-6
+        && Math.abs(matrix.c - actual.c) < 1e-6 && Math.abs(matrix.d - actual.d) < 1e-6
+        && Math.abs(matrix.e - actual.e) < .001 && Math.abs(matrix.f - actual.f) < .001) {
+        if(this.#presentedGraphic === graphic) this.#updateOverflowPresentation(graphic, true)
+        return
+      }
     }
     const rect = graphic.getBoundingClientRect()
     const viewport = this.#viewport(graphic)
@@ -4695,7 +4712,7 @@ export class GraphicFeature extends EditorFeature {
     overlay.hidden = false
     if(interaction?.active) {
       interaction.matrix = this.#screenMatrix(owner)
-      if(interaction.previewRoot) this.#positionPreviewRoot(interaction.previewRoot, owner)
+      if(interaction.previewRoot) this.#positionPreviewRoot(interaction.previewRoot, owner, interaction.matrix)
     }
     this.#updateOverlaySelection(shapes, owner, interaction?.active ? interaction.matrix : this.#screenMatrix(owner), interaction ?? undefined)
     if(marquee?.active) this.#setMarquee(boundsForPoints([marquee.start, marquee.latest]), marquee.graphic)
@@ -5193,17 +5210,28 @@ export class GraphicFeature extends EditorFeature {
     }
   }
 
-  #updateOverflowPresentation(graphic: SVGSVGElement) {
+  #updateOverflowPresentation(graphic: SVGSVGElement, alignedResize = false) {
     const sheet = this.#overflowStylesheet!
-    // Read authored filters without feeding our own filter back into the chain.
-    const sheets = [...document.adoptedStyleSheets]
-    document.adoptedStyleSheets = sheets.filter(current => current !== sheet)
-    const style = getComputedStyle(graphic)
-    const authoredFilter = style.filter === "none" ? "" : style.filter
-    const width = graphic.clientWidth || parseFloat(style.width)
-    const height = graphic.clientHeight || parseFloat(style.height)
-    document.adoptedStyleSheets = sheets
+    let filter = "", width: number, height: number
+    // Initial positioning needs the authored viewport dimensions. An aligned
+    // resize preview can measure the live viewport with its presentation on.
+    const sheets = alignedResize ? null : [...document.adoptedStyleSheets]
+    if(sheets) document.adoptedStyleSheets = sheets.filter(current => current !== sheet)
+    const declaration = alignedResize ? (sheet.cssRules[0] as CSSStyleRule | undefined)?.style : undefined
+    const currentFilter = declaration?.getPropertyValue("filter")
+    if(currentFilter) declaration!.removeProperty("filter")
+    try {
+      const style = getComputedStyle(graphic)
+      filter = style.filter
+      width = graphic.clientWidth || parseFloat(style.width)
+      height = graphic.clientHeight || parseFloat(style.height)
+    }
+    finally {
+      if(sheets) document.adoptedStyleSheets = sheets
+      if(currentFilter) declaration!.setProperty("filter", currentFilter, "important")
+    }
     if(!(width > 0 && height > 0)) return
+    const authoredFilter = filter === "none" ? "" : filter
     // A root SVG's CSS filter uses viewport pixels, before its CSS transform
     // and independently of its viewBox and native pan/zoom.
     const base = this.#cssViewportMatrix(graphic, this.#viewportMatrix(graphic, width, height), width, height)

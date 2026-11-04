@@ -566,6 +566,242 @@ describe("widget options", () => {
   })
 })
 
+describe("widget element conversions", () => {
+  class ConversionWidget extends HTMLElement {
+    convertFrom = {ul: this.loadList, ".quiz": this.loadFile, "text/plain": this.loadFile}
+    get convertTo() {
+      return this.hasAttribute("disable-export") ? {} : {
+        ul: this.toList, details: this.toDetails, ".quiz": this.toFile, "text/plain": this.toFile,
+      }
+    }
+
+    async loadFile(file: File) {
+      const text = await file.text()
+      if(!text.trim()) throw new Error("The quiz file is empty.")
+      const item = this.ownerDocument.createElement("li")
+      item.textContent = text
+      return () => this.replaceChildren(item)
+    }
+
+    async toFile() {
+      return new File([this.textContent ?? ""], "lesson.quiz", {type: "text/plain"})
+    }
+
+    loadList(fragment: DocumentFragment) {
+      const list = fragment.firstElementChild!
+      this.replaceChildren(...list.childNodes)
+      if(list.hasAttribute("data-decline")) return false
+      if(list.hasAttribute("data-throw")) throw new Error("Cannot read list")
+    }
+
+    toList() {
+      const list = this.ownerDocument.createElement("ul")
+      list.append(...Array.from(this.childNodes, node => node.cloneNode(true)))
+      return list
+    }
+
+    toDetails() {
+      if(this.hasAttribute("data-live")) return document.querySelector("details")
+      const result = this.ownerDocument.createDocumentFragment()
+      for(const item of Array.from(this.children)) {
+        const details = document.createElement(this.hasAttribute("data-mismatch") ? "p" : "details")
+        const summary = document.createElement("summary")
+        summary.append(...Array.from(item.childNodes, node => node.cloneNode(true)))
+        const content = document.createElement("p")
+        content.textContent = "Timeline entry"
+        details.append(summary, content)
+        result.append(details, document.createComment("entry"))
+      }
+      return result
+    }
+  }
+  customElements.define("demo-conversion", ConversionWidget)
+
+  const feature = editor.features.widget
+  const run = (sourceId: string, target: string) => editor.getActionHandler("convertWidgetElement")({type: "convertWidgetElement", sourceId, target})
+  beforeEach(() => editor.schema.extendWidgets([{tagName: "demo-conversion", editingConfig: {content: "li+"}}]))
+  afterEach(() => document.getSelection()?.removeAllRanges())
+
+  it("converts a native list to a widget as one undo step, preserving surrounding DOM", () => {
+    document.body.innerHTML = '<article><p>Before</p><!--adjacent--><ul><li><b>First</b></li><!--keep--><li>Second</li></ul><p>After</p></article>'
+    const list = document.querySelector("ul")!
+    const before = list.previousSibling, after = list.nextSibling
+    editor.doc.syncFromDOM()
+    const original = editor.toHTML(true)
+    $.move(list.querySelector("b")!.firstChild!, 2)
+    const state = feature.getConversionState()!
+    expect(state.targets.map(target => target.tag)).toEqual(["demo-conversion"])
+    expect(run(state.sourceId, "demo-conversion")).toBe(true)
+    const widget = document.querySelector("demo-conversion")!
+    expect(widget.innerHTML).toBe('<li><b>First</b></li><!--keep--><li>Second</li>')
+    expect(widget.previousSibling).toBe(before)
+    expect(widget.nextSibling).toBe(after)
+    expect(editor.features.selection.captureSelectedElement).toBe(widget)
+    const converted = editor.toHTML(true)
+    expect(sharedHTML()).toContain("<demo-conversion")
+    expect(converted).not.toMatch(/◆|contenteditable/)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(converted)
+    editor.features.selection.captureElement(document.querySelector("demo-conversion")!)
+    expect(run(feature.getConversionState()!.sourceId, "ul")).toBe(true)
+    expect(editor.toHTML(true)).toBe(original)
+  })
+
+  it("exports a fragment of sibling elements with their comments and undoes it together", () => {
+    document.body.innerHTML = '<section><demo-conversion id="quiz"><li>One</li><li>Two</li></demo-conversion><p>After</p></section>'
+    const widget = document.querySelector("demo-conversion")!
+    feature.refresh()
+    editor.doc.syncFromDOM()
+    const original = editor.toHTML(true)
+    editor.features.selection.captureElement(widget)
+    const state = feature.getConversionState()!
+    expect(state.targets.map(target => target.tag)).toEqual(["ul", "details"])
+    expect(run(state.sourceId, "details")).toBe(true)
+    const converted = editor.toHTML(true)
+    expect(converted).toBe("<section><details><summary>One</summary><p>Timeline entry</p></details><!--entry--><details><summary>Two</summary><p>Timeline entry</p></details><!--entry--><p>After</p></section>")
+    expect(sharedHTML()).toContain("<details><summary>Two</summary><p>Timeline entry</p></details>")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(converted)
+  })
+
+  it("uses a statically advertised importer and preserves an existing media caption", () => {
+    class InteractiveVideo extends HTMLElement {
+      static convertFrom = {video: "loadVideo"}
+      loadVideo(fragment: DocumentFragment) {
+        this.setAttribute("src", fragment.firstElementChild!.getAttribute("src")!)
+      }
+    }
+    customElements.define("demo-interactive-video", InteractiveVideo)
+    editor.schema.extendWidgets([{tagName: "demo-interactive-video"}])
+    document.body.innerHTML = '<figure><figcaption>Keep this caption</figcaption><video src="movie.mp4" controls></video></figure>'
+    const figure = document.querySelector("figure")!
+    const caption = figure.firstElementChild
+    editor.features.selection.selectElement(figure)
+    const {sourceId, targets} = feature.getConversionState()!
+    expect(targets.map(target => target.tag)).toEqual(["demo-interactive-video"])
+    expect(run(sourceId, "demo-interactive-video")).toBe(true)
+    expect(figure.firstElementChild).toBe(caption)
+    expect(figure.lastElementChild?.localName).toBe("demo-interactive-video")
+    expect(figure.lastElementChild?.getAttribute("src")).toBe("movie.mp4")
+  })
+
+  function selectFileWidget() {
+    document.body.innerHTML = '<demo-conversion id="quiz"><li>Original</li></demo-conversion><p>After</p>'
+    const widget = document.querySelector<ConversionWidget>("demo-conversion")!
+    feature.refresh()
+    editor.doc.syncFromDOM()
+    editor.features.selection.captureElement(widget)
+    return {widget, state: feature.getConversionState()!}
+  }
+
+  it("imports a file by extension in one undo step without replacing the widget", async () => {
+    const {widget, state} = selectFileWidget()
+    expect(state.targets.map(target => target.tag)).toEqual(["ul", "details"])
+    expect(state.imports).toEqual([".quiz", "text/plain"])
+    expect(state.exports).toEqual([".quiz", "text/plain"])
+    const importFile = editor.getActionHandler("importWidgetFile")
+    const file = new File(["New question"], "lesson.QUIZ")
+    expect(file.type).toBe("")
+    await expect(importFile({type: "importWidgetFile", sourceId: state.sourceId, format: ".quiz", file})).resolves.toBe(true)
+    expect(document.querySelector("demo-conversion")).toBe(widget)
+    expect(sharedHTML()).toContain('<demo-conversion id="quiz"><li>New question</li></demo-conversion>')
+    editor.doc.undo()
+    expect(widget.textContent).toBe("Original")
+    editor.doc.redo()
+    expect(widget.textContent).toBe("New question")
+  })
+
+  it("rejects a mismatched file and leaves the DOM intact after a failed decode", async () => {
+    const {widget, state} = selectFileWidget()
+    const original = editor.toHTML(true)
+    const method = vi.spyOn(widget, "loadFile")
+    Object.defineProperty(widget, "convertFrom", {value: {"text/plain": "loadFile"}})
+    const runImport = (file: File) => editor.getActionHandler("importWidgetFile")({
+      type: "importWidgetFile", sourceId: state.sourceId, format: "text/plain", file,
+    })
+    await expect(runImport(new File(["Wrong type"], "lesson.txt", {type: "image/png"}))).rejects.toThrow("Choose a text/plain file")
+    expect(method).not.toHaveBeenCalled()
+    await expect(runImport(new File([], "lesson.txt", {type: "text/plain"}))).rejects.toThrow("The quiz file is empty")
+    expect(editor.toHTML(true)).toBe(original)
+  })
+
+  it("keeps edits that arrive while the file importer is preparing its changes", async () => {
+    const {widget, state} = selectFileWidget()
+    let finish!: (apply: () => void) => void
+    const prepared = new Promise<() => void>(resolve => { finish = resolve })
+    Object.defineProperty(widget, "convertFrom", {value: {".quiz": () => prepared}})
+    const pending = editor.getActionHandler("importWidgetFile")({
+      type: "importWidgetFile", sourceId: state.sourceId, format: ".quiz", file: new File([], "lesson.quiz"),
+    })
+    widget.firstElementChild!.textContent = "Concurrent edit"
+    const apply = vi.fn()
+    finish(apply)
+    await expect(pending).rejects.toThrow("The widget changed")
+    expect(apply).not.toHaveBeenCalled()
+    expect(widget.textContent).toBe("Concurrent edit")
+  })
+
+  it("exports a matching File without creating an undo step", async () => {
+    const {widget, state} = selectFileWidget()
+    const undoGroup = vi.spyOn(editor.doc, "beginUndoGroup")
+    try {
+      const exportFile = editor.getActionHandler("exportWidgetFile")
+      const result = await exportFile({type: "exportWidgetFile", sourceId: state.sourceId, format: "text/plain"})
+      expect(result).toBeInstanceOf(File)
+      const file = result as File
+      expect(file.name).toBe("lesson.quiz")
+      expect(await file.text()).toBe("Original")
+      expect(undoGroup).not.toHaveBeenCalled()
+      expect(document.querySelector("demo-conversion")).toBe(widget)
+      Object.defineProperty(widget, "convertTo", {value: {".quiz": () => new File([], "wrong.zip")}})
+      await expect(exportFile({type: "exportWidgetFile", sourceId: state.sourceId, format: ".quiz"}))
+        .rejects.toThrow("must return a .quiz file")
+    }
+    finally { undoGroup.mockRestore() }
+  })
+
+  it.each(["data-decline", "data-throw"])("leaves the source intact when a loader fails (%s)", attribute => {
+    document.body.innerHTML = `<ul ${attribute}><li>One</li></ul><p>After</p>`
+    const list = document.querySelector("ul")!
+    editor.doc.syncFromDOM()
+    const original = editor.toHTML(true)
+    editor.features.selection.selectElement(list)
+    const {sourceId} = feature.getConversionState()!
+    if(attribute === "data-throw") expect(() => run(sourceId, "demo-conversion")).toThrow("Cannot read list")
+    else expect(run(sourceId, "demo-conversion")).toBe(false)
+    expect(document.body.firstElementChild).toBe(list)
+    expect($.selectedElement).toBe(list)
+    expect(editor.toHTML(true)).toBe(original)
+    expect(sharedHTML()).not.toContain("demo-conversion")
+  })
+
+  it("rejects mismatched fragment tags, connected output, and stale targets", () => {
+    document.body.innerHTML = '<demo-conversion id="quiz" data-mismatch><li>One</li></demo-conversion><details><summary>Other</summary></details>'
+    const widget = document.querySelector("demo-conversion")!
+    editor.features.selection.captureElement(widget)
+    const {sourceId} = feature.getConversionState()!
+    expect(run(sourceId, "details")).toBe(false)
+    widget.toggleAttribute("data-live", true)
+    expect(run(sourceId, "details")).toBe(false)
+    expect(document.body.firstElementChild).toBe(widget)
+    expect(document.querySelector("details")?.textContent).toBe("Other")
+    widget.removeAttribute("data-live")
+    widget.setAttribute("disable-export", "")
+    expect(run(sourceId, "details")).toBe(false)
+    const replacement = widget.cloneNode(true) as Element
+    replacement.removeAttribute("disable-export")
+    replacement.removeAttribute("data-mismatch")
+    widget.replaceWith(replacement)
+    editor.features.selection.captureElement(replacement)
+    expect(run(sourceId, "details")).toBe(false)
+    expect(document.body.firstElementChild).toBe(replacement)
+  })
+})
+
 describe("widget inspection", () => {
   it("reports undefined widgets and properties that are not saved", () => {
     class LitLike extends HTMLElement {

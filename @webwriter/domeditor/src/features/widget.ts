@@ -1,13 +1,19 @@
-import type {ElementSelectionType} from "../editor-bridge"
+import type {ElementSelectionType, WidgetConversionState} from "../editor-bridge"
 import {readWidgetGrouping, writeWidgetGrouping} from "../widget-grouping-dom"
 import type {WidgetGroupingRules, WidgetGroupingContext} from "../widget-grouping.js"
 import {effectiveDistribution, ensureDistributionTarget, writeDistributionConfig} from "../distribution-dom"
 import {emptyDistributionConfig, type DistributionConfig} from "../distribution.js"
 import {EditorFeature} from "."
-import {isEditorOnlyElementAttribute, isUnsafeElementAttributeName, isUnsafeElementAttributeValue} from "../element-attributes"
+import {elementAttributeTargetId, isEditorOnlyElementAttribute, isUnsafeElementAttributeName, isUnsafeElementAttributeValue} from "../element-attributes"
 import {isWidgetDataContainer} from "../active-content"
-import {$, isEditorOwnedAttribute, pathFromNode, removeEditorMarker, widgetEditableMarker} from "../utility"
+import {getDocumentRoot} from "../document-template"
+import {boardLayoutRole, slideLayoutRole} from "../document-layout"
+import {captionedFigureContent} from "../figure-layout.js"
+import {getElementPresentation} from "../element-names"
+import {$, atomicEditingContainer, clearEditorArtifacts, cloneInert, getInertDocument, isEditorOwnedAttribute, pathFromNode, removeEditorMarker, widgetEditableMarker} from "../utility"
 import {
+  isWidgetFileFormat,
+  matchesWidgetFileFormat,
   widgetActionState,
   widgetOptionAttributeValue,
   widgetOptionState,
@@ -19,12 +25,14 @@ import {
 } from "../widget-options"
 
 type Declarations = Record<string, unknown>
+const htmlNamespace = "http://www.w3.org/1999/xhtml"
+const isDeclarationMap = (value: unknown): value is Declarations => !!value && typeof value === "object" && !Array.isArray(value)
 
 /** Global attributes whose properties base classes write back themselves. */
 const globalAttributeProperties = new Set(["lang", "dir", "title", "hidden", "id", "slot", "contentEditable"])
 
-/** Longest time an asynchronous widget action keeps its changes in one undo step. */
-const actionUndoGroupTimeout = 10_000
+/** Time limit for asynchronous widget actions and file conversion preparation. */
+const widgetOperationTimeout = 10_000
 
 /** The runtime contract between the editor and installed widgets. */
 export class WidgetFeature extends EditorFeature {
@@ -32,6 +40,8 @@ export class WidgetFeature extends EditorFeature {
   readonly #runningActions = new WeakSet<Element>()
   readonly #actionErrors = new WeakMap<Element, Map<string, string>>()
   readonly #initializedContent = new WeakSet<Element>()
+  readonly #defaultImports = new WeakMap<CustomElementConstructor, string[]>()
+  #fileConversions = new AbortController()
   #refreshQueued = false
   #observingReferences = false
   #pendingFileAction?: {widget: Element, cancel: () => void}
@@ -206,6 +216,11 @@ export class WidgetFeature extends EditorFeature {
   }
 
   actions = {
+    convertWidgetElement: ({sourceId, target}: {type: "convertWidgetElement", sourceId: string, target: string}) => this.convertElement(sourceId, target),
+    importWidgetFile: ({sourceId, format, file}: {type: "importWidgetFile", sourceId: string, format: string, file: File}) =>
+      this.convertFile(sourceId, "convertFrom", format, file),
+    exportWidgetFile: ({sourceId, format}: {type: "exportWidgetFile", sourceId: string, format: string}) =>
+      this.convertFile(sourceId, "convertTo", format),
     runSelectedWidgetAction: ({selectionType, name, confirmed}: {
       type: "runSelectedWidgetAction", selectionType: ElementSelectionType, name: string, confirmed?: boolean,
     }) => {
@@ -287,18 +302,228 @@ export class WidgetFeature extends EditorFeature {
 
   /** Instance declarations override static maps. Legacy dynamicOptions are an
    * alias, with canonical options taking precedence for duplicate names. */
-  #declarations(widget: Element, kind: "options" | "actions" | "optionGroups"): Declarations {
-    const isRecord = (value: unknown): value is Declarations => !!value && typeof value === "object" && !Array.isArray(value)
+  #declarations(widget: Element, kind: "options" | "actions" | "optionGroups" | "convertFrom" | "convertTo"): Declarations {
     const read = (name: string) => {
       try {
         const own = (widget as unknown as Record<string, unknown>)[name]
-        if(isRecord(own)) return own
+        if(isDeclarationMap(own)) return own
         const inherited = (widget.constructor as unknown as Record<string, unknown>)[name]
-        return isRecord(inherited) ? inherited : {}
+        return isDeclarationMap(inherited) ? inherited : {}
       }
       catch { return {} }
     }
     return kind === "options" ? {...read("dynamicOptions"), ...read(kind)} : read(kind)
+  }
+
+  #baseTag(name: string) {
+    const entry = this.editor.schema.get(name)
+    return /^[a-z][a-z0-9]*$/.test(name) && entry && !entry.headOnly && !entry.contentNamespace
+      && name !== "html" && name !== "body"
+  }
+
+  #conversionMethod(widget: Element, declaration: unknown) {
+    try {
+      const method = typeof declaration === "string" ? (widget as unknown as Declarations)[declaration] : declaration
+      return typeof method === "function" ? method : undefined
+    }
+    catch { return undefined }
+  }
+
+  #conversionKeys(widget: Element, kind: "convertFrom" | "convertTo") {
+    return Object.entries(this.#declarations(widget, kind)).flatMap(([key, method]) =>
+      this.#conversionMethod(widget, method) ? [key] : [])
+  }
+
+  #importTags(widgetTag: string, constructor: CustomElementConstructor) {
+    try {
+      // A static map lets packages advertise imports without creating an instance.
+      const declaration = (constructor as unknown as Declarations).convertFrom
+      if(isDeclarationMap(declaration)) return Object.keys(declaration).filter(name =>
+        typeof declaration[name] === "function" || typeof declaration[name] === "string")
+      let tags = this.#defaultImports.get(constructor)
+      if(!tags) {
+        const probe = document.createElement(widgetTag)
+        tags = this.#conversionKeys(probe, "convertFrom")
+        this.#defaultImports.set(constructor, tags)
+      }
+      return tags
+    }
+    catch { return [] }
+  }
+
+  #canConvert(source: Element, parent: Element) {
+    const root = getDocumentRoot()
+    return this.isEnabled && !this.editor.isEditingLocked && source.parentElement === parent && source !== root
+      && root.contains(source) && !boardLayoutRole(source) && !slideLayoutRole(source)
+      && this.editor.allows("edit", source) && this.editor.allows("delete", source) && this.editor.allows("insert", parent)
+  }
+
+  #canConvertFile(widget: Element) {
+    return this.isEnabled && !this.editor.isEditingLocked && getDocumentRoot().contains(widget)
+      && this.isWidget(widget) && !widget.hasAttribute("is") && this.editor.allows("edit", widget)
+  }
+
+  #selectedConversion() {
+    const selection = this.editor.features.selection
+    if(!this.isEnabled || this.editor.isEditingLocked || selection.isInDragSelection
+      || $.isMultiElementSelection || this.editor.features.table.hasCellSelection) return null
+    const widgetTags = [...new Set([...this.editor.schema.getGroupMembers("widget"), ...this.editor.schema.getGroupMembers("widgetinline")])]
+    if(!widgetTags.length) return null
+    const root = getDocumentRoot()
+    const selected = selection.captureSelectedElement ?? selection.selectedSectionElement ?? $.selectedElement ?? this.editor.features.manipulation.styleTarget
+    const atomic = atomicEditingContainer(selected, this.editor.schema)
+    const source = atomic ?? selected
+    const figureContent = captionedFigureContent(source)
+      ?? (source.matches("figure:not([is])") && source.childElementCount === 1 ? source.firstElementChild : null)
+    const candidates = figureContent ? [source, figureContent] : [source]
+    // The caret inside a list item can address its list, but never cross a
+    // widget host to reinterpret content outside that widget.
+    for(let ancestor = source; ancestor !== root && !ancestor.localName.includes("-") && !ancestor.hasAttribute("is");) {
+      const parent = ancestor.parentElement
+      if(!parent || parent === root) break
+      candidates.push(parent)
+      ancestor = parent
+    }
+    for(const element of candidates) {
+      const parent = element.parentElement
+      if(!parent || element.namespaceURI !== htmlNamespace || element.hasAttribute("is")) continue
+      const widget = this.isWidget(element)
+      const canTransfer = widget && this.#canConvertFile(element)
+      const canReplace = this.#canConvert(element, parent)
+      const outputFormats = widget && (canTransfer || canReplace) ? this.#conversionKeys(element, "convertTo") : []
+      const imports = canTransfer ? this.#conversionKeys(element, "convertFrom").filter(isWidgetFileFormat) : []
+      const exports = canTransfer ? outputFormats.filter(isWidgetFileFormat) : []
+      let targets: string[] = []
+      if(canReplace) {
+        if(widget) targets = outputFormats.filter(tag => this.#baseTag(tag))
+        else if(this.#baseTag(element.localName)) targets = widgetTags.filter(tag => {
+          const constructor = customElements.get(tag)
+          return constructor && this.#importTags(tag, constructor).includes(element.localName)
+            && this.editor.schema.canReplace(element, this.editor.schema.create(tag, getInertDocument(element)))
+        })
+      }
+      if(targets.length || imports.length || exports.length) return {element, parent, widget, targets, imports, exports}
+    }
+    return null
+  }
+
+  getConversionState(): WidgetConversionState | null {
+    const selected = this.#selectedConversion()
+    if(!selected) return null
+    const {element, targets, imports, exports} = selected
+    return {sourceId: elementAttributeTargetId(element), targets: targets.map(tag => ({tag, ...getElementPresentation(tag)})),
+      ...(imports.length ? {imports} : {}), ...(exports.length ? {exports} : {})}
+  }
+
+  /** File imports prepare asynchronously and commit synchronously to the same widget. */
+  async convertFile(sourceId: string, direction: "convertFrom" | "convertTo", format: string, file?: File) {
+    const selected = this.#selectedConversion()
+    const importing = direction === "convertFrom"
+    if(!selected?.widget || elementAttributeTargetId(selected.element) !== sourceId
+      || !(importing ? selected.imports : selected.exports).includes(format)) return false
+    const {element: widget} = selected
+    if(this.#runningActions.has(widget)) return false
+    if(importing && (!(file instanceof File) || !matchesWidgetFileFormat(file, format))) {
+      throw new TypeError(`Choose a ${format} file to import.`)
+    }
+    const method = this.#conversionMethod(widget, this.#declarations(widget, direction)[format])
+    if(!method) return false
+    const snapshot = importing ? clearEditorArtifacts(cloneInert(widget, true)) : null
+    const current = () => this.#canConvertFile(widget)
+      && this.#conversionMethod(widget, this.#declarations(widget, direction)[format])
+      && (!snapshot || snapshot.isEqualNode(clearEditorArtifacts(cloneInert(widget, true))))
+    const signal = this.#fileConversions.signal
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let cancel: (() => void) | undefined
+    this.#runningActions.add(widget)
+    try {
+      const deadline = new Promise<null>((resolve, reject) => {
+        cancel = () => resolve(null)
+        signal.addEventListener("abort", cancel, {once: true})
+        timer = setTimeout(() => reject(new Error("The widget file conversion timed out.")), widgetOperationTimeout)
+      })
+      const result: unknown = await Promise.race([deadline, importing ? method.call(widget, file) : method.call(widget)])
+      if(signal.aborted || result === null || result === false) return false
+      if(!current()) throw new Error("The widget changed before the file conversion finished.")
+      if(!importing) {
+        if(!(result instanceof File) || !result.name || !matchesWidgetFileFormat(result, format)) {
+          throw new TypeError(`The widget must return a ${format} file.`)
+        }
+        return result
+      }
+      if(typeof result !== "function") throw new TypeError("A file importer must return a function that applies the imported content.")
+      const end = this.editor.doc.beginUndoGroup()
+      try {
+        if(!current()) throw new Error("The widget changed before the import could be applied.")
+        result.call(widget)
+      }
+      finally { end() }
+      return true
+    }
+    finally {
+      if(cancel) signal.removeEventListener("abort", cancel)
+      clearTimeout(timer)
+      this.#runningActions.delete(widget)
+      if(this.isEnabled) this.editor.postSelectionPath()
+    }
+  }
+
+  /** Prepare the replacement off document, then commit it as one DOM edit. */
+  convertElement(sourceId: string, target: string) {
+    const selected = this.#selectedConversion()
+    if(!selected || elementAttributeTargetId(selected.element) !== sourceId || !selected.targets.includes(target)) return false
+    const {element, parent, widget} = selected
+    let detached: Element | DocumentFragment
+    if(widget) {
+      const method = this.#conversionMethod(element, this.#declarations(element, "convertTo")[target])
+      const output: unknown = method?.call(element)
+      if(!(output instanceof Element || output instanceof DocumentFragment) || output instanceof ShadowRoot
+        || output.isConnected || output.parentNode) return false
+      detached = output
+    }
+    else {
+      const replacement = document.createElement(target)
+      const method = this.#conversionMethod(replacement, this.#declarations(replacement, "convertFrom")[element.localName])
+      if(!method || !this.isWidget(replacement)) return false
+      const copy = clearEditorArtifacts(cloneInert(element, true))
+      const fragment = copy.ownerDocument!.createDocumentFragment()
+      fragment.append(copy)
+      const result = method.call(replacement, fragment)
+      if((result !== undefined && result !== true) || replacement.isConnected || replacement.parentNode) return false
+      detached = replacement
+    }
+    const nodes = detached instanceof Element ? [detached] : Array.from(detached.childNodes)
+    const elements = nodes.filter((node): node is Element => node instanceof Element)
+    if(!elements.length || nodes.some(node => node instanceof Element
+      ? node.namespaceURI !== htmlNamespace || node.localName !== target || node.hasAttribute("is")
+        || node.matches(".◆editor-only, [data-webwriter-editor-only]")
+      : node.nodeType !== Node.COMMENT_NODE && !(node instanceof Text && !node.data.trim()))) return false
+    clearEditorArtifacts(detached)
+    const fits = () => this.#canConvert(element, parent) && this.editor.schema.isContentValid(parent,
+      Array.from(parent.childNodes).flatMap(node => node === element ? nodes : [node]))
+    if(!fits()) return false
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      if(!fits()) return false
+      element.replaceWith(...nodes)
+      if(widget) this.#unmarkEditable(element)
+      if(elements.length === 1) {
+        if(this.isWidget(elements[0])) this.editor.features.selection.captureElement(elements[0])
+        else this.editor.features.selection.selectElement(elements[0])
+      }
+      else if(elements.every(node => node.parentElement === parent)) {
+        const selection = this.editor.features.selection
+        const range = document.createRange()
+        range.setStartBefore(elements[0])
+        range.setEndAfter(elements[elements.length - 1])
+        selection.selectDropRange(range, {scrollIntoView: false})
+        $.selectRange(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+        selection.processSelection()
+      }
+    }
+    finally { end() }
+    this.editor.postSelectionPath()
+    return true
   }
 
   /** Use Lit's property mapping when the editor option leaves its attribute unspecified. */
@@ -542,7 +767,7 @@ export class WidgetFeature extends EditorFeature {
       if(result && typeof (result as PromiseLike<unknown>).then === "function") {
         await Promise.race([
           Promise.resolve(result),
-          new Promise(resolve => { timer = setTimeout(resolve, actionUndoGroupTimeout) }),
+          new Promise(resolve => { timer = setTimeout(resolve, widgetOperationTimeout) }),
         ])
       }
       return true
@@ -625,6 +850,7 @@ export class WidgetFeature extends EditorFeature {
 
   enable() {
     if(this.isEnabled) return
+    if(this.#fileConversions.signal.aborted) this.#fileConversions = new AbortController()
     super.enable()
     const Observer = document.defaultView?.MutationObserver ?? MutationObserver
     this.#observer = new Observer(this.#handleMutations)
@@ -634,6 +860,7 @@ export class WidgetFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.#fileConversions.abort()
     this.#closeLegacyOptions()
     this.#observer?.disconnect()
     this.#observer = null

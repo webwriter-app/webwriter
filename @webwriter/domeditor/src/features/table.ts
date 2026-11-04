@@ -1,5 +1,7 @@
 import {EditorFeature} from "."
 import {popupContentAncestor} from "../element-names"
+import {isAuthoredMutation} from "../editor-artifacts"
+import type {Transaction} from "yjs"
 import {$, fixedClientX, authoredClassValue, captureRangeIdentity, cloneWithoutEditorMarkers, createStylesheet, focusEditorWindow, getInertDocument, isAppendixInteraction, modifierKeyDown, plainTextFromDOM, removeEditorMarker} from "../utility"
 import {
   buildTableMap,
@@ -23,6 +25,7 @@ type TableSide = "above" | "below" | "left" | "right"
 type TableCellStyle = "background-color" | "border-color" | "border-style" | "border-width"
 type TableResizeEdge = {table: HTMLTableElement, column: number}
 type SelectionPoint = {node: Node, offset: number}
+type CellResize = {width: number, previousStyle?: string | null, writtenStyle: string | null, externallyStyled?: boolean}
 
 const resizeDragThreshold = 4
 const tableGapOffset = 8
@@ -86,10 +89,14 @@ export class TableFeature extends EditorFeature {
   private resize: {
     table: HTMLTableElement
     column: number
-    cells: Array<{cell: HTMLTableCellElement, width: number}>
+    cells: Map<HTMLTableCellElement, CellResize>
     startX: number
     startWidth: number
     endUndoGroup: () => void
+    ending?: boolean
+    checkContent?: () => void
+    refreshMarks?: () => void
+    selection: {anchor: SelectionPoint, focus: SelectionPoint} | null
   } | null = null
 
   get hasCellSelection() {
@@ -260,8 +267,8 @@ export class TableFeature extends EditorFeature {
   }
 
   private renderGaps() {
-    const table = this.editableTable(this.hoverTable) ? this.hoverTable : this.selectedTable
-    if(!this.editableTable(table) || this.pointerSelecting || this.resize) {
+    const table = this.pointerSelecting || this.resize ? null : this.editableTable(this.hoverTable) ? this.hoverTable : this.selectedTable
+    if(!this.editableTable(table)) {
       if(this.gapOverlay) this.gapOverlay.hidden = true
       return
     }
@@ -1123,18 +1130,65 @@ export class TableFeature extends EditorFeature {
     try {
       const targets = map.placements.filter(placement => placement.column <= edge.column
         && placement.column + placement.columnSpan > edge.column)
-      const cells = targets.map(({cell}) => ({
-        cell, width: inlineWidthInPixels(cell) ?? (cell.getBoundingClientRect().width || 80),
-      }))
-      if(!cells.length) return false
-      const startWidth = Math.min(...cells.map(({width}, index) => width / targets[index].columnSpan))
+      if(!targets.length) return false
+      const cells = new Map<HTMLTableCellElement, CellResize>()
+      let startWidth = Infinity
+      for(const {cell, columnSpan} of targets) {
+        const width = inlineWidthInPixels(cell) ?? (cell.getBoundingClientRect().width || 80)
+        startWidth = Math.min(startWidth, width / columnSpan)
+        cells.set(cell, {width, writtenStyle: cell.getAttribute("style")})
+      }
+      const native = document.getSelection()
+      const selection = native?.anchorNode && native.focusNode ? {
+        anchor: {node: native.anchorNode, offset: native.anchorOffset},
+        focus: {node: native.focusNode, offset: native.focusOffset},
+      } : null
       document.body.classList.add("◆", "◆table-column-resize")
-      this.resize = {table: edge.table, column: edge.column, cells, startX, startWidth, endUndoGroup}
+      this.resize = {table: edge.table, column: edge.column, cells, startX, startWidth, endUndoGroup, selection}
       return true
     }
     finally {
       if(!this.resize) endUndoGroup()
     }
+  }
+
+  deferResizeMutationWork(records: MutationRecord[], work: "checkContent" | "refreshMarks", run: () => void) {
+    const resize = this.resize
+    if(!resize || work === "refreshMarks" && !this.resizeSelectionIsStable() || !this.isResizeStyleBatch(records)) return false
+    resize[work] = run
+    return true
+  }
+
+  /** Only suppress observer work for the exact writes the current drag made. */
+  isResizeStyleBatch(records: MutationRecord[]) {
+    const resize = this.resize
+    return Boolean(resize && !resize.ending && records.every(record => {
+      if(record.attributeName === "style" && !record.attributeNamespace && record.target instanceof HTMLTableCellElement) {
+        const cell = resize.cells.get(record.target)
+        if(cell && cell.previousStyle === record.oldValue && cell.writtenStyle === record.target.getAttribute("style")) return true
+      }
+      return !document.head.contains(record.target) && !isAuthoredMutation(record)
+    }))
+  }
+
+  private resizeSelectionIsStable() {
+    const selection = this.resize?.selection
+    if(!selection) return false
+    const native = document.getSelection()
+    return Boolean(native && !this.editor.isEditingLocked && !this.hasCellSelection
+      && !this.editor.features.selection.isCaptureSelection && !this.editor.features.selection.selectedSectionElement
+      && selection.anchor.node.isConnected && selection.focus.node.isConnected
+      && native.anchorNode === selection.anchor.node && native.anchorOffset === selection.anchor.offset
+      && native.focusNode === selection.focus.node && native.focusOffset === selection.focus.offset)
+  }
+
+  keepsSelectionDuringResize(transaction: Transaction) {
+    const resize = this.resize
+    if(!resize || !this.resizeSelectionIsStable()) return false
+    return this.editor.doc.isLocalStyleOnlySync(transaction, element => {
+      const cell = element instanceof HTMLTableCellElement && resize.cells.get(element)
+      return Boolean(cell && !cell.externallyStyled && cell.writtenStyle === element.getAttribute("style"))
+    })
   }
 
   private captureTextDragAnchor() {
@@ -1201,24 +1255,40 @@ export class TableFeature extends EditorFeature {
   }
 
   private updateResize(event: PointerEvent) {
-    if(!this.resize) return false
-    if(!this.resize.table.isConnected || this.resize.cells.some(({cell}) => !cell.isConnected || tableForNode(cell) !== this.resize!.table)) {
+    const resize = this.resize
+    if(!resize || resize.ending) return false
+    if(!this.editableTable(resize.table) || [...resize.cells.keys()].some(cell => tableForNode(cell) !== resize.table)) {
       this.stopResize()
       return false
     }
-    const width = Math.max(24, this.resize.startWidth + event.clientX - this.resize.startX)
-    const delta = width - this.resize.startWidth
-    this.resize.cells.forEach(({cell, width}) => cell.style.width = `${Math.round(Math.max(24, width + delta))}px`)
+    const delta = Math.max(24, resize.startWidth + event.clientX - resize.startX) - resize.startWidth
+    for(const [cell, state] of resize.cells) {
+      const width = `${Math.round(Math.max(24, state.width + delta))}px`
+      if(cell.style.width === width && !cell.style.getPropertyPriority("width")) continue
+      state.previousStyle = cell.getAttribute("style")
+      if(state.previousStyle !== state.writtenStyle) state.externallyStyled = true
+      cell.style.width = width
+      state.writtenStyle = cell.getAttribute("style")
+    }
     return true
   }
 
   private stopResize() {
-    if(!this.resize) return
-    const {endUndoGroup} = this.resize
-    this.resize = null
-    removeEditorMarker(document.body, "◆table-column-resize")
-    endUndoGroup()
-    this.editor.postSelectionPath()
+    const resize = this.resize
+    if(!resize || resize.ending) return
+    const {endUndoGroup, checkContent, refreshMarks} = resize
+    // Keep recognizing the final style-only sync while the undo group closes.
+    resize.ending = true
+    try {
+      removeEditorMarker(document.body, "◆table-column-resize")
+      checkContent?.()
+    }
+    finally {
+      try { endUndoGroup() }
+      finally { this.resize = null }
+    }
+    if(refreshMarks) refreshMarks()
+    else this.editor.postSelectionPath()
   }
 
   finishResize = () => {
@@ -1373,16 +1443,16 @@ export class TableFeature extends EditorFeature {
     },
     pointermove: (event: PointerEvent) => {
       if(isAppendixInteraction(event)) return
-      const hovered = tableForNode(event.target instanceof Node ? event.target : null)
-      const box = this.hoverTable?.getBoundingClientRect()
-      if(hovered || !box || event.clientX < box.left - 32 || event.clientX > box.right + 16
-        || event.clientY < box.top - 32 || event.clientY > box.bottom + 16) this.hoverTable = hovered
-      this.scheduleGaps()
       if(this.updateResize(event)) {
         event.preventDefault()
         event.stopImmediatePropagation()
         return
       }
+      const hovered = tableForNode(event.target instanceof Node ? event.target : null)
+      const box = this.hoverTable?.getBoundingClientRect()
+      if(hovered || !box || event.clientX < box.left - 32 || event.clientX > box.right + 16
+        || event.clientY < box.top - 32 || event.clientY > box.bottom + 16) this.hoverTable = hovered
+      this.scheduleGaps()
       this.captureTextDragAnchor()
       if(this.updatePendingResize(event)) {
         event.preventDefault()
@@ -1430,11 +1500,11 @@ export class TableFeature extends EditorFeature {
       this.setResizeHover(edge)
     },
     pointerup: (event: PointerEvent) => {
-      if(isAppendixInteraction(event)) return
       if(this.resize) {
         event.preventDefault()
         this.stopResize()
       }
+      else if(isAppendixInteraction(event)) return
       else if(this.pointerSelecting) {
         event.preventDefault()
       }

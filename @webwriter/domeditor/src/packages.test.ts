@@ -248,13 +248,17 @@ describe("WebWriterPackageRegistry", () => {
             ? Object.fromEntries(Object.entries(exports).reverse()) : exports,
           editingConfig: {
             ".": {label: {de: "Demo-Paket"}},
+            "./widgets/webwriter-demo": {importFormats: ["text/javascript", ".js"]},
           },
         })
       }
       if(url === "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/editing-config.json") {
         return Response.json({
           ".": {label: {_: "Demo Package"}, description: {de: "Detaillierte Beschreibung"}},
-          "./widgets/webwriter-demo": {label: {_: "Demo Widget"}, content: "(p | flow)+", isolating: false},
+          "./widgets/webwriter-demo": {
+            label: {_: "Demo Widget"}, content: "(p | flow)+", isolating: false,
+            importFormats: [".txt"], exportFormats: ["text/javascript"],
+          },
           "./snippets/example": {label: {_: "Example Snippet"}},
         })
       }
@@ -286,8 +290,14 @@ describe("WebWriterPackageRegistry", () => {
       content: "(p | flow)+",
       isolating: false,
     })
-    expect(pkg.manifest?.editingConfig).toEqual({".": {label: {de: "Demo-Paket"}}})
+    expect(pkg.manifest?.editingConfig).toEqual({
+      ".": {label: {de: "Demo-Paket"}},
+      "./widgets/webwriter-demo": {importFormats: ["text/javascript", ".js"]},
+    })
     expect(pkg.members[0].editingConfig).toBe(pkg.editingConfig?.["./widgets/webwriter-demo"])
+    expect(pkg.members[0].editingConfig).toMatchObject({
+      importFormats: ["text/javascript", ".js"], exportFormats: ["text/javascript"],
+    })
     expect(packageWidgetSchemaDefinitions([pkg])).toEqual([{
       tagName: "webwriter-demo",
       editingConfig: expect.objectContaining({content: "(p | flow)+", isolating: false}),

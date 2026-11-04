@@ -1,4 +1,5 @@
 import {widgetDefinitionErrors} from "./schema"
+import {isWidgetFileFormat} from "./widget-options"
 import {
   editingConfigKey,
   localizedText,
@@ -315,6 +316,8 @@ async function fileExists(directory: LocalPackageDirectory, path: string) {
 const isLocalizedText = (value: unknown) => typeof value === "string"
   || !!value && typeof value === "object" && !Array.isArray(value) && Object.values(value).every(text => typeof text === "string")
 
+const isFileFormatList = (value: unknown) => Array.isArray(value) && value.every(isWidgetFileFormat)
+
 const optionChecks: Record<string, (value: unknown) => boolean> = {
   label: isLocalizedText,
   description: isLocalizedText,
@@ -326,6 +329,8 @@ const optionChecks: Record<string, (value: unknown) => boolean> = {
   marks: value => typeof value === "string",
   propagateEvents: value => Array.isArray(value) && value.every(type => typeof type === "string" && type.length > 0),
   sharedData: value => typeof value === "boolean",
+  importFormats: isFileFormatList,
+  exportFormats: isFileFormatList,
 }
 
 /** Checks the editing config against the options the editor reads and the

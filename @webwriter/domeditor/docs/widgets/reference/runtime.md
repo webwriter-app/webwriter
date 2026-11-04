@@ -13,11 +13,25 @@ A widget script defines the custom element named by its export, for example `./w
 | `focus(options?)` | Optionally delegate focus to an internal control. |
 | `static options` / `options` | [Option declarations](options-actions.md) for the Widget drawer. |
 | `static actions` / `actions` | [Action declarations](options-actions.md); methods have matching names. |
+| `static convertFrom` / `convertFrom`, `static convertTo` / `convertTo` | [DOM conversions and file import or export](../guides/conversions.md). |
 | `static aggregate` | [Aggregated View](aggregated-view.md) declaration for aggregate views. |
 
 WebWriter gives installed widgets a persistent `id` if missing. It adds temporary marker classes and `contenteditable=""` while editing if no authored `contenteditable` exists. These editor artifacts are not saved or shared. Preserve authored IDs and unfamiliar content.
 
 Shadow-DOM events are ignored by editor features unless `propagateEvents` opts in. Deliberate widget changes to authored DOM are still observed and synchronized.
+
+## Conversions
+
+The key identifies the format and determines the handler's contract. The two maps are independent. A conversion may preserve only the content its target format can represent.
+
+| Key | `convertFrom` | `convertTo` |
+|---|---|---|
+| Lowercase native HTML tag, such as `ul` | Receives a detached `DocumentFragment` containing a copy of the source element. Populate the new widget synchronously. Return nothing or `true` on success, or `false` to decline. | Return a detached element with the declared tag, or a detached fragment containing one or more siblings with that tag. The fragment may include comments and formatting whitespace. Return `null` to decline. |
+| Extension such as `.h5p` or concrete media type such as `image/png` | Receives one `File`. Return a synchronous function that applies the prepared content to the existing widget, or `null` or `false` to decline. The handler can prepare its result asynchronously. | Return a `File` with a matching extension or media type, or `null` or `false` to decline. The handler may return a promise. |
+
+Use method names or function references. The editor calls the handlers with the widget as `this`. Instance maps override static maps. Prefer `static convertFrom` to advertise the DOM tags accepted by a fresh widget without constructing a probe. When only an instance map exists, the editor discovers DOM input keys on a detached default instance.
+
+The editor validates DOM replacement at the source location. File imports validate the format key and recheck the original widget after preparation. Apply authored changes only in the returned function so the editor can commit them in one undo step. Export handlers read widget state and return the result for the editor to download. File handlers have ten seconds to return their result. See the [conversion guide](../guides/conversions.md) for examples.
 
 ## `LitElementWw`
 

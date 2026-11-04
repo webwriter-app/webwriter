@@ -31,6 +31,7 @@ export class CanvasViewer {
   clientPoint(x: number, y: number): Point
   mountMinimap(toolbar: HTMLElement, editStartingView?: StartingViewEditing): void
   updateStartingView(): void
+  setMinimapRefreshPaused(paused: boolean): void
   zoomAt(zoom: number, point?: Point): void
   fit(): void
   startView(): boolean

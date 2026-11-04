@@ -149,6 +149,28 @@ describe("loadLocalPackage", () => {
 })
 
 describe("local package checks", () => {
+  it.each([
+    {formats: {importFormats: ["text/javascript", ".js"], exportFormats: []}, invalid: []},
+    {formats: {importFormats: ".js", exportFormats: ["image/*"]}, invalid: ["importFormats", "exportFormats"]},
+    {formats: {importFormats: ["ul"], exportFormats: [42]}, invalid: ["importFormats", "exportFormats"]},
+  ])("validates file format declarations $formats", async ({formats, invalid}) => {
+    const result = await loadLocalPackage(nestedDirectory({
+      files: {"package.json": JSON.stringify({
+        name: "@local/demo",
+        version: "0.1.0",
+        exports: {"./widgets/demo-widget.js": "./dist/demo.js"},
+        editingConfig: {"./widgets/demo-widget": formats},
+      })},
+      directories: {dist: {files: {"demo.js": "bundle"}}},
+    }), {urlFor})
+
+    expect(result.package.members).toHaveLength(1)
+    expect(result.warnings).toEqual(invalid.map(option => expect.objectContaining({
+      code: "invalid-editing-option", path: "./widgets/demo-widget", message: expect.stringContaining(option),
+    })))
+    if(!invalid.length) expect(result.package.members[0].editingConfig).toEqual(formats)
+  })
+
   it.each([true, false, "yes", 1, null])("validates sharedData=%s without interrupting package loading", async sharedData => {
     const result = await loadLocalPackage(nestedDirectory({
       files: {"package.json": JSON.stringify({

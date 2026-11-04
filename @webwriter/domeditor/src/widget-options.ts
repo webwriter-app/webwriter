@@ -23,6 +23,20 @@ export type WidgetOptionTreeNode = {
 
 export type WidgetFileInput = {type: "file", accept?: string, multiple?: boolean}
 
+const fileExtension = /^\.[a-z0-9][a-z0-9_-]*(?:\.[a-z0-9][a-z0-9_-]*)*$/i
+const mediaType = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$/i
+
+/** File conversions accept literal extensions and concrete MIME types. */
+export function isWidgetFileFormat(value: unknown): value is string {
+  return typeof value === "string" && (fileExtension.test(value) || mediaType.test(value))
+}
+
+export function matchesWidgetFileFormat(file: File, format: string) {
+  const key = format.toLowerCase()
+  return key.startsWith(".") ? file.name.toLowerCase().endsWith(key)
+    : file.type.split(";", 1)[0].trim().toLowerCase() === key
+}
+
 /** Durations use numeric seconds, independent of the displayed time fields. */
 export function formatWidgetDuration(value: number): string {
   if(!Number.isFinite(value) || value < 0) return ""

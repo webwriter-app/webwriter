@@ -1831,6 +1831,13 @@ await check("SVG overflow fades while retaining native shape selection", async (
     await layoutFrame()
     const preview = editor.appendix.querySelector(".◆graphic-preview")!
     assert(preview && view.getComputedStyle(preview).filter.includes("#overflow"), "drag preview lost overflow fading")
+    graphic.style.filter = "sepia(0.4)"
+    doc.dispatchEvent(new view.PointerEvent("pointermove", {bubbles:true, buttons:1, pointerId:2, clientX:rect.left - 40, clientY:rect.top + 20}))
+    await layoutFrame(); await layoutFrame()
+    for(const root of [graphic, preview]) {
+      const filter = view.getComputedStyle(root).filter
+      assert(filter.startsWith("sepia(0.4) url(") && filter.split("#overflow").length === 2, "live filter edit was lost or overflow filter was duplicated")
+    }
     doc.dispatchEvent(new view.PointerEvent("pointercancel", {bubbles:true, pointerId:2}))
     editor.features.graphic.actions.navigateGraphic({type:"navigateGraphic", operation:"zoom-in"})
     graphic.style.rotate = "12deg"
@@ -6695,6 +6702,30 @@ await check("canvas and slide delete affordances follow rotation placement", asy
       editor.doc.undo()
       await layoutFrame()
       assert(editor.toHTML(true) === initial, `${mode}: Delete could not be undone`)
+
+      const figure = doc.createElement("figure")
+      figure.style.cssText = "position:absolute;left:230px;top:170px;width:200px;margin:0"
+      figure.innerHTML = '<div style="width:140px;height:80px;transform-origin:0 0"></div><figcaption>Keep the caption upright</figcaption>'
+      doc.querySelector("#delete-item")!.replaceWith(figure)
+      editor.features.selection.withoutSelectionScroll(() => editor.features.selection.selectElement(figure))
+      await layoutFrame()
+      const content = figure.firstElementChild as HTMLElement, caption = figure.lastElementChild!
+      const center = (element: Element) => {
+        const box = element.getBoundingClientRect()
+        return {x: box.left + box.width / 2, y: box.top + box.height / 2}
+      }
+      const transform = editor.features.transformation, pivot = center(content)
+      const mouse = (x: number, y: number) => new MouseEvent("mousemove", {button: 0, clientX: x, clientY: y})
+      editor.features.selection.withoutSelectionScroll(() => transform.handleRotateStart(mouse(pivot.x, pivot.y - 50)))
+      transform.handleRotateDrag(mouse(pivot.x + 50, pivot.y))
+      await layoutFrame()
+      assert(content.style.rotate === "90deg" && !caption.getAttribute("style"), `${mode}: rotation did not leave the caption upright (angle=${content.style.rotate}, caption=${caption.getAttribute("style")}, target=${transform.target?.localName})`)
+      assert(view.getComputedStyle(figure, "::before").shapeOutside.startsWith("polygon("), `${mode}: rotation did not update caption flow`)
+      const rotatedCenter = center(content), overlayCenter = center(overlay)
+      assert(Math.hypot(rotatedCenter.x - pivot.x, rotatedCenter.y - pivot.y) < 1, `${mode}: rotation moved the figure content's pivot`)
+      assert(Math.hypot(overlayCenter.x - pivot.x, overlayCenter.y - pivot.y) < 1, `${mode}: the live frame missed the rotated content`)
+      doc.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+      assert(!content.style.rotate && !figure.className.includes("◆figure-flow-"), `${mode}: cancellation left rotated content or caption flow behind`)
     }
     finally {frame.contentWindow?.editor?.destroy(); frame.remove()}
   }
@@ -7080,12 +7111,36 @@ await check("freeform box selections transform as a group", async () => {
       feature.handleScaleEnd()
       assert(editor.toHTML(true) === resizeBefore, `${mode}: a hidden handle resized the group`)
       await layoutFrame()
+      const members = [first, last]
+      const assertMemberOutlines = (phase: string) => {
+        const outlines = Array.from(editor.appendix.querySelectorAll('[part~="multi-selection-overlay"]'))
+        assert(outlines.length === members.length, `${mode}: ${phase} lost member outlines`)
+        for(const [i, outline] of outlines.entries()) {
+          const box = outline.getBoundingClientRect(), rect = members[i].getBoundingClientRect()
+          assert((["left", "top", "width", "height"] as const).every(key => Math.abs(box[key] - rect[key]) < 1),
+            `${mode}: ${phase} outline no longer matches its transformed box`)
+        }
+      }
       const rotateBefore = [first, last].map(element => element.getBoundingClientRect())
       const rotation = feature.overlay.getBoundingClientRect(), cx = rotation.left + rotation.width / 2, cy = rotation.top + rotation.height / 2
       feature.handleRotateStart(new view.MouseEvent("mousedown", {button: 0, clientX: cx, clientY: cy - 50}))
       // Synthetic MouseEvent coordinates round to integers. Snap the intended
       // quarter turn so fractional overlay bounds do not change its angle.
       feature.handleRotateDrag(new view.MouseEvent("mousemove", {clientX: cx + 50, clientY: cy, shiftKey: true}))
+      await layoutFrame()
+      assert(feature.overlay.style.transform === "rotate(90deg)", `${mode}: group frame did not rotate during the drag`)
+      assertMemberOutlines("active rotation")
+      first.style.marginLeft = "12px"
+      await layoutFrame()
+      assertMemberOutlines("rotation after a direct DOM edit")
+      first.style.marginLeft = "0px"
+      const animation = last.animate([{translate: "0px"}, {translate: "30px"}], {duration: 80, fill: "forwards"})
+      await animation.finished
+      await layoutFrame()
+      assertMemberOutlines("rotation at the end of an authored animation")
+      animation.cancel()
+      await layoutFrame()
+      assertMemberOutlines("rotation after animation cancellation")
       feature.handleRotateEnd()
       for(const [i, element] of [first, last].entries()) {
         const rect = element.getBoundingClientRect(), before = rotateBefore[i]
@@ -7096,6 +7151,39 @@ await check("freeform box selections transform as a group", async () => {
       assert(Array.from(first.parentNode!.childNodes).every((node, i) => node === children[i]) && first.innerHTML === content, `${mode}: transforms changed authored structure`)
       assert(outside.style.left === "200px" && outside.style.top === "450px", `${mode}: transforms affected an unselected item`)
       assert(editor.doc.snapshot().selection?.ranges?.length === 2, `${mode}: gesture collapsed the group selection`)
+      // The group has mixed local transforms and one member positioned by its
+      // end insets. Resize must use the live boxes under the current zoom.
+      Object.assign(last.style, {left: "auto", top: "auto", right: "200px", bottom: "80px"})
+      assert(feature.setSpatialGrouping("group"), `${mode}: grouping failed`)
+      await layoutFrame()
+      const boxes = members.map(element => element.getBoundingClientRect())
+      const transforms = members.map(element => element.style.transform)
+      const frameBox = feature.overlay.getBoundingClientRect()
+      const saved = editor.toHTML(true)
+      const x = Math.round(frameBox.right), y = Math.round(frameBox.bottom)
+      handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
+      handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: x, clientY: y}))
+      feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: x + 60, clientY: y + 30}))
+      await layoutFrame()
+      assert(feature.overlay.getBoundingClientRect().width > frameBox.width, `${mode}: group frame did not resize during the drag`)
+      assertMemberOutlines("active resize")
+      feature.handleScaleEnd()
+      for(const [i, element] of members.entries()) {
+        const rect = element.getBoundingClientRect(), box = boxes[i]
+        const expectedX = frameBox.left + (box.left + box.width / 2 - frameBox.left) * (1 + 60 / frameBox.width)
+        const expectedY = frameBox.top + (box.top + box.height / 2 - frameBox.top) * (1 + 30 / frameBox.height)
+        assert(Math.abs(rect.left + rect.width / 2 - expectedX) < 1 && Math.abs(rect.top + rect.height / 2 - expectedY) < 1,
+          `${mode}: resize misplaced a transformed member`)
+        assert(element.style.transform === transforms[i], `${mode}: resize overwrote the member's transform`)
+      }
+      const resized = editor.toHTML(true)
+      assert(resized !== saved, `${mode}: resize made no change`)
+      await layoutFrame()
+      assertMemberOutlines("completed resize")
+      editor.doc.undo()
+      assert(editor.toHTML(true) === saved, `${mode}: one undo did not restore the resize`)
+      editor.doc.redo()
+      assert(editor.toHTML(true) === resized, `${mode}: redo did not restore the resize`)
       assert(!editor.toHTML(true).match(/◆|transform-overlay/), `${mode}: group controls leaked into serialization`)
       editor.destroy()
     }

@@ -28,7 +28,7 @@ import {
 import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStylePropertyNameSet, specializedElementStyle} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
-import {authoredDetailsOpen, isHTMLDetailsElement} from "../editor-artifacts"
+import {authoredDetailsOpen, isAuthoredMutation, isHTMLDetailsElement} from "../editor-artifacts"
 import {popupContentAncestor, popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
 import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction, emptyElementHTML} from "../insertion"
 import {cellForNode, createTable, tableForNode} from "../table"
@@ -43,6 +43,7 @@ import {
 
 /** Unit by which a collapsed selection is extended before deleting. */
 type Granularity = "character" | "word" | "line" | "block"
+type DropPoint = ReturnType<typeof $.pointFromCoords>
 
 type FloatDropZone = {container: Element, parent: Element, side: "left" | "right", center: number, rect: DOMRect, column?: {left: number, right: number}, allowed?: boolean}
 type FloatDropTargets = {source: Element, key: Element | string, zones: FloatDropZone[], scrollX: number, scrollY: number, currentScrollX: number, currentScrollY: number}
@@ -50,6 +51,7 @@ type FloatDropTargets = {source: Element, key: Element | string, zones: FloatDro
 type FloatPreviewMeasurements = {
   geometry: Map<Element, Partial<Record<"left" | "right", {rect: DOMRect, clears: boolean, physicalSide: "left" | "right", column?: {left: number, right: number}}>>>
   clearance: Map<Element, Map<Element, {left: number, right: number}>>
+  sourceFlow?: {bottom: number, height: number} | null
 }
 
 type ValidatedStyleEntry = {
@@ -305,9 +307,11 @@ export class ManipulationFeature extends EditorFeature {
     const view = document.defaultView
     const FrameMutationObserver = view?.MutationObserver
     if(FrameMutationObserver) {
-      this.dragMutationObserver = new FrameMutationObserver(invalidate)
+      this.dragMutationObserver = new FrameMutationObserver(records => {
+        if(records.some(isAuthoredMutation)) invalidate()
+      })
       this.dragMutationObserver.observe(document.body, {
-        attributes: true, characterData: true, childList: true, subtree: true,
+        attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true, childList: true, subtree: true,
       })
     }
     const FrameResizeObserver = view?.ResizeObserver
@@ -549,7 +553,8 @@ export class ManipulationFeature extends EditorFeature {
     event.preventDefault()
     const shapeDetail = graphicShape ? readGraphicShapeDrag(event.dataTransfer!) : null
     const source = this.nodeDrag?.element ?? (graphicShape || ribbonShape ? this.editor.features.graphic.createGraphic(shapeDetail?.shape ?? ribbonShape ?? "rectangle", shapeDetail?.paint) : ribbonTag ? this.ribbonElement(ribbonTag) : ribbonInsertion ? this.insertionPreviewSource ?? document.createElement("div") : null)
-    const floatContainer = source && this.floatDropTarget(event, source)
+    const point = this.dropPointResolver(event)
+    const floatContainer = source && this.floatDropTarget(event, source, point)
     const beginSelection = () => {
       if(!document.body.classList.contains("◆drop-selection-active")) {
         const selection = document.getSelection()
@@ -564,14 +569,14 @@ export class ManipulationFeature extends EditorFeature {
         this.nodeDrag?.element ?? (ribbonTag || graphicShape || ribbonShape ? source! : this.insertionPreviewSource))
     }
     else {
-      const range = this.dropRange(event, ribbonTag || ribbonInsertion || graphicShape ? null : this.nodeDrag?.element ?? null)
+      const range = this.flowDropRange(event, ribbonTag || ribbonInsertion || graphicShape ? null : this.nodeDrag?.element ?? null, point)
       if(!range) {
         event.dataTransfer!.dropEffect = "none"
         this.clearDropSelection(true)
         return
       }
       beginSelection()
-      this.editor.features.selection.selectDropRange(range)
+      this.editor.features.selection.selectDropRange(range, {preview: true})
       this.clearFloatDropPreview("transfer")
     }
     event.dataTransfer!.dropEffect = this.nodeDrag && !event.ctrlKey && !event.altKey ? "move" : "copy"
@@ -704,7 +709,7 @@ export class ManipulationFeature extends EditorFeature {
     return right ? "right" : null
   }
 
-  floatDropTarget(event: MouseEvent, source: Element, range?: Range) {
+  floatDropTarget(event: MouseEvent, source: Element, pointAtDrop = this.dropPointResolver(event)) {
     this.floatDropHit = null
     if(this.editor.features.canvas.active || this.editor.features.slides.active || source.namespaceURI === MATH_NAMESPACE) return null
     if(event.target instanceof Node && source.contains(event.target)) return null
@@ -714,7 +719,7 @@ export class ManipulationFeature extends EditorFeature {
     // Requiring an actual text range hit keeps native caret snapping from
     // claiming blank gutters, where floating remains the intended behavior.
     if((event as MouseEvent & {dataTransfer?: DataTransfer | null}).dataTransfer?.types.includes(ribbonInsertionDragType)) {
-      const root = getDocumentRoot(), point = this.dropPoint(event)
+      const root = getDocumentRoot(), point = pointAtDrop()
       if(point?.node instanceof Text && point.node.data && root.contains(point.node)) {
         const text = document.createRange()
         text.selectNodeContents(point.node)
@@ -723,7 +728,7 @@ export class ManipulationFeature extends EditorFeature {
       }
     }
     if(source === this.nodeDrag?.element && source.matches("p, h1, h2, h3, h4, h5, h6")) {
-      const point = this.dropPoint(event)
+      const point = pointAtDrop()
       // Caret hit testing can snap from an empty outer margin to nearby text.
       // Join text only when the pointer is actually inside that text block.
       const textTarget = point && getContainer(point.node).closest("p, h1, h2, h3, h4, h5, h6")
@@ -814,7 +819,7 @@ export class ManipulationFeature extends EditorFeature {
           if(rule && "group" in rule) parentPermissions.set(parent, allowed)
         }
         for(const side of ["left", "right"] as const) {
-          const rect = this.floatPreviewRect(container, side, measurement, source, measurements)
+          const rect = this.floatPreviewRect(container, side, measurement, source, measurements, bounds)
           zones.push({container, parent, side, center: bounds.left + bounds.width / 2, allowed, rect,
             column: measurements.geometry.get(parent)?.[side]?.column})
         }
@@ -909,43 +914,69 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private floatPreviewRect(container: Element, side: "left" | "right", overlay: HTMLElement, source?: Element,
-    measurements: FloatPreviewMeasurements = {geometry: new Map(), clearance: new Map()}) {
-    const rect = container.getBoundingClientRect(), parent = container.parentElement!
-    let physicalSide = side
-    const singleLane = document.documentElement.clientWidth >= 720
+    measurements: FloatPreviewMeasurements = {geometry: new Map(), clearance: new Map()}, rect = container.getBoundingClientRect()) {
+    const parent = container.parentElement!
     const cached = measurements.geometry.get(parent)?.[side]
-    if(cached) return new DOMRect(cached.rect.left, this.floatPreviewTop(container, cached.physicalSide, source, cached.clears, measurements), cached.rect.width, cached.rect.height)
+    if(cached) return new DOMRect(cached.rect.left, this.floatPreviewTop(container, rect, cached.physicalSide, source, cached.clears, measurements), cached.rect.width, cached.rect.height)
+    const viewportWidth = document.documentElement.clientWidth
+    let physicalSide = side
     const body = document.body.getBoundingClientRect(), bodyStyle = getComputedStyle(document.body)
     const parentRect = parent.getBoundingClientRect(), parentStyle = getComputedStyle(parent)
     const number = (value: string) => parseFloat(value) || 0
+    const inline = (source as HTMLElement | undefined)?.style
+    const authoredWidth = inline?.getPropertyValue("inline-size") || inline?.width
+    const sourceMaximum = inline?.getPropertyValue("max-inline-size") || inline?.maxWidth
+    const sourceSize = inline?.getPropertyValue("--ww-float-size") || authoredWidth || sourceMaximum
+    const hasSourceSize = sourceSize && sourceSize !== "auto" && sourceSize !== "none"
+      && (!sourceSize.includes("%") || sourceMaximum && !sourceMaximum.includes("%") && sourceMaximum !== "none")
+    const defaultWidth = "min(var(--ww-prose-max, 45rem), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - var(--ww-float-gap)) / 2)))"
+    const threeColumnWidth = "min(var(--ww-prose-max, 45rem), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - 2 * var(--ww-float-gap)) / 3)))"
+    const probeStyle = "visibility:hidden;position:fixed;height:0;box-sizing:border-box;pointer-events:none"
+    const values = new Set(["var(--ww-float-gap)", "var(--ww-left-lane, 0px)", "var(--ww-right-lane, var(--ww-lane, 0px))",
+      defaultWidth, threeColumnWidth, "var(--ww-leading-gutter-balance, 0px)", "var(--ww-prose-max, 45rem)",
+      "var(--ww-float-width)", "var(--ww-left-column-explicit-width, 0px)", "var(--ww-right-column-explicit-width, 0px)"])
+    if(hasSourceSize) {
+      values.add(sourceSize)
+      if(sourceMaximum && sourceMaximum !== "none") values.add(sourceMaximum)
+    }
+    // Independent CSS lengths can all be resolved in the same layout pass.
+    const probes = Array.from(values, value => {
+      const probe = document.createElement("div")
+      probe.style.cssText = probeStyle
+      probe.style.width = value
+      return {value, probe}
+    })
+    overlay.append(...probes.map(({probe}) => probe))
+    const lengths = new Map<string, number>()
+    try {
+      for(const {value, probe} of probes) lengths.set(value, probe.getBoundingClientRect().width || number(getComputedStyle(probe).width))
+    }
+    finally { probes.forEach(({probe}) => probe.remove()) }
+    const length = (value: string, fallback: number) => lengths.get(value) || fallback
     const probe = overlay.appendChild(document.createElement("div"))
-    probe.style.cssText = "visibility:hidden;position:fixed;height:0;box-sizing:border-box;pointer-events:none"
+    probe.style.cssText = probeStyle
     const pixels = (value: string, fallback: number) => {
       probe.style.width = value
       return probe.getBoundingClientRect().width || number(getComputedStyle(probe).width) || fallback
     }
     try {
       const themed = Boolean(bodyStyle.getPropertyValue("--ww-float-width"))
-      const lanes = themed && singleLane
-      const gap = pixels("var(--ww-float-gap)", 16)
-      const currentLeft = pixels("var(--ww-left-lane, 0px)", 0)
-      const currentRight = pixels("var(--ww-right-lane, var(--ww-lane, 0px))", 0)
+      const lanes = themed && viewportWidth >= 720
+      const gap = length("var(--ww-float-gap)", 16)
+      const currentLeft = length("var(--ww-left-lane, 0px)", 0)
+      const currentRight = length("var(--ww-right-lane, var(--ww-lane, 0px))", 0)
       let pageLeft = body.left + number(bodyStyle.paddingLeft) - currentLeft
       let pageRight = body.right - number(bodyStyle.paddingRight) + currentRight
-      let defaultLaneWidth = pixels("min(var(--ww-prose-max, 45rem), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - var(--ww-float-gap)) / 2)))", 320)
-      const inline = (source as HTMLElement | undefined)?.style
-      const authoredWidth = inline?.getPropertyValue("inline-size") || inline?.width
-      const sourceMaximum = inline?.getPropertyValue("max-inline-size") || inline?.maxWidth
-      const sourceSize = inline?.getPropertyValue("--ww-float-size") || authoredWidth || sourceMaximum
-      const sourceWidth = sourceSize && sourceSize !== "auto" && sourceSize !== "none" && (!sourceSize.includes("%") || sourceMaximum && !sourceMaximum.includes("%") && sourceMaximum !== "none")
-        ? Math.min(pixels(sourceSize, source?.getBoundingClientRect().width || 0), sourceMaximum && sourceMaximum !== "none" ? pixels(sourceMaximum, Infinity) : Infinity) : 0
+      let defaultLaneWidth = length(defaultWidth, 320)
+      const sourceWidth = hasSourceSize
+        ? Math.min(length(sourceSize, source?.getBoundingClientRect().width || 0), sourceMaximum && sourceMaximum !== "none" ? length(sourceMaximum, Infinity) : Infinity) : 0
       const otherFloats = Array.from(document.body.querySelectorAll<HTMLElement>('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
         .filter(element => element !== source)
       const sides = otherFloats.map(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList))
       let hasLeft = lanes && (side === "left" || sides.includes("far-left"))
       let hasRight = lanes && (side === "right" || sides.includes("far-right"))
-      if(hasLeft && hasRight && document.documentElement.clientWidth >= 1400) {
-        defaultLaneWidth = pixels("min(var(--ww-prose-max, 45rem), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - 2 * var(--ww-float-gap)) / 3)))", 320)
+      if(hasLeft && hasRight && viewportWidth >= 1400) {
+        defaultLaneWidth = length(threeColumnWidth, 320)
       }
       const widthFor = (columnSide: "left" | "right") => {
         const items = otherFloats.filter((_, index) => sides[index] === `far-${columnSide}`)
@@ -955,11 +986,11 @@ export class ManipulationFeature extends EditorFeature {
             return value && !value.includes("%") && value !== "auto" && value !== "none" && value !== "var(--ww-float-width)"
           })) || side === columnSide && !sourceWidth
         return Math.max(implicit ? defaultLaneWidth : 0,
-          items.length ? pixels(`var(--ww-${columnSide}-column-explicit-width, 0px)`, 0) : 0,
+          items.length ? length(`var(--ww-${columnSide}-column-explicit-width, 0px)`, 0) : 0,
           side === columnSide ? sourceWidth : 0)
       }
       let leftWidth = hasLeft ? widthFor("left") : 0, rightWidth = hasRight ? widthFor("right") : 0
-      if(hasLeft && hasRight && document.documentElement.clientWidth < 1400) {
+      if(hasLeft && hasRight && viewportWidth < 1400) {
         physicalSide = "right"
         rightWidth = Math.max(leftWidth, rightWidth)
         leftWidth = 0
@@ -968,8 +999,8 @@ export class ManipulationFeature extends EditorFeature {
       }
       if(lanes) {
         const gutter = number(bodyStyle.paddingRight) - currentRight
-        const balance = pixels("var(--ww-leading-gutter-balance, 0px)", 0)
-        const prose = pixels("var(--ww-prose-max, 45rem)", 720)
+        const balance = length("var(--ww-leading-gutter-balance, 0px)", 0)
+        const prose = length("var(--ww-prose-max, 45rem)", 720)
         const root = document.documentElement.getBoundingClientRect()
         if(hasLeft && hasRight) {
           const budget = Math.max(0, root.width - 2 * gutter - balance - 300 - 2 * gap)
@@ -1007,7 +1038,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       if(right <= left) { left = rect.left; right = rect.right }
       const available = Math.max(1, right - left)
-      const laneWidth = lanes ? physicalSide === "left" ? leftWidth : rightWidth : pixels("var(--ww-float-width)", 256)
+      const laneWidth = lanes ? physicalSide === "left" ? leftWidth : rightWidth : length("var(--ww-float-width)", 256)
       const lane = laneWidth + gap
       overlay.style.width = `${available}px`
       probe.style.position = "static"
@@ -1046,7 +1077,7 @@ export class ManipulationFeature extends EditorFeature {
       if(!height) height = width * 9 / 16
       const result = new DOMRect(lanes ? physicalSide === "left" ? left - lane : right + lane - width
         : themed ? (left + right - width) / 2 : side === "left" ? left : right - width,
-        this.floatPreviewTop(container, physicalSide, source, lanes || !themed, measurements), width, height)
+        this.floatPreviewTop(container, rect, physicalSide, source, lanes || !themed, measurements), width, height)
       // Siblings share the parent's width and the source's initial dimensions.
       // Resolve CSS lengths once per side/parent, rather than forcing layout for
       // every possible anchor in a long document.
@@ -1060,15 +1091,20 @@ export class ManipulationFeature extends EditorFeature {
     finally { probe.remove() }
   }
 
-  private floatPreviewTop(container: Element, side: "left" | "right", source: Element | undefined, clears: boolean, measurements: FloatPreviewMeasurements) {
-    const parent = container.parentElement!, rect = container.getBoundingClientRect()
+  private floatPreviewTop(container: Element, rect: DOMRect, side: "left" | "right", source: Element | undefined, clears: boolean, measurements: FloatPreviewMeasurements) {
+    const parent = container.parentElement!
     const number = (value: string) => parseFloat(value) || 0
     let top = rect.top
-    if(source?.parentElement === parent && source.compareDocumentPosition(container) & Node.DOCUMENT_POSITION_FOLLOWING
-      && source.getBoundingClientRect().bottom <= rect.top
-      && getComputedStyle(source).float === "none" && !isOutOfFlow(source)) {
-      const style = getComputedStyle(source)
-      top -= source.getBoundingClientRect().height + number(style.marginTop) + number(style.marginBottom)
+    if(source?.parentElement === parent && source.compareDocumentPosition(container) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      if(measurements.sourceFlow === undefined) {
+        const style = getComputedStyle(source)
+        measurements.sourceFlow = null
+        if(style.float === "none" && !isOutOfFlow(source)) {
+          const sourceRect = source.getBoundingClientRect()
+          measurements.sourceFlow = {bottom: sourceRect.bottom, height: sourceRect.height + number(style.marginTop) + number(style.marginBottom)}
+        }
+      }
+      if(measurements.sourceFlow && measurements.sourceFlow.bottom <= rect.top) top -= measurements.sourceFlow.height
     }
     if(clears) {
       let clearance = measurements.clearance.get(parent)
@@ -1319,22 +1355,33 @@ export class ManipulationFeature extends EditorFeature {
     ))
   }
 
+  // Reuse one live hit test for float and flow placement within this event.
+  private dropPointResolver(event: MouseEvent): () => DropPoint {
+    let hit: {point: DropPoint} | undefined
+    return () => (hit ??= {point: this.dropPoint(event)}).point
+  }
+
   dropRange(event: MouseEvent, source: Element | null) {
     if(source && !getDocumentRoot().contains(source)) return null
-    const float = source && this.floatDropTarget(event, source)
+    const pointAtDrop = this.dropPointResolver(event)
+    const float = source && this.floatDropTarget(event, source, pointAtDrop)
     if(float) {
       const range = document.createRange()
       range.selectNodeContents(float)
       range.collapse(true)
       return range
     }
-    if(source && event.target instanceof Node && source.contains(event.target)) return null
+    return this.flowDropRange(event, source, pointAtDrop)
+  }
+
+  private flowDropRange(event: MouseEvent, source: Element | null, pointAtDrop: () => DropPoint) {
+    if(source && (!getDocumentRoot().contains(source) || event.target instanceof Node && source.contains(event.target))) return null
     // Overlays such as the selected element's drag surface cover authored
     // content, which native hit testing would otherwise resolve to the appendix.
     // Bound the hit test to the editing root so its geometry fallback also
     // resolves blank space when media leaves no native text caret to hit.
     const root = getDocumentRoot()
-    const point = this.dropPoint(event)
+    const point = pointAtDrop()
     if(!point || !getDocumentRoot().contains(point.node)) return null
     if(source && !this.allowsCaptionInsertion([source], point.node)) return null
     const range = document.createRange()
@@ -2006,7 +2053,7 @@ export class ManipulationFeature extends EditorFeature {
       return
     }
     const element = fragment.childNodes.length === 1 ? fragment.firstChild : null
-    const container = isElement(element) && element.namespaceURI !== MATH_NAMESPACE ? this.floatDropTarget(event, element, range) : null
+    const container = isElement(element) && element.namespaceURI !== MATH_NAMESPACE ? this.floatDropTarget(event, element) : null
     if(container && isElement(element) && this.placeFloat(element, container, this.floatSide(container, event.clientX))) $.selectElement(element)
     else {
       const elements = Array.from(fragment.children)
@@ -4249,7 +4296,10 @@ export class ManipulationFeature extends EditorFeature {
       }
       if(this.ribbonSurfaceDrag(event) || this.nodeDrag && (isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.drop(event)
     },
-    "dragend": () => this.endNodeDrag(),
+    "dragend": () => {
+      if(this.nodeDrag || this.floatDropTargets || this.originalDropSelection || this.floatDropPreviewOwner === "transfer"
+        || document.body.classList.contains("◆drop-selection-active")) this.endNodeDrag()
+    },
   }
 
   passiveListeners: DocumentListenerMap = {

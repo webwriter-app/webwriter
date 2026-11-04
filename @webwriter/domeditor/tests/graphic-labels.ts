@@ -96,6 +96,11 @@ export async function checkGraphicLabels() {
     await layout()
     assert(!text.style.scale && rectangle.outerHTML===original,"short label did not regain font size or changed geometry")
     editor.features.graphic.actions.setGraphicParameter({type:"setGraphicParameter",name:"label",value:content})
+    const rich=doc.createElementNS("http://www.w3.org/2000/svg","tspan")
+    rich.setAttribute("font-weight","700")
+    rich.textContent=" Ligatures, 👩‍💻, café, مرحبًا بالعالم, שלום."
+    text.firstChild!.textContent=content.slice(0,100)
+    text.append(rich)
     await layout()
     const width=rectangle.getAttribute("width"),scale=text.style.scale
     editor.doc.stopCapturing()
@@ -105,13 +110,26 @@ export async function checkGraphicLabels() {
     east.dispatchEvent(new view.PointerEvent("pointerdown",{...pointer,...start}))
     doc.dispatchEvent(new view.PointerEvent("pointermove",{...pointer,buttons:1,clientX:start.clientX+120,clientY:start.clientY}))
     await layout()
-    const preview=editor.appendix.querySelector(".◆graphic-preview text") as SVGTextElement
+    graphic.style.translate="12px 0"
+    await layout()
+    const end={clientX:start.clientX+132,clientY:start.clientY}
+    doc.dispatchEvent(new view.PointerEvent("pointermove",{...pointer,...end,buttons:1}))
+    await layout()
+    const previewRoot=editor.appendix.querySelector<SVGSVGElement>(".◆graphic-preview")!
+    const actual=previewRoot.getScreenCTM()!,expected=graphic.getScreenCTM()!
+    for(const key of ["a","b","c","d","e","f"] as const) {
+      assert(Math.abs(actual[key]-expected[key])<.01,`resize preview missed the live viewport change (${key})`)
+    }
+    const preview=previewRoot.querySelector("text")!
     assert(preview && Number(preview.style.scale || 1)>Number(scale || 1),"resize preview did not relax label scaling")
     const previewScale=preview.style.scale
+    const previewPosition=[preview.getAttribute("x"),preview.getAttribute("y")]
+    assert(preview.textContent===text.textContent && preview.querySelector("tspan")?.getAttribute("font-weight")==="700","resize preview lost rich runs")
     assert(rectangle.getAttribute("width")===width && text.style.scale===scale,"preview changed authored label or shape")
-    doc.dispatchEvent(new view.PointerEvent("pointerup",{...pointer,clientX:start.clientX+120,clientY:start.clientY}))
+    doc.dispatchEvent(new view.PointerEvent("pointerup",{...pointer,...end}))
     await layout()
     assert(Number(rectangle.getAttribute("width"))>Number(width) && text.style.scale===previewScale,"resize commit differs from its label preview")
+    assert(text.lastChild===rich && text.getAttribute("x")===previewPosition[0] && text.getAttribute("y")===previewPosition[1],"mixed-direction label changed runs or glyph positions on release")
     editor.doc.undo();await layout()
     assert(rectangle.getAttribute("width")===width && text.style.scale===scale,`resize undo lost label fit (${rectangle.getAttribute("width")}/${width}, ${text.style.scale}/${scale})`)
     assert(!editor.toHTML(true).includes("◆"),"native labels serialized UI")

@@ -1094,14 +1094,21 @@ export class DomEditorToolbox extends EditingControls {
 
   private renderSpecializedDrawer(group?: SelectedElementTypeState, listGroups?: SelectedElementTypeState[]) {
     const attributes = group?.element ?? this.elementAttributes
+    const conversions = this.widgetConversion?.sourceId === attributes?.targetId && this.widgetConversion
+      ? this.widgetConversionGroups : []
+    const conversionPicker = (name: string, icon: string, iconUrl?: string) => conversions.length ? html`
+      <ribbon-button slot="heading-icon" variant="element-conversion" icon-only dropdown-on-click
+        label=${`Conversion options for ${name}`} icon=${icon} icon-url=${iconUrl ?? ""} .submenuGroups=${conversions}></ribbon-button>
+    ` : nothing
     const popupPart = attributes && (attributes.name === "Popup" && attributes.localName === "button"
       || attributes.name === "Popup Content") && attributes.path
     if(popupPart) return html`<ribbon-drawer label=${attributes.name} icon="Popup" layout="popup"
-      .elementCount=${group?.count ?? 1} show-pane-icon selectable-heading data-specialized=${attributes.localName}
+      .elementCount=${group?.count ?? 1} ?show-pane-icon=${!conversions.length} selectable-heading data-specialized=${attributes.localName}
       @drawer-heading-select=${() => this.dispatchEvent(new CustomEvent("toolbox-element-select", {
         detail: {selectionTypes: [{localName: attributes.localName, namespaceURI: attributes.namespaceURI, path: attributes.path}]},
         bubbles: true, composed: true,
       }))}>
+      ${conversionPicker(attributes.name, "Popup")}
       <button type="button" class="style-reset" slot="heading-action" title=${`Delete ${attributes.name}`}
         aria-label=${`Delete ${attributes.name}`} @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
         @click=${() => this.dispatchEvent(new CustomEvent("popup-delete", {
@@ -1184,14 +1191,17 @@ export class DomEditorToolbox extends EditingControls {
       : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
       : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
     const hasOptions = advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
-    return html`<ribbon-drawer label=${label} icon=${heading ? "Heading" : list ? "List" : attributes?.icon ?? label} .iconUrl=${heading || list ? "" : attributes?.iconUrl ?? ""} layout="element-style"
-      .elementCount=${group?.count ?? 1} show-pane-icon selectable-heading ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
+    const icon = heading ? "Heading" : list ? "List" : attributes?.icon ?? label
+    const iconUrl = heading || list ? "" : attributes?.iconUrl ?? ""
+    return html`<ribbon-drawer label=${label} icon=${icon} .iconUrl=${iconUrl} layout="element-style"
+      .elementCount=${group?.count ?? 1} ?show-pane-icon=${!conversions.length} selectable-heading ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
       @drawer-heading-select=${() => this.dispatchEvent(new CustomEvent("toolbox-element-select", {
         detail: {selectionTypes: listGroups && listGroups.length > 1 ? listScopes : [{localName, namespaceURI,
           ...((group?.count ?? 1) === 1 && attributes?.path ? {path: attributes.path} : {}),
         }]}, bubbles: true, composed: true,
       }))}
       @element-style-change=${scopeChange} @element-attribute-change=${scopeChange}>
+      ${conversionPicker(label, icon, iconUrl)}
       ${attributes ? html`<element-attribute-editor slot="heading-action" language-button .state=${attributes}
         .documentLanguage=${this.documentHead.language}></element-attribute-editor>` : nothing}
       <button type="button" class="style-reset" slot="heading-action" title="Reset element styles" aria-label="Reset element styles"

@@ -14,6 +14,7 @@ These guides help you complete a specific task in an existing widget. For a firs
 | [Localize a widget](localization.md) | Follow the document's language. |
 | [Support printing](printing.md) | Provide a useful paper representation. |
 | [Use libraries and assets](libraries.md) | Load dependencies, styles, and media. |
+| [Convert, import, and export content](conversions.md) | Exchange content with native HTML and files. |
 | [Test and debug](testing.md) | Check saving, interactions, and editor integration. |
 | [Publish a widget](publishing.md) | Build and distribute a widget. |
 | [Migrate widget content](migrations.md) | Update content from an older version. |

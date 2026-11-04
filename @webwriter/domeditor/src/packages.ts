@@ -97,12 +97,17 @@ export type PackageEditingConfigEntry = WidgetEditingConfig & {
   label?: LocalizedText
   description?: LocalizedText
   uninsertable?: boolean
+  /** File format keys advertised by the widget's convertFrom handlers. */
+  importFormats?: string[]
+  /** File format keys advertised by the widget's convertTo handlers. */
+  exportFormats?: string[]
   [key: string]: unknown
 }
 
 /** Options the editor reads from an editing-config entry. */
 export const packageEditingConfigOptions = [
   "label", "description", "uninsertable", "group", "inline", "content", "isolating", "marks", "propagateEvents", "sharedData",
+  "importFormats", "exportFormats",
 ] as const
 
 export type PackageEditingConfig = Record<string, PackageEditingConfigEntry>

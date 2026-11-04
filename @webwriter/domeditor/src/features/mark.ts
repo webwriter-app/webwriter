@@ -668,7 +668,7 @@ export class MarkFeature extends EditorFeature {
     const observer = new FrameMutationObserver(records => {
       if(!records.some(isAuthoredMutation)) return
       this.queueAutomaticLinks(records)
-      this.queueStateRefresh()
+      if(!this.editor.features.table.deferResizeMutationWork(records, "refreshMarks", this.queueStateRefresh)) this.queueStateRefresh()
     })
     try {
       observer.observe(document.body, {
@@ -2295,9 +2295,8 @@ export class MarkFeature extends EditorFeature {
     const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
     while(walker.nextNode()) {
       const node = walker.currentNode as Text
-      if(block.namespaceURI !== SVG_NAMESPACE
-        && (!$.includesNode(node) || !this.isEditableHTMLContext(node, document.body))
-        || !range.intersectsNode(node)) continue
+      if(!range.intersectsNode(node) || block.namespaceURI !== SVG_NAMESPACE
+        && (!$.includesNode(node) || !this.isEditableHTMLContext(node, document.body))) continue
 
       const startRelation = range.comparePoint(node, 0)
       const endRelation = range.comparePoint(node, node.length)
@@ -2362,7 +2361,7 @@ export class MarkFeature extends EditorFeature {
     if(!isStyleMarkName(property)) throw new TypeError(`Unsupported style mark '${property}'`)
   }
 
-  private queueStateRefresh() {
+  private queueStateRefresh = () => {
     if(this.stateRefreshQueued) return
     this.stateRefreshQueued = true
     queueMicrotask(() => {

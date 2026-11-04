@@ -5,6 +5,8 @@ import {editorInteractionStyles} from "./editing-controls.styles"
 import { ribbonIcon } from "../ribbon-icons"
 import {ribbonElementInsertionAction, ribbonElementTag, ribbonInsertionAction, startElementDrag, startRibbonInsertionDrag} from "./insertion-menu"
 
+export const isWidgetConversionAction = (action: string) => /^widget-(conversion|import|export):/.test(action)
+
 export type RibbonMenuGroup = {
   label: string
   content?: TemplateResult
@@ -71,6 +73,10 @@ export class RibbonMenu extends LitElement {
     }
 
     .item-label.italic { font-style: italic; }
+    .item[data-conversion] .item-label {
+      text-decoration: underline dotted currentColor;
+      text-underline-offset: 0.2em;
+    }
     .warning-bubble { margin-left: auto; border-radius: 50%; padding: 0 .35rem; color: #78350f; background: #fcd34d; font-weight: 700; }
     .item:disabled, .submenu-toggle:disabled { opacity: 0.5; cursor: default; }
     .remove, .label-confirm { flex: 0 0 1.5rem; width: 1.5rem; padding: 0.2rem; }
@@ -614,7 +620,8 @@ export class RibbonMenu extends LitElement {
   }
 
   private dragTag(button: RibbonMenuButton) {
-    return ribbonElementTag(this.buttonLabel(button), this.buttonAction(button))
+    const action = this.buttonAction(button)
+    return isWidgetConversionAction(action) ? null : ribbonElementTag(this.buttonLabel(button), action)
   }
 
   private packageInsertionAction(button: RibbonMenuButton) {
@@ -949,8 +956,9 @@ export class RibbonMenu extends LitElement {
                       draggable=${String(Boolean(this.dragTag(button) || this.packageInsertionAction(button)) && !item.disabled && !item.menuOnly)}
                       role="menuitem"
                       tabindex=${groupIndex === 0 && buttonIndex === 0 ? "0" : "-1"}
-                      title=${label}
+                      title=${this.buttonAction(button).startsWith("widget-conversion:") ? `Convert to ${label}` : label}
                       data-action=${this.buttonAction(button)}
+                      ?data-conversion=${isWidgetConversionAction(this.buttonAction(button))}
                       ?disabled=${item.disabled}
                       aria-haspopup=${item.menuOnly ? "menu" : nothing}
                       aria-expanded=${item.menuOnly ? isOpen : nothing}

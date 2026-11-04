@@ -17,7 +17,6 @@ export class BoardFeature extends EditorFeature {
   private frame: number | null = null
   private columnsCache: HTMLElement[] = []
   private groupsCache: HTMLElement[] = []
-  private cardsCache: HTMLElement[] = []
   private structureDirty = true
   private contentDirty = true
   private anchorsDirty = true
@@ -435,7 +434,6 @@ export class BoardFeature extends EditorFeature {
         else parent.insertBefore(source, destination.before)
         if(isBoardColumn(source)) this.removeEmptyGroup(previousParent)
         this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(source))
-        this.editor.postSelectionPath()
       }
       finally { end() }
     }
@@ -640,14 +638,13 @@ export class BoardFeature extends EditorFeature {
     if(this.drag && !this.validDrag()) this.endDrag()
     const columns = this.active ? this.structureDirty ? this.columns() : this.columnsCache : []
     const groups = this.active ? this.structureDirty ? this.groups() : this.groupsCache : []
-    const allCards = this.active ? this.structureDirty ? columns.flatMap(column => this.cards(column)) : this.cardsCache : []
     this.structureDirty = false
     const locked = this.editor.isEditingLocked
     const permissions = [this.editor.allows("insert", document.body), ...columns.map(column => this.editor.allows("insert", column))]
     const permissionSignature = JSON.stringify(permissions)
     if(!this.drag && !this.pressedHandle && (this.active && !this.placements.length || !this.active && this.placements.length
-      || groups.length !== this.groupsCache.length || groups.some((group, i) => group !== this.groupsCache[i]) || allCards.length !== this.cardsCache.length || allCards.some((item, i) => item !== this.cardsCache[i]) || locked !== this.locked || columns.length !== this.columnsCache.length || columns.some((column, i) => column !== this.columnsCache[i]) || permissionSignature !== this.permissionSignature)) {
-      this.columnsCache = columns; this.groupsCache = groups; this.cardsCache = allCards; this.locked = locked
+      || groups.length !== this.groupsCache.length || groups.some((group, i) => group !== this.groupsCache[i]) || locked !== this.locked || columns.length !== this.columnsCache.length || columns.some((column, i) => column !== this.columnsCache[i]) || permissionSignature !== this.permissionSignature)) {
+      this.columnsCache = columns; this.groupsCache = groups; this.locked = locked
       this.permissionSignature = permissionSignature
       this.controls.replaceChildren(); this.placements = []
       const button = (label: string, text: string, target: HTMLElement, position: typeof this.placements[number]["position"], run: () => unknown) => {
@@ -715,7 +712,7 @@ export class BoardFeature extends EditorFeature {
     if(this.frame !== null) cancelAnimationFrame(this.frame)
     this.frame = null; this.controls?.remove(); this.controls = null
     if(this.stylesheet && document.body.shadowRoot) document.body.shadowRoot.adoptedStyleSheets = document.body.shadowRoot.adoptedStyleSheets.filter(sheet => sheet !== this.stylesheet)
-    this.stylesheet = null; this.columnsCache = []; this.groupsCache = []; this.cardsCache = []; this.placements = []
+    this.stylesheet = null; this.columnsCache = []; this.groupsCache = []; this.placements = []
     this.structureDirty = this.contentDirty = this.anchorsDirty = true; this.conversionStateCache = null
     if(this.layoutStylesheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.layoutStylesheet)
     this.layoutStylesheet = null

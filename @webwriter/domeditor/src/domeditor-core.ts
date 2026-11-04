@@ -678,8 +678,11 @@ export class DOMEditor {
   #handleBodySchemaChanges = (mutations: MutationRecord[]) => {
     // Selection markers do not change authored flow. Head resources still
     // require a check because their CSS can reposition every body child.
-    if(mutations.some(mutation => document.head.contains(mutation.target) || isAuthoredMutation(mutation))) this.#ensureDocumentContent()
+    if(mutations.some(mutation => document.head.contains(mutation.target) || isAuthoredMutation(mutation))
+      && !this.features.table.deferResizeMutationWork(mutations, "checkContent", this.#checkContentAfterResize)) this.#ensureDocumentContent()
   }
+
+  #checkContentAfterResize = () => { if(!this.#destroyed) this.#ensureDocumentContent() }
 
   /** Restores a static default flow child when none remains in the body.
    * A selection left at BODY or in removed content
@@ -966,6 +969,7 @@ export class DOMEditor {
   postSelectionPath(inserted = false) {
     if(this.features.selection.isInDragSelection) return
     if(this.options.reader) { window.dispatchEvent(new Event("webwriter-distribution-selection")); return }
+    if(!inserted && this.features.transformation.deferTransformSelectionState("selectionPathPending")) return
     const body = document.body
     const root = getDocumentRoot(body)
     const inDragSelection = this.features.selection.isInDragSelection
@@ -1111,6 +1115,7 @@ export class DOMEditor {
       )
       : null
     const widgetOptions = inDragSelection ? null : this.features.widget.getOptionsState(focusedWidget ? [...elements, focusedWidget] : elements)
+    const widgetConversion = inDragSelection ? null : this.features.widget.getConversionState()
     const canSection = this.features.manipulation.canSectionSelection()
     const selectedElementTypes = inDragSelection ? [] : this.features.manipulation.getSelectedElementTypes()
     const detail: SelectionChangeDetail = {
@@ -1142,6 +1147,7 @@ export class DOMEditor {
       ...(layout ? {layout} : {}),
       ...(elementState ? {element: elementState} : {}),
       ...(widgetOptions ? {widget: widgetOptions} : {}),
+      ...(widgetConversion ? {widgetConversion} : {}),
     }
     this.postBridgeEvent(selectionChangeEvent, detail)
   }
@@ -1149,6 +1155,7 @@ export class DOMEditor {
   /** Sends mark availability and active marks as a DOM-derived bridge event. */
   postMarkState() {
     if(this.options.reader || this.features.selection.isInDragSelection) return
+    if(this.features.transformation.deferTransformSelectionState("markStatePending")) return
     this.features.graphic.rememberTextSelection()
     if(this.features.selection.selectedSectionElement) {
       this.postBridgeEvent(markStateChangeEvent, {

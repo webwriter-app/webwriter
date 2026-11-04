@@ -1223,6 +1223,62 @@ describe("table cell selection", () => {
     expect(first.style.width).toBe("180px")
   })
 
+  it("keeps cell widths live in the shared document and refreshes selection for an unrelated edit", async () => {
+    document.body.innerHTML = '<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>'
+    const [first, other, second] = cells()
+    first.getBoundingClientRect = () => new DOMRect(0, 0, 100, 30)
+    second.getBoundingClientRect = () => new DOMRect(0, 30, 100, 30)
+    const restoreCaretPosition = mockCaretPosition(first.firstChild!)
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+    editor.doc.syncFromDOM()
+    await settle()
+    const selection = vi.spyOn(editor.features.selection, "processSelection")
+    try {
+      const pointer = (type: string, clientX: number, target: EventTarget = document) =>
+        target.dispatchEvent(new PointerEvent(type, {clientX, clientY: 15, bubbles: true, cancelable: true}))
+      pointer("pointermove", 100, first)
+      pointer("pointerdown", 100, first)
+      pointer("pointermove", 120)
+      editor.doc.syncFromDOM()
+      await settle()
+      selection.mockClear()
+
+      pointer("pointermove", 140)
+      editor.doc.syncFromDOM()
+      await settle()
+      expect(first.style.width).toBe("140px")
+      expect(second.style.width).toBe("140px")
+      expect(editor.doc.body.toString().match(/width: 140px/g)).toHaveLength(2)
+      expect(selection).not.toHaveBeenCalled()
+
+      other.style.color = "red"
+      pointer("pointermove", 150)
+      editor.doc.syncFromDOM()
+      await settle()
+      expect(selection).toHaveBeenCalled()
+      expect(editor.doc.body.toString()).toContain("color: red")
+      selection.mockClear()
+      first.style.color = "blue"
+      pointer("pointermove", 160)
+      editor.doc.syncFromDOM()
+      await settle()
+      expect(selection).toHaveBeenCalled()
+      expect(first.style.color).toBe("blue")
+      expect(first.style.width).toBe("160px")
+
+      const appendix = document.createElement("div")
+      editor.addAppendix(appendix)
+      appendix.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true}))
+      appendix.remove()
+      expect(document.body).not.toHaveClass("◆table-column-resize")
+    }
+    finally {
+      document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
+      selection.mockRestore()
+      restoreCaretPosition()
+    }
+  })
+
   it.each([
     "",
     'style="width: 160px"',

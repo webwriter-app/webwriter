@@ -23,6 +23,7 @@ import {
   type ListType,
   type VersionHistoryState,
   type VersionHistoryCheckpoint,
+  type WidgetConversionState,
 } from "../editor-bridge"
 import {formatWidgetDuration, parseWidgetDuration, widgetTreeLeaves, type WidgetOptionTreeNode, widgetOptionValue, type WidgetActionState, type WidgetOptionState, type WidgetOptionsState, type WidgetOptionValue} from "../widget-options"
 import type {ElementAttributeState} from "../element-attributes"
@@ -181,6 +182,7 @@ export abstract class EditingControls extends LitElement {
     elementAttributes: {attribute: false},
     selectedElementTypes: {attribute: false},
     widgetOptions: {attribute: false},
+    widgetConversion: {attribute: false},
     historyState: {attribute: false},
     historyLoading: {type: Boolean, attribute: "history-loading"},
     historyError: {type: String, attribute: "history-error"},
@@ -284,6 +286,34 @@ export abstract class EditingControls extends LitElement {
 
   /** Options and actions of the selected widget. */
   widgetOptions: WidgetOptionsState | null = null
+
+  widgetConversion: WidgetConversionState | null = null
+
+  protected widgetConversionAction(tag: string | undefined) {
+    const state = this.widgetConversion
+    return tag && state?.targets.some(target => target.tag === tag) ? `widget-conversion:${state.sourceId}:${tag}` : undefined
+  }
+
+  protected get widgetConversionGroups() {
+    const state = this.widgetConversion
+    if(!state) return []
+    const targets = state.targets.map(({tag, name, icon, iconUrl}) =>
+      ({label: name, icon, iconUrl, action: this.widgetConversionAction(tag)!}))
+    const group = (direction: "import" | "export", formats: string[], icon: string) => {
+      const label = direction === "import" ? "Import" : "Export"
+      return {label, icon, buttons: formats.map(format => ({
+        label: `${label} ${format}${direction === "import" ? "…" : ""}`,
+        action: `widget-${direction}:${state.sourceId}:${format}`,
+        icon,
+        iconUrl: undefined,
+      }))}
+    }
+    return [
+      {label: "Convert to", icon: "Packages", buttons: targets},
+      group("import", state.imports ?? [], "Upload"),
+      group("export", state.exports ?? [], "Download"),
+    ].filter(group => group.buttons.length)
+  }
 
   elementStyle: ElementStyleState = {
     target: null,
@@ -2831,10 +2861,20 @@ export abstract class EditingControls extends LitElement {
 
   protected renderWidgetOptionsDrawer() {
     const state = this.widgetOptions
-    if(!state || !state.options.length && !state.actions.length) return nothing
+    const hasOptions = Boolean(state && (state.options.length || state.actions.length))
+    const conversions = this.widgetConversionGroups.flatMap(group => group.buttons)
+    if(!hasOptions && !conversions.length) return nothing
+    const visibleCount = hasOptions ? 0 : 2
+    const overflow = conversions.length > visibleCount
+    const renderConversion = (button: typeof conversions[number], slot = "") => html`
+      <ribbon-button slot=${slot} label=${button.label} icon=${button.icon}
+        icon-url=${button.iconUrl ?? ""} action=${button.action}></ribbon-button>`
     return html`
-      <ribbon-drawer label="Widget" icon="Packages" layout="form">
-        ${this.renderWidgetOptionsControls()}
+      <ribbon-drawer label="Widget" icon="Packages" layout=${conversions.length ? "widget" : "form"}
+        ?expandable=${overflow} ?conversion-overflow=${overflow} ?has-conversions=${conversions.length > 0}>
+        ${hasOptions ? this.renderWidgetOptionsControls() : nothing}
+        ${conversions.slice(0, visibleCount).map(button => renderConversion(button))}
+        ${conversions.slice(visibleCount).map(button => renderConversion(button, "more"))}
       </ribbon-drawer>
     `
   }

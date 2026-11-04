@@ -61,6 +61,32 @@ function dragData(target: Element) {
 }
 
 describe("package ribbon controls", () => {
+  it("marks a conversion target and calls attention to it in the drawer overflow", async () => {
+    const ribbon = new AppRibbon()
+    const packages = Array.from({length: 8}, (_, index) => packageFixture(`package-${index}`))
+    ribbon.packages = ribbon.installedPackages = packages
+    ribbon.widgetConversion = {sourceId: "element-1", targets: [{tag: "webwriter-package-7", name: "Package 7", icon: "Packages"}]}
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    expect(drawer.hasAttribute("conversion-overflow")).toBe(true)
+    const button = drawer.querySelector<RibbonButton>('ribbon-button[label="Package-7"]')!
+    expect(button.slot).toBe("more")
+    await button.updateComplete
+    const main = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    expect(main.hasAttribute("data-conversion")).toBe(true)
+    expect(main.getAttribute("aria-label")).toBe("Convert to Package-7")
+    const click = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", click)
+    main.click()
+    expect(click.mock.calls[0][0].detail.label).toBe("widget-conversion:element-1:webwriter-package-7")
+    ribbon.widgetConversion = null
+    await ribbon.updateComplete
+    await button.updateComplete
+    expect(drawer.hasAttribute("conversion-overflow")).toBe(false)
+    expect(main.hasAttribute("data-conversion")).toBe(false)
+  })
+
   it("reuses unchanged package details across unrelated ribbon updates and refreshes mutable metadata and locale", async () => {
     const ribbon = new AppRibbon()
     const pkg = packageFixture("cached")

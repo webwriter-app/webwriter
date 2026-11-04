@@ -42,6 +42,30 @@ async function mountElement(localName: string, attributes: Record<string, string
 }
 
 describe("specialized element toolbox", () => {
+  it("opens conversion choices from the selected element icon", async () => {
+    const toolbox = await mountElement("course-quiz")
+    toolbox.elementAttributes = {...toolbox.elementAttributes!, targetId: "element-1"}
+    toolbox.widgetConversion = {sourceId: "element-1", imports: [".h5p"], exports: ["text/plain"], targets: [
+      {tag: "ul", name: "List", icon: "List"}, {tag: "details", name: "Details", icon: "Details"},
+    ]}
+    const click = vi.fn()
+    toolbox.addEventListener("ribbon-button-click", click)
+    await toolbox.updateComplete
+    const picker = toolbox.shadowRoot!.querySelector<RibbonButton>('ribbon-button[slot="heading-icon"]')!
+    await picker.updateComplete
+    picker.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await picker.updateComplete
+    expect(click).not.toHaveBeenCalled()
+    const menu = picker.shadowRoot!.querySelector("ribbon-menu")!
+    await menu.updateComplete
+    const list = menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Convert to List"]')!
+    expect(menu.shadowRoot!.querySelector('section[aria-label="Import"]')!.textContent).toContain("Import .h5p")
+    expect(menu.shadowRoot!.querySelector('section[aria-label="Export"]')!.textContent).toContain("Export text/plain")
+    expect(list.getAttribute("draggable")).toBe("false")
+    list.click()
+    expect(click.mock.calls[0][0].detail.label).toBe("widget-conversion:element-1:ul")
+  })
+
   it.each([
     [".ww-popup", "Popup"], ["button", "Popup"], ["[popover]", "Popup Content"],
   ])("names the selected %s in the toolbox", async (selector, label) => {
