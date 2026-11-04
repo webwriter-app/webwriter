@@ -3786,6 +3786,74 @@ describe("lift()", () => {
   })
 })
 describe("internal clipboard fidelity", () => {
+  it.each(["native", "async"])("replaces a triple-clicked item and duplicates it on a second %s paste", async method => {
+    document.body.innerHTML = '<ul class="authored"><li>First</li><!--keep--><li><b>Second</b></li><li>Third</li></ul>'
+    const list = document.querySelector("ul")!, second = list.querySelector("b")!.firstChild!, third = list.lastElementChild!.firstChild!
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    $.selectRange(second, 0, third, 0)
+    const data = new DataTransfer()
+    if(method === "native") {
+      const copy = new ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true})
+      document.dispatchEvent(copy)
+      expect(copy.defaultPrevented).toBe(true)
+      document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    }
+    else { await editor.features.manipulation.copy(); await editor.features.manipulation.paste() }
+    expect(editor.toHTML(true)).toBe('<ul class="authored"><li>First</li><!--keep--><li><b>Second</b></li><li>Third</li></ul>')
+    expect(document.getSelection()?.isCollapsed).toBe(true)
+    if(method === "native") document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    else await editor.features.manipulation.paste()
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const changed = '<ul class="authored"><li>First</li><!--keep--><li><b>Second</b></li><li><b>Second</b></li><li>Third</li></ul>'
+    expect(editor.toHTML(true)).toBe(changed)
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe('<ul class="authored"><li>First</li><!--keep--><li><b>Second</b></li><li>Third</li></ul>')
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
+
+  it.each(["native", "async"])("moves a triple-clicked item to the end of the same list through %s cut and paste", async method => {
+    document.body.innerHTML = '<ol start="3"><li>First</li><li><i>Second</i></li><li>Third</li></ol>'
+    const list = document.querySelector("ol")!, second = list.querySelector("i")!.firstChild!, third = list.lastElementChild!.firstChild!
+    $.selectRange(second, 0, third, 0)
+    const data = new DataTransfer()
+    if(method === "native") {
+      const cut = new ClipboardEvent("cut", {clipboardData: data, bubbles: true, cancelable: true})
+      document.dispatchEvent(cut)
+      expect(cut.defaultPrevented).toBe(true)
+    }
+    else await editor.features.manipulation.cut()
+    expect(editor.toHTML(true)).toBe('<ol start="3"><li>First</li><li>Third</li></ol>')
+    $.move(list.lastElementChild!.firstChild!, 5)
+    if(method === "native") document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    else await editor.features.manipulation.paste()
+    expect(editor.toHTML(true)).toBe('<ol start="3"><li>First</li><li>Third</li><li><i>Second</i></li></ol>')
+  })
+
+  it("pastes selected list items at a list gap while preserving their contents and intervening comments", () => {
+    document.body.innerHTML = '<ul><li id="one">First<my-widget></my-widget></li><!--between--><li>Second</li><li>Third</li></ul>'
+    const list = document.querySelector("ul")!
+    $.selectRange(list, 0, list, 3)
+    const data = new DataTransfer()
+    document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true}))
+    $.move(list, list.childNodes.length)
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    expect(editor.toHTML(true)).toBe('<ul><li id="one">First<my-widget></my-widget></li><!--between--><li>Second</li><li>Third</li><li id="one">First<my-widget></my-widget></li><!--between--><li>Second</li></ul>')
+  })
+
+  it("inserts list clipboard data from beforeinput at an item boundary", () => {
+    document.body.innerHTML = '<ul><li>First</li><li>Last</li></ul>'
+    const text = document.querySelector("li")!.firstChild!
+    $.move(text, 5)
+    const data = new DataTransfer()
+    data.setData("text/html", '<ul><li>Inserted</li></ul>')
+    const event = new InputEvent("beforeinput", {inputType: "insertFromPaste", dataTransfer: data, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(editor.toHTML(true)).toBe('<ul><li>First</li><li>Inserted</li><li>Last</li></ul>')
+  })
+
   it.each([
     ["ol", "upper-alpha"], ["ol", "lower-roman"], ["ul", "square"],
   ])("preserves %s %s markers when moving list items through every clipboard path", async (tag, style) => {

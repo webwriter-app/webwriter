@@ -1413,8 +1413,39 @@ export class EditingSelection {
     return this.#getAdjacentElement("next")
   }
 
-  /** Returns a clone of the selected content, leaving the document
-   * unchanged. */
+  /** Expands a whole-item selection whose endpoints sit at item edges. */
+  static get listItemRange(): Range | null {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || selection.isCollapsed || this.isMultiElementSelection) return null
+    const range = selection.getRangeAt(0)
+    const list = range.commonAncestorContainer
+    if(!isElement(list) || list.hasAttribute("is") || !list.matches("ul, ol, dl, menu")
+      || atomicEditingContainer(range.startContainer) || atomicEditingContainer(range.endContainer)
+      || this.excludedFlowElements.length) return null
+    const boundary = (node: Node, offset: number): number | null => {
+      if(node === list) return offset
+      while(node.parentNode && node.parentNode !== list) {
+        const length = node.nodeType === Node.TEXT_NODE ? (node as Text).length : node.childNodes.length
+        if(offset !== 0 && offset !== length) return null
+        const index = Array.prototype.indexOf.call(node.parentNode.childNodes, node) as number
+        offset = index + (offset === 0 ? 0 : 1)
+        node = node.parentNode
+      }
+      if(node.parentNode !== list || !isElement(node) || !node.matches("li, dt, dd")) return null
+      if(offset !== 0 && offset !== node.childNodes.length) return null
+      const index = Array.prototype.indexOf.call(list.childNodes, node) as number
+      return index + (offset === 0 ? 0 : 1)
+    }
+    const start = boundary(range.startContainer, range.startOffset), end = boundary(range.endContainer, range.endOffset)
+    if(start === null || end === null || start >= end) return null
+    const nodes = Array.from(list.childNodes).slice(start, end)
+    if(!nodes.some(node => isElement(node) && node.matches("li, dt, dd"))) return null
+    const result = document.createRange()
+    result.setStart(list, start); result.setEnd(list, end)
+    return result
+  }
+
+  /** Returns a clone of the selected content, leaving the document unchanged. */
   static copy() {
     if(this.isMultiElementSelection) {
       const fragment = getInertDocument(this.range.startContainer).createDocumentFragment()
@@ -1423,10 +1454,10 @@ export class EditingSelection {
     }
     const root = getDocumentRoot()
     const copyingRoot = this.selectedElement === root || this.selectedElement === document.body
-    const range = copyingRoot ? document.createRange() : this.range
+    const range = copyingRoot ? document.createRange() : this.listItemRange ?? this.range
     if(copyingRoot) range.selectNodeContents(root)
     let fragment = this.cloneClipboardContents(range)
-    const commonAncestor = this.range.commonAncestorContainer
+    const commonAncestor = range.commonAncestorContainer
     let sharedMark = isElement(commonAncestor)? commonAncestor: commonAncestor.parentElement
     while(sharedMark && isMarkElement(sharedMark) && popupElementRole(sharedMark) !== "content") {
       const wrapper = cloneInert(sharedMark)

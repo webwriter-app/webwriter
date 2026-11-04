@@ -3254,6 +3254,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     this.selectCapturedElementForInsertion()
     if(this.insertLayoutPaste(fragment)) return
+    if(this.insertListPaste(fragment)) return true
     const container = $.anchorContainer
     if(!$.isElementSelection && !$.isGapSelection && !$.isEmptyDocumentSelection
       && container && container === $.focusContainer && !isDocumentRoot(container)
@@ -3284,6 +3285,52 @@ export class ManipulationFeature extends EditorFeature {
       else block.after(content)
     }
     return result
+  }
+
+  /** Insert copied list items into the live list at an item boundary. */
+  private insertListPaste(fragment: DocumentFragment) {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || $.isMultiElementSelection || $.excludedFlowElements.length) return false
+    const children = Array.from(fragment.childNodes).filter(node => !(node instanceof Text) || node.data.trim())
+    if(children.length !== 1 || !isElement(children[0])) return false
+    const source = children[0]
+    if(source.hasAttribute("is") || !source.matches("ul, ol, dl, menu")) return false
+    const items = Array.from(source.childNodes)
+    if(!items.some(node => isElement(node) && node.matches("li, dt, dd"))
+      || items.some(node => isElement(node) ? !node.matches(source.localName === "dl" ? "dt, dd" : "li")
+        : node.nodeType !== Node.COMMENT_NODE && !(node instanceof Text && !node.data.trim()))) return false
+    let range = $.listItemRange
+    if(!range && selection.isCollapsed) {
+      const node = selection.anchorNode
+      const element = node instanceof Element ? node : node?.parentElement
+      const item = element?.closest("li, dt, dd")
+      const list = item?.parentElement
+      if(item && list?.matches("ul, ol, dl, menu") && !atomicEditingContainer(item, this.editor.schema)) {
+        const atStart = isCaretAtBoundary(item, "start"), atEnd = isCaretAtBoundary(item, "end")
+        if(!atStart && !atEnd) return false
+        range = document.createRange()
+        range.setStart(list, Array.from(list.childNodes).indexOf(item) + (atEnd ? 1 : 0))
+        range.collapse(true)
+      }
+      else if(isElement(node) && node.matches("ul, ol, dl, menu")) range = selection.getRangeAt(0).cloneRange()
+    }
+    const target = range?.startContainer
+    if(!range || !isElement(target) || !target.isConnected || target.localName !== source.localName
+      || target.hasAttribute("is") || atomicEditingContainer(target, this.editor.schema)) return false
+    const attributes = (element: Element) => Array.from(element.attributes)
+      .filter(attribute => attribute.name !== "class" || authoredClassValue(attribute.value))
+      .map(attribute => [attribute.name, attribute.name === "class" ? authoredClassValue(attribute.value) : attribute.value] as const)
+    const sourceAttributes = attributes(source), targetAttributes = attributes(target)
+    if(sourceAttributes.length !== targetAttributes.length || sourceAttributes.some(([name, value]) => !targetAttributes.some(([other, otherValue]) => name === other && value === otherValue))) return false
+    return this.withNormalization(() => {
+      range.deleteContents()
+      const inserted = document.createDocumentFragment()
+      inserted.append(...items)
+      range.insertNode(inserted)
+      const last = items.at(-1)!
+      $.move(target, Array.from(target.childNodes).indexOf(last) + 1)
+      return true
+    })
   }
 
   /** Duplicate whole layout items without replacing the selected original or
@@ -4287,7 +4334,7 @@ export class ManipulationFeature extends EditorFeature {
       }
     },
     "copy": ev => {
-      if(!ev.clipboardData || !$.excludedFlowElements.length) return
+      if(ev.defaultPrevented || !ev.clipboardData || !$.excludedFlowElements.length && !$.listItemRange) return
       ev.preventDefault()
       const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment($.copy())
       ev.clipboardData.setData("text/html", html)
@@ -4301,12 +4348,14 @@ export class ManipulationFeature extends EditorFeature {
       if($.isEmpty) return
       const selected = $.selectedElement
       const fragment = $.copy()
-      if(!selected && !$.isMultiElementSelection && !$.excludedFlowElements.length
+      if(!selected && !$.isMultiElementSelection && !$.excludedFlowElements.length && !$.listItemRange
         && !Array.from(fragment.children).some(element => element.matches("ul, ol, dl, menu, h1, h2, h3, h4, h5, h6, .ww-popup"))) return
       ev.preventDefault()
       const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment(fragment)
       ev.clipboardData.setData("text/html", html)
       ev.clipboardData.setData("text/plain", text)
+      const listRange = $.listItemRange
+      if(listRange) $.selectRange(listRange.startContainer, listRange.startOffset, listRange.endContainer, listRange.endOffset)
       $.delete()
       this.editor.features.dialog.ensurePopupContent()
     },
@@ -4812,6 +4861,8 @@ export class ManipulationFeature extends EditorFeature {
     if(currentData.content !== copied.content || currentData.text !== copied.text) return false
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return false
     return this.withNormalization(() => {
+      const listRange = $.listItemRange
+      if(listRange) $.selectRange(listRange.startContainer, listRange.startOffset, listRange.endContainer, listRange.endOffset)
       $.delete()
       this.editor.features.dialog.ensurePopupContent()
       return true
