@@ -1,4 +1,4 @@
-import { build } from "esbuild"
+import {build, transform} from "esbuild"
 import { existsSync } from "node:fs"
 import {readFile} from "node:fs/promises"
 import { isAbsolute, normalize, relative, resolve } from "node:path"
@@ -54,7 +54,14 @@ const readerBuildOptions = {
       const resolved = await build.resolve(args.path.slice(0, -4), {resolveDir: args.resolveDir, kind: args.kind})
       return {path: resolved.path, namespace: "reader-raw"}
     })
-    build.onLoad({filter: /.*/, namespace: "reader-raw"}, async args => ({contents: await readFile(args.path, "utf8"), loader: "text"}))
+    build.onLoad({filter: /.*/, namespace: "reader-raw"}, async args => {
+      const contents = await readFile(args.path, "utf8")
+      // The JS minifier cannot compact stylesheets embedded as strings.
+      const source = args.path.endsWith(".css")
+        ? (await transform(contents, {loader: "css", minifyWhitespace: true, charset: "utf8", sourcefile: args.path})).code
+        : contents
+      return {contents: source, loader: "text"}
+    })
   }}],
 }
 
