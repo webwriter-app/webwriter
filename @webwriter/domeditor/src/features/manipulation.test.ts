@@ -6469,7 +6469,8 @@ describe("unified content transfer", () => {
     })
 
     it.each(["picture", "iframe"] as const)("retains the click insertion selection for %s media", tag => {
-      const media = drop(tag)
+      drop(tag)
+      const media = document.querySelector(tag)!
       expect(media.localName).toBe(tag)
       const selected = $.selectedElement === media
       const captured = editor.features.selection.captureSelectedElement === media
@@ -6480,7 +6481,9 @@ describe("unified content transfer", () => {
       range.collapse(true)
       editor.features.selection.selectDropRange(range)
       editor.features.media.actions.insertMedia({type: "insertMedia", media: tag})
-      const clicked = parent.lastChild!
+      const inserted = parent.querySelectorAll(tag)
+      expect(inserted).toHaveLength(2)
+      const clicked = inserted[1]
       expect($.selectedElement === clicked).toBe(selected)
       expect(editor.features.selection.captureSelectedElement === clicked).toBe(captured)
       expect($.range.collapsed).toBe(collapsed)
