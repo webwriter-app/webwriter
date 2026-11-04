@@ -1575,6 +1575,9 @@ export class ManipulationFeature extends EditorFeature {
     if(tag === "p" && (this.unwrapDetailsForParagraphInsertion(range, this.editor.features.selection.captureSelectedElement ?? $.selectedElement ?? null)
       || this.editor.features.list.unwrapSelectionToParagraphs())) return true
 
+    if((tag === "ul" || tag === "ol") && !this.editor.features.selection.captureSelectedElement
+      && this.editor.features.list.convertActiveList(tag)) return true
+
     if(/^h[1-6]$/.test(tag) && (getContainer(range.startContainer).closest("li, dt, dd")
       || getContainer(range.endContainer).closest("li, dt, dd"))) return true
     const captured = this.editor.features.selection.captureSelectedElement

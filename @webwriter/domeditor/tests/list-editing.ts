@@ -16,6 +16,40 @@ export async function checkListEditing() {
     assert(view.editor, `list editing fixture did not initialize: ${view.editorError ?? "timed out"}`)
     const editor = view.editor!, doc = frame.contentDocument!, selection = doc.getSelection()!
     const waitForEdit = async () => new Promise<void>(resolve => view.requestAnimationFrame(() => resolve()))
+    for(const mode of ["text", "caret", "trailing paragraph", "backward through paragraph"] as const) {
+      const includesParagraph = mode === "trailing paragraph" || mode === "backward through paragraph"
+      doc.body.innerHTML = '<ul style="list-style-type: circle"><li>One</li><li>Two</li><li>Three</li></ul>'
+        + (includesParagraph ? '<p><br></p><p>Keep</p>' : "")
+      await waitForEdit()
+      const list = doc.querySelector("ul")!
+      const items = Array.from(list.children)
+      const trailing = doc.querySelector("p")
+      if(mode === "caret") selection.collapse(items[0].firstChild!, 2)
+      else if(mode === "trailing paragraph") selection.setBaseAndExtent(items[0].firstChild!, 0, trailing!, 0)
+      else if(mode === "backward through paragraph") selection.setBaseAndExtent(trailing!, 0, items[0].firstChild!, 0)
+      else selection.setBaseAndExtent(items[0].firstChild!, 0, items[2].firstChild!, 5)
+      await waitForEdit()
+      editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ol"})
+      await waitForEdit()
+      const ordered = doc.querySelector("ol")
+      assert(ordered?.textContent === "OneTwoThree" && ordered.children.length === 3, `list conversion lost content: ${doc.body.innerHTML}`)
+      assert(ordered?.style.listStyleType === "decimal", "list conversion did not reset the marker to decimal")
+      assert(ordered?.style.listStyleImage === "none", "list conversion did not reset the marker image")
+      assert(view.getComputedStyle(items[0]).listStyleType === "decimal", "list items do not render decimal markers")
+      assert(items.every((item, index) => ordered?.children[index] === item), "list style conversion replaced list items")
+      if(includesParagraph) {
+        assert(!trailing?.isConnected, "the selected empty paragraph survived conversion")
+        assert(doc.body.lastElementChild?.textContent === "Keep", "conversion changed the next paragraph")
+      }
+    }
+    doc.body.innerHTML = '<ul style="list-style-type: square"><li>Outer<ol style="list-style-type: upper-roman; list-style-image: url(marker.png)"><li>Nested</li></ol></li></ul>'
+    const nestedEnumeration = doc.querySelector("ol")!, nestedEnumerationItem = nestedEnumeration.querySelector("li")!
+    selection.collapse(nestedEnumerationItem.firstChild!, 1)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ol"})
+    await waitForEdit()
+    assert(doc.querySelector("ol") === nestedEnumeration, "resetting an enumeration replaced its list")
+    assert(view.getComputedStyle(nestedEnumerationItem).listStyleType === "decimal", "nested enumeration does not render decimal markers")
+    assert(view.getComputedStyle(nestedEnumerationItem).listStyleImage === "none", "nested enumeration retained its image marker")
     for(const position of ["inside", "outside"]) {
       for(const lineHeight of ["normal", "48px"]) {
         doc.body.innerHTML = `<ul style="list-style-position: ${position}; font: 32px/${lineHeight} sans-serif"></ul>`

@@ -1005,10 +1005,92 @@ export class ListFeature extends EditorFeature {
     this.syncVirtualMarker()
   }
 
+  /** Convert a single existing list without extracting or rebuilding its contents. */
+  convertActiveList(type: "ul" | "ol", style?: string) {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || $.isMultiElementSelection) return false
+    const range = selection.getRangeAt(0)
+    const selected = $.selectedElement
+    const isSeparator = (node: Node) => node.nodeType === Node.COMMENT_NODE || isText(node) && !node.data.trim()
+    const nextContent = (node: ChildNode | null) => {
+      while(node && isSeparator(node)) node = node.nextSibling
+      return node
+    }
+    const atStart = range.collapsed ? null : nextContent(range.startContainer.childNodes.item(range.startOffset))
+    const target = selected?.matches(listSelector) ? selected
+      : isElement(atStart) && atStart.matches(listSelector) ? atStart
+      : (selected ?? getContainer(range.startContainer))?.closest(listSelector)
+    const list = target as HTMLElement | null
+    if(!list?.isConnected || list.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || atomicEditingContainer(list, this.editor.schema)
+      || atomicEditingContainer(range.startContainer, this.editor.schema)
+      || atomicEditingContainer(range.endContainer, this.editor.schema)
+      || selected && atomicEditingContainer(selected, this.editor.schema)) return false
+
+    let trailingParagraph: HTMLParagraphElement | null = null
+    if(selected !== list) {
+      const startInside = list.contains(range.startContainer), endInside = list.contains(range.endContainer)
+      if(!startInside && atStart !== list) return false
+      if(!endInside) {
+        // A drag through the last item can end at the parent gap or on the
+        // browser's empty line after the list. Neither is another list item.
+        const parent = list.parentNode!
+        if(range.endContainer === parent) {
+          const children = Array.from(parent.childNodes), afterList = children.indexOf(list) + 1
+          if(range.endOffset < afterList) return false
+          const crossed = children.slice(afterList, range.endOffset).filter(node => !isSeparator(node))
+          if(crossed.length > 1) return false
+          if(crossed.length) {
+            if(!this.isPlainEmptyParagraph(crossed[0])) return false
+            trailingParagraph = crossed[0]
+          }
+        }
+        else {
+          const next = nextContent(list.nextSibling)
+          if(!this.isPlainEmptyParagraph(next) || !next.contains(range.endContainer)) return false
+          trailingParagraph = next
+        }
+      }
+      if(list.localName !== type && (!startInside || !endInside)) {
+        const start: [Node, number] = startInside ? [range.startContainer, range.startOffset] : [list, 0]
+        const end: [Node, number] = endInside ? [range.endContainer, range.endOffset] : [list, list.childNodes.length]
+        if($.isBackwards) selection.setBaseAndExtent(...end, ...start)
+        else selection.setBaseAndExtent(...start, ...end)
+      }
+    }
+
+    const result = list.localName !== type ? this.changeListType(list, type) : list
+    if(result !== list) trailingParagraph?.remove()
+    if(style !== undefined) this.applyListStyle(result, style)
+    else if(type === "ol") {
+      result.style.listStyleType = "decimal"
+      result.style.listStyleImage = "none"
+    }
+    this.syncVirtualMarker()
+    return true
+  }
+
+  private isPlainEmptyParagraph(node: Node | null): node is HTMLParagraphElement {
+    return node instanceof HTMLParagraphElement && this.isEmptyTextBlock(node)
+      && !(cloneWithoutEditorMarkers(node, false) as Element).attributes.length
+      && node.children.length <= 1 && Array.from(node.childNodes).every(child =>
+        isText(child) || isElement(child) && child.localName === "br"
+          && !(cloneWithoutEditorMarkers(child, false) as Element).attributes.length)
+  }
+
   setListStyle(type: ListType, style: string) {
+    if((type === "ul" || type === "ol") && this.convertActiveList(type, style)) return
     if(this.activeList?.localName !== type) this.toggleList(type)
     const list = this.activeList
-    if(list?.localName === type) list.style.listStyleType = style
+    if(list?.localName === type) this.applyListStyle(list, style)
+  }
+
+  private applyListStyle(list: HTMLElement, style: string) {
+    list.style.listStyleType = style
+    const image = getComputedStyle(list).listStyleImage
+    if(list.style.listStyleImage && list.style.listStyleImage !== "none" || image && image !== "none") {
+      list.style.listStyleImage = "none"
+    }
   }
 
   setListType(type: "ul" | "ol", selectionTypes: ElementSelectionType[]) {
@@ -1372,7 +1454,7 @@ export class ListFeature extends EditorFeature {
     const anchorOffset = selection?.anchorOffset ?? 0
     const focusOffset = selection?.focusOffset ?? 0
     const replacements = new Map<Node, Node>([[list, replacement]])
-    Array.from(list.attributes).forEach(attribute => replacement.setAttribute(attribute.name, attribute.value))
+    Array.from(list.attributes).forEach(attribute => replacement.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value))
     replacement.style.removeProperty("list-style-type")
     if(!replacement.getAttribute("style")) replacement.removeAttribute("style")
 
@@ -1382,7 +1464,7 @@ export class ListFeature extends EditorFeature {
         const targetTag = type === "dl" ? descriptionIndex++ % 2 ? "dd" : "dt" : "li"
         if(child.localName !== targetTag) {
           const item = document.createElement(targetTag)
-          Array.from(child.attributes).forEach(attribute => item.setAttribute(attribute.name, attribute.value))
+          Array.from(child.attributes).forEach(attribute => item.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value))
           item.append(...Array.from(child.childNodes))
           replacements.set(child, item)
           child.replaceWith(item)
