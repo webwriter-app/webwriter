@@ -10,7 +10,10 @@ import {isAuthoredMutation} from "../editor-artifacts"
 import {elementDragType, ribbonInsertionDragType} from "../insertion"
 import {getDocumentRoot} from "../document-template"
 import {
+  defaultGraphicEndingSize,
   graphicShapeDragType,
+  graphicConnectorEndings,
+  isGraphicConnectorEnding,
   boundsForPoints,
   regularPolygonPoints,
   starPoints,
@@ -39,6 +42,7 @@ import {
   type GraphicMode,
   type GraphicShapeType,
   type GraphicShapePaint,
+  type GraphicConnectorEnding,
   type GraphicViewportOperation,
 } from "../graphic"
 
@@ -50,6 +54,7 @@ type GraphicOption = "grid" | "snap" | "guides"
 type ConnectorRouting = "straight" | "orthogonal" | "curved" | "segmented"
 type PortDirection = "n" | "e" | "s" | "w"
 type ConnectorEndpoint = "start" | "end"
+type ConnectorMarkerUnits = "strokeWidth" | "userSpaceOnUse"
 type SnapKind = "object" | "canvas" | "grid"
 type SnapTarget = {value: number, kind: SnapKind}
 type SnapCandidates = {x: SnapTarget[], y: SnapTarget[]}
@@ -534,34 +539,67 @@ const rotatedBounds = (bounds: Bounds, rotation: number) => {
   ].map(point => rotateAround(point, center, rotation)))
 }
 
-const arrowMarkerPath = "M 0 0 L 10 5 L 0 10 z"
+const connectorMarkerUses = (graphic: SVGSVGElement, marker: Element) => {
+  const attributes = ["marker-start", "marker-mid", "marker-end"]
+  const reference = `url(#${marker.id})`
+  return Array.from(graphic.querySelectorAll("[marker-start], [marker-mid], [marker-end]")).reduce((uses, element) =>
+    uses + attributes.filter(name => element.getAttribute(name) === reference).length, 0)
+}
 
-function arrowhead(shape: Element, endpoint: ConnectorEndpoint) {
-  const geometry = shapeGeometry(shape)
-  const id = geometry.getAttribute(`marker-${endpoint}`)?.match(/^url\(#([^\s)]+)\)$/)?.[1]
-  const graphic = graphicContainerForNode(shape)
-  const marker = id && Array.from(graphic?.querySelectorAll("marker") ?? []).find(marker => marker.id === id)
+function readConnectorMarker(marker: SVGMarkerElement | undefined) {
   if(!marker || !/^graphic-arrow-\d+$/.test(marker.id) || marker.getAttribute("viewBox") !== "0 0 10 10"
-    || marker.getAttribute("orient") !== "auto-start-reverse" || ![null, "strokeWidth"].includes(marker.getAttribute("markerUnits"))
-    || marker.querySelector("path")?.getAttribute("d") !== arrowMarkerPath) return null
+    || marker.getAttribute("orient") !== "auto-start-reverse") return null
+  const units = marker.getAttribute("markerUnits") ?? "strokeWidth"
+  if(units !== "strokeWidth" && units !== "userSpaceOnUse") return null
+  const path = marker.querySelector("path")?.getAttribute("d")
+  const type = (Object.keys(graphicConnectorEndings) as GraphicConnectorEnding[]).find(type => graphicConnectorEndings[type].path === path)
+  if(!type) return null
+  const size = attributeNumber(marker, "markerWidth", 3), height = attributeNumber(marker, "markerHeight", 3)
+  return size > 0 && height > 0 ? {marker, type, units, size, height} as const : null
+}
+
+function connectorEndingReference(geometry: Element, endpoint: ConnectorEndpoint) {
+  const value = geometry.getAttribute(`marker-${endpoint}`)?.trim()
+  return value && value !== "none" ? value : null
+}
+
+function connectorEnding(geometry: Element, endpoint: ConnectorEndpoint, graphic = graphicContainerForNode(geometry)) {
+  const id = connectorEndingReference(geometry, endpoint)?.match(/^url\(#([^\s)]+)\)$/)?.[1]
+  return id && graphic ? readConnectorMarker(Array.from(graphic.querySelectorAll("marker")).find(marker => marker.id === id)) : null
+}
+
+function connectorMarkerScale(geometry: Element, units: ConnectorMarkerUnits) {
+  if(units === "userSpaceOnUse") return 1
+  const computedStroke = geometry.isConnected ? Number.parseFloat(getComputedStyle(geometry).strokeWidth) : NaN
+  return Number.isFinite(computedStroke) ? computedStroke : attributeNumber(geometry, "stroke-width", 1)
+}
+
+function connectorEndpointDirection(shape: Element, endpoint: ConnectorEndpoint) {
   const points = shapePoints(shape)
   const tip = endpoint === "start" ? points[0] : points.at(-1)
   if(!tip) return null
   const neighbor = (endpoint === "start" ? points : [...points].reverse()).find(point => Math.hypot(point.x - tip.x, point.y - tip.y) > 1e-8)
   if(!neighbor) return null
   const length = Math.hypot(tip.x - neighbor.x, tip.y - neighbor.y)
-  const direction = {x: (tip.x - neighbor.x) / length, y: (tip.y - neighbor.y) / length}
-  const computedStroke = geometry.isConnected ? Number.parseFloat(getComputedStyle(geometry).strokeWidth) : NaN
-  const stroke = Number.isFinite(computedStroke) ? computedStroke : attributeNumber(geometry, "stroke-width", 1)
-  const width = attributeNumber(marker, "markerWidth", 3) * stroke / 10
-  const height = attributeNumber(marker, "markerHeight", 3) * stroke / 10
-  if(width <= 0 || height <= 0) return null
-  const vertices = [[0, 0], [10, 5], [0, 10]].map(([x, y]) => {
-    const along = (x - attributeNumber(marker, "refX")) * width
-    const across = (y - attributeNumber(marker, "refY")) * height
+  return {tip, direction: {x: (tip.x - neighbor.x) / length, y: (tip.y - neighbor.y) / length}}
+}
+
+function arrowhead(shape: Element, endpoint: ConnectorEndpoint) {
+  const geometry = shapeGeometry(shape)
+  const ending = connectorEnding(geometry, endpoint)
+  if(!ending) return null
+  const position = connectorEndpointDirection(shape, endpoint)
+  if(!position) return null
+  const {tip, direction} = position
+  const {marker} = ending
+  const scale = connectorMarkerScale(geometry, ending.units) / 10
+  if(scale <= 0) return null
+  const vertices = graphicConnectorEndings[ending.type].outline.map(([x, y]) => {
+    const along = (x - attributeNumber(marker, "refX")) * ending.size * scale
+    const across = (y - attributeNumber(marker, "refY")) * ending.height * scale
     return {x: tip.x + along * direction.x - across * direction.y, y: tip.y + along * direction.y + across * direction.x}
   })
-  return {marker, tip, points: vertices, size: attributeNumber(marker, "markerWidth", 3)}
+  return {...ending, tip, points: vertices}
 }
 
 const arrowheads = (shape: Element) => (["start", "end"] as const).flatMap(endpoint => {
@@ -2006,8 +2044,8 @@ export class GraphicFeature extends EditorFeature {
       const connector = this.#createShape("connector", index, graphic, sizingGraphic)
       const bounds = this.#shapeInsertionBounds("line", index, sizingGraphic)
       setPoints(connector, [{x: bounds.x, y: bounds.y}, {x: bounds.x + bounds.width, y: bounds.y}])
-      if(type !== "line-end-arrow") this.#setConnectorArrow(connector, "start", true, graphic)
-      if(type !== "line-start-arrow") this.#setConnectorArrow(connector, "end", true, graphic)
+      if(type !== "line-end-arrow") this.#setConnectorEnding(connector, "start", "triangle", graphic)
+      if(type !== "line-start-arrow") this.#setConnectorEnding(connector, "end", "triangle", graphic)
       return connector
     }
     const bounds = this.#shapeInsertionBounds(type, index, sizingGraphic)
@@ -5270,6 +5308,16 @@ export class GraphicFeature extends EditorFeature {
     return root
   }
 
+  #endingPixelScale(shape: Element, endpoint: ConnectorEndpoint) {
+    const geometry = shapeGeometry(shape)
+    const graphic = graphicContainerForNode(geometry)
+    const matrix = geometry.getScreenCTM?.()
+    if(!graphic || !matrix) return 1
+    const {x, y} = connectorEndpointDirection(shape, endpoint)?.direction ?? {x: 1, y: 0}
+    const scale = Math.hypot(matrix.a * x + matrix.c * y, matrix.b * x + matrix.d * y) / this.#viewport(graphic).scale
+    return Number.isFinite(scale) && scale > 1e-6 ? scale : 1
+  }
+
   #parameters(shape: Element) {
     const bounds = shapeBounds(shape)
     const type = graphicShapeType(shape)
@@ -5306,8 +5354,18 @@ export class GraphicFeature extends EditorFeature {
       ...Object.fromEntries(arrowheads(shape).map(head => [`${head.endpoint}-arrow-size`, cleanNumber(head.size)])),
       ...(type === "connector" ? {
         routing: connectorRouting(shape),
-        "start-arrow": String(geometry.hasAttribute("marker-start")),
-        "end-arrow": String(geometry.hasAttribute("marker-end")),
+        ...Object.fromEntries((["start", "end"] as const).flatMap(endpoint => {
+          const ending = connectorEnding(geometry, endpoint)
+          const hasEnding = Boolean(connectorEndingReference(geometry, endpoint))
+          const type = ending?.type ?? (hasEnding ? "current" : "none")
+          const parameters = [[`${endpoint}-arrow`, String(hasEnding)], [`${endpoint}-ending`, type]]
+          if(ending) {
+            const vectorEffect = getComputedStyle(geometry).vectorEffect || geometry.getAttribute("vector-effect")
+            const scale = ending.units === "strokeWidth" && vectorEffect === "non-scaling-stroke" ? 1 : this.#endingPixelScale(shape, endpoint)
+            parameters.push([`${endpoint}-ending-size`, cleanNumber(ending.size * connectorMarkerScale(geometry, ending.units) * scale)])
+          }
+          return parameters
+        })),
       } : {}),
     }
   }
@@ -5343,7 +5401,21 @@ export class GraphicFeature extends EditorFeature {
       return shape
     }
     if((name === "start-arrow" || name === "end-arrow") && graphicShapeType(shape) === "connector") {
-      this.#setConnectorArrow(geometry, name === "start-arrow" ? "start" : "end", value === "true")
+      this.#setConnectorEnding(geometry, name === "start-arrow" ? "start" : "end", value === "true" ? "triangle" : "none")
+      return shape
+    }
+    if((name === "start-ending" || name === "end-ending") && graphicShapeType(shape) === "connector") {
+      if(value === "none" || isGraphicConnectorEnding(value)) {
+        const endpoint = name === "start-ending" ? "start" : "end"
+        this.#setConnectorEnding(geometry, endpoint, value, graphicContainerForNode(geometry), "userSpaceOnUse",
+          defaultGraphicEndingSize / this.#endingPixelScale(shape, endpoint))
+      }
+      return shape
+    }
+    if((name === "start-ending-size" || name === "end-ending-size") && graphicShapeType(shape) === "connector") {
+      const size = Number(value)
+      const endpoint = name === "start-ending-size" ? "start" : "end"
+      if(size > 0) this.#setArrowheadSize(shape, endpoint, size / this.#endingPixelScale(shape, endpoint), "userSpaceOnUse")
       return shape
     }
     if(name === "fill" && (graphicShapeType(shape) === "freehand" || ["polyline", "bezier"].includes(graphicShapeType(shape) ?? "") && !graphicPathGeometry(geometry)?.closed)) return shape
@@ -5426,67 +5498,77 @@ export class GraphicFeature extends EditorFeature {
     return `graphic-arrow-${index}`
   }
 
-  #setArrowheadSize(shape: Element, endpoint: ConnectorEndpoint, input: number) {
-    const head = arrowhead(shape, endpoint), graphic = graphicContainerForNode(shape)
-    if(!head || !graphic || !Number.isFinite(input) || head.size <= 0) return
-    const size = Math.max(2, Math.min(24, input))
-    if(Math.abs(size - head.size) < 1e-6 && head.marker.getAttribute("refX") === "5" && shapeGeometry(shape).getAttribute("stroke-linecap") === "butt") return
-    let marker = head.marker
-    const reference = `url(#${marker.id})`
-    const uses = Array.from(graphic.querySelectorAll("[marker-start], [marker-end]")).flatMap(element =>
-      ["marker-start", "marker-end"].filter(attribute => element.getAttribute(attribute) === reference),
-    ).length
-    if(uses > 1) {
-      marker = marker.cloneNode(true) as SVGMarkerElement
-      marker.id = this.#arrowMarkerId(graphic)
-      head.marker.parentNode!.appendChild(marker)
-      shapeGeometry(shape).setAttribute(`marker-${endpoint}`, `url(#${marker.id})`)
-    }
-    marker.setAttribute("markerHeight", cleanNumber(size * attributeNumber(marker, "markerHeight", 3) / head.size))
-    marker.setAttribute("markerWidth", cleanNumber(size))
-    marker.setAttribute("refX", "5")
-    shapeGeometry(shape).setAttribute("stroke-linecap", "butt")
-  }
-
-  #setConnectorArrow(connector: SVGGraphicsElement, endpoint: ConnectorEndpoint, enabled: boolean, graphic = graphicContainerForNode(connector)) {
-    const attribute = endpoint === "start" ? "marker-start" : "marker-end"
-    if(!enabled) {
-      const reference = connector.getAttribute(attribute)
-      connector.removeAttribute(attribute)
-      const id = reference?.match(/^url\(#(graphic-arrow-\d+)\)$/)?.[1]
-      if(id && graphic) {
-        const markerReference = `url(#${id})`
-        const stillUsed = Array.from(graphic.querySelectorAll("[marker-start], [marker-end]")).some(element =>
-          element.getAttribute("marker-start") === markerReference || element.getAttribute("marker-end") === markerReference,
-        )
-        if(!stillUsed) {
-          const marker = Array.from(graphic.querySelectorAll("marker")).find(candidate => candidate.id === id)
-          const definitions = marker?.parentElement
-          marker?.remove()
-          if(definitions?.localName === "defs" && !definitions.children.length) definitions.remove()
-        }
+  #setArrowheadSize(shape: Element, endpoint: ConnectorEndpoint, input: number, units?: ConnectorMarkerUnits) {
+    const geometry = shapeGeometry(shape), graphic = graphicContainerForNode(geometry)
+    if(!graphic || !Number.isFinite(input * 100)) return
+    const head = connectorEnding(geometry, endpoint, graphic)
+    if(!head) {
+      if(units === "userSpaceOnUse" && input > 0 && !connectorEndingReference(geometry, endpoint)) {
+        this.#setConnectorEnding(geometry, endpoint, "triangle", graphic, units, Math.max(.01, input))
       }
       return
     }
+    units ??= head.units
+    const size = units === "strokeWidth" ? Math.max(2, Math.min(24, input)) : Math.max(.01, input)
+    const height = size * (head.height / head.size)
+    if(!Number.isFinite(size * 100) || !Number.isFinite(height * 100)) return
+    if(units === head.units && Math.abs(size - head.size) < 1e-6
+      && head.marker.getAttribute("refX") === "5" && geometry.getAttribute("stroke-linecap") === "butt") return
+    let marker = head.marker
+    if(connectorMarkerUses(graphic, marker) > 1) {
+      marker = marker.cloneNode(true) as SVGMarkerElement
+      marker.id = this.#arrowMarkerId(graphic)
+      head.marker.parentNode!.appendChild(marker)
+      geometry.setAttribute(`marker-${endpoint}`, `url(#${marker.id})`)
+    }
+    if(units !== head.units) marker.setAttribute("markerUnits", units)
+    marker.setAttribute("markerHeight", cleanNumber(Math.max(.01, height)))
+    marker.setAttribute("markerWidth", cleanNumber(size))
+    marker.setAttribute("refX", "5")
+    geometry.setAttribute("stroke-linecap", "butt")
+  }
+
+  #setConnectorEnding(connector: SVGGraphicsElement, endpoint: ConnectorEndpoint, type: GraphicConnectorEnding | "none",
+    graphic = graphicContainerForNode(connector), defaultUnits: ConnectorMarkerUnits = "strokeWidth",
+    defaultSize = defaultUnits === "strokeWidth" ? 6 : defaultGraphicEndingSize) {
     if(!graphic) return
-    let marker = Array.from(graphic.querySelectorAll<SVGMarkerElement>("marker")).find(candidate =>
-      /^graphic-arrow-\d+$/.test(candidate.id) && candidate.querySelector("path")?.getAttribute("d") === arrowMarkerPath
-      && candidate.getAttribute("refX") === "5" && candidate.getAttribute("refY") === "5"
-      && candidate.getAttribute("viewBox") === "0 0 10 10" && candidate.getAttribute("orient") === "auto-start-reverse"
-      && candidate.getAttribute("markerWidth") === "6" && candidate.getAttribute("markerHeight") === "6"
-      && [null, "strokeWidth"].includes(candidate.getAttribute("markerUnits")),
-    )
+    const attribute = `marker-${endpoint}`
+    const previous = connectorEnding(connector, endpoint, graphic)
+    if(type === previous?.type) return
+    if(type === "none") connector.removeAttribute(attribute)
+    else {
+      const units = previous?.units ?? defaultUnits
+      const size = previous?.size ?? defaultSize
+      const height = previous?.height ?? size
+      const marker = this.#connectorMarker(graphic, type, units, size, height)
+      connector.setAttribute(attribute, `url(#${marker.id})`)
+      connector.setAttribute("stroke-linecap", "butt")
+    }
+    if(previous && !connectorMarkerUses(graphic, previous.marker)) {
+      const definitions = previous.marker.parentElement
+      previous.marker.remove()
+      if(definitions?.localName === "defs" && !definitions.childNodes.length) definitions.remove()
+    }
+  }
+
+  #connectorMarker(graphic: SVGSVGElement, type: GraphicConnectorEnding, units: ConnectorMarkerUnits, size: number, height: number) {
+    let marker = Array.from(graphic.querySelectorAll("marker")).find(candidate => {
+      const ending = readConnectorMarker(candidate)
+      return ending?.type === type && ending.units === units && ending.size === size && ending.height === height
+        && candidate.getAttribute("refX") === "5" && candidate.getAttribute("refY") === "5"
+    })
     if(!marker) {
       marker = document.createElementNS(SVG_NAMESPACE, "marker")
       marker.id = this.#arrowMarkerId(graphic)
       marker.setAttribute("viewBox", "0 0 10 10")
       marker.setAttribute("refX", "5")
       marker.setAttribute("refY", "5")
-      marker.setAttribute("markerWidth", "6")
-      marker.setAttribute("markerHeight", "6")
+      marker.setAttribute("markerWidth", cleanNumber(size))
+      marker.setAttribute("markerHeight", cleanNumber(height))
+      if(units === "userSpaceOnUse") marker.setAttribute("markerUnits", units)
       marker.setAttribute("orient", "auto-start-reverse")
       const path = document.createElementNS(SVG_NAMESPACE, "path")
-      path.setAttribute("d", arrowMarkerPath)
+      path.setAttribute("d", graphicConnectorEndings[type].path)
       path.setAttribute("fill", "context-stroke")
       path.setAttribute("stroke", "none")
       marker.append(path)
@@ -5497,7 +5579,6 @@ export class GraphicFeature extends EditorFeature {
       }
       definitions.append(marker)
     }
-    connector.setAttribute(attribute, `url(#${marker.id})`)
-    connector.setAttribute("stroke-linecap", "butt")
+    return marker
   }
 }

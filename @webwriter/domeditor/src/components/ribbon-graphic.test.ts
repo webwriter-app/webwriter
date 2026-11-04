@@ -107,11 +107,11 @@ describe("graphic ribbon", () => {
     expect(root.querySelector('ribbon-drawer[layout="shape-paint"]')).not.toBeNull()
     toolbox.graphic = {active: true, capture: true, selectionCount: 1, shape: "connector"}
     await toolbox.updateComplete
-    expect(options.querySelector('.graphic-connector-controls')).not.toBeNull()
-    expect(root.querySelector('ribbon-drawer[label="Connector"]')).not.toBeNull()
+    expect(options.querySelector('.graphic-connector-controls')).toBeNull()
+    expect(root.querySelector('ribbon-drawer[label="Connector"] .graphic-connector-controls')).not.toBeNull()
     toolbox.graphic = {active: true, capture: true, selectionCount: 2}
     await toolbox.updateComplete
-    expect(options.querySelector('.graphic-connector-controls')).toBeNull()
+    expect(root.querySelector('.graphic-connector-controls')).toBeNull()
     expect(root.querySelector('ribbon-drawer[layout="shape-paint"]')).toHaveAttribute("label", "Shapes")
   })
 
@@ -263,7 +263,7 @@ describe("graphic ribbon", () => {
 
     expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-geometry-controls\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/)
     expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-text-controls \.graphic-label-parameter\s*\{[\s\S]*?grid-column:\s*1 \/ -1/)
-    expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-connector-controls \.graphic-parameter:first-child\s*\{[\s\S]*?grid-column:\s*1 \/ -1/)
+    expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-connector-controls > \.graphic-parameter:first-child\s*\{[\s\S]*?grid-column:\s*1 \/ -1/)
     expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-arrange-controls\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/)
     expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-layers-inline\s*\{[\s\S]*?border-inline-start:\s*0/)
   })
@@ -584,6 +584,70 @@ describe("graphic ribbon", () => {
 
     expect(listener).toHaveBeenNthCalledWith(1, expect.objectContaining({detail: {name: "routing", value: "straight"}}))
     expect(listener).toHaveBeenNthCalledWith(2, expect.objectContaining({detail: {name: "start-arrow", value: "true"}}))
+  })
+
+  it("edits connector endings in four mirrored toolbox segments", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.graphic = {
+      active: true, capture: true, selectionCount: 1, shape: "connector",
+      parameters: {routing: "curved", "start-ending": "triangle", "end-ending": "triangle", "start-ending-size": "36", "end-ending-size": "19.75"},
+    }
+    const listener = vi.fn()
+    toolbox.addEventListener("graphic-parameter-change", listener)
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+
+    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Curved connector"]')!
+    const endings = drawer.querySelector('[role="group"][aria-label="Endings"]')!
+    expect(endings.textContent).toContain("Endings")
+    expect([...endings.querySelectorAll("select, style-combobox")].map(field => field.getAttribute("aria-label") ?? (field as StyleCombobox).label)).toEqual([
+      "Graphic: Start ending", "Graphic: Start ending size", "Graphic: End ending size", "Graphic: End ending",
+    ])
+    const startEnding = endings.querySelector<HTMLSelectElement>('select[aria-label="Graphic: Start ending"]')!
+    const endEnding = endings.querySelector<HTMLSelectElement>('select[aria-label="Graphic: End ending"]')!
+    expect(startEnding.selectedOptions[0].textContent).toContain("◀")
+    expect(endEnding.selectedOptions[0].textContent).toContain("▶")
+    expect([...startEnding.options].filter(option => !option.hidden).map(option => option.getAttribute("aria-label"))).toEqual([
+      "No ending", "Filled arrow", "Open arrow", "Diamond", "Circle", "Bar",
+    ])
+    const [start, end] = endings.querySelectorAll<StyleCombobox>("style-combobox")
+    expect(start.value).toBe("36")
+    expect(end.value).toBe("19.75")
+    expect(end.unit).toBe("px")
+    expect(end.options.map(({label, value}) => [label, value])).toEqual([
+      ["Tiny", "6"], ["Small", "12"], ["Medium", "18"], ["Large", "27"], ["Huge", "36"],
+    ])
+
+    await start.updateComplete
+    const startInput = start.shadowRoot!.querySelector("input")!
+    startInput.focus()
+    startInput.value = "24"
+    startInput.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    startInput.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
+    expect(start.shadowRoot!.activeElement).toBe(startInput)
+    end.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "18.5"}}))
+    expect(listener).toHaveBeenNthCalledWith(1, expect.objectContaining({detail: {name: "start-ending-size", value: "24"}}))
+    expect(listener).toHaveBeenNthCalledWith(2, expect.objectContaining({detail: {name: "end-ending-size", value: "18.5"}}))
+    endEnding.value = "diamond"
+    endEnding.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener).toHaveBeenNthCalledWith(3, expect.objectContaining({detail: {name: "end-ending", value: "diamond"}}))
+
+    toolbox.graphic = {...toolbox.graphic, capture: false}
+    await toolbox.updateComplete
+    expect(startEnding.disabled).toBe(false)
+    expect(endEnding.disabled).toBe(false)
+    expect(start.disabled).toBe(false)
+    expect(end.disabled).toBe(false)
+
+    toolbox.graphic = {...toolbox.graphic, capture: true, parameters: {"start-ending": "none", "end-ending": "current"}}
+    await toolbox.updateComplete
+    expect(startEnding.value).toBe("none")
+    expect(endEnding.value).toBe("current")
+    expect(start.disabled).toBe(false)
+    expect(end.disabled).toBe(true)
+    start.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "16"}}))
+    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {name: "start-ending-size", value: "16"}}))
   })
 
   it("reflects canvas options as contextual toggle buttons", async () => {

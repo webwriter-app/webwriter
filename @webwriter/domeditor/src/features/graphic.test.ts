@@ -1409,8 +1409,101 @@ describe("graphic editing", () => {
     clickShape(graphic.querySelector("polyline")!)
     expect(editor.appendix.querySelector('[data-graphic-handle="arrowhead-end"]')).toBeNull()
     editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "end-arrow-size", value: "12"})
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "end-ending-size", value: "12"})
     expect(marker.outerHTML).toBe(original)
     expect(graphic.querySelector("polyline")).toHaveAttribute("marker-end", "url(#custom-head)")
+  })
+
+  it.each(["connector", "curved-connector"] as const)("adds the default ending at the requested size on an empty %s endpoint", async type => {
+    const feature = editor.features.graphic
+    feature.actions.insertGraphic({type: "insertGraphic", shape: type})
+    const graphic = document.querySelector("svg")!
+    const shape = graphicShapeRoots(graphic)[0]
+    const scale = type === "connector" ? .4 : 1
+    Object.defineProperty(shape, "getScreenCTM", {value: () => new DOMMatrix().scale(scale)})
+    shape.setAttribute("marker-end", "none")
+    await mutationsDelivered()
+    expect(feature.getState()?.parameters?.["end-ending"]).toBe("none")
+
+    feature.actions.setGraphicParameter({type: "setGraphicParameter", name: "end-ending-size", value: "0"})
+    expect(graphic.querySelector("marker")).toBeNull()
+    feature.actions.setGraphicParameter({type: "setGraphicParameter", name: "end-ending-size", value: "31.5"})
+    const marker = graphic.querySelector("marker")!
+    expect(shape).toHaveAttribute("marker-end", `url(#${marker.id})`)
+    expect(shape).not.toHaveAttribute("marker-start")
+    expect(marker).toHaveAttribute("markerUnits", "userSpaceOnUse")
+    expect(Number(marker.getAttribute("markerWidth")) * scale).toBeCloseTo(31.5)
+    expect(marker.querySelector("path")).toHaveAttribute("d", "M 0 0 L 10 5 L 0 10 z")
+    expect(feature.getState()?.parameters).toMatchObject({"end-ending": "triangle", "end-ending-size": "31.5"})
+
+    await mutationsDelivered()
+    editor.features.history.actions.undo({type: "undo"})
+    expect(shape).toHaveAttribute("marker-end", "none")
+    expect(graphic.querySelector("marker")).toBeNull()
+    editor.features.history.actions.redo({type: "redo"})
+    expect(graphic.querySelector("marker")).toHaveAttribute("markerWidth", marker.getAttribute("markerWidth"))
+  })
+
+  it("reports and edits the rendered size of connector endings in a scaled graphic", () => {
+    const feature = editor.features.graphic
+    feature.actions.insertGraphic({type: "insertGraphic"})
+    feature.actions.addGraphicShape({type: "addGraphicShape", shape: "connector"})
+    const graphic = document.querySelector("svg")!
+    const connector = graphic.querySelector("polyline")!
+    Object.defineProperty(connector, "getScreenCTM", {value: () => new DOMMatrix().scale(.4)})
+    const set = (name: string, value: string) => feature.actions.setGraphicParameter({type: "setGraphicParameter", name, value})
+    set("end-ending", "diamond")
+    const marker = graphic.querySelector("marker")!
+    expect(marker).toHaveAttribute("markerWidth", "45")
+    expect(feature.getState()?.parameters?.["end-ending-size"]).toBe("18")
+
+    // A marker saved as 24 SVG units is smaller on this canvas.
+    marker.setAttribute("markerWidth", "24")
+    marker.setAttribute("markerHeight", "24")
+    expect(feature.getState()?.parameters?.["end-ending-size"]).toBe("9.6")
+    set("end-ending-size", "24")
+    expect(marker).toHaveAttribute("markerWidth", "60")
+    expect(marker).toHaveAttribute("markerHeight", "60")
+  })
+
+  it("changes connector ending styles and pixel sizes independently with undo and redo", async () => {
+    const feature = editor.features.graphic
+    feature.actions.insertGraphic({type: "insertGraphic"})
+    feature.actions.addGraphicShape({type: "addGraphicShape", shape: "line-both-arrows"})
+    const graphic = document.querySelector("svg")!
+    const connector = graphic.querySelector("polyline")!
+    const points = connector.getAttribute("points")
+    const marker = (end: string) => graphic.querySelector(`[id="${connector.getAttribute(`marker-${end}`)?.slice(5, -1)}"]`)
+    const set = (name: string, value: string) => feature.actions.setGraphicParameter({type: "setGraphicParameter", name, value})
+    await mutationsDelivered()
+    expect(feature.getState()?.parameters).toMatchObject({"start-ending": "triangle", "start-ending-size": "36", "end-ending-size": "36"})
+
+    set("start-ending", "diamond")
+    expect(marker("start")?.querySelector("path")).toHaveAttribute("d", "M 0 5 L 5 0 L 10 5 L 5 10 Z")
+    expect(marker("start")).toHaveAttribute("markerWidth", "6")
+    expect(marker("end")?.querySelector("path")).toHaveAttribute("d", "M 0 0 L 10 5 L 0 10 z")
+
+    set("end-ending-size", "18.5")
+    set("end-ending", "circle")
+    expect(marker("end")).toHaveAttribute("markerUnits", "userSpaceOnUse")
+    expect(marker("end")).toHaveAttribute("markerWidth", "18.5")
+    expect(marker("end")?.querySelector("path")).toHaveAttribute("d", "M 0 5 A 5 5 0 1 0 10 5 A 5 5 0 1 0 0 5 Z")
+    expect(graphic.querySelectorAll("marker")).toHaveLength(2)
+    expect(editor.appendix.querySelector('[data-graphic-handle="arrowhead-end"]')).not.toBeNull()
+    set("stroke-width", "8")
+    expect(feature.getState()?.parameters).toMatchObject({"start-ending-size": "48", "end-ending-size": "18.5"})
+    expect(connector).toHaveAttribute("points", points!)
+
+    await mutationsDelivered()
+    set("start-ending", "none")
+    expect(connector).not.toHaveAttribute("marker-start")
+    expect(graphic.querySelectorAll("marker")).toHaveLength(1)
+    await mutationsDelivered()
+    editor.features.history.actions.undo({type: "undo"})
+    expect(marker("start")?.querySelector("path")).toHaveAttribute("d", "M 0 5 L 5 0 L 10 5 L 5 10 Z")
+    editor.features.history.actions.redo({type: "redo"})
+    expect(connector).not.toHaveAttribute("marker-start")
+    expect(editor.toHTML(true)).toContain('markerUnits="userSpaceOnUse"')
   })
 
   it.each(["commit", "cancel", "replace", "remote", "destroy"])("previews arrowhead sizing only in the appendix and cleans up on %s", async outcome => {

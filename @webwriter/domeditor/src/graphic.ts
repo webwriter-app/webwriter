@@ -194,6 +194,22 @@ export const defaultGraphicShapePaint: Required<GraphicShapePaint> = {
   fill: "#ffffff", stroke: "#334155", "stroke-width": "4", opacity: "1",
 }
 
+export const defaultGraphicEndingSize = 18
+
+export const graphicConnectorEndings = {
+  triangle: {label: "Filled arrow", icons: ["◀︎", "▶︎"], path: "M 0 0 L 10 5 L 0 10 z", outline: [[0, 0], [10, 5], [0, 10]]},
+  "open-arrow": {label: "Open arrow", icons: ["❮", "❯"], path: "M 0 1 L 1 0 L 10 5 L 1 10 L 0 9 L 7 5 Z", outline: [[0, 0], [10, 5], [0, 10]]},
+  diamond: {label: "Diamond", icons: ["◆", "◆"], path: "M 0 5 L 5 0 L 10 5 L 5 10 Z", outline: [[0, 5], [5, 0], [10, 5], [5, 10]]},
+  circle: {label: "Circle", icons: ["●", "●"], path: "M 0 5 A 5 5 0 1 0 10 5 A 5 5 0 1 0 0 5 Z", outline: [[0, 0], [10, 0], [10, 10], [0, 10]]},
+  bar: {label: "Bar", icons: ["│", "│"], path: "M 4 0 H 6 V 10 H 4 Z", outline: [[4, 0], [6, 0], [6, 10], [4, 10]]},
+} as const
+
+export type GraphicConnectorEnding = keyof typeof graphicConnectorEndings
+
+export function isGraphicConnectorEnding(value: string): value is GraphicConnectorEnding {
+  return Object.hasOwn(graphicConnectorEndings, value)
+}
+
 /** Open geometry must remain unfilled, including when insertion paint is set. */
 export function graphicShapeIsOpen(type: GraphicShapeType) {
   return type === "freehand" || type === "polyline" || type === "bezier" || type === "line" || type === "connector" || lineArrowOptions.some(option => option.type === type)

@@ -6980,7 +6980,12 @@ describe("DomEditor.execute()", () => {
       detail: {name: "adjust-radius", value: "30"}, bubbles: true, composed: true,
     }))
     expect(execute).toHaveBeenNthCalledWith(12, {type: "setGraphicParameter", name: "adjust-radius", value: "30"})
-
+    for(const [name, value] of [["start-ending", "diamond"], ["end-ending", "bar"], ["start-ending-size", "12.5"], ["end-ending-size", "16"]]) {
+      ribbon.dispatchEvent(new CustomEvent("graphic-parameter-change", {
+        detail: {name, value}, bubbles: true, composed: true,
+      }))
+      expect(execute).toHaveBeenLastCalledWith({type: "setGraphicParameter", name, value})
+    }
 
     window.dispatchEvent(new MessageEvent("message", {
       data: {

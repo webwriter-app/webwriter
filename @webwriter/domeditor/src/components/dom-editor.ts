@@ -7263,17 +7263,20 @@ export class DomEditor extends LitElement {
     const allowed = new Set([
       "x", "y", "width", "height", "rotation", "fill", "stroke",
       "stroke-width", "opacity", "corner-radius", "routing", "start-arrow", "end-arrow", "convert-to-connector",
+      "start-arrow-size", "end-arrow-size",
+      "start-ending", "end-ending", "start-ending-size", "end-ending-size",
       "label", "text-color", "font-size", "inset", "inner-radius", "head-size", "tail-width",
     ])
     if(typeof detail?.name !== "string" || (!allowed.has(detail.name) && !/^adjust-[a-z][a-z -]*$/.test(detail.name)) || typeof detail.value !== "string") {
       this.focusEditor()
       return
     }
+    const keepInputFocus = this.ribbonInputSession && /^(start|end)-ending(-size)?$/.test(detail.name)
     void this.execute({
       type: "setGraphicParameter",
       name: detail.name,
       value: detail.value,
-    }).finally(() => this.focusEditor())
+    }).finally(() => { if(!keepInputFocus) this.focusEditor() })
   }
 
   private handleGraphicAlternativeTextChange = (event: Event) => {

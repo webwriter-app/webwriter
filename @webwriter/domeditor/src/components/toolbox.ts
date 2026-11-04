@@ -1358,7 +1358,6 @@ export class DomEditorToolbox extends EditingControls {
       return html`<div class="specialized-commands">
         <ribbon-button label="Import graphic" action="import-graphic" icon="Upload"></ribbon-button>
         <ribbon-button label="Save graphic" action="save-graphic" icon="Download"></ribbon-button>
-        ${this.graphic.shape === "connector" ? this.renderGraphicConnectorControls(!captured) : nothing}
         ${this.renderGraphicArrangeControls(count, count > 0, captured)}
         ${["grid", "snap", "guides"].map(option => html`<ribbon-button label=${option[0].toUpperCase() + option.slice(1)}
           action=${`toggle-graphic-option:${option}`} toggle .active=${this.graphic?.options?.[option as "grid" | "snap" | "guides"] ?? true}
@@ -1446,6 +1445,9 @@ export class DomEditorToolbox extends EditingControls {
           }}></ribbon-button>
         ` : nothing}
       </div>
+      ${count === 1 && this.graphic.shape === "connector"
+        ? this.renderGraphicConnectorControls(false, {endings: true})
+        : nothing}
     </ribbon-drawer>`
   }
 
