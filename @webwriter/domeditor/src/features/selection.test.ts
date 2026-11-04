@@ -2885,7 +2885,7 @@ describe("processSelection()", () => {
     expect(feature.gapCaret!.hasAttribute("visibility")).toBe(false)
   })
   it("includes live trailing margins in gap positions and clears their geometry", () => {
-    const paragraph = el("p")
+    const paragraph = el("p", "Content")
     paragraph.style.marginBottom = "36px"
     $.selectGap(paragraph)
     feature.processSelection()
@@ -2910,7 +2910,7 @@ describe("processSelection()", () => {
     document.body.style.cssText = "--ww-float-width: 100px; --ww-prose-max: 720px; padding: 0 20px; border: 2px solid"
     vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 0, 1004, 500))
     for(const tag of ["p", "interactive-widget"]) {
-      document.body.innerHTML = `<${tag} style="width: 200px; margin-inline: auto"></${tag}>`
+      document.body.innerHTML = `<${tag} style="width: 200px; margin-inline: auto">Content</${tag}>`
       const element = document.body.firstElementChild!
       const bounds = vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(412, 50, 200, 100))
       for(const placement of ["before", "after"] as const) {

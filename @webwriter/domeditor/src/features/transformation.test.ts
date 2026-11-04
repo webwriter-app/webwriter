@@ -1931,7 +1931,7 @@ describe("selection-owned transformation", () => {
       expect($.isTextSelection).toBe(true)
       $.move(article.querySelector("p:empty")!); check()
       expect($.isEmptySelection).toBe(true)
-      $.selectGap(article.querySelector("hr")!, "before"); check()
+      $.selectGap(article.querySelector("hr")!, "after"); check()
       expect($.isGapSelection).toBe(true)
       $.move(article.querySelector("ul")!); check()
       expect(editor.features.list.isVirtualSelection).toBe(true)

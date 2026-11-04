@@ -101,7 +101,7 @@ describe("declarative dialog editing", () => {
   })
 
   it("removes orphaned popup content but preserves unrelated popovers and widget internals", () => {
-    document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Open</button></span></p><div class="ww-popup-content" id="note" popover="auto"><p>Body</p></div><div id="ordinary" popover="auto">Keep</div><test-widget><div class="ww-popup-content" id="widget-note" popover="auto">Widget content</div></test-widget>'
+    document.body.innerHTML = '<p>Before <span class="ww-popup"><button popovertarget="note">Open</button></span></p><div class="ww-popup-content" id="note" popover="auto"><p>Body</p></div><div id="ordinary" popover="auto">Keep</div><test-widget><div class="ww-popup-content" id="widget-note" popover="auto">Widget content</div></test-widget>'
     editor.doc.syncFromDOM()
     $.move(document.querySelector(".ww-popup-content > p")!.firstChild!, 2)
     document.querySelector("button")!.remove()
