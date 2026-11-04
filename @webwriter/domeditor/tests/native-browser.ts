@@ -7607,6 +7607,47 @@ await check("a clean canvas retains its initial item when moving and typing with
   finally { canvasEditor?.destroy(); frame.remove() }
 })
 
+await check("canvas circle hotspots stay round while drawing and after image resizing", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:450px;max-width:none"
+  frame.srcdoc = '<!doctype html><body class="ww-canvas"><img src="/tests/fixtures/image-map.svg" style="position:absolute;left:120px;top:90px;width:360px;height:140px"><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "hotspot editor fixture did not initialize")
+    const editor = view.editor!, image = frame.contentDocument!.querySelector("img")!
+    await image.decode()
+    editor.features.selection.captureElement(image)
+    assert(editor.features.media.actions.startImageMapDrawing({type:"startImageMapDrawing", shape:"circle"}), "could not start drawing")
+    const {root} = editor.features.media.imageMapOverlay
+    const svg = root.querySelector("svg")!
+    const box = image.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
+    const pointer = (type: string, clientX: number) => svg.dispatchEvent(new view.PointerEvent(type,
+      {bubbles:true, button:0, clientX, clientY:y}))
+    const circleBox = (selector: string) => root.querySelector(selector)!.getBoundingClientRect()
+    pointer("pointerdown", x)
+    pointer("pointermove", x + 24)
+    const preview = circleBox("circle.preview")
+    assert(Math.abs(preview.width - 48) < 1 && Math.abs(preview.height - 48) < 1, "drawing preview did not follow the circular pointer radius")
+    pointer("pointerup", x + 24)
+    const area = frame.contentDocument!.querySelector("area")!
+    const coords = area.coords
+    const committed = circleBox("circle.hotspot")
+    assert(Math.abs(committed.width - preview.width) < 1 && Math.abs(committed.height - preview.height) < 1,
+      "committed hotspot differs from the drawing preview")
+
+    image.style.width = "180px"
+    await layoutFrame()
+    const resized = circleBox("circle.hotspot"), resizedImage = image.getBoundingClientRect()
+    assert(resized.width > 0 && Math.abs(resized.width - resized.height) < 1, "resized hotspot is no longer round")
+    assert(Math.abs(resized.left + resized.width / 2 - (resizedImage.left + resizedImage.width / 2)) < 1,
+      "resized hotspot moved away from its image coordinates")
+    assert(area.coords === coords, "resizing the image rewrote the map coordinates")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("hotspot popovers use grey editing placeholders and compact controls", async () => {
   const {DomEditorToolbox} = await import("../src/components/toolbox")
   const frame = document.createElement("iframe")
@@ -7676,6 +7717,11 @@ await check("image hotspots scale and open popovers in preview and standalone re
         const box = image.getBoundingClientRect()
         const svg = root.querySelector("svg")!
         assert(Math.abs(svg.getBoundingClientRect().width - box.width) < 1, "hotspot overlay did not resize with the image")
+        const circle = root.querySelector('a[aria-label="Link"] circle')!
+        const circleBox = circle.getBoundingClientRect()
+        assert(circleBox.width > 0 && Math.abs(circleBox.width - circleBox.height) < 1, "reading-mode circle stretched with the image")
+        assert(root.elementFromPoint(circleBox.left + circleBox.width / 2, circleBox.top + circleBox.height / 2) === circle,
+          "the corrected circle is not its own pointer hit target")
         const hit = root.elementFromPoint(box.left + 590 * box.width / 720, box.top + 190 * box.height / 420)!
         assert(hit.closest("a")?.getAttribute("aria-label") === "Details", "scaled hotspot is not the pointer hit target")
         hit.dispatchEvent(new view.MouseEvent("click", {bubbles:true, composed:true, cancelable:true}))

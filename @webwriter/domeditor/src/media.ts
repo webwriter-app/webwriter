@@ -342,8 +342,14 @@ export function imageMapHotspotShape(area: HTMLAreaElement, width: number, heigh
   return element
 }
 
+/** Positions follow both image axes, while circle radii follow the smaller scale. */
+export function imageMapScale(width: number, height: number, coordinateWidth: number, coordinateHeight: number) {
+  const x = width / coordinateWidth, y = height / coordinateHeight
+  return {x, y, circle: Math.min(x, y)}
+}
+
 /** Hotspot bounds in client coordinates, shared by popovers and appendix controls. */
-export function imageMapHotspotBounds(area: HTMLAreaElement, image: HTMLImageElement) {
+export function imageMapHotspotBounds(area: HTMLAreaElement, image: HTMLImageElement, scaleFor = imageMapScale) {
   const rect = image.getBoundingClientRect()
   const width = image.naturalWidth || Number(image.getAttribute("width")) || rect.width
   const height = image.naturalHeight || Number(image.getAttribute("height")) || rect.height
@@ -352,9 +358,11 @@ export function imageMapHotspotBounds(area: HTMLAreaElement, image: HTMLImageEle
   if(coords.some(value => !Number.isFinite(value))) return null
   const shape = area.getAttribute("shape")?.toLowerCase() || "rect"
   let xs: number[], ys: number[]
+  const scale = scaleFor(rect.width, rect.height, width, height)
   if(shape === "circle" && coords.length === 3) {
-    xs = [coords[0] - coords[2], coords[0] + coords[2]]
-    ys = [coords[1] - coords[2], coords[1] + coords[2]]
+    const radius = Math.max(0, coords[2]) * scale.circle
+    const x = rect.left + coords[0] * scale.x, y = rect.top + coords[1] * scale.y
+    return {left: x - radius, right: x + radius, top: y - radius, bottom: y + radius, width: 2 * radius, height: 2 * radius}
   }
   else if(shape === "rect" && coords.length === 4 || shape === "poly" && coords.length >= 6 && coords.length % 2 === 0) {
     xs = coords.filter((_, index) => index % 2 === 0)
@@ -362,10 +370,10 @@ export function imageMapHotspotBounds(area: HTMLAreaElement, image: HTMLImageEle
   }
   else if(shape === "default") { xs = [0, width]; ys = [0, height] }
   else return null
-  const left = rect.left + Math.min(...xs) * rect.width / width
-  const right = rect.left + Math.max(...xs) * rect.width / width
-  const top = rect.top + Math.min(...ys) * rect.height / height
-  const bottom = rect.top + Math.max(...ys) * rect.height / height
+  const left = rect.left + Math.min(...xs) * scale.x
+  const right = rect.left + Math.max(...xs) * scale.x
+  const top = rect.top + Math.min(...ys) * scale.y
+  const bottom = rect.top + Math.max(...ys) * scale.y
   return {left, right, top, bottom, width: right - left, height: bottom - top}
 }
 
@@ -484,7 +492,7 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
 
 /** Render intrinsic image-map coordinates without changing authored AREA nodes. */
 export function mountImageMapReader(doc: Document, controller: ReturnType<typeof createImageMapPopoverController>, shapeFor = imageMapHotspotShape,
-  anchorFactory?: typeof import("./anchor-positioning.js").createAnchorPositioner) {
+  anchorFactory?: typeof import("./anchor-positioning.js").createAnchorPositioner, scaleFor = imageMapScale) {
   const view = doc.defaultView!
   const appendix = doc.body.shadowRoot ?? doc.body.attachShadow({mode: "open"})
   let slot = Array.from(appendix.children).find(element => element.matches("slot:not([name])"))
@@ -499,6 +507,7 @@ export function mountImageMapReader(doc: Document, controller: ReturnType<typeof
     a { fill:rgb(37 99 235 / 12%); stroke:#2563eb; stroke-width:1.5; cursor:pointer; }
     a:hover, a:focus-visible { fill:rgb(37 99 235 / 24%); stroke-width:2.5; outline:none; }
     a > * { vector-effect:non-scaling-stroke; }
+    a > circle { transform-box:fill-box; transform-origin:center; transform:scale(var(--circle-scale-x), var(--circle-scale-y)); }
     .ww-hotspot-transparent { fill:transparent; stroke:none; }
     .ww-hotspot-no-border { stroke:none; }
     .ww-hotspot-no-background { fill:transparent; }
@@ -581,6 +590,9 @@ export function mountImageMapReader(doc: Document, controller: ReturnType<typeof
         anchors!.bind(svg, image)
       }
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`)
+      const scale = scaleFor(rect.width, rect.height, width, height)
+      svg.style.setProperty("--circle-scale-x", String(scale.circle / scale.x))
+      svg.style.setProperty("--circle-scale-y", String(scale.circle / scale.y))
       const signature = areas.map(area => area.outerHTML).join("") + `/${width}/${height}`
       if(signature === overlay.signature && areas.every((area, index) => area === overlay!.areas[index])) continue
       overlay.signature = signature

@@ -235,6 +235,7 @@ const expectedChecks = [
   "slide editing retains text and media selections after focus",
   "exported canvas runs its standalone viewer without editor dependencies",
   "image hotspots scale and open popovers in preview and standalone reading mode",
+  "canvas circle hotspots stay round while drawing and after image resizing",
   "canvas hotspot clicks preserve the camera in preview and standalone reading mode",
   "hotspot popovers use grey editing placeholders and compact controls",
   "saved Slides navigate with HTML and CSS and scripting disabled",

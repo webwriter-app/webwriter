@@ -1,4 +1,4 @@
-import {createImageMapPopoverController, imageMapHotspotBounds, imageMapHotspotShape, mountImageMapReader} from "./media"
+import {createImageMapPopoverController, imageMapHotspotBounds, imageMapHotspotShape, imageMapScale, mountImageMapReader} from "./media"
 import appIconSource from "../../../static/assets/app-icon-transparent.svg?raw"
 import canvasViewerSource from "./canvas-viewer.js?raw"
 import documentViewerSource from "./document-viewer.js?raw"
@@ -117,7 +117,20 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     const script = root.createElement("script")
     script.id = "webwriter-image-map-popovers"
     script.type = "module"
-    script.textContent = `${anchorRuntimeSource}\n(() => { const imageMapHotspotBounds = ${imageMapHotspotBounds.toString()}; const imageMapHotspotShape = ${imageMapHotspotShape.toString()}; const createImageMapPopoverController = ${createImageMapPopoverController.toString()}; const mountImageMapReader = ${mountImageMapReader.toString()}; const controller = createImageMapPopoverController(document, imageMapHotspotBounds); const reader = mountImageMapReader(document, controller, imageMapHotspotShape, createAnchorPositioner); const handle = controller.handleEvent; document.addEventListener("click", handle); document.addEventListener("pointerover", handle); window.addEventListener("pagehide", () => { document.removeEventListener("click", handle); document.removeEventListener("pointerover", handle); reader.dispose(); }, {once:true}); })();`.replace(/<\/script/gi, "<\\/script")
+    script.textContent = `${anchorRuntimeSource}
+(() => {
+  const imageMapScale = ${imageMapScale.toString()};
+  const imageMapHotspotBounds = ${imageMapHotspotBounds.toString()};
+  const imageMapHotspotShape = ${imageMapHotspotShape.toString()};
+  const createImageMapPopoverController = ${createImageMapPopoverController.toString()};
+  const mountImageMapReader = ${mountImageMapReader.toString()};
+  const controller = createImageMapPopoverController(document, (area, image) => imageMapHotspotBounds(area, image, imageMapScale));
+  const reader = mountImageMapReader(document, controller, imageMapHotspotShape, createAnchorPositioner, imageMapScale);
+  const handle = controller.handleEvent;
+  document.addEventListener("click", handle);
+  document.addEventListener("pointerover", handle);
+  window.addEventListener("pagehide", () => { document.removeEventListener("click", handle); document.removeEventListener("pointerover", handle); reader.dispose(); }, {once:true});
+})();`.replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
   root.querySelectorAll(`script#${packageImportMapId}`).forEach(script => script.remove())

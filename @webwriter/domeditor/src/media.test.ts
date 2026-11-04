@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
-import {createImageMapPopoverController, imageMapHotspotShape, mountImageMapReader} from "./media"
+import {createImageMapPopoverController, imageMapHotspotBounds, imageMapHotspotShape, mountImageMapReader} from "./media"
 import {appendSerializedAssets} from "./serialization"
 import {cloneWithoutEditorMarkers} from "./utility"
 
@@ -44,6 +44,10 @@ describe("image-map reading mode", () => {
     expect(svg.style.width).toBe("180px")
     expect(svg.style.left).toBe("50px")
     expect(root.querySelector('a[aria-label="Website"]')).toBe(link)
+    expect(svg.style.getPropertyValue("--circle-scale-x")).toBe("1")
+    expect(svg.style.getPropertyValue("--circle-scale-y")).toBe("0.5")
+    const circle = document.querySelector<HTMLAreaElement>('area[shape="circle"]')!
+    expect(imageMapHotspotBounds(circle, image)).toEqual({left:65, top:70, right:85, bottom:90, width:20, height:20})
     expect(document.body.innerHTML).toBe(authored)
     image.remove()
     reader!.refresh()
