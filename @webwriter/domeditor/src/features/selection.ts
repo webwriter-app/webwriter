@@ -859,7 +859,7 @@ export class SelectionFeature extends EditorFeature {
     queueMicrotask(() => {
       this.#sharedRefreshQueued = false
       if(!this.isEnabled) return
-      this.processSelection(undefined, {scrollIntoView: false})
+      this.processSelection(undefined, {scrollIntoView: false, refreshGraphic: false})
       this.editor.features.graphic.refresh()
       // Shared DOM changes can clamp a detached selection without firing a
       // native selectionchange event, so refresh the host breadcrumb as well.
@@ -2567,7 +2567,7 @@ export class SelectionFeature extends EditorFeature {
    * document Selection. This is the invariant boundary used by native
    * selectionchange events and every editor-driven refresh. Passive refreshes
    * preserve the last interaction's scroll target without revealing it again. */
-  processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true} = {}) {
+  processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true, refreshGraphic = true} = {}) {
     if(this.#boxDrag || this.#settingBoxSelection || $.isSettingRanges) return
     if(!this.editor.allowsSelection("select")) {
       this.editor.features.widget.syncLegacyOptions(null)
@@ -2641,7 +2641,7 @@ export class SelectionFeature extends EditorFeature {
         this.#atomicOverlays.set(element, overlay)
       }
       this.#positionAtomicOverlays()
-      this.editor.features.graphic.refresh()
+      if(refreshGraphic) this.editor.features.graphic.refresh()
       this.editor.features.layout.refresh()
       return
     }
@@ -2746,7 +2746,7 @@ export class SelectionFeature extends EditorFeature {
     this.editor.features.board.refresh()
     this.editor.features.manipulation.refreshNodeDragTarget(inDragSelection ? null
       : this.editor.features.math.selectedMath ?? (kind === "element" ? $.selectedElement ?? null : null))
-    this.editor.features.graphic.refresh()
+    if(refreshGraphic) this.editor.features.graphic.refresh()
     this.editor.features.layout.refresh()
     if(scrollIntoView && !isContentfulWidget(focusedWidget, this.editor.schema)) {
       this.#scrollSelectionIntoView(kind, sel, capturedElement)

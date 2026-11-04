@@ -161,63 +161,67 @@ function layoutGraphicText(shape: Element, appendix: ShadowRoot, labelBounds?: B
       availableWidth/=layoutScale
       lines=wrap(availableWidth)
     }
+    const lineSamples=new Map<string,SVGTextElement>()
+    if(native) {
+      const samples=document.createDocumentFragment()
+      for(const {start,end} of lines) {
+        const key=`${start}:${end}`
+        if(end<=start || metrics.lines.has(key) || lineSamples.has(key)) continue
+        const sample=getSample()
+        // Shape each line separately to preserve the browser's bidi ordering
+        // and ligatures. Attach all missing lines before reading their metrics.
+        const range=document.createRange()
+        range.setStart(...textPointAtOffset(sample,start))
+        range.setEnd(...textPointAtOffset(sample,end))
+        const line=sample.cloneNode(false) as SVGTextElement
+        line.append(range.cloneContents())
+        lineSamples.set(key,line)
+        samples.append(line)
+      }
+      if(lineSamples.size) probe!.append(samples)
+    }
     const measurements=lines.map(line => {
       const key=`${line.start}:${line.end}`
       const cached=metrics.lines.get(key)
       if(cached) return cached
       const coordinates: number[]=[],hanging:(number|null)[]=[]
       const trailing=line.end-(content.slice(line.start,line.end).match(/\s+$/u)?.[0].length ?? 0)
-      let lineSample=native ? getSample() : undefined
-      if(native && line.end>line.start) {
-        const sample=getSample()
-        // Shape each line separately so mixed-direction text and ligatures
-        // use the browser's own line ordering and run metrics.
-        const range=document.createRange()
-        range.setStart(...textPointAtOffset(sample,line.start))
-        range.setEnd(...textPointAtOffset(sample,line.end))
-        lineSample=sample.cloneNode(false) as SVGTextElement
-        lineSample.append(range.cloneContents())
-        probe!.append(lineSample)
+      const lineSample=lineSamples.get(key)
+      const end=line.end-(content.slice(line.start,line.end).match(/[\r\n]+$/u)?.[0].length ?? 0)
+      const lineWidth=lineSample && end>line.start ? lineSample.getSubStringLength(0,end-line.start) : width(line.start,end)
+      let origin=lineSample && trailing>line.start ? Infinity : 0
+      // Glyph APIs use UTF-16 offsets; coordinate lists consume code points.
+      for(let i=line.start;i<line.end;) {
+        const local=i-line.start, length=content.codePointAt(i)!>0xffff ? 2 : 1
+        const advance=lineSample ? lineSample.getStartPositionOfChar(local).x : width(line.start,i)
+        if(lineSample && i<trailing) origin=Math.min(origin,advance,lineSample.getEndPositionOfChar(local).x)
+        coordinates.push(advance)
+        hanging.push(i>=trailing ? width(i,i+length) : null)
+        i+=length
       }
-      try {
-        const end=line.end-(content.slice(line.start,line.end).match(/[\r\n]+$/u)?.[0].length ?? 0)
-        const lineWidth=native && end>line.start ? lineSample!.getSubStringLength(0,end-line.start) : width(line.start,end)
-        let origin=0
-        if(native && trailing>line.start) {
-          origin=Infinity
-          for(let i=line.start;i<trailing;) {
-            const local=i-line.start
-            origin=Math.min(origin,lineSample!.getStartPositionOfChar(local).x,lineSample!.getEndPositionOfChar(local).x)
-            i+=content.codePointAt(i)!>0xffff ? 2 : 1
-          }
-        }
-        // Glyph APIs use UTF-16 offsets; coordinate lists consume code points.
-        for(let i=line.start;i<line.end;) {
-          const length=content.codePointAt(i)!>0xffff ? 2 : 1
-          const advance=native ? lineSample!.getStartPositionOfChar(i-line.start).x-origin : width(line.start,i)
-          coordinates.push(advance)
-          hanging.push(i>=trailing ? width(i,i+length) : null)
-          i+=length
-        }
-        const measured={width:lineWidth,coordinates,hanging}
-        // A gesture can visit many widths. Bound cached line variants while
-        // retaining enough for reverse drags and repeat gestures.
-        if(metrics.lines.size>=256) metrics.lines.delete(metrics.lines.keys().next().value!)
-        metrics.lines.set(key,measured)
-        return measured
-      }
-      finally {if(lineSample && lineSample!==sample) lineSample.remove()}
-    }).map(line=>{
+      if(origin) for(let i=0;i<coordinates.length;i++) coordinates[i]-=origin
+      return {width:lineWidth,coordinates,hanging}
+    })
+    // Keep cache eviction separate so it cannot invalidate the hits identified
+    // before we attached the probes for this layout.
+    for(const [index,{start,end}] of lines.entries()) {
+      const key=`${start}:${end}`
+      if(metrics.lines.has(key)) continue
+      if(metrics.lines.size>=256) metrics.lines.delete(metrics.lines.keys().next().value!)
+      metrics.lines.set(key,measurements[index])
+    }
+    const fittedLines=measurements.map(line=>{
       const width=Math.min(availableWidth,line.width)
       return {width,coordinates:line.coordinates.map((advance,i)=>line.hanging[i]===null ? advance : Math.max(0,Math.min(advance,width-line.hanging[i]!)))}
     })
-    const lineWidths=measurements.map(line => line.width)
+    probe?.remove()
+    const lineWidths=fittedLines.map(line => line.width)
     const fittedWidth=Math.max(1,...lineWidths)+sizing.padding*2
     const fittedHeight=Math.max(fontSize,lineHeight*(lines.length-1)+ascent+descent)+sizing.padding*2
     const cx=frame.x+frame.width/2, cy=frame.y+frame.height/2
     let bounds={x:cx-fittedWidth/2,y:cy-fittedHeight/2,width:fittedWidth,height:fittedHeight}
     const x: string[]=[], y: string[]=[]
-    for(const [row,line] of measurements.entries()) {
+    for(const [row,line] of fittedLines.entries()) {
       const left=intrinsic ? bounds.x+sizing.padding : cx-line.width/2
       for(const advance of line.coordinates) {
         x.push(clean(left+advance))

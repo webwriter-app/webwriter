@@ -1831,6 +1831,13 @@ await check("SVG overflow fades while retaining native shape selection", async (
     await layoutFrame()
     const preview = editor.appendix.querySelector(".◆graphic-preview")!
     assert(preview && view.getComputedStyle(preview).filter.includes("#overflow"), "drag preview lost overflow fading")
+    graphic.style.filter = "sepia(0.4)"
+    doc.dispatchEvent(new view.PointerEvent("pointermove", {bubbles:true, buttons:1, pointerId:2, clientX:rect.left - 40, clientY:rect.top + 20}))
+    await layoutFrame(); await layoutFrame()
+    for(const root of [graphic, preview]) {
+      const filter = view.getComputedStyle(root).filter
+      assert(filter.startsWith("sepia(0.4) url(") && filter.split("#overflow").length === 2, "live filter edit was lost or overflow filter was duplicated")
+    }
     doc.dispatchEvent(new view.PointerEvent("pointercancel", {bubbles:true, pointerId:2}))
     editor.features.graphic.actions.navigateGraphic({type:"navigateGraphic", operation:"zoom-in"})
     graphic.style.rotate = "12deg"
