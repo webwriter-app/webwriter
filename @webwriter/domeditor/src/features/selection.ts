@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isCaretAtBoundary, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, textOffsetIn, textPointAtOffset, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isCaretAtBoundary, isEmptyParagraph, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, textOffsetIn, textPointAtOffset, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {SVG_NAMESPACE, graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -747,6 +747,7 @@ export class SelectionFeature extends EditorFeature {
       }
       else {
         const block = this.#selectionBlock()
+        if(isEmptyParagraph(block)) return false
         const neighbor = adjacent ?? (block && this.#atDisclosureEdge(block, direction, vertical)
           ? this.#adjacentNavigationElement(direction, true) : null)
         if(!neighbor || !(neighbor.matches("ul, ol, dl, menu, details, table") || isContentfulWidget(neighbor, this.editor.schema))) return false
@@ -777,7 +778,7 @@ export class SelectionFeature extends EditorFeature {
       while(element && element !== getDocumentRoot() && !isSectionElement(element)) element = element.parentElement
       if(element !== getDocumentRoot()) block = element
     }
-    if(!block || !block.parentElement || block.parentElement.matches("table, thead, tbody, tfoot, tr, colgroup")
+    if(!block || isEmptyParagraph(block) || !block.parentElement || block.parentElement.matches("table, thead, tbody, tfoot, tr, colgroup")
       || block.closest("ul, ol, dl, menu, details, figure")
       || !this.#atDisclosureEdge(block, direction, true)) return false
     $.selectGap(block, direction === "backward" ? "before" : "after")
@@ -2600,6 +2601,11 @@ export class SelectionFeature extends EditorFeature {
       this.editor.features.slides.constrainSelection()
       this.editor.features.board.constrainSelection()
       sel = document.getSelection()
+      if(sel?.isCollapsed && sel.anchorNode && $.isGapSelection) {
+        const paragraph = $.emptyParagraphAtBoundary(sel.anchorNode, sel.anchorOffset)
+        if(paragraph) $.move(paragraph)
+      }
+      sel = document.getSelection()
       this.editor.features.list.clearSelectionPresentation()
     }
     const kind = this.#selectionKind(inDragSelection, capturedElement)
@@ -2917,7 +2923,7 @@ export class SelectionFeature extends EditorFeature {
       }
       else if(ev.key === "ArrowUp") {
         const firstRootElement = Array.from(getDocumentRoot().children).find(element => !isOutOfFlow(element))
-        if(!ev.shiftKey && firstRootElement && isCaretAtStartOf(firstRootElement)) {
+        if(!ev.shiftKey && firstRootElement && !isEmptyParagraph(firstRootElement) && isCaretAtStartOf(firstRootElement)) {
           ev.preventDefault()
           $.selectGap(firstRootElement, "before")
           this.processSelection()

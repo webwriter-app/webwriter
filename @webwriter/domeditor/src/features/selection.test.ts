@@ -6774,6 +6774,56 @@ describe("block and contentful widget gaps", () => {
     return event
   }
 
+  it.each(["before", "after"] as const)("moves a native gap %s an empty paragraph into it", placement => {
+    document.body.innerHTML = '<section><p>First</p><!--keep--> <p><br></p> <!--keep--><p>Last</p></section>'
+    const paragraph = document.querySelectorAll("p")[1], parent = paragraph.parentElement!
+    const index = Array.from(parent.childNodes).indexOf(paragraph)
+    $.move(parent, index + (placement === "after" ? 1 : 0))
+    feature.processSelection()
+    expect($.anchor).toBe(paragraph)
+    expect($.isGapSelection).toBe(false)
+    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["ArrowUp", "ArrowDown"])("leaves %s navigation from an empty paragraph to the browser", key => {
+    document.body.innerHTML = '<p><br></p><p>Next</p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph)
+    feature.processSelection()
+    expect(press(key).defaultPrevented).toBe(false)
+    expect($.anchor).toBe(paragraph)
+    expect($.isGapSelection).toBe(false)
+  })
+
+  it("does not trap navigation in an empty paragraph next to a table", () => {
+    document.body.innerHTML = '<p><br></p><table><tbody><tr><td>Cell</td></tr></tbody></table>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph)
+    feature.processSelection()
+    expect(press("ArrowDown").defaultPrevented).toBe(false)
+    expect($.anchor).toBe(paragraph)
+  })
+
+  it("keeps a range that includes an empty paragraph", () => {
+    document.body.innerHTML = '<p>First</p><p><br></p><p>Last</p>'
+    $.selectRange(document.body, 1, document.body, 2)
+    feature.processSelection()
+    expect($.isEmpty).toBe(false)
+    expect($.selectedElement).toBe(document.querySelectorAll("p")[1])
+  })
+
+  it("enters an empty paragraph in an editable widget at a native boundary", () => {
+    editor.schema.extendWidgets([{tagName: "content-widget", editingConfig: {content: "flow*"}}])
+    document.body.innerHTML = '<content-widget><p>First</p><p><br></p></content-widget>'
+    editor.features.widget.refresh()
+    const widget = document.querySelector("content-widget")!, paragraph = widget.lastElementChild!
+    $.move(widget, 1)
+    feature.processSelection()
+    expect($.anchor).toBe(paragraph)
+    expect($.isGapSelection).toBe(false)
+  })
+
   it.each(["table", "content-widget", "blockquote", "h2"])("navigates above and below a %s", tag => {
     editor.schema.extendWidgets([{tagName: "content-widget", editingConfig: {content: "flow*"}}])
     const content = tag === "table" ? '<tbody><tr><td><b>First</b></td><td>Last</td></tr></tbody>' : '<b>First</b> Last'

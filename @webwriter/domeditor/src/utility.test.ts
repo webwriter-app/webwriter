@@ -317,7 +317,7 @@ describe("selectCoords()", () => {
     }
   })
 
-  it.each(["empty", "break", "text", "parent", "section"])("selects gaps around a styled paragraph with a %s hit", kind => {
+  it.each(["empty", "break", "text", "parent", "section"])("enters an empty styled paragraph from a %s hit", kind => {
     setBody(kind === "section" ? '<section><p style="padding: 8px"></p></section>' : '<p style="padding: 8px"></p>')
     const paragraph = document.querySelector("p")!
     if(kind === "break") paragraph.append(document.createElement("br"))
@@ -327,11 +327,11 @@ describe("selectCoords()", () => {
     const target = kind === "parent" ? parent : (paragraph.firstChild as Element | Text | null) ?? paragraph
     mockHitTest(target, 0)
 
-    for(const [y, offset] of [[90, 0], [130, 1]]) {
+    for(const y of [90, 130]) {
       $.selectCoords(50, y)
-      expect($.anchor).toBe(parent)
-      expect($.anchorOffset).toBe(offset)
-      expect($.isGapSelection).toBe(true)
+      expect($.anchor).toBe(paragraph)
+      expect($.anchorOffset).toBe(0)
+      expect($.isGapSelection).toBe(false)
     }
     if(target !== parent) {
       $.selectCoords(50, 110)
@@ -728,6 +728,26 @@ describe("isEmpty", () => {
 })
 
 describe("isGapSelection", () => {
+  it.each(["", "<br>", " <!--keep--> <span><br></span>"])("enters an empty paragraph around either boundary: %s", contents => {
+    setBody(`<section><p>First</p><!--keep--> <p>${contents}</p> <!--keep--><p>Last</p></section>`)
+    const paragraph = document.querySelectorAll("p")[1]
+    for(const placement of ["before", "after"] as const) {
+      $.selectGap(paragraph, placement)
+      expect($.anchor).toBe(paragraph)
+      expect($.isGapSelection).toBe(false)
+    }
+  })
+
+  it.each(["<img>", "<test-widget></test-widget>", "<br><br>", "<span contenteditable=\"false\"></span>", "text"])("retains gaps beside a paragraph containing %s", contents => {
+    setBody(`<p>${contents}</p>`)
+    const paragraph = document.querySelector("p")!
+    for(const placement of ["before", "after"] as const) {
+      $.selectGap(paragraph, placement)
+      expect($.anchor).toBe(document.body)
+      expect($.isGapSelection).toBe(true)
+    }
+  })
+
   it.each(["figure", "table"])("exposes before and after gaps beside a captioned %s in a text-bearing section", tag => {
     setBody(tag === "figure" ? '<section>before<figure><p>Body</p><figcaption>Label</figcaption></figure>after</section>' : '<section>before<table><caption>Label</caption><tbody><tr><td>Cell</td></tr></tbody></table>after</section>')
     const target = document.querySelector(tag)!
