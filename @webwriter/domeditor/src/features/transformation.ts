@@ -454,6 +454,7 @@ export class TransformationFeature extends EditorFeature {
       || mathRoot(element) === element && element.getAttribute("display") === "block")
       && !["toggle", "content"].includes(popupElementRole(element) ?? "")
       && element !== document.documentElement && element !== document.head
+      && !(this.editor.features.canvas.active && isCanvasStartingView(element))
       && !isDocumentRoot(element) && getDocumentRoot().contains(element) && this.editor.allows("select", element)
   }
 
@@ -690,7 +691,6 @@ export class TransformationFeature extends EditorFeature {
     const hideGroupResize = this.#group.length > 0 && !persistent
     const corner = this.target && this.#resizeAlignment(this.target) === "right" ? "down-left" : "down-right"
     setPart(overlay, "transform-overlay-freeform", freeform)
-    setPart(overlay, "transform-overlay-starting-view", !this.#group.length && Boolean(this.target && isCanvasStartingView(this.target)))
     setPart(overlay, "transform-overlay-capture-selected", freeform && this.editor.features.selection.captureSelectedElement === this.target)
     for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
       const hide = !allows("style") || hideGroupResize || !freeform && !(boardQuiz && midpoint.dataset.resizeDirection === "down-down")

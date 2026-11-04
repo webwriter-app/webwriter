@@ -1,9 +1,8 @@
-import {CanvasViewer, canvasControlsStyles, canvasIcons, canvasStartingView, createCanvasPanSurface, isCanvasStartingView} from "../canvas-viewer.js"
+import {CanvasViewer, canvasControlsStyles, canvasIcons, canvasStartingView, createCanvasPanSurface, groupCanvasZoomPresets, isCanvasStartingView, updateCanvasZoomControls, type CanvasStartingViewBounds} from "../canvas-viewer.js"
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, clearInlinePlacement, createAnchorPositioner, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
+import {$, clearInlinePlacement, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {canvasClass, canvasStyles, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
-import trashIcon from "@tabler/icons/outline/trash.svg?raw"
 
 type Item = HTMLElement | SVGSVGElement
 type Point = {x: number, y: number}
@@ -16,10 +15,9 @@ export class CanvasFeature extends EditorFeature {
   private viewer: CanvasViewer | null = null
   private slot: HTMLSlotElement | null = null
   private controls: HTMLElement | null = null
+  private controlButtons: HTMLElement | null = null
   private background: HTMLElement | null = null
   private panSurface: HTMLElement | null = null
-  private startingViewOutline: HTMLElement | null = null
-  private anchors = createAnchorPositioner()
   private stylesheet: CSSStyleSheet | null = null
   private layoutStylesheet: CSSStyleSheet | null = null
   private observer: MutationObserver | null = null
@@ -135,18 +133,13 @@ export class CanvasFeature extends EditorFeature {
     if(!this.active || !this.viewer || this.editor.isEditingLocked
       || !this.editor.allows(existing ? "style" : "insert", existing ?? document.body)) return false
     const origin = this.clientPoint(0, 0)
-    const frame = canvasStartingView() ?? document.createElement("div")
+    const frame = existing ?? document.createElement("div")
     const end = this.editor.doc.beginUndoGroup()
     try {
       frame.classList.add("ww-canvas-starting-view")
       frame.setAttribute("aria-label", "Starting view")
-      clearInlinePlacement(frame)
-      Object.assign(frame.style, {position: "absolute", left: `${origin.x}px`, top: `${origin.y}px`,
-        width: `${window.innerWidth / this.zoom}px`, height: `${window.innerHeight / this.zoom}px`,
-        right: "auto", bottom: "auto", minWidth: "0", minHeight: "0", maxWidth: "none", maxHeight: "none",
-        boxSizing: "border-box", margin: "0", padding: "0", border: "0", transform: "none", rotate: "none", scale: "none", translate: "none"})
+      this.writeStartingView(frame, {...origin, width: window.innerWidth / this.zoom, height: window.innerHeight / this.zoom})
       if(!frame.parentElement) document.body.append(frame)
-      this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(frame))
     }
     finally { end() }
     this.refresh()
@@ -155,11 +148,8 @@ export class CanvasFeature extends EditorFeature {
 
   private showStartingView() {
     if(!this.active || !this.viewer) return false
-    const frame = canvasStartingView()
-    if(!frame) return this.saveStartingView()
-    this.viewer.startView()
-    this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(frame))
-    return true
+    this.viewer.stopWheelPan()
+    return this.viewer.startView()
   }
 
   private deleteStartingView() {
@@ -177,23 +167,48 @@ export class CanvasFeature extends EditorFeature {
     return true
   }
 
-  private updateStartingViewOutline() {
-    const outline = this.startingViewOutline
-    if(!outline) return
-    const frame = this.active ? canvasStartingView() : null
-    if(outline.hidden !== !frame) outline.hidden = !frame
-    if(!frame) { this.anchors.release(outline); return }
-    if(this.editor.features.transformation.boxTransformed(frame)) {
-      this.anchors.release(outline)
-      const rect = frame.getBoundingClientRect()
-      Object.assign(outline.style, {left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+  private writeStartingView(frame: HTMLDivElement, {x, y, width, height}: CanvasStartingViewBounds) {
+    clearInlinePlacement(frame)
+    Object.assign(frame.style, {position: "absolute", left: `${x}px`, top: `${y}px`, width: `${width}px`, height: `${height}px`,
+      right: "auto", bottom: "auto", minWidth: "0", minHeight: "0", maxWidth: "none", maxHeight: "none",
+      boxSizing: "border-box", margin: "0", padding: "0", border: "0", transform: "none", rotate: "none", scale: "none", translate: "none"})
+  }
+
+  private canSelectStartingView(frame: HTMLDivElement) {
+    return this.active && !this.editor.isEditingLocked && this.editor.allows("select", frame)
+  }
+
+  private canMoveStartingView(frame: HTMLDivElement) {
+    return this.canSelectStartingView(frame) && this.editor.allows("move", frame)
+  }
+
+  private canResizeStartingView(frame: HTMLDivElement) {
+    return this.canSelectStartingView(frame) && this.editor.allows("style", frame)
+  }
+
+  private resizeStartingView(frame: HTMLDivElement, bounds: CanvasStartingViewBounds) {
+    if(frame !== canvasStartingView() || !this.canResizeStartingView(frame)) return
+    const end = this.editor.doc.beginUndoGroup()
+    try { this.writeStartingView(frame, bounds) }
+    finally { end() }
+  }
+
+  private moveStartingView(frame: HTMLDivElement, offset: Point) {
+    if(frame !== canvasStartingView() || !this.canMoveStartingView(frame)) return
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      const style = getComputedStyle(frame)
+      const insets = [["left", "right", offset.x], ["top", "bottom", offset.y]] as const
+      for(const [near, far, delta] of insets) {
+        if(!delta) continue
+        const nearValue = parseFloat(style[near]), farValue = parseFloat(style[far])
+        if(Number.isFinite(nearValue) || !Number.isFinite(farValue)) {
+          frame.style[near] = `${(Number.isFinite(nearValue) ? nearValue : 0) + delta}px`
+        }
+        if(Number.isFinite(farValue)) frame.style[far] = `${farValue - delta}px`
+      }
     }
-    else {
-      for(const property of ["left", "top", "width", "height"]) outline.style.removeProperty(property)
-      this.anchors.bind(outline, frame)
-    }
-    this.anchors.refresh()
-    outline.querySelector<HTMLElement>("[part=canvas-starting-view-label]")!.classList.toggle("inside", frame.getBoundingClientRect().top < 24)
+    finally { end() }
   }
 
   convert(mode: "canvas" | "document", captureUndo = true) {
@@ -384,7 +399,6 @@ export class CanvasFeature extends EditorFeature {
     if(zoomChanged) {
       if(this.cameraFrame !== null) cancelAnimationFrame(this.cameraFrame)
       this.cameraFrame = null
-      this.updateStartingViewOutline()
       this.editor.features.transformation.updateInfo()
       this.editor.features.layout.refresh()
       this.editor.features.graphic.refresh()
@@ -393,7 +407,6 @@ export class CanvasFeature extends EditorFeature {
     else if(this.cameraFrame === null) this.cameraFrame = requestAnimationFrame(() => {
       this.cameraFrame = null
       if(!this.active || !this.isEnabled) return
-      this.updateStartingViewOutline()
       this.editor.features.transformation.updateInfo()
       this.editor.features.layout.refresh()
       this.editor.features.graphic.refresh()
@@ -461,14 +474,6 @@ export class CanvasFeature extends EditorFeature {
         this.viewer?.startPan(event)
         return
       }
-      if(event.button === 0 && origin instanceof Node && this.startingViewOutline?.contains(origin)) {
-        const frame = this.active && !this.editor.isEditingLocked ? canvasStartingView() : null
-        if(!frame) return
-        event.preventDefault()
-        event.stopImmediatePropagation()
-        this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(frame))
-        return
-      }
       if(!this.editingRoot || !this.ownEvent(event)) return
       if(!this.active && event.button === 0) this.editor.features.slides.cancelNavigation()
       if(event.button === 0 && !this.hand && !this.spaceHand && this.backgroundInteraction(event)) {
@@ -509,7 +514,7 @@ export class CanvasFeature extends EditorFeature {
     click: event => {
       const origin = event.composedPath()[0]
       const target = origin instanceof Element ? origin.closest("button") : null
-      if(!(target instanceof HTMLButtonElement) || !this.controls?.contains(target) || target.name.startsWith("minimap")) return
+      if(!(target instanceof HTMLButtonElement) || !this.controlButtons?.contains(target)) return
       if(target.name === "hand") {
         this.hand = !this.hand
         this.syncHandMode()
@@ -517,8 +522,6 @@ export class CanvasFeature extends EditorFeature {
         this.viewer?.stopWheelPan()
         this.schedule()
       }
-      else if(target.name === "starting-view") this.actions.showCanvasStartingView({type: "showCanvasStartingView"})
-      else if(target.name === "delete-starting-view") this.actions.deleteCanvasStartingView({type: "deleteCanvasStartingView"})
       else this.actions.navigateCanvas({type: "navigateCanvas", operation: target.name as "zoom-in" | "zoom-out" | "actual-size" | "fit-content"})
     },
     dblclick: event => {
@@ -550,22 +553,32 @@ export class CanvasFeature extends EditorFeature {
       this.slot = this.editor.appendix.querySelector<HTMLSlotElement>("slot:not([name])")!
       this.viewer = new CanvasViewer(this.slot, this.background!, this.controls!, this.panSurface, this.cameraChanged, this.editor.options.loadCanvasSnapdom)
       if(!this.viewer.startView()) this.viewer.applyCamera()
+      this.viewer.mountMinimap(this.controlButtons!.parentElement!, {
+        add: () => this.saveStartingView(),
+        remove: () => this.deleteStartingView(),
+        canAdd: () => !this.editor.isEditingLocked && this.editor.allows("insert", document.body),
+        canRemove: frame => !this.editor.isEditingLocked && this.editor.allows("delete", frame),
+        canSelect: frame => this.canSelectStartingView(frame),
+        canMove: frame => this.canMoveStartingView(frame),
+        canResize: frame => this.canResizeStartingView(frame),
+        move: (frame, offset) => this.moveStartingView(frame, offset),
+        resize: (frame, bounds) => this.resizeStartingView(frame, bounds),
+      })
     }
     else if(!this.active && this.slot) this.restoreSlot()
     this.syncHandMode()
-    this.updateStartingViewOutline()
-    const startingView = canvasStartingView()
-    const canInsert = this.editor.allows("insert", document.body)
-    const canDeleteStartingView = startingView ? this.editor.allows("delete", startingView) : false
-    const signature = JSON.stringify([this.getState(), Boolean(this.emptyParagraph()), this.editor.isEditingLocked, this.hand, Boolean(startingView), canInsert, canDeleteStartingView])
+    this.viewer?.updateStartingView()
+    const signature = JSON.stringify([this.getState(), Boolean(this.emptyParagraph()), this.editor.isEditingLocked, this.hand])
     if(signature === this.signature) return
     this.signature = signature
-    this.controls!.replaceChildren()
+    // Keep the minimap connected so refreshing the toolbar preserves pointer capture.
+    const buttons = this.controlButtons!
+    buttons.replaceChildren()
     const button = (name: string, label: string, title = label) => {
       const button = document.createElement("button")
       button.type = "button"; button.name = name; button.textContent = label; button.title = title
       button.setAttribute("aria-label", title)
-      this.controls!.append(button)
+      buttons.append(button)
       return button
     }
     if(this.active) {
@@ -573,24 +586,12 @@ export class CanvasFeature extends EditorFeature {
       hand.innerHTML = canvasIcons.hand
       hand.setAttribute("aria-pressed", String(this.hand))
       button("zoom-out", "−", "Zoom out")
-      const output = document.createElement("output"); output.textContent = `${Math.round(this.zoom * 100)}%`; this.controls!.append(output)
+      buttons.append(document.createElement("output"))
       button("zoom-in", "+", "Zoom in")
-      button("actual-size", "100%", "Actual size")
-      button("fit-content", "", "Fit content").innerHTML = canvasIcons.fit
-      const group = document.createElement("div")
-      group.className = "◆canvas-starting-view-controls"
-      group.setAttribute("role", "group")
-      group.setAttribute("aria-label", "Starting view")
-      const show = button("starting-view", "Starting view", startingView ? "Show and select the starting view" : "Add starting view")
-      show.hidden = !startingView && !canInsert
-      const remove = button("delete-starting-view", "", "Delete starting view")
-      remove.innerHTML = trashIcon
-      remove.hidden = !canDeleteStartingView
-      group.append(show, remove)
-      this.controls!.append(group)
-      this.viewer?.mountMinimap()
+      buttons.append(groupCanvasZoomPresets(button("actual-size", "", "Reset zoom to 100%"), button("fit-content", "", "Fit to view")))
+      updateCanvasZoomControls(this.controls, this.zoom)
     }
-    this.controls!.hidden = !this.controls!.childElementCount
+    this.controls!.hidden = !buttons.childElementCount
     this.editor.postSelectionPath()
   }
 
@@ -617,43 +618,20 @@ export class CanvasFeature extends EditorFeature {
     this.panSurface = createCanvasPanSurface()
     this.editor.addAppendix(this.panSurface)
     this.controls = document.createElement("div")
-    this.controls.className = "◆canvas-controls"
+    this.controls.className = "◆canvas-controls ◆canvas-viewer-controls"
     this.controls.setAttribute("part", "canvas-controls")
     this.controls.contentEditable = "false"
     this.controls.setAttribute("role", "toolbar")
     this.controls.setAttribute("aria-label", "Document canvas")
+    this.controlButtons = document.createElement("div")
+    this.controlButtons.className = "◆canvas-control-buttons"
+    const toolbar = document.createElement("div")
+    toolbar.className = "◆canvas-toolbar"
+    toolbar.append(this.controlButtons)
+    this.controls.append(toolbar)
     this.editor.addAppendix(this.controls)
-    this.startingViewOutline = document.createElement("div")
-    this.startingViewOutline.setAttribute("part", "canvas-starting-view")
-    this.startingViewOutline.setAttribute("aria-hidden", "true")
-    for(const edge of ["top", "right", "bottom", "left"]) {
-      const handle = document.createElement("div")
-      handle.className = edge
-      this.startingViewOutline.append(handle)
-    }
-    const label = document.createElement("span")
-    label.setAttribute("part", "canvas-starting-view-label")
-    label.textContent = "STARTING VIEW"
-    this.startingViewOutline.append(label)
-    this.editor.addAppendix(this.startingViewOutline)
     this.stylesheet = createStylesheet(canvasControlsStyles + `
-      .◆canvas-starting-view-controls { display: inline-flex; }
-      .◆canvas-starting-view-controls button:first-child { border-radius: 6px 0 0 6px; }
-      .◆canvas-starting-view-controls button:last-child { display: grid; place-items: center; border-left: 1px solid #cbd5e1; border-radius: 0 6px 6px 0; padding: 5px 8px; }
-      .◆canvas-starting-view-controls button[hidden] { display: none; }
-      .◆canvas-starting-view-controls svg { width: 14px; height: 14px; }
-      [part=canvas-starting-view] { position: fixed; box-sizing: border-box; border: 2px dotted #9ca3af; pointer-events: none; z-index: 0; }
-      [part=canvas-starting-view][hidden] { display: none; }
-      [part=canvas-starting-view] > div { position: absolute; pointer-events: auto; cursor: pointer; }
-      [part=canvas-starting-view] > :is(.top, .bottom) { left: -4px; right: -4px; height: 8px; }
-      [part=canvas-starting-view] > :is(.left, .right) { top: -4px; bottom: -4px; width: 8px; }
-      [part=canvas-starting-view] > .top { top: -5px; }
-      [part=canvas-starting-view] > .bottom { bottom: -5px; }
-      [part=canvas-starting-view] > .left { left: -5px; }
-      [part=canvas-starting-view] > .right { right: -5px; }
-      [part=canvas-starting-view-label] { display: none; position: absolute; left: 0; top: -6px; transform: translateY(-100%); color: var(--sl-color-primary-400); font: 600 11px/16px system-ui; letter-spacing: .06em; white-space: nowrap; }
-      [part=canvas-starting-view-label].inside { left: 6px; top: 6px; transform: none; }
-      @media print { [part=canvas-starting-view] { display: none; } }
+      .◆canvas-control-buttons { display: contents; }
     `)
     this.editor.appendix.adoptedStyleSheets = [...this.editor.appendix.adoptedStyleSheets, this.stylesheet]
     this.observer = new MutationObserver(this.schedule)
@@ -678,9 +656,7 @@ export class CanvasFeature extends EditorFeature {
     this.background?.remove(); this.background = null
     this.panSurface?.remove(); this.panSurface = null
     this.controls?.remove(); this.controls = null
-    this.startingViewOutline?.remove(); this.startingViewOutline = null
-    this.anchors.destroy()
-    this.anchors = createAnchorPositioner()
+    this.controlButtons = null
     if(this.stylesheet && document.body.shadowRoot) document.body.shadowRoot.adoptedStyleSheets = document.body.shadowRoot.adoptedStyleSheets.filter(sheet => sheet !== this.stylesheet)
     this.stylesheet = null
     this.signature = ""

@@ -8,6 +8,31 @@ const startingViewSelector = "div.ww-canvas-starting-view:not([is])"
 export const canvasIcons = {
   hand: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 11v-3.5a1.5 1.5 0 0 1 3 0v2.5"/><path d="M11 9.5v-3a1.5 1.5 0 0 1 3 0v3.5"/><path d="M14 7.5a1.5 1.5 0 0 1 3 0v2.5"/><path d="M17 9.5a1.5 1.5 0 0 1 3 0v4.5a6 6 0 0 1 -6 6h-2h.208a6 6 0 0 1 -5.012 -2.7l-.196 -.3c-.312 -.479 -1.407 -2.388 -3.286 -5.728a1.5 1.5 0 0 1 .536 -2.022a1.867 1.867 0 0 1 2.28 .28l1.47 1.47"/></svg>`,
   fit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/><path d="M16 16l-2.5 -2.5"/><path d="M3 7v-2a2 2 0 0 1 2 -2h2"/><path d="M3 17v2a2 2 0 0 0 2 2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M17 21h2a2 2 0 0 0 2 -2v-2"/></svg>`,
+  reset: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 21l-6 -6"/><path d="M3.268 12.043a7.017 7.017 0 0 0 6.634 4.957a7.012 7.012 0 0 0 7.043 -6.131a7 7 0 0 0 -5.314 -7.672a7.021 7.021 0 0 0 -8.241 4.403"/><path d="M3 4v4h4"/></svg>`,
+}
+
+export function groupCanvasZoomPresets(reset, fit) {
+  reset.innerHTML = canvasIcons.reset
+  fit.innerHTML = canvasIcons.fit
+  const group = document.createElement("div")
+  group.className = "◆canvas-button-group"
+  group.setAttribute("role", "group")
+  group.setAttribute("aria-label", "Zoom presets")
+  group.append(reset, fit)
+  return group
+}
+
+export function updateCanvasZoomControls(controls, zoom) {
+  const output = controls?.querySelector("output")
+  const label = `${Math.round(zoom * 100)}%`
+  if(output && output.textContent !== label) output.textContent = label
+  const reset = controls?.querySelector('button[name="actual-size"]')
+  if(reset && reset.disabled !== (zoom === 1)) reset.disabled = zoom === 1
+}
+
+const startingViewIcons = {
+  add: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  remove: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16m-10 4v6m4-6v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>',
 }
 
 export function canvasStartingView(body = document.body) {
@@ -30,17 +55,23 @@ const minimapMinPadding = 64
 const minimapPaddingRatio = .1
 const minimapRefreshDelay = 120
 const minimapExcluded = ".◆editor-only, [data-webwriter-editor-only], script, template"
+const viewportAspectRatio = () => Math.max(1, window.innerWidth) / Math.max(1, window.innerHeight)
+const centerOf = ({x, y, width, height}) => ({x: x + width / 2, y: y + height / 2})
 const authoredClass = value => (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
 
 class CanvasMinimap {
-  constructor(viewer, loadSnapdom) {
+  constructor(viewer, loadSnapdom, editStartingView) {
     this.viewer = viewer
     this.loadSnapdom = loadSnapdom
+    this.editStartingView = editStartingView
     this.bounds = null
     this.generation = 0
     this.running = null
     this.timer = null
     this.queued = false
+    this.dragPointer = null
+    this.startingViewDrag = null
+    this.selectedStartingView = null
 
     this.toggle = document.createElement("button")
     this.toggle.type = "button"
@@ -54,18 +85,50 @@ class CanvasMinimap {
     this.map.id = "◆canvas-minimap"
     this.map.setAttribute("part", "canvas-minimap")
     this.map.setAttribute("aria-label", "Center canvas here")
-    this.map.title = "Click to center the canvas"
+    this.map.title = "Click or drag to move the canvas"
     this.map.disabled = true
     this.map.innerHTML = '<span>Loading minimap…</span><svg aria-hidden="true"><clipPath id="◆canvas-minimap-bounds"><rect width="100%" height="100%"/></clipPath><rect width="100%" height="100%" fill="white"/><g clip-path="url(#◆canvas-minimap-bounds)"><image/><rect class="◆canvas-minimap-camera" vector-effect="non-scaling-stroke"/></g></svg>'
+    this.row = document.createElement("div")
+    this.row.className = "◆canvas-minimap-row"
+    this.surface = document.createElement("div")
+    this.surface.className = "◆canvas-minimap-surface"
+    this.surface.append(this.map)
+    this.row.append(this.surface)
+    this.createStartingViewControls()
     this.svg = this.map.querySelector("svg")
     this.image = this.svg.querySelector("image")
     this.viewport = this.svg.querySelector(".◆canvas-minimap-camera")
-    this.map.addEventListener("click", event => this.center(event))
+    this.map.addEventListener("click", event => {
+      this.selectedStartingView = null
+      this.updateStartingView()
+      if(event.detail) this.centerAt(event.clientX, event.clientY)
+      else this.centerAt()
+    })
+    this.map.addEventListener("pointerdown", event => {
+      if(!event.isPrimary || event.button !== 0 || !this.bounds || this.dragPointer !== null) return
+      try { this.map.setPointerCapture(event.pointerId) } catch { return }
+      this.dragPointer = event.pointerId
+    })
+    this.map.addEventListener("pointermove", event => {
+      if(event.pointerId === this.dragPointer) this.centerAt(event.clientX, event.clientY)
+    })
+    const endDrag = event => {
+      if(event.pointerId === this.dragPointer) this.dragPointer = null
+    }
+    this.map.addEventListener("pointerup", endDrag)
+    this.map.addEventListener("pointercancel", endDrag)
+    this.map.addEventListener("lostpointercapture", endDrag)
     this.toggle.addEventListener("click", () => this.setOpen(this.map.hidden))
     this.observer = new MutationObserver(records => {
+      this.updateStartingView()
       if(records.some(record => this.contentChanged(record, records))) this.schedule()
     })
-    this.resize = () => this.updateCamera()
+    this.resize = () => {
+      if(this.map.hidden) return
+      this.stopStartingViewDrag()
+      this.updateViewport()
+      this.schedule()
+    }
     this.resourceLoaded = event => {
       if(event.target instanceof Element && event.target.matches('img, link[rel~="stylesheet"]')
         && !event.target.closest(minimapExcluded)) this.schedule()
@@ -73,16 +136,158 @@ class CanvasMinimap {
     window.addEventListener("resize", this.resize)
   }
 
+  createStartingViewControls() {
+    const layer = document.createElement("div")
+    layer.className = "◆canvas-minimap-frame-layer"
+    layer.innerHTML = `<div part="canvas-minimap-starting-view" hidden>
+      <button type="button" name="minimap-select-starting-view" aria-label="Select starting view" title="Select or drag starting view" aria-pressed="false"><span></span><span></span><span></span><span></span></button>
+      <span data-corner="nw"></span><span data-corner="ne"></span><span data-corner="sw"></span><span data-corner="se"></span>
+    </div>`
+    this.startFrame = layer.firstElementChild
+    this.selectFrame = this.startFrame.firstElementChild
+    this.selectFrame.addEventListener("click", () => {
+      const frame = canvasStartingView(this.viewer.body)
+      if(frame && this.editStartingView?.canSelect(frame)) {
+        this.selectedStartingView = frame
+        this.updateStartingView()
+      }
+    })
+    for(const handle of this.startFrame.children) {
+      handle.addEventListener("pointerdown", event => this.beginStartingViewDrag(event))
+      handle.addEventListener("pointermove", event => this.moveStartingViewDrag(event))
+      handle.addEventListener("pointerup", event => this.endStartingViewDrag(event, true))
+      handle.addEventListener("pointercancel", event => this.endStartingViewDrag(event, false))
+      handle.addEventListener("lostpointercapture", event => this.endStartingViewDrag(event, false))
+    }
+    this.surface.append(layer)
+    this.startControls = document.createElement("div")
+    this.startControls.className = "◆canvas-starting-view-controls"
+    this.startControls.setAttribute("role", "group")
+    this.startControls.setAttribute("aria-label", "Starting view")
+    this.startControls.innerHTML = '<button type="button"></button><button type="button" name="starting-view">Starting view</button>'
+    this.changeFrame = this.startControls.firstElementChild
+    this.showFrame = this.startControls.lastElementChild
+    this.changeFrame.addEventListener("click", () => {
+      const frame = canvasStartingView(this.viewer.body)
+      if(frame) this.editStartingView?.remove()
+      else this.editStartingView?.add()
+    })
+    this.showFrame.addEventListener("click", () => {
+      this.viewer.stopWheelPan()
+      this.viewer.startView()
+    })
+    this.row.append(this.startControls)
+  }
+
+  updateStartingView() {
+    if(this.map.hidden) return
+    const frame = canvasStartingView(this.viewer.body)
+    const editing = this.editStartingView
+    if(this.startingViewDrag && !this.canContinueStartingViewDrag()) this.stopStartingViewDrag()
+    const label = frame ? "Delete starting view" : "Add starting view"
+    this.startControls.hidden = !editing && !frame
+    this.changeFrame.hidden = !editing
+    this.changeFrame.disabled = !(frame ? editing?.canRemove(frame) : editing?.canAdd())
+    if(this.changeFrame.title !== label) {
+      this.changeFrame.name = frame ? "delete-starting-view" : "add-starting-view"
+      this.changeFrame.title = label
+      this.changeFrame.setAttribute("aria-label", label)
+      this.changeFrame.innerHTML = frame ? startingViewIcons.remove : startingViewIcons.add
+    }
+    const rect = this.startingViewDrag?.rect ?? this.viewer.startingViewBounds(frame)
+    const selectable = Boolean(frame && editing?.canSelect(frame))
+    if(!selectable || this.selectedStartingView !== frame) this.selectedStartingView = null
+    const selected = Boolean(this.selectedStartingView)
+    this.showFrame.disabled = !frame
+    this.selectFrame.disabled = !selectable
+    this.selectFrame.setAttribute("aria-pressed", String(selected))
+    this.startFrame.classList.toggle("movable", selectable && editing.canMove(frame))
+    this.startFrame.classList.toggle("resizable", selected && editing.canResize(frame))
+    this.startFrame.hidden = !rect || !this.bounds
+    if(!rect || !this.bounds) return
+    const {x, y, width, height} = this.bounds
+    Object.assign(this.startFrame.style, {left: `${(rect.x - x) / width * 100}%`, top: `${(rect.y - y) / height * 100}%`,
+      width: `${rect.width / width * 100}%`, height: `${rect.height / height * 100}%`})
+  }
+
+  beginStartingViewDrag(event) {
+    const frame = canvasStartingView(this.viewer.body), rect = this.viewer.startingViewBounds(frame)
+    const handle = event.currentTarget, corner = handle.dataset.corner
+    if(event.button !== 0 || !event.isPrimary || this.startingViewDrag || !rect || !this.bounds
+      || !this.editStartingView?.canSelect(frame) || (corner
+        ? this.selectedStartingView !== frame || !this.editStartingView.canResize(frame)
+        : !this.editStartingView.canMove(frame))) return
+    const map = this.map.getBoundingClientRect()
+    const scale = Math.min(map.width / this.bounds.width, map.height / this.bounds.height)
+    if(!scale) return
+    try { handle.setPointerCapture(event.pointerId) } catch { return }
+    event.preventDefault()
+    this.selectedStartingView = frame
+    this.startingViewDrag = {frame, style: frame.getAttribute("style"), id: event.pointerId, handle, corner, rect, start: rect,
+      scale, x: event.clientX, y: event.clientY}
+    this.updateStartingView()
+  }
+
+  canContinueStartingViewDrag() {
+    const {frame, style, corner} = this.startingViewDrag
+    return frame === canvasStartingView(this.viewer.body) && frame.getAttribute("style") === style
+      && this.editStartingView.canSelect(frame) && (corner ? this.editStartingView.canResize(frame) : this.editStartingView.canMove(frame))
+  }
+
+  moveStartingViewDrag(event) {
+    const drag = this.startingViewDrag
+    if(!drag || event.pointerId !== drag.id) return
+    if(!this.canContinueStartingViewDrag()) { this.stopStartingViewDrag(); this.updateStartingView(); return }
+    const {start, scale, corner} = drag
+    let dx = (event.clientX - drag.x) / scale, dy = (event.clientY - drag.y) / scale
+    const rect = {...start}
+    if(corner) {
+      const west = corner.endsWith("w"), north = corner.startsWith("n")
+      rect.width = Math.max(Math.min(10 / scale, start.width), start.width + (west ? -dx : dx))
+      rect.height = Math.max(Math.min(10 / scale, start.height), start.height + (north ? -dy : dy))
+      if(west) rect.x += start.width - rect.width
+      if(north) rect.y += start.height - rect.height
+    }
+    else {
+      const {x, y, width, height} = this.bounds
+      dx = Math.max(Math.min(0, x - start.x), Math.min(Math.max(0, x + width - start.x - start.width), dx))
+      dy = Math.max(Math.min(0, y - start.y), Math.min(Math.max(0, y + height - start.y - start.height), dy))
+      rect.x += dx
+      rect.y += dy
+    }
+    if(["x", "y", "width", "height"].every(key => rect[key] === drag.rect[key])) return
+    drag.rect = rect
+    if(!corner) this.viewer.centerOn(centerOf(rect))
+    this.updateStartingView()
+  }
+
+  endStartingViewDrag(event, commit) {
+    if(this.startingViewDrag?.id !== event.pointerId) return
+    if(commit) this.moveStartingViewDrag(event)
+    const drag = this.startingViewDrag
+    this.stopStartingViewDrag()
+    if(commit && drag) {
+      const {rect, start, frame, corner} = drag
+      if(corner) {
+        if(rect.width !== start.width || rect.height !== start.height) this.editStartingView.resize(frame, rect)
+      }
+      else if(rect.x !== start.x || rect.y !== start.y) this.editStartingView.move(frame, {x: rect.x - start.x, y: rect.y - start.y})
+    }
+    this.updateStartingView()
+  }
+
+  stopStartingViewDrag() {
+    const drag = this.startingViewDrag
+    this.startingViewDrag = null
+    if(drag?.handle.hasPointerCapture(drag.id)) drag.handle.releasePointerCapture(drag.id)
+  }
+
   contentChanged(record, records) {
     const target = record.target instanceof Element ? record.target : record.target.parentElement
     if(target?.closest(minimapExcluded)) return false
-    if(target && isCanvasStartingView(target)) {
-      return record.attributeName === "is" || record.attributeName === "class"
-        && !record.oldValue?.split(/\s+/).includes("ww-canvas-starting-view")
-    }
     if(record.type === "childList") {
       return [...record.addedNodes, ...record.removedNodes].some(node => {
-        if(node instanceof Element) return !node.matches(minimapExcluded) && (target !== document.body || !node.matches(startingViewSelector))
+        if(node instanceof Element) return !node.matches(minimapExcluded)
         return node.nodeType === Node.TEXT_NODE && (target !== document.body && target !== document.head || node.textContent.trim())
       })
     }
@@ -96,14 +301,17 @@ class CanvasMinimap {
   setOpen(open) {
     this.toggle.setAttribute("aria-expanded", String(open))
     this.toggle.title = open ? "Hide minimap" : "Show minimap"
-    this.map.hidden = !open
+    this.row.hidden = this.map.hidden = !open
     if(open) {
       this.observer.observe(document.documentElement, {subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true})
       document.addEventListener("load", this.resourceLoaded, true)
-      this.updateCamera()
+      this.updateViewport()
       void this.refresh()
     }
     else {
+      this.stopDrag()
+      this.stopStartingViewDrag()
+      this.selectedStartingView = null
       this.generation++
       this.observer.disconnect()
       document.removeEventListener("load", this.resourceLoaded, true)
@@ -121,7 +329,7 @@ class CanvasMinimap {
     }, minimapRefreshDelay)
   }
 
-  usedBounds() {
+  usedBounds(aspectRatio) {
     const {slot, zoom} = this.viewer
     const origin = slot.getBoundingClientRect()
     let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity
@@ -132,11 +340,21 @@ class CanvasMinimap {
       left = Math.min(left, rect.left); top = Math.min(top, rect.top)
       right = Math.max(right, rect.right); bottom = Math.max(bottom, rect.bottom)
     }
+    const frame = canvasStartingView(this.viewer.body)
+    const view = this.viewer.startingViewBounds(frame)
+    if(view) {
+      const x = origin.left + view.x * zoom, y = origin.top + view.y * zoom
+      left = Math.min(left, x); top = Math.min(top, y)
+      right = Math.max(right, x + view.width * zoom); bottom = Math.max(bottom, y + view.height * zoom)
+    }
     if(!Number.isFinite(left)) return null
     const width = (right - left) / zoom, height = (bottom - top) / zoom
     const padding = Math.max(minimapMinPadding, Math.max(width, height) * minimapPaddingRatio)
-    return {x: (left - origin.left) / zoom - padding, y: (top - origin.top) / zoom - padding,
-      width: width + 2 * padding, height: height + 2 * padding}
+    const mapWidth = Math.max(width + 2 * padding, (height + 2 * padding) * aspectRatio)
+    const mapHeight = mapWidth / aspectRatio
+    return {x: (left - origin.left) / zoom - (mapWidth - width) / 2,
+      y: (top - origin.top) / zoom - (mapHeight - height) / 2,
+      width: mapWidth, height: mapHeight}
   }
 
   async refresh() {
@@ -145,10 +363,11 @@ class CanvasMinimap {
     if(this.running === generation) { this.queued = true; return }
     this.running = generation
     this.queued = false
+    const {innerWidth, innerHeight} = window
     const current = () => this.generation === generation && this.viewer.active
     let bounds = null, snapshot = null
     try {
-      bounds = this.usedBounds()
+      bounds = this.usedBounds(viewportAspectRatio())
       if(bounds) {
         if(!this.measurements) {
           this.measurements = document.createElement("div")
@@ -192,10 +411,16 @@ class CanvasMinimap {
         if(this.queued) this.schedule()
       }
     }
-    if(!current()) return
+    if(!current() || window.innerWidth !== innerWidth || window.innerHeight !== innerHeight) return
+    if(this.startingViewDrag && (!bounds || ["x", "y", "width", "height"].some(key => Math.abs(bounds[key] - this.bounds[key]) > .01))) {
+      this.stopStartingViewDrag()
+    }
     this.bounds = bounds
     this.map.disabled = !bounds
-    if(!bounds) this.map.firstElementChild.textContent = "Empty canvas"
+    if(!bounds) {
+      this.stopDrag()
+      this.map.firstElementChild.textContent = "Empty canvas"
+    }
     const meta = snapshot?.meta
     if(meta?.clip && bounds) {
       this.image.setAttribute("x", meta.clip.x - meta.contentX - bounds.x)
@@ -205,8 +430,18 @@ class CanvasMinimap {
       this.image.setAttribute("href", snapshot.toRaw())
     }
     else this.image.removeAttribute("href")
-    if(bounds) this.svg.setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`)
+    if(bounds) {
+      this.svg.setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`)
+      this.surface.style.setProperty("--canvas-minimap-viewbox-ratio", bounds.width / bounds.height)
+    }
     this.updateCamera()
+    this.updateStartingView()
+  }
+
+  updateViewport() {
+    this.surface.style.setProperty("--canvas-minimap-ratio", viewportAspectRatio())
+    this.updateCamera()
+    this.updateStartingView()
   }
 
   updateCamera() {
@@ -218,23 +453,29 @@ class CanvasMinimap {
     this.viewport.setAttribute("height", window.innerHeight / this.viewer.zoom)
   }
 
-  center(event) {
+  centerAt(clientX, clientY) {
     if(!this.bounds || this.map.hidden) return
     const {x, y, width, height} = this.bounds
     let fx = .5, fy = .5
-    if(event.detail) {
+    if(clientX !== undefined && clientY !== undefined) {
       const rect = this.svg.getBoundingClientRect(), scale = Math.min(rect.width / width, rect.height / height)
       if(!scale) return
-      fx = Math.min(1, Math.max(0, .5 + (event.clientX - rect.left - rect.width / 2) / (scale * width)))
-      fy = Math.min(1, Math.max(0, .5 + (event.clientY - rect.top - rect.height / 2) / (scale * height)))
+      fx = Math.min(1, Math.max(0, .5 + (clientX - rect.left - rect.width / 2) / (scale * width)))
+      fy = Math.min(1, Math.max(0, .5 + (clientY - rect.top - rect.height / 2) / (scale * height)))
     }
     this.viewer.centerOn({x: x + fx * width, y: y + fy * height})
+  }
+
+  stopDrag() {
+    const pointer = this.dragPointer
+    this.dragPointer = null
+    if(pointer !== null && this.map.hasPointerCapture(pointer)) this.map.releasePointerCapture(pointer)
   }
 
   destroy() {
     this.setOpen(false)
     window.removeEventListener("resize", this.resize)
-    this.map.remove()
+    this.row.remove()
     this.toggle.remove()
     this.measurements?.remove()
   }
@@ -366,13 +607,15 @@ export class CanvasViewer {
     return {x: (x - (rect?.left ?? this.camera.x)) / this.zoom, y: (y - (rect?.top ?? this.camera.y)) / this.zoom}
   }
 
-  mountMinimap() {
-    if(!this.loadSnapdom) return
-    const existing = this.minimap
-    this.minimap ??= new CanvasMinimap(this, this.loadSnapdom)
-    this.controls.append(this.minimap.toggle, this.minimap.map)
-    if(!existing) this.minimap.setOpen(true)
+  mountMinimap(toolbar, editStartingView) {
+    if(!this.loadSnapdom || this.minimap) return
+    this.minimap = new CanvasMinimap(this, this.loadSnapdom, editStartingView)
+    toolbar.append(this.minimap.toggle)
+    this.controls.append(this.minimap.row)
+    this.minimap.setOpen(true)
   }
+
+  updateStartingView() { this.minimap?.updateStartingView() }
 
   centerOn(point) {
     const center = this.clientPoint(window.innerWidth / 2, window.innerHeight / 2)
@@ -406,18 +649,24 @@ export class CanvasViewer {
     this.applyCamera()
   }
 
-  /** Fit the authored frame without padding or a preliminary camera change. */
-  startView() {
-    const frame = canvasStartingView(this.body)
-    if(!frame) return false
+  startingViewBounds(frame = canvasStartingView(this.body)) {
+    if(!frame) return null
     const rect = frame.getBoundingClientRect()
     const width = rect.width / this.zoom, height = rect.height / this.zoom
-    if(!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false
-    const point = this.clientPoint(rect.left, rect.top)
+    const {x, y} = this.clientPoint(rect.left, rect.top)
+    if(![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null
+    return {x, y, width, height}
+  }
+
+  /** Fit the authored frame without padding or a preliminary camera change. */
+  startView() {
+    const bounds = this.startingViewBounds()
+    if(!bounds) return false
+    const {x, y, width, height} = bounds
     const zoom = Math.min(window.innerWidth / width, window.innerHeight / height)
-    if(!Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(zoom) || zoom <= 0) return false
-    this.camera = {x: (window.innerWidth - width * zoom) / 2 - point.x * zoom,
-      y: (window.innerHeight - height * zoom) / 2 - point.y * zoom, zoom}
+    if(!Number.isFinite(zoom) || zoom <= 0) return false
+    this.camera = {x: (window.innerWidth - width * zoom) / 2 - x * zoom,
+      y: (window.innerHeight - height * zoom) / 2 - y * zoom, zoom}
     this.applyCamera()
     return true
   }
@@ -452,9 +701,7 @@ export class CanvasViewer {
       if(this.background.style.backgroundSize !== size) this.background.style.backgroundSize = size
       if(this.background.style.backgroundImage !== image) this.background.style.backgroundImage = image
     }
-    const output = this.controls?.querySelector("output")
-    const label = `${Math.round(this.zoom * 100)}%`
-    if(output && output.textContent !== label) output.textContent = label
+    updateCanvasZoomControls(this.controls, this.zoom)
     this.minimap?.updateCamera()
     this.onChange()
   }
@@ -481,14 +728,62 @@ export const canvasControlsStyles = `
       .◆canvas-controls button:disabled { opacity: .5; cursor: default; }
       .◆canvas-controls button svg { display: block; width: 14px; height: 14px; }
       .◆canvas-controls output { min-width: 3em; text-align: center; }
-      .◆canvas-controls button[name=minimap-toggle] { margin-inline-start: auto; }
+      .◆canvas-controls.◆canvas-viewer-controls:not([hidden]) { display: grid; align-items: stretch; }
+      .◆canvas-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+      .◆canvas-controls button[name=minimap-toggle] { margin-inline-start: auto; background: transparent; }
       .◆canvas-controls button[name=minimap-toggle][aria-expanded=true] svg { transform: rotate(180deg); }
-      .◆canvas-controls button[part=canvas-minimap] { flex: 0 0 100%; contain: inline-size; min-width: 0; height: 94px; padding: 0; overflow: hidden; background: #f8fafc; box-shadow: inset 0 0 0 1px #e2e8f0; cursor: crosshair; }
+      .◆canvas-button-group, .◆canvas-starting-view-controls { display: inline-flex; border-radius: 6px; overflow: hidden; }
+      .◆canvas-button-group { flex-shrink: 0; }
+      .◆canvas-controls :is(.◆canvas-button-group, .◆canvas-starting-view-controls) button { border-radius: 0; }
+      .◆canvas-controls :is(.◆canvas-button-group, .◆canvas-starting-view-controls) button + button { border-inline-start: 1px solid #cbd5e1; }
+      .◆canvas-controls :is(.◆canvas-button-group, .◆canvas-starting-view-controls) button:focus-visible { outline-offset: -2px; }
+      .◆canvas-minimap-row { position: relative; contain: inline-size; display: grid; justify-items: center; }
+      @media (orientation: portrait) {
+        .◆canvas-minimap-row:has(> .◆canvas-starting-view-controls:not([hidden])) { justify-items: start; }
+      }
+      .◆canvas-minimap-row[hidden], .◆canvas-starting-view-controls[hidden] { display: none; }
+      .◆canvas-minimap-surface { position: relative; width: min(100%, calc(min(120px, 30vh) * var(--canvas-minimap-ratio, 1))); aspect-ratio: var(--canvas-minimap-ratio, 1); }
+      .◆canvas-controls button[part=canvas-minimap] { box-sizing: border-box; display: block; width: 100%; height: 100%; padding: 0; overflow: hidden; background: #f8fafc; box-shadow: inset 0 0 0 1px #e2e8f0; cursor: crosshair; touch-action: none; }
+      .◆canvas-controls button[part=canvas-minimap]:active { cursor: grabbing; }
       .◆canvas-controls button[part=canvas-minimap][hidden] { display: none; }
       .◆canvas-controls button[part=canvas-minimap]:disabled { opacity: 1; cursor: default; color: #64748b; }
       .◆canvas-controls button[part=canvas-minimap] > svg { width: 100%; height: 100%; pointer-events: none; }
       .◆canvas-controls button[part=canvas-minimap]:disabled > svg, .◆canvas-controls button[part=canvas-minimap]:enabled > span { display: none; }
       .◆canvas-minimap-camera { fill: #3b82f620; stroke: #2563eb; stroke-width: 1.5px; }
+      .◆canvas-starting-view-controls { position: absolute; z-index: 1; right: 2px; bottom: 2px; border: 1px solid #cbd5e1; background: rgb(255 255 255 / .5); }
+      .◆canvas-controls .◆canvas-starting-view-controls button { padding: 3px 5px; background: transparent; font-size: 11px; }
+      .◆canvas-controls .◆canvas-starting-view-controls button:not(:disabled):hover { background: #dbeafe; }
+      .◆canvas-controls .◆canvas-starting-view-controls button[hidden] { display: none; }
+      .◆canvas-controls .◆canvas-starting-view-controls button[hidden] + button { border-inline-start: 0; }
+      .◆canvas-minimap-frame-layer {
+        position: absolute; inset: 0; margin: auto; pointer-events: none; overflow: clip;
+        width: min(100%, calc(100% / var(--canvas-minimap-ratio, 1) * var(--canvas-minimap-viewbox-ratio, 1)));
+        aspect-ratio: var(--canvas-minimap-viewbox-ratio, 1);
+      }
+      [part=canvas-minimap-starting-view] { position: absolute; }
+      .◆canvas-controls button[name=minimap-select-starting-view] {
+        position: absolute; inset: 0; box-sizing: border-box; width: 100%; height: 100%; padding: 0;
+        border: 1px dashed #475569; border-radius: 0; background: transparent; pointer-events: none; touch-action: none;
+      }
+      .◆canvas-controls button[name=minimap-select-starting-view]:is(:hover, [aria-pressed=true]) { border-color: #1d4ed8; background: transparent; }
+      .◆canvas-controls button[name=minimap-select-starting-view]:disabled { opacity: 1; }
+      [name=minimap-select-starting-view] span { position: absolute; touch-action: none; }
+      [name=minimap-select-starting-view]:enabled span { pointer-events: auto; }
+      [name=minimap-select-starting-view] span:nth-child(1) { inset: -4px 0 auto; height: 6px; }
+      [name=minimap-select-starting-view] span:nth-child(2) { inset: auto 0 -4px; height: 6px; }
+      [name=minimap-select-starting-view] span:nth-child(3) { inset: 0 auto 0 -4px; width: 6px; }
+      [name=minimap-select-starting-view] span:nth-child(4) { inset: 0 -4px 0 auto; width: 6px; }
+      [part=canvas-minimap-starting-view].movable button span { cursor: grab; }
+      [part=canvas-minimap-starting-view].movable button:active span { cursor: grabbing; }
+      [part=canvas-minimap-starting-view] > [data-corner] {
+        position: absolute; display: none; box-sizing: border-box; width: 8px; height: 8px;
+        border: 1px solid #1d4ed8; border-radius: 2px; background: white; pointer-events: auto; touch-action: none;
+      }
+      [part=canvas-minimap-starting-view].resizable > [data-corner] { display: block; }
+      [part=canvas-minimap-starting-view] > [data-corner=nw] { top: -4px; left: -4px; cursor: nwse-resize; }
+      [part=canvas-minimap-starting-view] > [data-corner=ne] { top: -4px; right: -4px; cursor: nesw-resize; }
+      [part=canvas-minimap-starting-view] > [data-corner=sw] { bottom: -4px; left: -4px; cursor: nesw-resize; }
+      [part=canvas-minimap-starting-view] > [data-corner=se] { bottom: -4px; right: -4px; cursor: nwse-resize; }
       [part=canvas-minimap-measurements] { position: fixed; left: -100000px; top: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 
 @media print { .◆canvas-controls, [part=canvas-pan-surface] { display: none; } }
@@ -559,7 +854,10 @@ export function mountCanvasReader(loadSnapdom) {
   Object.assign(background.style, {position: "fixed", inset: "0", zIndex: "-1", pointerEvents: "none"})
   const panSurface = createCanvasPanSurface()
   const controls = document.createElement("div")
-  controls.className = "◆canvas-controls"
+  controls.className = "◆canvas-controls ◆canvas-viewer-controls"
+  const toolbar = document.createElement("div")
+  toolbar.className = "◆canvas-toolbar"
+  controls.append(toolbar)
   controls.setAttribute("part", "canvas-controls")
   controls.setAttribute("role", "toolbar")
   controls.setAttribute("aria-label", "Document canvas")
@@ -574,17 +872,16 @@ export function mountCanvasReader(loadSnapdom) {
     const el = document.createElement("button")
     el.type = "button"; el.name = name; el.textContent = label; el.title = title
     el.setAttribute("aria-label", title)
-    controls.append(el)
+    toolbar.append(el)
     return el
   }
   const handButton = button("hand", "Pan", "Toggle hand tool (middle-drag also pans)")
   handButton.innerHTML = canvasIcons.hand
   handButton.setAttribute("aria-pressed", "false")
   button("zoom-out", "−", "Zoom out")
-  controls.append(document.createElement("output"))
+  toolbar.append(document.createElement("output"))
   button("zoom-in", "+", "Zoom in")
-  button("actual-size", "100%", "Actual size")
-  button("fit-content", "", "Fit content").innerHTML = canvasIcons.fit
+  toolbar.append(groupCanvasZoomPresets(button("actual-size", "", "Reset zoom to 100%"), button("fit-content", "", "Fit to view")))
   const release = () => viewer.stopPan()
   const cancelPanning = () => { release(); viewer.stopWheelPan() }
   const setHand = active => {
@@ -628,7 +925,7 @@ export function mountCanvasReader(loadSnapdom) {
   }
   const click = event => {
     const target = event.target instanceof Element ? event.target.closest("button") : null
-    if(!target || target.name.startsWith("minimap")) return
+    if(!target || !toolbar.contains(target) || target.name.startsWith("minimap")) return
     if(target.name === "hand") setHand(!hand)
     else { viewer.stopWheelPan(); viewer.navigate(target.name) }
   }
@@ -664,6 +961,6 @@ export function mountCanvasReader(loadSnapdom) {
   observer.observe(document.documentElement, {childList: true, subtree: true, attributes: true, attributeFilter: ["class"]})
   if(!viewer.startView()) viewer.fit()
   revealHash()
-  viewer.mountMinimap()
+  viewer.mountMinimap(toolbar)
   return {viewer, destroy}
 }

@@ -1943,18 +1943,6 @@ body::part(transform-overlay-freeform) {
 body::part(transform-overlay-capture-selected) {
   outline-style: solid;
 }
-/* The starting view already has its own dotted border. Select that border
- * directly, with the ordinary handles centered on its inner edge. */
-body::part(transform-overlay-starting-view) {
-  outline: none;
-  --ww-transform-handle-offset: -3px;
-}
-body.ww-canvas:has(> .ww-canvas-starting-view.◆element-selected)::part(canvas-starting-view) {
-  border-color: var(--sl-color-primary-400);
-}
-body.ww-canvas:has(> .ww-canvas-starting-view.◆element-selected)::part(canvas-starting-view-label) {
-  display: block;
-}
 body::part(transform-overlay-board),
 body::part(transform-overlay-group-context) {
   --ww-transform-color: var(--sl-color-gray-400, #94a3b8);
@@ -2602,13 +2590,6 @@ body::part(transform-overlay-freeform transform-overlay-at-top) {
   --transform-rotate-top: 14px;
   --transform-rotate-stem-top: -17px;
   --transform-rotate-stem-height: 17px;
-}
-body::part(transform-overlay-starting-view) {
-  --transform-rotate-stem-height: 29px;
-}
-body::part(transform-overlay-starting-view transform-overlay-at-top) {
-  --transform-rotate-stem-top: -13px;
-  --transform-rotate-stem-height: 13px;
 }
 /* AI edits are staged in a private Yjs branch and remain a visually distinct,
  * read-only proposal until the user accepts or rejects them. All marker

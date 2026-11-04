@@ -153,7 +153,7 @@ await check("multi-paragraph style presets stay within the selected siblings", c
 await check("Tab indents paragraphs without moving the centered prose column", checkParagraphIndent)
 await check("undo and redo restore and reveal selections in nested scrollers", checkHistorySelection)
 await check("SVG shape fills keep overlaps solid and intentional holes open", checkGraphicShapeFills)
-await check("canvas starting view frames resize, delete and open without shifting", checkCanvasStartingView)
+await check("canvas starting view frames drag, resize and open without shifting", checkCanvasStartingView)
 await check("SVG arrowheads select their connector, fit its outline and resize independently", checkGraphicArrowheads)
 
 await check("SVG stroke colors preserve line placement and selection", checkGraphicPaint)

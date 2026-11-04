@@ -32,7 +32,7 @@ const expectedChecks = [
   "Crossing graphic resize edges reflects shapes and preserves fixed anchors",
   "Drawing brush keys are temporary and inserted shapes keep their defaults",
   "Tab cycles captured graphic and formula keyboard tabs without changing content",
-  "canvas starting view frames resize, delete and open without shifting",
+  "canvas starting view frames drag, resize and open without shifting",
   "SVG snapping follows the visible grid through viewport changes",
   "SVG arrowheads select their connector, fit its outline and resize independently",
   "SVG shape fills keep overlaps solid and intentional holes open",

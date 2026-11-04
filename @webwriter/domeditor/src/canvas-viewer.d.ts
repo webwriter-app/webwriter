@@ -2,8 +2,22 @@ type Point = {x: number, y: number}
 type Rect = {left: number, top: number, right: number, bottom: number}
 type Snapdom = typeof import("@zumer/snapdom").snapdom
 export type LoadSnapdom = () => Snapdom | Promise<Snapdom>
+export type CanvasStartingViewBounds = Point & {width: number, height: number}
+type StartingViewEditing = {
+  add(): boolean
+  remove(): boolean
+  canAdd(): boolean
+  canRemove(frame: HTMLDivElement): boolean
+  canSelect(frame: HTMLDivElement): boolean
+  canMove(frame: HTMLDivElement): boolean
+  canResize(frame: HTMLDivElement): boolean
+  move(frame: HTMLDivElement, offset: Point): void
+  resize(frame: HTMLDivElement, bounds: CanvasStartingViewBounds): void
+}
 export const canvasGridSize: number
-export const canvasIcons: {hand: string, fit: string}
+export const canvasIcons: {hand: string, fit: string, reset: string}
+export function groupCanvasZoomPresets(reset: HTMLButtonElement, fit: HTMLButtonElement): HTMLElement
+export function updateCanvasZoomControls(controls: HTMLElement | null, zoom: number): void
 export type CanvasNavigation = "zoom-in" | "zoom-out" | "actual-size" | "fit-content"
 export function canvasStartingView(body?: HTMLElement): HTMLDivElement | null
 export function isCanvasStartingView(element: Element): element is HTMLDivElement
@@ -15,7 +29,8 @@ export class CanvasViewer {
   readonly active: boolean
   items(): (HTMLElement | SVGSVGElement)[]
   clientPoint(x: number, y: number): Point
-  mountMinimap(): void
+  mountMinimap(toolbar: HTMLElement, editStartingView?: StartingViewEditing): void
+  updateStartingView(): void
   zoomAt(zoom: number, point?: Point): void
   fit(): void
   startView(): boolean

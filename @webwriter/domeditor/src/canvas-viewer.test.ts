@@ -17,6 +17,7 @@ afterEach(() => {
   reader?.destroy(); reader = null
   editor?.destroy(); editor = undefined
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   document.body.replaceChildren()
   document.body.removeAttribute("class")
   document.body.shadowRoot?.replaceChildren(document.createElement("slot"))
@@ -40,7 +41,13 @@ describe("standalone canvas reader", () => {
     expect(getComputedStyle(picture).width).toBe("320px")
   })
 
-  it("crops the minimap to content, moves the viewport independently, and refreshes only while open", async () => {
+  it("fits the minimap to the viewport ratio and refreshes content and settled resizes only while open", async () => {
+    const resize = (width: number, height: number) => {
+      vi.stubGlobal("innerWidth", width)
+      vi.stubGlobal("innerHeight", height)
+      window.dispatchEvent(new Event("resize"))
+    }
+    resize(1000, 500)
     document.body.innerHTML = '<p>Near</p><p>Far</p><div class="ww-canvas-starting-view"></div>'
     const appendix = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
     const slot = document.createElement("slot")
@@ -56,32 +63,54 @@ describe("standalone canvas reader", () => {
     for(const [index, item] of [...document.body.children].entries()) {
       vi.spyOn(item, "getBoundingClientRect").mockImplementation(() => {
         const [x, y, zoom] = camera()
-        return rect(x + (index * 500 - 200) * zoom, y + (index * 200 - 50) * zoom, 100 * zoom, 60 * zoom)
+        const position = Math.min(index, 1)
+        return rect(x + (position * 500 - 200) * zoom, y + (position * 200 - 50) * zoom, 100 * zoom, 60 * zoom)
       })
     }
     const snapshot = vi.fn(async () => ({
-      meta: {clip: {x: -264, y: -114}, contentX: 2, contentY: 2, vbW: 732, vbH: 392},
+      meta: {clip: {x: -288, y: -114}, contentX: 2, contentY: 2, vbW: 780, vbH: 392},
       toRaw: () => "data:image/svg+xml,preview",
     }))
     reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
     const toggle = control("minimap-toggle"), map = control("minimap"), svg = map.querySelector("svg")!
     const viewport = svg.querySelector(".◆canvas-minimap-camera")!
+    const viewBoxSize = () => svg.getAttribute("viewBox")!.split(" ").slice(2).map(Number)
     expect(toggle.getAttribute("aria-expanded")).toBe("true")
     expect(map.hidden).toBe(false)
     await settle()
     expect(snapshot).toHaveBeenCalledTimes(1)
-    expect(svg.getAttribute("viewBox")).toBe("0 0 728 388")
+    expect(viewBoxSize()).toEqual([expect.closeTo(776), expect.closeTo(388)])
     reader.viewer.zoomAt(1)
     const initialWidth = Number(viewport.getAttribute("width"))
     control("zoom-in").click()
     expect(Number(viewport.getAttribute("width"))).toBeCloseTo(initialWidth / 1.2)
-    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue(rect(500, 0, 220, 94))
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue(rect(500, 0, 188, 94))
     const before = viewport.getAttribute("x")
-    map.dispatchEvent(new MouseEvent("click", {detail: 1, clientX: 610 + 182 * 94 / 388, clientY: 47}))
+    map.dispatchEvent(new MouseEvent("click", {detail: 1, clientX: 641, clientY: 47}))
     expect(viewport.getAttribute("x")).not.toBe(before)
     expect(reader.viewer.clientPoint(window.innerWidth / 2, window.innerHeight / 2)).toEqual({
-      x: expect.closeTo(282), y: expect.closeTo(80),
+      x: expect.closeTo(294), y: expect.closeTo(80),
     })
+    const pointer = (type: string, x: number, y: number, pointerId = 7) => map.dispatchEvent(
+      new PointerEvent(type, {pointerId, isPrimary: true, clientX: x, clientY: y}),
+    )
+    const capture = vi.spyOn(map, "setPointerCapture").mockImplementation(() => {})
+    pointer("pointerdown", 641, 47)
+    expect(capture).toHaveBeenCalledWith(7)
+    pointer("pointermove", 594, 47)
+    expect(reader.viewer.clientPoint(window.innerWidth / 2, window.innerHeight / 2)).toEqual({
+      x: expect.closeTo(100), y: expect.closeTo(80),
+    })
+    pointer("pointermove", 710, -10)
+    expect(reader.viewer.clientPoint(window.innerWidth / 2, window.innerHeight / 2)).toEqual({
+      x: expect.closeTo(488), y: expect.closeTo(-114),
+    })
+    const dragged = slot.style.transform
+    pointer("pointermove", 594, 47, 8)
+    pointer("pointercancel", 710, -10)
+    pointer("pointermove", 594, 47)
+    expect(slot.style.transform).toBe(dragged)
+    expect(reader.viewer.zoom).toBeCloseTo(1.2)
     document.body.firstElementChild!.classList.add("◆element-selected")
     await new Promise(resolve => setTimeout(resolve, 160))
     expect(snapshot).toHaveBeenCalledTimes(1)
@@ -97,6 +126,29 @@ describe("standalone canvas reader", () => {
     expect(map.hidden).toBe(false)
     await settle()
     expect(snapshot).toHaveBeenCalledTimes(3)
+
+    vi.useFakeTimers()
+    try {
+      resize(800, 600)
+      await vi.advanceTimersByTimeAsync(80)
+      resize(500, 1000)
+      expect(map.parentElement!.style.getPropertyValue("--canvas-minimap-ratio")).toBe("0.5")
+      await vi.advanceTimersByTimeAsync(80)
+      expect(snapshot).toHaveBeenCalledTimes(3)
+      expect(viewBoxSize()).toEqual([expect.closeTo(776), expect.closeTo(388)])
+      await vi.advanceTimersByTimeAsync(80)
+      expect(snapshot).toHaveBeenCalledTimes(4)
+      expect(viewBoxSize()).toEqual([expect.closeTo(728), expect.closeTo(1456)])
+      toggle.click()
+      resize(1000, 500)
+      await vi.advanceTimersByTimeAsync(160)
+      expect(snapshot).toHaveBeenCalledTimes(4)
+      toggle.click()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(snapshot).toHaveBeenCalledTimes(5)
+      expect(viewBoxSize()).toEqual([expect.closeTo(776), expect.closeTo(388)])
+    }
+    finally { vi.useRealTimers() }
     reader.destroy()
     expect(appendix.querySelector("[part=canvas-minimap]")).toBeNull()
   })
@@ -181,9 +233,15 @@ describe("standalone canvas reader", () => {
     const sheets = [...document.adoptedStyleSheets]
     reader = mountCanvasReader()!
     expect(reader).not.toBeNull()
+    const reset = control("actual-size")
+    expect(reset.disabled).toBe(true)
     control("zoom-in").click()
     expect(reader.viewer.zoom).toBe(1.2)
     expect(slot.style.transform).toContain("scale(1.2)")
+    expect(reset.disabled).toBe(false)
+    reset.click()
+    expect(reader.viewer.zoom).toBe(1)
+    expect(reset.disabled).toBe(true)
     expect(document.body.innerHTML).toBe(html)
     expect([...document.body.childNodes]).toEqual(content)
     expect(appendix.querySelector('button[name="text"]')).toBeNull()
