@@ -324,11 +324,33 @@ const wasmPlugin = {
 
 
 async function main() {
+  const args = process.argv.slice(2)
+  if(args.includes("--help") || args.includes("-h")) {
+    console.log(`Usage: npx @webwriter/build [command] [options]
+
+Commands:
+  dev                  Watch and rebuild widget and test exports
+  preview <tag-name>   Serve a standalone widget preview
+  localize             Generate and apply translations
+  document             Generate widget documentation
+
+Options:
+  --shared-dependencies  Use import-map dependencies and shared chunks in builds
+                         and dev (WebWriter 2)
+  --prebuild-threshold <modules>  Propose prebuilding dependencies at this size
+                                 (with --shared-dependencies; default: 200)
+  -y, --yes              Confirm interactive proposals
+  -h, --help             Show this help
+
+By default, builds bundle dependencies into each widget for WebWriter 1 compatibility.
+Standalone previews are always fully bundled.`)
+    return
+  }
   const isDev = process.argv[2] === "dev"
   const isPreview = process.argv[2] === "preview"
   const isLocalize = process.argv[2] === "localize"
   const isDocument = process.argv[2] === "document"
-  const force = process.argv.slice(2).includes("-y") || process.argv.slice(2).includes("--yes")
+  const force = args.includes("-y") || args.includes("--yes")
   if(isLocalize) {
     try {
       console.log("\nLocalizing...")
@@ -419,9 +441,14 @@ async function main() {
     }
   }
 
-  // Widgets load their dependencies through the editor's import map. Shared dependencies stay imports and are loaded from the CDN as published; prebuilt ones are bundled into this package, with code used by several of its widgets split into chunks once. Workers and the standalone preview have no import map, so they stay fully bundled.
-  const args = process.argv.slice(2)
+  // The opt-in build shares dependencies through the editor's import map. The default,
+  // workers and standalone preview stay fully bundled for WebWriter 1 compatibility.
+  const sharedDependencies = args.includes("--shared-dependencies")
   const thresholdArg = args.find(arg => arg === "--prebuild-threshold" || arg.startsWith("--prebuild-threshold="))
+  if(thresholdArg && !sharedDependencies) {
+    console.error("--prebuild-threshold requires --shared-dependencies")
+    process.exit(1)
+  }
   const thresholdValue = thresholdArg?.includes("=")? thresholdArg.slice(thresholdArg.indexOf("=") + 1): thresholdArg && args[args.indexOf(thresholdArg) + 1]
   const threshold = thresholdArg? Number(thresholdValue): 200
   if(!(threshold >= 0)) {
@@ -429,7 +456,7 @@ async function main() {
     process.exit(1)
   }
   let packageConfig = {}
-  if(!isPreview) {
+  if(sharedDependencies && !isPreview) {
     const deps = Object.keys({...pkg?.dependencies, ...pkg?.peerDependencies})
     const assetExtensions = [".css", ...Object.keys(baseConfig.loader)]
     const entryPoints = [...testKeys, ...buildableKeys].map(k => ({out: pkg.exports[k].default.replace(".*", "").replace(".js", ""), in: pkg.exports[k].source}))

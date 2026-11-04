@@ -9,10 +9,12 @@
 | `npx @webwriter/build preview <tag-name>` | Serve a standalone preview for a `./widgets/<tag-name>.*` export. |
 | `npx @webwriter/build localize` | Generate and apply configured widget, snippet, and metadata translations. |
 | `npx @webwriter/build document` | Generate widget documentation and custom element metadata. |
+| `--shared-dependencies` | Opt into shared dependency imports and chunks for builds and `dev` (WebWriter 2). |
 | `--yes`, `-y` | Confirm interactive proposals, including saving proposed prebuilt dependencies. |
-| `--prebuild-threshold=<modules>` | Reconsider bundling dependencies above this module count; default 200. |
+| `--prebuild-threshold=<modules>` | With `--shared-dependencies`, reconsider bundling dependencies above this module count; default 200. |
+| `--help`, `-h` | Show CLI help. |
 
-Shared dependencies remain bare imports. Prebuilt dependencies are bundled. Without a terminal or confirmation, a proposed prebuild choice applies to the current build without being saved.
+By default, dependencies are bundled into each widget for WebWriter 1 compatibility. With `--shared-dependencies`, shared dependencies remain bare imports and prebuilt dependencies are bundled. Without a terminal or confirmation, a proposed prebuild choice applies to the current build without being saved. Standalone previews remain fully bundled.
 
 The developer console reports invalid configuration, unmatched export keys, invalid tag names and content expressions, undefined widget tags, and Lit properties whose changes are not reflected to attributes.
 
