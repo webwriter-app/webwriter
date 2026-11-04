@@ -685,6 +685,83 @@ describe("semantic list editing", () => {
     expect($.anchorOffset).toBe(0)
   })
 
+  it.each(["Backspace", "Delete"] as const)("splits a list into adjacent lists when %s removes its empty middle item", key => {
+    document.body.innerHTML = '<ul class="authored"><li>A</li><!--before--><li><br></li><!--after--><li><my-widget></my-widget>B</li></ul>'
+    const [first, empty, last] = document.querySelectorAll("li")
+    $.move(empty)
+
+    keydown(key)
+
+    expect(cleanHTML()).toBe('<ul class="authored"><li>A</li><!--before--></ul><ul class="authored"><!--after--><li><my-widget></my-widget>B</li></ul>')
+    expect(document.querySelectorAll("ul")[0].firstElementChild).toBe(first)
+    expect(document.querySelectorAll("ul")[1].lastElementChild).toBe(last)
+    expect($.anchor).toBe(key === "Backspace" ? first : last)
+  })
+
+  it.each(["backward", "forward"] as const)("splits a list when deleting an adjacent empty item %s", direction => {
+    document.body.innerHTML = '<ul><li>A</li><li></li><li>B</li></ul>'
+    const items = document.querySelectorAll("li")
+    $.move(direction === "backward" ? items[2].firstChild! : items[0].firstChild!, direction === "backward" ? 0 : 1)
+
+    editor.features.manipulation.delete(direction)
+
+    expect(cleanHTML()).toBe('<ul><li>A</li></ul><ul><li>B</li></ul>')
+  })
+
+  it.each(["backward", "forward"] as const)("splits a list when deleting a middle item from its %s gap", direction => {
+    document.body.innerHTML = '<ul><li>A</li><li></li><li>B</li></ul>'
+    const empty = document.querySelectorAll("li")[1]
+    $.selectGap(empty, direction === "backward" ? "after" : "before")
+    editor.features.manipulation.delete(direction)
+    expect(cleanHTML()).toBe('<ul><li>A</li></ul><ul><li>B</li></ul>')
+  })
+
+  it("splits a list when deleting a selected empty middle item", () => {
+    document.body.innerHTML = '<ul><li>A</li><li></li><li>B</li></ul>'
+    $.selectElement(document.querySelectorAll("li")[1])
+    editor.features.manipulation.delete("backward")
+    expect(cleanHTML()).toBe('<ul><li>A</li></ul><ul><li>B</li></ul>')
+  })
+
+  it("preserves ordered numbering and supports undo and redo when deleting a middle item", async () => {
+    document.body.innerHTML = '<ol id="steps" start="4"><li>A</li><li></li><li>B</li></ol>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.move(document.querySelectorAll("li")[1])
+    keydown("Backspace")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(cleanHTML()).toBe('<ol id="steps" start="4"><li>A</li></ol><ol start="6"><li>B</li></ol>')
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<ol id="steps" start="4"><li>A</li><li></li><li>B</li></ol>')
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<ol id="steps" start="4"><li>A</li></ol><ol start="6"><li>B</li></ol>')
+  })
+
+  it("splits a nested list without changing its owning item", () => {
+    document.body.innerHTML = '<ul><li>Owner<ul><li>A</li><li></li><li>B</li></ul></li></ul>'
+    $.move(document.querySelectorAll("ul ul li")[1])
+    keydown("Backspace")
+    expect(cleanHTML()).toBe('<ul><li>Owner<ul><li>A</li></ul><ul><li>B</li></ul></li></ul>')
+  })
+
+  it("preserves the implicit numbering of a reversed ordered list on both sides", () => {
+    document.body.innerHTML = '<ol reversed><li>A</li><li></li><li>B</li></ol>'
+    $.move(document.querySelectorAll("li")[1])
+    keydown("Backspace")
+    expect(cleanHTML()).toBe('<ol reversed="" start="3"><li>A</li></ol><ol reversed="" start="1"><li>B</li></ol>')
+  })
+
+  it("splits a description list around a removed empty description", () => {
+    document.body.innerHTML = '<dl><dt>A</dt><dd></dd><dt>B</dt><dd>Meaning</dd></dl>'
+    $.move(document.querySelector("dd")!)
+    keydown("Delete")
+    expect(cleanHTML()).toBe('<dl><dt>A</dt></dl><dl><dt>B</dt><dd>Meaning</dd></dl>')
+  })
+
   it("preserves ordered numbering and does not duplicate an id when exiting mid-list", () => {
     document.body.innerHTML = '<ol id="steps" start="4"><li>A</li><li>B</li></ol>'
     $.move(document.querySelector("li")!.firstChild!, 1)

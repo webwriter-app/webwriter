@@ -356,6 +356,43 @@ export class ListFeature extends EditorFeature {
     }
   }
 
+  /** Preserve the two sides of a list when deletion removes a middle item. */
+  hasItemsAround(item: Element) {
+    const list = item.parentElement
+    if(!item.matches(listItemSelector) || !list?.matches(listSelector) || !list.isConnected
+      || !list.parentNode || atomicEditingContainer(item, this.editor.schema)) return false
+    const items = this.directItems(list)
+    const index = items.indexOf(item as HTMLElement)
+    return index > 0 && index < items.length - 1
+  }
+
+  isEmptyItem(item: Element) {
+    return !item.textContent?.replace(/\u200B/g, "").trim()
+      && Array.from(item.querySelectorAll("*")).every(element => element.matches("br")
+        || !isAtomicEditingElement(element, this.editor.schema)
+          && (this.editor.schema.isPhrasing(element) || this.editor.features.manipulation.isTextBlock(element)))
+  }
+
+  splitAroundRemovedItem(item: Element) {
+    if(!this.hasItemsAround(item)) return
+    const list = item.parentElement!
+    const nodes = Array.from(list.childNodes)
+    const index = nodes.indexOf(item)
+    const isItem = (node: Node) => isElement(node) && node.matches(listItemSelector)
+    const following = nodes.slice(index + 1)
+    const before = nodes.slice(0, index).reverse().find(isItem)
+    const after = following.find(isItem)
+    if(!before || !after) return
+    const continuation = this.editor.features.manipulation.cloneSplitContinuation(list)
+    this.prepareSplitContinuation(list, continuation, following)
+    if(list instanceof HTMLOListElement && list.reversed && !list.hasAttribute("start")) {
+      list.setAttribute("start", String(this.directItems(list).filter(item => item.matches("li")).length))
+    }
+    continuation.append(...following)
+    list.after(continuation)
+    return {before, after}
+  }
+
   private readonly syncVirtualMarker = () => {
     this.clearVirtualMarker()
     const point = this.virtualPoint
@@ -649,10 +686,7 @@ export class ListFeature extends EditorFeature {
       || !item.parentElement.contains(range.endContainer)
       || atomicEditingContainer(range.startContainer, this.editor.schema)
       || atomicEditingContainer(range.endContainer, this.editor.schema)) return false
-    const wasEmpty = selection.isCollapsed && !item.textContent?.replace(/\u200B/g, "").trim()
-      && Array.from(item.querySelectorAll("*")).every(element => element.matches("br")
-        || !isAtomicEditingElement(element, this.editor.schema)
-          && (this.editor.schema.isPhrasing(element) || this.editor.features.manipulation.isTextBlock(element)))
+    const wasEmpty = selection.isCollapsed && this.isEmptyItem(item)
     if(!selection.isCollapsed) $.delete()
     if(!item.isConnected || !item.contains($.anchor)) return true
     if(wasEmpty) this.liftOrExitEmptyItem(item)
