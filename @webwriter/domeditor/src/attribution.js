@@ -150,7 +150,7 @@ export function createAttributionController(doc, options = {}) {
   appendix.adoptedStyleSheets = [...appendix.adoptedStyleSheets, sheet]
   let target = null, opened = null, baseline = null
   let openedElements = [], baselines = new Map()
-  let frame, queued = false, destroyed = false
+  let frame, zoomFrame, queued = false, destroyed = false
   let noteSheet = null, noteRules = "", noteSequence = 0, notesDirty = true
   const notes = new Map()
   const noteResize = view.ResizeObserver ? new view.ResizeObserver(() => { notesDirty = true; schedule() }) : null
@@ -179,21 +179,55 @@ export function createAttributionController(doc, options = {}) {
     label.addEventListener("auxclick", activate)
     label.addEventListener("keydown", activate)
   }
-  const syncNotes = () => {
-    const template = body.children.length === 1 && body.firstElementChild.getAttribute("role")?.toLowerCase().split(/\s+/).includes("document")
-      && (body.firstElementChild.localName.includes("-") || body.firstElementChild.hasAttribute("is"))
-    root.classList.toggle("non-document-layout", !template && ["ww-canvas", "ww-slides", "ww-board"].filter(name => body.classList.contains(name)).length === 1)
-    const bodyStyle = view.getComputedStyle(body)
-    const singleRightGutter = !root.classList.contains("non-document-layout")
+  const resetPart = part => {
+    part.classList.remove("wrapped")
+    part.style.removeProperty("height")
+    part.style.removeProperty("width")
+  }
+  const wrapPart = (part, size, axis = "height") => {
+    part.classList.add("wrapped")
+    part.style[axis] = `${size}px`
+  }
+  const exceedsTwoLines = (part, size) => size > 2 * parseFloat(view.getComputedStyle(part).lineHeight) + .1
+  const syncNotes = (zoomOnly = false) => {
+    const canvasTransform = doc.documentElement.classList.contains("◆canvas-active")
+      && appendix.querySelector("slot:not([name])")?.style.transform
+    // Anchors follow the camera, but labels use at most the item's 100% bounds.
+    const scale = canvasTransform ? Math.max(1, new view.DOMMatrix(canvasTransform).a) : 1
+    const labelBounds = element => {
+      const box = element.getBoundingClientRect()
+      return scale === 1 ? box : {width: box.width / scale, height: box.height / scale}
+    }
+    const zoomBoxes = zoomOnly ? new Map() : null
+    if(zoomBoxes) {
+      // Read the transformed bounds together before changing any labels.
+      for(const [element, record] of notes) {
+        const box = labelBounds(element)
+        if(box.height >= record.fullHeight || box.height <= record.compactHeight
+          || box.height === record.height && box.width === record.width) continue
+        zoomBoxes.set(element, box)
+      }
+      if(!zoomBoxes.size) return
+    }
+    else {
+      const template = body.children.length === 1 && body.firstElementChild.getAttribute("role")?.toLowerCase().split(/\s+/).includes("document")
+        && (body.firstElementChild.localName.includes("-") || body.firstElementChild.hasAttribute("is"))
+      root.classList.toggle("non-document-layout", !template && ["ww-canvas", "ww-slides", "ww-board"].filter(name => body.classList.contains(name)).length === 1)
+      footnotes.replaceChildren()
+    }
+    const bodyStyle = zoomOnly ? null : view.getComputedStyle(body)
+    const singleRightGutter = bodyStyle && !root.classList.contains("non-document-layout")
       && parseFloat(bodyStyle.paddingRight) > parseFloat(bodyStyle.paddingLeft) + 1
-    const current = new Set()
-    const footnoteList = doc.createElement("ol")
-    footnotes.replaceChildren()
-    for(const element of body.querySelectorAll(selector)) {
+    const current = zoomOnly ? null : new Set()
+    const footnoteList = !zoomOnly && !root.classList.contains("non-document-layout") ? doc.createElement("ol") : null
+    const layouts = []
+    for(const element of zoomBoxes?.keys() ?? body.querySelectorAll(selector)) {
       const data = values(element)
-      if(!authored(element) || options.canAttribute?.(element) === false || !hasCredit(data)) continue
-      if(element.hasAttribute("hidden") || (element.checkVisibility ? !element.checkVisibility({visibilityProperty: true}) : view.getComputedStyle(element).display === "none")) continue
-      current.add(element)
+      if(!zoomOnly) {
+        if(!authored(element) || options.canAttribute?.(element) === false || !hasCredit(data)) continue
+        if(element.hasAttribute("hidden") || (element.checkVisibility ? !element.checkVisibility({visibilityProperty: true}) : view.getComputedStyle(element).display === "none")) continue
+        current.add(element)
+      }
       let record = notes.get(element)
       if(!record) {
         const index = noteSequence++
@@ -218,16 +252,19 @@ export function createAttributionController(doc, options = {}) {
       }
       // Follow responsive float placement, and keep column labels out of a
       // shared right gutter without flipping labels belonging to its floats.
-      const float = view.getComputedStyle(element).float || "none"
-      let inFloat = float !== "none"
-      if(singleRightGutter && !inFloat) {
-        for(let parent = element.parentElement; parent && parent !== body; parent = parent.parentElement) {
-          const side = view.getComputedStyle(parent).float
-          if(side && side !== "none") { inFloat = true; break }
+      if(!zoomOnly) {
+        const float = view.getComputedStyle(element).float || "none"
+        let inFloat = float !== "none"
+        if(singleRightGutter && !inFloat) {
+          for(let parent = element.parentElement; parent && parent !== body; parent = parent.parentElement) {
+            const side = view.getComputedStyle(parent).float
+            if(side && side !== "none") { inFloat = true; break }
+          }
         }
+        record.float = float
+        record.left = float === "left" || singleRightGutter && !inFloat
       }
-      const left = float === "left" || singleRightGutter && !inFloat
-      record.label.classList.toggle("left-attribution", left)
+      record.label.classList.toggle("left-attribution", record.left)
       record.label.classList.remove("horizontal-attribution", "compact-attribution")
       record.label.querySelector(".attribution-summary")?.remove()
       for(const child of record.label.children) child.hidden = false
@@ -264,44 +301,27 @@ export function createAttributionController(doc, options = {}) {
       const first = label.querySelector(".attribution-text")
       const contact = label.querySelector(".attribution-contact") ?? record.contactLabel?.querySelector(".attribution-contact")
       if(contact) { contact.hidden = false; label.append(contact) }
-      const box = element.getBoundingClientRect()
-      const resetPart = node => {
-        node.classList.remove("wrapped")
-        node.style.removeProperty("height")
-        node.style.removeProperty("width")
+      const box = zoomBoxes?.get(element) ?? labelBounds(element)
+      if(first) resetPart(first)
+      if(contact) resetPart(contact)
+      layouts.push({element, record, data, box, first, contact})
+    }
+    // Measure all labels between writes so a zoom frame does not force a
+    // separate layout for each label that needs to wrap or become compact.
+    for(const layout of layouts) {
+      const {first, contact, box, record} = layout
+      layout.firstHeight = first?.getBoundingClientRect().height ?? 0
+      layout.contactHeight = contact?.getBoundingClientRect().height ?? 0
+      layout.wrapFirst = layout.firstHeight > box.height
+      layout.horizontal = layout.wrapFirst && record.float !== "none"
+      layout.wrapped = layout.wrapFirst || layout.contactHeight > box.height
+    }
+    for(const {element, record, box, first, contact, wrapFirst, horizontal, wrapped} of layouts) {
+      if(horizontal) {
+        record.label.classList.add("horizontal-attribution")
+        wrapPart(first, box.width, "width")
       }
-      const fitsVertical = node => {
-        resetPart(node)
-        if(node.getBoundingClientRect().height <= box.height) return true
-        if(box.height <= 0) return false
-        node.classList.add("wrapped")
-        node.style.height = `${box.height}px`
-        return node.getBoundingClientRect().width <= 2 * parseFloat(view.getComputedStyle(node).lineHeight) + .1
-      }
-      // Each part gets at most two lines within the element's edge. Credits
-      // that cannot fit use a compact trigger; their complete data stays intact.
-      let wrapped = false, compact = false
-      let horizontal = false, below = false, annotationSpace = 0
-      if(first) {
-        resetPart(first)
-        wrapped = first.getBoundingClientRect().height > box.height
-        horizontal = wrapped && float !== "none"
-        if(horizontal) {
-          label.classList.add("horizontal-attribution")
-          first.classList.add("wrapped")
-          first.style.width = `${box.width}px`
-          compact = first.getBoundingClientRect().height > 2 * parseFloat(view.getComputedStyle(first).lineHeight) + .1
-          const caption = element.querySelector(":scope > :is(figcaption, caption)")
-          below = Boolean(caption && !caption.hasAttribute("hidden") && view.getComputedStyle(caption).display !== "none"
-            && (caption.localName === "caption" ? view.getComputedStyle(caption).captionSide !== "bottom" : caption === element.firstElementChild))
-          annotationSpace = Math.ceil(first.getBoundingClientRect().height + 2)
-        }
-        else compact = !fitsVertical(first)
-      }
-      if(contact && !horizontal) {
-        resetPart(contact)
-        wrapped = wrapped || contact.getBoundingClientRect().height > box.height
-      }
+      else if(wrapFirst && box.height > 0) wrapPart(first, box.height)
       if(contact && wrapped) {
         if(!record.contactLabel) {
           const secondary = doc.createElement("div")
@@ -310,15 +330,39 @@ export function createAttributionController(doc, options = {}) {
           bindNote(secondary, element)
           record.contactLabel = secondary
         }
-        record.contactLabel.classList.toggle("left-attribution", horizontal ? left : !left)
-        if(contact.parentElement !== record.contactLabel) record.contactLabel.replaceChildren(contact)
+        record.contactLabel.classList.toggle("left-attribution", horizontal ? record.left : !record.left)
+        record.contactLabel.replaceChildren(contact)
         if(!record.contactLabel.isConnected) record.group.append(record.contactLabel)
       }
-      else {
-        if(contact && contact.parentElement !== label) label.append(contact)
-        record.contactLabel?.remove()
+      else record.contactLabel?.remove()
+    }
+    for(const layout of layouts) {
+      const {element, box, first, contact, horizontal, wrapFirst, wrapped, contactHeight} = layout
+      layout.below = false
+      layout.annotationSpace = 0
+      layout.compact = false
+      if(horizontal) {
+        const height = first.getBoundingClientRect().height
+        layout.compact = exceedsTwoLines(first, height)
+        const caption = element.querySelector(":scope > :is(figcaption, caption)")
+        const style = caption && view.getComputedStyle(caption)
+        layout.below = Boolean(caption && !caption.hasAttribute("hidden") && style.display !== "none"
+          && (caption.localName === "caption" ? style.captionSide !== "bottom" : caption === element.firstElementChild))
+        layout.annotationSpace = Math.ceil(height + 2)
       }
-      if(contact) compact = !fitsVertical(contact) || compact
+      else if(wrapFirst) layout.compact = box.height <= 0 || exceedsTwoLines(first, first.getBoundingClientRect().width)
+      layout.wrapContact = Boolean(contact && (wrapped ? contact.getBoundingClientRect().height : contactHeight) > box.height)
+    }
+    for(const {contact, box, wrapContact} of layouts) if(wrapContact && box.height > 0) wrapPart(contact, box.height)
+    for(const layout of layouts) {
+      if(layout.wrapContact && !layout.compact) {
+        layout.compact = layout.box.height <= 0 || exceedsTwoLines(layout.contact, layout.contact.getBoundingClientRect().width)
+      }
+    }
+    // Each part gets at most two lines. Use a compact trigger when it cannot fit.
+    for(const {element, record, data, box, first, contact, wrapped, compact, firstHeight, contactHeight, below, annotationSpace, horizontal: horizontalFit} of layouts) {
+      const {label, left, float} = record
+      const horizontal = horizontalFit && !compact
       if(compact) {
         for(const child of label.children) child.hidden = true
         const summary = doc.createElement("span")
@@ -327,7 +371,7 @@ export function createAttributionController(doc, options = {}) {
         symbol.className = "attribution-symbol"
         symbol.textContent = data.type === "copyright" ? "©" : "ⓘ"
         summary.append(symbol)
-        if(!root.classList.contains("non-document-layout")) {
+        if(footnoteList) {
           const item = doc.createElement("li")
           renderDetails(item, element, true)
           footnoteList.append(item)
@@ -340,8 +384,13 @@ export function createAttributionController(doc, options = {}) {
         label.classList.remove("horizontal-attribution")
         label.classList.add("compact-attribution")
         record.contactLabel?.remove()
-        horizontal = false
       }
+      record.height = box.height
+      record.width = box.width
+      // A full label still fits above its natural height. A compact label on
+      // a non-floated item still needs the icon if its edge only gets shorter.
+      record.fullHeight = !wrapped && !compact ? Math.max(firstHeight, contactHeight) : Infinity
+      record.compactHeight = compact && float === "none" ? box.height : -Infinity
       for(const node of [label, record.contactLabel].filter(Boolean)) {
         node.tabIndex = 0
         node.setAttribute("role", "button")
@@ -350,12 +399,13 @@ export function createAttributionController(doc, options = {}) {
       }
       const {marker, name, part, anchor} = record
       const position = (part, left) => `body::part(${part}) { position-anchor: ${name}; bottom: anchor(bottom); left: anchor(${left ? "left" : "right"}); }`
-      const horizontalPosition = `body::part(${part}) { position-anchor: ${name}; left: auto; right: anchor(right); width: anchor-size(width); ${below ? "top: calc(anchor(bottom) + 2px); bottom: auto;" : "bottom: calc(anchor(top) + 2px); top: auto;"} }`
+      const horizontalWidth = canvasTransform ? `${box.width}px` : "anchor-size(width)"
+      const horizontalPosition = `body::part(${part}) { position-anchor: ${name}; left: auto; right: anchor(right); width: ${horizontalWidth}; ${below ? "top: calc(anchor(bottom) + 2px); bottom: auto;" : "bottom: calc(anchor(top) + 2px); top: auto;"} }`
       record.before = horizontal && !below ? annotationSpace : 0
       record.rules = `.${view.CSS.escape(marker)} { anchor-name: ${anchor && anchor !== "none" ? `${anchor}, ` : ""}${name} !important; --ww-attribution-after: ${horizontal && below ? annotationSpace : 0}px; }\n${horizontal ? horizontalPosition : position(part, left)}${wrapped && contact && !compact ? `\n${position(`${part}-contact`, horizontal ? left : !left)}` : ""}`
     }
-    if(footnoteList.children.length) footnotes.append(footnoteList)
-    for(const [element, record] of notes) if(!current.has(element)) removeNote(element, record)
+    if(footnoteList?.children.length) footnotes.append(footnoteList)
+    if(current) for(const [element, record] of notes) if(!current.has(element)) removeNote(element, record)
     if(!notes.size) { clearNotes(); return }
     // Share the clearance after floats so credits above one float cannot
     // shift it below an opposing float whose credit sits underneath.
@@ -403,14 +453,18 @@ export function createAttributionController(doc, options = {}) {
     add(license.text, license.href)
     add(data.contact.replace(/^mailto:/i, ""), contactURL(data.contact))
   }
-  const refresh = () => {
+  const refresh = (zoomChanged = false) => {
     if(destroyed) return
     if(observer.takeRecords().length) notesDirty = true
-    if(notesDirty) {
+    const zoomOnly = zoomChanged && !notesDirty && root.classList.contains("non-document-layout")
+    if(notesDirty || zoomChanged) {
       notesDirty = false
-      try { syncNotes() }
+      if(zoomFrame !== undefined) view.cancelAnimationFrame(zoomFrame)
+      zoomFrame = undefined
+      try { syncNotes(zoomOnly) }
       catch(error) { clearNotes(); throw error }
     }
+    if(zoomOnly) return
     if(openedElements.some(element => eligible(element) !== element)) close()
     const next = opened ?? eligible(options.selectedElement?.())
     if(next !== target) {
@@ -575,6 +629,15 @@ export function createAttributionController(doc, options = {}) {
   }
   const observer = new view.MutationObserver(() => { notesDirty = true; schedule() })
   observer.observe(body, {attributes: true, childList: true, subtree: true, characterData: true})
+  const zoomChanged = event => {
+    if(event.detail?.previousZoom >= 1 && event.detail.zoom >= 1) return
+    if(!notes.size || zoomFrame !== undefined) return
+    zoomFrame = view.requestAnimationFrame(() => {
+      zoomFrame = undefined
+      refresh(true)
+    })
+  }
+  doc.addEventListener("webwriter-canvas-zoom", zoomChanged)
   const layoutChanged = () => { notesDirty = true; schedule() }
   view.addEventListener("resize", layoutChanged)
   const afterPrint = () => { notesDirty = true; schedule() }
@@ -585,12 +648,14 @@ export function createAttributionController(doc, options = {}) {
   return {element: root, handleEvent, refresh, open, destroy() {
     destroyed = true
     if(frame) view.cancelAnimationFrame(frame)
+    if(zoomFrame !== undefined) view.cancelAnimationFrame(zoomFrame)
     observer.disconnect(); resize?.disconnect(); noteResize?.disconnect()
     clearNotes()
     view.removeEventListener("beforeprint", preparePrint)
     view.removeEventListener("afterprint", afterPrint)
     view.removeEventListener("resize", layoutChanged)
     doc.removeEventListener("scroll", schedule, true)
+    doc.removeEventListener("webwriter-canvas-zoom", zoomChanged)
     anchors?.destroy()
     popup.hidePopover?.()
     appendix.adoptedStyleSheets = appendix.adoptedStyleSheets.filter(current => current !== sheet)

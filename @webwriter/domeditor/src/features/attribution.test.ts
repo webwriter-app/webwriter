@@ -6,6 +6,7 @@ import {DOMEditor} from "../domeditor"
 import {SharedDOMDoc} from "../domdoc"
 import {$, cloneWithoutEditorMarkers} from "../utility"
 import {attributionAttributes, mountAttributionReader, type AttributionController} from "../attribution.js"
+import {mountCanvasReader} from "../canvas-viewer.js"
 import {creativeCommonsLicenses} from "../document-head"
 import type {AttributionLicensePicker} from "../components/attribution-license-picker"
 
@@ -1330,6 +1331,106 @@ describe("reading attribution", () => {
     document.body.innerHTML = '<attribution-template role="document"><p data-ww-attribution-name="Nested author">Text</p></attribution-template>'
     reader = mountAttributionReader()
     expect(notes()[0].textContent).toBe("Nested author")
+  })
+})
+
+describe("canvas attribution labels", () => {
+  it.each(["editor", "reader"])("reflows labels once per frame and caps their size at 100% in the %s", async mode => {
+    const element = document.querySelector("p")!
+    element.setAttribute(attributionAttributes.license, "CC-BY-4.0")
+    let canvasReader: ReturnType<typeof mountCanvasReader> = null
+    let itemHeight = 120
+    const zoom = () => editor?.features.canvas.zoom ?? canvasReader?.viewer.zoom ?? 1
+    bounds(element).mockImplementation(() => ({left: 50, top: 50, right: 50 + 300 * zoom(), bottom: 50 + itemHeight * zoom(),
+      width: 300 * zoom(), height: itemHeight * zoom()} as DOMRect))
+    const measure = vi.fn()
+    const getBounds = HTMLElement.prototype.getBoundingClientRect
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
+      if(!this.matches(".attribution-text")) return getBounds.call(this)
+      const height = this.classList.contains("wrapped") ? parseFloat(this.style.height) : 90
+      if(!this.classList.contains("wrapped")) measure()
+      return {width: height < 45 ? 30 : 8, height} as DOMRect
+    })
+    const reset = () => document.body.shadowRoot!.querySelector<HTMLButtonElement>('button[name="actual-size"]')!.click()
+    const wheel = (deltaY: number, ctrlKey = true) => {
+      const event = new WheelEvent("wheel", {bubbles: true, cancelable: true, composed: true, deltaY})
+      Object.defineProperty(event, "ctrlKey", {value: ctrlKey})
+      document.body.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    try {
+      if(mode === "editor") {
+        start()
+        expect(editor!.setDocumentLayout("canvas", "document")).toBe(true)
+      }
+      else {
+        document.body.classList.add("ww-canvas")
+        reader = mountAttributionReader()
+        canvasReader = mountCanvasReader()
+      }
+      reset()
+      await settle()
+      expect(zoom()).toBe(1)
+      const label = notes()[0]
+      const text = label.querySelector<HTMLElement>(".attribution-text")!
+      expect(text.classList.contains("wrapped")).toBe(false)
+      measure.mockClear()
+
+      wheel(200)
+      wheel(200)
+      expect(zoom()).toBeCloseTo(Math.exp(-.8))
+      expect(measure).not.toHaveBeenCalled()
+      await nextFrame()
+      expect(measure).toHaveBeenCalledTimes(1)
+      expect(text.classList.contains("wrapped")).toBe(true)
+      expect(text.hidden).toBe(false)
+
+      wheel(300)
+      await nextFrame()
+      expect(label.classList.contains("compact-attribution")).toBe(true)
+      expect(text.hidden).toBe(true)
+      measure.mockClear()
+      wheel(100)
+      wheel(40, false)
+      await nextFrame()
+      expect(measure).not.toHaveBeenCalled()
+
+      reset()
+      await nextFrame()
+      expect(label.classList.contains("compact-attribution")).toBe(false)
+      expect(text.classList.contains("wrapped")).toBe(false)
+      expect(text.hidden).toBe(false)
+      expect(element.getAttribute(attributionAttributes.license)).toBe("CC-BY-4.0")
+
+      itemHeight = 70
+      element.style.height = "70px"
+      await settle()
+      expect(text.style.height).toBe("70px")
+      measure.mockClear()
+      wheel(-400)
+      await nextFrame()
+      expect(zoom()).toBeGreaterThan(2)
+      expect(measure).not.toHaveBeenCalled()
+      expect(text.style.height).toBe("70px")
+
+      itemHeight = 60
+      element.style.height = "60px"
+      await settle()
+      expect(parseFloat(text.style.height)).toBeCloseTo(60)
+
+      wheel(800)
+      await nextFrame()
+      expect(label.classList.contains("compact-attribution")).toBe(true)
+      wheel(-800)
+      await nextFrame()
+      expect(label.classList.contains("compact-attribution")).toBe(false)
+      expect(parseFloat(text.style.height)).toBeCloseTo(60)
+    }
+    finally {
+      canvasReader?.destroy()
+      document.body.classList.remove("ww-canvas")
+    }
   })
 })
 

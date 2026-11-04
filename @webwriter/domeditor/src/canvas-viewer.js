@@ -493,6 +493,7 @@ export class CanvasViewer {
     this.loadSnapdom = loadSnapdom
     this.minimap = null
     this.camera = {x: 32, y: 32, zoom: 1}
+    this.appliedZoom = 1
     this.panning = null
     this.wheelPanTimer = null
     this.slotStyle = slot.getAttribute("style")
@@ -524,6 +525,7 @@ export class CanvasViewer {
     if(this.slotStyle === null) this.slot.removeAttribute("style")
     else this.slot.setAttribute("style", this.slotStyle)
     this.removeMarker(document.documentElement, "◆canvas-active")
+    if(this.appliedZoom !== 1) document.dispatchEvent(new Event("webwriter-canvas-zoom"))
   }
 
   startPan(event) {
@@ -694,6 +696,11 @@ export class CanvasViewer {
   applyCamera() {
     if(!this.slot || !this.active) return
     this.slot.style.transform = `translate(${this.camera.x}px, ${this.camera.y}px) scale(${this.camera.zoom})`
+    if(this.zoom !== this.appliedZoom) {
+      const previousZoom = this.appliedZoom
+      this.appliedZoom = this.zoom
+      document.dispatchEvent(new CustomEvent("webwriter-canvas-zoom", {detail: {previousZoom, zoom: this.zoom}}))
+    }
     if(this.background) {
       this.background.style.backgroundPosition = `${this.camera.x - canvasGridSize * this.zoom / 2}px ${this.camera.y - canvasGridSize * this.zoom / 2}px`
       const size = `${canvasGridSize * this.zoom}px ${canvasGridSize * this.zoom}px`
