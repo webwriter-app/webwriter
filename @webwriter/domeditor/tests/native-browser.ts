@@ -1911,7 +1911,7 @@ await check("empty Details retains summary height and padding in standalone docu
           const style = savedView.getComputedStyle(element), summaryStyle = savedView.getComputedStyle(summary)
           const box = element.getBoundingClientRect(), heading = summary.getBoundingClientRect()
           const lineHeight = parseFloat(summaryStyle.lineHeight)
-          assert(heading.height >= lineHeight - 1, "empty summary collapsed around its floated disclosure icon")
+          assert(heading.height >= lineHeight - 1, "empty summary collapsed around its disclosure icon")
           assert(heading.top >= box.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop) - 1, "summary lost top padding")
           assert(heading.bottom <= box.bottom - parseFloat(style.borderBottomWidth) - parseFloat(style.paddingBottom) + 1, "summary lost bottom padding")
           if(!element.hasAttribute("style")) assert(Math.abs(box.height - filled.height) < 1, "empty Details height differs from a one-line heading")
@@ -1927,6 +1927,56 @@ await check("empty Details retains summary height and padding in standalone docu
     (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
     frame.remove()
   }
+})
+
+await check("Details chevrons stay beside wrapped summaries", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:360px;height:360px;max-width:none;border:0"
+  frame.srcdoc = `<!doctype html><head><style data-ww-theme="base">${defaultDocumentTheme.source}</style>
+    <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script></head>
+    <body><details><summary>A short heading</summary><p>Body</p></details></body>`
+  fixture.append(frame)
+  try {
+    const view = frame.contentWindow!
+    for(let attempt = 0; attempt < 200 && !view.editor; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `wrapped summary fixture did not initialize: ${view.editorError}`)
+    const doc = frame.contentDocument!, details = doc.querySelector("details")!, summary = details.querySelector("summary")!
+    const themeStyle = doc.querySelector<HTMLStyleElement>("style[data-ww-theme]")!
+    for(const theme of documentThemes.filter(({value}) => value === "base" || value === "pico")) {
+      themeStyle.setAttribute("data-ww-theme", theme.value)
+      themeStyle.textContent = theme.source
+      for(const [direction, zoom] of [["ltr", 1], ["rtl", 1], ["ltr", 1.5]] as const) {
+        doc.documentElement.dir = direction
+        details.style.zoom = String(zoom)
+        summary.textContent = "A short heading"
+        await layoutFrame()
+        const short = summary.getBoundingClientRect()
+        summary.innerHTML = "A longer summary with <strong>inline formatting</strong> that wraps beside the chevron and leaves room to edit the last line."
+        const wrapped = summary.getBoundingClientRect(), icon = view.getComputedStyle(summary, "::after")
+        const range = doc.createRange()
+        range.selectNodeContents(summary)
+        const text = Array.from(range.getClientRects())
+        const lineHeight = parseFloat(view.getComputedStyle(summary).lineHeight) * zoom
+        const rtl = direction === "rtl"
+        const edge = rtl ? wrapped.left + parseFloat(icon.left) * zoom : wrapped.right - parseFloat(icon.right) * zoom
+        const iconWidth = parseFloat(icon.width) * zoom, iconHeight = parseFloat(icon.height) * zoom
+        const x = edge + (rtl ? iconWidth / 2 : -iconWidth / 2), y = wrapped.top + parseFloat(icon.top) * zoom + iconHeight / 2
+        assert(wrapped.height > short.height + lineHeight && icon.backgroundImage !== "none", "summary did not wrap or lost its chevron")
+        assert(Math.abs(y - short.top - iconHeight / 2) < 1, "the chevron moved below the first line")
+        assert(text.every(rect => rtl ? rect.left >= edge + iconWidth : rect.right <= edge - iconWidth), "wrapped text crossed into the chevron gutter")
+        const clickAt = (clientX: number, clientY: number) => summary.dispatchEvent(new MouseEvent("click", {
+          clientX, clientY, detail: 1, bubbles: true, cancelable: true,
+        }))
+        clickAt(x, y + lineHeight)
+        assert(!details.open, "clicking the gutter on a wrapped line toggled Details")
+        clickAt(x, y + iconHeight / 4)
+        assert(details.open, "clicking the visible chevron did not open Details")
+        clickAt(x, y)
+        assert(!details.open, "clicking the visible chevron did not close Details")
+      }
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
 await check("table presets respect whole-table and cell selections without changing layout", async () => {

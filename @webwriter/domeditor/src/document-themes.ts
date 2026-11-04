@@ -9,17 +9,37 @@ import type {WidgetSchemaDefinition} from "./schema"
 import {documentTypographyCSS} from "./document-theme-options"
 
 const layeredSource = (source: string) => `@layer webwriter-theme {\n${source.replace(/^@charset\s+[^;]+;\s*/i, "")}\n}`
+// Base and Pico share a trailing chevron. Keep it beside the first line
+// and reserve its space without changing the summary's inline text flow.
+const disclosureLayout = `@layer webwriter-theme {
+  details > summary {
+    position: relative;
+    min-block-size: 1lh;
+    padding-inline-end: calc(var(--ww-summary-chevron-inline-inset, 0px) + 1rem + var(--pico-spacing, var(--spacing, 1rem)) * 0.5);
+    overflow-wrap: anywhere;
+  }
+  details > summary[role="button"] {
+    --ww-summary-chevron-inline-inset: var(--pico-form-element-spacing-horizontal, var(--form-element-spacing-horizontal));
+    --ww-summary-chevron-block-inset: var(--pico-form-element-spacing-vertical, var(--form-element-spacing-vertical));
+  }
+  details > summary::after {
+    position: absolute;
+    inset-inline-end: var(--ww-summary-chevron-inline-inset, 0px);
+    inset-block-start: var(--ww-summary-chevron-block-inset, 0px);
+    margin-inline-start: 0;
+  }
+}`
 const listDefaults = `@layer webwriter-theme {
   :where(ul, ol, menu) { list-style-position: inside; }
   :is(ul, ol, menu) > li { list-style-position: inherit; }
 }`
 
 export const documentThemes = [
-  {value: "base", label: "Base", source: baseSource + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
+  {value: "base", label: "Base", source: baseSource + "\n" + disclosureLayout + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
   {value: "water", label: "Water", source: layeredSource(waterSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
   {value: "simple", label: "Simple", source: layeredSource(simpleSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
   {value: "sakura", label: "Sakura", source: layeredSource(sakuraSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
-  {value: "pico", label: "Pico", source: layeredSource(picoSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
+  {value: "pico", label: "Pico", source: layeredSource(picoSource) + "\n" + disclosureLayout + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
   {value: "holiday", label: "Holiday", source: layeredSource(holidaySource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
 ] as const
 

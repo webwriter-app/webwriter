@@ -76,6 +76,7 @@ const expectedChecks = [
   "editing affordances align with media inside symmetric scrollbar gutters",
   "document background reaches the left edge without shifting the reading column",
   "empty Details retains summary height and padding in standalone documents",
+  "Details chevrons stay beside wrapped summaries",
   "media stays centered in editing and standalone documents",
   "unfloated placements align within the content column",
   "Placement arrows move elements in normal document flow",
