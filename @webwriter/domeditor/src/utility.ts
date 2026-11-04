@@ -840,7 +840,7 @@ export class EditingSelection {
     // A native caret can land inside an inline wrapper even when the pointer
     // is outside its block. Address the block's boundary, not the wrapper's.
     let caretBlock = hitElement
-    while(caretBlock && caretBlock !== root && isMarkElement(caretBlock)) caretBlock = caretBlock.parentElement
+    while(caretBlock && caretBlock !== root && caretBlock !== flow && isMarkElement(caretBlock)) caretBlock = caretBlock.parentElement
     if(caretBlock && caretBlock !== root && root.contains(caretBlock) && isBlockLike(caretBlock)
       && !isOutOfFlow(caretBlock) && (!pointerElement || pointerElement.contains(caretBlock) || caretBlock.contains(pointerElement))) {
       const rect = caretBlock.getBoundingClientRect()
