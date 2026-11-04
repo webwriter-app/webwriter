@@ -116,8 +116,8 @@ export class SlidesFeature extends EditorFeature {
     const selection = document.getSelection()
     const anchor = selection?.anchorNode, focus = selection?.focusNode
     let restored: HTMLElement | null = null
-    if(!$.isElementSelection && (!anchor?.isConnected || !focus?.isConnected || anchor === document.body || focus === document.body
-      || anchor === viewport || focus === viewport)) {
+    if((!anchor?.isConnected || !focus?.isConnected || anchor === document.body || focus === document.body
+      || anchor === viewport || focus === viewport) && !$.isElementSelection) {
       const slide = this.current()
       if(slide && !this.content(slide).length) { $.move(slide, 0); restored = slide }
     }

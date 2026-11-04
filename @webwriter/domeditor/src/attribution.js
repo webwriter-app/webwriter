@@ -215,13 +215,15 @@ export function createAttributionController(doc, options = {}) {
       root.classList.toggle("non-document-layout", !template && ["ww-canvas", "ww-slides", "ww-board"].filter(name => body.classList.contains(name)).length === 1)
       footnotes.replaceChildren()
     }
+    const credited = zoomOnly ? [] : body.querySelectorAll(selector)
+    if(!credited.length && !notes.size) return
     const bodyStyle = zoomOnly ? null : view.getComputedStyle(body)
     const singleRightGutter = bodyStyle && !root.classList.contains("non-document-layout")
       && parseFloat(bodyStyle.paddingRight) > parseFloat(bodyStyle.paddingLeft) + 1
     const current = zoomOnly ? null : new Set()
     const footnoteList = !zoomOnly && !root.classList.contains("non-document-layout") ? doc.createElement("ol") : null
     const layouts = []
-    for(const element of zoomBoxes?.keys() ?? body.querySelectorAll(selector)) {
+    for(const element of zoomBoxes?.keys() ?? credited) {
       const data = values(element)
       if(!zoomOnly) {
         if(!authored(element) || options.canAttribute?.(element) === false || !hasCredit(data)) continue

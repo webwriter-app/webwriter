@@ -515,6 +515,7 @@ export class CommentFeature extends EditorFeature {
         }
       }
     }
+    if(!elements.size && !this.bubbles.size) return
     for(const [element, {button}] of this.bubbles) {
       if(elements.has(element)) continue
       this.anchorPositioner?.release(button)

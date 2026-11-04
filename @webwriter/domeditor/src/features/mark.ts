@@ -2295,9 +2295,8 @@ export class MarkFeature extends EditorFeature {
     const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
     while(walker.nextNode()) {
       const node = walker.currentNode as Text
-      if(block.namespaceURI !== SVG_NAMESPACE
-        && (!$.includesNode(node) || !this.isEditableHTMLContext(node, document.body))
-        || !range.intersectsNode(node)) continue
+      if(!range.intersectsNode(node) || block.namespaceURI !== SVG_NAMESPACE
+        && (!$.includesNode(node) || !this.isEditableHTMLContext(node, document.body))) continue
 
       const startRelation = range.comparePoint(node, 0)
       const endRelation = range.comparePoint(node, node.length)

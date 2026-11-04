@@ -1550,6 +1550,7 @@ export class MathFeature extends EditorFeature {
   private refreshPlaceholders() {
     const roots = new Set(Array.from(document.body.querySelectorAll('math[display="block"]'))
       .filter(root => mathRoot(root) === root && emptyMath(root)))
+    if(!roots.size && !this.placeholders.size) return
     this.placeholders.forEach((placeholder, root) => {
       if(roots.has(root)) return
       placeholder.remove()
