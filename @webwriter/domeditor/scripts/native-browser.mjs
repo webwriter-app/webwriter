@@ -81,6 +81,7 @@ const expectedChecks = [
   "unfloated placements align within the content column",
   "Placement arrows move elements in normal document flow",
   "crop preview reveals the source and restores content outside the frame",
+  "cropped images fit styled frames in editing and export",
   "video crop controls remain available after repeated crops",
   "media interiors capture while outline edges element-select",
   "Settings tabs share the heading and embed AI provider cards in Cloud",
@@ -243,6 +244,7 @@ const expectedChecks = [
   "image hotspots scale and open popovers in preview and standalone reading mode",
   "canvas circle hotspots stay round while drawing and after image resizing",
   "canvas hotspot clicks preserve the camera in preview and standalone reading mode",
+  "hotspot URL fields retain native caret and selection visibility",
   "hotspot popovers use grey editing placeholders and compact controls",
   "saved Slides navigate with HTML and CSS and scripting disabled",
 ]

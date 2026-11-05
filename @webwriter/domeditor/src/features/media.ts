@@ -647,7 +647,8 @@ const imageMapOverlayStylesheet = createStylesheet(`
   .action-buttons svg { display:block; width:100%; height:100%; max-width:20px; max-height:20px; }
   .url-editor { box-sizing:border-box; position:absolute; top:calc(100% + 4px); left:50%; transform:translateX(-50%); width:clamp(120px,28vw,240px); padding:4px; border:1px solid #c8d2df; border-radius:4px; background:white; box-shadow:0 2px 8px rgb(0 0 0 / 18%); }
   .url-editor[hidden] { display:none; }
-  .url-editor input { box-sizing:border-box; width:100%; min-width:0; padding:5px; border:1px solid #c8d2df; border-radius:3px; font:12px system-ui; }
+  .url-editor input { box-sizing:border-box; width:100%; min-width:0; padding:5px; border:1px solid #c8d2df; border-radius:3px; font:12px system-ui; caret-color:auto; user-select:text; -webkit-user-select:text; }
+  .url-editor input::selection { color:white; background-color:#0078d7; }
 `)
 
 type ImageMapGeometry = {
@@ -2320,10 +2321,12 @@ export class MediaFeature extends EditorFeature {
     // An explicit source crop replaces the earlier percentage clip crop.
     if(target.style.clipPath && mediaCropInsets(target.style.clipPath)) styles["clip-path"] = null
     changes.set(target, styles)
-    if(media !== target) changes.set(media, size)
+    // Frame decorations surround the fixed crop dimensions, including styles
+    // applied later; border-box limits would subtract them from the image space.
+    if(media !== target) changes.set(media, {...size, "box-sizing": "content-box"})
     if(layout !== media) {
       const frame = this.editor.features.transformation.boxGeometry(layout, false)
-      changes.set(layout, {"max-width": `${width}px`, "max-height": `${Math.max(height, frame.height - box.height + height)}px`})
+      changes.set(layout, {"max-width": `${width}px`, "max-height": `${Math.max(height, frame.height - box.height + height)}px`, "box-sizing": "content-box"})
     }
     return changes
   }

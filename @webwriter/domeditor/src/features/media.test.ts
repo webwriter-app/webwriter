@@ -574,6 +574,37 @@ describe("media editing", () => {
     expect(editor.toHTML(true)).toBe(cleared)
   })
 
+  it.each([false, true])("keeps crop frame dimensions inside borders and padding (captioned: %s)", captioned => {
+    const pictureHTML = '<picture style="width: 360px; height: 200px; box-sizing: border-box"><source srcset="photo.webp"><!--keep--><img src="photo.png" style="width: 360px; height: 200px"></picture>'
+    document.body.innerHTML = captioned
+      ? `<figure style="width: 360px; box-sizing: border-box">${pictureHTML}<figcaption>Caption</figcaption></figure>`
+      : pictureHTML
+    const frame = document.body.firstElementChild! as HTMLElement
+    const picture = document.querySelector("picture")!
+    const image = document.querySelector("img")!
+    $.selectElement(frame)
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(15% 20% 25% 10%)"})
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const cropped = editor.toHTML(true)
+    // The gallery preset adds these decorations after the crop is committed.
+    editor.features.manipulation.setElementStyles(frame, {"border-width": "1px", "border-style": "solid", padding: "8px"})
+    expect(getComputedStyle(frame).boxSizing).toBe("content-box")
+    expect(getComputedStyle(picture).boxSizing).toBe("content-box")
+    expect(parseFloat(frame.style.maxWidth)).toBeCloseTo(252)
+    expect(image.style.width).toBe("252px")
+    expect(image.style.height).toBe("120px")
+    expect(picture.querySelector("source")?.getAttribute("srcset")).toBe("photo.webp")
+    expect(picture.childNodes[1].nodeType).toBe(Node.COMMENT_NODE)
+    const styled = editor.toHTML(true)
+    expect(styled).not.toContain("◆")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(cropped)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(styled)
+  })
+
   it("sizes a standalone media crop without changing authored margins", () => {
     document.body.innerHTML = '<video src="movie.mp4" style="width: 360px; height: 200px; margin-top: 12px !important; margin-left: 8px"></video>'
     editor.doc.syncFromDOM()
@@ -2264,6 +2295,12 @@ describe("media editing", () => {
     const input = control.querySelector<HTMLInputElement>("input")!
     control.querySelector<HTMLButtonElement>(".link")!.click()
     expect(control.querySelector("form")).not.toHaveAttribute("hidden")
+    expect(overlay.root.activeElement).toBe(input)
+    expect(editor.features.selection.captureSelectedElement).toBe(image)
+    const style = getComputedStyle(input)
+    expect(style.caretColor).toBe("auto")
+    expect(style.userSelect).toBe("text")
+    expect(style.getPropertyValue("-webkit-user-select")).toBe("text")
     input.value = "https://example.org/library"
     input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
     expect(control.querySelector("form")).toHaveAttribute("hidden")

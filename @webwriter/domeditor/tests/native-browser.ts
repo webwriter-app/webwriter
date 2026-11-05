@@ -2998,6 +2998,53 @@ await check("crop preview reveals the source and restores content outside the fr
   finally { picture.remove(); editor.features.selection.processSelection() }
 })
 
+await check("cropped images fit styled frames in editing and export", async () => {
+  const frame = document.createElement("iframe"), saved = document.createElement("iframe")
+  frame.style.cssText = saved.style.cssText = "width:700px;height:450px;max-width:none"
+  saved.setAttribute("sandbox", "allow-same-origin")
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+  nativeRootEditor.addAppendix(frame)
+  try {
+    for(let attempt = 0; !frame.contentWindow?.editor && attempt < 200; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    const editor = frame.contentWindow?.editor, doc = frame.contentDocument!
+    assert(editor, `crop frame fixture did not initialize: ${frame.contentWindow?.editorError}`)
+    const fits = (doc: Document, context: string) => {
+      const image = doc.querySelector("img")!.getBoundingClientRect()
+      for(const container of doc.querySelectorAll("body > :is(picture, figure)")) {
+        const box = container.getBoundingClientRect(), style = doc.defaultView!.getComputedStyle(container)
+        assert(image.left >= box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft) - 1
+          && image.right <= box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight) + 1
+          && image.top >= box.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop) - 1
+          && image.bottom <= box.bottom - parseFloat(style.borderBottomWidth) - parseFloat(style.paddingBottom) + 1,
+        `${context}: cropped image overflows ${container.localName}: ${JSON.stringify({image: image.toJSON(), frame: box.toJSON(), display: style.display, padding: style.padding})}`)
+      }
+    }
+    const src = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="360" height="200"><rect width="360" height="200" fill="purple"/><circle cx="180" cy="100" r="70" fill="gold"/></svg>')}`
+    for(const captioned of [false, true]) for(const styleFirst of [true, false]) {
+      const picture = `<picture><source srcset="${src}"><!--keep--><img src="${src}" style="width:360px;height:200px"></picture>`
+      doc.body.innerHTML = captioned ? `<figure>${picture}<figcaption>Caption</figcaption></figure>` : picture
+      await doc.querySelector("img")!.decode()
+      const container = doc.body.firstElementChild! as HTMLElement
+      const decorate = () => editor!.features.manipulation.setElementStyles(container, {"border-width": "1px", "border-style": "solid", padding: "8px", "background-color": "#deebf7"})
+      if(styleFirst) decorate()
+      editor!.features.selection.captureElement(container)
+      assert(editor!.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(15% 20% 25% 10%)"}), "crop command failed")
+      if(!styleFirst) decorate()
+      await layoutFrame()
+      fits(doc, `editing (captioned=${captioned}, styleFirst=${styleFirst})`)
+      const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once: true}))
+      saved.srcdoc = await editor!.serializeHTML()
+      nativeRootEditor.addAppendix(saved)
+      await loaded
+      await saved.contentDocument!.querySelector("img")!.decode()
+      fits(saved.contentDocument!, `export (captioned=${captioned}, styleFirst=${styleFirst})`)
+    }
+  }
+  finally {
+    frame.contentWindow?.editor?.destroy(); frame.remove(); saved.remove()
+  }
+})
+
 await check("video crop controls remain available after repeated crops", async () => {
   const video = document.createElement("video")
   video.controls = true
@@ -7999,6 +8046,47 @@ await check("canvas circle hotspots stay round while drawing and after image res
     assert(Math.abs(resized.left + resized.width / 2 - (resizedImage.left + resizedImage.width / 2)) < 1,
       "resized hotspot moved away from its image coordinates")
     assert(area.coords === coords, "resizing the image rewrote the map coordinates")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("hotspot URL fields retain native caret and selection visibility", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:528px;height:385px;max-width:none"
+  frame.srcdoc = '<!doctype html><body><img src="/tests/fixtures/image-map.svg" width="360" usemap="#plan"><map name="plan"><area shape="rect" coords="180,84,540,336" href="https://example.org/library"></map><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `hotspot URL fixture did not initialize: ${view.editorError ?? "loading"}`)
+    const editor = view.editor!, doc = frame.contentDocument!, image = doc.querySelector("img")!
+    await image.decode()
+    editor.features.selection.captureElement(image)
+    await layoutFrame()
+    const root = editor.features.media.imageMapOverlay.root
+    root.querySelector<HTMLButtonElement>(".link")!.click()
+    const input = root.querySelector<HTMLInputElement>("input")!
+    const before = editor.toHTML(true)
+    for(const width of [528, 360]) {
+      frame.style.width = `${width}px`
+      input.focus()
+      input.select()
+      await layoutFrame()
+      assert(root.activeElement === input && editor.features.selection.captureSelectedElement === image, "URL editing lost focus or image capture")
+      const style = view.getComputedStyle(input), selection = view.getComputedStyle(input, "::selection")
+      assert(style.caretColor !== "transparent" && style.caretColor !== "rgba(0, 0, 0, 0)", "hotspot URL caret is transparent")
+      assert(style.userSelect === "text" && style.getPropertyValue("-webkit-user-select") === "text", "hotspot URL text is not selectable")
+      assert(selection.backgroundColor === "rgb(0, 120, 215)" && selection.color === "rgb(255, 255, 255)", "hotspot URL selection has no contrasting highlight")
+      const box = input.getBoundingClientRect()
+      assert(box.width > 0 && box.left >= 0 && box.right <= view.innerWidth && box.bottom <= view.innerHeight, `hotspot URL field overflows at ${width}px`)
+      assert(editor.toHTML(true) === before, "selecting the hotspot URL changed authored HTML")
+    }
+    assert(doc.execCommand("insertText", false, "https://example.org/edited"), "native URL text replacement failed")
+    assert(input.value === "https://example.org/edited", "native URL selection did not replace the selected text")
+    input.dispatchEvent(new view.KeyboardEvent("keydown", {key:"Enter", bubbles:true, composed:true, cancelable:true}))
+    assert(doc.querySelector("area")!.getAttribute("href") === input.value, "edited hotspot URL was not saved")
+    assert(root.querySelector<HTMLFormElement>("form")!.hidden, "saving left the hotspot URL editor open")
+    assert(!editor.toHTML(true).includes("url-editor"), "hotspot URL controls leaked into authored HTML")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
