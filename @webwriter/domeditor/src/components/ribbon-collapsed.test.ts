@@ -257,6 +257,25 @@ describe("collapsed ribbon file menu", () => {
     expect(commands.mock.calls[0][0].detail.label).toBe("increaseFontSize")
   })
 
+  it("enables Remove formatting in the collapsed Format menu for a nonempty selection", async () => {
+    const {ribbon, menu} = await mount()
+    ribbon.canMark = false
+    ribbon.canRemoveMarks = true
+    await ribbon.updateComplete
+    await menu.updateComplete
+    const format = await open(menu, "Format")
+    const clear = format.shadowRoot!.querySelector<HTMLButtonElement>('[title="Remove formatting"]')!
+    expect(clear.disabled).toBe(false)
+    const commands = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", commands)
+    clear.click()
+    expect(commands.mock.calls[0][0].detail.label).toBe("removeMarks")
+
+    const {menu: disabledMenu} = await mount()
+    const disabledFormat = await open(disabledMenu, "Format")
+    expect(disabledFormat.shadowRoot!.querySelector<HTMLButtonElement>('[title="Remove formatting"]')!.disabled).toBe(true)
+  })
+
   it("opens insertion options recursively and closes only the innermost menu on Escape", async () => {
     const {ribbon, menu} = await mount()
     const insert = await open(menu, "Insert")

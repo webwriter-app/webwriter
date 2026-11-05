@@ -235,6 +235,8 @@ export type InitializeEditorMessage = {
   syncUrl: string
   /** Per-iframe capability used to bind postMessage traffic to this frame. */
   bridgeNonce?: string
+  /** Distinguishes document updates from replaced iframe realms. */
+  documentReplicaId?: string
   initialState?: EditorStateSnapshot
   language?: string
   username?: string
@@ -294,6 +296,7 @@ export function isInitializeEditorMessage(value: unknown): value is InitializeEd
   return message.type === initializeEditorMessage
     && validSyncUrl
     && (message.bridgeNonce === undefined || typeof message.bridgeNonce === "string" && message.bridgeNonce.length >= 16)
+    && isOptionalString(message.documentReplicaId)
     && (message.language === undefined || typeof message.language === "string")
     && (message.username === undefined || typeof message.username === "string")
     && (message.disableAnimations === undefined || typeof message.disableAnimations === "boolean")
@@ -424,6 +427,7 @@ export function isBlockFormatTag(value: string): value is BlockFormatTag {
 export type ElementStyleState = {
   target: {
     documentRoot?: true
+    boardRole?: "group" | "column" | "card"
     popupRole?: "toggle" | "content"
     float?: "none" | "far-left" | "far-right"
     floatSticky?: boolean
@@ -557,6 +561,8 @@ export type SelectionChangeMessage = {
 }
 
 export type MarkStateChangeDetail = {
+  /** True when a nonempty selection can have formatting removed. */
+  canRemoveMarks?: boolean
   link?: LinkSelectionState
   popupActive?: boolean
   svgText?: boolean
@@ -1036,7 +1042,8 @@ export function isMarkStateChangeMessage(value: unknown): value is MarkStateChan
     && Array.isArray(message.detail.marks)
     && message.detail.marks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark)
   if(!validBase || message.detail!.svgText !== undefined && typeof message.detail!.svgText !== "boolean"
-    || message.detail!.popupActive !== undefined && typeof message.detail!.popupActive !== "boolean") return false
+    || message.detail!.popupActive !== undefined && typeof message.detail!.popupActive !== "boolean"
+    || message.detail!.canRemoveMarks !== undefined && typeof message.detail!.canRemoveMarks !== "boolean") return false
   const allowedMarks = message.detail!.allowedMarks
   if(allowedMarks !== undefined && !(Array.isArray(allowedMarks)
     && allowedMarks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark))) return false

@@ -72,6 +72,55 @@ it("measures all figures before adding layout markers", () => {
   expect(document.querySelectorAll('[class*="◆figure-flow-"]')).toHaveLength(2)
 })
 
+it("refreshes one figure without measuring or replacing unrelated figure rules", async () => {
+  const first = document.querySelector<HTMLElement>("figure")!
+  const second = first.cloneNode(true) as HTMLElement
+  first.after(second)
+  Object.defineProperty(second, "clientWidth", {configurable: true, value: 420})
+  layout = createFigureLayout(document)
+  const content = second.querySelector<HTMLElement>("custom-diagram")!
+  const measure = vi.spyOn(content, "offsetWidth", "get")
+  const sheet = document.adoptedStyleSheets.at(-1)!
+  const marker = Array.from(second.classList).find(name => name.startsWith("◆figure-flow-"))!
+  const untouched = Array.from(sheet.cssRules).filter(rule => rule.cssText.includes(marker))
+  const before = css()
+  first.querySelector<HTMLElement>("custom-diagram")!.style.setProperty("rotate", "65deg")
+  layout.refresh(first)
+  expect(css()).not.toBe(before)
+  expect(measure).not.toHaveBeenCalled()
+  const retained = Array.from(sheet.cssRules).filter(rule => rule.cssText.includes(marker))
+  expect(retained).toHaveLength(untouched.length)
+  retained.forEach((rule, index) => expect(rule).toBe(untouched[index]))
+  await new Promise(resolve => setTimeout(resolve, 30))
+  expect(measure).not.toHaveBeenCalled()
+  expect(sheet.cssRules).toHaveLength(8)
+})
+
+it.each(["other figure", "stylesheet", "structure"])("retains broad invalidation for pending %s changes", change => {
+  const first = document.querySelector<HTMLElement>("figure")!
+  const second = first.cloneNode(true) as HTMLElement
+  first.after(second)
+  Object.defineProperty(second, "clientWidth", {configurable: true, value: 420})
+  layout = createFigureLayout(document)
+  const content = second.querySelector<HTMLElement>("custom-diagram")!
+  const measure = vi.spyOn(content, "offsetWidth", "get")
+  let style: HTMLStyleElement | undefined
+  if(change === "other figure") content.style.setProperty("rotate", "65deg")
+  else if(change === "stylesheet") {
+    style = document.createElement("style")
+    style.textContent = "figure { font-size: 18px }"
+    document.head.append(style)
+  }
+  else first.append(document.createElement("aside"))
+  try {
+    layout.refresh(first)
+    expect(measure).toHaveBeenCalled()
+    if(change === "structure") expect(first.className).toBe("authored")
+    expect(cloneWithoutEditorMarkers(document.body, true).innerHTML).not.toContain("◆")
+  }
+  finally { style?.remove() }
+})
+
 it("cleans disconnected figures and does not impose a shape on multi-content figures or widget internals", () => {
   const figure = document.querySelector<HTMLElement>("figure")!
   layout = createFigureLayout(document)

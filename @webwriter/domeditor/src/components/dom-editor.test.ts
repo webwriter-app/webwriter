@@ -1,4 +1,8 @@
 // @vitest-environment happy-dom
+import * as Y from "yjs"
+import {SharedDOMDoc} from "../domdoc"
+import {restoreSnapshotTextNodeRuns} from "../editor-bridge"
+import type {EditorDocumentUpdate} from "../editor-document-sync"
 import {emptyVersionHistoryState} from "../editor-bridge"
 import {documentThemeProperties} from "../document-theme-options"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
@@ -250,7 +254,30 @@ async function mountEditor(configure?: (editor: DomEditor) => void) {
   return {editor, iframe, editorWindow: iframe.contentWindow!}
 }
 
-describe("filtered frame snapshots", () => {
+const testMirrors: SharedDOMDoc[] = []
+const frameMirrorSources = new WeakMap<object, {owner: Document, shared: SharedDOMDoc, vector: Uint8Array}>()
+afterEach(() => { testMirrors.splice(0).forEach(shared => shared.destroy()) })
+
+function frameUpdate(host: any, source: Document | string, textNodeRuns?: unknown): EditorDocumentUpdate & {bridgeNonce: string} {
+  if(host.editorOpaque) { host.documentTreeObserver?.disconnect(); host.documentTreeObserver = null }
+  const owner = typeof source === "string" ? new DOMParser().parseFromString(source, "text/html") : source
+  if(textNodeRuns) restoreSnapshotTextNodeRuns(owner.body, textNodeRuns)
+  let state = frameMirrorSources.get(host)
+  const reset = !state || state.owner !== owner || !host.documentReplica
+  if(reset) {
+    const shared = new SharedDOMDoc(undefined, undefined, ["contenteditable", "spellcheck"], ["◆"], {root: owner.body})
+    testMirrors.push(shared)
+    state = {owner, shared, vector: new Uint8Array([0])}
+    frameMirrorSources.set(host, state)
+  }
+  state!.shared.flushDOMChanges()
+  const update = Y.encodeStateAsUpdate(state!.shared.doc, reset ? undefined : state!.vector)
+  state!.vector = Y.encodeStateVector(state!.shared.doc)
+  return {type: "editor-frame-update", bridgeNonce: host.bridgeNonce, replicaId: host.documentReplicaId, sequence: host.documentReplicaSequence + 1,
+    reset, update, doctype: null}
+}
+
+describe("incremental frame replica", () => {
   it("keeps deeper widget chevrons and outline actions aligned with adjacent text-node paths", async () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
@@ -265,11 +292,10 @@ describe("filtered frame snapshots", () => {
     timeline.prepend(live.createTextNode("\n"), live.createTextNode("\n"))
     event.prepend(live.createTextNode(""))
     details.prepend(live.createTextNode(""), live.createTextNode(" "))
-    const html = live.documentElement.outerHTML
+    const html = live.body.innerHTML
     const publish = () => window.dispatchEvent(new MessageEvent("message", {
       source: iframe.contentWindow,
-      data: {type: "editor-frame-snapshot", html: live.documentElement.outerHTML,
-        textNodeRuns: captureSnapshotTextNodeRuns(live.body), treeChanged: true},
+      data: frameUpdate(host, live),
     }))
     const selectParagraph = (eventIndex: number) => host.selectionPath = [
       {path: [], name: "Document"}, {path: [0], name: "Timeline"},
@@ -286,7 +312,7 @@ describe("filtered frame snapshots", () => {
     expect(toggle("Timeline Event")).not.toBeNull()
     expect(toggle("Timeline Event Details")).not.toBeNull()
     expect(toggle("Paragraph")).toBeNull()
-    expect(host.editorDocument.body.innerHTML).toBe(live.body.innerHTML)
+    expect(host.editorBody.children[0].childNodes.length).toBe(timeline.childNodes.length)
     toggle("Timeline Event")!.click()
     await editor.updateComplete
     await breadcrumb.updateComplete
@@ -300,7 +326,7 @@ describe("filtered frame snapshots", () => {
 
     // An empty text node changes live paths without changing serialized HTML.
     ;(timeline.firstChild as Text).splitText(0)
-    expect(live.documentElement.outerHTML).toBe(html)
+    expect(live.body.innerHTML).toBe(html)
     publish()
     selectParagraph(3)
     await editor.updateComplete
@@ -310,39 +336,46 @@ describe("filtered frame snapshots", () => {
     expect(toggle("Timeline Event Details")).not.toBeNull()
   })
 
-  it("updates text without rebuilding the tree or canonical snapshots, and ignores duplicate snapshots", async () => {
+  it("updates text and geometry without parsing or rebuilding the outline, and ignores duplicate updates", async () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
     host.editorOpaque = true
-    host.fileHandle = {} // Saved documents do not need fresh-layout comparison.
+    host.fileHandle = {}
+    host.documentTreeObserver.disconnect()
     vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    const source = iframe.contentDocument!
+    source.body.innerHTML = '<p arbitrary="keep">Before<!--keep--></p>'
+    const publish = (message = frameUpdate(host, source)) => {
+      window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow, data: message}))
+      return message
+    }
+    publish()
+    host.editorDocument = null
     const tree = vi.spyOn(host, "buildDocumentTree")
     const canonical = vi.spyOn(host, "authoredDocumentSnapshot")
-    const publish = (html: string, treeChanged: boolean) => window.dispatchEvent(new MessageEvent("message", {
-      source: iframe.contentWindow, data: {type: "editor-frame-snapshot", html, treeChanged},
-    }))
-    const html = '<html><head></head><body><p arbitrary="keep">Changed<!--keep--></p></body></html>'
+    const parse = vi.spyOn(DOMParser.prototype, "parseFromString")
     const initialTree = host.documentTree
-    publish(html, false)
-    expect(host.editorDocument.body.textContent).toBe("Changed")
-    expect(host.editorDocument.body.innerHTML).toBe('<p arbitrary="keep">Changed<!--keep--></p>')
+    ;(source.querySelector("p")!.firstChild as Text).data = "Changed"
+    const message = publish()
+    expect(host.editorBody.textContent).toBe("Changed")
+    expect(host.editorBody.children[0].getAttribute("arbitrary")).toBe("keep")
+    expect(host.editorBody.children[0].childNodes[1]).toMatchObject({nodeType: 8, textContent: "keep"})
     expect(host.documentTree).toBe(initialTree)
     expect(tree).not.toHaveBeenCalled()
     expect(canonical).not.toHaveBeenCalled()
     const sequence = host.documentChangeSequence
-    const currentDocument = host.editorDocument
-    publish(html, false)
+    publish(message)
     expect(host.documentChangeSequence).toBe(sequence)
-    expect(host.editorDocument).toBe(currentDocument)
-    publish(html.replace("</body>", "<custom-widget></custom-widget></body>"), true)
+    source.querySelector<HTMLElement>("p")!.style.left = "15px"
+    publish()
+    expect(host.editorBody.children[0].getAttribute("style")).toContain("15px")
+    expect(tree).not.toHaveBeenCalled()
+    expect(parse).not.toHaveBeenCalled()
+    source.body.append(source.createElement("custom-widget"))
+    publish()
     expect(tree).toHaveBeenCalledTimes(1)
     expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "Widget"])
-    window.dispatchEvent(new MessageEvent("message", {
-      source: iframe.contentWindow,
-      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}]}},
-    }))
-    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "Widget"])
-    expect(tree).toHaveBeenCalledTimes(1)
+    expect(host.editorDocument).toBeNull()
   })
 
   it("rebuilds the live document tree for authored structure and presentation changes, not selection", async () => {
@@ -486,7 +519,7 @@ describe("guided tour", () => {
     vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
     window.dispatchEvent(new MessageEvent("message", {
       source: iframe.contentWindow,
-      data: {type: "editor-frame-snapshot", html: host.editorDocument.documentElement.outerHTML},
+      data: frameUpdate(host, host.editorDocument),
     }))
     await editor.updateComplete
     expect(tour(editor)).not.toBeNull()
@@ -494,7 +527,7 @@ describe("guided tour", () => {
     const html = '<html><head></head><body><p>Authored snapshot edit</p></body></html>'
     window.dispatchEvent(new MessageEvent("message", {
       source: iframe.contentWindow,
-      data: {type: "editor-frame-snapshot", html},
+      data: frameUpdate(host, html),
     }))
     await editor.updateComplete
     expect(tour(editor)).toBeNull()
@@ -1807,7 +1840,7 @@ describe("DomEditor iframe setup", () => {
       host.editorOpaque = true
       window.dispatchEvent(new MessageEvent("message", {
         origin: window.location.origin, source: editorWindow,
-        data: {type: "editor-frame-snapshot", bridgeNonce: host.bridgeNonce, html: oldHTML, treeChanged: true},
+        data: {...frameUpdate(host, oldHTML), bridgeNonce: host.bridgeNonce},
       }))
       host.handleEditorMessage(new MessageEvent("message", {
         origin: new URL(host.frameShellURL("editor", host.frameRevision)).origin, source: editorWindow,
@@ -1943,7 +1976,10 @@ describe("DomEditor iframe setup", () => {
     const execute = vi.spyOn(editor, "execute").mockImplementation(() => new Promise(resolve => {complete = resolve}))
     if(isolated) {
       host.editorOpaque = true
-      vi.spyOn(host, "requestFrameControl").mockImplementation(async () => ({html: doc.documentElement.outerHTML}))
+      vi.spyOn(host, "requestFrameControl").mockImplementation(async () => {
+        window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow, data: frameUpdate(host, doc)}))
+        return {html: doc.documentElement.outerHTML}
+      })
     }
     const creating = host.newDocument(mode)
     await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "setDocumentLayout", mode, expectedMode: "document"}))
@@ -9124,11 +9160,12 @@ describe("DomEditor.execute()", () => {
     if(isolated) {
       host.editorOpaque = true
       vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+      window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow, data: frameUpdate(host, doc)}))
     }
     const change = async (html: string) => {
       doc.body.innerHTML = html
       if(isolated) window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow,
-        data: {type: "editor-frame-snapshot", html: doc.documentElement.outerHTML, treeChanged: true}}))
+        data: frameUpdate(host, doc)}))
       await new Promise(resolve => setTimeout(resolve, 0))
       await editor.updateComplete
       expect(doc.body.innerHTML).toBe(html)
@@ -9178,12 +9215,15 @@ describe("DomEditor.execute()", () => {
     host.freshDocumentLayoutSnapshot = null
     const snapshot = () => {
       if(isolated) window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow,
-        data: {type: "editor-frame-snapshot", html: doc.documentElement.outerHTML}}))
+        data: frameUpdate(host, doc)}))
     }
     if(isolated) {
       host.editorOpaque = true
       vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
-      vi.spyOn(host, "requestFrameControl").mockImplementation(async () => ({html: doc.documentElement.outerHTML}))
+      vi.spyOn(host, "requestFrameControl").mockImplementation(async () => {
+        window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow, data: frameUpdate(host, doc)}))
+        return {html: doc.documentElement.outerHTML}
+      })
     }
     vi.spyOn(editor, "execute").mockImplementation(async action => {
       if(action.type !== "setDocumentLayout") return undefined
@@ -9221,12 +9261,15 @@ describe("DomEditor.execute()", () => {
     const doc = iframe.contentDocument!
     const snapshot = () => {
       if(isolated) window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow,
-        data: {type: "editor-frame-snapshot", html: doc.documentElement.outerHTML}}))
+        data: frameUpdate(host, doc)}))
     }
     if(isolated) {
       host.editorOpaque = true
       vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
-      vi.spyOn(host, "requestFrameControl").mockImplementation(async () => ({html: doc.documentElement.outerHTML}))
+      vi.spyOn(host, "requestFrameControl").mockImplementation(async () => {
+        window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow, data: frameUpdate(host, doc)}))
+        return {html: doc.documentElement.outerHTML}
+      })
     }
     vi.spyOn(editor, "execute").mockImplementation(async action => {
       if(action.type !== "setDocumentLayout") return undefined
@@ -9660,6 +9703,20 @@ describe("DomEditor.execute()", () => {
     ]})
   })
 
+  it("projects hotspot popups under images using their actual authored paths", async () => {
+    const {editor, iframe} = await mountEditor()
+    const body = iframe.contentDocument!.body
+    body.innerHTML = '<figure><picture><img usemap="#plan"></picture><figcaption>Plan</figcaption></figure><map name="plan"><span><!--keep--><area popovertarget="one"><area interestfor="two"><area popovertarget="one"></span></map><section><div id="one" popover><p>One</p></div><span id="two" popover>Two</span></section>'
+    const before = body.innerHTML
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree.children).toHaveLength(1)
+    expect(tree.children[0]).toMatchObject({name: "Image", path: [0], children: [
+      {name: "Popup", icon: "Popup", path: [2, 0], children: [{name: "Paragraph", path: [2, 0, 0]}]},
+      {name: "Popup", icon: "Popup", path: [2, 1], children: []},
+    ]})
+    expect(body.innerHTML).toBe(before)
+  })
+
   it("hides picture implementation images and media sources from outline data", async () => {
     const {editor, iframe} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = '<picture><source srcset="small.png"><img src="large.png"></picture><video><source src="movie.mp4"></video>'
@@ -9704,7 +9761,7 @@ describe("DomEditor.execute()", () => {
     }
     const flush = async () => {
       if(isolated) window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow,
-        data: {type: "editor-frame-snapshot", html: doc.documentElement.outerHTML}}))
+        data: frameUpdate(host, doc)}))
       await new Promise(resolve => setTimeout(resolve, 0))
       await editor.updateComplete
       await breadcrumb.updateComplete

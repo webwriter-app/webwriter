@@ -103,7 +103,7 @@ export function setPart(element: Element, part: string, enabled = true) {
 }
 
 /** Unit for caret movement and extension (see Selection.modify). */
-type Granularity = "character" | "word" | "line"
+type Granularity = "character" | "word" | "line" | "lineboundary" | "paragraphboundary"
 /** Direction for caret movement and extension (see Selection.modify). */
 type Direction = "left" | "right" | "forward" | "backward"
 

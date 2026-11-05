@@ -30,6 +30,7 @@ import {checkHeadingClipboard} from "./heading-clipboard"
 import {checkParagraphClipboard} from "./paragraph-clipboard"
 import {checkFormulaPaste} from "./formula-paste"
 import {checkListDeletion} from "./list-deletion"
+import {checkLineDeletion} from "./line-deletion"
 import {checkListEditing} from "./list-editing"
 import {checkSoftLineBreak} from "./soft-line-break"
 import {checkParagraphStylePresets} from "./paragraph-style-presets"
@@ -144,6 +145,7 @@ await check("table pictures keep their size in editing and preview", async () =>
 })
 
 await check("converted list items support repeated Backspace without clicking", checkListDeletion)
+await check("Command deletion stops at visual and hard line boundaries", checkLineDeletion)
 await check("interrupted live sessions recover committed data locally", checkLiveSessionRecovery)
 await check("heading clipboard preserves gap headings and joins existing text", checkHeadingClipboard)
 await check("paragraph clipboard preserves separate paragraphs at a text caret", checkParagraphClipboard)
@@ -2998,6 +3000,53 @@ await check("crop preview reveals the source and restores content outside the fr
   finally { picture.remove(); editor.features.selection.processSelection() }
 })
 
+await check("cropped images fit styled frames in editing and export", async () => {
+  const frame = document.createElement("iframe"), saved = document.createElement("iframe")
+  frame.style.cssText = saved.style.cssText = "width:700px;height:450px;max-width:none"
+  saved.setAttribute("sandbox", "allow-same-origin")
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+  nativeRootEditor.addAppendix(frame)
+  try {
+    for(let attempt = 0; !frame.contentWindow?.editor && attempt < 200; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    const editor = frame.contentWindow?.editor, doc = frame.contentDocument!
+    assert(editor, `crop frame fixture did not initialize: ${frame.contentWindow?.editorError}`)
+    const fits = (doc: Document, context: string) => {
+      const image = doc.querySelector("img")!.getBoundingClientRect()
+      for(const container of doc.querySelectorAll("body > :is(picture, figure)")) {
+        const box = container.getBoundingClientRect(), style = doc.defaultView!.getComputedStyle(container)
+        assert(image.left >= box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft) - 1
+          && image.right <= box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight) + 1
+          && image.top >= box.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop) - 1
+          && image.bottom <= box.bottom - parseFloat(style.borderBottomWidth) - parseFloat(style.paddingBottom) + 1,
+        `${context}: cropped image overflows ${container.localName}: ${JSON.stringify({image: image.toJSON(), frame: box.toJSON(), display: style.display, padding: style.padding})}`)
+      }
+    }
+    const src = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="360" height="200"><rect width="360" height="200" fill="purple"/><circle cx="180" cy="100" r="70" fill="gold"/></svg>')}`
+    for(const captioned of [false, true]) for(const styleFirst of [true, false]) {
+      const picture = `<picture><source srcset="${src}"><!--keep--><img src="${src}" style="width:360px;height:200px"></picture>`
+      doc.body.innerHTML = captioned ? `<figure>${picture}<figcaption>Caption</figcaption></figure>` : picture
+      await doc.querySelector("img")!.decode()
+      const container = doc.body.firstElementChild! as HTMLElement
+      const decorate = () => editor!.features.manipulation.setElementStyles(container, {"border-width": "1px", "border-style": "solid", padding: "8px", "background-color": "#deebf7"})
+      if(styleFirst) decorate()
+      editor!.features.selection.captureElement(container)
+      assert(editor!.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(15% 20% 25% 10%)"}), "crop command failed")
+      if(!styleFirst) decorate()
+      await layoutFrame()
+      fits(doc, `editing (captioned=${captioned}, styleFirst=${styleFirst})`)
+      const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once: true}))
+      saved.srcdoc = await editor!.serializeHTML()
+      nativeRootEditor.addAppendix(saved)
+      await loaded
+      await saved.contentDocument!.querySelector("img")!.decode()
+      fits(saved.contentDocument!, `export (captioned=${captioned}, styleFirst=${styleFirst})`)
+    }
+  }
+  finally {
+    frame.contentWindow?.editor?.destroy(); frame.remove(); saved.remove()
+  }
+})
+
 await check("video crop controls remain available after repeated crops", async () => {
   const video = document.createElement("video")
   video.controls = true
@@ -4345,7 +4394,70 @@ await check("typed formula brackets stretch to their own content and stay paired
     }
     assert(first.firstElementChild!.getBoundingClientRect().height > second.firstElementChild!.getBoundingClientRect().height + 4,
       "shorter bracket group stretched to the neighboring nested fraction")
+
+    math.innerHTML = "<mrow></mrow>"
+    $.move(math.firstElementChild!, 0)
+    type("{}")
+    const end = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!.getBoundingClientRect().left
+    edit("move:left")
+    assert($.focus?.textContent === "{" && $.focusOffset === 1, "first Left did not enter the bracket pair (#407)")
+    const inside = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!.getBoundingClientRect().left
+    assert(end - inside > 2, "first Left did not visibly move the bracket caret (#407)")
+
+    for(const internalEnd of [false, true]) {
+      math.innerHTML = "<mrow></mrow>"
+      $.move(math.firstElementChild!, 0)
+      type("(1/2")
+      edit("move:right")
+      type("+x)")
+      const group = math.firstElementChild!.firstElementChild!
+      if(internalEnd) $.move(group.lastChild!.firstChild!, 1)
+      type("^2")
+      await layoutFrame()
+      assert(math.querySelector("msup")!.firstElementChild!.contains(group), "power took only the closing bracket as its base (#409)")
+      const open = group.firstElementChild!.getBoundingClientRect(), close = group.lastElementChild!.getBoundingClientRect()
+      assert(Math.abs(open.height - close.height) < 1 && Math.abs(open.top - close.top) < 1, "power broke bracket sizing (#409)")
+    }
+
+    math.innerHTML = "<mrow></mrow>"
+    $.move(math.firstElementChild!, 0)
+    type("(1)+(1/2")
+    edit("move:right")
+    type(")")
+    const groups = math.firstElementChild!.children
+    const left = groups[0], right = groups[2]
+    $.move(left.lastChild!.firstChild!, 1)
+    edit("delete:backward")
+    $.move(right.firstChild!.firstChild!, 0)
+    edit("delete:forward")
+    await layoutFrame()
+    const repaired = math.firstElementChild!.firstElementChild!
+    assert(repaired.textContent === "(1+12)", "surviving brackets were not re-paired (#410)")
+    const open = repaired.firstElementChild!.getBoundingClientRect(), close = repaired.lastElementChild!.getBoundingClientRect()
+    assert(Math.abs(open.height - close.height) < 1 && Math.abs(open.top - close.top) < 1, "re-paired brackets do not size together (#410)")
+    assert(open.height > parseFloat(getComputedStyle(math).fontSize), "re-paired opening bracket did not stretch to the fraction (#410)")
     assert(!editor.toHTML(true).includes("◆"), "formula markers leaked into serialized content")
+
+    math.innerHTML = "<mrow></mrow>"
+    const caretRow = math.firstElementChild!
+    $.move(caretRow, 0)
+    type("(1)")
+    const opening = caretRow.querySelector("mo")!, number = caretRow.querySelector("mn")!
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
+    assert(math.textContent === "(1", "Backspace at the fence end selected the whole pair instead of deleting its close")
+    assert(document.getSelection()?.isCollapsed, "Backspace at the fence end left a range selection")
+    assert(caretRow.contains(opening) && caretRow.contains(number), "Backspace rebuilt the surviving opening token or number")
+
+    math.innerHTML = "<mrow></mrow>"
+    const leadingRow = math.firstElementChild!
+    $.move(leadingRow, 0)
+    type("(1)")
+    const closing = leadingRow.querySelector("mo:last-child")!, leadingNumber = leadingRow.querySelector("mn")!
+    edit("move:start")
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Delete", bubbles: true, cancelable: true}))
+    assert(math.textContent === "1)", "Delete at the fence start did not delete only its opening token")
+    assert(document.getSelection()?.isCollapsed, "Delete at the fence start left a range selection")
+    assert(leadingRow.contains(closing) && leadingRow.contains(leadingNumber), "Delete rebuilt the surviving number or closing token")
   }
   finally { paragraph.remove() }
 })
@@ -6765,8 +6877,8 @@ await check("New discards the previous canvas iframe and its document state", as
       assert(freshFrame.contentWindow !== previousWindow, "New retained the previous window identity")
       host.handleEditorMessage(new MessageEvent("message", {
         source: previousWindow, origin: previousOrigin,
-        data: {type: "editor-frame-snapshot", bridgeNonce: host.bridgeNonce, treeChanged: true,
-          html: '<html><body class="ww-canvas"><div><div>Old delayed content</div></div></body></html>'},
+        data: {type: "editor-frame-update", bridgeNonce: host.bridgeNonce, replicaId: "discarded-frame",
+          sequence: 1, reset: true, update: new Uint8Array([0, 0])},
       }))
       await layoutFrame()
       const source = await app!.execute({type: "serializeDocument"}) as string
@@ -7962,6 +8074,61 @@ await check("a clean canvas retains its initial item when moving and typing with
   finally { canvasEditor?.destroy(); frame.remove() }
 })
 
+await check("image source replacement preserves relative hotspots and undo", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:620px;max-width:none"
+  frame.srcdoc = '<!doctype html><body><picture><img src="/tests/fixtures/image-map.svg" width="360" usemap="#plan"></picture><map name="plan"><span><!--keep--><area shape="rect" coords="180,84,540,336" href="#details"></span><area shape="circle" coords="360,210,40" popovertarget="details"></map><div id="details" popover>Details</div><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `image replacement fixture did not initialize: ${view.editorError ?? "loading"}`)
+    const editor = view.editor!, doc = frame.contentDocument!, image = doc.querySelector("img")!, map = doc.querySelector("map")!
+    await image.decode()
+    image.loading = "lazy"
+    const replacement = '<svg xmlns="http://www.w3.org/2000/svg" width="180" height="240"><rect width="180" height="240" fill="#dbeafe"/></svg>'
+    const source = `data:image/svg+xml,${encodeURIComponent(replacement)}`
+    const waitForSource = async (expected: string | null) => {
+      for(let attempt = 0; image.getAttribute("src") === expected && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(image.getAttribute("src") !== expected, "replacement did not finish decoding")
+      await image.decode()
+      await layoutFrame()
+    }
+    for(const mode of ["url", "file"]) {
+      editor.features.selection.captureElement(image.closest("picture")!)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const before = editor.toHTML(true), oldSource = image.getAttribute("src")
+      if(mode === "url") editor.features.media.actions.setMediaAttribute({type:"setMediaAttribute", name:"src", value:source})
+      else editor.features.media.actions.setMediaFile({type:"setMediaFile", file:new view.File([replacement], "replacement.svg", {type:"image/svg+xml"})})
+      await waitForSource(oldSource)
+      assert(image.naturalWidth === 180 && image.naturalHeight === 240, "replacement intrinsic size is wrong")
+      assert(map.querySelector("area")!.coords === "45,48,135,192", "rectangle coordinates did not scale on both axes")
+      assert(map.querySelector('area[shape="circle"]')!.getAttribute("coords") === "90,120,10", "circle geometry did not scale")
+      const root = editor.features.media.imageMapOverlay.root
+      const box = image.getBoundingClientRect(), hotspot = root.querySelector("rect.hotspot")!.getBoundingClientRect()
+      assert(Math.abs((hotspot.left - box.left) / box.width - .25) < .01
+        && Math.abs((hotspot.top - box.top) / box.height - .2) < .01
+        && Math.abs(hotspot.width / box.width - .5) < .01
+        && Math.abs(hotspot.height / box.height - .6) < .01, "rendered hotspot lost its relative bounds")
+      const circle = root.querySelector("circle.hotspot")!.getBoundingClientRect()
+      assert(circle.width > 0 && Math.abs(circle.width - circle.height) < 1, "replacement made a circular hotspot elliptical")
+      assert(map.querySelector("span")!.firstChild!.nodeType === Node.COMMENT_NODE, "replacement rebuilt the map")
+      const after = editor.toHTML(true)
+      editor.doc.undo()
+      await image.decode()
+      assert(editor.toHTML(true) === before, "one undo did not restore the source and hotspots together")
+      editor.doc.redo()
+      await image.decode()
+      assert(editor.toHTML(true) === after, "redo did not restore the replacement and hotspots")
+      editor.doc.undo()
+      await image.decode()
+      await layoutFrame()
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("canvas circle hotspots stay round while drawing and after image resizing", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px;height:450px;max-width:none"
@@ -8003,6 +8170,52 @@ await check("canvas circle hotspots stay round while drawing and after image res
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("hotspot URL fields retain native caret and selection visibility", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:528px;height:385px;max-width:none"
+  frame.srcdoc = '<!doctype html><body><img src="/tests/fixtures/image-map.svg" width="360" usemap="#plan"><map name="plan"><area shape="rect" coords="180,84,540,336" href="https://example.org/library"></map><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `hotspot URL fixture did not initialize: ${view.editorError ?? "loading"}`)
+    const editor = view.editor!, doc = frame.contentDocument!, image = doc.querySelector("img")!
+    await image.decode()
+    editor.features.selection.captureElement(image)
+    await layoutFrame()
+    const root = editor.features.media.imageMapOverlay.root
+    root.querySelector<HTMLButtonElement>(".link")!.click()
+    const input = root.querySelector<HTMLInputElement>("input")!
+    const before = editor.toHTML(true)
+    for(const width of [528, 360]) {
+      frame.style.width = `${width}px`
+      input.focus()
+      input.select()
+      await layoutFrame()
+      assert(root.activeElement === input && editor.features.selection.captureSelectedElement === image, "URL editing lost focus or image capture")
+      const style = view.getComputedStyle(input), selection = view.getComputedStyle(input, "::selection")
+      assert(style.caretColor !== "transparent" && style.caretColor !== "rgba(0, 0, 0, 0)", "hotspot URL caret is transparent")
+      assert(style.userSelect === "text" && style.getPropertyValue("-webkit-user-select") === "text", "hotspot URL text is not selectable")
+      assert(selection.backgroundColor === "rgb(0, 120, 215)" && selection.color === "rgb(255, 255, 255)", "hotspot URL selection has no contrasting highlight")
+      const box = input.getBoundingClientRect()
+      assert(box.width > 0 && box.left >= 0 && box.right <= view.innerWidth && box.bottom <= view.innerHeight, `hotspot URL field overflows at ${width}px`)
+      assert(editor.toHTML(true) === before, "selecting the hotspot URL changed authored HTML")
+    }
+    assert(doc.execCommand("insertText", false, "https://example.org/edited"), "native URL text replacement failed")
+    assert(input.value === "https://example.org/edited", "native URL selection did not replace the selected text")
+    input.dispatchEvent(new view.KeyboardEvent("keydown", {key:"Enter", bubbles:true, composed:true, cancelable:true}))
+    assert(doc.querySelector("area")!.getAttribute("href") === input.value, "edited hotspot URL was not saved")
+    assert(root.querySelector<HTMLFormElement>("form")!.hidden, "saving left the hotspot URL editor open")
+    assert(!editor.toHTML(true).includes("url-editor"), "hotspot URL controls leaked into authored HTML")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("hotspot popups share popup mark styling and expose independent controls", async () => {
+  const {checkHotspotPopups} = await import("./hotspot-popups")
+  await checkHotspotPopups(element => nativeRootEditor.addAppendix(element))
+})
+
 await check("hotspot popovers use grey editing placeholders and compact controls", async () => {
   const {DomEditorToolbox} = await import("../src/components/toolbox")
   const frame = document.createElement("iframe")
@@ -8023,6 +8236,20 @@ await check("hotspot popovers use grey editing placeholders and compact controls
     editor.features.media.actions.addImageMapPopover({type:"addImageMapPopover", path:area.path, expected:area.attributes})
     await layoutFrame()
     const paragraph = doc.querySelector("[popover] p")!
+    const popover = paragraph.parentElement!
+    for(const width of [800, 360]) {
+      frame.style.width = `${width}px`
+      for(const html of ["", "<br>"]) {
+        paragraph.innerHTML = html
+        await layoutFrame()
+        const hint = view.getComputedStyle(paragraph, "::before")
+        assert(parseFloat(hint.width) > 0, `hotspot placeholder has no intrinsic width (${width}px, ${html || "empty"})`)
+        assert(paragraph.scrollWidth <= paragraph.clientWidth + 1, `hotspot placeholder overflows its paragraph (${width}px, ${html || "empty"})`)
+        assert(popover.scrollWidth <= popover.clientWidth + 1, `hotspot placeholder overflows its popover (${width}px, ${html || "empty"})`)
+        const box = popover.getBoundingClientRect()
+        assert(box.width > 0 && box.left >= 0 && box.right <= view.innerWidth, `hotspot placeholder is clipped by its viewport (${width}px, ${html || "empty"})`)
+      }
+    }
     const hint = view.getComputedStyle(paragraph, "::before")
     assert(hint.content === '"Hotspot content"' && hint.visibility === "visible" && hint.color === "rgb(169, 169, 169)", "empty hotspot placeholder is not visible grey text")
     assert(paragraph.textContent === "" && !editor.toHTML(true).includes("Hotspot content"), "placeholder text leaked into authored HTML")
@@ -11162,7 +11389,7 @@ await check("bottom layout cards retain native editing focus after rendering", a
     for(let attempt = 0; attempt < 200; attempt++) {
       app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
       editingFrame = app?.shadowRoot?.querySelector<HTMLIFrameElement>(".editor-frame") ?? null
-      if(editingFrame && (app as any)?.editorWindow && (app as any)?.editorDocument) break
+      if(editingFrame && (app as any)?.editorWindow && ((app as any)?.documentReplica?.body ?? (app as any)?.editorDocument?.body)) break
       await new Promise(resolve => setTimeout(resolve, 25))
     }
     assert(app && (app as any).editorWindow, `app editor did not initialize: app=${!!app} frame=${!!editingFrame} window=${!!(app as any)?.editorWindow} opaque=${(app as any)?.editorOpaque} error=${(app as any)?.packageError}`)

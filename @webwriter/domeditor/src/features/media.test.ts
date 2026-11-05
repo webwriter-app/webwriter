@@ -574,6 +574,37 @@ describe("media editing", () => {
     expect(editor.toHTML(true)).toBe(cleared)
   })
 
+  it.each([false, true])("keeps crop frame dimensions inside borders and padding (captioned: %s)", captioned => {
+    const pictureHTML = '<picture style="width: 360px; height: 200px; box-sizing: border-box"><source srcset="photo.webp"><!--keep--><img src="photo.png" style="width: 360px; height: 200px"></picture>'
+    document.body.innerHTML = captioned
+      ? `<figure style="width: 360px; box-sizing: border-box">${pictureHTML}<figcaption>Caption</figcaption></figure>`
+      : pictureHTML
+    const frame = document.body.firstElementChild! as HTMLElement
+    const picture = document.querySelector("picture")!
+    const image = document.querySelector("img")!
+    $.selectElement(frame)
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(15% 20% 25% 10%)"})
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const cropped = editor.toHTML(true)
+    // The gallery preset adds these decorations after the crop is committed.
+    editor.features.manipulation.setElementStyles(frame, {"border-width": "1px", "border-style": "solid", padding: "8px"})
+    expect(getComputedStyle(frame).boxSizing).toBe("content-box")
+    expect(getComputedStyle(picture).boxSizing).toBe("content-box")
+    expect(parseFloat(frame.style.maxWidth)).toBeCloseTo(252)
+    expect(image.style.width).toBe("252px")
+    expect(image.style.height).toBe("120px")
+    expect(picture.querySelector("source")?.getAttribute("srcset")).toBe("photo.webp")
+    expect(picture.childNodes[1].nodeType).toBe(Node.COMMENT_NODE)
+    const styled = editor.toHTML(true)
+    expect(styled).not.toContain("◆")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(cropped)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(styled)
+  })
+
   it("sizes a standalone media crop without changing authored margins", () => {
     document.body.innerHTML = '<video src="movie.mp4" style="width: 360px; height: 200px; margin-top: 12px !important; margin-left: 8px"></video>'
     editor.doc.syncFromDOM()
@@ -2046,6 +2077,192 @@ describe("media editing", () => {
     expect(editor.toHTML(true)).not.toContain("image-map-overlay")
   })
 
+  describe("image source replacement with hotspots", () => {
+    const fixture = () => {
+      document.body.innerHTML = '<picture><img src="old.png" usemap="#plan" width="400" height="200"></picture><map name="plan" data-origin="imported"><span><!--keep--><area id="rectangle" coords="40,20,360,180" href="#details"></span><area shape="circle" coords="200,100,30" popovertarget="details"><area shape="poly" coords="0,0,400,0,200,200"><area shape="default"><area shape="rect" coords="invalid"><area shape="custom" coords="1,2,3,4"></map><div id="details" popover>Details</div><p>After</p>'
+      const image = document.querySelector("img")!, map = document.querySelector("map")!
+      Object.defineProperties(image, {
+        naturalWidth: {configurable: true, value: 400},
+        naturalHeight: {configurable: true, value: 200},
+      })
+      $.selectElement(image.closest("picture")!)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      return {image, map}
+    }
+    const decodeReplacement = () => vi.spyOn(HTMLImageElement.prototype, "decode").mockImplementation(function(this: HTMLImageElement) {
+      Object.defineProperties(this, {
+        naturalWidth: {configurable: true, value: 200},
+        naturalHeight: {configurable: true, value: 400},
+      })
+      return Promise.resolve()
+    })
+    const replace = () => editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "new.png"})
+
+    it.each(["url", "file", "srcset"] as const)("preserves relative geometry through %s replacement, serialization, undo and redo", async mode => {
+      const {image, map} = fixture(), wrapper = map.querySelector("span")!
+      const before = editor.toHTML(true)
+      const decode = decodeReplacement()
+      try {
+        if(mode === "file") expect(editor.features.media.actions.setMediaFile({type: "setMediaFile", file: new File(["image"], "new.png", {type: "image/png"})})).toBe(true)
+        else if(mode === "srcset") editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "srcset", value: "new.png 1x"})
+        else replace()
+        // Loading does not split the source and coordinates into separate edits.
+        expect(image).toHaveAttribute("src", "old.png")
+        await Promise.resolve()
+        expect(Array.from(map.querySelectorAll("area"), area => area.getAttribute("coords")))
+          .toEqual(["20,40,180,360", "100,200,15", "0,0,200,0,100,400", null, "invalid", "1,2,3,4"])
+        expect(map.querySelector("span")).toBe(wrapper)
+        expect(wrapper.firstChild).toBeInstanceOf(Comment)
+        expect(map).toHaveAttribute("data-origin", "imported")
+        expect(map.querySelector("#rectangle")).toHaveAttribute("href", "#details")
+        expect(map.querySelector("area[popovertarget]")).toHaveAttribute("popovertarget", "details")
+        const after = editor.toHTML(true)
+        expect(after).not.toContain("◆")
+        expect(editor.doc.body.toString()).toContain('coords="20,40,180,360"')
+        editor.doc.undo()
+        expect(editor.toHTML(true)).toBe(before)
+        editor.doc.redo()
+        expect(editor.toHTML(true)).toBe(after)
+        await Promise.resolve()
+        expect(decode).toHaveBeenCalledTimes(1)
+      }
+      finally { decode.mockRestore() }
+    })
+
+    it("isolates a shared map while preserving its structure, references and other images", async () => {
+      const {image, map} = fixture()
+      const other = image.cloneNode(false) as HTMLImageElement
+      document.body.append(other)
+      map.id = "original-map"
+      map.querySelector("area")!.setAttribute("href", "#rectangle")
+      map.querySelector("area")!.className = "authored ◆test-marker"
+      const original = map.outerHTML
+      editor.doc.syncFromDOM()
+      const decode = decodeReplacement()
+      try {
+        replace()
+        await Promise.resolve()
+        expect(other).toHaveAttribute("usemap", "#plan")
+        expect(map.outerHTML).toBe(original)
+        const copy = document.querySelector<HTMLMapElement>('map[name="image-map"]')!
+        expect(image).toHaveAttribute("usemap", "#image-map")
+        expect(copy).not.toBeNull()
+        expect(copy.id).not.toBe(map.id)
+        expect(copy.querySelector("span")!.firstChild).toBeInstanceOf(Comment)
+        const rectangle = copy.querySelector("area")!
+        expect(rectangle.id).not.toBe("rectangle")
+        expect(rectangle).toHaveAttribute("href", `#${rectangle.id}`)
+        expect(rectangle).toHaveAttribute("coords", "20,40,180,360")
+        expect(rectangle).toHaveAttribute("class", "authored")
+        expect(copy.querySelector("area[popovertarget]")).toHaveAttribute("popovertarget", "details")
+        editor.doc.undo()
+        expect(document.querySelectorAll("map")).toHaveLength(1)
+        expect(document.querySelector("img")).toHaveAttribute("usemap", "#plan")
+      }
+      finally { decode.mockRestore() }
+    })
+
+    it("uses current hotspot coordinates and keeps edits made while loading in their own undo step", async () => {
+      const {image, map} = fixture()
+      let loaded!: () => void
+      const decode = decodeReplacement().mockImplementationOnce(function(this: HTMLImageElement) {
+        Object.defineProperties(this, {naturalWidth: {value: 200}, naturalHeight: {value: 400}})
+        return new Promise(resolve => { loaded = resolve })
+      })
+      try {
+        replace()
+        map.querySelector("area")!.setAttribute("coords", "20,10,100,50")
+        const paragraph = document.querySelector("p")!
+        paragraph.textContent = "Changed while loading"
+        $.move(paragraph.firstChild!, 3)
+        editor.doc.syncFromDOM()
+        loaded()
+        await Promise.resolve()
+        expect(image).toHaveAttribute("src", "new.png")
+        expect(map.querySelector("area")).toHaveAttribute("coords", "10,20,50,100")
+        expect(document.getSelection()!.anchorNode).toBe(paragraph.firstChild)
+        editor.doc.undo()
+        expect(document.querySelector("img")).toHaveAttribute("src", "old.png")
+        expect(document.querySelector("area")).toHaveAttribute("coords", "20,10,100,50")
+        expect(document.querySelector("p")).toHaveTextContent("Changed while loading")
+      }
+      finally { decode.mockRestore() }
+    })
+
+    it("leaves a shared map with widget content intact rather than cloning a widget", async () => {
+      const {image, map} = fixture()
+      document.body.append(image.cloneNode(false))
+      const widget = document.createElement("custom-widget")
+      widget.innerHTML = '<area shape="rect" coords="1,2,3,4">'
+      map.append(widget)
+      const before = editor.toHTML(true)
+      const decode = decodeReplacement()
+      try {
+        replace()
+        await Promise.resolve()
+        expect(editor.toHTML(true)).toBe(before)
+        expect(document.querySelectorAll("custom-widget")).toHaveLength(1)
+        expect(map.lastChild).toBe(widget)
+      }
+      finally { decode.mockRestore() }
+    })
+
+    it.each(["remove", "replace", "unlink", "widget", "disable", "newer source", "remote source"])("discards a pending replacement after %s", async mutation => {
+      const {image, map} = fixture()
+      let loaded!: () => void
+      const decode = decodeReplacement().mockReturnValueOnce(new Promise(resolve => { loaded = resolve }))
+      const remote = new Y.Doc()
+      try {
+        replace()
+        if(mutation === "remove") image.remove()
+        else if(mutation === "replace") image.replaceWith(image.cloneNode(false))
+        else if(mutation === "unlink") image.removeAttribute("usemap")
+        else if(mutation === "widget") {
+          const widget = document.createElement("custom-widget")
+          document.body.append(widget)
+          widget.append(image)
+        }
+        else if(mutation === "disable") { editor.features.media.disable(); editor.features.media.enable() }
+        else if(mutation === "newer source") image.setAttribute("src", "newer.png")
+        else {
+          Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc), "initial-sync")
+          const picture = sharedDOMBody(remote).get(0) as Y.XmlElement
+          const sharedImage = picture.get(0) as Y.XmlElement
+          sharedImage.setAttribute("src", "remote.png")
+          Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote")
+        }
+        loaded()
+        await Promise.resolve()
+        expect(image.getAttribute("src")).not.toBe("new.png")
+        expect(map.querySelector("area")).toHaveAttribute("coords", "40,20,360,180")
+      }
+      finally { decode.mockRestore(); remote.destroy() }
+    })
+
+    it("commits only the newest pending replacement and leaves coordinates alone after a failed load", async () => {
+      const {image, map} = fixture()
+      let firstLoaded!: () => void
+      const decode = decodeReplacement().mockReturnValueOnce(new Promise(resolve => { firstLoaded = resolve }))
+      try {
+        replace()
+        editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "latest.png"})
+        await Promise.resolve()
+        expect(image).toHaveAttribute("src", "latest.png")
+        firstLoaded()
+        await Promise.resolve()
+        expect(image).toHaveAttribute("src", "latest.png")
+        expect(map.querySelector("area")).toHaveAttribute("coords", "20,40,180,360")
+        decode.mockRejectedValueOnce(new Error("Invalid image"))
+        editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "broken.png"})
+        await Promise.resolve()
+        expect(image).toHaveAttribute("src", "broken.png")
+        expect(map.querySelector("area")).toHaveAttribute("coords", "20,40,180,360")
+      }
+      finally { decode.mockRestore() }
+    })
+  })
+
   it("reports image sources and refuses to draw on an empty image", () => {
     document.body.innerHTML = '<picture><source srcset="small.png"><img></picture>'
     const picture = document.querySelector("picture")!
@@ -2172,13 +2389,16 @@ describe("media editing", () => {
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
-  it("uses an editing placeholder for empty hotspot content and cleans up its marker", () => {
+  it.each(["", "<br>"])("uses an editing placeholder for empty hotspot content and cleans up its marker (%s)", html => {
     document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,40,40"></map>'
     editor.features.selection.captureElement(document.querySelector("img")!)
     const area = editor.features.media.getState()!.imageMap!.areas[0]
     editor.features.media.actions.addImageMapPopover({type:"addImageMapPopover", path:area.path, expected:area.attributes})
     const paragraph = document.querySelector("[popover] p")!
+    const popup = paragraph.parentElement!
+    paragraph.innerHTML = html
     editor.features.media["refresh"]()
+    expect(popup).toHaveClass("◆hotspot-popup")
     expect(paragraph.textContent).toBe("")
     expect(paragraph).toHaveClass("◆hotspot-placeholder")
     expect(editor.toHTML(true)).not.toMatch(/Hotspot content|Popover content|◆hotspot-placeholder/)
@@ -2192,6 +2412,7 @@ describe("media editing", () => {
     expect(paragraph).toHaveClass("◆hotspot-placeholder")
     editor.features.media.disable()
     expect(paragraph).not.toHaveClass("◆hotspot-placeholder")
+    expect(popup).not.toHaveClass("◆hotspot-popup")
   })
 
   it.each(["border", "background"] as const)("saves hotspot %s visibility, preserves classes, and supports undo and redo", async part => {
@@ -2264,6 +2485,12 @@ describe("media editing", () => {
     const input = control.querySelector<HTMLInputElement>("input")!
     control.querySelector<HTMLButtonElement>(".link")!.click()
     expect(control.querySelector("form")).not.toHaveAttribute("hidden")
+    expect(overlay.root.activeElement).toBe(input)
+    expect(editor.features.selection.captureSelectedElement).toBe(image)
+    const style = getComputedStyle(input)
+    expect(style.caretColor).toBe("auto")
+    expect(style.userSelect).toBe("text")
+    expect(style.getPropertyValue("-webkit-user-select")).toBe("text")
     input.value = "https://example.org/library"
     input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
     expect(control.querySelector("form")).toHaveAttribute("hidden")
@@ -2286,11 +2513,11 @@ describe("media editing", () => {
     expect(editor.toHTML(true)).not.toMatch(/url-editor|action-buttons|Hotspot URL/)
   })
 
-  it("positions popovers beside hotspots, flips at viewport edges, and cleans up presentation styles", () => {
+  it("positions popovers below hotspots with shared popup styling and cleans up presentation styles", () => {
     document.body.innerHTML = '<img src="plan.png" width="100" height="100" usemap="#plan"><map name="plan"><area shape="rect" coords="60,20,80,40" popovertarget="details"></map><div id="details" popover="auto"><p>Content</p></div>'
     const image = document.querySelector<HTMLImageElement>("img")!, area = document.querySelector("area")!, content = document.querySelector<HTMLElement>("#details")!
-    let imageLeft = 10
-    vi.spyOn(image, "getBoundingClientRect").mockImplementation(() => new DOMRect(imageLeft, 10, 100, 100))
+    let imageLeft = 10, imageTop = 10
+    vi.spyOn(image, "getBoundingClientRect").mockImplementation(() => new DOMRect(imageLeft, imageTop, 100, 100))
     vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 120, 80))
     let opened = false
     content.showPopover = () => { opened = true }
@@ -2304,15 +2531,22 @@ describe("media editing", () => {
     expect(controller.open(area, image)).toBe(true)
     const sheet = document.adoptedStyleSheets.at(-1)!
     const style = () => (sheet.cssRules[0] as CSSStyleRule).style
-    expect(style().left).toBe("98px")
-    expect(style().top).toBe("8px")
-    expect(style().borderRadius).toBe("0.5rem")
+    expect(style().left).toBe("70px")
+    expect(style().top).toBe("58px")
+    expect(style().borderRadius).toBe("")
+    expect(style().padding).toBe("")
+    expect(content).toHaveClass("◆hotspot-popup")
     imageLeft = window.innerWidth - 100
     controller.refresh()
-    expect(parseFloat(style().left)).toBe(window.innerWidth - 100 + 60 - 8 - 120)
-    expect(content.outerHTML).toBe(authored)
+    expect(parseFloat(style().left)).toBe(window.innerWidth - 8 - 120)
+    imageTop = window.innerHeight - 100
+    controller.refresh()
+    expect(parseFloat(style().top)).toBe(imageTop + 20 - 8 - 80)
+    expect((sheet.cssRules[1] as CSSStyleRule).style.transform).toBe("rotate(225deg)")
+    expect(editor.toHTML(true)).not.toContain("◆hotspot-popup")
     expect(controller.open(area, image, true)).toBe(true)
     expect(opened).toBe(false)
+    expect(content.outerHTML).toBe(authored)
     controller.dispose()
     expect(document.adoptedStyleSheets).toEqual(original)
   })

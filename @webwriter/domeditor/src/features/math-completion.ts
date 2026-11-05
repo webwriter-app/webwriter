@@ -83,7 +83,11 @@ export class MathCompletionInput {
   beforeInput(text: string): boolean {
     this.suppressed = false
     const pending = this.pending()
-    if(!pending || pending.command) return false
+    // A keyboard space separates words even when there is no unfinished word
+    // at the caret. Otherwise the browser inserts it as MathML <mtext> and
+    // subsequent typing can no longer participate in completion.
+    if(!pending) return text === " "
+    if(pending.command) return false
     const exact = [...pending.text].length > 1 ? exactMathCompletion(pending.text) : undefined
     if(letters.test(text)) {
       if(exact && !continuesMathCompletion(pending.text + text)) this.accept(exact, pending)

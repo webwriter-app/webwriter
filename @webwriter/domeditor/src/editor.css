@@ -1425,7 +1425,7 @@ body.◆popup-editing:not(.◆editing-locked) .ww-popup > [popover].◆popup-vis
   z-index: 10;
 }
 
-body.◆popup-editing:not(.◆editing-locked) .ww-popup-content[popover].◆popup-visible:not(:popover-open) {
+body.◆popup-editing:not(.◆editing-locked) :is(.ww-popup-content, .◆hotspot-popup)[popover].◆popup-visible:not(:popover-open) {
   display: flex !important;
   flex-direction: column;
   align-items: flex-start;
@@ -1471,6 +1471,7 @@ summary::after {
   content: "Hotspot content";
   visibility: visible;
   display: inline-block;
+  width: auto;
   color: darkgray;
   pointer-events: none;
   user-select: none;
@@ -1617,15 +1618,15 @@ body.◆empty-selected.◆style-target-hovered {
 
 /* Keep the speech-bubble pointer anchored while editor hover and selection
  * overlays also use the popup content as their anchor. */
-body :is(.ww-popup > [popover], .ww-popup-content[popover]):is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered) {
+body :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover]):is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered) {
   anchor-name: --ww-popup-bubble, --hover-anchor;
 }
 
-body :is(.ww-popup > [popover], .ww-popup-content[popover]).◆element-selected {
+body :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover]).◆element-selected {
   anchor-name: --ww-popup-bubble, --selection-anchor;
 }
 
-body :is(.ww-popup > [popover], .ww-popup-content[popover]).◆element-selected:is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered) {
+body :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover]).◆element-selected:is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered) {
   anchor-name: --ww-popup-bubble, --selection-anchor, --hover-anchor;
 }
 

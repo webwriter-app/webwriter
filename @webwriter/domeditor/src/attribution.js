@@ -223,6 +223,9 @@ export function createAttributionController(doc, options = {}) {
     const current = zoomOnly ? null : new Set()
     const footnoteList = !zoomOnly && !root.classList.contains("non-document-layout") ? doc.createElement("ol") : null
     const layouts = []
+    const targets = []
+    // Read authored boxes and styles together. Updating one anchored label
+    // invalidates style/layout for the other labels on a complex canvas.
     for(const element of zoomBoxes?.keys() ?? credited) {
       const data = values(element)
       if(!zoomOnly) {
@@ -230,7 +233,27 @@ export function createAttributionController(doc, options = {}) {
         if(element.hasAttribute("hidden") || (element.checkVisibility ? !element.checkVisibility({visibilityProperty: true}) : view.getComputedStyle(element).display === "none")) continue
         current.add(element)
       }
+      const style = zoomOnly ? null : view.getComputedStyle(element)
+      const float = style?.float || "none"
+      let inFloat = float !== "none"
+      if(singleRightGutter && !inFloat) {
+        for(let parent = element.parentElement; parent && parent !== body; parent = parent.parentElement) {
+          const side = view.getComputedStyle(parent).float
+          if(side && side !== "none") { inFloat = true; break }
+        }
+      }
+      targets.push({element, data, box: zoomBoxes?.get(element) ?? labelBounds(element), float,
+        left: float === "left" || singleRightGutter && !inFloat, anchor: style?.anchorName})
+    }
+    for(const {element, data, box, float, left, anchor} of targets) {
       let record = notes.get(element)
+      const signature = JSON.stringify([data, editable()])
+      // Spatial labels follow their anchors without reflow when only an
+      // item's position changes. Still inspect every live box and metadata so
+      // direct, widget and remote edits can resize or replace the labels.
+      if(!zoomOnly && root.classList.contains("non-document-layout") && float === "none" && record?.float === "none"
+        && record.signature === signature && Math.abs(record.width - box.width) < 1e-6 && Math.abs(record.height - box.height) < 1e-6
+        && record.left === left && element.classList.contains(record.marker)) continue
       if(!record) {
         const index = noteSequence++
         const name = `--ww-attribution-${index}`
@@ -242,7 +265,7 @@ export function createAttributionController(doc, options = {}) {
         group.append(label)
         label.className = "attribution-note"
         label.setAttribute("part", part)
-        record = {marker, name, part, label, group, signature: "", hadClass: element.hasAttribute("class"), anchor: view.getComputedStyle(element).anchorName}
+        record = {marker, name, part, label, group, signature: "", hadClass: element.hasAttribute("class"), anchor}
         notes.set(element, record)
         noteResize?.observe(element)
         bindNote(label, element)
@@ -255,22 +278,13 @@ export function createAttributionController(doc, options = {}) {
       // Follow responsive float placement, and keep column labels out of a
       // shared right gutter without flipping labels belonging to its floats.
       if(!zoomOnly) {
-        const float = view.getComputedStyle(element).float || "none"
-        let inFloat = float !== "none"
-        if(singleRightGutter && !inFloat) {
-          for(let parent = element.parentElement; parent && parent !== body; parent = parent.parentElement) {
-            const side = view.getComputedStyle(parent).float
-            if(side && side !== "none") { inFloat = true; break }
-          }
-        }
         record.float = float
-        record.left = float === "left" || singleRightGutter && !inFloat
+        record.left = left
       }
       record.label.classList.toggle("left-attribution", record.left)
       record.label.classList.remove("horizontal-attribution", "compact-attribution")
       record.label.querySelector(".attribution-summary")?.remove()
       for(const child of record.label.children) child.hidden = false
-      const signature = JSON.stringify([data, editable()])
       const label = record.label
       if(record.signature !== signature) {
         record.signature = signature
@@ -303,7 +317,6 @@ export function createAttributionController(doc, options = {}) {
       const first = label.querySelector(".attribution-text")
       const contact = label.querySelector(".attribution-contact") ?? record.contactLabel?.querySelector(".attribution-contact")
       if(contact) { contact.hidden = false; label.append(contact) }
-      const box = zoomBoxes?.get(element) ?? labelBounds(element)
       if(first) resetPart(first)
       if(contact) resetPart(contact)
       layouts.push({element, record, data, box, first, contact})

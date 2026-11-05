@@ -27,13 +27,13 @@ the browser to inspect the cards at narrow and wide container sizes.
 ## Performance checks
 
 Run `node scripts/native-browser.mjs --performance` to measure hover float scans,
-local and remote text reconciliation, frame snapshot processing, and unchanged
+local and remote text reconciliation, frame replica updates, and unchanged
 widget data. The runner uses a disposable Chrome profile and a loopback-only server.
 Each operation has three warmups and twenty timed samples at several document sizes.
 Reported medians and maxima are machine-specific development-build timings; they
 do not include end-to-end typing latency or painting. Assertions verify skipped
 style reads and parses, CSSOM float rediscovery, and the real bridge's marker-only,
-text, and structural snapshot behavior without imposing machine-specific deadlines.
+text, and structural update behavior without imposing machine-specific deadlines.
 The catalog check renders 10, 100 and 300 packages (including overflow), compares
 the former per-keyword formatter construction against the cached rendering path,
 and reports constructor/lookup counts over twenty unrelated selection updates.
@@ -43,7 +43,7 @@ These idle checks use a synthetic catalog and an isolated host with network and
 iframe startup withheld; they do not rule out loops driven by real editor events.
 
 For broader document scaling measurements and native editing with the actual
-frame snapshot bridge, run:
+Yjs document bridge, run:
 
 ```sh
 node scripts/performance-profile.mjs --production --output=.cache/performance/measurements
@@ -54,11 +54,11 @@ Omit `--production` to compare the development build. The production command
 builds the profiling fixtures in an isolated directory without replacing `dist/`. The first command
 records unprofiled medians, p95s and maxima for 100–10,000 top-level elements,
 existing-DOM hydration, batches of changed containers, selection conversion,
-host snapshots, serialization, undo/redo, idle behavior and native insertText,
+host text/style/structural updates, serialization, undo/redo, idle behavior and native insertText,
 including typing/selection in 100-row and 500-row tables with six columns.
 The live fixture is 1200×800 CSS pixels and uses the real editor and frame
 bridge with proofreading disabled and collaboration disconnected. The host
-snapshot handler is real but isolated from host UI rendering. The next-frame
+replica update handler is real but isolated from host UI rendering. The next-frame
 checkpoint is rAF followed by a timer, not an INP or physical keyboard measurement.
 
 Use `--only=live`, `--only=tables` or `--only=reconciliation` for a focused run.

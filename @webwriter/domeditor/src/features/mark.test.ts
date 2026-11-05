@@ -308,6 +308,129 @@ describe("MarkFeature DOM state", () => {
 })
 
 describe("MarkFeature toggles", () => {
+  it("clears mixed style marks even when no style value is shared by the whole selection", () => {
+    const paragraph = setContent('<p><span style="color: red">one</span><span style="color: blue; font-size: 20px">two</span></p>')
+    $.selectElement(paragraph)
+    expect(feature.getState().marks).toEqual([])
+    expect(feature.getStyleState()).toEqual({})
+
+    expect(feature.removeMarks()).toBe(true)
+
+    expect(paragraph.innerHTML).toBe("onetwo")
+    expect($.selectedElement).toBe(paragraph)
+  })
+
+  it("clears a selected mark wrapping whole blocks without rebuilding the blocks", () => {
+    const section = setContent('<section><a href="/link"><p>first</p><!--keep--><p><em>second</em></p></a><p><b>outside</b></p></section>')
+    const link = section.querySelector("a")!, paragraphs = Array.from(link.querySelectorAll("p")), comment = link.childNodes[1]
+    $.selectElement(link)
+
+    expect(feature.removeMarks()).toBe(true)
+
+    expect(section.innerHTML).toBe('<p>first</p><!--keep--><p>second</p><p><b>outside</b></p>')
+    expect(paragraphs.every(paragraph => paragraph.parentElement === section)).toBe(true)
+    expect(comment.parentElement).toBe(section)
+    expect(document.getSelection()?.toString()).toBe("firstsecond")
+  })
+
+  it("clears every selected table cell without clearing the intervening unselected cells", () => {
+    setContent('<table><tbody><tr><td><b>one</b></td><td><i>keep</i></td></tr><tr><td><span style="color: red"><u>two</u></span></td><td><s>keep too</s></td></tr></tbody></table>')
+    const cells = Array.from(document.querySelectorAll("td"))
+    editor.features.table.selectCells(cells[0], cells[2])
+
+    expect(feature.canRemoveMarks).toBe(true)
+    expect(feature.removeMarks()).toBe(true)
+
+    expect(cells.map(cell => cell.innerHTML)).toEqual(["one", "<i>keep</i>", "two", "<s>keep too</s>"])
+    expect(editor.features.table.selectedCells).toEqual([cells[0], cells[2]])
+  })
+
+  it("clears a breadcrumb-selected section instead of the previous text selection", () => {
+    const section = setContent('<section><h2><strong>Title</strong></h2><!--keep--><p><a href="/link"><em>Body</em></a></p></section><p><b>Outside</b></p>')
+    const outside = document.querySelector("body > p")!
+    selectText(outside.querySelector("b")!.firstChild as Text)
+    editor.features.selection.selectSectionElement(section)
+
+    expect(feature.canRemoveMarks).toBe(true)
+    expect(feature.removeMarks()).toBe(true)
+
+    expect(section.innerHTML).toBe('<h2 id="title">Title</h2><!--keep--><p>Body</p>')
+    expect(outside.innerHTML).toBe("<b>Outside</b>")
+    expect(editor.features.selection.selectedSectionElement).toBe(section)
+  })
+
+  it("clears all separately selected canvas items and preserves their selection", () => {
+    document.body.classList.add("ww-canvas")
+    try {
+      setContent('<p><b>one</b></p><p><i>keep</i></p><p><u>two</u></p>')
+      const paragraphs = Array.from(document.querySelectorAll("p"))
+      $.selectElements([paragraphs[0], paragraphs[2]])
+
+      expect(feature.canRemoveMarks).toBe(true)
+      expect(feature.removeMarks()).toBe(true)
+
+      expect(paragraphs.map(paragraph => paragraph.innerHTML)).toEqual(["one", "<i>keep</i>", "two"])
+      expect($.selectedElements).toEqual([paragraphs[0], paragraphs[2]])
+    }
+    finally {
+      document.body.classList.remove("ww-canvas")
+      $.clearLayoutRanges()
+    }
+  })
+
+  it("offers clearing for a nonempty selection without editable text and retires stale selections", () => {
+    const paragraph = setContent('<p><opaque-widget><b>owned</b></opaque-widget></p>')
+    $.selectElement(paragraph)
+    expect(feature.getState().canMark).toBe(false)
+    expect(feature.canRemoveMarks).toBe(true)
+    expect(feature.removeMarks()).toBe(false)
+    expect(paragraph.innerHTML).toBe('<opaque-widget><b>owned</b></opaque-widget>')
+    paragraph.remove()
+    expect(feature.canRemoveMarks).toBe(false)
+    expect(feature.removeMarks()).toBe(false)
+  })
+
+  it.each(["<img alt='keep'>", "<br>", "<opaque-widget><i>owned</i></opaque-widget>"])("clears marks around selected non-text content without replacing it: %s", html => {
+    const paragraph = setContent(`<p><b>before<i>${html}</i>after</b></p>`)
+    const node = paragraph.querySelector("i")!.firstElementChild!
+    const original = node.outerHTML
+    $.selectElement(node)
+
+    expect(feature.canRemoveMarks).toBe(true)
+    expect(feature.removeMarks()).toBe(true)
+
+    expect(node.outerHTML).toBe(original)
+    expect(node.parentElement).toBe(paragraph)
+    expect(paragraph.innerHTML).toBe(`<b>before</b>${original}<b>after</b>`)
+    expect($.selectedElement).toBe(node)
+    expect(cleanHTML()).not.toContain("◆")
+  })
+
+  it("clears marks from selected text and images across blocks as one undoable edit", () => {
+    const section = setContent('<section><p><b>before<img alt="keep"><i>one</i></b></p><!--keep--><p><span style="color: red"><u>two</u><br>after</span></p></section>')
+    const first = section.querySelector("b")!.firstChild!, last = section.querySelector("span")!.lastChild!
+    const image = section.querySelector("img")!, lineBreak = section.querySelector("br")!
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = cleanHTML()
+    $.selectRange(last, 2, first, 3)
+    editor.doc.updateLocalSelection()
+
+    expect(feature.removeMarks()).toBe(true)
+    editor.doc.syncFromDOM()
+    const cleared = '<section><p><b>bef</b>ore<img alt="keep">one</p><!--keep--><p>two<br>af<span style="color: red">ter</span></p></section>'
+    expect(cleanHTML()).toBe(cleared)
+    expect(section.querySelector("img")).toBe(image)
+    expect(section.querySelector("br")).toBe(lineBreak)
+    expect(document.getSelection()?.toString()).toBe("oreonetwoaf")
+    expect($.isBackwards).toBe(true)
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(cleanHTML()).toBe(original)
+    editor.doc.redo()
+    expect(cleanHTML()).toBe(cleared)
+  })
+
   it.each([
     '<section><p>Before<em>middle</em></p><!--keep--><ul><li>Item</li><li>After</li></ul></section>',
     '<table><tbody><tr><td>Before</td><td><p>middle</p></td></tr><tr><td colspan="2">After</td></tr></tbody></table>',

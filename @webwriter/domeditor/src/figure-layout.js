@@ -14,26 +14,47 @@ export function createFigureLayout(doc) {
   const sheet = new view.CSSStyleSheet()
   doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet]
   const markers = new Map(), observed = new Set()
+  const rulesByFigure = new Map(), watchedByFigure = new Map(), dirty = new Set()
   const unmark = (figure, marker) => {
     figure.classList.remove(marker)
     if(!figure.classList.length) figure.removeAttribute("class")
   }
-  let sequence = 0, frame = 0, destroyed = false
+  let sequence = 0, frame = 0, destroyed = false, allDirty = true
   const angle = value => {
     const token = (value || "0").trim().split(/\s+/).at(-1)
     const number = parseFloat(token) || 0
     return token.endsWith("turn") ? number * 360 : token.endsWith("grad") ? number * .9
       : token.endsWith("rad") ? number * 180 / Math.PI : number
   }
-  const refresh = () => {
+  const flush = () => {
     if(destroyed) return
+    if(frame) view.cancelAnimationFrame(frame)
+    frame = 0
+    const full = allDirty
+    const figures = full ? Array.from(body.querySelectorAll("figure:not([is])")) : [...dirty]
+    allDirty = false; dirty.clear()
     // Documents without figures need no generated rules or stylesheet reset.
     if(!markers.size && !body.querySelector("figure:not([is])")) return
-    // Measure the live authored layout, including stylesheet and remote edits.
-    sheet.replaceSync("")
-    const rules = [], active = new Set(), pendingMarkers = []
-    const watch = new Set([body])
-    for(const figure of body.querySelectorAll("figure:not([is])")) {
+    // Remove only the affected rules before reading natural layout. Other
+    // figures retain their rules and do not need to be measured again.
+    const positions = new Map()
+    if(full) {
+      while(sheet.cssRules.length) sheet.deleteRule(sheet.cssRules.length - 1)
+      rulesByFigure.clear(); watchedByFigure.clear()
+    }
+    else for(const figure of figures) {
+      const rules = rulesByFigure.get(figure) ?? []
+      for(const rule of rules) {
+        const index = Array.from(sheet.cssRules).indexOf(rule)
+        if(index < 0) continue
+        if(!positions.has(figure)) positions.set(figure, index)
+        sheet.deleteRule(index)
+      }
+      rulesByFigure.delete(figure); watchedByFigure.delete(figure)
+    }
+    const rules = new Map(), active = new Set(), pendingMarkers = []
+    for(const figure of figures) {
+      if(!body.contains(figure) || !figure.matches("figure:not([is])")) continue
       let atomic = false
       for(let parent = figure.parentElement; parent && parent !== body; parent = parent.parentElement) {
         if(parent.localName.includes("-") || parent.hasAttribute("is")) { atomic = true; break }
@@ -42,8 +63,7 @@ export function createFigureLayout(doc) {
       const content = captionedFigureContent(figure)
       if(!content) continue
       const caption = figure.querySelector(":scope > figcaption")
-      watch.add(figure)
-      watch.add(content)
+      watchedByFigure.set(figure, [figure, content])
       const style = view.getComputedStyle(content), parentStyle = view.getComputedStyle(figure)
       if(style.display === "none" || parentStyle.writingMode && parentStyle.writingMode !== "horizontal-tb") continue
       const scale = (style.getPropertyValue("scale") || "1").split(/\s+/).map(value => value.endsWith("%") ? parseFloat(value) / 100 : parseFloat(value))
@@ -96,40 +116,75 @@ export function createFigureLayout(doc) {
         }
       }
       const polygon = exclusion.map(point => `${point.x}px ${point.y}px`).join(", ")
-      rules.push(`${selector} { display: flow-root !important; ${parentStyle.position === "static" ? "position: relative !important;" : ""} }
+      rules.set(figure, `${selector} { display: flow-root !important; ${parentStyle.position === "static" ? "position: relative !important;" : ""} }
 ${selector}::before { content: ""; float: ${side}; width: 100%; height: ${boxHeight}px; shape-outside: polygon(${polygon}); shape-margin: 8px; pointer-events: none; }
 ${selector} > :not(figcaption) { position: absolute !important; float: none !important; margin: 0 !important; left: ${inset - left - tx + (parseFloat(parentStyle.paddingLeft) || 0)}px !important; top: ${-top - ty + (parseFloat(parentStyle.paddingTop) || 0)}px !important; right: auto !important; bottom: auto !important; width: ${style.width === "auto" ? `${width}px` : style.width} !important; height: ${style.height === "auto" ? `${height}px` : style.height} !important; }
 ${selector} > figcaption { display: block; margin: 0; min-height: ${boxHeight}px; box-sizing: border-box; padding-top: ${below ? boxHeight / 2 : 0}px; }`)
     }
-    for(const [figure, marker] of markers) if(!active.has(figure)) { unmark(figure, marker); markers.delete(figure) }
+    for(const [figure, marker] of markers) if((full || figures.includes(figure)) && !active.has(figure)) { unmark(figure, marker); markers.delete(figure) }
     for(const [figure, marker] of pendingMarkers) figure.classList.add(marker)
-    sheet.replaceSync(rules.join("\n"))
+    for(const [figure, source] of rules) {
+      const inserted = []
+      let index = Math.min(positions.get(figure) ?? sheet.cssRules.length, sheet.cssRules.length)
+      for(const rule of source.split("\n")) {
+        sheet.insertRule(rule, index)
+        inserted.push(sheet.cssRules[index++])
+      }
+      rulesByFigure.set(figure, inserted)
+    }
+    const watch = new Set([body, ...Array.from(watchedByFigure.values()).flat()])
     for(const element of observed) if(!watch.has(element)) { resize?.unobserve(element); observed.delete(element) }
     for(const element of watch) if(!observed.has(element)) { resize?.observe(element); observed.add(element) }
   }
   const schedule = () => {
-    if(!frame && !destroyed) frame = view.requestAnimationFrame(() => { frame = 0; refresh() })
+    if(!frame && !destroyed) frame = view.requestAnimationFrame(() => { frame = 0; flush() })
+  }
+  const invalidate = (records, target) => {
+    for(const record of records) {
+      if(record.type === "attributes" && record.attributeName === "class"
+        && (record.oldValue || "").split(/\s+/).filter(name => !name.startsWith("◆")).join(" ")
+          === Array.from(record.target.classList).filter(name => !name.startsWith("◆")).join(" ")) continue
+      // Only a command's synchronous style edits may use its local refresh.
+      // Widget, remote, structural and stylesheet changes remain broad.
+      if(target && record.type === "attributes" && record.attributeName === "style"
+        && (record.target === target || target.contains(record.target) && record.target.closest("figure:not([is])") === target)) dirty.add(target)
+      else allDirty = true
+    }
   }
   const observer = new view.MutationObserver(records => {
-    if(records.some(record => record.type !== "attributes" || record.attributeName !== "class"
-      || (record.oldValue || "").split(/\s+/).filter(name => !name.startsWith("◆")).join(" ")
-        !== Array.from(record.target.classList).filter(name => !name.startsWith("◆")).join(" "))) schedule()
+    invalidate(records)
+    if(allDirty || dirty.size) schedule()
   })
   observer.observe(body, {subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true})
   observer.observe(doc.head, {subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true})
-  const resize = typeof view.ResizeObserver === "function" ? new view.ResizeObserver(schedule) : null
-  body.addEventListener("load", schedule, true)
-  view.addEventListener("resize", schedule)
+  const resize = typeof view.ResizeObserver === "function" ? new view.ResizeObserver(entries => {
+    for(const {target} of entries) {
+      if(target === body) allDirty = true
+      else for(const [figure, elements] of watchedByFigure) if(elements.includes(target)) dirty.add(figure)
+    }
+    schedule()
+  }) : null
+  const refresh = target => {
+    if(destroyed) return
+    invalidate(observer.takeRecords(), target)
+    if(target) dirty.add(target)
+    else allDirty = true
+    flush()
+  }
+  const refreshAll = () => { allDirty = true; schedule() }
+  body.addEventListener("load", refreshAll, true)
+  view.addEventListener("resize", refreshAll)
   refresh()
   return {refresh, destroy() {
     destroyed = true
     observer.disconnect()
     resize?.disconnect()
     view.cancelAnimationFrame(frame)
-    body.removeEventListener("load", schedule, true)
-    view.removeEventListener("resize", schedule)
+    body.removeEventListener("load", refreshAll, true)
+    view.removeEventListener("resize", refreshAll)
     for(const [figure, marker] of markers) unmark(figure, marker)
     markers.clear()
+    rulesByFigure.clear(); watchedByFigure.clear(); dirty.clear()
     doc.adoptedStyleSheets = doc.adoptedStyleSheets.filter(current => current !== sheet)
   }}
 }

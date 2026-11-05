@@ -383,6 +383,13 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
   let sheet: CSSStyleSheet | null = null
   let observer: ResizeObserver | null = null
   const opened = new Map<HTMLElement, {area: HTMLAreaElement, image: HTMLImageElement, rule: string}>()
+  const styled = new Set<HTMLElement>()
+  const clearStyle = (target: HTMLElement) => {
+    if(styled.delete(target)) {
+      target.classList.remove("◆hotspot-popup")
+      if(!target.getAttribute("class")) target.removeAttribute("class")
+    }
+  }
   const apply = () => {
     if(!sheet) {
       sheet = new view.CSSStyleSheet()
@@ -400,31 +407,22 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
     const vx = viewport?.offsetLeft ?? 0, vy = viewport?.offsetTop ?? 0
     const vw = viewport?.width ?? view.innerWidth, vh = viewport?.height ?? view.innerHeight
     const padding = 8, gap = 8
-    const bodyStyle = view.getComputedStyle(doc.body)
     const rootStyle = view.getComputedStyle(doc.documentElement)
-    const background = bodyStyle.backgroundColor !== "rgba(0, 0, 0, 0)" && bodyStyle.backgroundColor !== "transparent"
-      ? bodyStyle.backgroundColor : rootStyle.backgroundColor !== "rgba(0, 0, 0, 0)" && rootStyle.backgroundColor !== "transparent"
-        ? rootStyle.backgroundColor : "Canvas"
     const selector = `[id="${view.CSS.escape(target.id)}"][popover]`
-    const base = `position:fixed!important;inset:auto!important;margin:0!important;box-sizing:border-box;min-width:0;min-height:0;width:max-content;max-width:min(24rem,${Math.max(0, vw - 2 * padding)}px)!important;max-height:${Math.max(0, vh - 2 * padding)}px!important;overflow:auto;padding:1rem;border:1px solid color-mix(in srgb,currentColor 22%,transparent);border-radius:.5rem;box-shadow:0 4px 20px rgb(0 0 0 / 18%);color:${bodyStyle.color};background:${background};font-family:inherit;`
+    // Appearance comes from the shared document popup rules.
+    const base = `position:fixed!important;position-area:none!important;inset:auto!important;margin:0!important;`
     opened.set(target, {area, image, rule: `${selector}{${base}left:0!important;top:0!important}`})
     apply()
     const box = target.getBoundingClientRect()
-    let left = bounds.right + gap, top = (bounds.top + bounds.bottom - box.height) / 2
-    if(left + box.width > vx + vw - padding) {
-      left = bounds.left - gap - box.width
-      if(left < vx + padding) {
-        left = (bounds.left + bounds.right - box.width) / 2
-        top = bounds.bottom + gap
-        if(top + box.height > vy + vh - padding) top = bounds.top - gap - box.height
-      }
-    }
+    let left = bounds.left, top = bounds.bottom + gap
+    const above = top + box.height > vy + vh - padding && bounds.top - gap - box.height >= vy + padding
+    if(above) top = bounds.top - gap - box.height
     left = Math.max(vx + padding, Math.min(left, vx + vw - padding - box.width))
     top = Math.max(vy + padding, Math.min(top, vy + vh - padding - box.height))
     // Fixed insets start inside the root's leading scrollbar gutter.
     const gutter = doc.documentElement.clientWidth && rootStyle.scrollbarGutter?.includes("both-edges")
       ? Math.max(0, view.innerWidth - doc.documentElement.clientWidth) : 0
-    opened.get(target)!.rule = `${selector}{${base}left:${left - gutter}px!important;top:${top}px!important}`
+    opened.get(target)!.rule = `${selector}{${base}left:${left - gutter}px!important;top:${top}px!important}${above ? `${selector}::before{top:calc(anchor(bottom) - 0.4rem);transform:rotate(225deg)}` : ""}`
     apply()
     return true
   }
@@ -432,10 +430,15 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
     const id = area.getAttribute("popovertarget") ?? area.getAttribute("interestfor")
     const target = id ? doc.getElementById(id) : null
     if(!(target instanceof view.HTMLElement) || !target.hasAttribute("popover")) return false
+    if(!target.classList.contains("◆hotspot-popup")) {
+      target.classList.add("◆hotspot-popup")
+      styled.add(target)
+    }
     try {
       if(toggle && isOpen(target)) {
         target.hidePopover()
         opened.delete(target)
+        clearStyle(target)
         observer?.unobserve(target)
         if(sheet) apply()
         return true
@@ -447,7 +450,7 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
         observer.observe(target)
       }
       return true
-    } catch { return false }
+    } catch { clearStyle(target); return false }
   }
   const handleEvent = (event: Event) => {
     const area = event.target instanceof view.Element ? event.target.closest("area") : null
@@ -468,10 +471,11 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
   }
   const refresh = () => {
     for(const [target, {area, image}] of opened) {
-      if(!isOpen(target)) { opened.delete(target); observer?.unobserve(target) }
+      if(!isOpen(target)) { opened.delete(target); clearStyle(target); observer?.unobserve(target) }
       else if(!position(target, area, image)) {
         try { target.hidePopover() } catch {}
         opened.delete(target)
+        clearStyle(target)
         observer?.unobserve(target)
       }
     }
@@ -480,6 +484,7 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
   const dispose = () => {
     opened.forEach((_, target) => { try { if(isOpen(target)) target.hidePopover() } catch {} })
     opened.clear()
+    styled.forEach(clearStyle)
     observer?.disconnect()
     observer = null
     if(sheet) doc.adoptedStyleSheets = doc.adoptedStyleSheets.filter(item => item !== sheet)

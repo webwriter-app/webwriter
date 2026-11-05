@@ -1,5 +1,6 @@
 import {SharedDOMDoc, sharedDOMBody} from '../src/domdoc'
 import {DomEditor} from '../src/components/dom-editor'
+import {publishEditorDocument} from '../src/editor-document-sync'
 import type {DOMEditor} from '../src/domeditor'
 import * as Y from 'yjs'
 import {gestureProfiles} from './performance-gestures'
@@ -70,18 +71,28 @@ function fixture(html: string, permalinks = false, bodyClass = '') {
   return {owner, shared}
 }
 
-function snapshotHost(html: string) {
+function replicaHost(replicaId: string) {
   // Reuse the same isolated real message handler as tests/performance.ts.
   const host = new DomEditor() as any
-  host.editorDocument = new DOMParser().parseFromString(html, 'text/html')
+  host.editorDocument = null
   host.editorOpaque = true
+  host.documentReplicaId = replicaId
+  host.documentReplicaSequence = 0
   host.fileHandle = {}
   host.isEditorMessage = () => true
   host.renderRoot = document.createElement('div')
-  host.documentTree = host.buildDocumentTree()
   host.stylesVisible = () => false
   host.dirtyTrackingReady = true
   return host
+}
+
+function findReplicaElement(root: any, localName: string, predicate?: (element: any) => boolean): any | null {
+  if(root?.localName === localName && (!predicate || predicate(root))) return root
+  for(const child of root?.children ?? []) {
+    const found = findReplicaElement(child, localName, predicate)
+    if(found) return found
+  }
+  return null
 }
 
 async function reconciliation() {
@@ -118,14 +129,40 @@ async function reconciliation() {
       }
       finally { shared.destroy() }
     }
-    const host = snapshotHost(html)
-    for(const treeChanged of [false, true]) {
-      let revision = 0
-      await stage('host snapshot', {elements: size, treeChanged, htmlBytes: new TextEncoder().encode(html).length}, () => {
-        host.handleEditorMessage(new MessageEvent('message', {data: {type: 'editor-frame-snapshot', treeChanged,
-          html: `<html><head></head><body>${html.replace('Paragraph 1:', `Paragraph 1 ${revision++}:`)}</body></html>`}}))
+    const hostOwner = document.implementation.createHTMLDocument('')
+    hostOwner.body.innerHTML = html
+    const hostShared = new SharedDOMDoc(undefined, undefined, [], ['◆'], {root: hostOwner.body, connect: false})
+    const replicaId = `profile-replica-${size}`
+    const host = replicaHost(replicaId)
+    let updateBytes = 0
+    const publication = publishEditorDocument(hostShared, replicaId, message => {
+      if(!message.reset) updateBytes += message.update.byteLength
+      host.handleEditorMessage(new MessageEvent('message', {data: message}))
+    })
+    try {
+      assert(host.documentReplica?.body?.children.length === size, 'synthetic host did not receive the full replica baseline')
+      const text = hostOwner.body.children[Math.floor(size / 2) + 1].firstChild as Text
+      const beforeTextBytes = updateBytes
+      const textCheck = await stage('host text update', {elements: size}, () => { text.appendData('x'); hostShared.syncFromDOM() })
+      Object.assign(textCheck, {updateBytesPerRun: round((updateBytes - beforeTextBytes) / (textCheck.samples + textCheck.warmups))})
+      assert(host.documentReplica?.body?.textContent?.includes('Paragraph') || host.documentReplica?.body?.textContent?.includes('Example text'),
+        'synthetic host text update was not applied')
+      const styleTarget = hostOwner.body.children[Math.floor(size / 2) + 1] as HTMLElement
+      let bold = false
+      const beforeStyleBytes = updateBytes
+      const styleCheck = await stage('host style update', {elements: size}, () => {
+        bold = !bold; styleTarget.style.fontWeight = bold ? 'bold' : 'normal'; hostShared.syncFromDOM()
       })
+      Object.assign(styleCheck, {updateBytesPerRun: round((updateBytes - beforeStyleBytes) / (styleCheck.samples + styleCheck.warmups))})
+      const beforeStructureBytes = updateBytes
+      const structureCheck = await stage('host structural update', {elements: size}, () => {
+        const paragraph = hostOwner.createElement('p'); paragraph.textContent = 'Inserted profile paragraph'
+        hostOwner.body.append(paragraph); hostShared.syncFromDOM(); paragraph.remove(); hostShared.syncFromDOM()
+      })
+      Object.assign(structureCheck, {updateBytesPerRun: round((updateBytes - beforeStructureBytes) / (structureCheck.samples + structureCheck.warmups))})
+      assert(host.documentReplica?.body?.children.length === size, 'synthetic host structural updates were not applied')
     }
+    finally { publication.destroy(); hostShared.destroy(); host.documentReplica?.destroy() }
   }
   // Joining with an already-populated DOM exercises the boundary-reuse path.
   for(const size of profiling ? [5000] : [100, 1000, 5000]) {
@@ -172,23 +209,24 @@ async function liveEditor(size: number, table = false) {
   const view = frame.contentWindow as EditorWindow, doc = frame.contentDocument!
   doc.body.innerHTML = html
   const nonce = 'performance-profile-editor-nonce'
-  const host = snapshotHost(html)
-  let snapshots = 0, snapshotBytes = 0, snapshotMs = 0, messages = 0
+  const host = replicaHost(nonce)
+  let updates = 0, updateBytes = 0, updateMs = 0, messages = 0
   const capture = (event: MessageEvent) => {
     if(event.source !== view || event.data?.bridgeNonce !== nonce) return
     messages++
-    if(event.data.type !== 'editor-frame-snapshot') return
+    if(event.data.type !== 'editor-frame-update') return
     const start = performance.now()
     host.handleEditorMessage(event)
-    snapshotMs += performance.now() - start
-    snapshots++; snapshotBytes += event.data.html.length
+    updateMs += performance.now() - start
+    updates++; updateBytes += event.data.update.byteLength
   }
   window.addEventListener('message', capture)
   const initializeStart = performance.now()
   view.postMessage({type: 'initialize-editor', syncUrl: 'ws://127.0.0.1:65534', bridgeNonce: nonce,
-    initialState, proofreadingEnabled: false, proofreadingAllowed: false}, location.origin)
-  for(let attempt = 0; !view.editor && attempt < 2000; attempt++) await delay(10)
+    documentReplicaId: nonce, initialState, proofreadingEnabled: false, proofreadingAllowed: false}, location.origin)
+  for(let attempt = 0; (!view.editor || !host.documentReplica?.body) && attempt < 2000; attempt++) await delay(10)
   assert(view.editor, 'live editor failed to initialize')
+  assert(host.documentReplica?.body, 'host did not receive the live document replica baseline')
   const editor = view.editor
   const initializeMs = performance.now() - initializeStart
   editor.doc.disconnectCollaboration()
@@ -202,7 +240,7 @@ async function liveEditor(size: number, table = false) {
   await delay(100)
   const before = paragraph.textContent!
   const insertTimes: number[] = [], settledTimes: number[] = [], frameTimes: number[] = []
-  const initialMessages = messages, initialSnapshots = snapshots, initialBytes = snapshotBytes, initialMs = snapshotMs
+  const initialMessages = messages, initialUpdates = updates, initialBytes = updateBytes, initialMs = updateMs
   try {
     await stage('live native typing', {...details, viewport: '1200x800', initializeMs: round(initializeMs)}, async () => {
       const start = performance.now()
@@ -214,13 +252,13 @@ async function liveEditor(size: number, table = false) {
     }, 60)
     await delay(350)
     assert(paragraph.textContent === before + 'x'.repeat(63), 'native typing lost characters')
-    const hostParagraph = table ? host.editorDocument.querySelector('td') : host.editorDocument.body.children[1]
-    assert(hostParagraph.textContent === paragraph.textContent, 'host snapshot lagged after settling')
+    const hostParagraph = table ? findReplicaElement(host.documentReplica?.body, 'td') : host.documentReplica?.body.children[1]
+    assert(hostParagraph?.textContent === paragraph.textContent, 'host replica lagged after settling')
     const typingLongTasks = [...longTasks]
     checks.push({name: 'live typing detail', ...details, nativeInsert: statistics(insertTimes.slice(3)),
       observerSettled: statistics(settledTimes.slice(3)), nextFrame: statistics(frameTimes.slice(3)),
-      snapshots: snapshots - initialSnapshots, snapshotChars: snapshotBytes - initialBytes,
-      snapshotProcessingMs: round(snapshotMs - initialMs), bridgeMessages: messages - initialMessages,
+      updates: updates - initialUpdates, updateBytes: updateBytes - initialBytes,
+      updateProcessingMs: round(updateMs - initialMs), bridgeMessages: messages - initialMessages,
       longTasks: typingLongTasks.length, longestTaskMs: round(Math.max(0, ...typingLongTasks))})
     await stage('live selection changes', details, async () => {
       const offset = doc.getSelection()!.anchorOffset === 2 ? 3 : 2
@@ -240,12 +278,12 @@ async function liveEditor(size: number, table = false) {
     const restored = table ? doc.querySelector('td') : doc.body.children[1]
     assert(restored?.textContent === before + 'x'.repeat(63), 'undo/redo changed the typed content')
     await delay(400)
-    const idleMessages = messages, idleSnapshots = snapshots
+    const idleMessages = messages, idleUpdates = updates
     await stage('live idle', details, () => delay(1000), 1, 1, 0)
-    checks.push({name: 'live idle detail', ...details, bridgeMessages: messages - idleMessages, snapshots: snapshots - idleSnapshots})
+    checks.push({name: 'live idle detail', ...details, bridgeMessages: messages - idleMessages, updates: updates - idleUpdates})
   }
   finally {
-    observer.disconnect(); editor.destroy(); frame.remove(); window.removeEventListener('message', capture)
+    observer.disconnect(); editor.destroy(); host.documentReplica?.destroy(); frame.remove(); window.removeEventListener('message', capture)
     await settle()
   }
 }
@@ -284,23 +322,24 @@ async function layoutProfile(mode: LayoutMode, size: number) {
   const view = frame.contentWindow as EditorWindow, doc = frame.contentDocument!
   doc.body.className = bodyClass; doc.body.innerHTML = html
   const nonce = `layout-profile-${mode}-${size}`
-  const host = snapshotHost(`<html><head></head><body class="${bodyClass}">${html}</body></html>`)
-  let snapshots = 0, snapshotChars = 0, snapshotMs = 0, messages = 0
+  const host = replicaHost(nonce)
+  let updates = 0, updateBytes = 0, updateMs = 0, messages = 0
   const capture = (event: MessageEvent) => {
     if(event.source !== view || event.data?.bridgeNonce !== nonce) return
     messages++
-    if(event.data.type !== 'editor-frame-snapshot') return
+    if(event.data.type !== 'editor-frame-update') return
     const start = performance.now()
     host.handleEditorMessage(event)
-    snapshotMs += performance.now() - start
-    snapshots++; snapshotChars += event.data.html.length
+    updateMs += performance.now() - start
+    updates++; updateBytes += event.data.update.byteLength
   }
   window.addEventListener('message', capture)
   const initialized = performance.now()
   view.postMessage({type: 'initialize-editor', syncUrl: 'ws://127.0.0.1:65534', bridgeNonce: nonce,
-    initialState, proofreadingEnabled: false, proofreadingAllowed: false, disableAnimations: true}, location.origin)
-  for(let attempt = 0; !view.editor && attempt < 2000; attempt++) await delay(10)
+    documentReplicaId: nonce, initialState, proofreadingEnabled: false, proofreadingAllowed: false, disableAnimations: true}, location.origin)
+  for(let attempt = 0; (!view.editor || !host.documentReplica?.body) && attempt < 2000; attempt++) await delay(10)
   assert(view.editor, `${mode} editor failed to initialize`)
+  assert(host.documentReplica?.body, `${mode} host did not receive the live document replica baseline`)
   const editor = view.editor
   const initializeMs = round(performance.now() - initialized)
   editor.doc.disconnectCollaboration()
@@ -317,8 +356,8 @@ async function layoutProfile(mode: LayoutMode, size: number) {
     doc.body.focus()
     doc.getSelection()!.setBaseAndExtent(textA, textA.data.length, textA, textA.data.length)
     await delay(100)
-    const beforeText = first.textContent!, beforeSnapshots = snapshots, beforeSnapshotMs = snapshotMs,
-      beforeSnapshotChars = snapshotChars, beforeMessages = messages
+    const beforeText = first.textContent!, beforeUpdates = updates, beforeUpdateMs = updateMs,
+      beforeUpdateBytes = updateBytes, beforeMessages = messages
     const insertTimes: number[] = [], frameTimes: number[] = []
     const typing = await stage('layout native typing', details, async () => {
       const start = performance.now()
@@ -329,10 +368,10 @@ async function layoutProfile(mode: LayoutMode, size: number) {
     }, 20)
     await delay(350)
     assert(first.textContent === beforeText + 'x'.repeat(3 + typing.samples), `${mode} typing lost characters`)
-    assert(host.editorDocument.querySelector('p.profile-item')?.textContent === first.textContent, `${mode} host snapshot lagged`)
+    assert(findReplicaElement(host.documentReplica?.body, 'p', element => element.textContent === first.textContent), `${mode} host replica lagged`)
     Object.assign(typing, {nativeInsert: statistics(insertTimes.slice(3)), nextFrame: statistics(frameTimes.slice(3)),
-      snapshots: snapshots - beforeSnapshots, snapshotChars: snapshotChars - beforeSnapshotChars,
-      snapshotProcessingMs: round(snapshotMs - beforeSnapshotMs), bridgeMessages: messages - beforeMessages,
+      updates: updates - beforeUpdates, updateBytes: updateBytes - beforeUpdateBytes,
+      updateProcessingMs: round(updateMs - beforeUpdateMs), bridgeMessages: messages - beforeMessages,
       longTasks: longTasks.length, longestTaskMs: round(Math.max(0, ...longTasks))})
 
     editor.features.selection.selectElement(transform)
@@ -423,7 +462,7 @@ async function layoutProfile(mode: LayoutMode, size: number) {
     Object.assign(scrolling, {scrollOperation: statistics(scrollTimes.slice(3)), nextFrame: statistics(scrollFrameTimes.slice(3)), scrollChanges})
   }
   finally {
-    observer.disconnect(); editor.destroy(); frame.remove(); window.removeEventListener('message', capture)
+    observer.disconnect(); editor.destroy(); host.documentReplica?.destroy(); frame.remove(); window.removeEventListener('message', capture)
     await settle()
   }
 }
@@ -442,8 +481,8 @@ try {
   await fetch('/__native-result', {method: 'POST', body: JSON.stringify({
     metadata: {userAgent: navigator.userAgent, hardwareConcurrency: navigator.hardwareConcurrency, profiling,
       viewport: [innerWidth, innerHeight], ...(only === 'gestures' ? {} : {warmups: 3}), timestamp: new Date().toISOString(),
-      notes: only === 'gestures' ? 'Synthetic authored DOM in the mounted editor shell. Trusted CDP mouse input with a frame checkpoint after each move. Collaboration and proofreading are disabled.'
-        : 'Synthetic authored DOM; live native execCommand insertText, actual frame bridge and isolated real host snapshot handler; no external widgets, proofreading, network latency, or host UI rendering. Next-frame checkpoint uses rAF followed by a timer; not an INP measurement.'}, checks,
+      notes: only === 'gestures' ? `${new URLSearchParams(location.search).has('document') ? 'Supplied HTML document with installed widgets' : 'Synthetic authored DOM'} in the mounted editor shell. Trusted CDP mouse input with a frame checkpoint after each move. Collaboration and proofreading are disabled. Timings include automation overhead; not an INP measurement.`
+        : 'Synthetic authored DOM; live native execCommand insertText, actual frame bridge and isolated real host replica update handler; no external widgets, proofreading, network latency, or host UI rendering. Next-frame checkpoint uses rAF followed by a timer; not an INP measurement.'}, checks,
   })})
 }
 catch(error) {

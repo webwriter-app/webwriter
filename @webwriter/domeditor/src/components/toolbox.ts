@@ -1100,7 +1100,7 @@ export class DomEditorToolbox extends EditingControls {
       <ribbon-button slot="heading-icon" variant="element-conversion" icon-only dropdown-on-click
         label=${`Conversion options for ${name}`} icon=${icon} icon-url=${iconUrl ?? ""} .submenuGroups=${conversions}></ribbon-button>
     ` : nothing
-    const popupPart = attributes && (attributes.name === "Popup" && attributes.localName === "button"
+    const popupPart = attributes && (attributes.name === "Popup" && (attributes.localName === "button" || "popover" in attributes.attributes)
       || attributes.name === "Popup Content") && attributes.path
     if(popupPart) return html`<ribbon-drawer label=${attributes.name} icon="Popup" layout="popup"
       .elementCount=${group?.count ?? 1} ?show-pane-icon=${!conversions.length} selectable-heading data-specialized=${attributes.localName}
@@ -1849,7 +1849,7 @@ export class DomEditorToolbox extends EditingControls {
     const distributionIcon = distributionPresentation.icon ?? (this.elementAttributes ? getElementPresentation(this.elementAttributes.localName).icon : "Section")
     const distributionSelected = this.elementSelected && Boolean(this.distribution)
     const popupPartSelected = this.elementSelected && Boolean(this.elementAttributes
-      && (this.elementAttributes.name === "Popup" && this.elementAttributes.localName === "button"
+      && (this.elementAttributes.name === "Popup" && (this.elementAttributes.localName === "button" || "popover" in this.elementAttributes.attributes)
         || this.elementAttributes.name === "Popup Content"))
     return html`
       <div

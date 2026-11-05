@@ -224,18 +224,19 @@ await check("editor page starts with a visible document", async () => {
   try {
     const deadline = Date.now() + 15000
     let host: any
+    const hasParagraph = () => Array.from(host?.documentReplica?.body?.children ?? host?.editorDocument?.body?.children ?? []).some((node: any) => node.localName === "p")
     while(Date.now() < deadline) {
       host = frame.contentDocument?.querySelector("dom-editor")
-      if(host?.editorDocument?.body?.querySelector(":scope > p") && !host.documentFramePending) break
+      if(hasParagraph() && !host.documentFramePending) break
       await new Promise(resolve => setTimeout(resolve, 100))
     }
-    assert(host?.editorDocument?.body?.querySelector(":scope > p"), `editor document stayed empty: ${JSON.stringify({
+    assert(hasParagraph(), `editor document stayed empty: ${JSON.stringify({
       page: frame.contentDocument?.body?.innerHTML?.slice(0, 300),
       frameStarted: host?.frameStarted,
       shellRevision: host?.editorShellRevision,
       initializedRevision: host?.editorInitializedRevision,
       framePending: host?.documentFramePending,
-      body: host?.editorDocument?.body?.innerHTML,
+      body: host?.documentReplica?.body?.textContent ?? host?.editorDocument?.body?.innerHTML,
       error: host?.fileError,
     })}`)
   }

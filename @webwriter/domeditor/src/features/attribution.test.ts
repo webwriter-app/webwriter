@@ -1335,6 +1335,58 @@ describe("reading attribution", () => {
 })
 
 describe("canvas attribution labels", () => {
+  it("keeps moving labels anchored without remeasuring text and refreshes changed bounds, metadata and markers", () => {
+    document.body.classList.add("ww-canvas")
+    try {
+      const element = document.querySelector("p")!
+      element.setAttribute(attributionAttributes.name, "Author")
+      const rect = bounds(element)
+      reader = mountAttributionReader()
+      const label = notes()[0]
+      const text = label.querySelector<HTMLElement>(".attribution-text")!
+      const measure = vi.spyOn(text, "getBoundingClientRect")
+      element.style.left = "200px"
+      reader!.refresh()
+      expect(notes()[0]).toBe(label)
+      expect(measure).not.toHaveBeenCalled()
+      rect.mockReturnValue(new DOMRect(200, 50, 300, 50))
+      element.style.height = "50px"
+      reader!.refresh()
+      expect(measure).toHaveBeenCalled()
+      element.setAttribute(attributionAttributes.name, "Updated author")
+      reader!.refresh()
+      expect(label.textContent).toBe("Updated author")
+      const marker = Array.from(element.classList).find(name => name.startsWith("◆attribution-"))!
+      element.classList.remove(marker)
+      reader!.refresh()
+      expect(element.classList.contains(marker)).toBe(true)
+      expect(cloneWithoutEditorMarkers(element, true).outerHTML).not.toContain("◆")
+    }
+    finally { document.body.classList.remove("ww-canvas") }
+  })
+
+  it("measures all credited items before changing their anchored labels", () => {
+    document.body.innerHTML = '<p data-ww-attribution-name="First">One</p><p data-ww-attribution-name="Second">Two</p>'
+    const elements = Array.from(document.querySelectorAll("p"))
+    elements.forEach(element => bounds(element))
+    reader = mountAttributionReader()
+    const labels = notes()
+    const content = labels.map(label => label.innerHTML)
+    const measured: Element[] = []
+    for(const element of elements) {
+      vi.mocked(element.getBoundingClientRect).mockImplementation(() => {
+        expect(labels.map(label => label.innerHTML)).toEqual(content)
+        measured.push(element)
+        return new DOMRect(20, 50, 300, 100)
+      })
+      element.setAttribute(attributionAttributes.name, `${element.textContent} updated`)
+    }
+    reader!.refresh()
+    expect(measured).toEqual(elements)
+    expect(notes().map(label => label.textContent)).toEqual(["One updated", "Two updated"])
+    expect(notes()).toEqual(labels)
+  })
+
   it.each(["editor", "reader"])("reflows labels once per frame and caps their size at 100% in the %s", async mode => {
     const element = document.querySelector("p")!
     element.setAttribute(attributionAttributes.license, "CC-BY-4.0")

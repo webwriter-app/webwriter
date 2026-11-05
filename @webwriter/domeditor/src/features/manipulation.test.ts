@@ -3564,15 +3564,128 @@ describe("delete()", () => {
         key: "Backspace", altKey: true, bubbles: true, cancelable: true,
       }))
       document.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Backspace", metaKey: true, bubbles: true, cancelable: true,
+      }))
+      document.dispatchEvent(new KeyboardEvent("keydown", {
         key: "Delete", metaKey: true, bubbles: true, cancelable: true,
       }))
 
       expect(deletion).toHaveBeenNthCalledWith(1, "backward", "word")
-      expect(deletion).toHaveBeenNthCalledWith(2, "forward", "line")
+      expect(deletion).toHaveBeenNthCalledWith(2, "backward", "lineboundary")
+      expect(deletion).toHaveBeenNthCalledWith(3, "forward", "lineboundary")
     }
     finally {
       Object.defineProperty(navigator, "platform", {value: originalPlatform, configurable: true})
     }
+  })
+
+  it.each(["details", "widget"])("distinguishes visual and hard line deletion beforeinput inside %s", scope => {
+    editor.schema.extendWidgets([{tagName: "content-widget", editingConfig: {content: "p+"}}])
+    document.body.innerHTML = scope === "details"
+      ? '<details open><summary>Heading</summary><p>Text</p></details>'
+      : '<content-widget><p>Text</p></content-widget>'
+    editor.features.widget.refresh()
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    const deletion = vi.spyOn(editor.features.manipulation, "delete").mockImplementation(() => undefined)
+    for(const [inputType, direction, granularity] of [
+      ["deleteSoftLineBackward", "backward", "lineboundary"],
+      ["deleteSoftLineForward", "forward", "lineboundary"],
+      ["deleteHardLineBackward", "backward", "paragraphboundary"],
+      ["deleteHardLineForward", "forward", "paragraphboundary"],
+      ["deleteWordBackward", "backward", "word"],
+      ["deleteWordForward", "forward", "word"],
+    ]) {
+      const event = new InputEvent("beforeinput", {inputType, bubbles: true, cancelable: true})
+      document.querySelector("p")!.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(deletion).toHaveBeenLastCalledWith(direction, granularity)
+    }
+  })
+
+  it.each(["deleteSoftLineBackward", "deleteSoftLineForward", "deleteHardLineBackward", "deleteHardLineForward", "deleteEntireSoftLine"])("uses the native target for %s and supports undo and redo", inputType => {
+    document.body.innerHTML = '<details open><summary>Heading</summary><p><!--keep--><b title="authored">before </b><em>middle</em> after</p></details><p>Outside</p>'
+    const paragraph = document.querySelector("details p")!
+    const start = paragraph.querySelector("b")!.firstChild!, end = paragraph.querySelector("em")!.firstChild!
+    const target = document.createRange()
+    target.setStart(start, 2)
+    target.setEnd(end, 3)
+    $.move(inputType.endsWith("Backward") ? end : start, inputType.endsWith("Backward") ? 3 : 2)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const event = new InputEvent("beforeinput", {inputType, bubbles: true, cancelable: true})
+    Object.defineProperty(event, "getTargetRanges", {value: () => [target]})
+
+    paragraph.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(paragraph.innerHTML).toBe('<!--keep--><b title="authored">be</b><em>dle</em> after')
+    expect(document.body.lastElementChild!.textContent).toBe("Outside")
+    editor.doc.syncFromDOM()
+    const after = editor.toHTML(true)
+    expect(after).not.toContain("◆")
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it.each(["deleteSoftLineBackward", "deleteSoftLineForward", "deleteHardLineBackward", "deleteHardLineForward", "deleteEntireSoftLine"])("deletes only the existing selection for %s", inputType => {
+    document.body.innerHTML = '<details open><summary>Heading</summary><p>before <b>middle</b> after</p></details>'
+    const text = document.querySelector("b")!.firstChild!
+    $.selectRange(text, 1, text, 4)
+    const event = new InputEvent("beforeinput", {inputType, bubbles: true, cancelable: true})
+
+    document.querySelector("p")!.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(document.querySelector("p")!.innerHTML).toBe('before <b>mle</b> after')
+  })
+
+  it("keeps whole visual-line deletion inside its widget without a native target", () => {
+    editor.schema.extendWidgets([{tagName: "content-widget", editingConfig: {content: "p+"}}])
+    document.body.innerHTML = '<p>Before</p><content-widget><p>Widget</p></content-widget><p>After</p>'
+    editor.features.widget.refresh()
+    const widget = document.querySelector("content-widget")!
+    $.move(widget.querySelector("p")!.firstChild!, 3)
+    vi.spyOn($, "moveBy").mockImplementation(() => $.move(document.body.firstElementChild!.firstChild!))
+    vi.spyOn($, "extendBy").mockImplementation(() => $.extend(document.body.lastElementChild!.firstChild!, 5))
+    const event = new InputEvent("beforeinput", {inputType: "deleteEntireSoftLine", bubbles: true, cancelable: true})
+
+    widget.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(document.body.firstElementChild!.textContent).toBe("Before")
+    expect(document.body.lastElementChild!.textContent).toBe("After")
+    expect(widget.textContent).toBe("")
+    expect(widget.isConnected).toBe(true)
+    expect(widget.contains($.anchor)).toBe(true)
+  })
+
+  it.each(["detached", "changed offset", "moved caret", "outside scope", "collapsed"])("ignores a %s native line-deletion target", change => {
+    editor.schema.extendWidgets([{tagName: "content-widget", editingConfig: {content: "p+"}}])
+    document.body.innerHTML = '<content-widget><p>before middle after</p></content-widget><p>Outside</p>'
+    editor.features.widget.refresh()
+    const text = document.querySelector("content-widget p")!.firstChild! as Text
+    $.move(text, 10)
+    const target = {startContainer: text as Node, startOffset: 7, endContainer: text as Node, endOffset: 10}
+    if(change === "detached") {
+      text.replaceWith(document.createTextNode(text.data))
+      $.move(document.querySelector("content-widget p")!.firstChild!, 10)
+    }
+    else if(change === "changed offset") text.data = "short"
+    else if(change === "moved caret") $.move(text, 2)
+    else if(change === "outside scope") {target.startContainer = document.body.lastElementChild!.firstChild!; target.startOffset = 0}
+    else target.startOffset = target.endOffset
+    const before = editor.toHTML(true)
+    const event = new InputEvent("beforeinput", {inputType: "deleteSoftLineBackward", bubbles: true, cancelable: true})
+    Object.defineProperty(event, "getTargetRanges", {value: () => [target]})
+
+    document.querySelector("content-widget p")!.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(editor.toHTML(true)).toBe(before)
   })
 
   it("deletes the selected text range", () => {

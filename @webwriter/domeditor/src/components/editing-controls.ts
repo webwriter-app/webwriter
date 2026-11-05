@@ -143,6 +143,7 @@ export abstract class EditingControls extends LitElement {
     activeMenu: {type: String, attribute: "active-menu"},
     svgText: {type: Boolean, attribute: false},
     canMark: {type: Boolean, attribute: "can-mark"},
+    canRemoveMarks: {type: Boolean, attribute: "can-remove-marks"},
     canSection: {type: Boolean, attribute: "can-section"},
     sectionType: {type: String, attribute: "section-type"},
     sectionActive: {type: Boolean, attribute: "section-active"},
@@ -196,6 +197,8 @@ export abstract class EditingControls extends LitElement {
   activeMenu: RibbonMenuName = "Start"
 
   canMark = false
+
+  canRemoveMarks = false
 
   canSection = false
 
@@ -701,7 +704,7 @@ export abstract class EditingControls extends LitElement {
           label="Remove formatting"
           action="removeMarks"
           icon="RemoveMarks"
-          ?disabled=${!this.canMark}
+          ?disabled=${!this.canMark && !this.canRemoveMarks}
         ></ribbon-button>
         ${this.renderFormulaButton()}
         ${this.renderSpanButton()}

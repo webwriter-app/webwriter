@@ -54,7 +54,7 @@ import {
   type SerializedError,
   type VersionHistoryState,
 } from "./editor-bridge"
-import { getElementPresentation, isLineBreakElement, popupDisplayToggle, popupElementRole } from "./element-names"
+import { getElementPresentation, isLineBreakElement, imageMapPopupImage, popupDisplayToggle, popupElementRole } from "./element-names"
 import type {EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
 import listMarkerStyleString from "./document-list-markers.css?raw"
@@ -181,6 +181,7 @@ export type DOMEditorOptions = {
   syncUrl?: string
   initialState?: EditorStateSnapshot
   bridgeNonce?: string
+  documentReplicaId?: string
   bridgeOrigin?: string
   accessibilityReviewEnabled?: boolean
 }
@@ -891,8 +892,16 @@ export class DOMEditor {
   /** Sends an authenticated message to the configured host window. */
   postHostMessage(message: object) {
     if(this.options.reader) return
-    const target = window.parent === window? window: window.parent
-    target.postMessage({...message, bridgeNonce: this.#bridgeNonce}, this.#bridgeOrigin)
+    const send = () => {
+      if(this.options.documentReplicaId) this.doc?.flushDOMChanges()
+      const target = window.parent === window? window: window.parent
+      target.postMessage({...message, documentReplicaId: this.options.documentReplicaId, bridgeNonce: this.#bridgeNonce}, this.#bridgeOrigin)
+    }
+    // A projection can be published midway through a synchronous command.
+    // Flush at its completed DOM checkpoint, before the host receives paths
+    // or a command response, without reconciling temporary command structure.
+    if(this.options.documentReplicaId) queueMicrotask(send)
+    else send()
   }
 
   private postExecutionEvent<T extends object>(type: string, detail: T) {
@@ -991,11 +1000,11 @@ export class DOMEditor {
     elements.unshift(root)
     const content = element.closest("[popover]")
     if(content && popupElementRole(content) === "content" && !content.closest(".ww-popup")) {
-      const toggle = popupDisplayToggle(content)
+      const invoker = imageMapPopupImage(content) ?? popupDisplayToggle(content)
       const index = elements.indexOf(content)
-      if(toggle && index > 0) {
+      if(invoker && index > 0) {
         const prefix: Element[] = []
-        for(let ancestor: Element | null = toggle; ancestor && ancestor !== root; ancestor = ancestor.parentElement) prefix.unshift(ancestor)
+        for(let ancestor: Element | null = invoker; ancestor && ancestor !== root; ancestor = ancestor.parentElement) prefix.unshift(ancestor)
         elements.splice(1, index - 1, ...prefix)
       }
     }
@@ -1160,6 +1169,7 @@ export class DOMEditor {
     if(this.features.selection.selectedSectionElement) {
       this.postBridgeEvent(markStateChangeEvent, {
         canMark: false,
+        canRemoveMarks: this.features.mark.canRemoveMarks,
         marks: [],
         styles: {},
         attributes: {},
@@ -1169,6 +1179,7 @@ export class DOMEditor {
     }
     this.postBridgeEvent(markStateChangeEvent, {
       ...this.features.mark.getState(),
+      canRemoveMarks: this.features.mark.canRemoveMarks,
       styles: this.features.mark.getStyleState(),
       attributes: this.features.mark.getAttributeState(),
       link: this.features.mark.getLinkState() ?? undefined,

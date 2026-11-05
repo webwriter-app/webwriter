@@ -599,6 +599,7 @@ describe("editor bridge message guards", () => {
 
     expectAllRejected(isMarkStateChangeMessage, [
       {...message, detail: {...message.detail, marks: ["strong"]}},
+      {...message, detail: {...message.detail, canRemoveMarks: "yes"}},
       {...message, detail: {...message.detail, styles: {"font-weight": "bold"}}},
       {...message, detail: {...message.detail, styles: {color: 123}}},
       {...message, detail: {...message.detail, attributes: {strong: {href: "https://example.test"}}}},

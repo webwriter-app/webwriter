@@ -1,11 +1,12 @@
 import {DomEditor} from '../src/components/dom-editor'
 import type {DOMEditor} from '../src/domeditor'
 import type {EditorStateSnapshot} from '../src/editor-state'
+import {loadDocumentPackages} from '../src/package-dependencies'
 
 type Mode = 'document' | 'canvas' | 'slides' | 'board'
 type Operation = 'resize' | 'move' | 'rotate' | 'group-resize' | 'group-rotate'
   | 'card-resize' | 'column-resize' | 'text-drop' | 'float-drop' | 'board-drop' | 'svg-resize' | 'table-resize'
-type Case = {name: string, mode: Mode, operation: Operation, variant?: string}
+type Case = {name: string, mode: Mode, operation: Operation, variant?: string, target?: string}
 type Point = {x: number, y: number}
 type Counters = Record<string, number>
 
@@ -49,7 +50,7 @@ function gestureHTML({operation, variant}: Case, base: string) {
 
 // Serialized to the frame's DevTools execution context. Keep all dependencies
 // inside the function so the fixture can use the live DOM across the two origins.
-function installGestureFixture({operation, variant, name}: Case) {
+function installGestureFixture({operation, variant, name, target: targetSelector}: Case) {
   const editor = (window as Window & {editor: DOMEditor}).editor
   editor.doc.disconnectCollaboration()
   const need = <T>(value: T | null | undefined | false, message: string): T => {
@@ -130,6 +131,30 @@ function installGestureFixture({operation, variant, name}: Case) {
 
   return {
     frame, phase,
+    async ready() {
+      if(targetSelector) {
+        await Promise.race([Promise.all([document.fonts.ready,
+          ...Array.from(document.images, image => image.decode().catch(() => {}))]),
+          new Promise(resolve => setTimeout(resolve, 10000))])
+        const tags = [...new Set(Array.from(document.querySelectorAll('*'), element => element.localName).filter(tag => tag.includes('-')))]
+        need(tags.every(tag => customElements.get(tag)), `widgets not loaded: ${tags.filter(tag => !customElements.get(tag)).join(', ')}`)
+        const target = node(targetSelector)
+        const {canvas} = editor.features
+        canvas.actions.navigateCanvas({type: 'navigateCanvas', operation: 'actual-size'})
+        for(let i = 0; i < 20; i++) {
+          const rect = target.getBoundingClientRect()
+          if(rect.width < innerWidth * .6 && rect.height < innerHeight * .6) break
+          canvas.actions.navigateCanvas({type: 'navigateCanvas', operation: 'zoom-out'})
+        }
+        const rect = target.getBoundingClientRect()
+        canvas.reveal({left: rect.left - 150, top: rect.top - 150, right: rect.right + 150, bottom: rect.bottom + 150})
+        await frame()
+      }
+      return {elements: document.body.querySelectorAll('*').length, canvasItems: editor.features.canvas.items().length,
+        images: document.images.length, loadedImages: Array.from(document.images).filter(image => image.naturalWidth > 0).length,
+        widgets: [...new Set(Array.from(document.querySelectorAll('*'), element => element.localName).filter(tag => tag.includes('-')))],
+        zoom: editor.features.canvas.zoom}
+    },
     async select() {
       window.scrollTo(0, 0)
       if(operation.startsWith('group-')) {
@@ -154,7 +179,7 @@ function installGestureFixture({operation, variant, name}: Case) {
       if(operation !== 'table-resize') {
         const target = operation === 'board-drop' || operation === 'card-resize' ? board.cards(board.columns()[0])[0]
           : operation === 'column-resize' ? board.columns()[0]
-          : node(operation.endsWith('-drop') ? '#drag-source' : '#profile-transform')
+          : node(targetSelector ?? (operation.endsWith('-drop') ? '#drag-source' : '#profile-transform'))
         selection.withoutSelectionScroll(() => selection.selectElement(target))
       }
       await frame()
@@ -268,10 +293,29 @@ type Stats = (values: number[]) => object
 export async function gestureProfiles(stage: Stage, fixture: Fixture, snapshot: (html: string, bodyClass: string) => EditorStateSnapshot,
   statistics: Stats, profiling: boolean) {
   const token = location.hash.slice(1)
+  const parameters = new URLSearchParams(location.search)
+  const documentResponse = parameters.has('document') ? await fetch('/__gesture-document', {headers: {'x-gesture-token': token}}) : null
+  if(documentResponse && !documentResponse.ok) throw new Error(await documentResponse.text())
+  const sample: {html: string, name: string, target: string} | null = documentResponse ? await documentResponse.json() : null
+  const source = sample ? new DOMParser().parseFromString(sample.html, 'text/html') : null
+  if(source && !source.body.classList.contains('ww-canvas')) throw new Error('--document must be a canvas document')
+  const packages = source ? await loadDocumentPackages(source) : []
   const filters = new URLSearchParams(location.search).getAll('gesture')
+  const burstParameter = parameters.get('burst')
+  const burst = burstParameter === null ? 1 : Number(burstParameter)
+  if(burstParameter !== null && (!/^\d+$/.test(burstParameter) || burst < 1 || burst > 16)) {
+    throw new Error('--burst must be an integer from 1 to 16')
+  }
   const unknown = filters.find(filter => !cases.some(test => test.name === filter))
   if(unknown) throw new Error(`Unknown gesture: ${unknown}`)
-  const selected = cases.filter(test => !filters.length || filters.includes(test.name))
+  const selected = cases.filter(test => filters.length ? filters.includes(test.name)
+    : !sample || test.mode === 'canvas' && ['move', 'resize', 'rotate'].includes(test.operation) && !test.variant)
+  if(sample && selected.some(test => test.mode !== 'canvas' || !['move', 'resize', 'rotate'].includes(test.operation) || test.variant)) {
+    throw new Error('--document supports canvas move, canvas resize and canvas rotate')
+  }
+  if(burst > 1 && selected.some(test => test.operation.endsWith('-drop'))) {
+    throw new Error('--burst cannot be used with native drag gestures')
+  }
   const rpc = async <T>(data: object): Promise<T> => {
     const response = await fetch('/__native-gesture', {method: 'POST', headers: {'x-gesture-token': token}, body: JSON.stringify(data)})
     if(!response.ok) throw new Error(await response.text())
@@ -284,16 +328,18 @@ export async function gestureProfiles(stage: Stage, fixture: Fixture, snapshot: 
   const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
   const steps = 18, pauseMs = 200, warmups = 2
   const failures: string[] = []
-  for(const [index, test] of selected.entries()) {
+  for(const [index, original] of selected.entries()) {
+    const test = sample ? {...original, target: sample.target} : original
     const base = fixture(test.mode, 600)
-    const html = gestureHTML(test, base.html)
+    const html = source?.body.innerHTML ?? gestureHTML(test, base.html)
+    const bodyClass = source?.body.className ?? base.bodyClass
     const boardCSS = test.operation === 'board-drop'
       ? '<style>.ww-board-card {min-height:24px;height:24px;padding:0 4px}.ww-board-card p {margin:0;line-height:20px}</style>' : ''
     const app = new DomEditor()
     Object.assign(app, {
       frameStarted: true, frameRevision: index + 1,
-      frameDocumentHTML: `<!doctype html><html><head>${boardCSS}</head><body class="${base.bodyClass}">${html}</body></html>`,
-      frameState: snapshot(html, base.bodyClass),
+      frameDocumentHTML: sample?.html ?? `<!doctype html><html><head>${boardCSS}</head><body class="${bodyClass}">${html}</body></html>`,
+      frameState: snapshot(html, bodyClass), installedPackages: packages,
       documentLayoutsDismissed: true, accessibilityReviewEnabled: false, packageCatalogRequested: true,
       settings: {...Reflect.get(app, 'settings'), showGuidedTour: false, proofreadingEnabledByDefault: false, disableAnimations: true},
       loginToBackend: async () => {},
@@ -308,15 +354,17 @@ export async function gestureProfiles(stage: Stage, fixture: Fixture, snapshot: 
         if(!ready) await delay(50)
       }
       if(!ready) throw new Error(`${test.name}: editor frame did not start`)
+      if(sample) await Reflect.get(app, 'waitForEditorWindow').call(app)
       await evaluate(`window.gestureFixture = (${installGestureFixture.toString()})(${JSON.stringify(test)}); true`)
+      const documentInfo = await evaluate<object>('window.gestureFixture.ready()')
       await app.updateComplete
       const nativeDrag = test.operation.endsWith('-drop')
       const frame = app.shadowRoot!.querySelector<HTMLIFrameElement>('iframe.editor-frame')!
       let offset: Point = {x: 0, y: 0}
-      const mouse = (type: string, point: Point, held = false) =>
-        rpc({nativeDrag, mouse: {type, x: point.x + offset.x,
+      const mouseEvent = (type: string, point: Point, held = false) => ({type, x: point.x + offset.x,
           y: point.y + offset.y, button: type === 'mouseMoved' && !held ? 'none' : 'left',
-          buttons: held ? 1 : 0, clickCount: type === 'mouseMoved' ? 0 : 1}})
+          buttons: held ? 1 : 0, clickCount: type === 'mouseMoved' ? 0 : 1})
+      const mouse = (type: string, point: Point, held = false) => rpc({nativeDrag, mouse: mouseEvent(type, point, held)})
       const pickupSteps = nativeDrag ? 2 : 0
       const phaseNames = ['start', ...(pickupSteps ? ['pickup'] : []), 'move', 'pause', 'release', 'afterRelease']
       const times: Record<string, number[]> = Object.fromEntries(phaseNames.map(phase => [phase, []]))
@@ -325,7 +373,9 @@ export async function gestureProfiles(stage: Stage, fixture: Fixture, snapshot: 
       let viewport: number[] = []
       const waitFrame = () => evaluate('window.gestureFixture.frame()')
       const check = await stage(test.name, {layout: test.mode, operation: test.operation, variant: test.variant,
-        ...(test.operation === 'table-resize' ? {rows: Number(test.variant), columns: 6} : {textBlocks: 600}), steps, pauseMs}, async () => {
+        ...(sample ? {document: sample.name, target: sample.target, ...documentInfo}
+          : test.operation === 'table-resize' ? {rows: Number(test.variant), columns: 6} : {textBlocks: 600}),
+        steps, burst, requestedMovementCount: steps * burst, pauseMs}, async () => {
         const selection = await evaluate<Point | null>('window.gestureFixture.select()')
         if(selection) {
           await mouse('mouseMoved', selection)
@@ -340,6 +390,7 @@ export async function gestureProfiles(stage: Stage, fixture: Fixture, snapshot: 
         }
         viewport = plan.viewport
         const {from, to} = plan
+        let previous = from
         const path = Array.from({length: steps}, (_, i) => {
           const fraction = (i + 1) / steps
           return {x: from.x + (to.x - from.x) * fraction, y: from.y + (to.y - from.y) * fraction}
@@ -361,7 +412,16 @@ export async function gestureProfiles(stage: Stage, fixture: Fixture, snapshot: 
         const move = async (points: Point[], timed: boolean) => {
           for(const next of points) {
             const start = performance.now()
-            await mouse('mouseMoved', next, true)
+            if(burst === 1) await mouse('mouseMoved', next, true)
+            else {
+              const events = Array.from({length: burst}, (_, i) => {
+                const fraction = (i + 1) / burst
+                return mouseEvent('mouseMoved', {x: previous.x + (next.x - previous.x) * fraction,
+                  y: previous.y + (next.y - previous.y) * fraction}, true)
+              })
+              await rpc({nativeDrag, mouse: events})
+            }
+            previous = next
             await waitFrame()
             if(timed) moveSteps.push(performance.now() - start)
           }
