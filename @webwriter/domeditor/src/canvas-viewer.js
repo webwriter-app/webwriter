@@ -70,6 +70,7 @@ class CanvasMinimap {
     this.generation = 0
     this.running = null
     this.timer = null
+    this.cameraFrame = null
     this.refreshNotBefore = 0
     this.queued = false
     this.dirty = true
@@ -93,7 +94,7 @@ class CanvasMinimap {
     this.map.setAttribute("aria-label", "Center canvas here")
     this.map.title = "Click or drag to move the canvas"
     this.map.disabled = true
-    this.map.innerHTML = '<span>Loading minimap…</span><svg aria-hidden="true"><clipPath id="◆canvas-minimap-bounds"><rect width="100%" height="100%"/></clipPath><rect width="100%" height="100%" fill="white"/><g clip-path="url(#◆canvas-minimap-bounds)"><image/><rect class="◆canvas-minimap-camera" vector-effect="non-scaling-stroke"/></g></svg>'
+    this.map.innerHTML = '<span>Loading minimap…</span><svg aria-hidden="true"><clipPath id="◆canvas-minimap-bounds"><rect width="100%" height="100%"/></clipPath><rect width="100%" height="100%" fill="white"/><g clip-path="url(#◆canvas-minimap-bounds)"><image/></g></svg><div class="◆canvas-minimap-frame-layer ◆canvas-minimap-camera-layer" aria-hidden="true"><canvas class="◆canvas-minimap-camera"></canvas></div>'
     this.row = document.createElement("div")
     this.row.className = "◆canvas-minimap-row"
     this.surface = document.createElement("div")
@@ -103,7 +104,15 @@ class CanvasMinimap {
     this.createStartingViewControls()
     this.svg = this.map.querySelector("svg")
     this.image = this.svg.querySelector("image")
-    this.viewport = this.svg.querySelector(".◆canvas-minimap-camera")
+    this.viewport = this.map.querySelector(".◆canvas-minimap-camera")
+    this.cameraResize = new ResizeObserver(entries => {
+      const entry = entries.find(entry => entry.target === this.viewport)
+      if(!entry || !entry.contentRect.width || !entry.contentRect.height) return
+      this.cameraSize = {width: entry.contentRect.width, height: entry.contentRect.height}
+      this.resizeCamera()
+      this.updateCamera()
+    })
+    this.cameraResize.observe(this.viewport)
     this.map.addEventListener("click", event => {
       this.selectedStartingView = null
       this.updateStartingView()
@@ -329,6 +338,8 @@ class CanvasMinimap {
       this.stopStartingViewDrag()
       this.selectedStartingView = null
       this.generation++
+      if(this.cameraFrame !== null) cancelAnimationFrame(this.cameraFrame)
+      this.cameraFrame = null
       clearTimeout(this.timer)
       this.timer = null
       this.queued = false
@@ -417,7 +428,7 @@ class CanvasMinimap {
     const {innerWidth, innerHeight} = window
     const current = () => !running.stale && this.generation === generation && this.viewer.active
     const cancelIfStale = () => { if(!current()) throw cancelMinimapCapture }
-    let bounds = null, snapshot = null
+    let bounds = null, snapshot = null, thumbnail = null
     try {
       bounds = this.usedBounds(viewportAspectRatio())
       if(bounds) {
@@ -459,6 +470,9 @@ class CanvasMinimap {
             },
           }],
         })
+        cancelIfStale()
+        // Rasterize once so repainting the minimap only draws a bitmap.
+        thumbnail = (await snapshot.toPng()).src
       }
     }
     catch(error) {
@@ -475,8 +489,9 @@ class CanvasMinimap {
       this.dirty = true
       return
     }
-    // Leave a failed capture dirty so a later open or invalidation can retry.
-    this.dirty = Boolean(bounds && !snapshot)
+    // Keep the previous image and retry later if capture or rasterization failed.
+    if(bounds && !thumbnail) return
+    this.dirty = false
     if(this.startingViewDrag && (!bounds || ["x", "y", "width", "height"].some(key => Math.abs(bounds[key] - this.bounds[key]) > .01))) {
       this.stopStartingViewDrag()
     }
@@ -492,7 +507,7 @@ class CanvasMinimap {
       this.image.setAttribute("y", meta.clip.y - meta.contentY - bounds.y)
       this.image.setAttribute("width", meta.vbW)
       this.image.setAttribute("height", meta.vbH)
-      this.image.setAttribute("href", snapshot.toRaw())
+      this.image.setAttribute("href", thumbnail)
     }
     else this.image.removeAttribute("href")
     if(bounds) {
@@ -507,19 +522,37 @@ class CanvasMinimap {
     const {left, top} = this.viewer.slot.getBoundingClientRect()
     this.origin = {x: left - this.viewer.camera.x, y: top - this.viewer.camera.y}
     this.surface.style.setProperty("--canvas-minimap-ratio", viewportAspectRatio())
+    this.resizeCamera()
     this.updateCamera()
     this.updateStartingView()
   }
 
+  resizeCamera() {
+    if(!this.cameraSize) return
+    const {width, height} = this.cameraSize, dpr = window.devicePixelRatio || 1
+    const pixelWidth = Math.max(1, Math.round(width * dpr)), pixelHeight = Math.max(1, Math.round(height * dpr))
+    if(this.viewport.width !== pixelWidth) this.viewport.width = pixelWidth
+    if(this.viewport.height !== pixelHeight) this.viewport.height = pixelHeight
+    this.cameraContext ??= this.viewport.getContext("2d")
+    if(!this.cameraContext) return
+    this.cameraContext.setTransform(pixelWidth / width, 0, 0, pixelHeight / height, 0, 0)
+    this.cameraContext.fillStyle = "#3b82f620"
+    this.cameraContext.strokeStyle = "#2563eb"
+    this.cameraContext.lineWidth = 1.5
+  }
+
   updateCamera() {
-    if(this.map.hidden || !this.bounds) return
-    // The camera already owns the translation. Reading the slot here would
-    // force layout immediately after every transform write during panning.
+    if(this.cameraFrame !== null) cancelAnimationFrame(this.cameraFrame)
+    this.cameraFrame = null
+    if(this.map.hidden || !this.bounds || !this.viewer.active || !this.cameraContext) return
     const {x, y, zoom} = this.viewer.camera
-    this.viewport.setAttribute("x", -(this.origin.x + x) / zoom - this.bounds.x)
-    this.viewport.setAttribute("y", -(this.origin.y + y) / zoom - this.bounds.y)
-    this.viewport.setAttribute("width", window.innerWidth / this.viewer.zoom)
-    this.viewport.setAttribute("height", window.innerHeight / this.viewer.zoom)
+    const {width, height} = this.cameraSize, scaleX = width / this.bounds.width, scaleY = height / this.bounds.height
+    // Keep pan updates out of DOM/style invalidation and SVG rasterization.
+    const left = (-(this.origin.x + x) / zoom - this.bounds.x) * scaleX
+    const top = (-(this.origin.y + y) / zoom - this.bounds.y) * scaleY
+    this.cameraContext.clearRect(0, 0, width, height)
+    this.cameraContext.fillRect(left, top, window.innerWidth / zoom * scaleX, window.innerHeight / zoom * scaleY)
+    this.cameraContext.strokeRect(left, top, window.innerWidth / zoom * scaleX, window.innerHeight / zoom * scaleY)
   }
 
   cameraChanged() {
@@ -530,7 +563,10 @@ class CanvasMinimap {
       this.dirty = true
       this.queued = true
     }
-    this.updateCamera()
+    if(!this.map.hidden && this.bounds && this.cameraFrame === null) this.cameraFrame = requestAnimationFrame(() => {
+      this.cameraFrame = null
+      this.updateCamera()
+    })
   }
 
   centerAt(clientX, clientY) {
@@ -555,6 +591,7 @@ class CanvasMinimap {
   destroy() {
     this.setOpen(false)
     this.observer.disconnect()
+    this.cameraResize.disconnect()
     document.removeEventListener("load", this.resourceLoaded, true)
     window.removeEventListener("resize", this.resize)
     this.row.remove()
@@ -841,8 +878,8 @@ export const canvasControlsStyles = `
       .◆canvas-controls button[part=canvas-minimap][hidden] { display: none; }
       .◆canvas-controls button[part=canvas-minimap]:disabled { opacity: 1; cursor: default; color: #64748b; }
       .◆canvas-controls button[part=canvas-minimap] > svg { width: 100%; height: 100%; pointer-events: none; }
-      .◆canvas-controls button[part=canvas-minimap]:disabled > svg, .◆canvas-controls button[part=canvas-minimap]:enabled > span { display: none; }
-      .◆canvas-minimap-camera { fill: #3b82f620; stroke: #2563eb; stroke-width: 1.5px; }
+      .◆canvas-controls button[part=canvas-minimap]:disabled > :is(svg, .◆canvas-minimap-camera-layer), .◆canvas-controls button[part=canvas-minimap]:enabled > span { display: none; }
+      .◆canvas-minimap-camera { position: absolute; inset: 0; display: block; width: 100%; height: 100%; transform: translateZ(0); }
       .◆canvas-starting-view-controls { position: absolute; z-index: 1; right: 2px; bottom: 2px; border: 1px solid #cbd5e1; background: rgb(255 255 255 / .5); }
       .◆canvas-controls .◆canvas-starting-view-controls button { padding: 3px 5px; background: transparent; font-size: 11px; }
       .◆canvas-controls .◆canvas-starting-view-controls button:not(:disabled):hover { background: #dbeafe; }

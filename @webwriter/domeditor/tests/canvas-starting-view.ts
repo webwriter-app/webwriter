@@ -19,7 +19,7 @@ export async function checkCanvasStartingView() {
     const minimap = editor.appendix.querySelector<HTMLButtonElement>('[part="canvas-minimap"]')!
     const toggle = editor.appendix.querySelector<HTMLButtonElement>('[name="minimap-toggle"]')!
     for(let i = 0; !minimap.querySelector("image")?.hasAttribute("href") && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 20))
-    assert(minimap.querySelector("image")?.getAttribute("href")?.startsWith("data:image/svg+xml"), "editor did not capture the minimap")
+    assert(minimap.querySelector("image")?.getAttribute("href")?.startsWith("data:image/png"), "editor did not rasterize the minimap")
     assert(toggle.getAttribute("aria-expanded") === "true" && minimap.getBoundingClientRect().top > toggle.getBoundingClientRect().bottom,
       "editor minimap is not initially open below the canvas controls")
     const toolbar = toggle.parentElement!
