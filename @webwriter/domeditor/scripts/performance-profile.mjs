@@ -1,20 +1,36 @@
 import {spawn} from 'node:child_process'
-import {randomUUID} from 'node:crypto'
-import {mkdtemp, mkdir, rm, writeFile} from 'node:fs/promises'
+import {createHash, randomUUID} from 'node:crypto'
+import {mkdtemp, mkdir, readFile, rm, writeFile} from 'node:fs/promises'
 import {createServer as createNetServer} from 'node:net'
 import {tmpdir, cpus, platform, release} from 'node:os'
-import {join, resolve} from 'node:path'
+import {basename, join, resolve} from 'node:path'
 import {build, createServer, preview} from 'vite'
 import WebSocket from 'ws'
 
 // CDP is provided by Chrome itself; ws is already a project dependency.
 // All servers and the debugging endpoint are loopback-only, in a fresh profile.
+// Profile a saved canvas in the full editor (including its installed widgets):
+// node scripts/performance-profile.mjs --production --only=gestures --document=/path/to/sample.html
+// Add --target='body > webwriter-map' to choose an item, --gesture='canvas move'
+// to isolate an operation, --burst=4 to send four mouse positions per frame, or
+// --profile to collect diagnostic CPU/timeline traces.
 const production = process.argv.includes('--production')
 const profiling = process.argv.includes('--profile')
 const only = process.argv.find(arg => arg.startsWith('--only='))?.slice(7)
 if(only && !['live', 'reconciliation', 'tables', 'layouts', 'gestures'].includes(only)) throw new Error('--only must be live, reconciliation, tables, layouts or gestures')
 const gestureFilters = process.argv.filter(arg => arg.startsWith('--gesture=')).map(arg => arg.slice(10))
+const burstArgument = process.argv.find(arg => arg.startsWith('--burst='))?.slice(8)
+const burst = burstArgument === undefined ? 1 : Number(burstArgument)
+if(burstArgument !== undefined && (!/^\d+$/.test(burstArgument) || burst < 1 || burst > 16)) throw new Error('--burst must be an integer from 1 to 16')
+if(burstArgument !== undefined && only !== 'gestures') throw new Error('--burst requires --only=gestures')
 const gestureToken = only === 'gestures' ? randomUUID() : null
+const documentPath = process.argv.find(arg => arg.startsWith('--document='))?.slice(11)
+const target = process.argv.find(arg => arg.startsWith('--target='))?.slice(9)
+if((documentPath || target) && only !== 'gestures') throw new Error('--document and --target require --only=gestures')
+if(target && !documentPath) throw new Error('--target requires --document')
+const documentSource = documentPath ? await readFile(resolve(documentPath), 'utf8') : null
+const documentDetails = documentSource === null ? null : {name: basename(documentPath), bytes: Buffer.byteLength(documentSource),
+  sha256: createHash('sha256').update(documentSource).digest('hex'), target: target ?? 'body > figure'}
 const output = resolve(process.argv.find(arg => arg.startsWith('--output='))?.slice(9) ?? '.cache/performance/profile')
 await mkdir(output, {recursive: true})
 const temporary = await mkdtemp(join(tmpdir(), 'domeditor-profiler-'))
@@ -151,7 +167,7 @@ async function startProfile(details) {
   const {name} = details
   const stem = `${String(profiles.length + 1).padStart(2, '0')}-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`
   active = {...details, stem, before: await counters()}
-  if(name === 'live native typing') {
+  if(name === 'live native typing' || only === 'gestures') {
     const {data} = await call('Page.captureScreenshot', {captureBeyondViewport: false})
     await writeFile(join(output, stem + '.png'), Buffer.from(data, 'base64'))
   }
@@ -187,6 +203,12 @@ async function stopProfile() {
 }
 
 const handler = async (request, response, next) => {
+  if(request.url === '/__gesture-document' && documentSource !== null) {
+    if(request.method !== 'GET' || request.headers['x-gesture-token'] !== gestureToken) { response.writeHead(403).end(); return }
+    response.setHeader('Content-Type', 'application/json')
+    response.end(JSON.stringify({html: documentSource, ...documentDetails}))
+    return
+  }
   const gesture = only === 'gestures' && request.url === '/__native-gesture'
   if(request.method !== 'POST' || !gesture && !['/__native-result', '/__native-progress', '/__native-profile/start', '/__native-profile/stop'].includes(request.url)) return next()
   if(gesture && request.headers['x-gesture-token'] !== gestureToken) { response.writeHead(403).end(); return }
@@ -197,6 +219,11 @@ const handler = async (request, response, next) => {
     if(gesture) {
       const {expression, revision, mouse, nativeDrag} = JSON.parse(body)
       if(typeof expression === 'string') response.end(JSON.stringify(await evaluateFrame(expression, revision) ?? null))
+      else if(Array.isArray(mouse)) {
+        if(nativeDrag) throw new Error('Native drag does not support mouse bursts')
+        await Promise.all(mouse.map(event => gestureMouse(event, nativeDrag)))
+        response.end('null')
+      }
       else if(mouse) { await gestureMouse(mouse, nativeDrag); response.end('null') }
       else throw new Error('Missing gesture command')
       return
@@ -272,20 +299,22 @@ try {
   const parameters = new URLSearchParams()
   if(profiling) parameters.set('profile', '')
   if(only) parameters.set('only', only)
+  if(burstArgument !== undefined) parameters.set('burst', String(burst))
+  if(documentSource !== null) parameters.set('document', '')
   for(const filter of gestureFilters) parameters.append('gesture', filter)
   await call('Page.navigate', {url: `http://127.0.0.1:${port}/tests/performance-profile.html?${parameters}${gestureToken ? '#' + gestureToken : ''}`})
   const result = await Promise.race([resultPromise, deadline])
   clearTimeout(timer)
   await call('HeapProfiler.collectGarbage')
   const after = await counters()
-  const report = {...result, environment: {production, profiling, version, cpu: cpus()[0]?.model, logicalCores: cpus().length,
+  const report = {...result, ...(documentDetails ? {document: documentDetails} : {}), environment: {production, profiling, version, cpu: cpus()[0]?.model, logicalCores: cpus().length,
     os: `${platform()} ${release()}`, before, after}, exceptions}
   await writeFile(join(output, 'results.json'), JSON.stringify(report, null, 2))
   await writeFile(join(output, 'chrome.stderr.log'), messages.join(''))
   if(result.error || exceptions.length) throw new Error(result.error ?? `${exceptions.length} unhandled browser exceptions`)
   const expected = (!only || only === 'reconciliation' ? profiling ? 16 : 62 : 0)
     + (!only || only === 'live' ? profiling ? 7 : 21 : 0) + (!only || only === 'tables' ? profiling ? 7 : 14 : 0)
-    + (only === 'layouts' ? profiling ? 18 : 36 : 0) + (only === 'gestures' ? new Set(gestureFilters).size || 19 : 0)
+    + (only === 'layouts' ? profiling ? 18 : 36 : 0) + (only === 'gestures' ? new Set(gestureFilters).size || (documentSource !== null ? 3 : 19) : 0)
   if(result.checks?.length !== expected) throw new Error(`Expected ${expected} measurements, received ${result.checks?.length}`)
   process.stdout.write(`Saved ${result.checks.length} measurements and ${profiles.length} CPU/timeline profiles to ${output}\n`)
 }

@@ -70,6 +70,7 @@ type Gesture = {
   group?: GroupGesture
   fullWidth?: {initial: boolean, written: boolean, threshold: number | null}
   resizeCentered?: boolean
+  resizeMode?: string
   selectionPathPending?: boolean
   markStatePending?: boolean
 }
@@ -142,6 +143,8 @@ export class TransformationFeature extends EditorFeature {
   }
   #frame: number | null = null
   #geometryFrameDirty = false
+  #pendingPointer: PointerEvent | null = null
+  #lastPointer: MouseEvent | null = null
   #panFrame: number | null = null
   #panEvent: MouseEvent | null = null
   #drop: {element: Element, placement: "before" | "after", parent: Node, float?: "left" | "right"} | null = null
@@ -1152,8 +1155,11 @@ export class TransformationFeature extends EditorFeature {
     if(invalidate) this.#geometryFrameDirty = true
     if(this.#frame !== null || !this.isEnabled || !this.target || this.#anchored && !this.#gesture) return
     this.#frame = requestAnimationFrame(() => {
+      if(this.#gesture && !this.#validGesture()) { this.#frame = null; return }
+      // Keep this frame registered while applying input so its style writes
+      // and geometry refresh share one animation frame.
+      this.#flushPointer()
       this.#frame = null
-      if(this.#gesture && !this.#validGesture()) return
       // A paused gesture still needs live validation. Only remeasure
       // after an invalidation or while authored animation can move its boxes.
       const coalesced = this.#coalescesGeometry
@@ -1166,6 +1172,17 @@ export class TransformationFeature extends EditorFeature {
       }
       if(this.#gesture || this.#observedElements.some(element => element.getAnimations?.().some(animation => animation.playState === "running"))) this.#scheduleFrame(false)
     })
+  }
+
+  #flushPointer() {
+    const event = this.#pendingPointer
+    this.#pendingPointer = null
+    if(!event || !this.#gesture || this.#gesture.pointerId !== event.pointerId) return
+    this.#lastPointer = event
+    if(this.#gesture.mode === "scale") this.handleScaleDrag(event)
+    else if(this.#gesture.mode === "crop") this.handleCropDrag(event)
+    else if(this.#gesture.mode === "rotate") this.handleRotateDrag(event)
+    else this.handleMoveDrag(event)
   }
 
   #updateContextMarkers(block: Element | Window | null = null, scroller: Element | null = null) {
@@ -1430,7 +1447,12 @@ export class TransformationFeature extends EditorFeature {
   }
 
   #resizeDimension(styles: GestureStyles, property: "width" | "height", size: number, delta: number) {
-    if(Math.abs(delta) < .01) return
+    if(Math.abs(delta) < .01) {
+      for(const key of [property, `max-${property}`]) if(styles.written.has(key)) {
+        this.#write(key, styles.initial.getPropertyValue(key), styles.initial.getPropertyPriority(key), styles)
+      }
+      return
+    }
     const value = `${Math.max(1, size + delta)}px`
     this.#write(property, value, styles.initial.getPropertyPriority(property), styles)
     this.#write(`max-${property}`, value, styles.initial.getPropertyPriority(`max-${property}`), styles)
@@ -1442,7 +1464,8 @@ export class TransformationFeature extends EditorFeature {
       this.#panFrame = requestAnimationFrame(() => {
         this.#panFrame = null
         const pointer = this.#panEvent
-        if(pointer && this.#validGesture() && this.editor.features.canvas.panAtEdge({x: pointer.clientX, y: pointer.clientY})) this.handleMoveDrag(pointer)
+        if(pointer && !this.#pendingPointer && this.#validGesture()
+          && this.editor.features.canvas.panAtEdge({x: pointer.clientX, y: pointer.clientY})) this.handleMoveDrag(pointer)
       })
     }
   }
@@ -1557,8 +1580,10 @@ export class TransformationFeature extends EditorFeature {
 
   #writeCanvasViewBox(value: string | null) {
     const gesture = this.#gesture!
-    if(value === null) gesture.target.removeAttribute("viewBox")
-    else gesture.target.setAttribute("viewBox", value)
+    if(gesture.target.getAttribute("viewBox") !== value) {
+      if(value === null) gesture.target.removeAttribute("viewBox")
+      else gesture.target.setAttribute("viewBox", value)
+    }
     gesture.canvas!.written = value
   }
 
@@ -1566,6 +1591,23 @@ export class TransformationFeature extends EditorFeature {
     const gesture = this.#gesture
     if(!gesture) return false
     const picture = gesture.figureImage?.picture
+    const properties = gesture.mode === "move" || gesture.mode === "anchor"
+      ? ["position", "left", "right", "top", "bottom"]
+      : gesture.mode === "rotate" ? ["position", "left", "right", "top", "bottom", "rotate"]
+      : ["position", "left", "right", "top", "bottom", "width", "height", "max-width", "max-height", "scale", "aspect-ratio"]
+    // Input can wait for a frame before the first write. A newer authored
+    // placement or size must invalidate that input even when written is empty.
+    if((gesture.group?.members ?? [gesture, gesture.image, picture]).some(styles => styles && properties.some(key =>
+      !styles.written.has(key) && (styles.target.style.getPropertyValue(key) !== styles.initial.getPropertyValue(key)
+        || styles.target.style.getPropertyPriority(key) !== styles.initial.getPropertyPriority(key))))) {
+      this.#finish(true)
+      return false
+    }
+    if(!(gesture.group?.members ?? [gesture, gesture.image, picture]).every(styles => !styles
+      || this.editor.allows(gesture.mode === "move" ? "move" : "style", styles.target))) {
+      this.#finish(true)
+      return false
+    }
     if(gesture.group && (!this.#validGroupSelection() || gesture.group.members.some(member =>
       member.parent !== member.target.parentElement || [...member.written].some(([key, last]) =>
         member.target.style.getPropertyValue(key) !== last.value || member.target.style.getPropertyPriority(key) !== last.priority)))) {
@@ -1600,8 +1642,10 @@ export class TransformationFeature extends EditorFeature {
   #write(property: string, value: string, priority = "", gesture: GestureStyles | null = this.#gesture) {
     const target = gesture?.target ?? this.target
     if(!target) return
-    if(value) target.style.setProperty(property, value, priority)
-    else target.style.removeProperty(property)
+    if(target.style.getPropertyValue(property) !== value || target.style.getPropertyPriority(property) !== priority) {
+      if(value) target.style.setProperty(property, value, priority)
+      else target.style.removeProperty(property)
+    }
     gesture?.written.set(property, {value: target.style.getPropertyValue(property), priority: target.style.getPropertyPriority(property)})
   }
 
@@ -1615,12 +1659,13 @@ export class TransformationFeature extends EditorFeature {
   /** Adjust offsets by the measured viewport displacement. Measuring after a
    * mode/size change accounts for margins, borders, scrollers and CSS origins. */
   #offsetBy(dx: number, dy: number, styles: GestureStyles | null = this.#gesture) {
-    if(!this.editor.features.canvas.active && !this.editor.features.slides.active) return
+    if(!this.editor.features.canvas.active && !this.editor.features.slides.active) return false
     const target = styles?.target ?? this.target!
-    if(Math.abs(dx) < .01 && Math.abs(dy) < .01) return
+    if(Math.abs(dx) < .01 && Math.abs(dy) < .01) return false
     const delta = this.#vector(this.#matrix(renderedParentElement(target)).inverse(), dx, dy)
     if(getComputedStyle(target).position === "static") this.#write("position", "relative", "", styles)
     this.#writeOffset(this.#readOffset(target, delta), styles)
+    return true
   }
 
   #readOffset(target: TransformElement, delta: {x: number, y: number}) {
@@ -1695,6 +1740,7 @@ export class TransformationFeature extends EditorFeature {
     if(gesture.group) { this.#dragGroup(event); return }
     const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y
     if(!gesture.moved && Math.hypot(dx, dy) < 8) return
+    const overlayLeft = fixedClientX(0)
     gesture.moved = true
     document.body.classList.add("◆transform-moving")
     if(gesture.mode === "anchor" || modifierKeyDown(event) || !this.editor.features.canvas.active && !this.editor.features.slides.active) {
@@ -1708,13 +1754,13 @@ export class TransformationFeature extends EditorFeature {
       return
     }
     this.#clearDrop()
-    this.#resetWritten()
     const position = getComputedStyle(gesture.target).position || "static"
     if(position === "static") this.#setPosition("absolute")
     const current = this.targetRect
     const movement = this.#snapMovement(event, dx, dy, current)
     this.#offsetBy(gesture.rect.left + movement.offset.x - current.left, gesture.rect.top + movement.offset.y - current.top)
-    this.#showMovementOverlay(movement)
+    this.editor.features.layout.refreshFigureLayout(gesture.target)
+    this.#showMovementOverlay(movement, overlayLeft)
     this.#scheduleFrame()
     this.#schedulePan(event)
   }
@@ -1767,13 +1813,17 @@ export class TransformationFeature extends EditorFeature {
     let mask: DOMRect[] = []
     if(!canvas.active) {
       const base = current ?? this.#groupRect()
-      mask = boxes.map(({item, rect}) => selected.has(item)
-        ? new DOMRect(rect.left + gesture.rect.left + offset.x - base.left, rect.top + gesture.rect.top + offset.y - base.top, rect.width, rect.height) : rect)
+      mask = boxes.map(({item, rect}) => {
+        if(!selected.has(item)) return rect
+        const box = gesture.group ? rect : base
+        return new DOMRect(box.left + gesture.rect.left + offset.x - base.left,
+          box.top + gesture.rect.top + offset.y - base.top, box.width, box.height)
+      })
     }
     return {offset, area, origin, zoom, boxes: mask, guides}
   }
 
-  #showMovementOverlay({area, origin, zoom, boxes, guides}: MovementPreview) {
+  #showMovementOverlay({area, origin, zoom, boxes, guides}: MovementPreview, left = fixedClientX(0)) {
     if(!this.#movementOverlay) {
       this.#movementOverlay = document.createElementNS(SVG_NAMESPACE, "svg")
       this.#movementOverlay.setAttribute("part", "transform-movement-overlay")
@@ -1782,14 +1832,13 @@ export class TransformationFeature extends EditorFeature {
       this.editor.addAppendix(this.#movementOverlay)
     }
     const overlay = this.#movementOverlay
-    overlay.style.left = `${fixedClientX(0)}px`
-    overlay.setAttribute("width", String(window.innerWidth))
-    overlay.setAttribute("height", String(window.innerHeight))
-    overlay.replaceChildren()
-    const svg = (name: string, attributes: Record<string, string | number>, parent: Element = overlay) => {
-      const element = document.createElementNS(SVG_NAMESPACE, name)
-      for(const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value))
-      parent.append(element)
+    if(overlay.style.left !== `${left}px`) overlay.style.left = `${left}px`
+    if(overlay.getAttribute("width") !== String(window.innerWidth)) overlay.setAttribute("width", String(window.innerWidth))
+    if(overlay.getAttribute("height") !== String(window.innerHeight)) overlay.setAttribute("height", String(window.innerHeight))
+    const svg = (name: string, attributes: Record<string, string | number>, parent: Element = overlay, selector = name) => {
+      const element = parent.querySelector(`:scope > ${selector}`) ?? document.createElementNS(SVG_NAMESPACE, name)
+      for(const [key, value] of Object.entries(attributes)) if(element.getAttribute(key) !== String(value)) element.setAttribute(key, String(value))
+      if(element.parentNode !== parent) parent.append(element)
       return element
     }
     if(!this.editor.features.canvas.active) {
@@ -1805,11 +1854,17 @@ export class TransformationFeature extends EditorFeature {
     }
     for(const axis of ["x", "y"] as const) {
       const guide = guides[axis]
-      if(!guide) continue
-      svg("line", {part: `transform-guide transform-guide-${axis} transform-guide-${guide.kind}`,
+      const selector = `line[part~="transform-guide-${axis}"]`
+      if(!guide) {
+        const line = overlay.querySelector<SVGLineElement>(selector)
+        if(line && line.style.display !== "none") line.style.display = "none"
+        continue
+      }
+      const line = svg("line", {part: `transform-guide transform-guide-${axis} transform-guide-${guide.kind}`,
         x1: axis === "x" ? guide.value : area.left, y1: axis === "y" ? guide.value : area.top,
         x2: axis === "x" ? guide.value : area.right, y2: axis === "y" ? guide.value : area.bottom,
-        stroke: guide.kind === "canvas" ? "#f59e0b" : "#38bdf8", "stroke-width": 1, "stroke-dasharray": "4 3"})
+        stroke: guide.kind === "canvas" ? "#f59e0b" : "#38bdf8", "stroke-width": 1, "stroke-dasharray": "4 3"}, overlay, selector) as SVGLineElement
+      if(line.style.display) line.style.display = ""
     }
   }
 
@@ -1832,7 +1887,6 @@ export class TransformationFeature extends EditorFeature {
     const delta = this.#vector(gesture.matrix.inverse(), event.clientX - gesture.x, event.clientY - gesture.y)
     if(!gesture.moved && (text ? Math.abs(delta.x) : Math.hypot(delta.x, delta.y)) < 1) return
     gesture.moved = true
-    this.#resetWritten()
     const x = direction.includes("left") ? -1 : direction.includes("right") ? 1 : 0
     const y = text ? 0 : direction.includes("up") ? -1 : direction.includes("down") ? 1 : 0
     document.body.classList.add(`◆transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
@@ -1849,10 +1903,13 @@ export class TransformationFeature extends EditorFeature {
     }
     const crop = gesture.canvas && !event.altKey
     const scaleInsteadOfResize = event.shiftKey && !crop && !text && !image
-    if(gesture.canvas) this.#writeCanvasViewBox(gesture.canvas.initial)
     const style = getComputedStyle(target)
     const popup = target.closest("[popover]")
     const insidePopup = Boolean(popup && popup !== target && popupElementRole(popup) === "content")
+    const resizeMode = `${Boolean(crop)}:${scaleInsteadOfResize}:${floatSideFromStyles(style.float, target.style, target.classList)}:${insidePopup}`
+    if(gesture.resizeMode !== undefined && gesture.resizeMode !== resizeMode) this.#resetWritten()
+    gesture.resizeMode = resizeMode
+    if(gesture.canvas && !crop) this.#writeCanvasViewBox(gesture.canvas.initial)
     if(style.display === "inline" && target instanceof HTMLElement) this.#write("display", "inline-block")
     let actualDW = dw, actualDH = dh
     if(gesture.figureImage && gesture.image) {
@@ -1922,6 +1979,7 @@ export class TransformationFeature extends EditorFeature {
       }
       if(y) this.#write("max-height", `${Math.max(0, gesture.cssHeight + dh)}px`)
     }
+    this.editor.features.layout.refreshFigureLayout(target)
     const keepAnchor = freeform && (style.position || "static") !== "static"
     // Flow resize does not adjust offsets. Measure the used size only when
     // positioning a spatial item or projecting an SVG viewport.
@@ -1946,8 +2004,10 @@ export class TransformationFeature extends EditorFeature {
     if(keepAnchor) {
       const shift = this.#vector(gesture.matrix, symmetric ? 0 : x * actualDW / 2, text ? actualDH / 2 : symmetric ? 0 : y * actualDH / 2)
       const rect = this.targetRect
-      this.#offsetBy(gesture.rect.left + gesture.rect.width / 2 + shift.x - (rect.left + rect.width / 2),
-        gesture.rect.top + gesture.rect.height / 2 + shift.y - (rect.top + rect.height / 2))
+      if(this.#offsetBy(gesture.rect.left + gesture.rect.width / 2 + shift.x - (rect.left + rect.width / 2),
+        gesture.rect.top + gesture.rect.height / 2 + shift.y - (rect.top + rect.height / 2))) {
+        this.editor.features.layout.refreshFigureLayout(target)
+      }
     }
     this.#scheduleFrame()
   }
@@ -1997,12 +2057,13 @@ export class TransformationFeature extends EditorFeature {
     const angle = this.getRoundingFunc(event)(gesture.rotate + degrees)
     if(angle === (gesture.rotationAngle ?? gesture.rotate)) return
     gesture.rotationAngle = angle
-    this.#resetWritten()
     this.#write("rotate", `${angle}deg`, "", gesture.image ?? gesture)
     // Caption flow can reposition the rotated content before we re-center it.
-    if(gesture.image) this.editor.features.layout.refreshFigureLayout()
+    this.editor.features.layout.refreshFigureLayout(gesture.target)
     const rect = (gesture.image?.target ?? gesture.target).getBoundingClientRect()
-    this.#offsetBy(cx - (rect.left + rect.width / 2), cy - (rect.top + rect.height / 2))
+    if(this.#offsetBy(cx - (rect.left + rect.width / 2), cy - (rect.top + rect.height / 2))) {
+      this.editor.features.layout.refreshFigureLayout(gesture.target)
+    }
     this.#scheduleFrame()
   }
 
@@ -2055,6 +2116,9 @@ export class TransformationFeature extends EditorFeature {
   }
 
   #finish(cancel: boolean) {
+    if(!cancel) this.#flushPointer()
+    this.#pendingPointer = null
+    this.#lastPointer = null
     this.#clearMovementOverlay()
     if(this.#panFrame !== null) cancelAnimationFrame(this.#panFrame)
     this.#panFrame = null
@@ -2128,7 +2192,7 @@ export class TransformationFeature extends EditorFeature {
     if(gesture.group || gesture.mode === "scale" || gesture.mode === "move" || gesture.mode === "rotate") this.editor.features.canvas.setMinimapRefreshPaused(false)
     if(this.#frame !== null) cancelAnimationFrame(this.#frame)
     this.#frame = null
-    if(gesture.mode === "rotate" && gesture.image && gesture.rotationAngle !== undefined) this.editor.features.layout.refreshFigureLayout()
+    if(gesture.mode === "rotate" && gesture.image && gesture.rotationAngle !== undefined) this.editor.features.layout.refreshFigureLayout(gesture.target)
     if(gesture.crop) {
       const preview = this.overlay.querySelector<HTMLCanvasElement>("[part='transform-overlay-crop-preview']")!
       preview.hidden = true
@@ -2398,13 +2462,15 @@ export class TransformationFeature extends EditorFeature {
     pointermove: event => {
       if(!this.#gesture || this.#gesture.pointerId !== event.pointerId) return
       event.preventDefault()
-      if(this.#gesture.mode === "scale") this.handleScaleDrag(event)
-      else if(this.#gesture.mode === "crop") this.handleCropDrag(event)
-      else if(this.#gesture.mode === "rotate") this.handleRotateDrag(event)
-      else this.handleMoveDrag(event)
+      this.#pendingPointer = event
+      this.#scheduleFrame(false)
     },
     pointerup: event => {
       if(!this.#gesture || this.#gesture.pointerId !== event.pointerId) return
+      const last = this.#pendingPointer ?? this.#lastPointer
+      // Some devices deliver a terminal position without a final pointermove.
+      if(last && (event.clientX !== last.clientX || event.clientY !== last.clientY || event.altKey !== last.altKey
+        || event.ctrlKey !== last.ctrlKey || event.metaKey !== last.metaKey || event.shiftKey !== last.shiftKey)) this.#pendingPointer = event
       if(this.#validGesture()) this.#finish(false)
     },
     pointercancel: event => { if(this.#gesture?.pointerId === event.pointerId) this.#finish(true) },

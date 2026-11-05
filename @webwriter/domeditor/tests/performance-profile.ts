@@ -442,7 +442,7 @@ try {
   await fetch('/__native-result', {method: 'POST', body: JSON.stringify({
     metadata: {userAgent: navigator.userAgent, hardwareConcurrency: navigator.hardwareConcurrency, profiling,
       viewport: [innerWidth, innerHeight], ...(only === 'gestures' ? {} : {warmups: 3}), timestamp: new Date().toISOString(),
-      notes: only === 'gestures' ? 'Synthetic authored DOM in the mounted editor shell. Trusted CDP mouse input with a frame checkpoint after each move. Collaboration and proofreading are disabled.'
+      notes: only === 'gestures' ? `${new URLSearchParams(location.search).has('document') ? 'Supplied HTML document with installed widgets' : 'Synthetic authored DOM'} in the mounted editor shell. Trusted CDP mouse input with a frame checkpoint after each move. Collaboration and proofreading are disabled. Timings include automation overhead; not an INP measurement.`
         : 'Synthetic authored DOM; live native execCommand insertText, actual frame bridge and isolated real host snapshot handler; no external widgets, proofreading, network latency, or host UI rendering. Next-frame checkpoint uses rAF followed by a timer; not an INP measurement.'}, checks,
   })})
 }

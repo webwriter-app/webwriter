@@ -285,6 +285,7 @@ describe("standalone canvas reader", () => {
     expect(image.hasAttribute("href")).toBe(false)
 
     reader.viewer.setMinimapRefreshPaused(false)
+    await new Promise(resolve => setTimeout(resolve, 420))
     await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/svg+xml,current"))
     expect(snapshot).toHaveBeenCalledTimes(2)
 
@@ -294,7 +295,98 @@ describe("standalone canvas reader", () => {
     await new Promise(resolve => setTimeout(resolve, 160))
     expect(snapshot).toHaveBeenCalledTimes(2)
     reader.viewer.setMinimapRefreshPaused(false)
+    await new Promise(resolve => setTimeout(resolve, 420))
     await vi.waitFor(() => expect(snapshot).toHaveBeenCalledTimes(3))
+  })
+
+  it("keeps the previous thumbnail during consecutive paused gestures and cancels stale SnapDOM work", async () => {
+    const paragraph = document.querySelector("p")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
+    const result = (name: string) => ({
+      meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
+      toRaw: () => `data:image/svg+xml,${name}`,
+    })
+    const options: any[] = []
+    let finishStale!: (value: ReturnType<typeof result>) => void
+    const stale = new Promise<ReturnType<typeof result>>(resolve => { finishStale = resolve })
+    const snapshot = vi.fn(async (_slot, value) => {
+      options.push(value)
+      return options.length === 2 ? stale : result(`capture-${options.length}`)
+    })
+    reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
+    const image = control("minimap").querySelector("image")!
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/svg+xml,capture-1"))
+
+    paragraph.textContent = "First edit"
+    await settle()
+    reader.viewer.setMinimapRefreshPaused(true)
+    await new Promise(resolve => setTimeout(resolve, 160))
+    expect(snapshot).toHaveBeenCalledTimes(1)
+    expect(image.getAttribute("href")).toBe("data:image/svg+xml,capture-1")
+
+    paragraph.textContent = "Second edit"
+    await settle()
+    reader.viewer.setMinimapRefreshPaused(false)
+    await new Promise(resolve => setTimeout(resolve, 200))
+    reader.viewer.setMinimapRefreshPaused(true)
+    await new Promise(resolve => setTimeout(resolve, 160))
+    expect(snapshot).toHaveBeenCalledTimes(1)
+    expect(image.getAttribute("href")).toBe("data:image/svg+xml,capture-1")
+
+    reader.viewer.setMinimapRefreshPaused(false)
+    await new Promise(resolve => setTimeout(resolve, 420))
+    await vi.waitFor(() => expect(snapshot).toHaveBeenCalledTimes(2))
+    reader.viewer.setMinimapRefreshPaused(true)
+    const staleOptions = options[1]
+    expect(staleOptions.exclude(paragraph)).toBe(true)
+    expect(() => staleOptions.plugins[0].beforeClone({options: {}})).toThrow()
+    finishStale(result("stale"))
+    await settle()
+    expect(image.getAttribute("href")).toBe("data:image/svg+xml,capture-1")
+
+    reader.viewer.setMinimapRefreshPaused(false)
+    await new Promise(resolve => setTimeout(resolve, 420))
+    await vi.waitFor(() => expect(snapshot).toHaveBeenCalledTimes(3))
+    expect(image.getAttribute("href")).toBe("data:image/svg+xml,capture-3")
+  })
+
+  it("keeps the full idle deadline when stale capture cleanup and new invalidations reschedule", async () => {
+    const paragraph = document.querySelector("p")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
+    const result = (name: string) => ({
+      meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
+      toRaw: () => `data:image/svg+xml,${name}`,
+    })
+    let finishStale!: (value: ReturnType<typeof result>) => void
+    const stale = new Promise<ReturnType<typeof result>>(resolve => { finishStale = resolve })
+    const snapshot = vi.fn(async () => snapshot.mock.calls.length === 1
+      ? result("initial") : snapshot.mock.calls.length === 2 ? stale : result("latest"))
+    reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
+    const image = control("minimap").querySelector("image")!
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/svg+xml,initial"))
+
+    vi.useFakeTimers()
+    try {
+      Reflect.get(reader.viewer, "minimap").invalidate()
+      await vi.advanceTimersByTimeAsync(120)
+      expect(snapshot).toHaveBeenCalledTimes(2)
+      reader.viewer.setMinimapRefreshPaused(true)
+      reader.viewer.setMinimapRefreshPaused(false)
+
+      await vi.advanceTimersByTimeAsync(250)
+      finishStale(result("stale"))
+      await Promise.resolve()
+      await Promise.resolve()
+      Reflect.get(reader.viewer, "minimap").invalidate()
+      await vi.advanceTimersByTimeAsync(149)
+      expect(snapshot).toHaveBeenCalledTimes(2)
+      expect(image.getAttribute("href")).toBe("data:image/svg+xml,initial")
+
+      await vi.advanceTimersByTimeAsync(1)
+      await vi.waitFor(() => expect(snapshot).toHaveBeenCalledTimes(3))
+      expect(image.getAttribute("href")).toBe("data:image/svg+xml,latest")
+    }
+    finally { vi.useRealTimers() }
   })
 
   it("uses only a direct uncustomized starting-view div", () => {

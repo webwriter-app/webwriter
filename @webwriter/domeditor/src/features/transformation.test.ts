@@ -11,8 +11,36 @@ import * as Y from "yjs"
 let editor: DOMEditor
 let feature: DOMEditor["features"]["transformation"]
 let floatStylesheet: HTMLStyleElement
+let frameCallbacks: Map<number, FrameRequestCallback>
+let originalRequestAnimationFrame: typeof requestAnimationFrame
+let originalCancelAnimationFrame: typeof cancelAnimationFrame
+let nextFrameId: number
+let lastPointerPositions: Map<number, Pick<PointerEventInit, "clientX" | "clientY" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey">>
 
 beforeEach(() => {
+  originalRequestAnimationFrame = globalThis.requestAnimationFrame.bind(globalThis)
+  originalCancelAnimationFrame = globalThis.cancelAnimationFrame.bind(globalThis)
+  frameCallbacks = new Map()
+  lastPointerPositions = new Map()
+  nextFrameId = 0
+  vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(callback => {
+    const id = ++nextFrameId
+    const nativeId = originalRequestAnimationFrame(time => {
+      frameCallbacks.delete(id)
+      callback(time)
+    })
+    // Preserve the browser's returned id for cancellation while keeping a
+    // stable test-side key for synchronously flushed callbacks.
+    frameCallbacks.set(id, callback)
+    nativeFrameIds.set(id, nativeId)
+    return id
+  })
+  vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(id => {
+    const nativeId = nativeFrameIds.get(id)
+    if(nativeId !== undefined) originalCancelAnimationFrame(nativeId)
+    nativeFrameIds.delete(id)
+    frameCallbacks.delete(id)
+  })
   document.body.replaceChildren()
   floatStylesheet = document.createElement("style")
   floatStylesheet.textContent = ".ww-float-left { float: left !important } .ww-float-right { float: right !important } .ww-float-none { float: none !important }"
@@ -27,6 +55,12 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  for(const id of frameCallbacks.keys()) {
+    const nativeId = nativeFrameIds.get(id)
+    if(nativeId !== undefined) originalCancelAnimationFrame(nativeId)
+  }
+  frameCallbacks.clear()
+  nativeFrameIds.clear()
   vi.restoreAllMocks()
   editor.destroy()
   floatStylesheet.remove()
@@ -35,6 +69,28 @@ afterEach(() => {
 function append<T extends Element>(element: T) {
   document.body.append(element)
   return element
+}
+
+const nativeFrameIds = new Map<number, number>()
+
+function flushAnimationFrame() {
+  const callbacks = [...frameCallbacks]
+  for(const [id, callback] of callbacks) {
+    if(!frameCallbacks.delete(id)) continue
+    const nativeId = nativeFrameIds.get(id)
+    if(nativeId !== undefined) originalCancelAnimationFrame(nativeId)
+    nativeFrameIds.delete(id)
+    callback(0)
+  }
+}
+
+function movePointer(event: PointerEvent) {
+  document.dispatchEvent(event)
+  flushAnimationFrame()
+}
+
+function queuePointer(event: PointerEvent) {
+  document.dispatchEvent(event)
 }
 
 function targetElement(tag = "p") {
@@ -228,9 +284,10 @@ describe("text container resizing", () => {
     editor.doc.syncFromDOM()
     await mutationsDelivered()
     expect(selection).not.toHaveBeenCalled()
-    expect(target.style.maxWidth).toBe("80px")
+    expect(target.style.maxWidth).toBe("")
     expect(refresh).not.toHaveBeenCalled()
     tick()
+    expect(target.style.maxWidth).toBe("80px")
     expect(refresh).toHaveBeenCalledOnce()
     expect(feature.overlay.style.width).toBe("80px")
     tick()
@@ -254,7 +311,7 @@ describe("text container resizing", () => {
       const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
 
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 125}))
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 240, clientY: 125}))
+      movePointer(pointer("pointermove", {pointerId: 3, clientX: 240, clientY: 125}))
       document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
 
       expect(target.style.width).toBe("140px")
@@ -277,7 +334,7 @@ describe("text container resizing", () => {
       const initial = editor.toHTML(true)
       const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 125}))
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 260, clientY: 300, shiftKey: true}))
+      movePointer(pointer("pointermove", {pointerId: 3, clientX: 260, clientY: 300, shiftKey: true}))
       document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
       expect(target.style.maxWidth).toBe("160px")
       expect(target.style.height).toBe("auto")
@@ -337,7 +394,7 @@ describe("text container resizing", () => {
       const drag = () => {
         feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
           .dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-        document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 200 + x * 40, clientY: 150 + y * 30}))
+        movePointer(pointer("pointermove", {pointerId: 3, clientX: 200 + x * 40, clientY: 150 + y * 30}))
       }
       drag()
       document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
@@ -371,14 +428,14 @@ describe("text container resizing", () => {
     selectNode(target)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 125}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 300}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 300}))
     expect(target.style.height).toBe("auto")
     target.title = "Concurrent edit"
     if(cancellation === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
     else if(cancellation === "pointercancel") document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
     else {
       target.replaceWith(document.createElement("p"))
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 160, clientY: 300}))
+      movePointer(pointer("pointermove", {pointerId: 3, clientX: 160, clientY: 300}))
     }
     expect(target.style.cssText).toBe(initial)
     expect(target.title).toBe("Concurrent edit")
@@ -391,7 +448,7 @@ describe("text container resizing", () => {
     selectNode(target)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 150, clientY: 150}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 150, clientY: 190}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 150, clientY: 190}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
     expect(target.hasAttribute("style")).toBe(false)
     target.setAttribute("is", "heading-widget")
@@ -414,12 +471,12 @@ it("resizes a quiz inside a board card vertically without squeezing its question
   const corner = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
   expect(corner.hidden).toBe(true)
   corner.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
-  document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 100, clientY: 240}))
+  movePointer(pointer("pointermove", {pointerId: 3, clientX: 100, clientY: 240}))
   expect(quiz.hasAttribute("style")).toBe(false)
 
   const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-down")!
   handle.dispatchEvent(pointer("pointerdown", {pointerId: 4, clientX: 200, clientY: 200}))
-  document.dispatchEvent(pointer("pointermove", {pointerId: 4, clientX: 100, clientY: 240}))
+  movePointer(pointer("pointermove", {pointerId: 4, clientX: 100, clientY: 240}))
   document.dispatchEvent(pointer("pointerup", {pointerId: 4}))
   expect(quiz.style.maxWidth).toBe("")
   expect(quiz.style.maxHeight).toBe("140px")
@@ -486,9 +543,9 @@ describe("block formula affordances", () => {
     const initial = editor.toHTML(true)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 125}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 300, clientY: 300}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 300, clientY: 300}))
     expect(target.style.maxWidth).toBe("")
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 260, clientY: 300, shiftKey: true}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 260, clientY: 300, shiftKey: true}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
     expect(target.style.maxWidth).toBe("160px")
     expect(target.style.height).toBe("auto")
@@ -538,7 +595,7 @@ it("uses an explicit image width when resized inside popup content", () => {
   const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
 
   handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 125}))
-  document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 240, clientY: 125}))
+  movePointer(pointer("pointermove", {pointerId: 3, clientX: 240, clientY: 125}))
   document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
 
   expect(target.style.width).toBe("140px")
@@ -565,7 +622,7 @@ describe.each(["img", "picture"])("%s stretching", tag => {
     const original = editor.toHTML(true)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 300 + dx, clientY: 200 + dy, altKey: true}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 300 + dx, clientY: 200 + dy, altKey: true}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
     expect(target.style.maxWidth).toBe(`${200 + dx}px`)
     expect(target.style.maxHeight).toBe(`${100 + dy}px`)
@@ -605,7 +662,7 @@ describe.each(["img", "picture"])("%s stretching", tag => {
     // Exercise resize geometry for directions hidden by the current document UI.
     handle.hidden = false
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 300 + dx, clientY: 200 + dy, shiftKey: true, altKey: true}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 300 + dx, clientY: 200 + dy, shiftKey: true, altKey: true}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
     expect(target.style.maxWidth).toBe(`${width}px`)
     expect(target.style.maxHeight).toBe(`${height}px`)
@@ -625,7 +682,7 @@ describe.each(["img", "picture"])("%s stretching", tag => {
     const {target} = imageTarget()
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
-    const move = (shiftKey: boolean) => document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 360, clientY: 180, shiftKey, altKey: true}))
+    const move = (shiftKey: boolean) => movePointer(pointer("pointermove", {pointerId: 3, clientX: 360, clientY: 180, shiftKey, altKey: true}))
     move(false)
     expect(target.style.aspectRatio).toBe("260 / 80")
     move(true)
@@ -643,7 +700,7 @@ describe.each(["img", "picture"])("%s stretching", tag => {
     const original = target.style.cssText, imageOriginal = image.style.cssText
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 340, clientY: 180}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 340, clientY: 180}))
     image.title = "Concurrent edit"
     if(cancellation === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
     else if(cancellation === "pointercancel") document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
@@ -651,7 +708,7 @@ describe.each(["img", "picture"])("%s stretching", tag => {
     else {
       if(cancellation === "replace") image.replaceWith(document.createElement("img"))
       else image.style.objectFit = "cover"
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 350, clientY: 180}))
+      movePointer(pointer("pointermove", {pointerId: 3, clientX: 350, clientY: 180}))
     }
     if(cancellation === "concurrent") {
       expect(image.style.objectFit).toBe("cover")
@@ -680,7 +737,7 @@ describe("resize alignment", () => {
     const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
     expect(handles.map(handle => handle.dataset.resizeDirection)).toEqual([corner])
     handles[0].dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: corner === "down-left" ? 270 : 330, clientY: 220, altKey: true}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: corner === "down-left" ? 270 : 330, clientY: 220, altKey: true}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
     expect(target.style.maxWidth).toBe(`${width}px`)
     expect(target.style.maxHeight).toBe("120px")
@@ -716,7 +773,7 @@ describe("resize alignment", () => {
     selectNode(target)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 330, clientY: 220, ctrlKey: true, altKey: true}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 330, clientY: 220, ctrlKey: true, altKey: true}))
     expect(target.style.maxWidth).toBe("260px")
     expect(target.style.maxHeight).toBe("140px")
     document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
@@ -891,7 +948,25 @@ describe("caption affordance", () => {
 })
 
 function pointer(type: string, options: PointerEventInit = {}) {
-  return new PointerEvent(type, {bubbles: true, composed: true, button: 0, ...options})
+  const terminalInput = type === "pointerup" ? lastPointerPositions.get(options.pointerId ?? 0) : undefined
+  const event = new PointerEvent(type, {
+    bubbles: true, composed: true, button: 0,
+    ...(terminalInput ? {
+      ...(options.clientX === undefined ? {clientX: terminalInput.clientX} : {}),
+      ...(options.clientY === undefined ? {clientY: terminalInput.clientY} : {}),
+      ...(options.altKey === undefined ? {altKey: terminalInput.altKey} : {}),
+      ...(options.ctrlKey === undefined ? {ctrlKey: terminalInput.ctrlKey} : {}),
+      ...(options.metaKey === undefined ? {metaKey: terminalInput.metaKey} : {}),
+      ...(options.shiftKey === undefined ? {shiftKey: terminalInput.shiftKey} : {}),
+    } : {}),
+    ...options,
+  })
+  if(type === "pointermove") lastPointerPositions.set(options.pointerId ?? 0, {
+    clientX: event.clientX, clientY: event.clientY,
+    altKey: event.altKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey,
+  })
+  else if(type === "pointerup" || type === "pointercancel") lastPointerPositions.delete(options.pointerId ?? 0)
+  return event
 }
 
 async function mutationsDelivered() {
@@ -923,7 +998,11 @@ describe("freeform group transformation", () => {
           100 + parseFloat(target.style.top) + cssHeight / 2 - height / 2, width, height)
       })
     }
-    if(mode === "slides") editor.features.slides.ensureContent()
+    if(mode === "slides") {
+      editor.features.slides.ensureContent()
+      flushAnimationFrame()
+      editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+    }
     $.selectElements([first, last])
     editor.features.selection.processSelection(undefined, {scrollIntoView: false})
     return {first, last, outside, parent}
@@ -933,7 +1012,7 @@ describe("freeform group transformation", () => {
     feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-${control}`)!
       .dispatchEvent(pointer("pointerdown", {pointerId: 31, clientX: x, clientY: y}))
   }
-  const move = (x: number, y: number, modifiers: PointerEventInit = {}) => document.dispatchEvent(pointer("pointermove", {
+  const move = (x: number, y: number, modifiers: PointerEventInit = {}) => movePointer(pointer("pointermove", {
     pointerId: 31, clientX: x, clientY: y, ...modifiers,
   }))
   const end = () => document.dispatchEvent(pointer("pointerup", {pointerId: 31}))
@@ -1323,7 +1402,7 @@ describe("selection-owned transformation", () => {
         expect(preview.style.left).toBe("-12.5%")
         expect(preview.style.width).toBe("125%")
       }
-      document.dispatchEvent(pointer("pointermove", {pointerId: 42, clientX: 100 + dx, clientY: 100 + dy}))
+      movePointer(pointer("pointermove", {pointerId: 42, clientX: 100 + dx, clientY: 100 + dy}))
       expect(editor.toHTML(true)).toBe(before)
       expect(preview.getRootNode()).toBe(editor.appendix)
       document.dispatchEvent(pointer("pointerup", {pointerId: 42}))
@@ -1357,7 +1436,7 @@ describe("selection-owned transformation", () => {
     const before = editor.toHTML(true)
     feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-crop-up-left")!
       .dispatchEvent(pointer("pointerdown", {pointerId: 42, clientX: 100, clientY: 100}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 42, clientX: 136, clientY: 120}))
+    movePointer(pointer("pointermove", {pointerId: 42, clientX: 136, clientY: 120}))
     expect(figure.style.maxWidth).toBe("")
     expect(figure.style.maxHeight).toBe("")
     expect(figure.style.width).toBe("360px")
@@ -1404,12 +1483,12 @@ describe("selection-owned transformation", () => {
     const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-crop-${direction}`)!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 42, clientX: 100, clientY: 100}))
     expect(document.body.classList.contains(`◆transform-cropping-${direction}`)).toBe(true)
-    document.dispatchEvent(pointer("pointermove", {pointerId: 42, clientX: direction === "up-left" ? 110 : 90, clientY: direction === "up-left" ? 105 : 95}))
+    movePointer(pointer("pointermove", {pointerId: 42, clientX: direction === "up-left" ? 110 : 90, clientY: direction === "up-left" ? 105 : 95}))
     expect(video.style.maxWidth).toBe("")
     expect(video.style.maxHeight).toBe("")
     expect(feature.boxGeometry(video, false).width).toBe(200)
     expect(feature.boxGeometry(video, false).height).toBe(100)
-    document.dispatchEvent(pointer("pointermove", {pointerId: 42, clientX: direction === "up-left" ? 120 : 80, clientY: direction === "up-left" ? 110 : 90}))
+    movePointer(pointer("pointermove", {pointerId: 42, clientX: direction === "up-left" ? 120 : 80, clientY: direction === "up-left" ? 110 : 90}))
     expect(video.style.maxWidth).toBe("")
     expect(video.style.maxHeight).toBe("")
     expect(video.style.getPropertyValue("object-view-box")).toBe("inset(10%)")
@@ -1474,7 +1553,7 @@ describe("selection-owned transformation", () => {
     selectNode(video)
     feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-crop-up-left")!
       .dispatchEvent(pointer("pointerdown", {pointerId: 42, clientX: 100, clientY: 100}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 42, clientX: 120, clientY: 110}))
+    movePointer(pointer("pointermove", {pointerId: 42, clientX: 120, clientY: 110}))
     expect(video.style.maxWidth).toBe("200px")
     expect(video.style.maxHeight).toBe("100px")
     video.style.maxWidth = "170px"
@@ -1493,7 +1572,7 @@ describe("selection-owned transformation", () => {
     selectNode(picture)
     feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-crop-up-left")!
       .dispatchEvent(pointer("pointerdown", {pointerId: 42, clientX: 100, clientY: 100}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 42, clientX: 120, clientY: 110}))
+    movePointer(pointer("pointermove", {pointerId: 42, clientX: 120, clientY: 110}))
     picture.style.maxWidth = "150px"
     document.dispatchEvent(pointer("pointerup", {pointerId: 42}))
     expect(picture.style.maxWidth).toBe("150px")
@@ -1515,7 +1594,7 @@ describe("selection-owned transformation", () => {
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-crop-up-left")!
     const preview = feature.overlay.querySelector<HTMLCanvasElement>("canvas")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 42, clientX: 100, clientY: 100}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 42, clientX: 120, clientY: 110}))
+    movePointer(pointer("pointermove", {pointerId: 42, clientX: 120, clientY: 110}))
     expect(image.style.getPropertyValue("object-view-box")).toBe("inset(5%)")
     expect(image.style.getPropertyPriority("object-view-box")).toBe("important")
     image.style.color = "red"
@@ -1525,7 +1604,9 @@ describe("selection-owned transformation", () => {
       if(outcome === "concurrent") image.style.setProperty("object-view-box", "inset(20%)")
       if(outcome === "replace") image.replaceWith(document.createElement("img"))
       if(outcome === "source removal") image.removeAttribute("src")
-      document.dispatchEvent(pointer(outcome === "pointercancel" ? "pointercancel" : "pointermove", {pointerId: 42, clientX: 130, clientY: 120}))
+      const event = pointer(outcome === "pointercancel" ? "pointercancel" : "pointermove", {pointerId: 42, clientX: 130, clientY: 120})
+      if(outcome === "pointercancel") document.dispatchEvent(event)
+      else movePointer(event)
     }
     expect(image.style.getPropertyValue("object-view-box")).toBe(outcome === "concurrent" ? "inset(20%)" : "inset(5%)")
     expect(image.style.color).toBe("red")
@@ -1554,9 +1635,9 @@ describe("selection-owned transformation", () => {
     selectNode(video)
     feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-crop-up-left")!
       .dispatchEvent(pointer("pointerdown", {pointerId: 42, clientX: 100, clientY: 100}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 42, clientX: 80, clientY: 140}))
+    movePointer(pointer("pointermove", {pointerId: 42, clientX: 80, clientY: 140}))
     expect(feature.overlay.querySelector<HTMLElement>('[data-crop-mask="top"]')!.style.height).toBe("22.5%")
-    document.dispatchEvent(pointer("pointermove", {pointerId: 42, clientX: -1000, clientY: 2000}))
+    movePointer(pointer("pointermove", {pointerId: 42, clientX: -1000, clientY: 2000}))
     expect(feature.overlay.querySelector<HTMLElement>('[data-crop-mask="top"]')!.style.height).toBe("112.4%")
     document.dispatchEvent(pointer("pointerup", {pointerId: 42}))
     expect(video.style.getPropertyValue("rotate")).toBe("90deg")
@@ -1648,7 +1729,7 @@ describe("selection-owned transformation", () => {
       const initialStyle = target.style.cssText
       const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 220, clientY: 170}))
+      movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 220, clientY: 170}))
       expect(target.style.maxWidth).toBe("120px")
 
       if(ending === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
@@ -1675,7 +1756,7 @@ describe("selection-owned transformation", () => {
     vi.spyOn($, "pointFromCoords").mockReturnValue(undefined)
     const anchor = feature.anchor
     anchor.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 130, clientY: 100}))
+    movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 130, clientY: 100}))
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
     anchor.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, shiftKey: true}))
@@ -1683,7 +1764,7 @@ describe("selection-owned transformation", () => {
 
     // A second cancellation may have no trailing click at all.
     anchor.dispatchEvent(pointer("pointerdown", {pointerId: 4, clientX: 100, clientY: 100}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 4, buttons: 1, clientX: 130, clientY: 100}))
+    movePointer(pointer("pointermove", {pointerId: 4, buttons: 1, clientX: 130, clientY: 100}))
     document.dispatchEvent(pointer("pointercancel", {pointerId: 4}))
     anchor.dispatchEvent(pointer("pointerdown", {pointerId: 5}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 5}))
@@ -1803,7 +1884,7 @@ describe("selection-owned transformation", () => {
       const drag = () => {
         feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
           .dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-        document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 240, clientY: 180}))
+        movePointer(pointer("pointermove", {pointerId: 3, clientX: 240, clientY: 180}))
       }
       drag()
       expect(target.style.width).toBe("140px")
@@ -1845,7 +1926,7 @@ describe("selection-owned transformation", () => {
       const before = target.getBoundingClientRect()
       const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 200 + dx, clientY: 150 + dy}))
+      movePointer(pointer("pointermove", {pointerId: 3, clientX: 200 + dx, clientY: 150 + dy}))
       document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
 
       const after = target.getBoundingClientRect()
@@ -1876,7 +1957,7 @@ describe("selection-owned transformation", () => {
       const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
       expect($.selectedElement).toBe(article)
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, altKey: true, clientX: 220, clientY: 180}))
+      movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, altKey: true, clientX: 220, clientY: 180}))
       document.dispatchEvent(pointer("pointerup", {pointerId: 3, clientX: 220, clientY: 180}))
       expect($.selectedElement).toBe(article)
       expect(article.style.left).toBe("20px")
@@ -1893,7 +1974,7 @@ describe("selection-owned transformation", () => {
       editor.features.selection.processSelection()
       feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
         .dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, altKey: true, clientX: 220, clientY: 180}))
+      movePointer(pointer("pointermove", {pointerId: 3, altKey: true, clientX: 220, clientY: 180}))
       if(outcome === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Escape"}))
       else document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
       expect($.selectedElement).toBe(article)
@@ -1913,7 +1994,7 @@ describe("selection-owned transformation", () => {
       editor.features.selection.processSelection()
       feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
         .dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, altKey: true, clientX: 220, clientY: 180}))
+      movePointer(pointer("pointermove", {pointerId: 3, altKey: true, clientX: 220, clientY: 180}))
       if(outcome === "selection") $.move(neighbor.firstChild!, 3)
       else if(outcome === "local text edit") text.insertData(0, "local ")
       else {
@@ -2023,7 +2104,7 @@ describe("selection-owned transformation", () => {
         .dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
       expect($.selectedElement).toBe(article)
       expect(editor.features.table.hasCellSelection).toBe(false)
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 240, clientY: 180}))
+      movePointer(pointer("pointermove", {pointerId: 3, clientX: 240, clientY: 180}))
       document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
       expect(article.style.cssText).toBe(before)
       expect($.selectedElement).toBe(article)
@@ -2043,7 +2124,7 @@ describe("selection-owned transformation", () => {
       expect($.selectedElement).toBe(article)
       expect(editor.features.selection.captureSelectedElement).toBeNull()
       expect(feature.overlay.getAttribute("part")?.split(/\s+/)).not.toContain("transform-overlay-content-selected")
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, altKey: true, clientX: 220, clientY: 180}))
+      movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, altKey: true, clientX: 220, clientY: 180}))
       document.dispatchEvent(pointer("pointerup", {pointerId: 3, clientX: 220, clientY: 180}))
       expect(article.style.cssText).not.toBe(before)
       expect(feature.target).toBe(article)
@@ -2586,7 +2667,7 @@ describe("transform controls and geometry", () => {
     selectNode(target)
     mockRect(target)
     feature.handleMoveStart(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 120, clientY: 100}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 120, clientY: 100}))
 
     expect(target.style.position).toBe("absolute")
     expect(target.style.width).toBe("100px")
@@ -2668,7 +2749,7 @@ describe("transform controls and geometry", () => {
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 19, clientX: 150, clientY: 125}))
     expect(minimap).toHaveBeenLastCalledWith(true)
-    document.dispatchEvent(pointer("pointermove", {pointerId: 19, buttons: 1, clientX: 170, clientY: 125}))
+    movePointer(pointer("pointermove", {pointerId: 19, buttons: 1, clientX: 170, clientY: 125}))
     tick()
     expect(pan).toHaveBeenLastCalledWith({x: 170, y: 125})
     tick()
@@ -2701,11 +2782,11 @@ describe("transform controls and geometry", () => {
     if(mode === "resize") {
       const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 210, clientY: 160}))
+      movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 210, clientY: 160}))
       await mutationsDelivered()
       editor.doc.syncFromDOM()
       await new Promise(resolve => setTimeout(resolve, 550))
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 230, clientY: 180}))
+      movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 230, clientY: 180}))
       await mutationsDelivered()
       editor.doc.syncFromDOM()
       document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
@@ -2853,6 +2934,8 @@ describe("transform controls and geometry", () => {
       const viewport = document.createElement("div"), slide = document.createElement("section")
       viewport.className = "ww-slides-viewport"; slide.className = "ww-slide"
       viewport.append(slide); document.body.append(viewport); slide.append(target)
+      flushAnimationFrame()
+      editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
     }
     Object.assign(target.style, {position: "absolute", left: "0px", top: "0px"})
     mockRect(target)
@@ -2863,7 +2946,7 @@ describe("transform controls and geometry", () => {
     const initial = editor.toHTML(true)
     const handle = feature.overlay.querySelector<HTMLElement>(".◆transform-overlay-edge")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 17, clientX: 100, clientY: 100}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 17, buttons: 1, clientX: 400, clientY: 250}))
+    movePointer(pointer("pointermove", {pointerId: 17, buttons: 1, clientX: 400, clientY: 250}))
     expect(target.style.left).toBe("300px")
     expect(target.style.top).toBe("160px")
     handle.dispatchEvent(pointer("lostpointercapture", {pointerId: 17, buttons: 0, clientX: 400, clientY: 250}))
@@ -2890,7 +2973,7 @@ describe("transform controls and geometry", () => {
     selectNode(target)
     const handle = feature.overlay.querySelector<HTMLElement>(".◆transform-overlay-edge")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 17, clientX: 100, clientY: 100}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 17, buttons: 1, clientX: 400, clientY: 250}))
+    movePointer(pointer("pointermove", {pointerId: 17, buttons: 1, clientX: 400, clientY: 250}))
     if(scenario === "changed") target.style.top = "777px"
     else if(scenario === "removed") target.remove()
     else if(scenario === "reparented") append(document.createElement("section")).append(target)
@@ -2942,7 +3025,7 @@ describe("transform controls and geometry", () => {
     selectNode(target)
     const mover = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
     mover.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 120, clientY: 100}))
+    movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 120, clientY: 100}))
     document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
     expect(target.style.zIndex).toBe("3")
     expect(sibling.style.zIndex).toBe("2")
@@ -2991,7 +3074,7 @@ describe("transform controls and geometry", () => {
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
 
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 220, clientY: 150}))
+    movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 220, clientY: 150}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3, clientX: 220, clientY: 150}))
 
     expect(target.style.width).toBe("100px")
@@ -3011,7 +3094,7 @@ describe("transform controls and geometry", () => {
     captureNode(figure)
     const handle = feature.overlay.querySelector<HTMLElement>('[data-resize-direction="down-right"]')!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 224}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 400, clientY: 274, shiftKey: true, altKey: true}))
+    movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 400, clientY: 274, shiftKey: true, altKey: true}))
     expect(image.style.width).toBe("300px")
     expect(figure.style.getPropertyValue("scale")).toBe("")
 
@@ -3038,7 +3121,7 @@ describe("transform controls and geometry", () => {
     const original = editor.toHTML(true)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 420, clientY: 280}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 420, clientY: 280 + dy, altKey: true}))
+    movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 420, clientY: 280 + dy, altKey: true}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
     await mutationsDelivered()
     editor.doc.syncFromDOM()
@@ -3067,7 +3150,7 @@ describe("transform controls and geometry", () => {
     selectNode(target)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 420, clientY: 280}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 420, clientY: 310, altKey: true}))
+    movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 420, clientY: 310, altKey: true}))
     expect(target.style.height).toBe("210px")
     target.title = "Updated activity"
     document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
@@ -3095,7 +3178,7 @@ describe("transform controls and geometry", () => {
       for(const modifiers of [{}, {ctrlKey: true}, {metaKey: true}, {shiftKey: true}, {altKey: true}]) {
         handle.hidden = false
         handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-        document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 200 + dx, clientY: 150 + dy, ...modifiers}))
+        movePointer(pointer("pointermove", {pointerId: 3, clientX: 200 + dx, clientY: 150 + dy, ...modifiers}))
         expect(target.style.position).toBe(initialPosition)
         for(const property of ["left", "top", "right", "bottom"]) expect(target.style.getPropertyValue(property)).toBe("")
         if(modifiers.shiftKey) expect(target.style.scale).not.toBe("")
@@ -3134,7 +3217,7 @@ describe("transform controls and geometry", () => {
       handle.hidden = false
 
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: x, clientY: y}))
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: x + dx, clientY: y + dy}))
+      movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: x + dx, clientY: y + dy}))
       expect(document.body).toHaveClass(`◆transform-scaling-${dx === 13 ? "ns" : "ew"}`)
       document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
 
@@ -3170,7 +3253,7 @@ describe("transform controls and geometry", () => {
     // Exercise resize geometry for directions hidden by the current document UI.
     handle.hidden = false
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 115}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 213, clientY: 115, ...modifiers}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 213, clientY: 115, ...modifiers}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
 
     expect(target.style.maxWidth).toBe(width)
@@ -3190,14 +3273,14 @@ describe("transform controls and geometry", () => {
     // Exercise resize geometry for directions hidden by the current document UI.
     handle.hidden = false
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 115}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 220, clientY: 115}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 220, clientY: 115}))
     expect(target.style.maxWidth).toBe("120px")
     target.style.color = "red"
     if(cancellation === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
     else if(cancellation === "pointercancel") document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
     else {
       target.remove()
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 230, clientY: 115}))
+      movePointer(pointer("pointermove", {pointerId: 3, clientX: 230, clientY: 115}))
     }
     expect(target.style.width).toBe("100px")
     expect(target.style.maxWidth).toBe("")
@@ -3215,7 +3298,7 @@ describe("transform controls and geometry", () => {
       // Exercise resize geometry for directions hidden by the current document UI.
       handle.hidden = false
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 200 + dx, clientY: 150 + dy}))
+      movePointer(pointer("pointermove", {pointerId: 3, clientX: 200 + dx, clientY: 150 + dy}))
       document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
     }
     resize("right", -20, 0)
@@ -3238,9 +3321,9 @@ describe("transform controls and geometry", () => {
     editor.doc.syncFromDOM()
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 210, clientY: 160}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 210, clientY: 160}))
     await mutationsDelivered()
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 220, clientY: 170}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 220, clientY: 170}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
     await mutationsDelivered()
 
@@ -3281,7 +3364,7 @@ describe("transform controls and geometry", () => {
     const drag = () => {
       handle.hidden = false
       handle.dispatchEvent(pointer("pointerdown", {pointerId:3, clientX:200, clientY:125}))
-      document.dispatchEvent(pointer("pointermove", {pointerId:3, clientX:240, clientY:125}))
+      movePointer(pointer("pointermove", {pointerId:3, clientX:240, clientY:125}))
     }
     drag()
     expect(target.style.getPropertyValue("--ww-float-size")).toBe("140px")
@@ -3308,9 +3391,9 @@ describe("transform controls and geometry", () => {
     selectNode(target)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 130}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 130}))
     target.style.maxWidth = "90px"
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 170, clientY: 120}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 170, clientY: 120}))
 
     expect(target.style.maxWidth).toBe("90px")
     expect(target.style.maxHeight).toBe("50px")
@@ -3329,7 +3412,7 @@ describe("transform controls and geometry", () => {
     // Exercise resize geometry for directions hidden by the current document UI.
     handle.hidden = false
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 150}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 150}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
 
     expect(target.style.maxWidth).toBe("80px")
@@ -3345,7 +3428,7 @@ describe("transform controls and geometry", () => {
     mockRect(target, {width: 244, height: 244})
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 344, clientY: 344}))
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 464, clientY: 424}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 464, clientY: 424}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
     expect(target.style.width).toBe("364px")
     expect(target.style.height).toBe("324px")
@@ -3436,7 +3519,8 @@ describe("transform controls and geometry", () => {
       expect(read).not.toHaveBeenCalled()
       expect(update).not.toHaveBeenCalled()
       expect(refreshLayout).not.toHaveBeenCalled()
-      expect(refreshFigures).not.toHaveBeenCalled()
+      expect(refreshFigures).toHaveBeenCalledTimes(1)
+      expect(refreshFigures).toHaveBeenCalledWith(target)
       editor.doc.syncFromDOM()
       await mutationsDelivered()
       expect(process).not.toHaveBeenCalled()
@@ -3862,7 +3946,7 @@ describe("SVG canvas cropping", () => {
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
   }
   function drag(options: PointerEventInit = {}) {
-    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 140, ...options}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 140, ...options}))
   }
 
   it.each([
@@ -4000,7 +4084,7 @@ describe.each(["canvas", "slides"] as const)("%s movement grid and guides", mode
     if(tag.includes("-")) target.attachShadow({mode: "open"}).innerHTML = '<button>Widget UI</button>'
     selectNode(target)
     const start = () => feature.handleMoveStart(pointer("pointerdown", {pointerId: 61, clientX: 100, clientY: 100}))
-    const move = (x: number, y: number, modifiers: PointerEventInit = {}) => document.dispatchEvent(pointer("pointermove", {
+    const move = (x: number, y: number, modifiers: PointerEventInit = {}) => movePointer(pointer("pointermove", {
       pointerId: 61, clientX: 100 + x * zoom, clientY: 100 + y * zoom, ...modifiers,
     }))
     const end = () => document.dispatchEvent(pointer("pointerup", {pointerId: 61}))
@@ -4035,7 +4119,8 @@ describe.each(["canvas", "slides"] as const)("%s movement grid and guides", mode
     move(24, 31)
     expect(target.style.left).toBe("40px")
     expect(target.style.top).toBe("40px")
-    expect(overlay()?.querySelector('[part~="transform-guide"]')).toBeNull()
+    expect(Array.from(overlay()?.querySelectorAll<SVGLineElement>('[part~="transform-guide"]') ?? [])
+      .every(line => line.style.display === "none")).toBe(true)
     end()
   })
 
@@ -4070,7 +4155,8 @@ describe.each(["canvas", "slides"] as const)("%s movement grid and guides", mode
     start(); move(123, 134, {altKey: true})
     expect(target.style.left).toBe("136px")
     expect(target.style.top).toBe("151px")
-    expect(overlay()?.querySelector('[part~="transform-guide"]')).toBeNull()
+    expect(Array.from(overlay()?.querySelectorAll<SVGLineElement>('[part~="transform-guide"]') ?? [])
+      .every(line => line.style.display === "none")).toBe(true)
     move(24, 31, {shiftKey: true})
     expect(target.style.left).toBe("13px")
     expect(target.style.top).toBe("40px")
@@ -4093,5 +4179,149 @@ describe.each(["canvas", "slides"] as const)("%s movement grid and guides", mode
     else window.dispatchEvent(new Event("blur"))
     expect(overlay()).toBeNull()
     expect(document.body.className).not.toContain("◆transform-moving")
+  })
+})
+
+describe("queued pointer movement", () => {
+  it.each(["move", "resize", "rotate"] as const)("applies only the latest %s input once per frame", mode => {
+    const canvas = mode !== "resize"
+    if(canvas) {
+      document.body.classList.add("ww-canvas")
+      vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
+    }
+    const target = targetElement(mode === "resize" ? "img" : "p")
+    if(canvas) Object.assign(target.style, {position: "absolute", left: "0px", top: "0px", width: "100px", height: "50px"})
+    mockRect(target)
+    selectNode(target)
+
+    const pointerId = 71
+    const start = pointer("pointerdown", {pointerId, clientX: 100, clientY: 100})
+    if(mode === "move") feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!.dispatchEvent(start)
+    else if(mode === "resize") feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!.dispatchEvent(start)
+    else feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-rotator")!.dispatchEvent(start)
+
+    const drag = mode === "move" ? vi.spyOn(feature, "handleMoveDrag")
+      : mode === "resize" ? vi.spyOn(feature, "handleScaleDrag") : vi.spyOn(feature, "handleRotateDrag")
+    queuePointer(pointer("pointermove", {pointerId, clientX: 115, clientY: 110}))
+    queuePointer(pointer("pointermove", {pointerId, clientX: 135, clientY: 125}))
+    expect(drag).not.toHaveBeenCalled()
+
+    flushAnimationFrame()
+    expect(drag).toHaveBeenCalledOnce()
+    expect(drag).toHaveBeenCalledWith(expect.objectContaining({clientX: 135, clientY: 125}))
+    document.dispatchEvent(pointer("pointerup", {pointerId}))
+  })
+
+  it("commits the latest queued move and terminal release coordinates as one undo step", async () => {
+    document.body.classList.add("ww-canvas")
+    vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
+    const target = targetElement()
+    Object.assign(target.style, {position: "absolute", left: "0px", top: "0px", width: "100px", height: "50px"})
+    mockRect(target)
+    selectNode(target)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const initial = editor.toHTML(true)
+    const pointerId = 72
+    feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
+      .dispatchEvent(pointer("pointerdown", {pointerId, clientX: 100, clientY: 100}))
+    queuePointer(pointer("pointermove", {pointerId, clientX: 120, clientY: 100}))
+    expect(target.style.left).toBe("0px")
+    document.dispatchEvent(pointer("pointerup", {pointerId, clientX: 130, clientY: 100}))
+    expect(target.style.left).toBe("40px")
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const changed = editor.toHTML(true)
+    expect(changed).not.toBe(initial)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(initial)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
+
+  it.each(["pointercancel", "Escape", "disable", "removed", "replaced", "remote style change", "permission revoked"] as const)("drops queued movement on %s before the next frame", async ending => {
+    document.body.classList.add("ww-canvas")
+    vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
+    const target = targetElement()
+    target.id = "queued-move"
+    Object.assign(target.style, {position: "absolute", left: "0px", top: "0px", width: "100px", height: "50px"})
+    mockRect(target)
+    selectNode(target)
+    editor.doc.syncFromDOM()
+    const initialStyle = target.style.cssText
+    const pointerId = 73
+    feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
+      .dispatchEvent(pointer("pointerdown", {pointerId, clientX: 100, clientY: 100}))
+    queuePointer(pointer("pointermove", {pointerId, clientX: 140, clientY: 130}))
+
+    if(ending === "pointercancel") document.dispatchEvent(pointer("pointercancel", {pointerId}))
+    else if(ending === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    else if(ending === "disable") feature.disable()
+    else if(ending === "removed") target.remove()
+    else if(ending === "replaced") target.replaceWith(target.cloneNode(true))
+    else if(ending === "permission revoked") vi.spyOn(editor, "allows").mockReturnValue(false)
+    else {
+      const [shared] = [...editor.doc.body.createTreeWalker(node => node instanceof Y.XmlElement && node.getAttribute("id") === target.id)]
+      editor.doc.doc.transact(() => (shared as Y.XmlElement).setAttribute("style", "position: absolute; left: 77px; top: 0px; width: 100px; height: 50px"), "remote-test")
+      await mutationsDelivered()
+    }
+
+    flushAnimationFrame()
+    if(ending === "remote style change") expect(target.style.left).toBe("77px")
+    else if(ending === "removed" || ending === "replaced") expect(target.isConnected).toBe(false)
+    else expect(target.style.cssText).toBe(initialStyle)
+    expect(document.body.className).not.toContain("◆transform-moving")
+    expect(document.querySelectorAll(".◆transform-moving")).toHaveLength(0)
+  })
+
+  it.each(["move", "resize"] as const)("does not write styles again for an identical %s frame", mode => {
+    const isMove = mode === "move"
+    if(isMove) {
+      document.body.classList.add("ww-canvas")
+      vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
+    }
+    const target = targetElement(isMove ? "p" : "img")
+    if(isMove) Object.assign(target.style, {position: "absolute", left: "0px", top: "0px", width: "100px", height: "50px"})
+    else Object.assign(target.style, {width: "100px", height: "50px"})
+    mockRect(target)
+    selectNode(target)
+    const pointerId = 74
+    const start = pointer("pointerdown", {pointerId, clientX: 200, clientY: 150})
+    if(isMove) feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!.dispatchEvent(start)
+    else feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!.dispatchEvent(start)
+    const observer = new MutationObserver(() => {})
+    observer.observe(target, {attributes: true, attributeFilter: ["style"]})
+    const x = isMove ? 220 : 220
+    movePointer(pointer("pointermove", {pointerId, clientX: x, clientY: 150}))
+    observer.takeRecords()
+    movePointer(pointer("pointermove", {pointerId, clientX: x, clientY: 150}))
+    expect(observer.takeRecords()).toHaveLength(0)
+    observer.disconnect()
+    document.dispatchEvent(pointer("pointerup", {pointerId}))
+  })
+
+  it("reuses visible snap guide nodes across identical frames", () => {
+    document.body.classList.add("ww-canvas")
+    vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
+    const target = targetElement()
+    Object.assign(target.style, {position: "absolute", left: "13px", top: "17px", width: "64px", height: "46px"})
+    mockRect(target)
+    const peer = targetElement("peer-widget")
+    Object.assign(peer.style, {position: "absolute", left: "203px", top: "147px", width: "100px", height: "80px"})
+    mockRect(peer)
+    selectNode(target)
+    const pointerId = 75
+    feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
+      .dispatchEvent(pointer("pointerdown", {pointerId, clientX: 100, clientY: 100}))
+    movePointer(pointer("pointermove", {pointerId, clientX: 223, clientY: 234}))
+    const overlay = editor.appendix.querySelector('[part="transform-movement-overlay"]')!
+    const guideX = overlay.querySelector('[part~="transform-guide-x"]')
+    const guideY = overlay.querySelector('[part~="transform-guide-y"]')
+    expect(guideX).not.toBeNull()
+    expect(guideY).not.toBeNull()
+    movePointer(pointer("pointermove", {pointerId, clientX: 223, clientY: 234}))
+    expect(overlay.querySelector('[part~="transform-guide-x"]')).toBe(guideX)
+    expect(overlay.querySelector('[part~="transform-guide-y"]')).toBe(guideY)
+    document.dispatchEvent(pointer("pointerup", {pointerId}))
   })
 })

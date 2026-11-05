@@ -54,6 +54,8 @@ export function createCanvasPanSurface() {
 const minimapMinPadding = 64
 const minimapPaddingRatio = .1
 const minimapRefreshDelay = 120
+const minimapGestureIdleDelay = 400
+const cancelMinimapCapture = Symbol("cancel stale minimap capture")
 const minimapExcluded = ".◆editor-only, [data-webwriter-editor-only], script, template"
 const viewportAspectRatio = () => Math.max(1, window.innerWidth) / Math.max(1, window.innerHeight)
 const centerOf = ({x, y, width, height}) => ({x: x + width / 2, y: y + height / 2})
@@ -68,6 +70,7 @@ class CanvasMinimap {
     this.generation = 0
     this.running = null
     this.timer = null
+    this.refreshNotBefore = 0
     this.queued = false
     this.dirty = true
     this.refreshPaused = false
@@ -329,6 +332,7 @@ class CanvasMinimap {
       clearTimeout(this.timer)
       this.timer = null
       this.queued = false
+      this.refreshNotBefore = 0
     }
   }
 
@@ -349,20 +353,25 @@ class CanvasMinimap {
       }
       if(this.running?.generation === this.generation) {
         this.running.stale = true
+        this.dirty = true
         this.queued = true
       }
     }
-    else if(this.queued) this.schedule()
+    else if(this.queued) {
+      this.refreshNotBefore = Date.now() + minimapGestureIdleDelay
+      this.schedule(minimapGestureIdleDelay)
+    }
   }
 
-  schedule() {
+  schedule(delay = minimapRefreshDelay) {
     if(this.map.hidden || !this.dirty) return
     if(this.refreshPaused) { this.queued = true; return }
     clearTimeout(this.timer)
+    const due = Math.max(Date.now() + delay, this.refreshNotBefore)
     this.timer = setTimeout(() => {
       this.timer = null
       void this.refresh()
-    }, minimapRefreshDelay)
+    }, Math.max(0, due - Date.now()))
   }
 
   usedBounds(aspectRatio) {
@@ -396,12 +405,18 @@ class CanvasMinimap {
 
   async refresh() {
     if(this.map.hidden || !this.viewer.active || !this.dirty) return
+    if(this.refreshNotBefore > Date.now()) {
+      this.schedule(this.refreshNotBefore - Date.now())
+      return
+    }
+    this.refreshNotBefore = 0
     const generation = this.generation
     if(this.refreshPaused || this.running || this.viewer.panning || this.viewer.wheelPanTimer !== null) { this.queued = true; return }
     const running = this.running = {generation, stale: false}
     this.queued = false
     const {innerWidth, innerHeight} = window
     const current = () => !running.stale && this.generation === generation && this.viewer.active
+    const cancelIfStale = () => { if(!current()) throw cancelMinimapCapture }
     let bounds = null, snapshot = null
     try {
       bounds = this.usedBounds(viewportAspectRatio())
@@ -424,11 +439,17 @@ class CanvasMinimap {
         snapshot = await snapdom(slot, {
           clip: clip(), width: Math.max(1, Math.min(540, 188 * bounds.width / bounds.height)), dpr: 1,
           fast: false,
-          exclude: element => element.matches(minimapExcluded) || isCanvasStartingView(element),
+          // SnapDOM catches exclude predicate errors, so stale captures must
+          // be canceled through plugin hooks. This prunes a stale clone if its
+          // traversal continues until the afterClone hook can stop it.
+          exclude: element => !current() || element.matches(minimapExcluded) || isCanvasStartingView(element),
           plugins: [{
             name: "webwriter-canvas",
-            beforeClone: context => { context.options.clip = clip() },
+            beforeSnap: cancelIfStale,
+            beforeClone: context => { cancelIfStale(); context.options.clip = clip() },
+            afterClone: cancelIfStale,
             beforeRender: context => {
+              cancelIfStale()
               // SnapDOM flattens the slot into a fragment. Recreate its
               // containing block in the detached capture for absolute items.
               const wrapper = document.createElement("div")
@@ -440,8 +461,9 @@ class CanvasMinimap {
         })
       }
     }
-    catch {
+    catch(error) {
       // A failed snapshot should not prevent canvas navigation.
+      if(error === cancelMinimapCapture) this.dirty = true
     }
     finally {
       if(this.running === running) {
@@ -449,7 +471,10 @@ class CanvasMinimap {
         if(this.queued) this.schedule()
       }
     }
-    if(!current() || window.innerWidth !== innerWidth || window.innerHeight !== innerHeight) return
+    if(!current() || window.innerWidth !== innerWidth || window.innerHeight !== innerHeight) {
+      this.dirty = true
+      return
+    }
     // Leave a failed capture dirty so a later open or invalidation can retry.
     this.dirty = Boolean(bounds && !snapshot)
     if(this.startingViewDrag && (!bounds || ["x", "y", "width", "height"].some(key => Math.abs(bounds[key] - this.bounds[key]) > .01))) {
@@ -502,6 +527,7 @@ class CanvasMinimap {
     // the previous image until a capture can complete at a stable camera.
     if(this.running) {
       this.running.stale = true
+      this.dirty = true
       this.queued = true
     }
     this.updateCamera()
