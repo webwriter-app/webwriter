@@ -14,6 +14,7 @@ const expectedChecks = [
   "interrupted live sessions recover committed data locally",
   "canvas and slide movement follows the dot grid and alignment guides",
   "converted list items support repeated Backspace without clicking",
+  "Command deletion stops at visual and hard line boundaries",
   "list editing splits and indents selected items",
   "soft breaks render a new line on the first press and accept native typing",
   "multi-paragraph style presets stay within the selected siblings",

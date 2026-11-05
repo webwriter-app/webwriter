@@ -30,6 +30,7 @@ import {checkHeadingClipboard} from "./heading-clipboard"
 import {checkParagraphClipboard} from "./paragraph-clipboard"
 import {checkFormulaPaste} from "./formula-paste"
 import {checkListDeletion} from "./list-deletion"
+import {checkLineDeletion} from "./line-deletion"
 import {checkListEditing} from "./list-editing"
 import {checkSoftLineBreak} from "./soft-line-break"
 import {checkParagraphStylePresets} from "./paragraph-style-presets"
@@ -144,6 +145,7 @@ await check("table pictures keep their size in editing and preview", async () =>
 })
 
 await check("converted list items support repeated Backspace without clicking", checkListDeletion)
+await check("Command deletion stops at visual and hard line boundaries", checkLineDeletion)
 await check("interrupted live sessions recover committed data locally", checkLiveSessionRecovery)
 await check("heading clipboard preserves gap headings and joins existing text", checkHeadingClipboard)
 await check("paragraph clipboard preserves separate paragraphs at a text caret", checkParagraphClipboard)

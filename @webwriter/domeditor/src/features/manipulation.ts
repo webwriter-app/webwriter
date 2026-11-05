@@ -42,7 +42,7 @@ import {
 } from "../element-attributes"
 
 /** Unit by which a collapsed selection is extended before deleting. */
-type Granularity = "character" | "word" | "line" | "block"
+type Granularity = "character" | "word" | "line" | "lineboundary" | "paragraphboundary" | "block"
 type DropPoint = ReturnType<typeof $.pointFromCoords>
 
 type FloatDropZone = {container: Element, parent: Element, side: "left" | "right", center: number, rect: DOMRect, column?: {left: number, right: number}, allowed?: boolean}
@@ -4228,11 +4228,44 @@ export class ManipulationFeature extends EditorFeature {
    * other platforms. Block deletion remains available as an explicit action. */
   private deletionGranularity(event: KeyboardEvent): Granularity {
     if(isOnApple()) {
-      if(event.metaKey) return "line"
+      if(event.metaKey) return "lineboundary"
       if(event.altKey) return "word"
     }
     else if(event.ctrlKey) return "word"
     return "character"
+  }
+
+  /** Native target ranges preserve the distinction between visual wraps and
+   * hard breaks, including on browsers without paragraphboundary movement. */
+  private deleteInput(event: InputEvent) {
+    const direction = event.inputType.toLowerCase().includes("backward") ? "backward" : "forward"
+    const granularity = event.inputType.includes("Word") ? "word"
+      : event.inputType.includes("SoftLine") ? "lineboundary"
+      : event.inputType.includes("HardLine") ? "paragraphboundary" : "character"
+    if($.isEmpty && event.inputType.includes("Line")) {
+      const [target] = event.getTargetRanges?.() ?? []
+      if(target) {
+        const scope = this.widgetEditingScope($.anchor) ?? $.flowRoot
+        if(!scope.contains(target.startContainer) || !scope.contains(target.endContainer)) return
+        const range = document.createRange()
+        try {
+          range.setStart(target.startContainer, target.startOffset)
+          range.setEnd(target.endContainer, target.endOffset)
+        }
+        catch { return }
+        // An earlier listener may have replaced the caret or target content.
+        if(range.collapsed || range.comparePoint($.anchor!, $.anchorOffset) !== 0) return
+        $.selectRange(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+      }
+      else if(event.inputType === "deleteEntireSoftLine") {
+        const scope = this.widgetEditingScope($.anchor)
+        $.moveBy("lineboundary", "backward")
+        if(scope && !scope.contains($.anchor)) $.move(scope)
+        $.extendBy("lineboundary", "forward")
+        if(scope && !scope.contains($.focus)) $.extend(scope, scope.childNodes.length)
+      }
+    }
+    this.delete(direction, granularity)
   }
 
   /** Applies a conservative two-em paragraph indent at a block boundary or
@@ -4363,8 +4396,7 @@ export class ManipulationFeature extends EditorFeature {
       const summary = $.anchorContainer?.closest("summary")
       if(ev.inputType.startsWith("delete") && ($.anchorContainer?.closest("details") || this.widgetEditingScope($.anchor))) {
         ev.preventDefault()
-        const granularity = ev.inputType.includes("Word") ? "word" : ev.inputType.includes("Line") ? "line" : "character"
-        this.delete(ev.inputType.toLowerCase().includes("backward") ? "backward" : "forward", granularity)
+        this.deleteInput(ev)
         return
       }
       if(ev.inputType === "insertParagraph" && (summary?.parentElement?.matches("details")
