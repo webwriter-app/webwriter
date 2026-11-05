@@ -2288,6 +2288,213 @@ describe("formula input keyboard and autocomplete", () => {
     expect(math.textContent).toBe("([x)")
   })
 
+  it.each(["{}", "()", "[]", "⟨⟩", "⌊⌋", "⌈⌉"])("moves inside %s with the first Left and back out with one Right (#407)", async pair => {
+    const math = await ready()
+    type(pair)
+    const row = math.firstElementChild!, group = row.firstElementChild!
+    const original = clean()
+    key("ArrowLeft")
+    expect($.focus).toBe(group.firstChild!.firstChild)
+    expect($.focusOffset).toBe(1)
+    key("ArrowRight")
+    expect($.focus).toBe(row)
+    expect($.focusOffset).toBe(1)
+    key("ArrowLeft", {shiftKey: true})
+    expect(document.getSelection()!.toString()).toBe(pair[1])
+    expect(clean()).toBe(original)
+  })
+
+  it.each(["^", "_"])("scripts the whole group from a closing token or row endpoint with %s (#409)", async shortcut => {
+    for(const endpoint of ["text", "token", "row"]) {
+      const math = await ready('<mrow><mrow id="group"><mo>(</mo><!--keep--><mfrac><mn>1</mn><mn>2</mn></mfrac><mo>+</mo><mi>x</mi><mo>)</mo></mrow></mrow>')
+      const group = math.querySelector("#group")!, close = group.lastElementChild!
+      const nodes = Array.from(group.childNodes)
+      $.move(endpoint === "text" ? close.firstChild! : endpoint === "token" ? close : group,
+        endpoint === "row" ? group.childNodes.length : 1)
+      type(`${shortcut}2`)
+      const script = math.querySelector(shortcut === "^" ? "msup" : "msub")!
+      expect(script.firstElementChild!.firstElementChild).toBe(group)
+      expect(Array.from(group.childNodes)).toEqual(nodes)
+      expect(script.lastElementChild!.textContent).toBe("2")
+      expect(clean()).not.toContain("◆")
+    }
+  })
+
+  it("inserts a power inside the brackets after one Left (#407, #409)", async () => {
+    const math = await ready()
+    type("(1/2")
+    key("ArrowRight")
+    type("+x)")
+    const group = math.firstElementChild!.firstElementChild!, x = group.querySelector("mi")!
+    key("ArrowLeft")
+    type("^2")
+    expect(group.querySelector("msup")!.firstElementChild!.firstElementChild).toBe(x)
+    expect(group.lastElementChild!.textContent).toBe(")")
+    expect(group.querySelector("msup mo")).toBeNull()
+  })
+
+  it("keeps a fenced fixed-arity argument intact when adding a power at its end (#409)", async () => {
+    const math = await ready('<mfrac><mrow><mo>(</mo><mi>x</mi><mo>)</mo></mrow><mi>d</mi></mfrac>')
+    const fraction = math.firstElementChild!, group = fraction.firstElementChild!, denominator = fraction.lastElementChild!
+    $.move(group.lastChild!.firstChild!, 1)
+    type("^2")
+    expect(fraction.children).toHaveLength(2)
+    expect(fraction.firstElementChild!.querySelector("msup")!.firstElementChild!.firstElementChild).toBe(group)
+    expect(fraction.lastElementChild).toBe(denominator)
+  })
+
+  it.each(["backspace", "delete", "cut", "selection"])("re-pairs brackets after removing inner delimiters with %s (#410)", async removal => {
+    const math = await ready()
+    type("(1)+(1/2")
+    key("ArrowRight")
+    type(")")
+    const row = math.firstElementChild!, first = row.firstElementChild!, second = row.lastElementChild!
+    const open = first.firstElementChild!, close = second.lastElementChild!, fraction = second.querySelector("mfrac")!
+    const remove = (token: Element) => {
+      if(removal === "backspace" || removal === "delete") {
+        $.move(token.firstChild!, removal === "backspace" ? 1 : 0)
+        key(removal === "backspace" ? "Backspace" : "Delete")
+      }
+      else {
+        $.selectElement(token)
+        if(removal === "selection") key("Backspace")
+        else document.dispatchEvent(new ClipboardEvent("cut", {bubbles: true, cancelable: true, clipboardData: new DataTransfer()}))
+      }
+    }
+    const inner = [first.lastElementChild!, second.firstElementChild!]
+    if(removal === "delete" || removal === "selection") inner.reverse()
+    inner.forEach(remove)
+    const group = open.parentElement!
+    expect(group.lastElementChild).toBe(close)
+    expect(group.parentElement).toBe(row)
+    expect(group.contains(fraction)).toBe(true)
+    expect(group.textContent).toBe("(1+12)")
+    expect(fraction.contains($.focus) || $.focus === group).toBe(true)
+    expect(clean()).not.toContain("◆")
+  })
+
+  it("preserves comments, unfamiliar nodes, authored wrappers and unrelated pairs while repairing brackets (#410)", async () => {
+    const math = await ready('<mrow><mo>[</mo><mi>z</mi><mo>]</mo><mo>+</mo><mrow><mo>(</mo><!--keep--><mi>1</mi><mo>)</mo></mrow><mo>+</mo><mrow><mo>(</mo><munknown keep="yes"><mi>q</mi></munknown><mo>)</mo></mrow><mrow id="authored"><mo>(</mo><mi>a</mi><mo>)</mo></mrow></mrow>')
+    const row = math.firstElementChild!, first = row.children[4], second = row.children[6], authored = row.lastElementChild!
+    const unrelated = Array.from(row.childNodes).slice(0, 4), comment = first.childNodes[1], unknown = second.children[1]
+    $.move(first.lastChild!.firstChild!, 1)
+    key("Backspace")
+    $.move(second.firstChild!.firstChild!, 0)
+    key("Delete")
+    expect(Array.from(row.childNodes).slice(0, 4)).toEqual(unrelated)
+    const group = row.children[4]
+    expect(group.textContent).toBe("(1+q)")
+    expect(group.childNodes[1]).toBe(comment)
+    expect(group.querySelector("munknown")).toBe(unknown)
+    $.move(authored.lastChild!.firstChild!, 1)
+    key("Backspace")
+    expect(authored.isConnected).toBe(true)
+    expect(authored.id).toBe("authored")
+    expect(authored.textContent).toBe("(a")
+  })
+
+  it("repairs nested pairs without rebuilding their surviving outer group (#410)", async () => {
+    const math = await ready()
+    type("((1)+(1/2")
+    key("ArrowRight")
+    type("))")
+    const outer = math.firstElementChild!.firstElementChild!, first = outer.children[1], second = outer.children[3]
+    const open = outer.firstChild, close = outer.lastChild
+    $.move(first.lastChild!.firstChild!, 1)
+    key("Backspace")
+    $.move(second.firstChild!.firstChild!, 0)
+    key("Delete")
+    expect(math.firstElementChild!.firstElementChild).toBe(outer)
+    expect(Array.from(outer.childNodes)).toEqual([open, outer.children[1], close])
+    expect(outer.children[1].textContent).toBe("(1+12)")
+  })
+
+  it("does not re-pair surviving brackets across fixed-arity arguments (#410)", async () => {
+    const math = await ready('<mfrac><mrow><mo>(</mo><mi>a</mi><mo>)</mo></mrow><mrow><mo>(</mo><mi>b</mi><mo>)</mo></mrow></mfrac>')
+    const fraction = math.firstElementChild!, [numerator, denominator] = Array.from(fraction.children)
+    $.move(numerator.lastChild!.firstChild!, 1)
+    key("Backspace")
+    $.move(denominator.firstChild!.firstChild!, 0)
+    key("Delete")
+    expect(Array.from(fraction.children)).toEqual([numerator, denominator])
+    expect(numerator.textContent).toBe("(a")
+    expect(denominator.textContent).toBe("b)")
+  })
+
+  it.each(["()", "[]", "{}"])("deletes the closing %s from the normal caret after typing (#410)", async pair => {
+    const math = await ready()
+    type(`${pair[0]}1${pair[1]}`)
+    const open = math.querySelector("mo")!, number = math.querySelector("mn")!
+    key("Backspace")
+    expect(math.textContent).toBe(`${pair[0]}1`)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    expect(math.querySelector("mo")).toBe(open)
+    expect(math.querySelector("mn")).toBe(number)
+    expect($.focus).toBe(number.parentElement)
+    key("Backspace")
+    expect(math.textContent).toBe(pair[0])
+    expect(clean()).not.toContain("◆")
+  })
+
+  it.each(["keyboard", "beforeinput", "virtual"])("deletes a closing parenthesis via %s and restores it with undo (#410)", async input => {
+    const math = await ready()
+    type("(1)")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = clean()
+    if(input === "keyboard") key("Backspace")
+    else if(input === "virtual") command("keyboard:delete:backward")
+    else document.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "deleteContentBackward"}))
+    expect(math.textContent).toBe("(1")
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    const deleted = clean()
+    editor.doc.syncFromDOM()
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(clean()).toBe(original)
+    editor.doc.redo()
+    expect(clean()).toBe(deleted)
+  })
+
+  it("deletes the opening parenthesis from the normal leading caret (#410)", async () => {
+    const math = await ready()
+    type("(1)")
+    const number = math.querySelector("mn")!, close = math.querySelector("mo:last-child")!
+    key("Home")
+    key("Delete")
+    expect(math.textContent).toBe("1)")
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    expect(math.querySelector("mn")).toBe(number)
+    expect(math.querySelector("mo")).toBe(close)
+    key("Delete")
+    expect(math.textContent).toBe(")")
+  })
+
+  it("repairs brackets in the live replacement tree and supports undo, redo and sharing (#410)", async () => {
+    const math = await ready('<mrow><mrow><mo>(</mo><mn>1</mn><mo>)</mo></mrow><mo>+</mo><mrow><mo>(</mo><mfrac><mn>1</mn><mn>2</mn></mfrac><mo>)</mo></mrow></mrow>')
+    const replacement = math.firstElementChild!.cloneNode(true) as Element
+    math.firstElementChild!.replaceWith(replacement)
+    const [first, , second] = Array.from(replacement.children)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = clean()
+    $.move(first.lastChild!.firstChild!, 1)
+    key("Backspace")
+    $.move(second.firstChild!.firstChild!, 0)
+    key("Delete")
+    const repaired = clean()
+    editor.doc.syncFromDOM()
+    const shared = sharedDOMBody(editor.doc.doc).toString()
+    expect(shared).not.toContain("◆")
+    editor.doc.undo()
+    expect(clean()).toBe(original)
+    editor.doc.redo()
+    expect(clean()).toBe(repaired)
+    const group = document.querySelector("math > mrow > mrow")!
+    expect(group.firstElementChild!.textContent).toBe("(")
+    expect(group.lastElementChild!.textContent).toBe(")")
+  })
+
   it("sets up autocomplete synchronously and cleans up when disabled", async () => {
     expect((editor.features.math as any).input).not.toBeNull()
     expect(menu()).toBeNull()
@@ -2405,6 +2612,30 @@ describe("formula input keyboard and autocomplete", () => {
     type("x y")
     expect(math.querySelectorAll("mi")).toHaveLength(2)
     expect(menu()?.querySelector('[aria-selected="true"]')?.getAttribute("aria-label")).toBe("Variable: y")
+  })
+
+  it.each([" ", "  "])("consumes leading Space before a completion: %j", async prefix => {
+    const math = await ready()
+    type(prefix)
+    type("sqrt")
+    expect(menu()?.hidden).toBe(false)
+    expect(menu()?.querySelector('[aria-selected="true"]')?.getAttribute("aria-label")).toBe("Square root: sqrt")
+    expect(math.querySelector("mtext")).toBeNull()
+  })
+
+  it.each(["x", "+", "frac"])("consumes repeated Space after %s", async previous => {
+    const math = await ready()
+    if(previous === "frac") {
+      type("\\frac")
+      key("Enter")
+    }
+    else type(previous)
+    key(" ")
+    key(" ")
+    type("sqrt")
+    expect(menu()?.hidden).toBe(false)
+    expect(menu()?.querySelector('[aria-selected="true"]')?.getAttribute("aria-label")).toBe("Square root: sqrt")
+    expect(math.querySelector("mtext")).toBeNull()
   })
 
   it("cycles suggestions, accepts with Tab, and dismisses with Escape before leaving the formula", async () => {

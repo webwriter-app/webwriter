@@ -1,5 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, fixedClientX, createAnchorPositioner, cloneWithoutEditorMarkers, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isOnApple, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
+import {$, fixedClientX, createAnchorPositioner, cloneWithoutEditorMarkers, clearEditorMarkerClasses, authoredClassValue, isAppendixInteraction, isFormControlInteraction, isOnApple, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathElement, mathOutsidePoint, mathRoot, mathRowNames, mathStructureOptions, mathTokenNames, mathTokenType, parseMathFragment, type MathSelectionState} from "../math"
 
 import {styleMarkNames, type MarkName} from "../marks"
@@ -21,6 +21,23 @@ const isToken = (node: Node): node is Element => isMath(node) && mathTokenNames.
 const plainToken = (node: Node): node is Element => isToken(node) && Array.from(node.childNodes).every(child => child.nodeType === Node.TEXT_NODE)
 const before = (node: Node): Point => [node.parentNode!, indexOf(node)]
 const after = (node: Node): Point => [node.parentNode!, indexOf(node) + 1]
+const fencePairs: Record<string, string> = {")": "(", "]": "[", "}": "{", "⟩": "⟨", "⌋": "⌊", "⌉": "⌈"}
+const fenceText = (node: Node | null) => node && plainToken(node) && node.localName === "mo" ? node.textContent ?? "" : ""
+const fencedRow = (node: Node): boolean => isMath(node) && node.localName === "mrow"
+  && Boolean(fenceText(node.firstChild)) && fencePairs[fenceText(node.lastChild)] === fenceText(node.firstChild)
+/** The closing token's end and its completed group's end are one boundary. */
+const fenceEnd = ([node, offset]: Point) => {
+  if(node instanceof Text && offset === node.length && !node.nextSibling && node.parentElement && plainToken(node.parentElement)) {
+    node = node.parentElement
+    offset = node.childNodes.length
+  }
+  if(plainToken(node) && offset === node.childNodes.length && node.parentNode) [node, offset] = after(node)
+  return isMath(node) && fencedRow(node) && offset === node.childNodes.length ? node : null
+}
+const fencePoint = (point: Point): Point => {
+  const group = fenceEnd(point)
+  return group?.parentElement && isRow(group.parentElement) ? after(group) : point
+}
 
 /** Edits the authored MathML tree in place. The Selection is the formula caret;
  * only transient command text and presentation are kept outside the DOM. */
@@ -590,6 +607,7 @@ export class MathFeature extends EditorFeature {
     }
     const range = this.editRange()
     if(!range) return false
+    const fences = !range.collapsed || command.startsWith("delete:") ? this.fenceRows(range) : []
     let result = false
     if(command.startsWith("mathml:")) {
       if(fragment) result = this.insertNodes(range, Array.from(fragment.childNodes).map(node => document.importNode(node, true)))
@@ -617,7 +635,7 @@ export class MathFeature extends EditorFeature {
     else if(command === "delete:backward" || command === "delete:forward") result = this.delete(range, command.endsWith("backward"))
     else if(command.startsWith("move:")) result = this.move(command.slice(5), false)
     else if(command.startsWith("move-extend:")) result = this.move(command.slice(12), true)
-    if(result) this.changed()
+    if(result) { this.repairFences(fences); this.changed() }
     return result
   }
 
@@ -711,6 +729,11 @@ export class MathFeature extends EditorFeature {
   private insertionPoint(range: Range): Point | null {
     let node = range.startContainer
     let offset = range.startOffset
+    const group = fenceEnd([node, offset])
+    if(group) {
+      this.rowFor(group)
+      return after(group)
+    }
     if(node instanceof Text) {
       const token = node.parentElement
       if(!token || !plainToken(token) || token.childNodes.length !== 1) return null
@@ -787,17 +810,19 @@ export class MathFeature extends EditorFeature {
 
   /** A completed fence pair owns a row so native stretching uses only its
    * contents, and a following script takes the whole group as its base. */
-  private groupTypedFence(close: Element) {
-    const pairs: Record<string, string> = {")": "(", "]": "[", "}": "{", "⟩": "⟨", "⌋": "⌊", "⌉": "⌈"}
-    if(close.localName !== "mo" || !pairs[close.textContent ?? ""] || !close.parentElement || !isRow(close.parentElement)) return
-    const stack = [pairs[close.textContent!]]
+  private groupTypedFence(close: Element, affected?: Set<Node>) {
+    if(!fencePairs[fenceText(close)] || !close.parentElement || !isRow(close.parentElement)) return
+    const stack = [fencePairs[close.textContent!]]
+    let touches = !affected || affected.has(close)
     for(let sibling = close.previousSibling; sibling; sibling = sibling.previousSibling) {
+      touches ||= Boolean(affected?.has(sibling))
       if(!(sibling instanceof Element) || !plainToken(sibling) || sibling.localName !== "mo") continue
       const text = sibling.textContent!
-      if(pairs[text]) stack.push(pairs[text])
-      else if(Object.values(pairs).includes(text)) {
+      if(fencePairs[text]) stack.push(fencePairs[text])
+      else if(Object.values(fencePairs).includes(text)) {
         if(text !== stack.pop()) return
         if(stack.length) continue
+        if(!touches) return
         const row = mathElement("mrow")
         sibling.before(row)
         while(row.nextSibling) {
@@ -808,6 +833,50 @@ export class MathFeature extends EditorFeature {
         return row
       }
     }
+  }
+
+  private fenceRows(range: Range) {
+    const rows = new Set<Element>()
+    for(const endpoint of [range.startContainer, range.endContainer]) {
+      let node: Node | null = endpoint
+      while(node && node !== this.activeMath) {
+        if(isMath(node) && fencedRow(node)) rows.add(node)
+        node = node.parentNode
+      }
+    }
+    return Array.from(rows)
+  }
+
+  /** Only anonymous fence rows touched by a removal may be dissolved.
+   * Attributed wrappers and fixed-arity argument boundaries stay in place. */
+  private repairFences(rows: Element[]) {
+    const broken = rows.filter(row => row.isConnected && !fencedRow(row) && row.parentElement && isRow(row.parentElement)
+      && Array.from(row.attributes).every(attribute => attribute.name === "class" && !authoredClassValue(attribute.value)))
+    if(!broken.length) return
+    const selection = document.getSelection()
+    const remember = (node: Node | null, offset: number) => {
+      const next = node?.childNodes[offset], previous = node?.childNodes[offset - 1]
+      return (): Point | null => next?.isConnected ? before(next) : previous?.isConnected ? after(previous)
+        : node?.isConnected ? [node, Math.min(offset, node instanceof Text ? node.length : node.childNodes.length)] : null
+    }
+    const anchor = remember(selection?.anchorNode ?? null, selection?.anchorOffset ?? 0)
+    const focus = remember(selection?.focusNode ?? null, selection?.focusOffset ?? 0)
+    const parents = new Map<Element, Set<Node>>()
+    for(const row of broken) {
+      const parent = row.parentElement!
+      const nodes = Array.from(row.childNodes)
+      const affected = parents.get(parent) ?? new Set<Node>()
+      nodes.forEach(node => affected.add(node))
+      parents.set(parent, affected)
+      row.replaceWith(...nodes)
+    }
+    for(const [parent, affected] of parents) for(const close of Array.from(parent.children)) {
+      // A surviving outer pair already has its own row.
+      if(rows.includes(parent) && fencedRow(parent) && close === parent.lastChild) continue
+      this.groupTypedFence(close, affected)
+    }
+    const start = anchor(), end = focus()
+    if(start && end) selection?.setBaseAndExtent(...fencePoint(start), ...fencePoint(end))
   }
 
   private insertStructure(range: Range, name: string, select = true, replace = false, onTarget?: (target: Element) => void): boolean {
@@ -959,6 +1028,24 @@ export class MathFeature extends EditorFeature {
     const candidate = point[0].childNodes[point[1] + (backward ? -1 : 0)]
     if(!candidate) return this.move(backward ? "left" : "right", false)
     if(candidate instanceof Element) {
+      // The visible edge of a paired row is its parenthesis, even though the
+      // shared navigation/insertion stop sits outside the completed group.
+      let group = candidate
+      while(isMath(group) && ["mrow", "mstyle"].includes(group.localName) && !fencedRow(group)) {
+        const edge = backward ? group.lastChild : group.firstChild
+        if(!(edge instanceof Element)) break
+        group = edge
+      }
+      if(fencedRow(group)) {
+        const token = (backward ? group.lastElementChild : group.firstElementChild)!
+        if(token.childNodes.length !== 1 || !(token.firstChild instanceof Text)) return false
+        $.move(token.firstChild, backward ? token.firstChild.length : 0)
+        const inner = document.getSelection()!.getRangeAt(0)
+        const fences = this.fenceRows(inner)
+        const result = this.delete(inner, backward)
+        if(result) this.repairFences(fences)
+        return result
+      }
       if(plainToken(candidate) && candidate.firstChild instanceof Text && candidate.textContent) {
         $.move(candidate.firstChild, backward ? candidate.firstChild.length : 0)
         return this.delete(document.getSelection()!.getRangeAt(0), backward)
@@ -1011,7 +1098,7 @@ export class MathFeature extends EditorFeature {
     // at an argument/cell wrapper would let typing bypass its empty slot.
     if(root.localName === "math") points.push([root, 0])
     visit(root, root.localName !== "math")
-    return points.length ? points : [[root, 0]]
+    return points.length ? points.map(fencePoint).filter(([node, offset], index, all) => !index || node !== all[index - 1][0] || offset !== all[index - 1][1]) : [[root, 0]]
   }
 
   /** Enter at the same live stop used by Home/End and pointer hit testing. */
@@ -1025,8 +1112,7 @@ export class MathFeature extends EditorFeature {
     const root = this.activeMath
     const selection = document.getSelection()
     if(!root || !selection?.focusNode) return false
-    const node = selection.focusNode
-    const offset = selection.focusOffset
+    const [node, offset] = fencePoint([selection.focusNode, selection.focusOffset])
     let point: Point | undefined
     if(direction === "up" || direction === "down") {
       let element = node instanceof Element ? node : node.parentElement
@@ -1365,7 +1451,10 @@ export class MathFeature extends EditorFeature {
     clearEditorMarkerClasses(wrapper)
     event.clipboardData.setData("text/html", wrapper.outerHTML)
     event.clipboardData.setData("text/plain", range.toString())
-    if(cut && this.removeRange(range)) this.changed()
+    if(cut) {
+      const fences = this.fenceRows(range)
+      if(this.removeRange(range)) { this.repairFences(fences); this.changed() }
+    }
   }
 
   private dismissCommand() { this.commandText = null; this.commandRange = null }

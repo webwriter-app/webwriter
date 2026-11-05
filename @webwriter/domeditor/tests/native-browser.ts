@@ -4394,7 +4394,70 @@ await check("typed formula brackets stretch to their own content and stay paired
     }
     assert(first.firstElementChild!.getBoundingClientRect().height > second.firstElementChild!.getBoundingClientRect().height + 4,
       "shorter bracket group stretched to the neighboring nested fraction")
+
+    math.innerHTML = "<mrow></mrow>"
+    $.move(math.firstElementChild!, 0)
+    type("{}")
+    const end = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!.getBoundingClientRect().left
+    edit("move:left")
+    assert($.focus?.textContent === "{" && $.focusOffset === 1, "first Left did not enter the bracket pair (#407)")
+    const inside = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!.getBoundingClientRect().left
+    assert(end - inside > 2, "first Left did not visibly move the bracket caret (#407)")
+
+    for(const internalEnd of [false, true]) {
+      math.innerHTML = "<mrow></mrow>"
+      $.move(math.firstElementChild!, 0)
+      type("(1/2")
+      edit("move:right")
+      type("+x)")
+      const group = math.firstElementChild!.firstElementChild!
+      if(internalEnd) $.move(group.lastChild!.firstChild!, 1)
+      type("^2")
+      await layoutFrame()
+      assert(math.querySelector("msup")!.firstElementChild!.contains(group), "power took only the closing bracket as its base (#409)")
+      const open = group.firstElementChild!.getBoundingClientRect(), close = group.lastElementChild!.getBoundingClientRect()
+      assert(Math.abs(open.height - close.height) < 1 && Math.abs(open.top - close.top) < 1, "power broke bracket sizing (#409)")
+    }
+
+    math.innerHTML = "<mrow></mrow>"
+    $.move(math.firstElementChild!, 0)
+    type("(1)+(1/2")
+    edit("move:right")
+    type(")")
+    const groups = math.firstElementChild!.children
+    const left = groups[0], right = groups[2]
+    $.move(left.lastChild!.firstChild!, 1)
+    edit("delete:backward")
+    $.move(right.firstChild!.firstChild!, 0)
+    edit("delete:forward")
+    await layoutFrame()
+    const repaired = math.firstElementChild!.firstElementChild!
+    assert(repaired.textContent === "(1+12)", "surviving brackets were not re-paired (#410)")
+    const open = repaired.firstElementChild!.getBoundingClientRect(), close = repaired.lastElementChild!.getBoundingClientRect()
+    assert(Math.abs(open.height - close.height) < 1 && Math.abs(open.top - close.top) < 1, "re-paired brackets do not size together (#410)")
+    assert(open.height > parseFloat(getComputedStyle(math).fontSize), "re-paired opening bracket did not stretch to the fraction (#410)")
     assert(!editor.toHTML(true).includes("◆"), "formula markers leaked into serialized content")
+
+    math.innerHTML = "<mrow></mrow>"
+    const caretRow = math.firstElementChild!
+    $.move(caretRow, 0)
+    type("(1)")
+    const opening = caretRow.querySelector("mo")!, number = caretRow.querySelector("mn")!
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
+    assert(math.textContent === "(1", "Backspace at the fence end selected the whole pair instead of deleting its close")
+    assert(document.getSelection()?.isCollapsed, "Backspace at the fence end left a range selection")
+    assert(caretRow.contains(opening) && caretRow.contains(number), "Backspace rebuilt the surviving opening token or number")
+
+    math.innerHTML = "<mrow></mrow>"
+    const leadingRow = math.firstElementChild!
+    $.move(leadingRow, 0)
+    type("(1)")
+    const closing = leadingRow.querySelector("mo:last-child")!, leadingNumber = leadingRow.querySelector("mn")!
+    edit("move:start")
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Delete", bubbles: true, cancelable: true}))
+    assert(math.textContent === "1)", "Delete at the fence start did not delete only its opening token")
+    assert(document.getSelection()?.isCollapsed, "Delete at the fence start left a range selection")
+    assert(leadingRow.contains(closing) && leadingRow.contains(leadingNumber), "Delete rebuilt the surviving number or closing token")
   }
   finally { paragraph.remove() }
 })
