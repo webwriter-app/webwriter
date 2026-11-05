@@ -1471,6 +1471,7 @@ summary::after {
   content: "Hotspot content";
   visibility: visible;
   display: inline-block;
+  width: auto;
   color: darkgray;
   pointer-events: none;
   user-select: none;

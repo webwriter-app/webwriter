@@ -8111,6 +8111,20 @@ await check("hotspot popovers use grey editing placeholders and compact controls
     editor.features.media.actions.addImageMapPopover({type:"addImageMapPopover", path:area.path, expected:area.attributes})
     await layoutFrame()
     const paragraph = doc.querySelector("[popover] p")!
+    const popover = paragraph.parentElement!
+    for(const width of [800, 360]) {
+      frame.style.width = `${width}px`
+      for(const html of ["", "<br>"]) {
+        paragraph.innerHTML = html
+        await layoutFrame()
+        const hint = view.getComputedStyle(paragraph, "::before")
+        assert(parseFloat(hint.width) > 0, `hotspot placeholder has no intrinsic width (${width}px, ${html || "empty"})`)
+        assert(paragraph.scrollWidth <= paragraph.clientWidth + 1, `hotspot placeholder overflows its paragraph (${width}px, ${html || "empty"})`)
+        assert(popover.scrollWidth <= popover.clientWidth + 1, `hotspot placeholder overflows its popover (${width}px, ${html || "empty"})`)
+        const box = popover.getBoundingClientRect()
+        assert(box.width > 0 && box.left >= 0 && box.right <= view.innerWidth, `hotspot placeholder is clipped by its viewport (${width}px, ${html || "empty"})`)
+      }
+    }
     const hint = view.getComputedStyle(paragraph, "::before")
     assert(hint.content === '"Hotspot content"' && hint.visibility === "visible" && hint.color === "rgb(169, 169, 169)", "empty hotspot placeholder is not visible grey text")
     assert(paragraph.textContent === "" && !editor.toHTML(true).includes("Hotspot content"), "placeholder text leaked into authored HTML")

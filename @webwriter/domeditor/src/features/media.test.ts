@@ -2203,12 +2203,13 @@ describe("media editing", () => {
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
-  it("uses an editing placeholder for empty hotspot content and cleans up its marker", () => {
+  it.each(["", "<br>"])("uses an editing placeholder for empty hotspot content and cleans up its marker (%s)", html => {
     document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,40,40"></map>'
     editor.features.selection.captureElement(document.querySelector("img")!)
     const area = editor.features.media.getState()!.imageMap!.areas[0]
     editor.features.media.actions.addImageMapPopover({type:"addImageMapPopover", path:area.path, expected:area.attributes})
     const paragraph = document.querySelector("[popover] p")!
+    paragraph.innerHTML = html
     editor.features.media["refresh"]()
     expect(paragraph.textContent).toBe("")
     expect(paragraph).toHaveClass("◆hotspot-placeholder")
