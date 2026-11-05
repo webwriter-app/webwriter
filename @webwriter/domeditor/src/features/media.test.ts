@@ -46,6 +46,7 @@ beforeEach(() => {
 afterEach(() => {
   editor.destroy()
   fetchSettings.interceptor = originalFetchInterceptor
+  vi.unstubAllGlobals()
 })
 
 describe("media editing", () => {
@@ -1620,11 +1621,11 @@ describe("media editing", () => {
     const pause = vi.spyOn(player, "pause")
     await vi.waitFor(() => expect(pause).toHaveBeenCalled())
     editor.features.media.disable()
-    const before = document.body.innerHTML
+    const before = editor.toHTML(true)
     pause.mockClear()
     editor.features.media.enable()
     expect(pause).toHaveBeenCalledOnce()
-    expect(document.body.innerHTML).toBe(before)
+    expect(editor.toHTML(true)).toBe(before)
     expect(player.autoplay).toBe(true)
 
     pause.mockClear()
@@ -2817,6 +2818,9 @@ describe("media editing", () => {
   })
 
   it("repositions shields and restores them when another media owns capture", async () => {
+    // Exercise the geometry fallback; native anchor positioning is covered
+    // separately and does not use inline viewport coordinates.
+    vi.stubGlobal("CSS", Object.assign(Object.create(CSS), {supports: () => false}))
     document.body.innerHTML = '<iframe src="about:blank#frame"></iframe><audio src="sound.mp3"></audio>'
     const [iframe, audio] = Array.from(document.body.children)
     let width = 100
@@ -2843,6 +2847,58 @@ describe("media editing", () => {
     expect($.selectedElement).toBe(audio)
     expect(editor.features.selection.captureSelectedElement).toBe(audio)
     await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(2))
+  })
+
+  it.each([true, false])("repositions current shields on scroll without rediscovering content (anchors: %s)", async anchors => {
+    vi.stubGlobal("CSS", Object.assign(Object.create(CSS), {supports: () => anchors}))
+    document.body.innerHTML = '<article><video src="movie.mp4" controls></video></article><video src="second.mp4" controls></video>'
+    const videos = Array.from(document.querySelectorAll("video"))
+    let left = 20
+    const reads = videos.map(video => vi.spyOn(video, "getBoundingClientRect").mockImplementation(() => new DOMRect(left, 30, 160, 90)))
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(2))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    const refresh = vi.spyOn(editor.features.media as any, "refresh")
+    reads.forEach(read => read.mockClear())
+    left = 80
+    for(let i = 0; i < 4; i++) document.dispatchEvent(new Event("scroll"))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(refresh).not.toHaveBeenCalled()
+    reads.forEach(read => expect(read).toHaveBeenCalledTimes(anchors ? 0 : 1))
+    const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
+    expect(shield.style.left).toBe(anchors ? "" : "80px")
+    if(anchors) expect(videos[0].className).toMatch(/◆anchor-target-/)
+
+    // A direct or remote authored change still updates membership.
+    videos[0].hidden = true
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(1))
+    expect(editor.toHTML(true)).not.toContain("◆anchor")
+    document.dispatchEvent(new Event("scroll"))
+    editor.features.media.disable()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(editor.appendix.querySelector(".◆media-interaction-shield")).toBeNull()
+    expect(document.body.innerHTML).not.toContain("◆anchor-target-")
+  })
+
+  it("defers placement-only media refreshes during a canvas transform but observes other edits", async () => {
+    document.body.innerHTML = '<move-widget></move-widget><video src="movie.mp4" controls></video>'
+    const target = document.querySelector<HTMLElement>("move-widget")!
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(1))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    const moving = vi.spyOn(editor.features.transformation, "canvasPlacementTarget", "get").mockReturnValue(target)
+    const refresh = vi.spyOn(editor.features.media as any, "refresh")
+    target.style.left = "40px"
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(refresh).not.toHaveBeenCalled()
+
+    document.body.insertAdjacentHTML("beforeend", '<audio src="sound.mp3" controls></audio>')
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(2))
+    refresh.mockClear()
+    target.style.left = "80px"
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(refresh).not.toHaveBeenCalled()
+    moving.mockReturnValue(null)
+    editor.features.media.flushCanvasTransformRefresh()
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce())
   })
 })
 

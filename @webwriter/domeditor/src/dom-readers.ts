@@ -26,6 +26,11 @@ export function hasClass(element: ReadableElement, name: string) {
 }
 
 export function* descendantElements<T extends ReadableElement>(root: T): Generator<T> {
+  const querySelectorAll = (root as T & {querySelectorAll?: (selectors: string) => NodeListOf<Element>}).querySelectorAll
+  if(typeof querySelectorAll === "function") {
+    yield* Array.from(querySelectorAll.call(root, "*")) as unknown as T[]
+    return
+  }
   for(const child of Array.from(root.children) as T[]) {
     yield child
     yield* descendantElements(child)

@@ -19,13 +19,29 @@ export function canvasSnapshotPlugin() {
       this.addWatchFile(entry)
       this.addWatchFile(license)
       const [code, notice] = await Promise.all([readFile(entry, "utf8"), readFile(license, "utf8")])
-      const scoped = code
+      // Blink rebuilds the computed property's name list for indexed reads.
+      // Standard property names are fixed for this browser; custom properties
+      // are already excluded by SnapDOM. Cache names, never computed values.
+      const styleLoop = "else for(let h=0;h<t.length;h++)s(t[h]);"
+      if(!code.includes(styleLoop)) throw new Error("Update the pinned SnapDOM computed-style loop patch")
+      const scoped = code.replace(styleLoop, "else for(let h of snapdomStyleNames(t))s(h);")
         .replace(/\b(\w+)\.body\.(appendChild|removeChild)\(/g, "snapdomMount($1, $1.body).$2(")
         .replace(/\b(\w+)\.documentElement\.appendChild\(/g, "snapdomMount($1, $1.documentElement).appendChild(")
         .replace(/\((\w+)\.body\|\|\1\.documentElement\)\.appendChild\(/g, "snapdomMount($1, $1.body || $1.documentElement).appendChild(")
         .replaceAll('document.querySelectorAll("#snapdom-sandbox")', 'snapdomMount(document, document).querySelectorAll("#snapdom-sandbox")')
       const source = `/*! ${notice.trim()} */
 const snapdomDetached = document.createDocumentFragment()
+let snapdomComputedNames
+function snapdomStyleNames(style) {
+  if(!snapdomComputedNames) {
+    snapdomComputedNames = []
+    for(let index = 0, count = style.length; index < count; index++) {
+      const name = style[index]
+      if(!name.startsWith('--')) snapdomComputedNames.push(name)
+    }
+  }
+  return snapdomComputedNames
+}
 function snapdomMount(doc, fallback) {
   if(doc !== document) return fallback
   return doc.body?.shadowRoot?.querySelector('[part="canvas-minimap-measurements"]') ?? snapdomDetached

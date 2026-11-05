@@ -20,6 +20,22 @@ afterEach(() => {
 })
 
 describe("shared UI anchor positioning", () => {
+  it("does not recompute another owner's stable anchors for an empty refresh", () => {
+    document.body.innerHTML = "<button></button><div>Target</div>"
+    const control = document.querySelector("button")!, target = document.querySelector("div")!
+    const owner = positioner(), idle = positioner()
+    owner.bind(control, target)
+    owner.refresh()
+    const style = vi.spyOn(window, "getComputedStyle")
+    idle.refresh()
+    expect(style).not.toHaveBeenCalled()
+    owner.release(control)
+    idle.refresh()
+    expect(control.className).toBe("")
+    expect(target.className).toBe("")
+    expect(sheets().some(sheet => source(sheet).includes("--ww-ui-anchor-"))).toBe(false)
+  })
+
   it("calibrates a Gecko frame against its target when the gutter estimate is short", () => {
     document.body.innerHTML = '<button id="frame"></button><p>Target</p>'
     const frame = document.querySelector("button")!

@@ -7378,7 +7378,7 @@ await check("canvas wheel and hand panning cover interactive embeds and restore 
       return {clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2}
     }
     const hit = ({clientX, clientY}: {clientX: number, clientY: number}) => appendix.elementFromPoint(clientX, clientY)
-    assert(hit(center(video))?.matches('[part="media-interaction-shield"]'), "the editor media shield is not reachable")
+    assert(hit(center(video))?.matches('[part~="media-interaction-shield"]'), "the editor media shield is not reachable")
     hand.click()
     assert(hand.contains(hit(center(hand))), "Hand mode blocked its own toolbar")
     assert(view.getComputedStyle(shield).cursor === "grab", "Hand mode did not show the grab cursor")
@@ -8420,23 +8420,46 @@ await check("exported canvas runs its standalone viewer without editor dependenc
     const map = appendix.querySelector<HTMLButtonElement>('[part="canvas-minimap"]')!
     const thumbnail = map.querySelector("image")!
     for(let i = 0; !thumbnail.hasAttribute("href") && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 20))
-    assert(!map.hidden && thumbnail.getAttribute("href")?.startsWith("data:image/svg+xml"), "saved reader did not render its minimap")
+    assert(!map.hidden && thumbnail.getAttribute("href")?.startsWith("data:image/png"), "saved reader did not rasterize its minimap")
     assert(!doc.querySelector("[data-snapdom-internal], [part=canvas-minimap]"), "minimap helpers leaked into the authored document")
     const image = thumbnail.getAttribute("href")
-    const viewport = map.querySelector(".◆canvas-minimap-camera")!
-    const width = Number(viewport.getAttribute("width"))
+    const viewport = map.querySelector<HTMLCanvasElement>(".◆canvas-minimap-camera")!
+    await layoutFrame()
+    const svg = map.querySelector("svg")!, originalSVG = svg.outerHTML
+    assert(!svg.contains(viewport) && viewport.namespaceURI === "http://www.w3.org/1999/xhtml", "viewport still shares the thumbnail SVG")
+    const svgBox = svg.getBoundingClientRect(), layerBox = viewport.parentElement!.getBoundingClientRect()
+    const scale = Math.min(svgBox.width / svg.viewBox.baseVal.width, svgBox.height / svg.viewBox.baseVal.height)
+    assert(Math.abs(layerBox.width - svg.viewBox.baseVal.width * scale) < .5
+      && Math.abs(layerBox.height - svg.viewBox.baseVal.height * scale) < .5, "camera layer does not fit the thumbnail bounds")
+    const context = viewport.getContext("2d")!
+    assert(context.getImageData(0, 0, viewport.width, viewport.height).data.some((value, index) => index % 4 === 3 && value > 0), "camera overlay is blank")
+    const rectangles: number[][] = [], stroke = context.strokeRect.bind(context)
+    context.strokeRect = (x, y, width, height) => { rectangles.push([x, y, width, height]); stroke(x, y, width, height) }
+    view.dispatchEvent(new Event("resize"))
+    const width = rectangles.at(-1)![2]
     const before = slot.style.transform
     appendix.querySelector<HTMLButtonElement>('button[name="zoom-in"]')!.click()
+    await layoutFrame()
     assert(slot.style.transform !== before && appendix.querySelector("output")!.textContent === "120%", "reader zoom control did not move the camera")
-    assert(Number(viewport.getAttribute("width")) < width && thumbnail.getAttribute("href") === image, "zoom did not update the viewport independently of the snapshot")
+    assert(rectangles.at(-1)![2] < width && thumbnail.getAttribute("href") === image, "zoom did not update the viewport independently of the snapshot")
     const zoomed = slot.style.transform
     slot.dispatchEvent(new WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true, deltaY: 100}))
     assert(slot.style.transform !== zoomed, "reader did not pan with the wheel")
+    await layoutFrame()
+    assert(svg.outerHTML === originalSVG, "panning or zooming changed the static thumbnail SVG")
     const minimapRect = map.getBoundingClientRect()
-    map.dispatchEvent(new MouseEvent("click", {detail: 1, clientX: minimapRect.left + minimapRect.width / 2, clientY: minimapRect.top + minimapRect.height / 2}))
+    map.dispatchEvent(new PointerEvent("click", {detail: 1, clientX: minimapRect.left + minimapRect.width / 2, clientY: minimapRect.top + minimapRect.height / 2}))
     const centered = item.getBoundingClientRect()
-    assert(Math.abs((centered.left + centered.right) / 2 - view.innerWidth / 2) < 1
-      && Math.abs((centered.top + centered.bottom) / 2 - view.innerHeight / 2) < 1, "minimap click did not center the camera")
+    // Pointer coordinates can round by one minimap pixel, which projects to
+    // several document pixels when the thumbnail is small.
+    const zoom = Number(slot.style.transform.match(/scale\(([^)]+)\)/)![1])
+    const clickTolerance = 1 + zoom / scale
+    assert(Math.abs((centered.left + centered.right) / 2 - view.innerWidth / 2) < clickTolerance
+      && Math.abs((centered.top + centered.bottom) / 2 - view.innerHeight / 2) < clickTolerance, "minimap click did not center the camera")
+    map.click()
+    const keyboardCentered = item.getBoundingClientRect()
+    assert(Math.abs((keyboardCentered.left + keyboardCentered.right) / 2 - view.innerWidth / 2) < 1
+      && Math.abs((keyboardCentered.top + keyboardCentered.bottom) / 2 - view.innerHeight / 2) < 1, "keyboard minimap activation did not center the camera")
     appendix.querySelector<HTMLButtonElement>('button[name="fit-content"]')!.click()
     const fitted = item.getBoundingClientRect()
     assert(Math.abs((fitted.left + fitted.right) / 2 - view.innerWidth / 2) < 1

@@ -410,7 +410,6 @@ export class CanvasFeature extends EditorFeature {
       this.cameraFrame = null
       if(!this.active || !this.isEnabled) return
       this.editor.features.transformation.updateInfo()
-      this.editor.features.layout.refresh()
       this.editor.features.graphic.refresh()
     })
     document.dispatchEvent(new Event("scroll"))

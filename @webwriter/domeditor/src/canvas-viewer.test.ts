@@ -26,8 +26,65 @@ afterEach(() => {
 })
 const control = (name: string) => document.body.shadowRoot!.querySelector<HTMLButtonElement>(`button[name="${name}"]`)!
 const settle = async () => { await new Promise<void>(resolve => setTimeout(resolve, 0)) }
+const cameraFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+const mockCameraCanvas = () => {
+  const context = {setTransform: vi.fn(), clearRect: vi.fn(), fillRect: vi.fn(), strokeRect: vi.fn()}
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D)
+  let resize!: (width: number, height: number) => void
+  const disconnect = vi.fn()
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(private callback: ResizeObserverCallback) {}
+    observe(target: Element) {
+      resize = (width, height) => this.callback([{target, contentRect: new DOMRect(0, 0, width, height)} as ResizeObserverEntry], this)
+      resize(200, 100)
+    }
+    unobserve() {}
+    disconnect = disconnect
+  })
+  return {context, resize: (width: number, height: number) => resize(width, height), disconnect}
+}
 
 describe("standalone canvas reader", () => {
+  it.each(["native", "blank", "tainted"])("uses native rasterization when usable and cleans up the %s capture", async mode => {
+    const {context} = mockCameraCanvas()
+    const draw = vi.fn(), fallback = vi.fn(async () => ({src: "data:image/png,fallback"}))
+    const connected = vi.fn(), tag = `capture-widget-${mode}`
+    customElements.define(tag, class extends HTMLElement { connectedCallback() { connected() } })
+    Object.assign(context, {
+      drawElementImage: draw, scale: vi.fn(),
+      getImageData: () => {
+        if(mode === "tainted") throw new DOMException("Tainted", "SecurityError")
+        return {data: new Uint8ClampedArray([0, 0, 0, mode === "native" ? 255 : 0])}
+      },
+    })
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png,native")
+    vi.spyOn(document.querySelector("p")!, "getBoundingClientRect").mockReturnValue(new DOMRect(-40, 20, 200, 100))
+    const snapshot = vi.fn(async (_element, options) => {
+      const clone = document.createElement("div")
+      clone.innerHTML = `<${tag} onclick="throw 1"><input autofocus value="Keep"></${tag}>`
+      await options.plugins[0].beforeRender({clone, classCSS: "div { color: red }"})
+      expect(clone.querySelector(`${tag}[onclick]`)).not.toBeNull()
+      return {meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60}, toPng: fallback}
+    })
+    reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
+    const map = control("minimap"), image = map.querySelector("image")!
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe(`data:image/png,${mode === "native" ? "native" : "fallback"}`))
+    expect(draw).toHaveBeenCalledOnce()
+    const viewport = draw.mock.calls[0][0] as HTMLElement
+    expect(viewport.inert).toBe(true)
+    expect(viewport.shadowRoot!.querySelector(`${tag}, [onclick], [autofocus]`)).toBeNull()
+    expect(viewport.shadowRoot!.querySelector("input")?.value).toBe("Keep")
+    expect(connected).not.toHaveBeenCalled()
+    expect(fallback).toHaveBeenCalledTimes(mode === "native" ? 0 : 1)
+    expect(document.body.shadowRoot!.querySelector('[part="canvas-minimap-measurements"] canvas')).toBeNull()
+    if(mode === "native") {
+      expect(image.getAttribute("x")).toBe("0")
+      expect(image.getAttribute("y")).toBe("0")
+      expect(Number(image.getAttribute("width"))).toBe(Number(map.querySelector("svg")!.getAttribute("viewBox")!.split(" ")[2]))
+    }
+    expect(document.body.querySelector("canvas, [drawable], [layoutsubtree]")).toBeNull()
+  })
+
   it("uses block sizing for captioned pictures in both canvas modes", () => {
     document.body.innerHTML = '<figure><picture style="width: 320px"><img alt="Map"></picture><figcaption>Map</figcaption></figure>'
     const picture = document.querySelector("picture")!
@@ -42,6 +99,7 @@ describe("standalone canvas reader", () => {
   })
 
   it("fits the minimap to the viewport ratio and refreshes content and settled resizes only while open", async () => {
+    const {context} = mockCameraCanvas()
     const resize = (width: number, height: number) => {
       vi.stubGlobal("innerWidth", width)
       vi.stubGlobal("innerHeight", height)
@@ -69,11 +127,10 @@ describe("standalone canvas reader", () => {
     }
     const snapshot = vi.fn(async () => ({
       meta: {clip: {x: -288, y: -114}, contentX: 2, contentY: 2, vbW: 780, vbH: 392},
-      toRaw: () => "data:image/svg+xml,preview",
+      toPng: async () => ({src: "data:image/png,preview"}),
     }))
     reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
     const toggle = control("minimap-toggle"), map = control("minimap"), svg = map.querySelector("svg")!
-    const viewport = svg.querySelector(".◆canvas-minimap-camera")!
     const viewBoxSize = () => svg.getAttribute("viewBox")!.split(" ").slice(2).map(Number)
     expect(toggle.getAttribute("aria-expanded")).toBe("true")
     expect(map.hidden).toBe(false)
@@ -82,13 +139,16 @@ describe("standalone canvas reader", () => {
     expect(snapshot).toHaveBeenCalledWith(slot, expect.objectContaining({fast: false}))
     expect(viewBoxSize()).toEqual([expect.closeTo(776), expect.closeTo(388)])
     reader.viewer.zoomAt(1)
-    const initialWidth = Number(viewport.getAttribute("width"))
+    await cameraFrame()
+    const initialWidth = context.strokeRect.mock.lastCall![2]
     control("zoom-in").click()
-    expect(Number(viewport.getAttribute("width"))).toBeCloseTo(initialWidth / 1.2)
+    await cameraFrame()
+    expect(context.strokeRect.mock.lastCall![2]).toBeCloseTo(initialWidth / 1.2)
     vi.spyOn(svg, "getBoundingClientRect").mockReturnValue(rect(500, 0, 188, 94))
-    const before = viewport.getAttribute("x")
+    const before = context.strokeRect.mock.lastCall![0]
     map.dispatchEvent(new MouseEvent("click", {detail: 1, clientX: 641, clientY: 47}))
-    expect(viewport.getAttribute("x")).not.toBe(before)
+    await cameraFrame()
+    expect(context.strokeRect.mock.lastCall![0]).not.toBe(before)
     expect(reader.viewer.clientPoint(window.innerWidth / 2, window.innerHeight / 2)).toEqual({
       x: expect.closeTo(294), y: expect.closeTo(80),
     })
@@ -159,7 +219,7 @@ describe("standalone canvas reader", () => {
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
     const snapshot = vi.fn(async () => ({
       meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
-      toRaw: () => "data:image/svg+xml,cached",
+      toPng: async () => ({src: "data:image/png,cached"}),
     }))
     reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
     const toggle = control("minimap-toggle"), image = control("minimap").querySelector("image")!
@@ -190,6 +250,7 @@ describe("standalone canvas reader", () => {
   })
 
   it("updates the camera outline without reading layout during panning", async () => {
+    const {context} = mockCameraCanvas()
     const paragraph = document.querySelector("p")!
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
     const appendix = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
@@ -201,20 +262,130 @@ describe("standalone canvas reader", () => {
     })
     const snapshot = vi.fn(async () => ({
       meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
-      toRaw: () => "data:image/svg+xml,camera",
+      toPng: async () => ({src: "data:image/png,camera"}),
     }))
     reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
     await vi.waitFor(() => expect(control("minimap").querySelector("image")!.hasAttribute("href")).toBe(true))
-    const viewport = control("minimap").querySelector(".◆canvas-minimap-camera")!
-    const x = Number(viewport.getAttribute("x")), y = Number(viewport.getAttribute("y"))
+    const [x, y] = context.strokeRect.mock.lastCall!
+    const [, , width, height] = control("minimap").querySelector("svg")!.getAttribute("viewBox")!.split(" ").map(Number)
     slotRect.mockClear()
     reader.viewer.startPan(new PointerEvent("pointerdown", {pointerId: 7, clientX: 20, clientY: 30}))
     reader.viewer.movePan(new PointerEvent("pointermove", {pointerId: 7, clientX: 50, clientY: 70}))
-    expect(Number(viewport.getAttribute("x"))).toBeCloseTo(x - 30 / reader.viewer.zoom)
-    expect(Number(viewport.getAttribute("y"))).toBeCloseTo(y - 40 / reader.viewer.zoom)
+    await cameraFrame()
+    const [left, top] = context.strokeRect.mock.lastCall!
+    expect(left).toBeCloseTo(x - 30 / reader.viewer.zoom / width * 200)
+    expect(top).toBeCloseTo(y - 40 / reader.viewer.zoom / height * 100)
     expect(slotRect).not.toHaveBeenCalled()
     reader.viewer.stopPan()
     expect(snapshot).toHaveBeenCalledTimes(1)
+  })
+
+  it("rasterizes once and coalesces camera moves without changing minimap DOM", async () => {
+    const {context, disconnect} = mockCameraCanvas()
+    vi.spyOn(document.querySelector("p")!, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
+    const rasterize = vi.fn(async () => ({src: "data:image/png,bitmap"}))
+    const snapshot = vi.fn(async () => ({
+      meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
+      toPng: rasterize,
+    }))
+    reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
+    const map = control("minimap"), svg = map.querySelector("svg")!, image = map.querySelector("image")!
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/png,bitmap"))
+    const viewport = map.querySelector<HTMLCanvasElement>(".◆canvas-minimap-camera")!
+    expect(viewport.namespaceURI).toBe("http://www.w3.org/1999/xhtml")
+    expect(svg.contains(viewport)).toBe(false)
+    const originalSVG = svg.outerHTML, originalCanvas = viewport.outerHTML
+    const originalPosition = context.strokeRect.mock.lastCall!
+    const [, , width, height] = svg.getAttribute("viewBox")!.split(" ").map(Number)
+    context.strokeRect.mockClear()
+    const callbacks: FrameRequestCallback[] = []
+    const request = vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => callbacks.push(callback))
+    const cancel = vi.spyOn(window, "cancelAnimationFrame")
+    reader.viewer.startPan(new PointerEvent("pointerdown", {pointerId: 7, clientX: 0, clientY: 0}))
+    for(let i = 1; i <= 10; i++) reader.viewer.movePan(new PointerEvent("pointermove", {pointerId: 7, clientX: i * 10, clientY: i * 5}))
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(context.strokeRect).not.toHaveBeenCalled()
+    callbacks[0](performance.now())
+    const [x, y] = context.strokeRect.mock.lastCall!
+    expect(x).toBeCloseTo(originalPosition[0] - 100 / reader.viewer.zoom / width * 200)
+    expect(y).toBeCloseTo(originalPosition[1] - 50 / reader.viewer.zoom / height * 100)
+    expect(context.strokeRect).toHaveBeenCalledTimes(1)
+    expect(viewport.outerHTML).toBe(originalCanvas)
+    expect(svg.outerHTML).toBe(originalSVG)
+    expect(rasterize).toHaveBeenCalledTimes(1)
+
+    reader.viewer.movePan(new PointerEvent("pointermove", {pointerId: 7, clientX: 200, clientY: 100}))
+    context.strokeRect.mockClear()
+    control("minimap-toggle").click()
+    expect(cancel).toHaveBeenCalledWith(2)
+    callbacks[1](performance.now())
+    expect(context.strokeRect).not.toHaveBeenCalled()
+    reader.destroy()
+    expect(disconnect).toHaveBeenCalled()
+    expect(map.isConnected).toBe(false)
+  })
+
+  it("sizes the camera bitmap for container resizes and display pixel density", async () => {
+    const {context, resize} = mockCameraCanvas()
+    vi.spyOn(document.querySelector("p")!, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
+    const snapshot = vi.fn(async () => ({
+      meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
+      toPng: async () => ({src: "data:image/png,bitmap"}),
+    }))
+    reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
+    await vi.waitFor(() => expect(control("minimap").querySelector("image")!.hasAttribute("href")).toBe(true))
+    const viewport = control("minimap").querySelector<HTMLCanvasElement>("canvas")!
+    vi.stubGlobal("devicePixelRatio", 2)
+    resize(150, 75)
+    expect([viewport.width, viewport.height]).toEqual([300, 150])
+    expect(context.setTransform).toHaveBeenLastCalledWith(2, 0, 0, 2, 0, 0)
+    vi.stubGlobal("devicePixelRatio", 1)
+    window.dispatchEvent(new Event("resize"))
+    expect([viewport.width, viewport.height]).toEqual([150, 75])
+    expect(snapshot).toHaveBeenCalledTimes(1)
+  })
+
+  it("discards rasterization invalidated by an authored edit", async () => {
+    const paragraph = document.querySelector("p")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
+    let finish!: (value: {src: string}) => void
+    const pending = new Promise<{src: string}>(resolve => { finish = resolve })
+    const rasterize = vi.fn(async () => ({src: "data:image/png,fresh"})).mockImplementationOnce(() => pending)
+    const snapshot = vi.fn(async () => ({
+      meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
+      toPng: rasterize,
+    }))
+    reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
+    const image = control("minimap").querySelector("image")!
+    await vi.waitFor(() => expect(rasterize).toHaveBeenCalledTimes(1))
+    paragraph.textContent = "Changed during rasterization"
+    await settle()
+    finish({src: "data:image/png,stale"})
+    await settle()
+    expect(image.hasAttribute("href")).toBe(false)
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/png,fresh"))
+    expect(snapshot).toHaveBeenCalledTimes(2)
+  })
+
+  it("retains the previous bitmap when rasterization fails and retries on reopening", async () => {
+    const paragraph = document.querySelector("p")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
+    const rasterize = vi.fn(async () => ({src: "data:image/png,current"}))
+      .mockResolvedValueOnce({src: "data:image/png,previous"}).mockRejectedValueOnce(new Error("Rasterization failed"))
+    const snapshot = vi.fn(async () => ({
+      meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
+      toPng: rasterize,
+    }))
+    reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
+    const image = control("minimap").querySelector("image")!
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/png,previous"))
+    paragraph.textContent = "Updated content"
+    await vi.waitFor(() => expect(rasterize).toHaveBeenCalledTimes(2))
+    await settle()
+    expect(image.getAttribute("href")).toBe("data:image/png,previous")
+    control("minimap-toggle").click()
+    control("minimap-toggle").click()
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/png,current"))
   })
 
   it("discards a yielding capture invalidated by an authored edit", async () => {
@@ -222,7 +393,7 @@ describe("standalone canvas reader", () => {
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
     const result = (name: string) => ({
       meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
-      toRaw: () => `data:image/svg+xml,${name}`,
+      toPng: async () => ({src: `data:image/png,${name}`}),
     })
     let finish!: (value: ReturnType<typeof result>) => void
     const pending = new Promise<ReturnType<typeof result>>(resolve => { finish = resolve })
@@ -235,7 +406,7 @@ describe("standalone canvas reader", () => {
     finish(result("stale"))
     await settle()
     expect(image.hasAttribute("href")).toBe(false)
-    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/svg+xml,fresh"))
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/png,fresh"))
     expect(snapshot).toHaveBeenCalledTimes(2)
   })
 
@@ -244,7 +415,7 @@ describe("standalone canvas reader", () => {
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
     const result = (name: string) => ({
       meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
-      toRaw: () => `data:image/svg+xml,${name}`,
+      toPng: async () => ({src: `data:image/png,${name}`}),
     })
     let finish!: (value: ReturnType<typeof result>) => void
     const pending = new Promise<ReturnType<typeof result>>(resolve => { finish = resolve })
@@ -259,7 +430,7 @@ describe("standalone canvas reader", () => {
     const image = control("minimap").querySelector("image")!
     expect(image.hasAttribute("href")).toBe(false)
     reader.viewer.stopPan()
-    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/svg+xml,settled"))
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/png,settled"))
     expect(snapshot).toHaveBeenCalledTimes(2)
   })
 
@@ -268,7 +439,7 @@ describe("standalone canvas reader", () => {
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
     const result = (name: string) => ({
       meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
-      toRaw: () => `data:image/svg+xml,${name}`,
+      toPng: async () => ({src: `data:image/png,${name}`}),
     })
     let resolveInitial!: (value: ReturnType<typeof result>) => void
     const initial = new Promise<ReturnType<typeof result>>(resolve => { resolveInitial = resolve })
@@ -286,7 +457,7 @@ describe("standalone canvas reader", () => {
 
     reader.viewer.setMinimapRefreshPaused(false)
     await new Promise(resolve => setTimeout(resolve, 420))
-    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/svg+xml,current"))
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/png,current"))
     expect(snapshot).toHaveBeenCalledTimes(2)
 
     paragraph.style.width = "220px"
@@ -304,7 +475,7 @@ describe("standalone canvas reader", () => {
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
     const result = (name: string) => ({
       meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
-      toRaw: () => `data:image/svg+xml,${name}`,
+      toPng: async () => ({src: `data:image/png,${name}`}),
     })
     const options: any[] = []
     let finishStale!: (value: ReturnType<typeof result>) => void
@@ -315,14 +486,14 @@ describe("standalone canvas reader", () => {
     })
     reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
     const image = control("minimap").querySelector("image")!
-    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/svg+xml,capture-1"))
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/png,capture-1"))
 
     paragraph.textContent = "First edit"
     await settle()
     reader.viewer.setMinimapRefreshPaused(true)
     await new Promise(resolve => setTimeout(resolve, 160))
     expect(snapshot).toHaveBeenCalledTimes(1)
-    expect(image.getAttribute("href")).toBe("data:image/svg+xml,capture-1")
+    expect(image.getAttribute("href")).toBe("data:image/png,capture-1")
 
     paragraph.textContent = "Second edit"
     await settle()
@@ -331,7 +502,7 @@ describe("standalone canvas reader", () => {
     reader.viewer.setMinimapRefreshPaused(true)
     await new Promise(resolve => setTimeout(resolve, 160))
     expect(snapshot).toHaveBeenCalledTimes(1)
-    expect(image.getAttribute("href")).toBe("data:image/svg+xml,capture-1")
+    expect(image.getAttribute("href")).toBe("data:image/png,capture-1")
 
     reader.viewer.setMinimapRefreshPaused(false)
     await new Promise(resolve => setTimeout(resolve, 420))
@@ -342,12 +513,12 @@ describe("standalone canvas reader", () => {
     expect(() => staleOptions.plugins[0].beforeClone({options: {}})).toThrow()
     finishStale(result("stale"))
     await settle()
-    expect(image.getAttribute("href")).toBe("data:image/svg+xml,capture-1")
+    expect(image.getAttribute("href")).toBe("data:image/png,capture-1")
 
     reader.viewer.setMinimapRefreshPaused(false)
     await new Promise(resolve => setTimeout(resolve, 420))
     await vi.waitFor(() => expect(snapshot).toHaveBeenCalledTimes(3))
-    expect(image.getAttribute("href")).toBe("data:image/svg+xml,capture-3")
+    expect(image.getAttribute("href")).toBe("data:image/png,capture-3")
   })
 
   it("keeps the full idle deadline when stale capture cleanup and new invalidations reschedule", async () => {
@@ -355,7 +526,7 @@ describe("standalone canvas reader", () => {
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
     const result = (name: string) => ({
       meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
-      toRaw: () => `data:image/svg+xml,${name}`,
+      toPng: async () => ({src: `data:image/png,${name}`}),
     })
     let finishStale!: (value: ReturnType<typeof result>) => void
     const stale = new Promise<ReturnType<typeof result>>(resolve => { finishStale = resolve })
@@ -363,7 +534,7 @@ describe("standalone canvas reader", () => {
       ? result("initial") : snapshot.mock.calls.length === 2 ? stale : result("latest"))
     reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
     const image = control("minimap").querySelector("image")!
-    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/svg+xml,initial"))
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/png,initial"))
 
     vi.useFakeTimers()
     try {
@@ -380,11 +551,11 @@ describe("standalone canvas reader", () => {
       Reflect.get(reader.viewer, "minimap").invalidate()
       await vi.advanceTimersByTimeAsync(149)
       expect(snapshot).toHaveBeenCalledTimes(2)
-      expect(image.getAttribute("href")).toBe("data:image/svg+xml,initial")
+      expect(image.getAttribute("href")).toBe("data:image/png,initial")
 
       await vi.advanceTimersByTimeAsync(1)
       await vi.waitFor(() => expect(snapshot).toHaveBeenCalledTimes(3))
-      expect(image.getAttribute("href")).toBe("data:image/svg+xml,latest")
+      expect(image.getAttribute("href")).toBe("data:image/png,latest")
     }
     finally { vi.useRealTimers() }
   })

@@ -79,7 +79,7 @@ describe("canvas document layout", () => {
   })
 
   it("moves the starting view frame with live panning and saves moves and resizes as separate undoable edits", async () => {
-    editor.options.loadCanvasSnapdom = () => vi.fn(async () => ({})) as unknown as typeof import("@zumer/snapdom").snapdom
+    editor.options.loadCanvasSnapdom = () => vi.fn(async () => ({toPng: async () => ({src: "data:image/png,preview"})})) as unknown as typeof import("@zumer/snapdom").snapdom
     document.body.innerHTML = "<p>Keep</p>"
     const canvas = editor.features.canvas
     canvas.convert("canvas")
@@ -859,7 +859,7 @@ describe("canvas document layout", () => {
     expect(editor.features.canvas.convert("canvas")).toBe(true)
     await settle()
     const slot = editor.appendix.querySelector("slot")!
-    const media = editor.appendix.querySelector('[part="media-interaction-shield"]')!
+    const media = editor.appendix.querySelector('[part~="media-interaction-shield"]')!
     expect(media).not.toBeNull()
     const wheel = (target: EventTarget) => {
       const event = new WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true, deltaX: 40, deltaY: -20})
@@ -910,6 +910,7 @@ describe("canvas document layout", () => {
     editor.features.canvas.actions.startCanvas({type: "startCanvas"})
     await settle()
     const geometry = vi.spyOn(editor.features.transformation, "updateInfo")
+    const layout = vi.spyOn(editor.features.layout, "refresh")
     const selectionPath = vi.spyOn(editor, "postSelectionPath")
     document.body.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 18, button: 1, clientX: 100, clientY: 100}))
     document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 18, clientX: 140, clientY: 120}))
@@ -918,6 +919,9 @@ describe("canvas document layout", () => {
     expect(selectionPath).not.toHaveBeenCalled()
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     expect(geometry).toHaveBeenCalledTimes(1)
+    expect(layout).not.toHaveBeenCalled()
+    editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+    expect(layout).toHaveBeenCalledTimes(1)
     document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true, pointerId: 18}))
   })
 

@@ -168,7 +168,9 @@ export function createAnchorPositioner(doc = document) {
       state.schedule()
     },
     release(control) { owned.get(control)?.release() },
-    refresh() { state.refresh() },
+    // A feature with no anchors must not rebuild another feature's sheets.
+    // Pending releases still need to flush, including the last binding.
+    refresh() { if(owned.size || state.queued) state.refresh() },
     destroy() { for(const binding of [...owned.values()]) binding.release(); state.refresh() },
   }
 }

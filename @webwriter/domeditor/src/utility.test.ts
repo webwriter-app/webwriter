@@ -825,6 +825,15 @@ describe("isElementSelection", () => {
     $.selectElement(document.body.firstElementChild!)
     expect($.isElementSelection).toBe(true)
   })
+  it("does not read computed style for a selected custom widget", () => {
+    setBody("<p><my-widget></my-widget></p>")
+    $.selectElement(document.querySelector("my-widget")!)
+    const getComputedStyle = vi.spyOn(window, "getComputedStyle")
+    try {
+      expect($.isElementSelection).toBe(true)
+      expect(getComputedStyle).not.toHaveBeenCalled()
+    } finally { getComputedStyle.mockRestore() }
+  })
   it("is false for a text range", () => {
     setBody("<p>hello</p>")
     $.selectRange(firstText(), 0, firstText(), 2)
@@ -847,6 +856,16 @@ describe("isElementSelection", () => {
     $.selectElement(document.querySelector("section")!)
     expect($.isElementSelection).toBe(false)
     expect($.selectedElement).toBeUndefined()
+  })
+  it.each(["<p><b>hello</b></p>", "<p><section>hello</section></p>"])("still classifies positioned mark or section nodes as selected elements (%s)", html => {
+    setBody(html)
+    const selected = document.querySelector("b, section")!
+    $.selectElement(selected)
+    const getComputedStyle = vi.spyOn(window, "getComputedStyle").mockReturnValue({position: "absolute", float: "none"} as CSSStyleDeclaration)
+    try {
+      expect($.isElementSelection).toBe(true)
+      expect(getComputedStyle).toHaveBeenCalledWith(selected)
+    } finally { getComputedStyle.mockRestore() }
   })
 })
 
