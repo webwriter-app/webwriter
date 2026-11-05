@@ -432,6 +432,207 @@ describe("semantic list editing", () => {
     expect($.anchorOffset).toBe(1)
   })
 
+  it.each(["ul", "ol", "menu", "dl"].flatMap(type => [0, 1, 2].flatMap(depth =>
+    [1, 2].map(offset => ({type, depth, offset})))))("creates a deeper item from $type gaps (depth: $depth, offset: $offset)", ({type, depth, offset}) => {
+    const content = type === "dl" ? '<dt>A</dt><!--keep--><dd>B</dd>' : '<li>A</li><!--keep--><li>B</li>'
+    let html = `<${type} id="gap">${content}</${type}>`
+    for(let level = 0; level < depth; level++) html = type === "dl"
+      ? `<dl><dt>Owner</dt><dd>${html}</dd></dl>` : `<${type}><li>Owner${html}</li></${type}>`
+    document.body.innerHTML = html
+    const list = document.querySelector<HTMLElement>("#gap")!
+    const [first, second] = Array.from(list.children)
+    $.move(list, offset === 1 ? 2 : list.childNodes.length)
+
+    expect(keydown("Tab").defaultPrevented).toBe(true)
+
+    const owner = offset === 1 ? first : second
+    const item = owner.querySelector(`${type} > :is(li, dt, dd)`)!
+    expect(item).not.toBeNull()
+    expect(item.childNodes).toHaveLength(0)
+    expect($.anchor).toBe(item)
+    expect($.anchorOffset).toBe(0)
+    expect(Array.from(list.children)).toEqual([first, second])
+    expect(list.innerHTML).toContain("<!--keep-->")
+    expect(cleanHTML()).not.toContain("◆")
+  })
+
+  it("appends a gap-created item to an existing sublist without moving other items", () => {
+    document.body.innerHTML = '<ul><li>A<ul id="children"><li>Child</li></ul></li><li>B</li></ul>'
+    const list = document.querySelector("ul")!, nested = document.querySelector("#children")!
+    $.move(list, 1)
+
+    editor.features.list.actions.indentListItems({type: "indentListItems"})
+
+    expect(cleanHTML()).toBe('<ul><li>A<ul id="children"><li>Child</li><li></li></ul></li><li>B</li></ul>')
+    expect($.anchor).toBe(nested.lastElementChild)
+  })
+
+  it("leaves gaps without a preceding item unchanged, including inside nested lists", () => {
+    for(const content of ["", "<li>A</li><li>B</li>"]) {
+      document.body.innerHTML = `<ul><li>Previous</li><li>Owner<ul id="gap"><!--keep-->${content}</ul></li></ul>`
+      const list = document.querySelector("#gap")!, before = cleanHTML()
+      $.move(list, 1)
+
+      expect(keydown("Tab").defaultPrevented).toBe(true)
+
+      expect(cleanHTML()).toBe(before)
+      expect($.anchor).toBe(list)
+      expect($.anchorOffset).toBe(1)
+    }
+  })
+
+  it("ignores gaps inside atomic widgets", () => {
+    document.body.innerHTML = '<my-widget><ul><li>A</li><li>B</li></ul></my-widget>'
+    $.move(document.querySelector("ul")!, 1)
+    const before = cleanHTML()
+
+    editor.features.list.indentItems()
+
+    expect(cleanHTML()).toBe(before)
+  })
+
+  it("does not dedent the parent item from a gap in a nonempty nested list", () => {
+    document.body.innerHTML = '<ul><li>Previous</li><li>Owner<ul><li>A</li><li>B</li></ul></li></ul>'
+    const list = document.querySelector("ul ul")!, before = cleanHTML()
+    $.move(list, 1)
+
+    expect(keydown("Tab", {shiftKey: true}).defaultPrevented).toBe(true)
+
+    expect(cleanHTML()).toBe(before)
+    expect($.anchor).toBe(list)
+    expect($.anchorOffset).toBe(1)
+  })
+
+  it.each(["ul", "ol", "menu"])("keeps sibling order through repeated %s dedent/indent cycles", type => {
+    document.body.innerHTML = `<${type}><li>Owner<${type} id="children" class="authored"><li>First</li><li><b>Middle</b></li><!--keep--><li><my-widget></my-widget>Last</li></${type}></li></${type}>`
+    const children = document.querySelector("#children")!, middle = document.querySelector("b")!.parentElement!
+    const text = middle.firstChild!.firstChild!, widget = document.querySelector("my-widget")!
+    const before = cleanHTML()
+    $.move(text, 3)
+
+    for(let cycle = 0; cycle < 3; cycle++) {
+      keydown("Tab", {shiftKey: true})
+      expect(middle.parentElement).toBe(document.body.firstElementChild)
+      keydown("Tab")
+
+      expect(cleanHTML()).toBe(before)
+      expect(document.querySelector("#children")).toBe(children)
+      expect(document.querySelector("my-widget")).toBe(widget)
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(3)
+    }
+  })
+
+  it.each(['start="4" type="a"', 'reversed', 'reversed start="8"'])("restores ordered continuations with %s", attributes => {
+    for(const value of ["", ' value="2"']) {
+      document.body.innerHTML = `<ol><li>Owner<ol ${attributes}><li>First</li><li>Middle</li><li${value}>Last</li></ol></li></ol>`
+      const middle = document.querySelector("ol ol li + li")!
+      const before = cleanHTML()
+      $.move(middle.firstChild!, 2)
+
+      for(let cycle = 0; cycle < 3; cycle++) {
+        editor.features.list.actions.outdentListItems({type: "outdentListItems"})
+        editor.features.list.actions.indentListItems({type: "indentListItems"})
+        expect(cleanHTML()).toBe(before)
+      }
+    }
+  })
+
+  it.each([false, true])("restores selected runs through repeated dedent/indent (backward: %s)", backward => {
+    document.body.innerHTML = '<ul><li>Owner<ul><li>First</li><li>Middle</li><li>Next</li><!--keep--><li>Last</li></ul></li></ul>'
+    const list = document.querySelector("ul ul")!, before = cleanHTML()
+    $.selectRange(list, backward ? 3 : 1, list, backward ? 1 : 3)
+
+    for(let cycle = 0; cycle < 3; cycle++) {
+      keydown("Tab", {shiftKey: true})
+      keydown("Tab")
+      expect(cleanHTML()).toBe(before)
+      expect($.anchor).toBe(list)
+      expect($.anchorOffset).toBe(backward ? 3 : 1)
+      expect($.focus).toBe(list)
+      expect($.focusOffset).toBe(backward ? 1 : 3)
+    }
+  })
+
+  it.each(["ul", "ol"])("keeps distinct %s descendant containers and their sibling order when they cannot be joined", type => {
+    document.body.innerHTML = `<ul><li>Owner<ul class="first"><li>First</li></ul></li><li>Middle<${type} id="distinct" lang="de"><!--keep--><li>Last</li></${type}></li></ul>`
+    const middle = document.querySelector("body > ul > li + li")!, child = document.querySelector("#distinct")!
+    $.move(middle.firstChild!, 2)
+    keydown("Tab")
+    const nested = cleanHTML()
+
+    for(let cycle = 0; cycle < 3; cycle++) {
+      expect(cleanHTML()).toBe(nested)
+      expect(document.querySelector("#distinct")).toBe(child)
+      expect(child.getAttribute("lang")).toBe("de")
+      expect(child.innerHTML).toContain("<!--keep-->")
+      keydown("Tab", {shiftKey: true})
+      expect(middle.parentElement).toBe(document.body.firstElementChild)
+      expect(child.parentElement).toBe(middle)
+      keydown("Tab")
+    }
+  })
+
+  it("preserves an authored empty descendant list when nesting its parent", () => {
+    document.body.innerHTML = '<ul><li>Owner<ul><li>First</li></ul></li><li>Middle<ul><!--keep--></ul></li></ul>'
+    const middle = document.querySelector("body > ul > li + li")!, empty = middle.querySelector("ul")!
+    $.move(middle.firstChild!, 2)
+
+    keydown("Tab")
+
+    expect(empty.isConnected).toBe(true)
+    expect(empty.parentElement).toBe(document.querySelector("body > ul > li"))
+    expect(empty.innerHTML).toBe("<!--keep-->")
+  })
+
+  it("shares a gap-created item and restores it through undo and redo without editor artifacts", async () => {
+    document.body.innerHTML = '<ul><li>Owner<ul><li><my-widget></my-widget>A</li><!--keep--><li>B</li></ul></li></ul>'
+    const before = cleanHTML()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.move(document.querySelector("ul ul")!, 2)
+
+    keydown("Tab")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+
+    const changed = cleanHTML()
+    expect(changed).toBe('<ul><li>Owner<ul><li><my-widget></my-widget>A<ul><li></li></ul></li><!--keep--><li>B</li></ul></li></ul>')
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    expect(editor.doc.body.toString()).toContain("<ul><li></li></ul>")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe(before)
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe(changed)
+  })
+
+  it("shares rejoined list continuations with undo and redo", async () => {
+    document.body.innerHTML = '<ul><li>Owner<ul id="children"><li>First</li><li>Middle</li><!--keep--><li>Last</li></ul></li></ul>'
+    const before = cleanHTML()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.move(document.querySelector("ul ul li + li")!.firstChild!, 2)
+    keydown("Tab", {shiftKey: true})
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const outdented = cleanHTML()
+
+    keydown("Tab")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+
+    expect(cleanHTML()).toBe(before)
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe(outdented)
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe(before)
+  })
+
   it.each(["ul", "ol", "menu"])("splits %s text and inline marks at the caret", type => {
     document.body.innerHTML = `<${type}><li id="original" class="authored"><b>Hello World</b><!--keep--><my-widget></my-widget></li></${type}>`
     const widget = document.querySelector("my-widget")!
@@ -585,7 +786,7 @@ describe("semantic list editing", () => {
     expect($.anchorOffset).toBe(3)
   })
 
-  it("uses the current predecessor after a remote insertion and keeps that remote edit on undo", async () => {
+  it.each(["item", "gap"])("uses the current predecessor at a selected %s after a remote insertion and keeps that remote edit on undo", async point => {
     document.body.innerHTML = '<ul><li>A</li><li id="local">B</li></ul>'
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
@@ -600,11 +801,14 @@ describe("semantic list editing", () => {
       Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(editor.doc.doc)), "remote-client")
       await new Promise<void>(resolve => setTimeout(resolve))
       // Re-read the editing point just as the host selection bridge does.
-      $.move(document.querySelector("#local")!.firstChild!, 1)
+      if(point === "gap") $.move(document.querySelector("ul")!, 2)
+      else $.move(document.querySelector("#local")!.firstChild!, 1)
       editor.features.list.indentItems()
       editor.doc.syncFromDOM()
       editor.doc.stopCapturing()
-      expect(cleanHTML()).toBe('<ul><li>A</li><li>Remote<ul><li id="local">B</li></ul></li></ul>')
+      expect(cleanHTML()).toBe(point === "gap"
+        ? '<ul><li>A</li><li>Remote<ul><li></li></ul></li><li id="local">B</li></ul>'
+        : '<ul><li>A</li><li>Remote<ul><li id="local">B</li></ul></li></ul>')
       editor.doc.undo()
       await Promise.resolve()
       expect(cleanHTML()).toBe('<ul><li>A</li><li>Remote</li><li id="local">B</li></ul>')

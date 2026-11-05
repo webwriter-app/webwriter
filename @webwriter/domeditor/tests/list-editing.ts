@@ -178,6 +178,61 @@ export async function checkListEditing() {
     assert(childOwner?.parentElement?.id === "deep", "indenting changed the nested child's list depth")
     assert(!editor.toHTML(true).includes("◆"), "list editing leaked editor markers")
 
+    for(const depth of [0, 1, 2]) {
+      for(const offset of [0, 1, 2]) {
+        let html = '<ul id="gap"><li>First</li><li>Last</li></ul>'
+        for(let level = 0; level < depth; level++) html = `<ul><li>Previous</li><li>Owner${html}</li></ul>`
+        doc.body.innerHTML = html
+        const gapList = doc.querySelector("#gap")!, items = Array.from(gapList.children)
+        selection.collapse(gapList, offset)
+        const event = new view.KeyboardEvent("keydown", {key: "Tab", bubbles: true, cancelable: true})
+        doc.dispatchEvent(event)
+        await waitForEdit()
+        assert(event.defaultPrevented, `depth ${depth}, gap ${offset}: Tab was not handled`)
+        if(offset === 0) assert(editor.toHTML(true) === html, `depth ${depth}: Tab moved the parent at a leading gap`)
+        else {
+          const item = items[offset - 1].querySelector("ul > li")!
+          assert(item?.childNodes.length === 0, `depth ${depth}, gap ${offset}: Tab did not create an empty deeper item`)
+          assert(selection.anchorNode === item && selection.anchorOffset === 0,
+            `depth ${depth}, gap ${offset}: Tab lost the new item's caret`)
+          assert(gapList.children.length === 2 && gapList.children[0] === items[0] && gapList.children[1] === items[1],
+            `depth ${depth}, gap ${offset}: Tab moved existing items`)
+        }
+        assert(!editor.toHTML(true).includes("◆"), "gap indentation leaked editor markers")
+      }
+    }
+
+    for(const type of ["ul", "ol", "menu"]) {
+      doc.body.innerHTML = `<${type}><li>Owner<${type} id="children"><li>First</li><li><b>Middle</b></li><!--keep--><li>Last</li></${type}></li></${type}>`
+      const before = editor.toHTML(true), children = doc.querySelector("#children")!, text = doc.querySelector("b")!.firstChild!
+      selection.collapse(text, 3)
+      for(let cycle = 0; cycle < 3; cycle++) {
+        for(const shiftKey of [true, false]) {
+          doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Tab", shiftKey, bubbles: true, cancelable: true}))
+          await waitForEdit()
+        }
+        assert(editor.toHTML(true) === before, `${type} cycle ${cycle}: indent/dedent changed sibling order or split the list`)
+        assert(doc.querySelector("#children") === children, `${type} cycle ${cycle}: indent/dedent replaced the list`)
+        assert(selection.anchorNode === text && selection.anchorOffset === 3, `${type} cycle ${cycle}: indent/dedent lost the caret`)
+      }
+    }
+
+    for(const type of ["ul", "ol"]) {
+      doc.body.innerHTML = `<ul><li>Owner<ul class="first"><li>First</li></ul></li><li>Middle<${type} id="distinct" lang="de"><!--keep--><li>Last</li></${type}></li></ul>`
+      const text = doc.querySelector("body > ul > li + li")!.firstChild!, child = doc.querySelector("#distinct")!
+      selection.collapse(text, 2)
+      doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Tab", bubbles: true, cancelable: true}))
+      const before = editor.toHTML(true)
+      for(let cycle = 0; cycle < 3; cycle++) {
+        for(const shiftKey of [true, false]) {
+          doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Tab", shiftKey, bubbles: true, cancelable: true}))
+          await waitForEdit()
+        }
+        assert(editor.toHTML(true) === before, `${type} cycle ${cycle}: distinct sublists changed order or attributes`)
+        assert(doc.querySelector("#distinct") === child, `${type} cycle ${cycle}: distinct sublist was replaced`)
+      }
+    }
+
     doc.body.innerHTML = '<ol id="ordered" style="list-style-type: lower-alpha"><li id="first"><p>First</p></li><li id="middle"><p>Middle</p></li><li id="last"><p>Last</p></li></ol>'
     editor.doc.syncFromDOM(); editor.doc.stopCapturing()
     const ordered = doc.querySelector("ol")!

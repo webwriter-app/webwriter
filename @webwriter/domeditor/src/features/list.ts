@@ -11,7 +11,7 @@ const listItemSelector = "li, dt, dd"
 const isListType = (value: string): value is ListType =>
   value === "ul" || value === "ol" || value === "dl" || value === "menu"
 
-type VirtualListPoint = {
+type ListPoint = {
   list: HTMLElement
   offset: number
 }
@@ -149,17 +149,24 @@ export class ListFeature extends EditorFeature {
     this.syncVirtualMarker()
   }
 
-  /** Only an empty authored list exposes a prospective first item. Every
-   * point in a nonempty list is either a real item selection or a normal gap. */
-  private get virtualPoint(): VirtualListPoint | null {
+  private get listPoint(): ListPoint | null {
     const selection = document.getSelection()
     const anchor = selection?.anchorNode
-    if(!selection?.isCollapsed || !isElement(anchor) || isDocumentRoot(anchor) || !anchor.matches(listSelector)) return null
-    const point = {
+    if(!selection?.isCollapsed || !isElement(anchor) || !document.body.contains(anchor)
+      || anchor.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || isDocumentRoot(anchor) || !anchor.matches(listSelector)
+      || atomicEditingContainer(anchor, this.editor.schema)) return null
+    return {
       list: anchor as HTMLElement,
       offset: Math.max(0, Math.min(selection.anchorOffset, anchor.childNodes.length)),
     }
-    return !this.directItems(anchor).length ? point : null
+  }
+
+  /** Only an empty authored list exposes a prospective first item. Every
+   * point in a nonempty list is either a real item selection or a normal gap. */
+  private get virtualPoint(): ListPoint | null {
+    const point = this.listPoint
+    return point && !this.directItems(point.list).length ? point : null
   }
 
   private moveToVirtual(list: HTMLElement, offset: number) {
@@ -262,7 +269,7 @@ export class ListFeature extends EditorFeature {
    * inline list-style-type authored by the ribbon. */
   private syncVirtualMarkerAppearance(
     marker: HTMLElement,
-    point: VirtualListPoint,
+    point: ListPoint,
     previous: HTMLElement | undefined,
   ) {
     const {list, offset} = point
@@ -500,13 +507,13 @@ export class ListFeature extends EditorFeature {
     return Array.from(list.children).filter(element => element.matches(listItemSelector)) as HTMLElement[]
   }
 
-  private itemsBefore({list, offset}: VirtualListPoint) {
+  private itemsBefore({list, offset}: ListPoint) {
     return Array.from(list.childNodes)
       .slice(0, offset)
       .filter((node): node is HTMLElement => isElement(node) && node.matches(listItemSelector))
   }
 
-  private itemTypeAt({list, offset}: VirtualListPoint): "li" | "dt" | "dd" {
+  private itemTypeAt({list, offset}: ListPoint): "li" | "dt" | "dd" {
     if(!list.matches("dl")) return "li"
     const previous = this.itemsBefore({list, offset}).reverse()
       .find(element => element.matches("dt, dd"))
@@ -613,16 +620,10 @@ export class ListFeature extends EditorFeature {
       return
     }
 
-    if(event.key === "Tab" && !event.altKey && !modifierKeyDown(event) && (point || this.selectedItems().length)) {
+    if(event.key === "Tab" && !event.altKey && !modifierKeyDown(event) && (this.listPoint || this.selectedItems().length)) {
       event.preventDefault()
       event.stopImmediatePropagation()
-      if(point) {
-        if(event.shiftKey) this.outdentVirtualItem(point)
-      }
-      else {
-        this.indentItems(event.shiftKey)
-      }
-      this.syncVirtualMarker()
+      this.indentItems(event.shiftKey)
       return
     }
 
@@ -701,7 +702,7 @@ export class ListFeature extends EditorFeature {
 
   /** Enter on the virtual first item exits an empty top-level list. For an
    * empty nested list, it creates a real empty item one level higher. */
-  private advanceVirtualItem(point: VirtualListPoint, createParagraph = false) {
+  private advanceVirtualItem(point: ListPoint, createParagraph = false) {
     const {list} = point
     const owner = list.parentElement?.closest(listItemSelector) as HTMLElement | null
     const outer = owner?.parentElement?.matches(listSelector) ? owner.parentElement as HTMLElement : null
@@ -740,7 +741,7 @@ export class ListFeature extends EditorFeature {
     this.syncVirtualMarker()
   }
 
-  private outdentVirtualItem(point: VirtualListPoint) {
+  private outdentVirtualItem(point: ListPoint) {
     const owner = point.list.parentElement?.closest(listItemSelector) as HTMLElement | null
     const outer = owner?.parentElement?.matches(listSelector) ? owner.parentElement as HTMLElement : null
     if(!owner || !outer) return
@@ -874,9 +875,20 @@ export class ListFeature extends EditorFeature {
 
   /** Consecutive selected siblings move together, retaining their order. */
   indentItems(outdent = false) {
-    const point = this.virtualPoint
+    const point = this.listPoint
     if(point) {
-      if(outdent) this.outdentVirtualItem(point)
+      if(outdent) {
+        if(!this.directItems(point.list).length) this.outdentVirtualItem(point)
+      }
+      else if(this.itemsBefore(point).length) {
+        const item = this.materializeVirtualItem(point)
+        if(item) {
+          const items = point.list.matches("dl") && item.matches("dt")
+            ? [item, item.nextElementSibling as HTMLElement] : [item]
+          this.nestItems(items)
+          $.move(item)
+        }
+      }
       this.syncVirtualMarker()
       return
     }
@@ -910,6 +922,7 @@ export class ListFeature extends EditorFeature {
       const children = Array.from(item.querySelectorAll<HTMLElement>(listSelector))
         .filter(child => child.parentElement?.closest(listItemSelector) === item
           && !atomicEditingContainer(child, this.editor.schema))
+      const leadingChild = children[0]
       if(!nested && children[0]?.localName === list.localName) {
         nested = children.shift()!
         owner.append(nested)
@@ -924,11 +937,38 @@ export class ListFeature extends EditorFeature {
         nested.append(item)
       }
       for(const child of children) {
+        if(child === leadingChild && nested && child.localName === list.localName && this.canJoinNestedLists(nested, child)) {
+          nested.append(...Array.from(child.childNodes))
+          child.remove()
+          continue
+        }
         owner.append(child)
         nested = child.localName === list.localName ? child : null
       }
     }
     return true
+  }
+
+  /** Rejoin matching split containers without discarding authored attributes
+   * or resetting ordered numbering. The original keeps its identity. */
+  private canJoinNestedLists(list: HTMLElement, continuation: HTMLElement) {
+    if(!this.directItems(continuation).length) return false
+    const left = this.editor.features.manipulation.cloneSplitContinuation(list)
+    const right = cloneWithoutEditorMarkers(continuation, false)
+    if(list.matches("ol")) {
+      const ordered = list as HTMLOListElement
+      const items = this.directItems(list).filter(item => item.matches("li")) as HTMLLIElement[]
+      const following = this.directItems(continuation).filter(item => item.matches("li")) as HTMLLIElement[]
+      if(following.length && !following[0].hasAttribute("value")) {
+        const step = ordered.reversed ? -1 : 1
+        let next = ordered.hasAttribute("start") ? ordered.start : ordered.reversed ? items.length + following.length : 1
+        for(const item of items) next = (item.hasAttribute("value") ? item.value : next) + step
+        if(next !== this.orderedValueOf(continuation as HTMLOListElement, following[0])) return false
+      }
+      left.removeAttribute("start")
+      right.removeAttribute("start")
+    }
+    return left.isEqualNode(right)
   }
 
   private outdentItems(items: HTMLElement[]) {
@@ -943,6 +983,17 @@ export class ListFeature extends EditorFeature {
       this.prepareSplitContinuation(list, continuation, following)
       continuation.append(...following)
       last.append(continuation)
+    }
+    // Separate authored sublists can follow this list at the same depth.
+    // They remain after the lifted items, just like trailing items in a list.
+    if(list.parentElement === owner) {
+      const trailing: ChildNode[] = []
+      for(let node = list.nextSibling; node; node = node.nextSibling) {
+        if(isElement(node) && node.matches(listSelector) && !atomicEditingContainer(node, this.editor.schema)
+          || node.nodeType === Node.COMMENT_NODE || isText(node) && !node.data.trim()) trailing.push(node)
+        else break
+      }
+      if(trailing.some(node => isElement(node) && node.matches(listSelector))) last.append(...trailing)
     }
     owner.after(...items)
     if(!list.childNodes.length) list.remove()
@@ -982,7 +1033,7 @@ export class ListFeature extends EditorFeature {
     }
   }
 
-  private moveBackwardFromVirtual(point: VirtualListPoint) {
+  private moveBackwardFromVirtual(point: ListPoint) {
     const before = this.itemsBefore(point).at(-1)
     if(before) {
       $.move(before, -1)
@@ -992,7 +1043,7 @@ export class ListFeature extends EditorFeature {
     }
   }
 
-  private moveForwardFromVirtual(point: VirtualListPoint) {
+  private moveForwardFromVirtual(point: ListPoint) {
     const after = Array.from(point.list.childNodes)
       .slice(point.offset)
       .find(node => isElement(node) && node.matches(listItemSelector))
