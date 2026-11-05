@@ -2077,6 +2077,192 @@ describe("media editing", () => {
     expect(editor.toHTML(true)).not.toContain("image-map-overlay")
   })
 
+  describe("image source replacement with hotspots", () => {
+    const fixture = () => {
+      document.body.innerHTML = '<picture><img src="old.png" usemap="#plan" width="400" height="200"></picture><map name="plan" data-origin="imported"><span><!--keep--><area id="rectangle" coords="40,20,360,180" href="#details"></span><area shape="circle" coords="200,100,30" popovertarget="details"><area shape="poly" coords="0,0,400,0,200,200"><area shape="default"><area shape="rect" coords="invalid"><area shape="custom" coords="1,2,3,4"></map><div id="details" popover>Details</div><p>After</p>'
+      const image = document.querySelector("img")!, map = document.querySelector("map")!
+      Object.defineProperties(image, {
+        naturalWidth: {configurable: true, value: 400},
+        naturalHeight: {configurable: true, value: 200},
+      })
+      $.selectElement(image.closest("picture")!)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      return {image, map}
+    }
+    const decodeReplacement = () => vi.spyOn(HTMLImageElement.prototype, "decode").mockImplementation(function(this: HTMLImageElement) {
+      Object.defineProperties(this, {
+        naturalWidth: {configurable: true, value: 200},
+        naturalHeight: {configurable: true, value: 400},
+      })
+      return Promise.resolve()
+    })
+    const replace = () => editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "new.png"})
+
+    it.each(["url", "file", "srcset"] as const)("preserves relative geometry through %s replacement, serialization, undo and redo", async mode => {
+      const {image, map} = fixture(), wrapper = map.querySelector("span")!
+      const before = editor.toHTML(true)
+      const decode = decodeReplacement()
+      try {
+        if(mode === "file") expect(editor.features.media.actions.setMediaFile({type: "setMediaFile", file: new File(["image"], "new.png", {type: "image/png"})})).toBe(true)
+        else if(mode === "srcset") editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "srcset", value: "new.png 1x"})
+        else replace()
+        // Loading does not split the source and coordinates into separate edits.
+        expect(image).toHaveAttribute("src", "old.png")
+        await Promise.resolve()
+        expect(Array.from(map.querySelectorAll("area"), area => area.getAttribute("coords")))
+          .toEqual(["20,40,180,360", "100,200,15", "0,0,200,0,100,400", null, "invalid", "1,2,3,4"])
+        expect(map.querySelector("span")).toBe(wrapper)
+        expect(wrapper.firstChild).toBeInstanceOf(Comment)
+        expect(map).toHaveAttribute("data-origin", "imported")
+        expect(map.querySelector("#rectangle")).toHaveAttribute("href", "#details")
+        expect(map.querySelector("area[popovertarget]")).toHaveAttribute("popovertarget", "details")
+        const after = editor.toHTML(true)
+        expect(after).not.toContain("◆")
+        expect(editor.doc.body.toString()).toContain('coords="20,40,180,360"')
+        editor.doc.undo()
+        expect(editor.toHTML(true)).toBe(before)
+        editor.doc.redo()
+        expect(editor.toHTML(true)).toBe(after)
+        await Promise.resolve()
+        expect(decode).toHaveBeenCalledTimes(1)
+      }
+      finally { decode.mockRestore() }
+    })
+
+    it("isolates a shared map while preserving its structure, references and other images", async () => {
+      const {image, map} = fixture()
+      const other = image.cloneNode(false) as HTMLImageElement
+      document.body.append(other)
+      map.id = "original-map"
+      map.querySelector("area")!.setAttribute("href", "#rectangle")
+      map.querySelector("area")!.className = "authored ◆test-marker"
+      const original = map.outerHTML
+      editor.doc.syncFromDOM()
+      const decode = decodeReplacement()
+      try {
+        replace()
+        await Promise.resolve()
+        expect(other).toHaveAttribute("usemap", "#plan")
+        expect(map.outerHTML).toBe(original)
+        const copy = document.querySelector<HTMLMapElement>('map[name="image-map"]')!
+        expect(image).toHaveAttribute("usemap", "#image-map")
+        expect(copy).not.toBeNull()
+        expect(copy.id).not.toBe(map.id)
+        expect(copy.querySelector("span")!.firstChild).toBeInstanceOf(Comment)
+        const rectangle = copy.querySelector("area")!
+        expect(rectangle.id).not.toBe("rectangle")
+        expect(rectangle).toHaveAttribute("href", `#${rectangle.id}`)
+        expect(rectangle).toHaveAttribute("coords", "20,40,180,360")
+        expect(rectangle).toHaveAttribute("class", "authored")
+        expect(copy.querySelector("area[popovertarget]")).toHaveAttribute("popovertarget", "details")
+        editor.doc.undo()
+        expect(document.querySelectorAll("map")).toHaveLength(1)
+        expect(document.querySelector("img")).toHaveAttribute("usemap", "#plan")
+      }
+      finally { decode.mockRestore() }
+    })
+
+    it("uses current hotspot coordinates and keeps edits made while loading in their own undo step", async () => {
+      const {image, map} = fixture()
+      let loaded!: () => void
+      const decode = decodeReplacement().mockImplementationOnce(function(this: HTMLImageElement) {
+        Object.defineProperties(this, {naturalWidth: {value: 200}, naturalHeight: {value: 400}})
+        return new Promise(resolve => { loaded = resolve })
+      })
+      try {
+        replace()
+        map.querySelector("area")!.setAttribute("coords", "20,10,100,50")
+        const paragraph = document.querySelector("p")!
+        paragraph.textContent = "Changed while loading"
+        $.move(paragraph.firstChild!, 3)
+        editor.doc.syncFromDOM()
+        loaded()
+        await Promise.resolve()
+        expect(image).toHaveAttribute("src", "new.png")
+        expect(map.querySelector("area")).toHaveAttribute("coords", "10,20,50,100")
+        expect(document.getSelection()!.anchorNode).toBe(paragraph.firstChild)
+        editor.doc.undo()
+        expect(document.querySelector("img")).toHaveAttribute("src", "old.png")
+        expect(document.querySelector("area")).toHaveAttribute("coords", "20,10,100,50")
+        expect(document.querySelector("p")).toHaveTextContent("Changed while loading")
+      }
+      finally { decode.mockRestore() }
+    })
+
+    it("leaves a shared map with widget content intact rather than cloning a widget", async () => {
+      const {image, map} = fixture()
+      document.body.append(image.cloneNode(false))
+      const widget = document.createElement("custom-widget")
+      widget.innerHTML = '<area shape="rect" coords="1,2,3,4">'
+      map.append(widget)
+      const before = editor.toHTML(true)
+      const decode = decodeReplacement()
+      try {
+        replace()
+        await Promise.resolve()
+        expect(editor.toHTML(true)).toBe(before)
+        expect(document.querySelectorAll("custom-widget")).toHaveLength(1)
+        expect(map.lastChild).toBe(widget)
+      }
+      finally { decode.mockRestore() }
+    })
+
+    it.each(["remove", "replace", "unlink", "widget", "disable", "newer source", "remote source"])("discards a pending replacement after %s", async mutation => {
+      const {image, map} = fixture()
+      let loaded!: () => void
+      const decode = decodeReplacement().mockReturnValueOnce(new Promise(resolve => { loaded = resolve }))
+      const remote = new Y.Doc()
+      try {
+        replace()
+        if(mutation === "remove") image.remove()
+        else if(mutation === "replace") image.replaceWith(image.cloneNode(false))
+        else if(mutation === "unlink") image.removeAttribute("usemap")
+        else if(mutation === "widget") {
+          const widget = document.createElement("custom-widget")
+          document.body.append(widget)
+          widget.append(image)
+        }
+        else if(mutation === "disable") { editor.features.media.disable(); editor.features.media.enable() }
+        else if(mutation === "newer source") image.setAttribute("src", "newer.png")
+        else {
+          Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc), "initial-sync")
+          const picture = sharedDOMBody(remote).get(0) as Y.XmlElement
+          const sharedImage = picture.get(0) as Y.XmlElement
+          sharedImage.setAttribute("src", "remote.png")
+          Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote")
+        }
+        loaded()
+        await Promise.resolve()
+        expect(image.getAttribute("src")).not.toBe("new.png")
+        expect(map.querySelector("area")).toHaveAttribute("coords", "40,20,360,180")
+      }
+      finally { decode.mockRestore(); remote.destroy() }
+    })
+
+    it("commits only the newest pending replacement and leaves coordinates alone after a failed load", async () => {
+      const {image, map} = fixture()
+      let firstLoaded!: () => void
+      const decode = decodeReplacement().mockReturnValueOnce(new Promise(resolve => { firstLoaded = resolve }))
+      try {
+        replace()
+        editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "latest.png"})
+        await Promise.resolve()
+        expect(image).toHaveAttribute("src", "latest.png")
+        firstLoaded()
+        await Promise.resolve()
+        expect(image).toHaveAttribute("src", "latest.png")
+        expect(map.querySelector("area")).toHaveAttribute("coords", "20,40,180,360")
+        decode.mockRejectedValueOnce(new Error("Invalid image"))
+        editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "broken.png"})
+        await Promise.resolve()
+        expect(image).toHaveAttribute("src", "broken.png")
+        expect(map.querySelector("area")).toHaveAttribute("coords", "20,40,180,360")
+      }
+      finally { decode.mockRestore() }
+    })
+  })
+
   it("reports image sources and refuses to draw on an empty image", () => {
     document.body.innerHTML = '<picture><source srcset="small.png"><img></picture>'
     const picture = document.querySelector("picture")!

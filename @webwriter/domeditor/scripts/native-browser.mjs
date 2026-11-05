@@ -242,6 +242,7 @@ const expectedChecks = [
   "slide editing retains text and media selections after focus",
   "exported canvas runs its standalone viewer without editor dependencies",
   "image hotspots scale and open popovers in preview and standalone reading mode",
+  "image source replacement preserves relative hotspots and undo",
   "canvas circle hotspots stay round while drawing and after image resizing",
   "canvas hotspot clicks preserve the camera in preview and standalone reading mode",
   "hotspot URL fields retain native caret and selection visibility",

@@ -13,7 +13,7 @@ import photo from "@tabler/icons/outline/photo.svg?raw"
 import linkIcon from "@tabler/icons/outline/link.svg?raw"
 import messageCircle from "@tabler/icons/outline/message-circle.svg?raw"
 import worldWww from "@tabler/icons/outline/world-www.svg?raw"
-import {$, fixedClientX, authoredClassValue, atomicEditingContainer, adoptStylesheet, cloneInert, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker, isWidgetShadowInteraction} from "../utility"
+import {$, fixedClientX, authoredClassValue, atomicEditingContainer, adoptStylesheet, cloneInert, cloneWithoutEditorMarkers, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker, isWidgetShadowInteraction} from "../utility"
 import {
   isEmptyMedia,
   isMediaCaptureMode,
@@ -1240,6 +1240,7 @@ export class MediaFeature extends EditorFeature {
   private refreshQueued = false
   private mediaPlaceholder: MediaPlaceholder | null = null
   private mediaCapture: {controller: MediaCapture, valid: () => boolean} | null = null
+  private pendingImageSources = new WeakMap<HTMLImageElement, object>()
   private readonly sourceLabels = new WeakMap<Element, Map<string, {label: string, kind: "file" | "capture" | "recording"}>>()
   private pendingFile: {picker: HTMLInputElement, pickerId?: string, apply: (file: Blob | null) => boolean} | null = null
   private cancelSourceFile() {
@@ -1583,6 +1584,7 @@ export class MediaFeature extends EditorFeature {
     window.removeEventListener("blur", this.cancelPendingShield)
     document.removeEventListener("scroll", this.scheduleRefresh, true)
     this.cancelSourceFile()
+    this.pendingImageSources = new WeakMap()
     this.mediaPlaceholder?.dispose()
     this.mediaPlaceholder = null
     this.popoverController?.dispose()
@@ -1688,6 +1690,11 @@ export class MediaFeature extends EditorFeature {
   }
 
   captureListeners = {
+    load: (event: Event) => {
+      if(event.target instanceof HTMLImageElement && document.body.contains(event.target)
+        && !isWidgetShadowInteraction(event, this.editor.schema)
+        && !sourceEditingBlocked(mediaContainerForNode(event.target) ?? event.target, this.editor.schema)) this.scheduleRefresh()
+    },
     loadedmetadata: this.handleVideoPlaybackChange,
     loadeddata: this.handleVideoPlaybackChange,
     resize: this.handleVideoPlaybackChange,
@@ -1799,6 +1806,7 @@ export class MediaFeature extends EditorFeature {
       const element = this.selectedMedia()
       if(!element || sourceEditingBlocked(element, this.editor.schema)) return false
       const target = mediaSourceTarget(element, false)
+      if(target instanceof HTMLImageElement) this.pendingImageSources.delete(target)
       target.removeAttribute(mediaSourceAttribute(target))
       target.removeAttribute("srcset")
       if(element.matches("iframe")) element.removeAttribute("srcdoc")
@@ -1846,11 +1854,16 @@ export class MediaFeature extends EditorFeature {
         if(error) throw new TypeError(error)
       }
       const target = mediaSourceTarget(element)
-      if(element.matches("picture, img") && (name === "src" || name === "srcset") && target.getAttribute(name) !== value) {
-        this.clearImageHeight(element, target)
+      const change = (media: Element, target: Element) => {
+        if(media.matches("picture, img") && (name === "src" || name === "srcset") && target.getAttribute(name) !== value) {
+          this.clearImageHeight(media, target)
+        }
+        value === null ? target.removeAttribute(name) : target.setAttribute(name, value)
       }
+      if(element.matches("picture, img") && (name === "src" || name === "srcset")
+        && this.changeImageMapSource(element, target, change)) return true
       if(element.matches("iframe") && name === "src") applyIframeSandboxPolicy(element, [this.editor.options.bridgeOrigin ?? ""], value)
-      value === null ? target.removeAttribute(name) : target.setAttribute(name, value)
+      change(element, target)
       if(name === "muted") syncMutedProperty(target)
       this.refresh()
     },
@@ -2503,6 +2516,92 @@ export class MediaFeature extends EditorFeature {
     }
   }
 
+  /** Decode away from the authored DOM so the source and its pixel coordinates
+   * can change in one undo item, without grouping edits made during loading. */
+  private changeImageMapSource(element: Element, target: Element, change: (media: Element, image: Element) => void) {
+    if(!(target instanceof HTMLImageElement)) return false
+    this.pendingImageSources.delete(target)
+    const map = this.associatedImageMap(target)
+    const width = target.naturalWidth, height = target.naturalHeight
+    if(!map || !width || !height || element.hasAttribute("is") || target.hasAttribute("is")
+      || map.hasAttribute("is") || sourceEditingBlocked(map, this.editor.schema)) return false
+    const image = target.cloneNode(false) as HTMLImageElement
+    const media = element === target ? image : element.cloneNode(false) as Element
+    if(media !== image) {
+      for(const child of Array.from(element.children)) {
+        if(child instanceof HTMLSourceElement) media.append(child.cloneNode(false))
+        else if(child === target) media.append(image)
+      }
+    }
+    change(media, image)
+    if(this.sourceSnapshot(media) === this.sourceSnapshot(element)) return false
+    image.loading = "eager"
+    const snapshot = this.sourceSnapshot(element), currentSrc = target.currentSrc
+    const pending = {}
+    this.pendingImageSources.set(target, pending)
+    const apply = (decoded: boolean) => {
+      if(this.pendingImageSources.get(target) !== pending) return
+      this.pendingImageSources.delete(target)
+      if(!this.isEnabled || this.editor.isEditingLocked || !document.body.contains(element)
+        || mediaSourceTarget(element, false) !== target || sourceEditingBlocked(element, this.editor.schema)
+        || this.sourceSnapshot(element) !== snapshot || target.currentSrc !== currentSrc
+        || this.associatedImageMap(target) !== map || !map.isConnected) return
+      const end = this.editor.doc.beginUndoGroup()
+      try {
+        if(decoded && image.naturalWidth && image.naturalHeight) {
+          if(!this.rescaleImageMap(target, map, image.naturalWidth / width, image.naturalHeight / height)) return
+        }
+        change(element, target)
+        this.editor.postSelectionPath()
+        this.refresh()
+      }
+      finally { end() }
+    }
+    void image.decode().then(() => apply(true), () => apply(false))
+    return true
+  }
+
+  private rescaleImageMap(image: HTMLImageElement, map: HTMLMapElement, x: number, y: number) {
+    if(x === 1 && y === 1 || !map.querySelector("area[coords]")) return true
+    if(this.imagesUsingMap(map).length > 1) {
+      // Copying a widget or active/foreign content requires its own contract.
+      if(Array.from(map.querySelectorAll("*")).some(element => element.namespaceURI !== htmlNamespace
+        || element.localName.includes("-") || element.hasAttribute("is") || element.matches("script, style"))) return false
+      // Give the replacement its own map, retaining the other images' geometry.
+      const copy = cloneWithoutEditorMarkers(map, true, {inert: true}) as HTMLMapElement
+      copy.setAttribute("name", this.uniqueImageMapName())
+      const ids = new Map<string, string>()
+      for(const element of [copy, ...copy.querySelectorAll("[id]")]) if(element.id) {
+        const id = `hotspot-${crypto.randomUUID()}`
+        ids.set(element.id, id)
+        element.id = id
+      }
+      for(const element of [copy, ...copy.querySelectorAll("*")]) {
+        for(const name of ["href", "popovertarget", "interestfor", "for", "aria-labelledby", "aria-describedby"]) {
+          const value = element.getAttribute(name)
+          if(!value) continue
+          const next = name === "href" ? value.startsWith("#") && ids.has(value.slice(1)) ? `#${ids.get(value.slice(1))}` : value
+            : value.split(/\s+/).map(id => ids.get(id) ?? id).join(" ")
+          if(next !== value) element.setAttribute(name, next)
+        }
+      }
+      map.after(copy)
+      image.setAttribute("usemap", `#${copy.getAttribute("name")}`)
+      map = copy
+    }
+    for(const area of map.querySelectorAll("area[coords]")) {
+      if(sourceEditingBlocked(area, this.editor.schema)) continue
+      const shape = area.getAttribute("shape")?.toLowerCase() || "rect"
+      const coords = (area.getAttribute("coords") ?? "").trim().split(/[\s,]+/).map(Number)
+      if(coords.some(value => !Number.isFinite(value))
+        || !(shape === "rect" && coords.length === 4 || shape === "circle" && coords.length === 3
+          || shape === "poly" && coords.length >= 6 && coords.length % 2 === 0)) continue
+      area.setAttribute("coords", coords.map((value, index) => Math.round(value *
+        (shape === "circle" && index === 2 ? Math.min(x, y) : index % 2 === 0 ? x : y))).join(","))
+    }
+    return true
+  }
+
   private setSource(element: Element, source: string, replace = false, attribute?: "poster") {
     if(!element.isConnected || !document.body.contains(element) || !(element.matches(mediaSelector) || isGraphicImage(element))
       || (attribute && !element.matches("video")) || (!replace && !isEmptyMedia(element)) || sourceEditingBlocked(element, this.editor.schema)) return false
@@ -2530,19 +2629,23 @@ export class MediaFeature extends EditorFeature {
       source = direct?.url ?? embed!
     }
     const target = mediaSourceTarget(element)
-    if(!attribute && element.matches("picture, img") && target.getAttribute("src") !== source) this.clearImageHeight(element, target)
-    if(isGraphicImage(element)) this.editor.doc.stopCapturing()
-    if(replace && !attribute) {
-      target.removeAttribute("srcset")
-      if(element.matches("iframe")) element.removeAttribute("srcdoc")
-      if(element.matches("picture")) {
-        for(const child of Array.from(element.children)) {
-          if(child.localName === "source") child.removeAttribute("srcset")
+    const change = (element: Element, target: Element) => {
+      if(!attribute && element.matches("picture, img") && target.getAttribute("src") !== source) this.clearImageHeight(element, target)
+      if(replace && !attribute) {
+        target.removeAttribute("srcset")
+        if(element.matches("iframe")) element.removeAttribute("srcdoc")
+        if(element.matches("picture")) {
+          for(const child of Array.from(element.children)) {
+            if(child.localName === "source") child.removeAttribute("srcset")
+          }
         }
       }
+      target.setAttribute(attribute ?? mediaSourceAttribute(target), source)
     }
+    if(!attribute && this.changeImageMapSource(element, target, change)) return true
+    if(isGraphicImage(element)) this.editor.doc.stopCapturing()
     if(element.matches("iframe")) applyIframeSandboxPolicy(element, [this.editor.options.bridgeOrigin ?? ""], source)
-    target.setAttribute(attribute ?? mediaSourceAttribute(target), source)
+    change(element, target)
     if(!attribute && element.matches("audio, video")) element.setAttribute("controls", "")
     if(!isGraphicImage(element)) {
       this.editor.features.selection.captureElement(element)

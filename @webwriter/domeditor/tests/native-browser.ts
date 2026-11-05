@@ -8009,6 +8009,61 @@ await check("a clean canvas retains its initial item when moving and typing with
   finally { canvasEditor?.destroy(); frame.remove() }
 })
 
+await check("image source replacement preserves relative hotspots and undo", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:620px;max-width:none"
+  frame.srcdoc = '<!doctype html><body><picture><img src="/tests/fixtures/image-map.svg" width="360" usemap="#plan"></picture><map name="plan"><span><!--keep--><area shape="rect" coords="180,84,540,336" href="#details"></span><area shape="circle" coords="360,210,40" popovertarget="details"></map><div id="details" popover>Details</div><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `image replacement fixture did not initialize: ${view.editorError ?? "loading"}`)
+    const editor = view.editor!, doc = frame.contentDocument!, image = doc.querySelector("img")!, map = doc.querySelector("map")!
+    await image.decode()
+    image.loading = "lazy"
+    const replacement = '<svg xmlns="http://www.w3.org/2000/svg" width="180" height="240"><rect width="180" height="240" fill="#dbeafe"/></svg>'
+    const source = `data:image/svg+xml,${encodeURIComponent(replacement)}`
+    const waitForSource = async (expected: string | null) => {
+      for(let attempt = 0; image.getAttribute("src") === expected && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(image.getAttribute("src") !== expected, "replacement did not finish decoding")
+      await image.decode()
+      await layoutFrame()
+    }
+    for(const mode of ["url", "file"]) {
+      editor.features.selection.captureElement(image.closest("picture")!)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const before = editor.toHTML(true), oldSource = image.getAttribute("src")
+      if(mode === "url") editor.features.media.actions.setMediaAttribute({type:"setMediaAttribute", name:"src", value:source})
+      else editor.features.media.actions.setMediaFile({type:"setMediaFile", file:new view.File([replacement], "replacement.svg", {type:"image/svg+xml"})})
+      await waitForSource(oldSource)
+      assert(image.naturalWidth === 180 && image.naturalHeight === 240, "replacement intrinsic size is wrong")
+      assert(map.querySelector("area")!.coords === "45,48,135,192", "rectangle coordinates did not scale on both axes")
+      assert(map.querySelector('area[shape="circle"]')!.getAttribute("coords") === "90,120,10", "circle geometry did not scale")
+      const root = editor.features.media.imageMapOverlay.root
+      const box = image.getBoundingClientRect(), hotspot = root.querySelector("rect.hotspot")!.getBoundingClientRect()
+      assert(Math.abs((hotspot.left - box.left) / box.width - .25) < .01
+        && Math.abs((hotspot.top - box.top) / box.height - .2) < .01
+        && Math.abs(hotspot.width / box.width - .5) < .01
+        && Math.abs(hotspot.height / box.height - .6) < .01, "rendered hotspot lost its relative bounds")
+      const circle = root.querySelector("circle.hotspot")!.getBoundingClientRect()
+      assert(circle.width > 0 && Math.abs(circle.width - circle.height) < 1, "replacement made a circular hotspot elliptical")
+      assert(map.querySelector("span")!.firstChild!.nodeType === Node.COMMENT_NODE, "replacement rebuilt the map")
+      const after = editor.toHTML(true)
+      editor.doc.undo()
+      await image.decode()
+      assert(editor.toHTML(true) === before, "one undo did not restore the source and hotspots together")
+      editor.doc.redo()
+      await image.decode()
+      assert(editor.toHTML(true) === after, "redo did not restore the replacement and hotspots")
+      editor.doc.undo()
+      await image.decode()
+      await layoutFrame()
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("canvas circle hotspots stay round while drawing and after image resizing", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px;height:450px;max-width:none"
