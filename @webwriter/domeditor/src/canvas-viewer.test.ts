@@ -45,6 +45,46 @@ const mockCameraCanvas = () => {
 }
 
 describe("standalone canvas reader", () => {
+  it.each(["native", "blank", "tainted"])("uses native rasterization when usable and cleans up the %s capture", async mode => {
+    const {context} = mockCameraCanvas()
+    const draw = vi.fn(), fallback = vi.fn(async () => ({src: "data:image/png,fallback"}))
+    const connected = vi.fn(), tag = `capture-widget-${mode}`
+    customElements.define(tag, class extends HTMLElement { connectedCallback() { connected() } })
+    Object.assign(context, {
+      drawElementImage: draw, scale: vi.fn(),
+      getImageData: () => {
+        if(mode === "tainted") throw new DOMException("Tainted", "SecurityError")
+        return {data: new Uint8ClampedArray([0, 0, 0, mode === "native" ? 255 : 0])}
+      },
+    })
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png,native")
+    vi.spyOn(document.querySelector("p")!, "getBoundingClientRect").mockReturnValue(new DOMRect(-40, 20, 200, 100))
+    const snapshot = vi.fn(async (_element, options) => {
+      const clone = document.createElement("div")
+      clone.innerHTML = `<${tag} onclick="throw 1"><input autofocus value="Keep"></${tag}>`
+      await options.plugins[0].beforeRender({clone, classCSS: "div { color: red }"})
+      expect(clone.querySelector(`${tag}[onclick]`)).not.toBeNull()
+      return {meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60}, toPng: fallback}
+    })
+    reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
+    const map = control("minimap"), image = map.querySelector("image")!
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe(`data:image/png,${mode === "native" ? "native" : "fallback"}`))
+    expect(draw).toHaveBeenCalledOnce()
+    const viewport = draw.mock.calls[0][0] as HTMLElement
+    expect(viewport.inert).toBe(true)
+    expect(viewport.shadowRoot!.querySelector(`${tag}, [onclick], [autofocus]`)).toBeNull()
+    expect(viewport.shadowRoot!.querySelector("input")?.value).toBe("Keep")
+    expect(connected).not.toHaveBeenCalled()
+    expect(fallback).toHaveBeenCalledTimes(mode === "native" ? 0 : 1)
+    expect(document.body.shadowRoot!.querySelector('[part="canvas-minimap-measurements"] canvas')).toBeNull()
+    if(mode === "native") {
+      expect(image.getAttribute("x")).toBe("0")
+      expect(image.getAttribute("y")).toBe("0")
+      expect(Number(image.getAttribute("width"))).toBe(Number(map.querySelector("svg")!.getAttribute("viewBox")!.split(" ")[2]))
+    }
+    expect(document.body.querySelector("canvas, [drawable], [layoutsubtree]")).toBeNull()
+  })
+
   it("uses block sizing for captioned pictures in both canvas modes", () => {
     document.body.innerHTML = '<figure><picture style="width: 320px"><img alt="Map"></picture><figcaption>Map</figcaption></figure>'
     const picture = document.querySelector("picture")!

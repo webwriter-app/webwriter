@@ -7378,7 +7378,7 @@ await check("canvas wheel and hand panning cover interactive embeds and restore 
       return {clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2}
     }
     const hit = ({clientX, clientY}: {clientX: number, clientY: number}) => appendix.elementFromPoint(clientX, clientY)
-    assert(hit(center(video))?.matches('[part="media-interaction-shield"]'), "the editor media shield is not reachable")
+    assert(hit(center(video))?.matches('[part~="media-interaction-shield"]'), "the editor media shield is not reachable")
     hand.click()
     assert(hand.contains(hit(center(hand))), "Hand mode blocked its own toolbar")
     assert(view.getComputedStyle(shield).cursor === "grab", "Hand mode did not show the grab cursor")

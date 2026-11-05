@@ -14,7 +14,7 @@ import photo from "@tabler/icons/outline/photo.svg?raw"
 import linkIcon from "@tabler/icons/outline/link.svg?raw"
 import messageCircle from "@tabler/icons/outline/message-circle.svg?raw"
 import worldWww from "@tabler/icons/outline/world-www.svg?raw"
-import {$, fixedClientX, authoredClassValue, atomicEditingContainer, adoptStylesheet, cloneInert, cloneWithoutEditorMarkers, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker, isWidgetShadowInteraction} from "../utility"
+import {$, fixedClientX, authoredClassValue, atomicEditingContainer, adoptStylesheet, cloneInert, cloneWithoutEditorMarkers, createAnchorPositioner, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker, isWidgetShadowInteraction} from "../utility"
 import {
   isEmptyMedia,
   isMediaCaptureMode,
@@ -769,6 +769,10 @@ class ImageMapOverlay {
     return this.session !== null
   }
 
+  refreshPosition() {
+    if(this.image?.isConnected && this.map?.isConnected) this.showFor(this.image, this.map)
+  }
+
   showFor(image: HTMLImageElement, map: HTMLMapElement, editing = this.element.hasAttribute("data-editing")) {
     this.element.toggleAttribute("data-editing", editing)
     if(this.image !== image || this.map !== map) this.selectedArea = null
@@ -1163,11 +1167,10 @@ class MediaInteractionShield {
     this.element.addEventListener("click", this.handleClick)
   }
 
-  setTarget(target: Element) {
+  setTarget(target: Element, rect = target.getBoundingClientRect(), anchored = false) {
     this.target = target
     this.element.toggleAttribute("data-empty-website", isWebsiteType(target.localName) && isEmptyMedia(target))
-    const rect = target.getBoundingClientRect()
-    Object.assign(this.element.style, {
+    if(!anchored) Object.assign(this.element.style, {
       left: `${fixedClientX(rect.left)}px`,
       top: `${rect.top}px`,
       width: `${Math.max(0, rect.width)}px`,
@@ -1239,6 +1242,8 @@ export class MediaFeature extends EditorFeature {
   private observer: MutationObserver | null = null
   private resizeObserver: ResizeObserver | null = null
   private refreshQueued = false
+  private refreshAfterTransform = false
+  private viewportFrame: number | null = null
   private selectedPopup: WeakRef<Element> | null = null
   private mediaPlaceholder: MediaPlaceholder | null = null
   private mediaCapture: {controller: MediaCapture, valid: () => boolean} | null = null
@@ -1268,6 +1273,7 @@ export class MediaFeature extends EditorFeature {
     return this.popoverController ??= createImageMapPopoverController(document)
   }
   private readonly interactionShields = new Map<Element, MediaInteractionShield>()
+  private readonly shieldAnchors = createAnchorPositioner()
   private readonly graphicImagePlaceholders = new Map<SVGGraphicsElement, HTMLDivElement>()
   private readonly observedGraphicImageTargets = new Set<Element>()
   private readonly shieldReleasePending = new Set<Element>()
@@ -1396,12 +1402,15 @@ export class MediaFeature extends EditorFeature {
 
     this.interactionShields.forEach((shield, target) => {
       if(!desired.has(target)) {
+        this.shieldAnchors.release(shield.element)
         shield.remove()
         this.interactionShields.delete(target)
         this.resizeObserver?.unobserve(target)
         this.observedShieldTargets.delete(target)
       }
     })
+    const anchored = CSS.supports("position-anchor", "--ww-media")
+    const boxes = new Map(Array.from(desired, target => [target, target.getBoundingClientRect()]))
     desired.forEach(target => {
       let shield = this.interactionShields.get(target)
       if(!shield) {
@@ -1409,8 +1418,13 @@ export class MediaFeature extends EditorFeature {
         this.interactionShields.set(target, shield)
         this.editor.addAppendix(shield.element)
       }
-      shield.setTarget(target)
+      shield.setTarget(target, boxes.get(target), anchored)
+      if(anchored) {
+        this.shieldAnchors.bind(shield.element, target)
+        for(const property of ["left", "top", "width", "height"]) shield.element.style.removeProperty(property)
+      }
     })
+    if(anchored) this.shieldAnchors.refresh()
 
     if(this.resizeObserver) {
       if(!this.bodyResizeObserved) {
@@ -1447,38 +1461,7 @@ export class MediaFeature extends EditorFeature {
         this.graphicImagePlaceholders.set(image, placeholder)
         this.editor.addAppendix(placeholder)
       }
-      const rect = image.getBoundingClientRect()
-      if(rect.width > 0 && rect.height > 0 && (rect.width < 64 || rect.height < 28)) {
-        placeholder.innerHTML = photo
-        const icon = placeholder.querySelector<SVGSVGElement>("svg")!
-        icon.style.cssText = "width:18px;height:18px;max-width:100%;max-height:100%;min-width:0;min-height:0"
-      }
-      else placeholder.textContent = "Add an image"
-      const style = getComputedStyle(image)
-      placeholder.hidden = rect.width <= 0 || rect.height <= 0
-        || style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse"
-      if(placeholder.hidden) return
-      Object.assign(placeholder.style, {
-        left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`,
-        width: `${rect.width}px`, height: `${rect.height}px`, transform: "none",
-      })
-      // Preserve native SVG transforms, including those on unfamiliar groups.
-      // DOM shims without SVG geometry APIs use the bounding rectangle above.
-      const box = image.getBBox?.()
-      const matrix = image.getScreenCTM?.()
-      if(box && matrix && box.width > 0 && box.height > 0) {
-        const widthScale = Math.hypot(matrix.a, matrix.b)
-        const heightScale = Math.hypot(matrix.c, matrix.d)
-        if(!widthScale || !heightScale) return
-        const x = matrix.a * box.x + matrix.c * box.y + matrix.e
-        const y = matrix.b * box.x + matrix.d * box.y + matrix.f
-        // Keep the caption and dashed border the same size as HTML images,
-        // while following SVG rotation, skew and editor zoom.
-        Object.assign(placeholder.style, {
-          left: `${fixedClientX(0)}px`, top: "0", width: `${box.width * widthScale}px`, height: `${box.height * heightScale}px`,
-          transform: `matrix(${matrix.a / widthScale}, ${matrix.b / widthScale}, ${matrix.c / heightScale}, ${matrix.d / heightScale}, ${x}, ${y})`,
-        })
-      }
+      this.positionGraphicImagePlaceholder(image, placeholder)
     })
     if(this.resizeObserver) {
       const observed = new Set<Element>(desired)
@@ -1494,6 +1477,41 @@ export class MediaFeature extends EditorFeature {
         if(this.observedGraphicImageTargets.has(target)) return
         this.resizeObserver!.observe(target)
         this.observedGraphicImageTargets.add(target)
+      })
+    }
+  }
+
+  private positionGraphicImagePlaceholder(image: SVGGraphicsElement, placeholder: HTMLDivElement) {
+    const rect = image.getBoundingClientRect()
+    if(rect.width > 0 && rect.height > 0 && (rect.width < 64 || rect.height < 28)) {
+      placeholder.innerHTML = photo
+      const icon = placeholder.querySelector<SVGSVGElement>("svg")!
+      icon.style.cssText = "width:18px;height:18px;max-width:100%;max-height:100%;min-width:0;min-height:0"
+    }
+    else placeholder.textContent = "Add an image"
+    const style = getComputedStyle(image)
+    placeholder.hidden = rect.width <= 0 || rect.height <= 0
+      || style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse"
+    if(placeholder.hidden) return
+    Object.assign(placeholder.style, {
+      left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`,
+      width: `${rect.width}px`, height: `${rect.height}px`, transform: "none",
+    })
+    // Preserve native SVG transforms, including those on unfamiliar groups.
+    // DOM shims without SVG geometry APIs use the bounding rectangle above.
+    const box = image.getBBox?.()
+    const matrix = image.getScreenCTM?.()
+    if(box && matrix && box.width > 0 && box.height > 0) {
+      const widthScale = Math.hypot(matrix.a, matrix.b)
+      const heightScale = Math.hypot(matrix.c, matrix.d)
+      if(!widthScale || !heightScale) return
+      const x = matrix.a * box.x + matrix.c * box.y + matrix.e
+      const y = matrix.b * box.x + matrix.d * box.y + matrix.f
+      // Keep the caption and dashed border the same size as HTML images,
+      // while following SVG rotation, skew and editor zoom.
+      Object.assign(placeholder.style, {
+        left: `${fixedClientX(0)}px`, top: "0", width: `${box.width * widthScale}px`, height: `${box.height * heightScale}px`,
+        transform: `matrix(${matrix.a / widthScale}, ${matrix.b / widthScale}, ${matrix.c / heightScale}, ${matrix.d / heightScale}, ${x}, ${y})`,
       })
     }
   }
@@ -1516,6 +1534,9 @@ export class MediaFeature extends EditorFeature {
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
       this.observer = new FrameMutationObserver(records => {
+        records = records.filter(record => record.type !== "attributes" || record.attributeName !== "class"
+          || authoredClassValue(record.oldValue) !== authoredClassValue((record.target as Element).getAttribute("class")))
+        if(!records.length) return
         for(const record of records) {
           if(record.type === "attributes" && ["src", "srcdoc", "sandbox"].includes(record.attributeName ?? "")
             && record.target instanceof Element && document.body.contains(record.target) && record.target.localName === "iframe") {
@@ -1547,10 +1568,15 @@ export class MediaFeature extends EditorFeature {
             }
           }
         }
-        this.scheduleRefresh()
+        const moving = this.editor.features.transformation.canvasPlacementTarget
+        if(moving && records.every(record => record.target === moving && record.type === "attributes" && record.attributeName === "style")) {
+          this.refreshAfterTransform = true
+          this.scheduleViewportRefresh()
+        }
+        else this.scheduleRefresh()
       })
       try {
-        this.observer.observe(document.body, {subtree: true, childList: true, attributes: true})
+        this.observer.observe(document.body, {subtree: true, childList: true, attributes: true, attributeOldValue: true})
       }
       catch {
         // Scoped-registry startup can briefly pair the iframe document with a
@@ -1564,12 +1590,15 @@ export class MediaFeature extends EditorFeature {
     if(FrameResizeObserver) this.resizeObserver = new FrameResizeObserver(this.scheduleRefresh)
     window.addEventListener("resize", this.handleViewportResize)
     window.addEventListener("blur", this.cancelPendingShield)
-    document.addEventListener("scroll", this.scheduleRefresh, true)
+    document.addEventListener("scroll", this.scheduleViewportRefresh, true)
     this.refresh()
   }
 
   disable() {
     if(!this.isEnabled) return
+    if(this.viewportFrame !== null) cancelAnimationFrame(this.viewportFrame)
+    this.viewportFrame = null
+    this.refreshAfterTransform = false
     this.pointerDown = false
     this.pendingUrlFocus = null
     const capture = this.mediaCapture
@@ -1584,7 +1613,7 @@ export class MediaFeature extends EditorFeature {
     this.bodyResizeObserved = false
     window.removeEventListener("resize", this.handleViewportResize)
     window.removeEventListener("blur", this.cancelPendingShield)
-    document.removeEventListener("scroll", this.scheduleRefresh, true)
+    document.removeEventListener("scroll", this.scheduleViewportRefresh, true)
     this.cancelSourceFile()
     this.pendingImageSources = new WeakMap()
     this.mediaPlaceholder?.dispose()
@@ -1595,6 +1624,7 @@ export class MediaFeature extends EditorFeature {
     this.imageMapOverlayController = null
     this.interactionShields.forEach(shield => shield.remove())
     this.interactionShields.clear()
+    this.shieldAnchors.destroy()
     this.graphicImagePlaceholders.forEach(placeholder => placeholder.remove())
     this.graphicImagePlaceholders.clear()
     this.selectedPopup = null
@@ -2708,6 +2738,31 @@ export class MediaFeature extends EditorFeature {
     else removeEditorMarker(element, "◆media-empty")
   }
 
+  // Scroll and camera movement do not change media membership or image-map
+  // relationships. Reposition the current controls once per rendered frame.
+  private scheduleViewportRefresh = () => {
+    if(this.viewportFrame !== null || !this.isEnabled) return
+    this.viewportFrame = requestAnimationFrame(() => {
+      this.viewportFrame = null
+      if(!this.isEnabled) return
+      if(!CSS.supports("position-anchor", "--ww-media")) {
+        const boxes = Array.from(this.interactionShields, ([target, shield]) => ({target, shield,
+          rect: target.isConnected ? target.getBoundingClientRect() : null}))
+        for(const {target, shield, rect} of boxes) {
+          if(rect) shield.setTarget(target, rect)
+          else { shield.remove(); this.scheduleRefresh() }
+        }
+      }
+      for(const [image, placeholder] of this.graphicImagePlaceholders) {
+        if(image.isConnected) this.positionGraphicImagePlaceholder(image, placeholder)
+      }
+      const target = this.mediaPlaceholder?.target
+      if(target?.isConnected) this.mediaPlaceholder!.showFor(target)
+      this.imageMapOverlayController?.refreshPosition()
+      this.popoverController?.refresh()
+    })
+  }
+
   private scheduleRefresh = () => {
     if(this.refreshQueued) return
     this.refreshQueued = true
@@ -2715,6 +2770,10 @@ export class MediaFeature extends EditorFeature {
       this.refreshQueued = false
       if(this.isEnabled) this.refresh()
     })
+  }
+
+  flushCanvasTransformRefresh() {
+    if(this.refreshAfterTransform) this.scheduleRefresh()
   }
 
   refreshPlaceholder() {
@@ -2746,6 +2805,7 @@ export class MediaFeature extends EditorFeature {
   }
 
   private refresh() {
+    this.refreshAfterTransform = false
     if(this.mediaCapture && !this.mediaCapture.valid()) this.mediaCapture.controller.close()
     document.querySelectorAll(`${mediaSelector}, svg image`).forEach(element => {
       if(sourceEditingBlocked(element, this.editor.schema)) {

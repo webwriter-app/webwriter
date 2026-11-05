@@ -1156,15 +1156,17 @@ export class TransformationFeature extends EditorFeature {
     if(this.#frame !== null || !this.isEnabled || !this.target || this.#anchored && !this.#gesture) return
     this.#frame = requestAnimationFrame(() => {
       if(this.#gesture && !this.#validGesture()) { this.#frame = null; return }
+      // Discover existing animations before pointer handling can write styles
+      // and force a synchronous style/layout update.
+      const coalesced = this.#coalescesGeometry
+      const animating = coalesced && Boolean(document.getAnimations?.().some(animation =>
+        (animation.effect as KeyframeEffect | null)?.target?.getRootNode() === document))
       // Keep this frame registered while applying input so its style writes
       // and geometry refresh share one animation frame.
       this.#flushPointer()
       this.#frame = null
       // A paused gesture still needs live validation. Only remeasure
       // after an invalidation or while authored animation can move its boxes.
-      const coalesced = this.#coalescesGeometry
-      const animating = coalesced && Boolean(document.getAnimations?.().some(animation =>
-        (animation.effect as KeyframeEffect | null)?.target?.getRootNode() === document))
       if(!coalesced || this.#geometryFrameDirty || animating) {
         this.#geometryFrameDirty = animating
         this.updateInfo()
@@ -1183,6 +1185,10 @@ export class TransformationFeature extends EditorFeature {
     else if(this.#gesture.mode === "crop") this.handleCropDrag(event)
     else if(this.#gesture.mode === "rotate") this.handleRotateDrag(event)
     else this.handleMoveDrag(event)
+    const target = this.canvasPlacementTarget
+    // Route these synchronous placement edits through the existing local
+    // figure invalidation. Unrelated pending mutations still refresh broadly.
+    if(target && !target.matches("figure, :has(figure)")) this.editor.features.layout.refreshFigureLayout(target)
   }
 
   #updateContextMarkers(block: Element | Window | null = null, scroller: Element | null = null) {
@@ -1207,6 +1213,23 @@ export class TransformationFeature extends EditorFeature {
   get isResizingOrRotatingGroup() {
     const gesture = this.#gesture
     return Boolean(gesture?.group && (gesture.mode === "scale" || gesture.mode === "rotate"))
+  }
+
+  get canvasPlacementTarget() {
+    const gesture = this.#gesture
+    if(!this.editor.features.canvas.active || !gesture || gesture.group || !gesture.target.isConnected
+      || gesture.mode !== "rotate" && !this.#isSpatialMove(gesture)) return null
+    const {target, initial, written} = gesture
+    const properties = new Set([...Array.from(initial), ...Array.from(target.style), ...written.keys()])
+    // A widget or remote peer can edit this same element during a drag.
+    // Only defer work while its inline styles still match our own writes.
+    for(const property of properties) {
+      if(property === "z-index") continue // The move can raise its target at pickup.
+      const last = written.get(property)
+      if(target.style.getPropertyValue(property) !== (last?.value ?? initial.getPropertyValue(property))
+        || target.style.getPropertyPriority(property) !== (last?.priority ?? initial.getPropertyPriority(property))) return null
+    }
+    return target
   }
 
   #isSpatialMove(gesture: Gesture) {
@@ -2188,6 +2211,7 @@ export class TransformationFeature extends EditorFeature {
     }
     if(settling) this.#settlingGesture = settling
     this.#gesture = null
+    this.editor.features.media.flushCanvasTransformRefresh()
     this.#geometryFrameDirty = false
     if(gesture.group || gesture.mode === "scale" || gesture.mode === "move" || gesture.mode === "rotate") this.editor.features.canvas.setMinimapRefreshPaused(false)
     if(this.#frame !== null) cancelAnimationFrame(this.#frame)

@@ -56,6 +56,7 @@ const minimapPaddingRatio = .1
 const minimapRefreshDelay = 120
 const minimapGestureIdleDelay = 400
 const cancelMinimapCapture = Symbol("cancel stale minimap capture")
+const completeMinimapCapture = Symbol("completed native minimap capture")
 const minimapExcluded = ".◆editor-only, [data-webwriter-editor-only], script, template"
 const viewportAspectRatio = () => Math.max(1, window.innerWidth) / Math.max(1, window.innerHeight)
 const centerOf = ({x, y, width, height}) => ({x: x + width / 2, y: y + height / 2})
@@ -135,8 +136,10 @@ class CanvasMinimap {
     this.map.addEventListener("lostpointercapture", endDrag)
     this.toggle.addEventListener("click", () => this.setOpen(this.map.hidden))
     this.observer = new MutationObserver(records => {
-      this.updateStartingView()
-      if(records.some(record => this.contentChanged(record, records))) this.invalidate()
+      if(records.some(record => this.contentChanged(record, records))) {
+        if(!this.refreshPaused) this.updateStartingView()
+        this.invalidate()
+      }
     })
     // Keep invalidation active while collapsed so an unchanged capture can be
     // reused on reopening, including edits made by widgets and remote peers.
@@ -428,7 +431,7 @@ class CanvasMinimap {
     const {innerWidth, innerHeight} = window
     const current = () => !running.stale && this.generation === generation && this.viewer.active
     const cancelIfStale = () => { if(!current()) throw cancelMinimapCapture }
-    let bounds = null, snapshot = null, thumbnail = null
+    let bounds = null, snapshot = null, thumbnail = null, nativeRaster = false
     try {
       bounds = this.usedBounds(viewportAspectRatio())
       if(bounds) {
@@ -459,7 +462,7 @@ class CanvasMinimap {
             beforeSnap: cancelIfStale,
             beforeClone: context => { cancelIfStale(); context.options.clip = clip() },
             afterClone: cancelIfStale,
-            beforeRender: context => {
+            beforeRender: async context => {
               cancelIfStale()
               // SnapDOM flattens the slot into a fragment. Recreate its
               // containing block in the detached capture for absolute items.
@@ -467,12 +470,16 @@ class CanvasMinimap {
               Object.assign(wrapper.style, {position: "relative", width: slot.style.width, height: slot.style.height})
               wrapper.append(context.clone)
               context.clone = wrapper
+              thumbnail = await this.rasterize(context, bounds, cancelIfStale)
+              nativeRaster = Boolean(thumbnail)
+              // The clone is already rasterized. Skip SVG serialization too.
+              if(nativeRaster) throw completeMinimapCapture
             },
           }],
         })
         cancelIfStale()
         // Rasterize once so repainting the minimap only draws a bitmap.
-        thumbnail = (await snapshot.toPng()).src
+        thumbnail ??= (await snapshot.toPng()).src
       }
     }
     catch(error) {
@@ -501,7 +508,7 @@ class CanvasMinimap {
       this.stopDrag()
       this.map.firstElementChild.textContent = "Empty canvas"
     }
-    const meta = snapshot?.meta
+    const meta = nativeRaster ? {clip: bounds, contentX: 0, contentY: 0, vbW: bounds.width, vbH: bounds.height} : snapshot?.meta
     if(meta?.clip && bounds) {
       this.image.setAttribute("x", meta.clip.x - meta.contentX - bounds.x)
       this.image.setAttribute("y", meta.clip.y - meta.contentY - bounds.y)
@@ -516,6 +523,74 @@ class CanvasMinimap {
     }
     this.updateCamera()
     this.updateStartingView()
+  }
+
+  async rasterize(context, bounds, cancelIfStale) {
+    const canvas = document.createElement("canvas"), drawing = canvas.getContext("2d")
+    if(typeof drawing?.drawElementImage !== "function") return null
+    // A capture must never reconnect widget instances or execute authored
+    // handlers. Import into a document without a registry, then flatten its
+    // already styled widget copies before adopting them into the appendix.
+    const inert = document.implementation.createHTMLDocument()
+    let copy = inert.importNode(context.clone, true)
+    if(copy.querySelector("script, iframe, object, embed, audio, video")) return null
+    for(let element of [copy, ...copy.querySelectorAll("*")]) {
+      if(element.namespaceURI === "http://www.w3.org/1999/xhtml" && (element.localName.includes("-") || element.hasAttribute("is"))) {
+        const replacement = inert.createElement(element.localName.includes("-") ? "span" : element.localName)
+        for(const attribute of element.attributes) if(attribute.name !== "is") {
+          if(attribute.namespaceURI) replacement.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+          else replacement.setAttribute(attribute.name, attribute.value)
+        }
+        while(element.firstChild) replacement.appendChild(element.firstChild)
+        element.replaceWith(replacement)
+        if(element === copy) copy = replacement
+        element = replacement
+      }
+      for(const attribute of [...element.attributes]) if(attribute.name.toLowerCase().startsWith("on") || attribute.name === "autofocus") element.removeAttributeNode(attribute)
+    }
+    // Draw the styled clone directly on supporting browsers. Serializing it
+    // into an SVG image and decoding that image otherwise blocks the main
+    // thread again after SnapDOM's yielding clone has finished.
+    canvas.setAttribute("layoutsubtree", "")
+    canvas.setAttribute("content", "drawable")
+    canvas.style.cssText = "position:fixed;left:0;top:0;z-index:-2147483647;pointer-events:none;visibility:visible"
+    const width = Math.max(1, Math.round(Math.min(540, 188 * bounds.width / bounds.height)))
+    const height = Math.max(1, Math.round(width * bounds.height / bounds.width))
+    canvas.width = width; canvas.height = height
+    const viewport = document.createElement("div")
+    viewport.setAttribute("drawable", "")
+    viewport.inert = true
+    viewport.style.cssText = `all:initial;position:relative;display:block;overflow:hidden;width:${bounds.width}px;height:${bounds.height}px`
+    const root = viewport.attachShadow({mode: "open"}), style = document.createElement("style"), offset = document.createElement("div")
+    style.textContent = (context.scrollbarCSS || "") + (context.baseCSS || "") + (context.fontsCSS || "") + (context.classCSS || "")
+    offset.style.cssText = `all:initial;position:absolute;display:block;left:${-bounds.x}px;top:${-bounds.y}px`
+    offset.append(copy)
+    root.append(style, offset); canvas.append(viewport); this.measurements.append(canvas)
+    try {
+      await Promise.all([...copy.querySelectorAll("img")].map(image => image.decode().catch(() => {})))
+      cancelIfStale()
+      // Let the browser lay out the capture separately from input handling.
+      await new Promise(resolve => {
+        const finish = () => { clearTimeout(timer); cancelAnimationFrame(frame); resolve() }
+        const timer = setTimeout(finish, 50)
+        const frame = requestAnimationFrame(() => setTimeout(finish, 0))
+      })
+      cancelIfStale()
+      drawing.scale(width / bounds.width, height / bounds.height)
+      drawing.drawElementImage(viewport, 0, 0, bounds.width, bounds.height)
+      // Some browsers expose the API before enabling layoutsubtree painting.
+      // Keep the SVG path for them, as well as for tainted captures.
+      const pixels = drawing.getImageData(0, 0, width, height).data
+      if(!pixels.some((value, index) => index % 4 === 3 && value)) return null
+      return canvas.toDataURL("image/png")
+    }
+    catch(error) {
+      if(error === cancelMinimapCapture) throw error
+      return null
+    }
+    finally {
+      canvas.remove()
+    }
   }
 
   updateViewport() {
@@ -916,7 +991,7 @@ export const canvasControlsStyles = `
       [part=canvas-minimap-starting-view] > [data-corner=se] { bottom: -4px; right: -4px; cursor: nwse-resize; }
       [part=canvas-minimap-measurements] { position: fixed; left: -100000px; top: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 
-@media print { .◆canvas-controls, [part=canvas-pan-surface] { display: none; } }
+@media print { .◆canvas-controls, [part=canvas-pan-surface], [part=canvas-minimap-measurements] { display: none; } }
 `
 
 const canvasViewportStyles = `

@@ -4212,6 +4212,34 @@ describe("queued pointer movement", () => {
     document.dispatchEvent(pointer("pointerup", {pointerId}))
   })
 
+  it("discovers paused animations before coalesced gesture writes and refreshes geometry", () => {
+    const target = targetElement("img")
+    Object.assign(target.style, {width: "100px", height: "50px"})
+    mockRect(target)
+    selectNode(target)
+    const pointerId = 76
+    feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+      .dispatchEvent(pointer("pointerdown", {pointerId, clientX: 200, clientY: 150}))
+    queuePointer(pointer("pointermove", {pointerId, clientX: 220, clientY: 160}))
+
+    const order: string[] = []
+    const animation = {effect: {target: document.body}, playState: "paused"} as unknown as Animation
+    const originalGetAnimations = Object.getOwnPropertyDescriptor(document, "getAnimations")
+    Object.defineProperty(document, "getAnimations", {configurable: true, value: () => { order.push("discover"); return [animation] }})
+    vi.spyOn(feature, "handleScaleDrag").mockImplementation(() => { order.push("write") })
+    vi.spyOn(feature, "updateInfo").mockImplementation(() => { order.push("refresh") })
+
+    try {
+      flushAnimationFrame()
+      expect(order.indexOf("discover")).toBeLessThan(order.indexOf("write"))
+      expect(order).toContain("refresh")
+      document.dispatchEvent(pointer("pointerup", {pointerId}))
+    } finally {
+      if(originalGetAnimations) Object.defineProperty(document, "getAnimations", originalGetAnimations)
+      else Reflect.deleteProperty(document, "getAnimations")
+    }
+  })
+
   it("commits the latest queued move and terminal release coordinates as one undo step", async () => {
     document.body.classList.add("ww-canvas")
     vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
@@ -4223,12 +4251,14 @@ describe("queued pointer movement", () => {
     editor.doc.stopCapturing()
     const initial = editor.toHTML(true)
     const pointerId = 72
+    const captions = vi.spyOn(editor.features.layout, "refreshFigureLayout")
     feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
       .dispatchEvent(pointer("pointerdown", {pointerId, clientX: 100, clientY: 100}))
     queuePointer(pointer("pointermove", {pointerId, clientX: 120, clientY: 100}))
     expect(target.style.left).toBe("0px")
     document.dispatchEvent(pointer("pointerup", {pointerId, clientX: 130, clientY: 100}))
     expect(target.style.left).toBe("40px")
+    expect(captions).toHaveBeenCalledWith(target)
     await mutationsDelivered()
     editor.doc.syncFromDOM()
     const changed = editor.toHTML(true)

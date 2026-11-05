@@ -2,8 +2,26 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {getElementPresentation, imageMapPopupImage, imageMapPopups, popupDisplayToggle} from "./element-names"
 import {elementAttributeState} from "./element-attributes"
+import {descendantElements, type ReadableElement} from "./dom-readers"
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe("descendantElements", () => {
+  it("uses native descendant order and supports elements from another document", () => {
+    const foreignDocument = document.implementation.createHTMLDocument()
+    foreignDocument.body.innerHTML = "<section><span></span><svg><circle></circle><g><path></path></g></svg><div><b></b></div></section>"
+    const section = foreignDocument.querySelector("section")!
+    expect([...descendantElements(section)].map(element => element.localName)).toEqual(["span", "svg", "circle", "g", "path", "div", "b"])
+    expect([...descendantElements(section)].find(element => element.localName === "circle")?.namespaceURI).toBe("http://www.w3.org/2000/svg")
+  })
+
+  it("walks readable views without native querySelectorAll", () => {
+    const leaf = {localName: "leaf", children: []}
+    const branch = {localName: "branch", children: [leaf]}
+    const root = {localName: "root", children: [branch, {localName: "sibling", children: []}]}
+    expect([...descendantElements(root as unknown as ReadableElement)].map(element => element.localName)).toEqual(["branch", "leaf", "sibling"])
+  })
+})
 
 describe("widget element presentation", () => {
   it.each(["webwriter-task-prompt", "acme-task-prompt"])("formats %s with the existing widget name helper", tag => {
