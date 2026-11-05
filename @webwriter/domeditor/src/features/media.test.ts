@@ -2395,8 +2395,10 @@ describe("media editing", () => {
     const area = editor.features.media.getState()!.imageMap!.areas[0]
     editor.features.media.actions.addImageMapPopover({type:"addImageMapPopover", path:area.path, expected:area.attributes})
     const paragraph = document.querySelector("[popover] p")!
+    const popup = paragraph.parentElement!
     paragraph.innerHTML = html
     editor.features.media["refresh"]()
+    expect(popup).toHaveClass("◆hotspot-popup")
     expect(paragraph.textContent).toBe("")
     expect(paragraph).toHaveClass("◆hotspot-placeholder")
     expect(editor.toHTML(true)).not.toMatch(/Hotspot content|Popover content|◆hotspot-placeholder/)
@@ -2410,6 +2412,7 @@ describe("media editing", () => {
     expect(paragraph).toHaveClass("◆hotspot-placeholder")
     editor.features.media.disable()
     expect(paragraph).not.toHaveClass("◆hotspot-placeholder")
+    expect(popup).not.toHaveClass("◆hotspot-popup")
   })
 
   it.each(["border", "background"] as const)("saves hotspot %s visibility, preserves classes, and supports undo and redo", async part => {
@@ -2510,11 +2513,11 @@ describe("media editing", () => {
     expect(editor.toHTML(true)).not.toMatch(/url-editor|action-buttons|Hotspot URL/)
   })
 
-  it("positions popovers beside hotspots, flips at viewport edges, and cleans up presentation styles", () => {
+  it("positions popovers below hotspots with shared popup styling and cleans up presentation styles", () => {
     document.body.innerHTML = '<img src="plan.png" width="100" height="100" usemap="#plan"><map name="plan"><area shape="rect" coords="60,20,80,40" popovertarget="details"></map><div id="details" popover="auto"><p>Content</p></div>'
     const image = document.querySelector<HTMLImageElement>("img")!, area = document.querySelector("area")!, content = document.querySelector<HTMLElement>("#details")!
-    let imageLeft = 10
-    vi.spyOn(image, "getBoundingClientRect").mockImplementation(() => new DOMRect(imageLeft, 10, 100, 100))
+    let imageLeft = 10, imageTop = 10
+    vi.spyOn(image, "getBoundingClientRect").mockImplementation(() => new DOMRect(imageLeft, imageTop, 100, 100))
     vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 120, 80))
     let opened = false
     content.showPopover = () => { opened = true }
@@ -2528,15 +2531,22 @@ describe("media editing", () => {
     expect(controller.open(area, image)).toBe(true)
     const sheet = document.adoptedStyleSheets.at(-1)!
     const style = () => (sheet.cssRules[0] as CSSStyleRule).style
-    expect(style().left).toBe("98px")
-    expect(style().top).toBe("8px")
-    expect(style().borderRadius).toBe("0.5rem")
+    expect(style().left).toBe("70px")
+    expect(style().top).toBe("58px")
+    expect(style().borderRadius).toBe("")
+    expect(style().padding).toBe("")
+    expect(content).toHaveClass("◆hotspot-popup")
     imageLeft = window.innerWidth - 100
     controller.refresh()
-    expect(parseFloat(style().left)).toBe(window.innerWidth - 100 + 60 - 8 - 120)
-    expect(content.outerHTML).toBe(authored)
+    expect(parseFloat(style().left)).toBe(window.innerWidth - 8 - 120)
+    imageTop = window.innerHeight - 100
+    controller.refresh()
+    expect(parseFloat(style().top)).toBe(imageTop + 20 - 8 - 80)
+    expect((sheet.cssRules[1] as CSSStyleRule).style.transform).toBe("rotate(225deg)")
+    expect(editor.toHTML(true)).not.toContain("◆hotspot-popup")
     expect(controller.open(area, image, true)).toBe(true)
     expect(opened).toBe(false)
+    expect(content.outerHTML).toBe(authored)
     controller.dispose()
     expect(document.adoptedStyleSheets).toEqual(original)
   })

@@ -9660,6 +9660,20 @@ describe("DomEditor.execute()", () => {
     ]})
   })
 
+  it("projects hotspot popups under images using their actual authored paths", async () => {
+    const {editor, iframe} = await mountEditor()
+    const body = iframe.contentDocument!.body
+    body.innerHTML = '<figure><picture><img usemap="#plan"></picture><figcaption>Plan</figcaption></figure><map name="plan"><span><!--keep--><area popovertarget="one"><area interestfor="two"><area popovertarget="one"></span></map><section><div id="one" popover><p>One</p></div><span id="two" popover>Two</span></section>'
+    const before = body.innerHTML
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree.children).toHaveLength(1)
+    expect(tree.children[0]).toMatchObject({name: "Image", path: [0], children: [
+      {name: "Popup", icon: "Popup", path: [2, 0], children: [{name: "Paragraph", path: [2, 0, 0]}]},
+      {name: "Popup", icon: "Popup", path: [2, 1], children: []},
+    ]})
+    expect(body.innerHTML).toBe(before)
+  })
+
   it("hides picture implementation images and media sources from outline data", async () => {
     const {editor, iframe} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = '<picture><source srcset="small.png"><img src="large.png"></picture><video><source src="movie.mp4"></video>'

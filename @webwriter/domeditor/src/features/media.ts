@@ -1,6 +1,7 @@
 import {EditorFeature} from "."
 import {SVG_NAMESPACE, graphicShapeGeometry} from "../graphic"
 import type {Schema} from "../schema"
+import {imageMapPopupImage} from "../element-names"
 import {MediaCapture} from "../components/media-capture"
 import type {MediaSourceInfo} from "../components/media-source-info"
 import {mediaSourceButtonStyles} from "../components/media-source.styles"
@@ -1238,6 +1239,7 @@ export class MediaFeature extends EditorFeature {
   private observer: MutationObserver | null = null
   private resizeObserver: ResizeObserver | null = null
   private refreshQueued = false
+  private selectedPopup: WeakRef<Element> | null = null
   private mediaPlaceholder: MediaPlaceholder | null = null
   private mediaCapture: {controller: MediaCapture, valid: () => boolean} | null = null
   private pendingImageSources = new WeakMap<HTMLImageElement, object>()
@@ -1595,9 +1597,13 @@ export class MediaFeature extends EditorFeature {
     this.interactionShields.clear()
     this.graphicImagePlaceholders.forEach(placeholder => placeholder.remove())
     this.graphicImagePlaceholders.clear()
+    this.selectedPopup = null
     this.shieldReleasePending.clear()
     document.querySelectorAll(".◆media-empty").forEach(element => this.setEmptyMarker(element, false))
-    document.querySelectorAll(".◆hotspot-placeholder").forEach(element => removeEditorMarker(element, "◆hotspot-placeholder"))
+    document.querySelectorAll(".◆hotspot-placeholder, .◆hotspot-popup").forEach(element => {
+      removeEditorMarker(element, "◆hotspot-placeholder")
+      removeEditorMarker(element, "◆hotspot-popup")
+    })
     super.disable()
   }
 
@@ -2752,15 +2758,23 @@ export class MediaFeature extends EditorFeature {
     })
     const selected = this.refreshPlaceholder()
 
+    const popups = new Set<Element>()
     const placeholders = new Set<Element>()
     document.querySelectorAll("map area[popovertarget], map area[interestfor]").forEach(area => {
       if(sourceEditingBlocked(area, this.editor.schema)) return
       const id = area.getAttribute("popovertarget") ?? area.getAttribute("interestfor")
       const content = id ? document.getElementById(id) : null
+      if(content && imageMapPopupImage(content)) popups.add(content)
       const paragraph = content?.firstElementChild
       if(content?.hasAttribute("popover") && content.children.length === 1
         && paragraph?.matches("p") && !paragraph.textContent
         && (paragraph.children.length === 0 || paragraph.children.length === 1 && paragraph.firstElementChild?.matches("br"))) placeholders.add(paragraph)
+    })
+    document.querySelectorAll(".◆hotspot-popup").forEach(element => {
+      if(!popups.has(element)) removeEditorMarker(element, "◆hotspot-popup")
+    })
+    popups.forEach(element => {
+      if(!element.classList.contains("◆hotspot-popup")) element.classList.add("◆hotspot-popup")
     })
     document.querySelectorAll(".◆hotspot-placeholder").forEach(element => {
       if(!placeholders.has(element)) removeEditorMarker(element, "◆hotspot-placeholder")
@@ -2769,6 +2783,17 @@ export class MediaFeature extends EditorFeature {
       if(!element.classList.contains("◆hotspot-placeholder")) element.classList.add("◆hotspot-placeholder")
     })
 
+    const anchor = $.selectedElement ?? ($.anchor instanceof Element ? $.anchor : $.anchor?.parentElement)
+    const selectedPopup = anchor?.closest("[popover]")
+    const popupMedia = selectedPopup && imageMapPopupImage(selectedPopup)
+    const popupImage = popupMedia ? this.imageForMedia(popupMedia, false) : null
+    const popupMap = popupImage && this.associatedImageMap(popupImage)
+    const popupArea = popupMap && Array.from(popupMap.querySelectorAll("area")).find(area =>
+      (area.getAttribute("popovertarget") ?? area.getAttribute("interestfor")) === selectedPopup?.id
+      && !sourceEditingBlocked(area, this.editor.schema))
+    const popupChanged = selectedPopup !== this.selectedPopup?.deref()
+    this.selectedPopup = selectedPopup ? new WeakRef(selectedPopup) : null
+    if(popupChanged && popupArea && popupImage && !selectedPopup!.matches(":popover-open")) this.popovers.open(popupArea, popupImage)
     this.popoverController?.refresh()
     const selectedImage = selected?.matches("picture, img") ? this.imageForMedia(selected, false) : null
     const previous = this.imageMapOverlayController?.image

@@ -247,6 +247,7 @@ const expectedChecks = [
   "canvas circle hotspots stay round while drawing and after image resizing",
   "canvas hotspot clicks preserve the camera in preview and standalone reading mode",
   "hotspot URL fields retain native caret and selection visibility",
+  "hotspot popups share popup mark styling and expose independent controls",
   "hotspot popovers use grey editing placeholders and compact controls",
   "saved Slides navigate with HTML and CSS and scripting disabled",
 ]

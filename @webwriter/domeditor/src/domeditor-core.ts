@@ -54,7 +54,7 @@ import {
   type SerializedError,
   type VersionHistoryState,
 } from "./editor-bridge"
-import { getElementPresentation, isLineBreakElement, popupDisplayToggle, popupElementRole } from "./element-names"
+import { getElementPresentation, isLineBreakElement, imageMapPopupImage, popupDisplayToggle, popupElementRole } from "./element-names"
 import type {EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
 import listMarkerStyleString from "./document-list-markers.css?raw"
@@ -991,11 +991,11 @@ export class DOMEditor {
     elements.unshift(root)
     const content = element.closest("[popover]")
     if(content && popupElementRole(content) === "content" && !content.closest(".ww-popup")) {
-      const toggle = popupDisplayToggle(content)
+      const invoker = imageMapPopupImage(content) ?? popupDisplayToggle(content)
       const index = elements.indexOf(content)
-      if(toggle && index > 0) {
+      if(invoker && index > 0) {
         const prefix: Element[] = []
-        for(let ancestor: Element | null = toggle; ancestor && ancestor !== root; ancestor = ancestor.parentElement) prefix.unshift(ancestor)
+        for(let ancestor: Element | null = invoker; ancestor && ancestor !== root; ancestor = ancestor.parentElement) prefix.unshift(ancestor)
         elements.splice(1, index - 1, ...prefix)
       }
     }

@@ -116,6 +116,25 @@ describe("specialized element toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector(".float-placement-label")).toBeNull()
   })
 
+  it("reuses the Popup drawer and style controls for a selected hotspot popup", async () => {
+    document.body.innerHTML = '<img usemap="#plan"><map name="plan"><area interestfor="note"></map><div id="note" popover><p>Content</p></div>'
+    const content = document.getElementById("note")!
+    const toolbox = await mountElement("div")
+    toolbox.elementAttributes = elementAttributeState(content, [2])
+    toolbox.elementStyle = {...styleState("div"), target: {localName: "div", namespaceURI: content.namespaceURI, popupRole: "content"}}
+    toolbox.elementSelected = true
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[layout="popup"]')!
+    expect(drawer.label).toBe("Popup")
+    expect(drawer.icon).toBe("Popup")
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Style"] element-style-editor[show-presets]')).not.toBeNull()
+    const selection = vi.fn()
+    toolbox.addEventListener("toolbox-element-select", selection)
+    await drawer.updateComplete
+    drawer.shadowRoot!.querySelector<HTMLButtonElement>(".pane-label-button")!.click()
+    expect(selection.mock.calls[0][0].detail.selectionTypes).toEqual([{localName: "div", namespaceURI: content.namespaceURI, path: [2]}])
+  })
+
   it("scopes Popup and Popup Content deletion to their own paths", async () => {
     const root = document.createElement("div")
     root.innerHTML = '<div class="ww-popup"><button popovertarget="note">Open</button><div id="note" popover="auto"><p>Content</p></div></div>'

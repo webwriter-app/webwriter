@@ -821,6 +821,36 @@ describe("breadcrumb positioning", () => {
     }
   })
 
+  it("projects individually selectable hotspot popups beneath their image without moving content", () => {
+    document.body.innerHTML = '<section><picture><img src="plan.png" usemap="#plan"></picture></section><map name="plan"><span><!--keep--><area popovertarget="one"><area interestfor="two"></span></map><section><div id="one" popover><p>One</p></div><div id="two" popover><p>Two</p></div></section>'
+    const editor = new DOMEditor()
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    const detail = () => {
+      postMessage.mockClear()
+      editor.postSelectionPath()
+      return postMessage.mock.calls.find(([message]) => message.type === selectionChangeEvent)![0].detail as SelectionChangeDetail
+    }
+    try {
+      const before = editor.toHTML(true)
+      $.selectElement(document.querySelector("picture")!)
+      expect(detail().selectedElementTypes?.filter(group => group.element.name === "Popup").map(group => group.element.path)).toEqual([[2, 0], [2, 1]])
+      editor.features.selection.actions.selectElementTypes({type: "selectElementTypes", selectionTypes: [
+        {localName: "div", namespaceURI: "http://www.w3.org/1999/xhtml", path: [2, 1]},
+      ]})
+      expect($.selectedElement).toBe(document.getElementById("two"))
+      expect(detail().element).toMatchObject({name: "Popup", path: [2, 1]})
+      expect(editor.features.manipulation.getStyleState().target?.popupRole).toBe("content")
+      $.move(document.querySelector("#two p")!.firstChild!, 1)
+      expect(detail().path.map(item => [item.name, item.path])).toEqual([
+        ["Document", []], ["Image", [0, 0]], ["Popup", [2, 1]], ["Paragraph", [2, 1, 0]],
+      ])
+      expect(editor.toHTML(true)).toBe(before)
+      document.querySelector("map")!.remove()
+      expect(detail().path.some(item => item.name === "Image" || item.name === "Popup")).toBe(false)
+    }
+    finally { editor.destroy(); postMessage.mockRestore(); document.body.replaceChildren() }
+  })
+
   it("shows inline Popup Content in the breadcrumb while editing its text", () => {
     document.body.innerHTML = '<p>Before <span class="ww-popup"><button type="button" popovertarget="note">Open</button><span id="note" popover="auto">Content</span></span> after</p>'
     const editor = new DOMEditor()

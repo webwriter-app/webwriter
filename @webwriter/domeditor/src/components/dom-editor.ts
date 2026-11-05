@@ -76,7 +76,7 @@ import {
   type WebWriterPackage,
   type WebWriterPackageExportType,
 } from "../packages"
-import { getElementPresentation, isLineBreakElement, popupContentForToggle, popupDisplayToggle, popupElementRole } from "../element-names"
+import { getElementPresentation, isLineBreakElement, imageMapPopupImage, imageMapPopups, popupContentForToggle, popupDisplayToggle, popupElementRole } from "../element-names"
 import {
   canonicalMarkName,
   emptyRubyState,
@@ -2175,7 +2175,7 @@ export class DomEditor extends LitElement {
       const observer = new FrameMutationObserver((mutations: MutationRecord[]) => {
         const treeChanged = mutations.some(mutation => mutation.type === "childList"
           || mutation.type === "attributes"
-            && (mutation.attributeName === "class" || mutation.attributeName === "is")
+            && ["class", "is", "id", "name", "usemap", "popovertarget", "interestfor", "popover"].includes(mutation.attributeName ?? "")
             && isCurrentTarget(mutation.target)
             && this.isAuthoredMutation(mutation))
         if(treeChanged) {
@@ -7470,6 +7470,7 @@ export class DomEditor extends LitElement {
       const added = sections.filter(section => !paths.has(section.path.join(".")))
       if(added.length) item.sections = [...existing, ...added]
     }
+    const building = new Set<Element>()
     const build = (element: Element, path: number[], sections: SelectionPathSection[] = []): DocumentTreeItem => {
       const item: DocumentTreeItem = {
         path: [...path],
@@ -7477,7 +7478,12 @@ export class DomEditor extends LitElement {
         ...(sections.length ? {sections: sections.map(section => ({...section, path: [...section.path]}))} : {}),
         children: [],
       }
-      if(element.matches("table, math, svg")) return item
+      if(element.matches("table, math, svg") || building.has(element)) return item
+      building.add(element)
+      for(const popup of imageMapPopups(element)) {
+        const popupPath = pathFromNode(body, popup)
+        if(popupPath) item.children.push(build(popup, popupPath))
+      }
 
       const appendChildren = (container: Element, containerPath: number[], inherited: SelectionPathSection[],
         destination: DocumentTreeItem[] = item.children, popupItem?: DocumentTreeItem, popupToggle?: Element) => {
@@ -7491,6 +7497,12 @@ export class DomEditor extends LitElement {
             || childElement.matches("img") && childElement.closest("picture")
             || isLineBreakElement(childElement)) return
           const childPath = [...containerPath, index]
+          if(imageMapPopupImage(childElement)) return
+          if(childElement.matches("map:not([is])")) {
+            appendChildren(childElement, childPath, inherited, destination)
+            return
+          }
+          if(childElement.matches("map area:not([is])")) return
           if(popupToggle && childElement === popupToggle) return
           if(popupElementRole(childElement) === "content" && popupDisplayToggle(childElement)
             && !popupItem) return
@@ -7542,6 +7554,7 @@ export class DomEditor extends LitElement {
         })
       }
       appendChildren(element, path, [])
+      building.delete(element)
       return item
     }
 

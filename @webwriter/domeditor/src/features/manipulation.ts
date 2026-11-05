@@ -29,7 +29,7 @@ import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStyle
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {authoredDetailsOpen, isAuthoredMutation, isHTMLDetailsElement} from "../editor-artifacts"
-import {popupContentAncestor, popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
+import {imageMapPopupImage, imageMapPopups, popupContentAncestor, popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
 import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction, emptyElementHTML} from "../insertion"
 import {cellForNode, createTable, tableForNode} from "../table"
 import {
@@ -3004,6 +3004,12 @@ export class ManipulationFeature extends EditorFeature {
         addContainer(range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement)
       }
     }
+    // Associated popup content remains outside the void IMG in the authored DOM.
+    for(const element of [...elements]) {
+      const image = imageMapPopupImage(element)
+      if(image) addContainer(image)
+    }
+    for(const element of [...elements]) imageMapPopups(element).forEach(popup => elements.add(popup))
     return [...elements].sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING ? 1 : -1)
   }
 

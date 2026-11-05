@@ -8148,6 +8148,11 @@ await check("hotspot URL fields retain native caret and selection visibility", a
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("hotspot popups share popup mark styling and expose independent controls", async () => {
+  const {checkHotspotPopups} = await import("./hotspot-popups")
+  await checkHotspotPopups(element => nativeRootEditor.addAppendix(element))
+})
+
 await check("hotspot popovers use grey editing placeholders and compact controls", async () => {
   const {DomEditorToolbox} = await import("../src/components/toolbox")
   const frame = document.createElement("iframe")

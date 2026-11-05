@@ -13,7 +13,7 @@
   .ww-popup > button[popovertarget] {
     margin-block-end: 0;
   }
-  :is(.ww-popup > [popover], .ww-popup-content[popover]) {
+  :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover]) {
     anchor-name: --ww-popup-bubble;
     container-type: anchored;
     position-area: bottom span-right;
@@ -51,12 +51,12 @@
     position-area: top span-left;
     max-inline-size: calc(100% - 0.5rem);
   }
-  :is(.ww-popup > [popover], .ww-popup-content[popover]):popover-open {
+  :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover]):popover-open {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
   }
-  :is(.ww-popup > [popover], .ww-popup-content[popover])::before {
+  :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover])::before {
     content: "";
     position: fixed;
     position-anchor: --ww-popup-bubble;
@@ -71,20 +71,20 @@
   }
   @container anchored(fallback: flip-inline), anchored(fallback: flip-block flip-inline),
     anchored(fallback: --ww-popup-fit-left), anchored(fallback: --ww-popup-fit-up-left) {
-    :is(.ww-popup > [popover], .ww-popup-content[popover])::before {
+    :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover])::before {
       left: auto;
       right: calc(anchor(right) + 1.25rem);
     }
   }
   @container anchored(fallback: flip-block), anchored(fallback: flip-block flip-inline),
     anchored(fallback: --ww-popup-fit-up-right), anchored(fallback: --ww-popup-fit-up-left) {
-    :is(.ww-popup > [popover], .ww-popup-content[popover])::before {
+    :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover])::before {
       top: calc(anchor(bottom) - 0.4rem);
       transform: rotate(225deg);
     }
   }
-  :is(.ww-popup > [popover], .ww-popup-content[popover]) > p:first-child { margin-block-start: 0; }
-  :is(.ww-popup > [popover], .ww-popup-content[popover]) > p:last-child { margin-block-end: 0; }
+  :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover]) > p:first-child { margin-block-start: 0; }
+  :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover]) > p:last-child { margin-block-end: 0; }
   html {
     container-type: inline-size;
     --ww-page-width: min(var(--ww-page-max, 2160px), calc(100cqw - 2 * var(--ww-page-gutter, 1rem)));
@@ -135,13 +135,13 @@
 
     /* Default elements fill their column; authored sizes still take precedence.
      * Inline widgets retain their own display; these sizes do not blockify them. */
-    :is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover]) {
+    :is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover], .◆hotspot-popup[popover]) {
       inline-size: 100%;
       min-inline-size: 0;
       margin-inline: auto;
     }
 
-    :where(:is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover])) {
+    :where(:is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover], .◆hotspot-popup[popover])) {
       max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));
     }
 
