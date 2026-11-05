@@ -1,3 +1,4 @@
+import {descendantElements, hasClass, type ReadableElement, type ReadableNode} from "./dom-readers"
 import {getDocumentRoot} from "./document-template"
 import {boardPrintContentStyles} from "./document-layout-print.js"
 
@@ -5,6 +6,14 @@ export type DocumentLayoutMode = "document" | "canvas" | "slides" | "board"
 export type DocumentLayoutState = {
   mode: DocumentLayoutMode, canConvert: boolean, zoom: number
   conversions?: Partial<Record<DocumentLayoutMode, string | null>>
+}
+
+/** Placement values emitted when converting a fresh empty document. */
+export const emptyLayoutPlacementValues: Record<string, readonly string[]> = {
+  position: ["absolute", "static"], left: ["0px", "var(--ww-page-gutter, 1.25rem)"],
+  top: ["0px", "1.25rem", "calc(20% + 2.5rem)"],
+  width: ["320px", "calc(100% - 2 * var(--ww-page-gutter, 1.25rem))"],
+  height: ["20%", "calc(80% - 3.75rem)"],
 }
 
 /** Conversion availability shared by the layout picker surfaces. */
@@ -31,11 +40,11 @@ export function resetEmptyLayoutContent(body: HTMLElement = document.body) {
   return paragraph
 }
 
-export function documentLayoutMode(body: HTMLElement = document.body): DocumentLayoutMode {
+export function documentLayoutMode(body: ReadableElement = document.body): DocumentLayoutMode {
   if(getDocumentRoot(body) !== body) return "document"
   // An ambiguous externally authored mode stays readable; never normalize it.
-  if([canvasClass, slidesClass, boardClass].filter(name => body.classList.contains(name)).length > 1) return "document"
-  return body.classList.contains(boardClass) ? "board" : body.classList.contains(slidesClass) ? "slides" : body.classList.contains(canvasClass) ? "canvas" : "document"
+  if([canvasClass, slidesClass, boardClass].filter(name => hasClass(body, name)).length > 1) return "document"
+  return hasClass(body, boardClass) ? "board" : hasClass(body, slidesClass) ? "slides" : hasClass(body, canvasClass) ? "canvas" : "document"
 }
 
 /** Board structure and styles are authored content, usable without an editor. */
@@ -103,33 +112,47 @@ ${boardColumnSelector(" > article.ww-board-card:not([is]) > :last-child")} { mar
 }
 `
 
-export function isBoardGroup(node: Node | null): node is HTMLElement {
-  const element = node as Element | null
-  return element?.nodeType === 1 && element.namespaceURI === "http://www.w3.org/1999/xhtml"
-    && element.matches("section.ww-board-group:not([is])") && element.parentElement === element.ownerDocument.body
-    && documentLayoutMode(element.ownerDocument.body) === "board"
+const nativeLayoutElement = (element: ReadableElement, name: string, className: string) => {
+  if(element.nodeType !== 1 || element.namespaceURI !== "http://www.w3.org/1999/xhtml") return false
+  const matches = (element as ReadableElement & {matches?: Element["matches"]}).matches
+  return matches ? matches.call(element, `${name}.${className}:not([is])`)
+    : element.localName === name && hasClass(element, className) && !element.hasAttribute("is")
 }
 
-export function isBoardColumn(node: Node | null): node is HTMLElement {
-  const element = node as Element | null
-  return element?.nodeType === 1 && element.namespaceURI === "http://www.w3.org/1999/xhtml"
-    && element.matches("section.ww-board-column:not([is])")
+export function isBoardGroup<T extends ReadableNode>(node: T | null): node is T & (T extends Node ? HTMLElement : ReadableElement & {readonly namespaceURI: "http://www.w3.org/1999/xhtml"})
+export function isBoardGroup(node: Node | null): node is HTMLElement
+export function isBoardGroup(node: ReadableNode | null): node is ReadableElement {
+  const element = node as ReadableElement | null
+  return Boolean(element && nativeLayoutElement(element, "section", "ww-board-group")
+    && element.parentElement === element.ownerDocument.body && documentLayoutMode(element.ownerDocument.body) === "board")
+}
+
+export function isBoardColumn<T extends ReadableNode>(node: T | null): node is T & (T extends Node ? HTMLElement : ReadableElement & {readonly namespaceURI: "http://www.w3.org/1999/xhtml"})
+export function isBoardColumn(node: Node | null): node is HTMLElement
+export function isBoardColumn(node: ReadableNode | null): node is ReadableElement {
+  const element = node as ReadableElement | null
+  return Boolean(element && nativeLayoutElement(element, "section", "ww-board-column")
     && (element.parentElement === element.ownerDocument.body || isBoardGroup(element.parentElement))
-    && documentLayoutMode(element.ownerDocument.body) === "board"
+    && documentLayoutMode(element.ownerDocument.body) === "board")
 }
 
 /** Board order is global, including columns inside groups. */
-export function boardColumns(body: HTMLElement = document.body) {
-  return Array.from(body.querySelectorAll("section.ww-board-column")).filter(isBoardColumn)
+export function boardColumns(body?: HTMLElement): HTMLElement[]
+export function boardColumns<T extends ReadableElement>(body: T): T[]
+export function boardColumns(body: ReadableElement = document.body): ReadableElement[] {
+  const native = body as ReadableElement & {querySelectorAll?: Element["querySelectorAll"]}
+  const columns = native.querySelectorAll ? Array.from(native.querySelectorAll("section.ww-board-column")) : [...descendantElements(body)]
+  return columns.filter(isBoardColumn)
 }
 
-export function isBoardCard(node: Node | null): node is HTMLElement {
-  const element = node as Element | null
-  return element?.nodeType === 1 && element.namespaceURI === "http://www.w3.org/1999/xhtml"
-    && element.matches("article.ww-board-card:not([is])") && isBoardColumn(element.parentElement)
+export function isBoardCard<T extends ReadableNode>(node: T | null): node is T & (T extends Node ? HTMLElement : ReadableElement & {readonly namespaceURI: "http://www.w3.org/1999/xhtml"})
+export function isBoardCard(node: Node | null): node is HTMLElement
+export function isBoardCard(node: ReadableNode | null): node is ReadableElement {
+  const element = node as ReadableElement | null
+  return Boolean(element && nativeLayoutElement(element, "article", "ww-board-card") && isBoardColumn(element.parentElement))
 }
 
-export function boardLayoutRole(node: Node | null): "column" | "card" | "group" | null {
+export function boardLayoutRole(node: ReadableNode | null): "column" | "card" | "group" | null {
   return isBoardColumn(node) ? "column" : isBoardCard(node) ? "card" : isBoardGroup(node) ? "group" : null
 }
 
@@ -246,22 +269,24 @@ body.ww-slides .ww-slide-directions > a:focus-visible { outline: 2px solid curre
 }
 `
 
-export function isSlide(node: Node | null): node is HTMLElement {
-  const element = node as Element | null
-  return element?.nodeType === 1 && element.namespaceURI === "http://www.w3.org/1999/xhtml" && element.matches("section.ww-slide:not([is])")
-    && Boolean(element.parentElement?.matches("div.ww-slides-viewport:not([is])"))
-    && element.parentElement?.parentElement === element.ownerDocument.body
+export function isSlide<T extends ReadableNode>(node: T | null): node is T & (T extends Node ? HTMLElement : ReadableElement & {readonly namespaceURI: "http://www.w3.org/1999/xhtml"})
+export function isSlide(node: Node | null): node is HTMLElement
+export function isSlide(node: ReadableNode | null): node is ReadableElement {
+  const element = node as ReadableElement | null
+  return Boolean(element && nativeLayoutElement(element, "section", "ww-slide")
+    && element.parentElement && nativeLayoutElement(element.parentElement, "div", "ww-slides-viewport")
+    && element.parentElement.parentElement === element.ownerDocument.body)
 }
 
 /** Recognize only the active carousel's structure, including across the editor iframe. */
-export function slideLayoutRole(element: Element): "root" | "viewport" | "slide" | "navigation" | null {
+export function slideLayoutRole(element: ReadableElement): "root" | "viewport" | "slide" | "navigation" | null {
   if(element.nodeType !== 1 || element.namespaceURI !== "http://www.w3.org/1999/xhtml") return null
   const body = element.ownerDocument.body
   if(!body || documentLayoutMode(body) !== "slides") return null
   if(element === body) return "root"
   if(isSlide(element)) return "slide"
-  if(element.parentElement === body && element.matches("div.ww-slides-viewport:not([is])")) return "viewport"
-  if(element.matches("nav.ww-slides-navigation:not([is])") && element.parentElement === body
-    || element.matches("nav.ww-slide-directions:not([is])") && isSlide(element.parentElement)) return "navigation"
+  if(element.parentElement === body && nativeLayoutElement(element, "div", "ww-slides-viewport")) return "viewport"
+  if(nativeLayoutElement(element, "nav", "ww-slides-navigation") && element.parentElement === body
+    || nativeLayoutElement(element, "nav", "ww-slide-directions") && isSlide(element.parentElement)) return "navigation"
   return null
 }

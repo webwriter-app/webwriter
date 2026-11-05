@@ -1,5 +1,8 @@
 import type {DistributionSelection} from "../features/distribution"
 import * as Y from "yjs"
+import {decodeSharedDOMAttribute, INTERNAL_NAMESPACE, INTERNAL_NODE_KIND, INTERNAL_QUALIFIED_NAME} from "../domdoc-codec"
+import {EditorDocumentReplica, isEditorDocumentUpdate} from "../editor-document-sync"
+import {closestElement, containsElement, hasClass, readableNodePath, type ReadableElement, type ReadableNode} from "../dom-readers"
 import {applyPreviewUpdate} from "../live-session-permissions.js"
 import {createBrowserDistributionValidator} from "../distribution-snapshot"
 import {captureLiveSessionReplay, captureLiveSessionSnapshot, type LiveSessionReplay} from "../live-session-replay"
@@ -76,7 +79,7 @@ import {
   type WebWriterPackage,
   type WebWriterPackageExportType,
 } from "../packages"
-import { getElementPresentation, isLineBreakElement, imageMapPopupImage, imageMapPopups, popupContentForToggle, popupDisplayToggle, popupElementRole } from "../element-names"
+import { documentTreeAttributeNames, getElementPresentation, isLineBreakElement, imageMapPopupImage, imageMapPopups, popupContentForToggle, popupDisplayToggle, popupElementRole } from "../element-names"
 import {
   canonicalMarkName,
   emptyRubyState,
@@ -89,7 +92,7 @@ import {
   type RubyState,
   type StyleMarkValues,
 } from "../marks"
-import {authoredClassValue, clearEditorArtifacts, clearInlinePlacement, isWidgetShadowInteraction, isTextFieldInteraction, getInertDocument, pathFromNode} from "../utility"
+import {authoredClassValue, clearEditorArtifacts, clearInlinePlacement, isWidgetShadowInteraction, isTextFieldInteraction, getInertDocument} from "../utility"
 import {
   imageMapAreaAttributeOptions,
   isImageMapHotspotShape,
@@ -253,8 +256,7 @@ import {
   type AppSettings,
 } from "../app-settings"
 import {getDocumentRoot} from "../document-template"
-import {canvasStyles, slidesStyles, boardStyles, boardLayoutRole, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
-import {isCanvasStartingView} from "../canvas-viewer.js"
+import {emptyLayoutPlacementValues, canvasStyles, slidesStyles, boardStyles, boardLayoutRole, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type LocalFileHandle = RecentFileHandle
 
@@ -526,7 +528,12 @@ export class DomEditor extends LitElement {
   private captureSelection = false
   private selectionGap: SelectionGap | null = null
   private documentTree: DocumentTreeItem | null = null
-  private frameSnapshot: {document: Document, html: string, textNodeRunsKey: string} | null = null
+  private documentReplica: EditorDocumentReplica | null = null
+  private documentReplicaId = ""
+  private documentReplicaSequence = 0
+  private documentReplicaSyncPending = false
+
+  private get editorBody(): ReadableElement | null { return this.documentReplica?.body ?? this.editorDocument?.body ?? null }
   private authoredSnapshotCache: {document: Document, value: string} | null = null
   private canMark = false
   private canRemoveMarks = false
@@ -2131,6 +2138,11 @@ export class DomEditor extends LitElement {
     iframe.removeEventListener("focus", this.handleEditorFrameFocus)
     iframe.removeEventListener("blur", this.handleEditorFrameBlur)
     this.clearMotionStylesheet()
+    this.documentReplica?.destroy()
+    this.documentReplica = null
+    this.documentReplicaId = randomIdentifier("replica")
+    this.documentReplicaSequence = 0
+    this.documentReplicaSyncPending = false
     this.editorOpaque = iframe.contentDocument === null
     this.editorDocument = iframe.contentDocument
     this.syncDocumentPalette()
@@ -2177,7 +2189,7 @@ export class DomEditor extends LitElement {
       const observer = new FrameMutationObserver((mutations: MutationRecord[]) => {
         const treeChanged = mutations.some(mutation => mutation.type === "childList"
           || mutation.type === "attributes"
-            && ["class", "is", "id", "name", "usemap", "popovertarget", "interestfor", "popover"].includes(mutation.attributeName ?? "")
+            && documentTreeAttributeNames.has(mutation.attributeName ?? "")
             && isCurrentTarget(mutation.target)
             && this.isAuthoredMutation(mutation))
         if(treeChanged) {
@@ -2256,6 +2268,7 @@ export class DomEditor extends LitElement {
         type: initializeEditorMessage,
         syncUrl: this.syncUrl,
         bridgeNonce: this.bridgeNonce,
+        documentReplicaId: this.documentReplicaId,
         language: this.settings.language,
         username: this.username,
         disableAnimations: this.settings.disableAnimations,
@@ -2380,9 +2393,10 @@ export class DomEditor extends LitElement {
 
   /** Dirty tracking for a generated Canvas or Slides document ignores local
    * markers and native empty-block placeholders. */
-  private authoredDocumentSnapshot(cached = false) {
+  private authoredDocumentSnapshot(cached = false, source: Document | null = this.editorDocument) {
+    if(this.editorOpaque && source === this.editorDocument && this.documentReplica) return this.documentReplica.authoredSignature()
     if(cached && this.authoredSnapshotCache?.document === this.editorDocument) return this.authoredSnapshotCache.value
-    const root = this.editorDocument?.documentElement.cloneNode(true) as HTMLElement | undefined
+    const root = source?.documentElement.cloneNode(true) as HTMLElement | undefined
     if(!root) return null
     clearEditorArtifacts(root)
     for(const element of [root, ...root.querySelectorAll("*")]) {
@@ -2449,17 +2463,11 @@ export class DomEditor extends LitElement {
       }
       group.replaceWith(...group.childNodes)
     }
-    const placement: Record<string, string[]> = {
-      position: ["absolute", "static"], left: ["0px", "var(--ww-page-gutter, 1.25rem)"],
-      top: ["0px", "1.25rem", "calc(20% + 2.5rem)"],
-      width: ["320px", "calc(100% - 2 * var(--ww-page-gutter, 1.25rem))"],
-      height: ["20%", "calc(80% - 3.75rem)"],
-    }
     for(const child of body.children) {
       if(!child.matches("p, h1, h2, h3, h4, h5, h6")) return null
       const element = child as HTMLElement
       for(const property of Array.from({length: element.style.length}, (_, index) => element.style.item(index))) {
-        if(!placement[property]?.includes(element.style.getPropertyValue(property)) || element.style.getPropertyPriority(property)) return null
+        if(!emptyLayoutPlacementValues[property]?.includes(element.style.getPropertyValue(property)) || element.style.getPropertyPriority(property)) return null
       }
       element.removeAttribute("style")
     }
@@ -2477,6 +2485,10 @@ export class DomEditor extends LitElement {
       this.documentLayoutsDismissed = false
       return
     }
+    if(this.documentReplica) {
+      this.documentLayoutsDismissed = !this.documentReplica.isPristineLayout()
+      return
+    }
     const current = this.editorDocument?.body
     if(!current) return
     // Any authored text rules out an empty layout. Short-circuit before
@@ -2492,22 +2504,31 @@ export class DomEditor extends LitElement {
     this.documentLayoutsDismissed = this.pristineDocumentLayoutSnapshot(body.outerHTML) === null
   }
 
+  private async captureAuthoredDocumentSnapshot() {
+    if(!this.editorOpaque) return this.authoredDocumentSnapshot()
+    const response = await this.requestFrameControl("snapshot")
+    if(typeof response.html !== "string") throw new Error("The editor did not return its document")
+    const source = new DOMParser().parseFromString(response.html, "text/html")
+    restoreSnapshotTextNodeRuns(source.body, response.textNodeRuns)
+    return this.authoredDocumentSnapshot(false, source)
+  }
+
   private async retainFreshDocumentLayout(revision: number, initialSnapshot?: string | null) {
+    let convertedSnapshot: string | null | undefined
     if(this.editorOpaque) {
-      // Published snapshots are throttled; request the converted DOM before
-      // recording its initial state so a delayed snapshot stays clean.
+      // Layout conversion is explicit and rare. Its static snapshot is used
+      // only for this comparison; live host readers stay on the Yjs replica.
       const response = await this.requestFrameControl("snapshot")
       if(revision !== this.frameRevision) return
       if(typeof response.html !== "string") throw new Error("The editor did not return its document")
-      this.editorDocument = new DOMParser().parseFromString(response.html, "text/html")
-      this.syncDocumentPalette()
-      restoreSnapshotTextNodeRuns(this.editorDocument.body, response.textNodeRuns)
-      this.documentTree = this.buildDocumentTree()
+      const source = new DOMParser().parseFromString(response.html, "text/html")
+      restoreSnapshotTextNodeRuns(source.body, response.textNodeRuns)
+      convertedSnapshot = this.authoredDocumentSnapshot(false, source)
     }
     if(revision !== this.frameRevision || this.fileHandle !== null || this.backendDocumentId !== null) return
     if(initialSnapshot !== undefined) {
       const before = this.pristineDocumentLayoutSnapshot(initialSnapshot)
-      if(before === null || before !== this.pristineDocumentLayoutSnapshot(this.authoredDocumentSnapshot())) {
+      if(before === null || before !== this.pristineDocumentLayoutSnapshot(convertedSnapshot ?? this.authoredDocumentSnapshot())) {
         this.fileDirty = true
         return
       }
@@ -2518,11 +2539,12 @@ export class DomEditor extends LitElement {
 
   private isFreshDocumentUnchanged() {
     if(this.fileHandle !== null || this.backendDocumentId !== null) return false
+    if(this.documentReplica?.hasAuthoredText()) return false
     if(this.freshDocumentLayoutSnapshot !== null) return this.authoredDocumentSnapshot(this.editorOpaque) === this.freshDocumentLayoutSnapshot
-    const body = this.editorDocument?.body
-    const head = this.editorDocument?.head
+    const body = this.editorBody
+    const head = this.documentReplica?.head ?? this.editorDocument?.head
     if(!body || !head) return false
-    const hasAttributes = (element: Element, expected: Record<string, string> = {}) => {
+    const hasAttributes = (element: ReadableElement, expected: Record<string, string> = {}) => {
       const attributes = Object.fromEntries(Array.from(element.attributes).flatMap(attribute => {
         if(attribute.name === "class") {
           const value = authoredClassValue(attribute.value)
@@ -2535,36 +2557,36 @@ export class DomEditor extends LitElement {
         && Object.entries(expected).every(([name, value]) => attributes[name] === value)
     }
     // SharedDOMDoc assigns a persistent document identity during startup.
-    const root = this.editorDocument!.documentElement
+    const root = (this.documentReplica?.documentElement ?? this.editorDocument!.documentElement)
     const initialAttributes: Record<string, string> = {lang: this.settings.language}
     if(/^ww[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(root.id)) initialAttributes.id = root.id
     if(!hasAttributes(body) || !hasAttributes(head) || !hasAttributes(root, initialAttributes)) return false
 
     const authoredHeadNodes = Array.from(head.childNodes).filter(node => !(
       node.nodeType === Node.ELEMENT_NODE && (
-        (node as Element).classList.contains("◆editor-only")
-        || (node as Element).hasAttribute("data-webwriter-editor-only")
+        hasClass(node as ReadableElement, "◆editor-only")
+        || (node as ReadableElement).hasAttribute("data-webwriter-editor-only")
       )
     ))
     const generator = authoredHeadNodes[0]
     const theme = authoredHeadNodes[1]
     const headUnchanged = authoredHeadNodes.length === 2
       && generator?.nodeType === Node.ELEMENT_NODE
-      && (generator as Element).localName === "meta"
-      && (generator as Element).getAttribute("name")?.toLowerCase() === "generator"
-      && (generator as Element).getAttribute("content") === WEBWRITER_GENERATOR
-      && (generator as Element).attributes.length === 2
+      && (generator as ReadableElement).localName === "meta"
+      && (generator as ReadableElement).getAttribute("name")?.toLowerCase() === "generator"
+      && (generator as ReadableElement).getAttribute("content") === WEBWRITER_GENERATOR
+      && (generator as ReadableElement).attributes.length === 2
       && theme?.nodeType === Node.ELEMENT_NODE
-      && (theme as Element).localName === "style"
-      && (theme as Element).getAttribute("data-ww-theme") === defaultDocumentTheme.value
-      && (theme as Element).textContent === defaultDocumentTheme.source
-      && hasAttributes(theme as Element, {"data-ww-theme": defaultDocumentTheme.value, blocking: "render"})
+      && (theme as ReadableElement).localName === "style"
+      && (theme as ReadableElement).getAttribute("data-ww-theme") === defaultDocumentTheme.value
+      && (theme as ReadableElement).textContent === defaultDocumentTheme.source
+      && hasAttributes(theme as ReadableElement, {"data-ww-theme": defaultDocumentTheme.value, blocking: "render"})
     if(!headUnchanged) return false
 
     const authoredChildren = Array.from(body.childNodes).filter(node => {
       if(node.nodeType !== Node.ELEMENT_NODE) return true
-      const element = node as Element
-      return !element.classList.contains("◆editor-only")
+      const element = node as ReadableElement
+      return !hasClass(element, "◆editor-only")
         && !element.hasAttribute("data-webwriter-editor-only")
     })
     if(authoredChildren.length === 0) return true
@@ -2572,13 +2594,13 @@ export class DomEditor extends LitElement {
     const onlyChild = authoredChildren[0]
     return authoredChildren.length === 1
       && onlyChild?.nodeType === Node.ELEMENT_NODE
-      && (onlyChild as Element).localName === "p"
-      && hasAttributes(onlyChild as Element)
+      && (onlyChild as ReadableElement).localName === "p"
+      && hasAttributes(onlyChild as ReadableElement)
       // Native editing can leave empty text nodes and a placeholder line break.
-      && (onlyChild as Element).children.length <= 1
-      && Array.from(onlyChild.childNodes).every(node =>
+      && (onlyChild as ReadableElement).children.length <= 1
+      && Array.from((onlyChild as ReadableElement).childNodes).every(node =>
         node.nodeType === Node.TEXT_NODE && !node.textContent
-        || node.nodeType === Node.ELEMENT_NODE && (node as Element).localName === "br" && hasAttributes(node as Element)
+        || node.nodeType === Node.ELEMENT_NODE && (node as ReadableElement).localName === "br" && hasAttributes(node as ReadableElement)
       )
   }
 
@@ -2648,28 +2670,27 @@ export class DomEditor extends LitElement {
   /** Keeps the mark area open while the pointer starts another text selection
    * inside the current selection's containing element. A different editor
    * element, a gap, or an element selection still dismisses it. */
-  private editorTargetSharesTextSelection(target: EventTarget | null) {
+  private editorTargetSharesTextSelection(target: EventTarget | ReadableNode | null) {
     if(!this.canMark) return false
 
-    const editorDocument = this.editorDocument
-    const body = editorDocument?.body
-    const targetNode = target as Node | null
+    const body = this.editorBody
+    const targetNode = target as ReadableNode | null
     const selectedPath = this.selectionPath.at(-1)?.path
     if(!body || !selectedPath?.length || !targetNode || typeof targetNode.nodeType !== "number") return false
 
     const targetElement = targetNode.nodeType === Node.ELEMENT_NODE
-      ? targetNode as Element
+      ? targetNode as ReadableElement
       : targetNode.parentElement
-    if(!targetElement || targetElement === body || !body.contains(targetElement)) return false
+    if(!targetElement || targetElement === body || !containsElement(body, targetElement)) return false
 
-    let selectionElement: Element | null = body
+    let selectionElement: ReadableElement | null = body
     for(const index of selectedPath) {
-      const child = selectionElement.childNodes.item(index)
+      const child = selectionElement.childNodes[index]
       if(!child || child.nodeType !== Node.ELEMENT_NODE) return false
-      selectionElement = child as Element
+      selectionElement = child as ReadableElement
     }
     while(selectionElement && selectionElement !== body) {
-      if(selectionElement.contains(targetElement)) return true
+      if(containsElement(selectionElement, targetElement)) return true
       selectionElement = selectionElement.parentElement
     }
     return false
@@ -3858,7 +3879,11 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument = null
-    this.frameSnapshot = null
+    this.documentReplica?.destroy()
+    this.documentReplica = null
+    this.documentReplicaId = ""
+    this.documentReplicaSequence = 0
+    this.documentReplicaSyncPending = false
     this.authoredSnapshotCache = null
     this.editorWindow = null
     this.packageLoadPromise = null
@@ -4229,7 +4254,8 @@ export class DomEditor extends LitElement {
 
   private async applyDefaultLayout(mode: DocumentLayoutMode, revision: number) {
     if(mode === "document" || revision !== this.frameRevision) return
-    const initialSnapshot = this.authoredDocumentSnapshot()
+    const initialSnapshot = await this.captureAuthoredDocumentSnapshot()
+    if(revision !== this.frameRevision) return
     this.documentLayoutConversionCount++
     try {
       const changed = await this.execute({type: "setDocumentLayout", mode, expectedMode: "document"})
@@ -5896,7 +5922,11 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument = null
-    this.frameSnapshot = null
+    this.documentReplica?.destroy()
+    this.documentReplica = null
+    this.documentReplicaId = ""
+    this.documentReplicaSequence = 0
+    this.documentReplicaSyncPending = false
     this.authoredSnapshotCache = null
     this.editorWindow = null
     this.packageLoadPromise = null
@@ -5954,7 +5984,11 @@ export class DomEditor extends LitElement {
     this.editorDocument?.removeEventListener("wheel", this.dismissFloatInfo, true)
     this.clearMotionStylesheet()
     this.editorDocument = null
-    this.frameSnapshot = null
+    this.documentReplica?.destroy()
+    this.documentReplica = null
+    this.documentReplicaId = ""
+    this.documentReplicaSequence = 0
+    this.documentReplicaSyncPending = false
     this.authoredSnapshotCache = null
     this.editorWindow = null
     this.packageLoadPromise = null
@@ -6966,11 +7000,16 @@ export class DomEditor extends LitElement {
     if((mode !== "canvas" && mode !== "document" && mode !== "slides" && mode !== "board") || mode === this.documentLayout.mode) return
     const currentMode = this.documentLayout.mode as DocumentLayoutMode
     const fresh = this.isFreshDocumentUnchanged()
-    const initialSnapshot = fresh ? this.authoredDocumentSnapshot() : null
+    let initialSnapshot = fresh ? this.authoredDocumentSnapshot() : null
     const revision = this.frameRevision
     this.documentLayoutError = ""
     this.documentLayoutConversionCount++
-    void this.execute({type: "setDocumentLayout", mode, expectedMode: currentMode}).then(async changed => {
+    const convert = async () => {
+      if(fresh && this.editorOpaque) initialSnapshot = await this.captureAuthoredDocumentSnapshot()
+      if(revision !== this.frameRevision) return false
+      return await this.execute({type: "setDocumentLayout", mode, expectedMode: currentMode})
+    }
+    void convert().then(async changed => {
       if(revision !== this.frameRevision) return
       if(changed === false) {
         this.documentLayoutError = "The document layout changed before conversion could be applied. Try again."
@@ -7455,12 +7494,12 @@ export class DomEditor extends LitElement {
   }
 
   private buildDocumentTree() {
-    const body = this.editorDocument?.body
+    const body = this.documentReplica?.body ?? this.editorDocument?.body
     if(!body) return null
     const root = getDocumentRoot(body)
     const packageItems = packageInsertionItems(this.installedPackages, true)
 
-    const sectionItem = (element: Element, path: number[]): SelectionPathSection => ({
+    const sectionItem = (element: ReadableElement, path: number[]): SelectionPathSection => ({
       path: [...path],
       type: element.localName as SectionName,
       name: getSectionOption(element.localName as SectionName).label,
@@ -7472,39 +7511,39 @@ export class DomEditor extends LitElement {
       const added = sections.filter(section => !paths.has(section.path.join(".")))
       if(added.length) item.sections = [...existing, ...added]
     }
-    const building = new Set<Element>()
-    const build = (element: Element, path: number[], sections: SelectionPathSection[] = []): DocumentTreeItem => {
+    const building = new Set<ReadableElement>()
+    const build = (element: ReadableElement, path: number[], sections: SelectionPathSection[] = []): DocumentTreeItem => {
       const item: DocumentTreeItem = {
         path: [...path],
         ...getElementPresentation(element, packageItems),
         ...(sections.length ? {sections: sections.map(section => ({...section, path: [...section.path]}))} : {}),
         children: [],
       }
-      if(element.matches("table, math, svg") || building.has(element)) return item
+      if(["table", "math", "svg"].includes(element.localName) || building.has(element)) return item
       building.add(element)
       for(const popup of imageMapPopups(element)) {
-        const popupPath = pathFromNode(body, popup)
+        const popupPath = readableNodePath(body, popup)
         if(popupPath) item.children.push(build(popup, popupPath))
       }
 
-      const appendChildren = (container: Element, containerPath: number[], inherited: SelectionPathSection[],
-        destination: DocumentTreeItem[] = item.children, popupItem?: DocumentTreeItem, popupToggle?: Element) => {
+      const appendChildren = (container: ReadableElement, containerPath: number[], inherited: SelectionPathSection[],
+        destination: DocumentTreeItem[] = item.children, popupItem?: DocumentTreeItem, popupToggle?: ReadableElement) => {
         Array.from(container.childNodes).forEach((child, index) => {
           if(child.nodeType !== Node.ELEMENT_NODE) return
-          const childElement = child as Element
+          const childElement = child as ReadableElement
           const slideRole = slideLayoutRole(childElement)
-          if(slideRole === "navigation" || isCanvasStartingView(childElement)) return
-          if(childElement.matches("source, caption, figcaption, details > summary")
+          if(slideRole === "navigation" || (childElement.localName === "div" && hasClass(childElement, "ww-canvas-starting-view") && !childElement.hasAttribute("is") && childElement.parentElement === body)) return
+          if((["source", "caption", "figcaption"].includes(childElement.localName) || childElement.localName === "summary" && childElement.parentElement?.localName === "details")
             || childElement.localName === "math" && childElement.getAttribute("display") !== "block"
-            || childElement.matches("img") && childElement.closest("picture")
-            || isLineBreakElement(childElement)) return
+            || childElement.localName === "img" && closestElement(childElement, node => node.localName === "picture")
+            || isLineBreakElement(childElement.localName)) return
           const childPath = [...containerPath, index]
           if(imageMapPopupImage(childElement)) return
-          if(childElement.matches("map:not([is])")) {
+          if(childElement.localName === "map" && !childElement.hasAttribute("is")) {
             appendChildren(childElement, childPath, inherited, destination)
             return
           }
-          if(childElement.matches("map area:not([is])")) return
+          if(childElement.localName === "area" && !childElement.hasAttribute("is") && closestElement(childElement.parentElement, node => node.localName === "map")) return
           if(popupToggle && childElement === popupToggle) return
           if(popupElementRole(childElement) === "content" && popupDisplayToggle(childElement)
             && !popupItem) return
@@ -7516,14 +7555,14 @@ export class DomEditor extends LitElement {
           if(popupElementRole(childElement) === "popup") {
             const toggle = popupDisplayToggle(childElement)
             if(toggle) {
-              const togglePath = pathFromNode(body, toggle)
+              const togglePath = readableNodePath(body, toggle)
               if(!togglePath) return
               const toggleItem = build(toggle, togglePath, inherited)
               destination.push(toggleItem)
               appendChildren(childElement, childPath, inherited, destination, toggleItem, toggle)
               const content = popupContentForToggle(toggle)
-              if(content && !childElement.contains(content)) {
-                const contentPath = pathFromNode(body, content)
+              if(content && !containsElement(childElement, content)) {
+                const contentPath = readableNodePath(body, content)
                 if(contentPath) toggleItem.children.push(build(content, contentPath, inherited))
               }
               return
@@ -7562,7 +7601,7 @@ export class DomEditor extends LitElement {
 
     const rootPath = root === body
       ? []
-      : [Array.from(body.childNodes).indexOf(root as ChildNode)]
+      : [Array.from(body.childNodes).indexOf(root)]
     return build(root, rootPath)
   }
 
@@ -7576,6 +7615,7 @@ export class DomEditor extends LitElement {
     const testOriginFallback = globalThis.navigator?.userAgent.includes("HappyDOM") && !event.origin
     return sourceMatches
       && event.data?.bridgeNonce === this.bridgeNonce
+      && (event.data.documentReplicaId === undefined || event.data.documentReplicaId === this.documentReplicaId)
       && (event.origin === window.location.origin || event.origin === editorFrameOrigin() || testOriginFallback)
   }
 
@@ -7651,9 +7691,14 @@ export class DomEditor extends LitElement {
 
   /** Project authored palette variables into the editor UI's shadow trees. */
   private syncDocumentPalette() {
-    const doc = this.editorDocument
-    const style = doc?.documentElement.style
-    const bodyStyle = doc?.body?.style
+    const readStyle = (element: ReadableElement | null | undefined) => {
+      if(!element) return undefined
+      const style = document.createElement("span").style
+      style.cssText = element.getAttribute("style") ?? ""
+      return style
+    }
+    const style = this.documentReplica ? readStyle(this.documentReplica.documentElement) : this.editorDocument?.documentElement.style
+    const bodyStyle = this.documentReplica ? readStyle(this.documentReplica.body) : this.editorDocument?.body?.style
     const styles = Object.fromEntries(documentThemeProperties.flatMap(name => {
       const source = bodyStyle?.getPropertyValue(name) ? bodyStyle : style
       const value = source?.getPropertyValue(name).trim()
@@ -7897,12 +7942,18 @@ export class DomEditor extends LitElement {
           this.editorShellRevision = this.frameRevision
           let html = this.editorSrcdoc
           if(restartedShell) {
-            const latestDocument = this.snapshotEditorDocumentHTML()
-            if(latestDocument !== null) {
-              this.frameDocumentHTML = latestDocument
-              html = this.editorSrcdoc
+            const replica = this.documentReplica
+            const state: EditorStateSnapshot | undefined = replica ? {
+              update: Array.from(Y.encodeStateAsUpdate(replica.doc)),
+              widgetDataDocumentId: replica.widgetDataDocumentId,
+            } : undefined
+            if(!state) {
+              const latestDocument = this.snapshotEditorDocumentHTML()
+              if(latestDocument !== null) this.frameDocumentHTML = latestDocument
             }
             this.resetEditorFrameForShellRestart()
+            this.frameState = state
+            html = this.editorSrcdoc
           }
           frame.contentWindow?.postMessage({type: "webwriter-frame-document", html}, editorFrameOrigin())
           return
@@ -7946,21 +7997,59 @@ export class DomEditor extends LitElement {
       return
     }
     if(this.handlePreviewMessage(event)) return
-    if(event.data?.type === "editor-frame-snapshot") {
-      if(!this.editorOpaque || !this.isEditorMessage(event) || typeof event.data.html !== "string") return
-      const textNodeRunsKey = JSON.stringify(event.data.textNodeRuns ?? [])
-      if(this.frameSnapshot?.document === this.editorDocument && this.frameSnapshot.html === event.data.html
-        && this.frameSnapshot.textNodeRunsKey === textNodeRunsKey) return
-      // Current frames filter editor artifacts before publishing. Older frames
-      // still need the canonical comparison for marker-only snapshots.
-      const authoredChange = typeof event.data.treeChanged === "boolean"
-      const before = authoredChange ? null : this.authoredDocumentSnapshot(true)
-      this.editorDocument = new DOMParser().parseFromString(event.data.html, "text/html")
-      this.syncDocumentPalette()
-      restoreSnapshotTextNodeRuns(this.editorDocument.body, event.data.textNodeRuns)
-      this.frameSnapshot = {document: this.editorDocument, html: event.data.html, textNodeRunsKey}
-      if(event.data.treeChanged !== false || !this.documentTree) this.documentTree = this.buildDocumentTree()
-      if(authoredChange || before !== null && before !== this.authoredDocumentSnapshot(true)) {
+    if(event.data?.type === "editor-frame-update") {
+      if(!this.editorOpaque || !this.isEditorMessage(event) || !isEditorDocumentUpdate(event.data)
+        || event.data.replicaId !== this.documentReplicaId || event.data.sequence <= this.documentReplicaSequence) return
+      const message = event.data
+      if(!message.reset && (this.documentReplicaSyncPending || !this.documentReplica || message.sequence !== this.documentReplicaSequence + 1)) {
+        if(!this.documentReplicaSyncPending) this.postFrameControl("sync-document")
+        this.documentReplicaSyncPending = true
+        return
+      }
+      let treeChanged = message.reset
+      let paletteChanged = message.reset
+      let contentChanged = message.reset && this.documentReplica !== null
+      try {
+        if(message.reset) {
+          const replica = new EditorDocumentReplica(message)
+          this.documentReplica?.destroy()
+          this.documentReplica = replica
+        }
+        else {
+          const observe = (transaction: Y.Transaction) => {
+            for(const [type, keys] of transaction.changed) {
+              if(type instanceof Y.Map) {
+                if(type === this.documentReplica!.doc.getMap("domeditor") && keys.has("document")) {
+                  contentChanged = treeChanged = paletteChanged = true
+                }
+                if(keys.has("language")) contentChanged = true
+                continue
+              }
+              // lastChange and other collaboration bookkeeping are not authored content.
+              if(!(type instanceof Y.XmlElement || type instanceof Y.XmlText)) continue
+              contentChanged = true
+              if(keys.has(null) && type instanceof Y.XmlElement || [...keys].some(key => key !== null
+                && (documentTreeAttributeNames.has(decodeSharedDOMAttribute(key)?.name ?? key)
+                  || [INTERNAL_NAMESPACE, INTERNAL_NODE_KIND, INTERNAL_QUALIFIED_NAME].includes(key)))) treeChanged = true
+              if(type instanceof Y.XmlElement && keys.has("style")
+                && (type.nodeName === "body" || type.nodeName === "html" || type.nodeName === "document-attributes")) paletteChanged = true
+            }
+          }
+          this.documentReplica!.doc.on("afterTransaction", observe)
+          try { this.documentReplica!.apply(message.update) }
+          finally { this.documentReplica!.doc.off("afterTransaction", observe) }
+        }
+        this.documentReplicaSequence = message.sequence
+        this.documentReplicaSyncPending = false
+      }
+      catch {
+        if(!this.documentReplicaSyncPending) this.postFrameControl("sync-document")
+        this.documentReplicaSyncPending = true
+        return
+      }
+      if(paletteChanged) this.syncDocumentPalette()
+      if(treeChanged || !this.documentTree) this.documentTree = this.buildDocumentTree()
+      if(contentChanged) {
         this.dismissGuidedTour()
         this.documentChangeSequence++
         this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
@@ -7995,7 +8084,7 @@ export class DomEditor extends LitElement {
       this.dismissEditorMenus()
       const path = event.data.targetPath
       const target = Array.isArray(path) && path.every((index: unknown) => Number.isInteger(index) && (index as number) >= 0)
-        ? path.reduce((node: Node | null, index: number) => node?.childNodes.item(index) ?? null, this.editorDocument?.body ?? null)
+        ? path.reduce((node: ReadableNode | null, index: number) => node?.nodeType === 1 ? (node as ReadableElement).childNodes[index] ?? null : null, this.editorBody)
         : null
       if(!this.editorTargetSharesTextSelection(target)) ribbon?.dismissDrawers()
       return
@@ -8541,7 +8630,11 @@ export class DomEditor extends LitElement {
     iframe?.removeEventListener("focus", this.handleEditorFrameFocus)
     iframe?.removeEventListener("blur", this.handleEditorFrameBlur)
     this.editorDocument = null
-    this.frameSnapshot = null
+    this.documentReplica?.destroy()
+    this.documentReplica = null
+    this.documentReplicaId = ""
+    this.documentReplicaSequence = 0
+    this.documentReplicaSyncPending = false
     this.authoredSnapshotCache = null
     this.editorWindow = null
     this.savedEditorSelection = null

@@ -1,62 +1,10 @@
 import { DOMEditor } from "./domeditor"
 import {openFrameLinksInNewTabs} from "./frame-links"
+import {publishEditorDocument} from "./editor-document-sync"
 import {captureSnapshotTextNodeRuns, editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag, replayHostPointer} from "./editor-bridge"
 import {builtinShortcuts, commandForShortcutEvent, shortcutFromEvent} from "./app-settings"
 import {isAppendixInteraction, isTextFieldInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
-import {isAuthoredMutation} from "./editor-artifacts"
 import {serializeDoctype} from "./serialization-primitives"
-
-/** Shortest time between two document snapshots posted to the host. */
-const snapshotInterval = 250
-
-const mutationOptions: MutationObserverInit = {attributes: true, attributeOldValue: true, characterData: true,
-  characterDataOldValue: true, childList: true, subtree: true}
-
-/** Observes the document and all nested inert template contents. */
-export function observeFrameDocument(document: Document, callback: MutationCallback) {
-  const Observer = document.defaultView?.MutationObserver ?? MutationObserver
-  let templateContents: Set<DocumentFragment> | null = null
-  const observer = new Observer((mutations, currentObserver) => {
-    callback(mutations, currentObserver)
-    if(mutations.some(mutation => mutation.type === "childList")) observe()
-  })
-  const findTemplateContents = () => {
-    const contents: DocumentFragment[] = []
-    const roots: ParentNode[] = [document.documentElement]
-    for(let index = 0; index < roots.length; index++) {
-      roots[index].querySelectorAll("template").forEach(element => {
-        const content = (element as HTMLTemplateElement).content
-        if(!content || content.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return
-        contents.push(content)
-        roots.push(content)
-      })
-    }
-    return contents
-  }
-  const flushPending = () => {
-    let records = observer.takeRecords()
-    while(records.length) {
-      callback(records, observer)
-      records = observer.takeRecords()
-    }
-  }
-  const observe = () => {
-    flushPending()
-    const contents = findTemplateContents()
-    const observed = templateContents
-    if(observed && contents.length === observed.size && contents.every(content => observed.has(content))) return
-    observer.disconnect()
-    observer.observe(document.documentElement, mutationOptions)
-    contents.forEach(content => observer.observe(content, mutationOptions))
-    templateContents = new Set(contents)
-  }
-  observe()
-  return () => {
-    flushPending()
-    observer.disconnect()
-    templateContents = null
-  }
-}
 
 /** Whether a frame-level shortcut belongs to the editor document. */
 export function shouldCaptureFrameShortcut(event: KeyboardEvent, action?: string) {
@@ -75,6 +23,7 @@ type SelectionBookmark = {
 /** Host-only frame operations. The document stays in this cross-origin realm. */
 const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings: {
   username?: string
+  documentReplicaId?: string
   disableAnimations?: boolean
   shortcuts?: Record<string, string>
 }) => {
@@ -91,7 +40,10 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   }
   let motionSheet: CSSStyleSheet | null = null
   let shortcuts = settings.shortcuts ?? {}
-  const post = (message: object) => window.parent.postMessage({...message, bridgeNonce: nonce}, origin)
+  const post = (message: object) => {
+    editor.doc.flushDOMChanges()
+    window.parent.postMessage({...message, documentReplicaId: settings.documentReplicaId, bridgeNonce: nonce}, origin)
+  }
   const snapshot = () => `${serializeDoctype(document.doctype)}${document.documentElement.outerHTML}`
   const setMotion = (disabled: boolean) => {
     if(motionSheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== motionSheet)
@@ -104,34 +56,8 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   const setUsername = (name: string) => editor.doc?.setUser({name: name.trim() || `User ${editor.doc.doc.clientID.toString(36).toUpperCase()}`})
   if(settings.username !== undefined) setUsername(settings.username)
   setMotion(settings.disableAnimations === true)
-  // Serializing the document here and parsing it in the host costs time in
-  // proportion to its size. Post the first change at once, then at most one
-  // snapshot per interval while changes continue.
-  let pending = false
-  let pendingTreeChanged = true
-  let timer: ReturnType<typeof setTimeout> | null = null
-  const flushSnapshot = () => {
-    timer = null
-    if(!pending) return
-    pending = false
-    const treeChanged = pendingTreeChanged
-    pendingTreeChanged = false
-    post({type: "editor-frame-snapshot", html: snapshot(), textNodeRuns: captureSnapshotTextNodeRuns(document.body), treeChanged})
-    timer = setTimeout(flushSnapshot, snapshotInterval)
-  }
-  const publishSnapshot = (mutations?: MutationRecord[]) => {
-    if(mutations) {
-      const authoredMutations = mutations.filter(isAuthoredMutation)
-      if(authoredMutations.length === 0) return
-      pendingTreeChanged ||= authoredMutations.some(mutation => mutation.type === "childList" || mutation.type === "attributes")
-    }
-    if(pending) return
-    pending = true
-    if(timer === null) queueMicrotask(flushSnapshot)
-  }
-  const stopObserving = observeFrameDocument(document, publishSnapshot)
-  window.addEventListener("unload", stopObserving, {once: true})
-  publishSnapshot()
+  const documentSync = publishEditorDocument(editor.doc, settings.documentReplicaId ?? nonce, message => window.parent.postMessage({...message, documentReplicaId: settings.documentReplicaId, bridgeNonce: nonce}, origin))
+  window.addEventListener("unload", () => documentSync.destroy(), {once: true})
   // Run before feature capture listeners can claim canvas/slide gestures.
   window.addEventListener("pointerdown", event => {
     const target = event.target as Node | null
@@ -165,7 +91,16 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
       || event.data?.type !== editorFrameControlMessage) return
     const data = event.data as {command?: string, requestId?: string, disabled?: boolean, restoreSelection?: boolean, locked?: boolean,
       shortcuts?: Record<string, string>, tags?: string[], username?: string}
-    if(data.command === "snapshot") {
+    if(data.command === "sync-document") {
+      documentSync.reset()
+      if(data.requestId) post({type: "editor-frame-response", requestId: data.requestId})
+    }
+    else if(data.command === "flush-document") {
+      documentSync.flush()
+      if(data.requestId) post({type: "editor-frame-response", requestId: data.requestId})
+    }
+    else if(data.command === "snapshot") {
+      documentSync.flush()
       post({type: "editor-frame-response", requestId: data.requestId, html: snapshot(), textNodeRuns: captureSnapshotTextNodeRuns(document.body)})
     }
     else if(data.command === "disconnect-collaboration") editor.doc?.disconnectCollaboration()
@@ -231,6 +166,7 @@ const initialize = (event: MessageEvent) => {
   const editor = new DOMEditor({
     syncUrl: event.data.syncUrl,
     bridgeNonce: event.data.bridgeNonce,
+    documentReplicaId: event.data.documentReplicaId,
     bridgeOrigin: event.origin && event.origin !== "null" ? event.origin : window.location.origin,
     initialState: event.data.initialState,
     accessibilityReviewEnabled: event.data.accessibilityReviewEnabled === true,

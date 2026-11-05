@@ -10,16 +10,13 @@ import {WidgetDataBindings, stampUndo, widgetDataHistoryTime, widgetDataHistoryG
 import {authoredDetailsOpen, clearTemporaryDetailsState, isHTMLDetailsElement, markTemporaryDetailsState,
   temporaryDetailsClosedMarker, temporaryDetailsOpenMarker} from "./editor-artifacts"
 
-const INTERNAL_NODE_KIND = "__domeditor_node_kind"
-const INTERNAL_NAMESPACE = "__domeditor_namespace"
-const INTERNAL_QUALIFIED_NAME = "__domeditor_qualified_name"
-const INTERNAL_MINIMUM_REPAIR = "__domeditor_minimum_repair"
-const INTERNAL_USER_ATTRIBUTE_PREFIX = "__domeditor_user_attribute__"
-const INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX = "__domeditor_namespaced_attribute__"
-const COMMENT_NODE_NAME = "domeditor-comment"
-const COMMENT_NODE_KIND = "comment"
-const PROCESSING_INSTRUCTION_NODE_KIND = "processing-instruction"
-const PROCESSING_INSTRUCTION_TARGET = "__domeditor_processing_instruction_target"
+import {
+  INTERNAL_NODE_KIND, INTERNAL_NAMESPACE, INTERNAL_QUALIFIED_NAME, INTERNAL_MINIMUM_REPAIR,
+  INTERNAL_USER_ATTRIBUTE_PREFIX, INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX, COMMENT_NODE_NAME,
+  COMMENT_NODE_KIND, PROCESSING_INSTRUCTION_NODE_KIND, PROCESSING_INSTRUCTION_TARGET,
+  decodeSharedDOMAttribute,
+} from "./domdoc-codec"
+
 const INITIALIZED_KEY = "initialized"
 const HEAD_INITIALIZED_KEY = "head-initialized"
 const LANGUAGE_INITIALIZED_KEY = "language-initialized"
@@ -201,6 +198,9 @@ export class SharedDOMDoc {
   #wasObservingBeforePause = false
   #hasQueuedYChanges = false
   #activeDOMPreview: DOMChangePreview | null = null
+  #renderedDoc: Y.Doc | null = null
+  #renderedDocBinding: SharedDOMDoc | null = null
+  readonly #renderedDocObservers = new Set<(doc: Y.Doc) => void>()
   #observedTemplates = new Set<DocumentFragment>()
   #awaitingInitialSync = false
   #undoGroupDepth = 0
@@ -1090,6 +1090,13 @@ export class SharedDOMDoc {
     }
   }
 
+  /** The displayed tree can temporarily be a private review branch. */
+  observeRenderedDoc(listener: (doc: Y.Doc) => void) {
+    this.#renderedDocObservers.add(listener)
+    listener(this.#renderedDoc ?? this.doc)
+    return () => { this.#renderedDocObservers.delete(listener) }
+  }
+
   /** Renders a private CRDT branch into the authored DOM. Remote updates keep
    * accumulating in the source document and are merged with the branch only
    * if the caller accepts it. */
@@ -1128,8 +1135,11 @@ export class SharedDOMDoc {
       active = false
       previewDoc.destroy()
       this.#activeDOMPreview = null
+      this.#renderedDocBinding = null
       this.resumeDOMSync()
       if(!wasObserving) this.stopObserve()
+      this.#renderedDoc = null
+      this.#renderedDocObservers.forEach(listener => listener(this.doc))
       return true
     }
     const preview: DOMChangePreview = {
@@ -1151,6 +1161,9 @@ export class SharedDOMDoc {
       reject: finish,
     }
     this.#activeDOMPreview = preview
+    this.#renderedDoc = previewDoc.doc
+    this.#renderedDocBinding = previewDoc
+    this.#renderedDocObservers.forEach(listener => listener(previewDoc.doc))
     return preview
   }
 
@@ -1307,6 +1320,7 @@ export class SharedDOMDoc {
 
   destroy() {
     this.#activeDOMPreview?.reject()
+    this.#renderedDocObservers.clear()
     this.#unobserveDataHistory()
     this.#unobserveDataHistoryState()
     this.#historyStateObservers.clear()
@@ -1340,6 +1354,12 @@ export class SharedDOMDoc {
     if(!this.#isObserving || this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync) return
     const pending = this.#observer.takeRecords()
     if(pending.some(record => this.#isRelevantMutation(record))) this.syncFromDOM(this.#domOrigin, pending)
+  }
+
+  /** Flush only queued native mutations before a message references the DOM. */
+  flushDOMChanges() {
+    if(this.#renderedDocBinding) this.#renderedDocBinding.flushDOMChanges()
+    else this.#commitPendingDOMChanges()
   }
 
   /** Fallback for transactions started elsewhere: joining keeps concurrent
@@ -1790,7 +1810,7 @@ export class SharedDOMDoc {
     const classNames = Array.from(new Set([...sharedClassNames, ...internalClassNames]))
 
     const decodedAttributes = Object.entries(shared).flatMap(([name, value]) => {
-      const attribute = this.#decodeYAttribute(name)
+      const attribute = decodeSharedDOMAttribute(name)
       return attribute && !excluded.includes(attribute.name) && !(preserveTemporaryOpen && attribute.name === "open")
         ? [{...attribute, value: String(value)}] : []
     })
@@ -1835,31 +1855,6 @@ export class SharedDOMDoc {
     return attribute.name
   }
 
-  #decodeYAttribute(name: string): DOMAttribute | null {
-    if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === INTERNAL_QUALIFIED_NAME || name === INTERNAL_MINIMUM_REPAIR || name === "class") return null
-    if(name.startsWith(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX)) {
-      try {
-        const value = JSON.parse(decodeURIComponent(name.slice(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX.length)))
-        if(Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "string") {
-          return {namespaceURI: value[0], name: value[1]}
-        }
-      }
-      catch {
-        // Ignore malformed internal metadata from an untrusted remote update.
-      }
-      return null
-    }
-    if(name.startsWith(INTERNAL_USER_ATTRIBUTE_PREFIX)) {
-      try {
-        const decoded = decodeURIComponent(name.slice(INTERNAL_USER_ATTRIBUTE_PREFIX.length))
-        return {namespaceURI: null, name: decoded}
-      }
-      catch {
-        return null
-      }
-    }
-    return {namespaceURI: null, name}
-  }
 
   #reconcileYText(domText: Text, yText: Y.XmlText) {
     if(domText.parentNode && this.widgetData.isBlock(domText.parentNode)) return

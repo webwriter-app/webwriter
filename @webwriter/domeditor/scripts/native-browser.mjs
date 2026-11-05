@@ -471,7 +471,7 @@ try {
     : widgetStorageMode ? checks.length === 15 && result.samples?.length === 72 && result.paced?.length === 1
     : widgetStateMode ? checks.length === 1 && checks[0].name === "widget state benchmark"
     && checks[0].samples?.length === (widgetStateDiagnostics ? 30 : 180) && result.paced?.length === (widgetStateDiagnostics ? 0 : 27)
-    : performanceMode ? checks.length === 5 && ["hover float candidates", "local and remote reconciliation", "frame snapshot processing", "unchanged widget data", "catalog rendering and Lit settling"].every(name => checks.some(check => check?.name === name))
+    : performanceMode ? checks.length === 5 && ["hover float candidates", "local and remote reconciliation", "frame replica updates", "unchanged widget data", "catalog rendering and Lit settling"].every(name => checks.some(check => check?.name === name))
     : importMapMode ? checks.length === expectedImportMapChecks.length && expectedImportMapChecks.every(name => checks.some(check => check?.name === name))
     : mathVisual ? checks.length >= 4640 && new Set(checks.map(check => check.name)).size === checks.length
     : smoke ? checks.length === expectedSmokeChecks.length && expectedSmokeChecks.every(name => checks.some(check => check?.name === name))

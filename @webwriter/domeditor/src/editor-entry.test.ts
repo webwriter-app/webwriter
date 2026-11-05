@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {editorFrameControlMessage, initializeEditorMessage} from "./editor-bridge"
-import {observeFrameDocument, shouldCaptureFrameShortcut} from "./editor-entry"
+import {EditorDocumentReplica, isEditorDocumentUpdate, publishEditorDocument, type EditorDocumentUpdate} from "./editor-document-sync"
+import {SharedDOMDoc} from "./domdoc"
+import {shouldCaptureFrameShortcut} from "./editor-entry"
 
-const {providerDisconnect} = vi.hoisted(() => ({providerDisconnect: vi.fn()}))
+const {providerDisconnect, sharedDocs, replicas} = vi.hoisted(() => ({providerDisconnect: vi.fn(), sharedDocs: [] as any[], replicas: [] as any[]}))
 const {graphicInputState} = vi.hoisted(() => ({graphicInputState: {
   graphic: {textEditingRange: null as Range | null, focusTextInput: vi.fn()},
   media: {isPlaceholderInteraction: false},
@@ -15,7 +17,11 @@ vi.mock("./domeditor", () => ({
     lockEditing(owner: unknown) { this.editingLocks.add(owner) }
     unlockEditing(owner: unknown) { this.editingLocks.delete(owner) }
     hasEditingLock(owner: unknown) { return this.editingLocks.has(owner) }
-    doc = {disconnectCollaboration: providerDisconnect}
+    doc = new SharedDOMDoc(undefined, undefined, ["contenteditable"], ["◆"], {root: document.body})
+    constructor() {
+      sharedDocs.push(this.doc)
+      vi.spyOn(this.doc, "disconnectCollaboration").mockImplementation(providerDisconnect)
+    }
     features = {
       graphic: graphicInputState.graphic,
       media: graphicInputState.media,
@@ -33,63 +39,90 @@ const flushMutations = async() => {
 }
 
 afterEach(() => {
+  for(const replica of replicas.splice(0)) replica.destroy()
+  for(const doc of sharedDocs.splice(0)) doc.destroy()
   document.body.replaceChildren()
   document.body.removeAttribute("contenteditable")
   if(document.doctype) document.replaceChild(document.implementation.createDocumentType("html", "", ""), document.doctype)
   vi.restoreAllMocks()
 })
 
-describe("frame document snapshots", () => {
-  it("publishes direct template edits and rebinds nested and removed template contents", async() => {
+describe("frame document updates", () => {
+  const connectReplica = () => {
+    const shared = new SharedDOMDoc(undefined, undefined, ["contenteditable"], ["◆"], {root: document.body, connect: false})
+    sharedDocs.push(shared)
+    const updates: EditorDocumentUpdate[] = []
+    let replica: EditorDocumentReplica | null = null
+    const publication = publishEditorDocument(shared, "template-test-replica", message => {
+      updates.push(message)
+      if(message.reset) {
+        replica?.destroy()
+        replica = new EditorDocumentReplica(message)
+        replicas.push(replica)
+      }
+      else replica?.apply(message.update)
+    })
+    return {shared, updates, publication, replica: () => replica}
+  }
+
+  it("publishes nested template edits and stops syncing a removed template", async() => {
     document.body.innerHTML = "<p>Document</p>"
-    const snapshots: string[] = []
-    const disconnect = observeFrameDocument(document, () => snapshots.push(document.documentElement.outerHTML))
+    const {shared, updates, publication, replica} = connectReplica()
     const template = document.createElement("template")
     document.body.append(template)
     await flushMutations()
+    shared.flushDOMChanges()
 
     template.content.append(document.createTextNode("Direct template edit"))
     await flushMutations()
-    expect(snapshots.at(-1)).toContain("Direct template edit")
+    shared.flushDOMChanges()
+    const directEditCount = updates.length
+    expect(directEditCount).toBeGreaterThan(1)
+    expect(updates.at(-1)?.update.byteLength).toBeGreaterThan(0)
 
     const nested = document.createElement("template")
     template.content.append(nested)
     await flushMutations()
+    shared.flushDOMChanges()
     nested.content.append(document.createElement("b"))
     nested.content.firstElementChild!.textContent = "Nested template edit"
     await flushMutations()
-    expect(snapshots.at(-1)).toContain("Nested template edit")
+    shared.flushDOMChanges()
+    expect(updates.length).toBeGreaterThan(directEditCount)
+    expect(updates.at(-1)?.update.byteLength).toBeGreaterThan(0)
 
-    const beforeRemoval = snapshots.length
+    const beforeRemoval = updates.length
     document.body.removeChild(template)
     await flushMutations()
-    const afterRemoval = snapshots.length
+    shared.flushDOMChanges()
+    const afterRemoval = updates.length
     expect(afterRemoval).toBeGreaterThan(beforeRemoval)
     template.content.append(document.createTextNode("Detached edit"))
     await flushMutations()
-    expect(snapshots).toHaveLength(afterRemoval)
-    disconnect()
+    shared.flushDOMChanges()
+    expect(updates).toHaveLength(afterRemoval)
+    expect(Array.from(replica()?.body?.children ?? [], child => child.localName)).toEqual(["p"])
+    publication.destroy()
   })
 
-  it("ignores foreign SVG template elements and delivers queued records before rebinding", async() => {
+  it("publishes foreign SVG template attribute changes as regular node updates", async() => {
     document.body.innerHTML = ""
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
-    svg.append(document.createElementNS("http://www.w3.org/2000/svg", "template"))
+    const template = document.createElementNS("http://www.w3.org/2000/svg", "template")
+    svg.append(template)
     document.body.append(svg)
-    let callbacks = 0
-    let mutatedDuringCallback = false
-    const disconnect = observeFrameDocument(document, () => {
-      callbacks++
-      if(!mutatedDuringCallback) {
-        mutatedDuringCallback = true
-        document.body.append(document.createElement("i"))
-      }
-    })
+    const {shared, updates, publication, replica} = connectReplica()
 
-    document.body.append(document.createElement("template"))
+    template.setAttribute("data-label", "changed")
+    document.body.append(document.createElement("i"))
     await flushMutations()
-    expect(callbacks).toBeGreaterThanOrEqual(2)
-    disconnect()
+    shared.flushDOMChanges()
+    expect(updates.filter(message => !message.reset).length).toBeGreaterThan(0)
+    const replicaSVG = replica()?.body?.children[0]
+    expect(replicaSVG?.namespaceURI).toBe("http://www.w3.org/2000/svg")
+    expect(replicaSVG?.children[0]?.getAttribute("data-label")).toBe("changed")
+    expect(Array.from(replica()?.body?.children ?? []).at(-1)?.localName).toBe("i")
+    publication.destroy()
   })
 })
 
@@ -118,7 +151,7 @@ describe("frame shortcut ownership", () => {
   })
 })
 
-it("publishes template edits, owns only document shortcuts, and disconnects collaboration", async() => {
+it("publishes document updates, owns only document shortcuts, and disconnects collaboration", async() => {
   providerDisconnect.mockClear()
   const nonce = "frame-control-nonce-1234"
   const origin = window.location.origin
@@ -139,13 +172,38 @@ it("publishes template edits, owns only document shortcuts, and disconnects coll
 
   document.querySelector("template")!.content.querySelector("p")!.textContent = "After template edit"
   await flushMutations()
-  await new Promise(resolve => setTimeout(resolve, 260))
-  const snapshots = postMessage.mock.calls.map(([message]) => message as {type?: string, html?: string, textNodeRuns?: unknown})
-    .filter(message => message.type === "editor-frame-snapshot")
-  expect(snapshots.some(message => message.html?.includes("After template edit"))).toBe(true)
+  const updatedParagraph = document.createElement("p")
+  updatedParagraph.textContent = "Updated document"
+  paragraph.after(updatedParagraph)
+  await flushMutations()
+  const updates = postMessage.mock.calls.map(([message]) => message as EditorDocumentUpdate & {bridgeNonce?: string})
+    .filter(message => message.type === "editor-frame-update")
+  expect(updates.length).toBeGreaterThan(0)
+  expect(updates.every(isEditorDocumentUpdate)).toBe(true)
+  const replicaUpdates = updates.filter(message => message.reset)
+  expect(replicaUpdates.length).toBeGreaterThan(0)
+  let replica: EditorDocumentReplica | null = null
+  for(const update of updates) {
+    if(update.reset) {
+      replica?.destroy()
+      replica = new EditorDocumentReplica(update)
+      replicas.push(replica)
+    }
+    else replica?.apply(update.update)
+  }
+  expect(Array.from(replica?.body?.children ?? []).map(child => child.localName)).toEqual(["template", "p", "p", "input", "demo-widget"])
+  expect(replica?.body?.textContent).toContain("Updated document")
+  expect(updates.some(message => message.update instanceof Uint8Array && message.update.length > 0)).toBe(true)
+
+  const beforeMarker = updates.length
+  paragraph.classList.add("◆temporary-test-marker")
+  await flushMutations()
+  expect(postMessage.mock.calls.map(([message]) => message as {type?: string})
+    .filter(message => message.type === "editor-frame-update")).toHaveLength(beforeMarker)
+  paragraph.classList.remove("◆temporary-test-marker")
+  await flushMutations()
+
   const doctype = '<!DOCTYPE html PUBLIC "-//WebWriter//DTD HTML 5.0//EN" "https://example.test/webwriter.dtd">'
-  expect(snapshots.some(message => message.html?.startsWith(doctype))).toBe(true)
-  expect(snapshots.some(message => JSON.stringify(message.textNodeRuns) === JSON.stringify([{path: [1, 0], lengths: [3, 5, 0]}]))).toBe(true)
 
   window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
     type: editorFrameControlMessage, bridgeNonce: nonce, command: "snapshot", requestId: "doctype-snapshot",

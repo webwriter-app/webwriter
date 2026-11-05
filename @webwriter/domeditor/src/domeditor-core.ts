@@ -181,6 +181,7 @@ export type DOMEditorOptions = {
   syncUrl?: string
   initialState?: EditorStateSnapshot
   bridgeNonce?: string
+  documentReplicaId?: string
   bridgeOrigin?: string
   accessibilityReviewEnabled?: boolean
 }
@@ -891,8 +892,16 @@ export class DOMEditor {
   /** Sends an authenticated message to the configured host window. */
   postHostMessage(message: object) {
     if(this.options.reader) return
-    const target = window.parent === window? window: window.parent
-    target.postMessage({...message, bridgeNonce: this.#bridgeNonce}, this.#bridgeOrigin)
+    const send = () => {
+      if(this.options.documentReplicaId) this.doc?.flushDOMChanges()
+      const target = window.parent === window? window: window.parent
+      target.postMessage({...message, documentReplicaId: this.options.documentReplicaId, bridgeNonce: this.#bridgeNonce}, this.#bridgeOrigin)
+    }
+    // A projection can be published midway through a synchronous command.
+    // Flush at its completed DOM checkpoint, before the host receives paths
+    // or a command response, without reconciling temporary command structure.
+    if(this.options.documentReplicaId) queueMicrotask(send)
+    else send()
   }
 
   private postExecutionEvent<T extends object>(type: string, detail: T) {

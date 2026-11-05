@@ -1,5 +1,9 @@
+import {closestElement, containsElement, descendantElements, elementById, hasClass, type ReadableElement} from "./dom-readers"
 import {boardColumns, boardLayoutRole, documentLayoutMode, isBoardCard, isBoardColumn, isBoardGroup, isSlide, slideLayoutRole} from "./document-layout"
 import {widgetNameLabel, type PackageInsertionItem} from "./packages"
+
+/** Attributes that change outline membership, relationships or presentation. */
+export const documentTreeAttributeNames = new Set(["class", "is", "id", "name", "role", "usemap", "popovertarget", "interestfor", "popover", "display"])
 
 export type ElementPresentation = {
   name: string
@@ -8,7 +12,7 @@ export type ElementPresentation = {
 }
 
 export const isLineBreakElement = (elementOrTagName: Element | string): boolean => {
-  const tagName = typeof elementOrTagName === "string" ? elementOrTagName : elementOrTagName.tagName
+  const tagName = typeof elementOrTagName === "string" ? elementOrTagName : elementOrTagName.localName
   return tagName.toLowerCase() === "br" || tagName.toLowerCase() === "wbr"
 }
 
@@ -114,52 +118,52 @@ const presentations: Record<string, ElementPresentation> = {
 const fallbackPresentation = {name: "Content", icon: "Section"}
 
 /** Native image-map relationships, projected in the UI without moving authored nodes. */
-const nativeAuthoredElement = (element: Element) => {
-  for(let current: Element | null = element; current; current = current.parentElement) {
+const nativeAuthoredElement = (element: ReadableElement) => {
+  for(let current: ReadableElement | null = element; current; current = current.parentElement) {
     if(current.namespaceURI !== "http://www.w3.org/1999/xhtml" || current.hasAttribute("is") || current.localName.includes("-")) return false
   }
   return true
 }
 
-export function imageMapPopups(media: Element): Element[] {
-  if(!media.matches("img, picture") || !nativeAuthoredElement(media)) return []
-  const image = media.localName === "img" ? media : media.querySelector("img:not([is])")
+export function imageMapPopups<T extends ReadableElement>(media: T): T[] {
+  if(!["img", "picture"].includes(media.localName) || !nativeAuthoredElement(media)) return []
+  const image = media.localName === "img" ? media : [...descendantElements(media)].find(node => node.localName === "img" && !node.hasAttribute("is"))
   const name = image?.getAttribute("usemap")?.trim()
   if(!image || !name?.startsWith("#") || name.length < 2 || !nativeAuthoredElement(image)) return []
-  const map = Array.from(media.ownerDocument.querySelectorAll("map[name]"))
-    .find(map => map.getAttribute("name") === name.slice(1))
+  const map = [...descendantElements(media.ownerDocument.documentElement as T)]
+    .find(map => map.localName === "map" && map.getAttribute("name") === name.slice(1))
   if(!map || !nativeAuthoredElement(map)) return []
-  return [...new Set(Array.from(map.querySelectorAll("area[popovertarget], area[interestfor]")).flatMap(area => {
-    if(!nativeAuthoredElement(area) || area.closest("map") !== map) return []
+  return [...new Set([...descendantElements(map)].flatMap(area => {
+    if(area.localName !== "area" || !nativeAuthoredElement(area) || closestElement(area, node => node.localName === "map", "map") !== map) return []
     const id = area.getAttribute("popovertarget") ?? area.getAttribute("interestfor")
-    const content = id ? media.ownerDocument.getElementById(id) : null
-    return content?.hasAttribute("popover") && nativeAuthoredElement(content) && !content.contains(media) ? [content] : []
+    const content = id ? elementById(media, id) : null
+    return content?.hasAttribute("popover") && nativeAuthoredElement(content) && !containsElement(content, media) ? [content] : []
   }))]
 }
 
-export function imageMapPopupImage(content: Element): Element | null {
+export function imageMapPopupImage<T extends ReadableElement>(content: T): T | null {
   if(!content.hasAttribute("popover") || !content.id || !nativeAuthoredElement(content)) return null
-  const image = Array.from(content.ownerDocument.querySelectorAll("img[usemap]"))
-    .find(image => imageMapPopups(image).includes(content))
-  return image?.closest("picture") ?? image ?? null
+  const image = [...descendantElements(content.ownerDocument.documentElement as T)]
+    .find(image => image.localName === "img" && image.hasAttribute("usemap") && imageMapPopups(image).includes(content))
+  return closestElement(image ?? null, node => node.localName === "picture", "picture") ?? image ?? null
 }
 
-/** Identify the native parts of an authored Popup from their current DOM relationships. */
-export function popupElementRole(element: Element): "popup" | "toggle" | "content" | null {
+/** Identify native Popup parts using current authored relationships. */
+export function popupElementRole(element: ReadableElement): "popup" | "toggle" | "content" | null {
   if(element.namespaceURI !== "http://www.w3.org/1999/xhtml" || element.hasAttribute("is") || element.localName.includes("-")) return null
-  if((element.localName === "div" || element.localName === "span") && element.classList.contains("ww-popup")) return "popup"
-  const wrapper = element.parentElement?.closest(".ww-popup")
+  if((element.localName === "div" || element.localName === "span") && hasClass(element, "ww-popup")) return "popup"
+  const wrapper = closestElement(element.parentElement, node => hasClass(node, "ww-popup"), ".ww-popup")
   const inWrapper = wrapper && wrapper.namespaceURI === "http://www.w3.org/1999/xhtml" && !wrapper.hasAttribute("is")
     && ["div", "span"].includes(wrapper.localName)
-  // A nested custom element owns its contents; do not reinterpret them as Popup parts.
   for(let parent = element.parentElement; inWrapper && parent && parent !== wrapper; parent = parent.parentElement) {
     if(parent.localName.includes("-") || parent.hasAttribute("is")) return null
   }
   if(element.hasAttribute("popover")) {
     if(inWrapper || imageMapPopupImage(element)) return "content"
-    if(!element.classList.contains("ww-popup-content") || !element.id) return null
-    const toggles = Array.from(element.ownerDocument.querySelectorAll(".ww-popup button[popovertarget]"))
-      .filter(toggle => popupContentForToggle(toggle) === element)
+    if(!hasClass(element, "ww-popup-content") || !element.id) return null
+    const toggles = [...descendantElements(element.ownerDocument.documentElement)]
+      .filter(toggle => toggle.localName === "button" && toggle.hasAttribute("popovertarget")
+        && closestElement(toggle, node => hasClass(node, "ww-popup"), ".ww-popup") && popupContentForToggle(toggle) === element)
     return toggles.length === 1 ? "content" : null
   }
   if(!inWrapper || element.localName !== "button") return null
@@ -167,17 +171,18 @@ export function popupElementRole(element: Element): "popup" | "toggle" | "conten
 }
 
 /** Resolve the authored popover linked to a Popup button. */
-export function popupContentForToggle(toggle: Element): Element | null {
+export function popupContentForToggle<T extends ReadableElement>(toggle: T): T | null {
   if(toggle.localName !== "button" || toggle.namespaceURI !== "http://www.w3.org/1999/xhtml") return null
-  const wrapper = toggle.closest(".ww-popup")
+  const wrapper = closestElement(toggle, node => hasClass(node, "ww-popup"), ".ww-popup")
   if(!wrapper || !["div", "span"].includes(wrapper.localName) || wrapper.hasAttribute("is")) return null
   const target = toggle.getAttribute("popovertarget")
   if(!target) return null
-  const nested = Array.from(wrapper.querySelectorAll("[popover][id]"))
-    .find(candidate => candidate.id === target && candidate.closest(".ww-popup") === wrapper)
+  const nested = [...descendantElements(wrapper)]
+    .find(candidate => candidate.hasAttribute("popover") && candidate.id === target && closestElement(candidate, node => hasClass(node, "ww-popup"), ".ww-popup") === wrapper)
   if(nested) return nested
-  const external = wrapper.isConnected ? toggle.ownerDocument.getElementById(target) : null
-  return external?.classList.contains("ww-popup-content") && external.hasAttribute("popover") ? external : null
+  const connected = containsElement(wrapper.ownerDocument.documentElement, wrapper)
+  const external = connected ? elementById(toggle, target) : null
+  return external && hasClass(external, "ww-popup-content") && external.hasAttribute("popover") ? external : null
 }
 
 /** The authored Popup Content containing a live node, if any. */
@@ -191,23 +196,23 @@ export function popupContentAncestor(node: Node | null): Element | null {
 }
 
 /** The authored button represented as Popup for a wrapper or its linked content. */
-export function popupDisplayToggle(element: Element): Element | null {
+export function popupDisplayToggle<T extends ReadableElement>(element: T): T | null {
   const role = popupElementRole(element)
   if(role !== "popup" && role !== "content") return null
-  const wrapper = role === "popup" ? element : element.closest(".ww-popup")
-  const toggles = Array.from((wrapper ?? element.ownerDocument).querySelectorAll(".ww-popup button[popovertarget], button[popovertarget]"))
-    .filter(candidate => popupElementRole(candidate) === "toggle"
-      && (role === "popup" ? candidate.closest(".ww-popup") === wrapper : popupContentForToggle(candidate) === element))
+  const wrapper = role === "popup" ? element : closestElement(element, node => hasClass(node, "ww-popup"), ".ww-popup")
+  const toggles = [...descendantElements(wrapper ?? element.ownerDocument.documentElement as T)]
+    .filter(candidate => candidate.localName === "button" && candidate.hasAttribute("popovertarget") && popupElementRole(candidate) === "toggle"
+      && (role === "popup" ? closestElement(candidate, node => hasClass(node, "ww-popup"), ".ww-popup") === wrapper : popupContentForToggle(candidate) === element))
   return toggles.length === 1 ? toggles[0] : null
 }
 
 /** Returns a user-facing name and icon key for an HTML element. */
-export function getElementPresentation(elementOrTagName: Element | string, packageItems: readonly PackageInsertionItem[] | undefined = globalThis.DOMEDITOR_PACKAGE_ITEMS): ElementPresentation {
+export function getElementPresentation(elementOrTagName: ReadableElement | string, packageItems: readonly PackageInsertionItem[] | undefined = globalThis.DOMEDITOR_PACKAGE_ITEMS): ElementPresentation {
   if(typeof elementOrTagName !== "string") {
     const popupRole = popupElementRole(elementOrTagName)
     if(popupRole) return {name: popupRole === "content" && !imageMapPopupImage(elementOrTagName) ? "Popup Content" : "Popup", icon: "Popup"}
-    if(elementOrTagName.matches("h2:not([is])") && isBoardGroup(elementOrTagName.parentElement)) return {name: "Group Heading", icon: "Heading"}
-    if(elementOrTagName.matches("h2:not([is])") && isBoardColumn(elementOrTagName.parentElement)) {
+    if((elementOrTagName.localName === "h2" && !elementOrTagName.hasAttribute("is")) && isBoardGroup(elementOrTagName.parentElement)) return {name: "Group Heading", icon: "Heading"}
+    if((elementOrTagName.localName === "h2" && !elementOrTagName.hasAttribute("is")) && isBoardColumn(elementOrTagName.parentElement)) {
       return {name: "Column Heading", icon: "Heading"}
     }
     const boardRole = boardLayoutRole(elementOrTagName)
@@ -215,7 +220,7 @@ export function getElementPresentation(elementOrTagName: Element | string, packa
     if(boardRole) {
       const peers = boardRole === "column" ? boardColumns(elementOrTagName.ownerDocument.body)
         : Array.from(elementOrTagName.parentElement!.children).filter(isBoardCard)
-      return {name: `${boardRole === "column" ? "Column" : "Card"} ${peers.indexOf(elementOrTagName as HTMLElement) + 1}`,
+      return {name: `${boardRole === "column" ? "Column" : "Card"} ${peers.indexOf(elementOrTagName) + 1}`,
         icon: boardRole === "column" ? "BoardColumn" : "BoardCard"}
     }
     if(elementOrTagName === elementOrTagName.ownerDocument.body) {
@@ -227,12 +232,12 @@ export function getElementPresentation(elementOrTagName: Element | string, packa
     if(role === "root") return {name: "Slides", icon: "KeywordPresentation"}
     if(role === "slide") {
       const slides = Array.from(elementOrTagName.parentElement!.children).filter(isSlide)
-      return {name: `Slide ${slides.indexOf(elementOrTagName as HTMLElement) + 1}`, icon: "Rectangle"}
+      return {name: `Slide ${slides.indexOf(elementOrTagName) + 1}`, icon: "Rectangle"}
     }
   }
   const tagName = typeof elementOrTagName === "string"
     ? elementOrTagName
-    : elementOrTagName.tagName
+    : elementOrTagName.localName
   const normalizedTagName = tagName.toLowerCase()
   const packageItem = packageItems?.find(item => item.kind === "widget" && item.tag?.toLowerCase() === normalizedTagName)
   if(packageItem) return {name: packageItem.name, icon: "Packages", ...(packageItem.iconUrl ? {iconUrl: packageItem.iconUrl} : {})}

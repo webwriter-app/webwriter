@@ -235,6 +235,8 @@ export type InitializeEditorMessage = {
   syncUrl: string
   /** Per-iframe capability used to bind postMessage traffic to this frame. */
   bridgeNonce?: string
+  /** Distinguishes document updates from replaced iframe realms. */
+  documentReplicaId?: string
   initialState?: EditorStateSnapshot
   language?: string
   username?: string
@@ -294,6 +296,7 @@ export function isInitializeEditorMessage(value: unknown): value is InitializeEd
   return message.type === initializeEditorMessage
     && validSyncUrl
     && (message.bridgeNonce === undefined || typeof message.bridgeNonce === "string" && message.bridgeNonce.length >= 16)
+    && isOptionalString(message.documentReplicaId)
     && (message.language === undefined || typeof message.language === "string")
     && (message.username === undefined || typeof message.username === "string")
     && (message.disableAnimations === undefined || typeof message.disableAnimations === "boolean")

@@ -312,7 +312,7 @@ try {
   await writeFile(join(output, 'results.json'), JSON.stringify(report, null, 2))
   await writeFile(join(output, 'chrome.stderr.log'), messages.join(''))
   if(result.error || exceptions.length) throw new Error(result.error ?? `${exceptions.length} unhandled browser exceptions`)
-  const expected = (!only || only === 'reconciliation' ? profiling ? 16 : 62 : 0)
+  const expected = (!only || only === 'reconciliation' ? profiling ? 17 : 66 : 0)
     + (!only || only === 'live' ? profiling ? 7 : 21 : 0) + (!only || only === 'tables' ? profiling ? 7 : 14 : 0)
     + (only === 'layouts' ? profiling ? 18 : 36 : 0) + (only === 'gestures' ? new Set(gestureFilters).size || (documentSource !== null ? 3 : 19) : 0)
   if(result.checks?.length !== expected) throw new Error(`Expected ${expected} measurements, received ${result.checks?.length}`)

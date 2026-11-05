@@ -2,6 +2,7 @@ import {SharedDOMDoc, sharedDOMBody} from '../src/domdoc'
 import {SelectionFeature} from '../src/features/selection'
 import {WidgetDataBindings} from '../src/widget-data'
 import {DomEditor} from '../src/components/dom-editor'
+import {publishEditorDocument} from '../src/editor-document-sync'
 import type {DOMEditor} from '../src/domeditor'
 import * as Y from 'yjs'
 import {benchmarkCatalogRendering} from './catalog-performance'
@@ -25,7 +26,7 @@ function assert(value: unknown, message: string): asserts value {
 const checks: {name: string, samples: object[]}[] = [
   {name: 'hover float candidates', samples: []},
   {name: 'local and remote reconciliation', samples: []},
-  {name: 'frame snapshot processing', samples: []},
+  {name: 'frame replica updates', samples: []},
   {name: 'unchanged widget data', samples: []},
 ]
 for(const size of [100, 1000, 5000]) {
@@ -57,21 +58,51 @@ for(const size of [100, 1000, 5000]) {
     }
     finally { shared.destroy() }
   }
-  // Use the real frame-message handler with the filtered bridge contract.
+  // Use the real frame-message handler with a full replica baseline and
+  // incremental Yjs updates from the live DOM mirror.
+  const owner = document.implementation.createHTMLDocument('')
+  owner.body.innerHTML = html
+  const shared = new SharedDOMDoc(undefined, undefined, [], ['◆'], {root: owner.body, connect: false})
+  const replicaId = `performance-replica-${size}`
   const host = new DomEditor() as any
-  host.editorDocument = new DOMParser().parseFromString(html, 'text/html')
+  host.editorDocument = null
   host.editorOpaque = true
+  host.documentReplicaId = replicaId
+  host.documentReplicaSequence = 0
   host.fileHandle = {}
   host.isEditorMessage = () => true
   host.renderRoot = document.createElement('div')
-  host.documentTree = host.buildDocumentTree()
   host.stylesVisible = () => false
   host.dirtyTrackingReady = true
-  let revision = 0
-  const timing = sample(() => host.handleEditorMessage(new MessageEvent('message', {data: {
-    type: 'editor-frame-snapshot', html: `<html><head></head><body>${html.replace('Example text 1<', `Example text 1 ${revision++}<`)}</body></html>`, treeChanged: false,
-  }})))
-  checks[2].samples.push({elements: size, ...timing})
+  let updateBytes = 0
+  const publication = publishEditorDocument(shared, replicaId, message => {
+    if(!message.reset) updateBytes += message.update.byteLength
+    host.handleEditorMessage(new MessageEvent('message', {data: message}))
+  })
+  try {
+    assert(host.documentReplica?.body?.children.length === size, 'host did not receive a full document replica baseline')
+    const text = owner.body.children[1].firstChild as Text
+    let lastTextBytes = 0
+    const beforeTextBytes = updateBytes
+    const textTiming = sample(() => { text.appendData('x'); shared.syncFromDOM() })
+    lastTextBytes = updateBytes - beforeTextBytes
+    assert(host.documentReplica?.body?.textContent?.includes('Example text 1' + 'x'.repeat(23)), 'text updates were not applied to the host replica')
+    const styleTarget = owner.body.children[1] as HTMLElement
+    let bold = false
+    const beforeStyleBytes = updateBytes
+    const styleTiming = sample(() => { bold = !bold; styleTarget.style.fontWeight = bold ? 'bold' : 'normal'; shared.syncFromDOM() })
+    const styleBytes = updateBytes - beforeStyleBytes
+    const beforeStructureBytes = updateBytes
+    const structureTiming = sample(() => {
+      const paragraph = owner.createElement('p'); paragraph.textContent = 'Inserted benchmark paragraph'
+      owner.body.append(paragraph); shared.syncFromDOM(); paragraph.remove(); shared.syncFromDOM()
+    })
+    const structureBytes = updateBytes - beforeStructureBytes
+    assert(host.documentReplica?.body?.children.length === size, 'structural updates were not applied to the host replica')
+    checks[2].samples.push({elements: size, text: textTiming, textUpdateBytes: lastTextBytes / 23,
+      style: styleTiming, styleUpdateBytes: styleBytes / 23, structure: structureTiming, structureUpdateBytes: structureBytes / 23})
+  }
+  finally { publication.destroy(); shared.destroy(); host.documentReplica?.destroy() }
 }
 for(const size of [1, 10, 50]) {
   const root = document.createElement('main')
@@ -105,17 +136,17 @@ await new Promise(resolve => setTimeout(resolve, 260))
 const bounds = new DOMRect(0, 0, 10000, 10000)
 assert(selection.floatExclusions(document.body.firstElementChild!, bounds).length === 1, 'CSSOM float was not rediscovered')
 
-// Exercise the real bridge observer, including the throttled trailing batch.
+// Exercise the real bridge publisher and observer using binary replica updates.
 const initial = document.implementation.createHTMLDocument('')
 initial.body.innerHTML = '<p>Native snapshot</p>'
 const shared = new SharedDOMDoc(undefined, undefined, [], ['◆'], {root: initial.body})
 const initialState = shared.snapshot()
 shared.destroy()
 const frame = document.createElement('iframe')
-const snapshots: {html: string, treeChanged: boolean}[] = []
-const nonce = 'performance-snapshot-nonce'
+const updates: {update: Uint8Array, reset: boolean, sequence: number}[] = []
+const nonce = 'performance-update-nonce'
 const capture = (event: MessageEvent) => {
-  if(event.source === frame.contentWindow && event.data?.bridgeNonce === nonce && event.data.type === 'editor-frame-snapshot') snapshots.push(event.data)
+  if(event.source === frame.contentWindow && event.data?.bridgeNonce === nonce && event.data.type === 'editor-frame-update') updates.push(event.data)
 }
 window.addEventListener('message', capture)
 const loaded = new Promise<void>(resolve => { frame.onload = () => resolve() })
@@ -124,22 +155,21 @@ document.body.append(frame)
 try {
   await loaded
   frame.contentWindow!.postMessage({type: 'initialize-editor', syncUrl: 'ws://127.0.0.1:65534', bridgeNonce: nonce,
-    initialState, proofreadingEnabled: false}, location.origin)
+    documentReplicaId: nonce, initialState, proofreadingEnabled: false}, location.origin)
   await new Promise(resolve => setTimeout(resolve, 500))
-  assert(snapshots.length > 0, 'bridge did not publish its initial snapshot')
-  snapshots.length = 0
+  assert(updates.some(update => update.reset && update.update instanceof Uint8Array), 'bridge did not publish its initial replica update')
+  updates.length = 0
   const paragraph = frame.contentDocument!.querySelector('p')!
   for(let i = 0; i < 20; i++) paragraph.classList.toggle('◆audit-hover')
   await new Promise(resolve => setTimeout(resolve, 300))
-  assert(snapshots.length === 0, 'marker-only mutations published document snapshots')
+  assert(updates.length === 0, 'marker-only mutations published document updates')
   paragraph.firstChild!.nodeValue = 'Changed text'
   await new Promise(resolve => setTimeout(resolve, 300))
-  assert(Number(snapshots.length) === 1 && snapshots[0].treeChanged === false, 'text edit lost or rebuilt the document tree')
-  assert(snapshots[0].html.includes('Changed text'), 'snapshot contains stale text')
-  snapshots.length = 0
+  assert(Number(updates.length) === 1 && !updates[0].reset && updates[0].update.byteLength > 0, 'text edit did not publish one incremental update')
+  updates.length = 0
   paragraph.after(frame.contentDocument!.createElement('unknown-audit-widget'))
   await new Promise(resolve => setTimeout(resolve, 300))
-  assert(Number(snapshots.length) === 1 && Boolean(snapshots[0].treeChanged), 'structural edit did not invalidate the document tree')
+  assert(Number(updates.length) === 1 && !updates[0].reset && updates[0].update.byteLength > 0, 'structural edit did not publish one incremental update')
 }
 finally {
   (frame.contentWindow as Window & {editor?: DOMEditor})?.editor?.destroy()

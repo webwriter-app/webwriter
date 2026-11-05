@@ -6877,8 +6877,8 @@ await check("New discards the previous canvas iframe and its document state", as
       assert(freshFrame.contentWindow !== previousWindow, "New retained the previous window identity")
       host.handleEditorMessage(new MessageEvent("message", {
         source: previousWindow, origin: previousOrigin,
-        data: {type: "editor-frame-snapshot", bridgeNonce: host.bridgeNonce, treeChanged: true,
-          html: '<html><body class="ww-canvas"><div><div>Old delayed content</div></div></body></html>'},
+        data: {type: "editor-frame-update", bridgeNonce: host.bridgeNonce, replicaId: "discarded-frame",
+          sequence: 1, reset: true, update: new Uint8Array([0, 0])},
       }))
       await layoutFrame()
       const source = await app!.execute({type: "serializeDocument"}) as string
@@ -11389,7 +11389,7 @@ await check("bottom layout cards retain native editing focus after rendering", a
     for(let attempt = 0; attempt < 200; attempt++) {
       app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
       editingFrame = app?.shadowRoot?.querySelector<HTMLIFrameElement>(".editor-frame") ?? null
-      if(editingFrame && (app as any)?.editorWindow && (app as any)?.editorDocument) break
+      if(editingFrame && (app as any)?.editorWindow && ((app as any)?.documentReplica?.body ?? (app as any)?.editorDocument?.body)) break
       await new Promise(resolve => setTimeout(resolve, 25))
     }
     assert(app && (app as any).editorWindow, `app editor did not initialize: app=${!!app} frame=${!!editingFrame} window=${!!(app as any)?.editorWindow} opaque=${(app as any)?.editorOpaque} error=${(app as any)?.packageError}`)
