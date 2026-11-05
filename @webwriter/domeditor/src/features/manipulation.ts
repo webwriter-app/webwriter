@@ -2914,6 +2914,7 @@ export class ManipulationFeature extends EditorFeature {
       computed[name] = values.every(value => value === values[0]) ? values[0] : ""
     })
     const parentDisplay = target.parentElement? getComputedStyle(target.parentElement).display: ""
+    const boardRole = boardLayoutRole(target)
     const movable = this.floatContainer(target) === target
     const margins = target.computedStyleMap?.()
     const alignment = alignmentFromStyles({
@@ -2922,6 +2923,7 @@ export class ManipulationFeature extends EditorFeature {
     })
     return {
       target: {localName: target.localName, namespaceURI: target.namespaceURI,
+        ...(boardRole ? {boardRole} : {}),
         ...(["toggle", "content"].includes(popupElementRole(target) ?? "") ? {popupRole: popupElementRole(target) as "toggle" | "content"} : {}),
         placement: this.editor.features.layout.getPlacementState(target),
         grouping: this.editor.features.board.groupingState(target),

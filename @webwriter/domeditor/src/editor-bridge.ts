@@ -424,6 +424,7 @@ export function isBlockFormatTag(value: string): value is BlockFormatTag {
 export type ElementStyleState = {
   target: {
     documentRoot?: true
+    boardRole?: "group" | "column" | "card"
     popupRole?: "toggle" | "content"
     float?: "none" | "far-left" | "far-right"
     floatSticky?: boolean

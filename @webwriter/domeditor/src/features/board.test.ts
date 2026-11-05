@@ -47,6 +47,27 @@ afterEach(() => {
 })
 
 describe("Board layout", () => {
+  it("projects board style roles from the current DOM without classifying card content or widgets", () => {
+    convert("board")
+    const column = columns()[0], card = cards()[0]
+    board().setGrouping("new", column)
+    const group = board().groups()[0]
+    card.innerHTML = '<p>Content</p><section class="ww-board-column">Nested content</section><section is="custom-column" class="ww-board-column">Widget</section>'
+    const manipulation = editor.features.manipulation
+    for(const [target, boardRole] of [[group, "group"], [column, "column"], [card, "card"]] as const) {
+      editor.features.selection.selectElement(target)
+      expect(manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.boardRole).toBe(boardRole)
+    }
+    for(const target of Array.from(card.children)) {
+      expect(manipulation.getStyleState([], target, false).target?.boardRole).toBeUndefined()
+    }
+    document.body.append(card)
+    expect(manipulation.getStyleState([], card, false).target?.boardRole).toBeUndefined()
+    document.body.classList.remove("ww-board")
+    expect(manipulation.getStyleState([], group, false).target?.boardRole).toBeUndefined()
+    expect(manipulation.getStyleState([], column, false).target?.boardRole).toBeUndefined()
+  })
+
   it("applies column width edits from Element options after default and dragged sizes", () => {
     convert("board")
     const column = columns()[0], heading = column.querySelector("h2")!
