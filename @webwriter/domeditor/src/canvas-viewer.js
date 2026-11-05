@@ -69,7 +69,9 @@ class CanvasMinimap {
     this.running = null
     this.timer = null
     this.queued = false
+    this.dirty = true
     this.refreshPaused = false
+    this.viewportSize = {width: window.innerWidth, height: window.innerHeight}
     this.dragPointer = null
     this.startingViewDrag = null
     this.selectedStartingView = null
@@ -122,18 +124,26 @@ class CanvasMinimap {
     this.toggle.addEventListener("click", () => this.setOpen(this.map.hidden))
     this.observer = new MutationObserver(records => {
       this.updateStartingView()
-      if(records.some(record => this.contentChanged(record, records))) this.schedule()
+      if(records.some(record => this.contentChanged(record, records))) this.invalidate()
     })
+    // Keep invalidation active while collapsed so an unchanged capture can be
+    // reused on reopening, including edits made by widgets and remote peers.
+    this.observer.observe(document.documentElement, {subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true})
     this.resize = () => {
-      if(this.map.hidden) return
-      this.stopStartingViewDrag()
-      this.updateViewport()
-      this.schedule()
+      const changed = this.viewportSize.width !== window.innerWidth || this.viewportSize.height !== window.innerHeight
+      this.viewportSize = {width: window.innerWidth, height: window.innerHeight}
+      if(!this.map.hidden) {
+        this.stopStartingViewDrag()
+        this.updateViewport()
+      }
+      // Actual viewport changes can change authored media queries and units.
+      if(changed) this.invalidate()
     }
     this.resourceLoaded = event => {
       if(event.target instanceof Element && event.target.matches('img, link[rel~="stylesheet"]')
-        && !event.target.closest(minimapExcluded)) this.schedule()
+        && !event.target.closest(minimapExcluded)) this.invalidate()
     }
+    document.addEventListener("load", this.resourceLoaded, true)
     window.addEventListener("resize", this.resize)
   }
 
@@ -296,6 +306,7 @@ class CanvasMinimap {
     if(record.attributeName === "contenteditable" && !record.oldValue && !target.getAttribute("contenteditable")
       && (target.classList.contains("◆widget-editable") || records.some(entry => entry.target === target
         && entry.attributeName === "class" && entry.oldValue?.split(/\s+/).includes("◆widget-editable")))) return false
+    if(record.type === "attributes" && record.oldValue === target.getAttributeNS(record.attributeNamespace, record.attributeName)) return false
     return true
   }
 
@@ -304,8 +315,9 @@ class CanvasMinimap {
     this.toggle.title = open ? "Hide minimap" : "Show minimap"
     this.row.hidden = this.map.hidden = !open
     if(open) {
-      this.observer.observe(document.documentElement, {subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true})
-      document.addEventListener("load", this.resourceLoaded, true)
+      // A close and reopen can happen before mutation observers are delivered.
+      const records = this.observer.takeRecords()
+      if(records.some(record => this.contentChanged(record, records))) this.dirty = true
       this.updateViewport()
       void this.refresh()
     }
@@ -314,12 +326,16 @@ class CanvasMinimap {
       this.stopStartingViewDrag()
       this.selectedStartingView = null
       this.generation++
-      this.observer.disconnect()
-      document.removeEventListener("load", this.resourceLoaded, true)
       clearTimeout(this.timer)
       this.timer = null
       this.queued = false
     }
+  }
+
+  invalidate() {
+    this.dirty = true
+    if(this.running) this.running.stale = true
+    this.schedule()
   }
 
   setRefreshPaused(paused) {
@@ -340,7 +356,7 @@ class CanvasMinimap {
   }
 
   schedule() {
-    if(this.map.hidden) return
+    if(this.map.hidden || !this.dirty) return
     if(this.refreshPaused) { this.queued = true; return }
     clearTimeout(this.timer)
     this.timer = setTimeout(() => {
@@ -352,6 +368,7 @@ class CanvasMinimap {
   usedBounds(aspectRatio) {
     const {slot, zoom} = this.viewer
     const origin = slot.getBoundingClientRect()
+    this.origin = {x: origin.left - this.viewer.camera.x, y: origin.top - this.viewer.camera.y}
     let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity
     for(const item of this.viewer.items()) {
       if(item.matches(minimapExcluded) || getComputedStyle(item).visibility === "hidden") continue
@@ -378,9 +395,9 @@ class CanvasMinimap {
   }
 
   async refresh() {
-    if(this.map.hidden || !this.viewer.active) return
+    if(this.map.hidden || !this.viewer.active || !this.dirty) return
     const generation = this.generation
-    if(this.refreshPaused || this.running?.generation === generation) { this.queued = true; return }
+    if(this.refreshPaused || this.running || this.viewer.panning || this.viewer.wheelPanTimer !== null) { this.queued = true; return }
     const running = this.running = {generation, stale: false}
     this.queued = false
     const {innerWidth, innerHeight} = window
@@ -406,6 +423,7 @@ class CanvasMinimap {
         }
         snapshot = await snapdom(slot, {
           clip: clip(), width: Math.max(1, Math.min(540, 188 * bounds.width / bounds.height)), dpr: 1,
+          fast: false,
           exclude: element => element.matches(minimapExcluded) || isCanvasStartingView(element),
           plugins: [{
             name: "webwriter-canvas",
@@ -432,6 +450,8 @@ class CanvasMinimap {
       }
     }
     if(!current() || window.innerWidth !== innerWidth || window.innerHeight !== innerHeight) return
+    // Leave a failed capture dirty so a later open or invalidation can retry.
+    this.dirty = Boolean(bounds && !snapshot)
     if(this.startingViewDrag && (!bounds || ["x", "y", "width", "height"].some(key => Math.abs(bounds[key] - this.bounds[key]) > .01))) {
       this.stopStartingViewDrag()
     }
@@ -459,6 +479,8 @@ class CanvasMinimap {
   }
 
   updateViewport() {
+    const {left, top} = this.viewer.slot.getBoundingClientRect()
+    this.origin = {x: left - this.viewer.camera.x, y: top - this.viewer.camera.y}
     this.surface.style.setProperty("--canvas-minimap-ratio", viewportAspectRatio())
     this.updateCamera()
     this.updateStartingView()
@@ -466,11 +488,23 @@ class CanvasMinimap {
 
   updateCamera() {
     if(this.map.hidden || !this.bounds) return
-    const {x, y} = this.viewer.clientPoint(0, 0)
-    this.viewport.setAttribute("x", x - this.bounds.x)
-    this.viewport.setAttribute("y", y - this.bounds.y)
+    // The camera already owns the translation. Reading the slot here would
+    // force layout immediately after every transform write during panning.
+    const {x, y, zoom} = this.viewer.camera
+    this.viewport.setAttribute("x", -(this.origin.x + x) / zoom - this.bounds.x)
+    this.viewport.setAttribute("y", -(this.origin.y + y) / zoom - this.bounds.y)
     this.viewport.setAttribute("width", window.innerWidth / this.viewer.zoom)
     this.viewport.setAttribute("height", window.innerHeight / this.viewer.zoom)
+  }
+
+  cameraChanged() {
+    // A yielding clone may have read geometry before this camera move. Keep
+    // the previous image until a capture can complete at a stable camera.
+    if(this.running) {
+      this.running.stale = true
+      this.queued = true
+    }
+    this.updateCamera()
   }
 
   centerAt(clientX, clientY) {
@@ -494,6 +528,8 @@ class CanvasMinimap {
 
   destroy() {
     this.setOpen(false)
+    this.observer.disconnect()
+    document.removeEventListener("load", this.resourceLoaded, true)
     window.removeEventListener("resize", this.resize)
     this.row.remove()
     this.toggle.remove()
@@ -588,6 +624,7 @@ export class CanvasViewer {
     if(this.wheelPanTimer !== null) window.clearTimeout(this.wheelPanTimer)
     this.wheelPanTimer = null
     this.updatePanSurface()
+    if(this.minimap?.queued) this.minimap.schedule()
   }
 
   wheel(event, respectScrollContainers = true) {
@@ -731,7 +768,7 @@ export class CanvasViewer {
       if(this.background.style.backgroundImage !== image) this.background.style.backgroundImage = image
     }
     updateCanvasZoomControls(this.controls, this.zoom)
-    this.minimap?.updateCamera()
+    this.minimap?.cameraChanged()
     this.onChange()
   }
 
@@ -740,6 +777,7 @@ export class CanvasViewer {
     this.panning = null
     try { if(pan && this.slot?.hasPointerCapture(pan.id)) this.slot.releasePointerCapture(pan.id) } catch {}
     this.removeMarker(this.body, "◆canvas-panning")
+    if(this.minimap?.queued) this.minimap.schedule()
     this.updatePanSurface()
   }
 }
