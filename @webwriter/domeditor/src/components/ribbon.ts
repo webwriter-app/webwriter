@@ -2724,7 +2724,7 @@ export class AppRibbon extends EditingControls {
       `, buttons: [
         {label: "Increase font size", action: "increaseFontSize", icon: "IncreaseFontSize", disabled: !this.canMark},
         {label: "Decrease font size", action: "decreaseFontSize", icon: "DecreaseFontSize", disabled: !this.canMark},
-        {label: "Remove formatting", action: "removeMarks", icon: "RemoveMarks", disabled: !this.canMark},
+        {label: "Remove formatting", action: "removeMarks", icon: "RemoveMarks", disabled: !this.canMark && !this.canRemoveMarks},
       ]},
       {label: "Standard marks", content: html`
         ${picker("color", "Text color", textColorOptions)}

@@ -356,6 +356,7 @@ export class DomEditor extends LitElement {
     documentTree: {attribute: false, state: true},
     svgText: {attribute: false, state: true},
     canMark: {attribute: false, state: true},
+    canRemoveMarks: {attribute: false, state: true},
     canSection: {attribute: false, state: true},
     sectionType: {attribute: false, state: true},
     sectionActive: {attribute: false, state: true},
@@ -528,6 +529,7 @@ export class DomEditor extends LitElement {
   private frameSnapshot: {document: Document, html: string, textNodeRunsKey: string} | null = null
   private authoredSnapshotCache: {document: Document, value: string} | null = null
   private canMark = false
+  private canRemoveMarks = false
   private canSection = false
   private sectionType: SectionName = "section"
   private sectionActive = false
@@ -8041,6 +8043,7 @@ export class DomEditor extends LitElement {
       if(!this.isEditorMessage(event)) return
       this.svgText = event.data.detail.svgText === true
       this.canMark = event.data.detail.canMark
+      this.canRemoveMarks = event.data.detail.canRemoveMarks === true
       // SVG label text remains inside a captured graphic. Keep its controls
       // mounted while mark and selection messages arrive independently.
       if(this.canMark && !this.svgText) {
@@ -8069,6 +8072,7 @@ export class DomEditor extends LitElement {
         detail: {
           svgText: this.svgText,
           canMark: this.canMark,
+          canRemoveMarks: this.canRemoveMarks,
           marks: [...this.marks],
           popupActive: this.popupActive,
           styles: {...this.markStyles},
@@ -8572,6 +8576,7 @@ export class DomEditor extends LitElement {
     this.widgetConversion = null
     this.selectionGap = null
     this.canMark = false
+    this.canRemoveMarks = false
     this.canSection = false
     this.sectionType = "section"
     this.sectionActive = false
@@ -8651,6 +8656,7 @@ export class DomEditor extends LitElement {
     return {
       svgText: this.svgText,
       canMark: this.canMark,
+      canRemoveMarks: this.canRemoveMarks,
       canSection: this.canSection,
       sectionType: this.sectionType,
       sectionActive: this.sectionActive,

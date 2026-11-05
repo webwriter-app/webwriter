@@ -1563,8 +1563,119 @@ export class MarkFeature extends EditorFeature {
     return size === undefined? false: this.setStyleMark("font-size", `${size}px`)
   }
 
-  /** Removes every supported mark (including strong/em aliases) in one pass. */
+  /** Clearing marks also accepts structural selections with no editable text. */
+  get canRemoveMarks() {
+    return !!this.editor.features.selection.selectedSectionElement
+      || !!this.editor.features.selection.captureSelectedElement
+      || this.editor.features.table.hasCellSelection
+      || $.ranges.some(range => !range.collapsed && range.startContainer.getRootNode() === document
+        && range.endContainer.getRootNode() === document && range.intersectsNode(document.body))
+  }
+
+  /** Removes every supported mark from the live selection, including structural scopes. */
   removeMarks() {
+    const selection = document.getSelection()
+    if(!selection) return false
+    const section = this.editor.features.selection.selectedSectionElement
+    const captured = this.editor.features.selection.captureSelectedElement
+    const multiple = $.isMultiElementSelection ? $.selectedElements : []
+    const selected = $.selectedElement
+    const scopes = this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells
+      : section ? [section] : multiple.length ? multiple : captured && !this.isSVGTextSelection ? [captured] : []
+    const original = Array.from({length: selection.rangeCount}, (_, index) => selection.getRangeAt(index).cloneRange())
+    const backwards = this.isBackwards(selection)
+    const endUndoGroup = this.editor.doc?.beginUndoGroup()
+    try {
+      if(!scopes.length) return this.removeRangeMarks()
+      let changed = false
+      for(const element of scopes) {
+        if(!document.body.contains(element)) continue
+        const range = document.createRange()
+        range.selectNode(element)
+        $.selectRanges([range])
+        changed = this.removeRangeMarks() || changed
+      }
+      return changed
+    }
+    finally {
+      if(scopes.length) {
+        if(multiple.length) $.selectElements(multiple)
+        else if(original.length && original.every(range => range.startContainer.isConnected && range.endContainer.isConnected)) {
+          $.selectRanges(original)
+          if(backwards && original.length === 1) selection.setBaseAndExtent(original[0].endContainer, original[0].endOffset,
+            original[0].startContainer, original[0].startOffset)
+        }
+      }
+      endUndoGroup?.()
+      if(section?.isConnected) this.editor.features.selection.selectSectionElement(section)
+      else if(selected?.isConnected && !multiple.length && !this.editor.features.table.hasCellSelection) $.selectElement(selected, false)
+      this.editor.postMarkState()
+    }
+  }
+
+  private removeRangeMarks(): boolean {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount) return false
+    const range = selection.getRangeAt(0).cloneRange()
+    const nodes: ChildNode[] = []
+    const wrappers: Element[] = []
+    const visit = (node: ChildNode) => {
+      if(!range.intersectsNode(node) || !$.includesNode(node)
+        || !this.isEditableHTMLContext(node.parentNode!, document.body)) return
+      if(node instanceof Element) {
+        if(isMarkElement(node) && node.localName !== "ruby" && this.isEditableHTMLContext(node, document.body)) {
+          const contents = document.createRange()
+          if(node.childNodes.length) contents.selectNodeContents(node)
+          else contents.selectNode(node)
+          if(range.compareBoundaryPoints(Range.START_TO_START, contents) <= 0
+            && range.compareBoundaryPoints(Range.END_TO_END, contents) >= 0) wrappers.push(node)
+        }
+        if(!node.childNodes.length || Boolean(isAtomicEditingElement(node, this.editor.schema))
+          || node.namespaceURI !== "http://www.w3.org/1999/xhtml"
+          || node.getAttribute("contenteditable") === "false") {
+          const bounds = document.createRange()
+          bounds.selectNode(node)
+          if(range.compareBoundaryPoints(Range.START_TO_START, bounds) <= 0
+            && range.compareBoundaryPoints(Range.END_TO_END, bounds) >= 0) nodes.push(node)
+        }
+        else Array.from(node.childNodes).forEach(visit)
+      }
+    }
+    if(!range.collapsed) Array.from(document.body.childNodes).forEach(visit)
+    let changed = this.removeTextMarks()
+    const context = this.getSelection()
+    // Transparent marks such as links can wrap whole blocks; keep those blocks live.
+    for(const wrapper of wrappers.reverse()) {
+      if(!wrapper.isConnected) continue
+      wrapper.replaceWith(...Array.from(wrapper.childNodes))
+      changed = true
+    }
+    for(const node of nodes.reverse()) {
+      if(!node.isConnected) continue
+      const block = this.closestBlock(node.parentNode!) ?? document.body
+      const nodeRange = document.createRange()
+      nodeRange.selectNode(node)
+      const matches = (element: Element) => isMarkElement(element)
+        && this.isEditableHTMLContext(element, document.body)
+      let ancestor = node.parentElement
+      while(ancestor && ancestor !== block && !matches(ancestor)) ancestor = ancestor.parentElement
+      if((!ancestor || ancestor === block) && (!(node instanceof Element) || !matches(node))) continue
+      changed = this.removeMatching(matches, {
+        selection, range: nodeRange, block, start: 0, end: 0, backwards: false, text: [],
+      }, false) || changed
+    }
+    if(context) this.restoreSelection(context)
+    else if(nodes.length && nodes.every(node => node.isConnected)) {
+      const restored = document.createRange()
+      restored.setStartBefore(nodes.at(-1)!)
+      restored.setEndAfter(nodes[0])
+      selection.removeAllRanges()
+      selection.addRange(restored)
+    }
+    return changed
+  }
+
+  private removeTextMarks(): boolean {
     const svg = this.svgContext()
     if(svg) return this.clearSVG(svg)
     const svgRoots = this.selectedSVGTextRoots()
@@ -1597,7 +1708,7 @@ export class MarkFeature extends EditorFeature {
       try {
         for(const range of ranges.reverse()) {
           selection.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
-          changed = this.removeMarks() || changed
+          changed = this.removeTextMarks() || changed
         }
       }
       finally {
@@ -1619,8 +1730,14 @@ export class MarkFeature extends EditorFeature {
       this.editor.postMarkState()
       return true
     }
-    if(!this.getState().marks.length && !Object.keys(this.getStyleState()).length) return removedRuby || removedMath
-    return this.removeMatching(element => canonicalMarkName(element.localName) !== null) || removedRuby || removedMath
+    const context = this.getSelection()
+    if(!context || !context.text.some(({node}) => {
+      for(let element = node.parentElement; element && element !== context.block; element = element.parentElement) {
+        if(isMarkElement(element)) return true
+      }
+      return false
+    })) return removedRuby || removedMath
+    return this.removeMatching(isMarkElement, context) || removedRuby || removedMath
   }
 
   private effectiveCaretMarks(caret: MarkCaret) {
@@ -1790,12 +1907,13 @@ export class MarkFeature extends EditorFeature {
     this.editor.postMarkState()
   }
 
-  private removeMatching(matches: (element: Element) => boolean): boolean {
-    const context = this.getSelection()
+  private removeMatching(matches: (element: Element) => boolean, context = this.getSelection(), restore = true): boolean {
     if(!context) return false
     if(context.split) return this.acrossTextRanges(context, () => this.removeMatching(matches))
     const originalElements = new Set(context.block.querySelectorAll("*"))
     const originalContainers = new Set<Element>()
+    for(let element = context.range.startContainer instanceof Element ? context.range.startContainer : context.range.startContainer.parentElement;
+      element && element !== context.block; element = element.parentElement) originalContainers.add(element)
     context.text.forEach(slice => {
       for(let element = slice.node.parentElement; element && element !== context.block; element = element.parentElement) {
         originalContainers.add(element)
@@ -1833,8 +1951,10 @@ export class MarkFeature extends EditorFeature {
     Array.from(context.block.querySelectorAll("*")).reverse().forEach(element => {
       if(!originalElements.has(element) && isMarkElement(element) && !this.hasContent(element)) element.remove()
     })
-    context.block.normalize()
-    this.restoreSelection(context)
+    if(restore) {
+      context.block.normalize()
+      this.restoreSelection(context)
+    }
     this.editor.postMarkState()
     return true
   }

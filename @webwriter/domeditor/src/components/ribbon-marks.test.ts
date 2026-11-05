@@ -1219,6 +1219,35 @@ describe("mark ribbon bridge", () => {
     expect(execute).toHaveBeenNthCalledWith(5, {type: "setStyleMark", property: "font-size", value: "17.5px"})
   })
 
+  it("enables Remove formatting for a nonempty selection when marks are not otherwise allowed", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    dispatchEditorMessage(editor, editorWindow, {
+      type: markStateChangeEvent,
+      detail: {canMark: false, canRemoveMarks: true, marks: []},
+    })
+    await editor.updateComplete
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Marks"]')!
+    await drawer.updateComplete
+    const clear = drawer.querySelector<RibbonButton>('ribbon-button[action="removeMarks"]')!
+    await clear.updateComplete
+    expect(clear.disabled).toBe(false)
+    clear.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    expect(execute).toHaveBeenCalledWith({type: "removeMarks"})
+
+    dispatchEditorMessage(editor, editorWindow, {
+      type: markStateChangeEvent,
+      detail: {canMark: false, canRemoveMarks: false, marks: []},
+    })
+    await editor.updateComplete
+    await ribbon.updateComplete
+    await drawer.updateComplete
+    await clear.updateComplete
+    expect(clear.disabled).toBe(true)
+  })
+
   it("propagates ruby state and routes guarded ruby actions through the iframe bridge", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

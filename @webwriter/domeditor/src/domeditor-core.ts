@@ -1160,6 +1160,7 @@ export class DOMEditor {
     if(this.features.selection.selectedSectionElement) {
       this.postBridgeEvent(markStateChangeEvent, {
         canMark: false,
+        canRemoveMarks: this.features.mark.canRemoveMarks,
         marks: [],
         styles: {},
         attributes: {},
@@ -1169,6 +1170,7 @@ export class DOMEditor {
     }
     this.postBridgeEvent(markStateChangeEvent, {
       ...this.features.mark.getState(),
+      canRemoveMarks: this.features.mark.canRemoveMarks,
       styles: this.features.mark.getStyleState(),
       attributes: this.features.mark.getAttributeState(),
       link: this.features.mark.getLinkState() ?? undefined,

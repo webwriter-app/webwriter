@@ -558,6 +558,8 @@ export type SelectionChangeMessage = {
 }
 
 export type MarkStateChangeDetail = {
+  /** True when a nonempty selection can have formatting removed. */
+  canRemoveMarks?: boolean
   link?: LinkSelectionState
   popupActive?: boolean
   svgText?: boolean
@@ -1037,7 +1039,8 @@ export function isMarkStateChangeMessage(value: unknown): value is MarkStateChan
     && Array.isArray(message.detail.marks)
     && message.detail.marks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark)
   if(!validBase || message.detail!.svgText !== undefined && typeof message.detail!.svgText !== "boolean"
-    || message.detail!.popupActive !== undefined && typeof message.detail!.popupActive !== "boolean") return false
+    || message.detail!.popupActive !== undefined && typeof message.detail!.popupActive !== "boolean"
+    || message.detail!.canRemoveMarks !== undefined && typeof message.detail!.canRemoveMarks !== "boolean") return false
   const allowedMarks = message.detail!.allowedMarks
   if(allowedMarks !== undefined && !(Array.isArray(allowedMarks)
     && allowedMarks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark))) return false
