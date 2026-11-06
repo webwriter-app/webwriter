@@ -146,6 +146,7 @@ export class DeveloperConsole extends EditingControls {
     .test-content > div {min-width: 0}
     .test-content .develop-section {min-width: 0; margin: 0}
     .package-issue {display: flex; gap: .4rem; margin-bottom: .6rem; font-size: .75rem; color: #a34521; overflow-wrap: anywhere}
+    .package-issue span {white-space: pre-line}
     .package-issue svg {width: 1rem; height: 1rem; flex-shrink: 0}
     .develop-checklist {display: grid; gap: .35rem; padding: 0; margin: 0; list-style: none; font-size: .7rem}
     .develop-checklist li {display: flex; gap: .4rem; align-items: start; overflow-wrap: anywhere}

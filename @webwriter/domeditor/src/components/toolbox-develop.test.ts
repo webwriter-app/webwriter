@@ -139,6 +139,7 @@ describe("Developer console packages", () => {
     await toolbox.updateComplete
     const load = toolbox.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Add package"]')!
     expect(load.submenu).toEqual(expect.arrayContaining([expect.objectContaining({label: "Add from Git repository", action: "git-package-add"})]))
+    expect(load.submenu).toEqual(expect.arrayContaining([expect.objectContaining({label: "Add from parent folder", action: "local-package-add-batch", icon: "Open"})]))
     const dialog = toolbox.shadowRoot!.querySelector<HTMLDialogElement>(".git-package-dialog")!
     const show = vi.spyOn(dialog, "showModal").mockImplementation(() => {dialog.open = true})
     load.dispatchEvent(new CustomEvent("ribbon-button-click", {detail: {label: "git-package-add"}, bubbles: true, composed: true}))
@@ -338,6 +339,7 @@ describe("Developer console packages", () => {
 
     expect(load.submenu).toEqual([
       {label: "Add from local folder", action: "local-package-add", icon: "Open"},
+      {label: "Add from parent folder", action: "local-package-add-batch", icon: "Open"},
       {label: "Add from Git repository", action: "git-package-add", icon: "Git"},
       {label: "Create new package", action: "local-package-new", icon: "PackagePlus"},
     ])

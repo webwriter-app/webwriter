@@ -284,7 +284,7 @@ export class LocalPackageManager {
     }
   }
 
-  async load(directory: FileSystemDirectoryHandle) {
+  async load(directory: FileSystemDirectoryHandle, install = this.options.install) {
     const previous = await this.matching(directory)
     const id = previous?.id ?? localPackageId()
     await this.worker.start()
@@ -336,7 +336,7 @@ export class LocalPackageManager {
     this.options.error(this.warning(loaded.package, loaded.warnings))
 
     if(this.active && loaded.package.members.length) {
-      await this.options.install(loaded.package, previous?.package.name)
+      await install(loaded.package, previous?.package.name)
     }
     return record
   }

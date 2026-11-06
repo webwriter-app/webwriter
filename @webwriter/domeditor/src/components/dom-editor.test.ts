@@ -132,10 +132,10 @@ const demoPackage: WebWriterPackage = {
   }],
 }
 
-const localPackageDirectory = (withBundle: boolean | {current: boolean} = true) => {
+const localPackageDirectory = (withBundle: boolean | {current: boolean} = true, packageName = "@local/demo") => {
   const bundleAvailable = () => typeof withBundle === "boolean" ? withBundle : withBundle.current
   const manifest = JSON.stringify({
-    name: "@local/demo",
+    name: packageName,
     version: "0.1.0",
     keywords: ["webwriter-widget"],
     exports: {
@@ -3132,6 +3132,60 @@ describe("Develop local packages", () => {
     await console.updateComplete
     expect(console.localPackages).toEqual(packages)
     expect(console.shadowRoot!.querySelector('.local-packages-drawer')).not.toBeNull()
+  })
+
+  it("adds sibling local packages through the console and reloads once despite a folder failure", async () => {
+    const alpha = Object.assign(localPackageDirectory(true, "@local/alpha"), {name: "alpha"})
+    const broken = Object.assign(localPackageDirectory(), {name: "broken"})
+    const demo = localPackageDirectory()
+    const unrelated = {kind: "directory", name: "notes", getFileHandle: vi.fn().mockRejectedValue(new DOMException("", "NotFoundError"))}
+    const dependency = {kind: "directory", name: "node_modules", getFileHandle: vi.fn()}
+    const parent = {
+      name: "packages",
+      async *values() {yield* [demo, unrelated, broken, {kind: "file", name: "package.json"}, dependency, alpha]},
+    }
+    const picker = vi.fn().mockResolvedValue(parent)
+    vi.stubGlobal("showDirectoryPicker", picker)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    const register = vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockImplementation(async (_id, directory) => {
+      if(directory === broken) throw new Error("Folder registration failed")
+    })
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const reload = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    host.consoleOpen = true
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    console.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "local-package-add-batch"}, bubbles: true, composed: true,
+    }))
+
+    expect(picker).toHaveBeenCalledExactlyOnceWith({id: "webwriter-develop-package-parent", mode: "readwrite"})
+    expect(host.localPackagesLoading).toBe(true)
+    await vi.waitFor(() => expect(host.localPackagesLoading).toBe(false))
+    expect(register.mock.calls.map(([, directory]) => directory)).toEqual([alpha, broken, demo])
+    expect(dependency.getFileHandle).not.toHaveBeenCalled()
+    expect(host.localPackages.map((pkg: WebWriterPackage) => pkg.name)).toEqual(["@local/alpha", "@local/demo"])
+    expect(reload).toHaveBeenCalledExactlyOnceWith(host.localPackages)
+    expect(host.localPackageError).toBe("broken: Folder registration failed")
+  })
+
+  it("reports when a parent folder has no packages and ignores picker cancellation", async () => {
+    const picker = vi.fn()
+      .mockResolvedValueOnce({name: "empty", values: async function* () {}})
+      .mockRejectedValueOnce(new DOMException("", "AbortError"))
+    vi.stubGlobal("showDirectoryPicker", picker)
+    const {editor} = await mountEditor()
+    const host = editor as any
+
+    await host.addLocalPackage(true)
+    expect(host.localPackageError).toContain("No package folders found directly inside 'empty'")
+    expect(host.localPackages).toEqual([])
+    expect(host.localPackagesLoading).toBe(false)
+
+    await host.addLocalPackage(true)
+    expect(host.localPackageError).toBe("")
+    expect(host.localPackagesLoading).toBe(false)
   })
 
   it("selects a local package without inserting it", async() => {

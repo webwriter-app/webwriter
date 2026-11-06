@@ -1,3 +1,5 @@
+/// <reference lib="dom.asynciterable" />
+
 import type {DistributionSelection} from "../features/distribution"
 import * as Y from "yjs"
 import {decodeSharedDOMAttribute, INTERNAL_NAMESPACE, INTERNAL_NODE_KIND, INTERNAL_QUALIFIED_NAME} from "../domdoc-codec"
@@ -669,15 +671,7 @@ export class DomEditor extends LitElement {
     refreshing: names => { this.localPackageRefreshingNames = names },
     error: message => { this.localPackageError = message },
     loaded: record => this.selectLocalPackage(record.package.name),
-    install: async(pkg, previousName) => {
-      const client = this.backendClient
-      const documentId = this.backendDocumentId
-      await this.reloadEditor([
-        ...this.installedPackages.filter(candidate => candidate.name !== previousName && candidate.name !== pkg.name),
-        pkg,
-      ])
-      if(previousName && client && documentId) await this.autosaveCloudAfterBundleReload({client, id: documentId})
-    },
+    install: (pkg, previousName) => this.installDeveloperPackages([{pkg, previousName}]),
   })
   private frameState: EditorStateSnapshot | undefined
   // Key the iframe by revision so old windows and their queued messages are retired.
@@ -5042,6 +5036,10 @@ export class DomEditor extends LitElement {
         .finally(() => this.focusEditor())
       return
     }
+    if(label === "local-package-add" || label === "local-package-add-batch") {
+      void this.addLocalPackage(label === "local-package-add-batch")
+      return
+    }
     if(this.localPackageDraft && label?.startsWith("local-package") && label !== `local-package-select:${this.selectedLocalPackageName}`) {
       event.preventDefault()
       const action = /^(local-package-(?:remove|refresh|select)):(.+)$/.exec(label)
@@ -5118,10 +5116,6 @@ export class DomEditor extends LitElement {
     }
     if(label === "show-developer-console") {
       void this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: !this.consoleOpen}}))
-      return
-    }
-    if(label === "local-package-add") {
-      void this.addLocalPackage()
       return
     }
     if(label?.startsWith("local-package-refresh:")) {
@@ -5921,6 +5915,7 @@ export class DomEditor extends LitElement {
   }
 
   private async refreshDeveloperPackage(id: string) {
+    if(this.localPackagesLoading) return
     this.localPackagesLoading = true
     const selected = this.selectedLocalPackageRecord?.id === id
     try {
@@ -5959,6 +5954,7 @@ export class DomEditor extends LitElement {
 
   private handleGitPackageLoad = async (event: Event) => {
     if(this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
+    if(this.localPackagesLoading) return
     const source = (event as CustomEvent<GitPackageSource>).detail
     this.localPackagesLoading = true
     this.localPackageError = ""
@@ -5967,7 +5963,60 @@ export class DomEditor extends LitElement {
     finally {this.localPackagesLoading = false}
   }
 
-  private async addLocalPackage() {
+  private async installDeveloperPackages(packages: {pkg: WebWriterPackage, previousName?: string}[]) {
+    if(!packages.length) return
+    const client = this.backendClient
+    const documentId = this.backendDocumentId
+    const nextPackages = new Map(this.installedPackages.map(pkg => [pkg.name, pkg]))
+    for(const {pkg, previousName} of packages) {
+      if(previousName) nextPackages.delete(previousName)
+      nextPackages.delete(pkg.name)
+      nextPackages.set(pkg.name, pkg)
+    }
+    await this.reloadEditor([...nextPackages.values()])
+    if(client && documentId && packages.some(({previousName}) => previousName)) {
+      await this.autosaveCloudAfterBundleReload({client, id: documentId})
+    }
+  }
+
+  private async loadLocalPackageBatch(parent: FileSystemDirectoryHandle) {
+    const directories: FileSystemDirectoryHandle[] = []
+    const issues: string[] = []
+    for await (const entry of parent.values()) {
+      if(entry.kind !== "directory" || entry.name === "node_modules") continue
+      const directory = entry as FileSystemDirectoryHandle
+      try {
+        await directory.getFileHandle("package.json")
+        directories.push(directory)
+      }
+      catch(error) {
+        if(isRecord(error) && (error.name === "NotFoundError" || error.name === "TypeMismatchError")) continue
+        issues.push(`${directory.name}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    if(!directories.length && !issues.length) {
+      this.localPackageError = `No package folders found directly inside '${parent.name}'. Choose a folder containing subfolders with package.json files.`
+      return
+    }
+
+    const installs: {pkg: WebWriterPackage, previousName?: string}[] = []
+    for(const directory of directories.sort((a, b) => a.name.localeCompare(b.name))) {
+      this.localPackageError = ""
+      try {
+        await this.localPackageManager.load(directory, async (pkg, previousName) => {installs.push({pkg, previousName})})
+        if(this.localPackageError) issues.push(this.localPackageError)
+      }
+      catch(error) {
+        issues.push(`${directory.name}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    try {await this.installDeveloperPackages(installs)}
+    catch(error) {issues.push(error instanceof Error ? error.message : String(error))}
+    this.localPackageError = issues.join("\n")
+  }
+
+  private async addLocalPackage(batch = false) {
+    if(this.localPackagesLoading) return
     const picker = (window as FilePickerWindow).showDirectoryPicker
     if(!picker) {
       this.localPackageError = "This browser cannot open local package folders. Use a secure Chromium-based browser with the File System Access API."
@@ -5979,8 +6028,11 @@ export class DomEditor extends LitElement {
     try {
       // The picker is deliberately the first awaited operation: browsers
       // require it to run within the Load button's user activation.
-      const directory = await picker.call(window, {id: "webwriter-develop-package", mode: "readwrite"})
-      await this.localPackageManager.load(directory)
+      const id = batch ? "webwriter-develop-package-parent" : "webwriter-develop-package"
+      const directory = await picker.call(window, {id, mode: "readwrite"})
+      if(this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
+      if(batch) await this.loadLocalPackageBatch(directory)
+      else await this.localPackageManager.load(directory)
     }
     catch(error) {
       if(!isAbortError(error)) this.localPackageError = error instanceof Error ? error.message : String(error)
