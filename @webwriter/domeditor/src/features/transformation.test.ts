@@ -617,6 +617,25 @@ describe.each(["img", "picture"])("%s stretching", tag => {
     return {target, image}
   }
 
+  it("stops proportional resizing at the CSS minimum width and grows again", () => {
+    const {target} = imageTarget()
+    target.style.minWidth = "120px"
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    const move = (clientX: number, clientY: number) => movePointer(pointer("pointermove",
+      {pointerId: 3, clientX, clientY, shiftKey: true, altKey: true}))
+
+    move(160, 175)
+    expect(target.style.maxWidth).toBe("120px")
+    expect(target.style.maxHeight).toBe("60px")
+    expect(target.style.aspectRatio).toBe("120 / 60")
+    move(240, 170)
+    expect(target.style.maxWidth).toBe("140px")
+    expect(target.style.maxHeight).toBe("70px")
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.minWidth).toBe("120px")
+  })
+
   it.each([{dx: 60, dy: -20}, {dx: -40, dy: 30}, {dx: 0, dy: 40}, {dx: 40, dy: 0}])("changes dimensions independently by $dx/$dy and preserves undo", async ({dx, dy}) => {
     const {target, image} = imageTarget()
     const children = Array.from(target.childNodes)
@@ -725,6 +744,21 @@ describe.each(["img", "picture"])("%s stretching", tag => {
 })
 
 describe("resize alignment", () => {
+  it("clamps a floated widget to its stylesheet minimum width", () => {
+    floatStylesheet.textContent += " demo-widget { min-width: 120px }"
+    const target = targetElement("demo-widget")
+    Object.assign(target.style, {width: "200px", height: "100px", float: "right"})
+    mockRect(target, {width: 200, height: 100})
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-left")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 200}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 270, clientY: 180, altKey: true}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.maxWidth).toBe("120px")
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("120px")
+    expect(target.style.minWidth).toBe("")
+  })
+
   it.each([
     {marginLeft: "0px", marginRight: "auto", float: "none", corner: "down-right", width: 230},
     {marginLeft: "20px", marginRight: "20px", float: "none", corner: "down-right", width: 230},

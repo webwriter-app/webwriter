@@ -134,10 +134,10 @@
     padding-block-end: max(68px, var(--ww-page-gutter, 1rem));
 
     /* Default elements fill their column; authored sizes still take precedence.
+     * Leave minimum sizes to the element, including widgets' shadow :host rules.
      * Inline widgets retain their own display; these sizes do not blockify them. */
     :is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover], .◆hotspot-popup[popover]) {
       inline-size: 100%;
-      min-inline-size: 0;
       margin-inline: auto;
     }
 
@@ -197,7 +197,6 @@
       /* A bounded border box fits its lane. Old floats use the theme width. */
       box-sizing: border-box !important;
       inline-size: var(--ww-float-size, var(--ww-float-width)) !important;
-      min-inline-size: 0 !important;
       max-inline-size: max(var(--ww-float-width), var(--ww-float-size, 0px));
       --ww-attribution-after: 0px;
       margin-block: 0 calc(var(--ww-page-gutter, 1rem) + var(--ww-float-attribution-before, 0px) + var(--ww-attribution-after));

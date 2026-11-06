@@ -21,6 +21,7 @@ const spatialGroupAttribute = "data-ww-group"
 const spatialGroupRotation = "data-ww-group-rotation"
 type Mode = "move" | "scale" | "rotate" | "anchor" | "crop"
 const cropDirections = ["up-left", "down-right"] as const
+const pixelSize = (value: string) => value.endsWith("px") && Number.isFinite(parseFloat(value)) ? parseFloat(value) : undefined
 type StyleValue = {value: string, priority: string}
 type GestureStyles = {target: TransformElement, initial: CSSStyleDeclaration, written: Map<string, StyleValue>}
 type GroupMember = GestureStyles & {
@@ -829,7 +830,6 @@ export class TransformationFeature extends EditorFeature {
     const extra = (properties: string[]) => properties.reduce((sum, property) => sum + (parseFloat(style.getPropertyValue(property)) || 0), 0)
     const paddingWidth = style.boxSizing === "border-box" ? 0 : extra(["padding-left", "padding-right", "border-left-width", "border-right-width"])
     const paddingHeight = style.boxSizing === "border-box" ? 0 : extra(["padding-top", "padding-bottom", "border-top-width", "border-bottom-width"])
-    const pixelSize = (value: string) => value.endsWith("px") && Number.isFinite(parseFloat(value)) ? parseFloat(value) : undefined
     let cssWidth = pixelSize(style.width), cssHeight = pixelSize(style.height)
     if(cssWidth === undefined || cssHeight === undefined) {
       // Inline widget hosts can retain percentages or auto in computed style.
@@ -1496,6 +1496,9 @@ export class TransformationFeature extends EditorFeature {
   }
 
   #resizeDimension(styles: GestureStyles, property: "width" | "height", size: number, delta: number) {
+    if(property === "width" && delta < 0) {
+      delta = Math.max(delta, (pixelSize(getComputedStyle(styles.target).minWidth) ?? 0) - size)
+    }
     if(Math.abs(delta) < .01) {
       for(const key of [property, `max-${property}`]) if(styles.written.has(key)) {
         this.#write(key, styles.initial.getPropertyValue(key), styles.initial.getPropertyPriority(key), styles)
@@ -1943,17 +1946,29 @@ export class TransformationFeature extends EditorFeature {
     const centered = gesture.resizeCentered ?? false
     const round = this.getRoundingFunc(event)
     const size = gesture.figureImage ?? gesture
+    const style = getComputedStyle(target)
+    const {display, float, minWidth} = style
+    const minimum = pixelSize(minWidth)
+    // Use CSS widths here, since min-width follows box-sizing and the
+    // pointer delta is in the element's untransformed coordinate system.
+    const minDelta = (minimum ?? 0) - gesture.cssWidth
+    const figureImage = gesture.figureImage, picture = figureImage?.picture
+    const minDW = figureImage && gesture.image
+      ? Math.max(minDelta, (pixelSize(getComputedStyle(gesture.image.target).minWidth) ?? 0) - figureImage.cssWidth,
+        picture ? (pixelSize(getComputedStyle(picture.target).minWidth) ?? 0) - picture.cssWidth : -Infinity)
+      : minDelta
     let dw = x ? Math.max(1 - size.width, round(x * delta.x * (symmetric || centered ? 2 : 1))) : 0
     let dh = y ? Math.max(1 - size.height, round(y * delta.y * (symmetric ? 2 : 1))) : 0
-    if(image && event.shiftKey && size.width > 0 && size.height > 0) {
-      const change = x && (!y || Math.abs(dw / size.width) >= Math.abs(dh / size.height)) ? dw / size.width : dh / size.height
+    const proportional = image && event.shiftKey && size.width > 0 && size.height > 0
+    if(proportional) {
+      const requested = x && (!y || Math.abs(dw / size.width) >= Math.abs(dh / size.height)) ? dw / size.width : dh / size.height
+      const change = size.cssWidth > 0 ? Math.max(requested, minDW / size.cssWidth) : requested
       dw = size.cssWidth * change
       dh = size.cssHeight * change
     }
+    else if(x) dw = Math.max(dw, minDW)
     const crop = gesture.canvas && !event.altKey
     const scaleInsteadOfResize = event.shiftKey && !crop && !text && !image
-    const style = getComputedStyle(target)
-    const {display, float} = style
     document.body.classList.add(`◆transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
     const popup = target.closest("[popover]")
     const insidePopup = Boolean(popup && popup !== target && popupElementRole(popup) === "content")
@@ -1962,24 +1977,7 @@ export class TransformationFeature extends EditorFeature {
     gesture.resizeMode = resizeMode
     if(gesture.canvas && !crop) this.#writeCanvasViewBox(gesture.canvas.initial)
     if(display === "inline" && target instanceof HTMLElement) this.#write("display", "inline-block")
-    let actualDW = dw, actualDH = dh
-    if(gesture.figureImage && gesture.image) {
-      // Resize the media in layout so the caption can wrap at its own font size.
-      this.#resizeDimension(gesture.image, "width", size.cssWidth, dw)
-      this.#resizeDimension(gesture.image, "height", size.cssHeight, dh)
-      const picture = gesture.figureImage.picture
-      if(picture) {
-        this.#resizeDimension(picture, "width", picture.cssWidth, dw)
-        this.#resizeDimension(picture, "height", picture.cssHeight, dh)
-      }
-      this.#resizeDimension(gesture, "width", gesture.cssWidth, dw)
-      this.#write("height", "auto")
-      this.#write("max-height", "none")
-    }
-    else if(scaleInsteadOfResize) {
-      this.#write("scale", `${gesture.scale[0] * (gesture.width + dw) / gesture.width} ${gesture.scale[1] * (gesture.height + dh) / gesture.height}`)
-    }
-    else {
+    const resizeBox = () => {
       if(text) {
         this.#write("height", "auto")
         this.#write("min-height", mathRoot(target) === target ? "" : "0px")
@@ -2030,11 +2028,40 @@ export class TransformationFeature extends EditorFeature {
       }
       if(y) this.#write("max-height", `${Math.max(0, gesture.cssHeight + dh)}px`)
     }
+    if(figureImage && gesture.image) {
+      // Resize the media in layout so the caption can wrap at its own font size.
+      this.#resizeDimension(gesture.image, "width", size.cssWidth, dw)
+      this.#resizeDimension(gesture.image, "height", size.cssHeight, dh)
+      if(picture) {
+        this.#resizeDimension(picture, "width", picture.cssWidth, dw)
+        this.#resizeDimension(picture, "height", picture.cssHeight, dh)
+      }
+      this.#resizeDimension(gesture, "width", gesture.cssWidth, dw)
+      this.#write("height", "auto")
+      this.#write("max-height", "none")
+    }
+    else if(scaleInsteadOfResize) {
+      this.#write("scale", `${gesture.scale[0] * (gesture.width + dw) / gesture.width} ${gesture.scale[1] * (gesture.height + dh) / gesture.height}`)
+    }
+    else {
+      resizeBox()
+      if(minWidth && minWidth !== "auto" && minimum === undefined && (x || proportional)) {
+        // The browser resolves percentages and intrinsic widths against the
+        // actual layout. Read back the floor only when it exceeds our cap.
+        const usedWidth = pixelSize(style.width)
+        if(usedWidth !== undefined && usedWidth > Math.max(1, gesture.cssWidth + dw) + .02) {
+          const correction = usedWidth - gesture.cssWidth - dw
+          dw += correction
+          if(proportional && size.cssWidth > 0) dh += size.cssHeight * correction / size.cssWidth
+          resizeBox()
+        }
+      }
+    }
     this.editor.features.layout.refreshFigureLayout(target)
     const keepAnchor = freeform && (style.position || "static") !== "static"
-    // Flow resize does not adjust offsets. Measure the used size only when
-    // positioning a spatial item or projecting an SVG viewport.
+    // Use the final layout size to position spatial items and SVG viewports.
     let rect: DOMRect | undefined
+    let actualDW = dw, actualDH = dh
     if((keepAnchor || crop) && !scaleInsteadOfResize) {
       if(keepAnchor && !crop) rect = this.targetRect
       const size = this.#size(target, undefined, rect)

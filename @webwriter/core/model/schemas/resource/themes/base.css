@@ -370,7 +370,6 @@ body > footer {
 }
 
 :where(body, body > main, body > article, body > section) > * {
-  min-inline-size: 0;
   max-inline-size: 100%;
 }
 

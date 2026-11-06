@@ -9827,11 +9827,14 @@ await check("lane media fills available width and resizes with native handles", 
       assert(Math.abs(target.getBoundingClientRect().width - (startingWidth + 320)) < 1, `${target.localName} could not grow beyond its initial column`)
       editor.features.manipulation.setElementStyles(target, {width:"140px", "max-width":null})
       await layoutFrame()
+      const expectedStart = target.localName === "video" ? 175 : 140
+      assert(Math.abs(target.getBoundingClientRect().width - expectedStart) < 1, `${target.localName} used the wrong width before resizing`)
+      const grownWidth = expectedStart + 180
       await resize(180)
-      assert(Math.abs(target.getBoundingClientRect().width - 320) < 1, `${target.localName} remained capped at its previous authored width`)
+      assert(Math.abs(target.getBoundingClientRect().width - grownWidth) < 1, `${target.localName} remained capped at its previous authored width`)
       const initial = target.style.cssText
       await resize(60, true)
-      assert(target.style.cssText === initial && Math.abs(target.getBoundingClientRect().width - 320) < 1, "cancelled float resize retained its preferred size")
+      assert(target.style.cssText === initial && Math.abs(target.getBoundingClientRect().width - grownWidth) < 1, "cancelled float resize retained its preferred size")
     }
     const saved = document.createElement("iframe")
     saved.style.cssText = frame.style.cssText
@@ -9842,7 +9845,8 @@ await check("lane media fills available width and resizes with native handles", 
     try {
       await loaded
       for(const target of saved.contentDocument!.querySelectorAll("video, picture, native-lane-widget")) {
-        assert(Math.abs(target.getBoundingClientRect().width - 320) < 1, "standalone export lost a manual float resize")
+        const expectedWidth = target.localName === "video" ? 355 : 320
+        assert(Math.abs(target.getBoundingClientRect().width - expectedWidth) < 1, "standalone export lost a manual float resize")
       }
     }
     finally { saved.remove() }

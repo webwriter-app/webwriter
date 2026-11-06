@@ -131,6 +131,7 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
 
   const parsed = new DOMParser().parseFromString(documentHTML, "text/html")
   restoreOriginalResourceURLs(parsed)
+  upgradeBundledDocumentThemes(parsed)
   applyIframeSandboxPolicy(parsed, [options.hostOrigin, entryURL.origin])
   // The iframe receives its trusted resolution through load-widgets.
   parsed.getElementById(packageImportMapId)?.remove()
