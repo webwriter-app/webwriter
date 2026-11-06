@@ -54,6 +54,13 @@ export const defaultDocumentTheme = documentThemes[0]
 export const documentTheme = (value: string) => documentThemes.find(theme => theme.value === value)
 
 const themeEncoder = new TextEncoder()
+const legacyTablePictureRule = `/* Pictures in cells need the same sizing box in editing and reading mode. */
+  :where(td, th) picture {
+    display: block;
+    width: 100%;
+    height: auto;
+  }`
+const tablePictureRule = legacyTablePictureRule.replace("display: block", "display: inline-block")
 
 /** Upgrade bundled CSS in a detached preview or export. */
 export function upgradeBundledDocumentThemes(root: Document) {
@@ -63,6 +70,9 @@ export function upgradeBundledDocumentThemes(root: Document) {
     if(!theme || !source || source === theme.source) continue
     const fingerprint = toHexString(digest(themeEncoder.encode(source.replace(/\r\n?/g, "\n"))).subarray(0, 16))
     if(legacyDocumentThemeFingerprints[theme.value].includes(fingerprint)) style.textContent = theme.source
+    // The table picture migration replaces only the generated rule, keeping
+    // any other CSS in the stylesheet.
+    else if(source.includes(legacyTablePictureRule)) style.textContent = source.replace(legacyTablePictureRule, tablePictureRule)
   }
 }
 

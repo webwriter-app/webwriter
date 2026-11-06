@@ -171,12 +171,12 @@ body > :last-child:not(:where(.◆gap-after-selected)) {
   user-select: none;
 }
 
-:is(picture:where(:not(html.◆canvas-active *)), audio, video) {
+:is(picture:where(:not(html.◆canvas-active *, :is(td, th) *)), audio, video) {
   display: block;
   width: 100%;
 }
 
-:is(picture:where(:not(html.◆canvas-active *)), video) {
+:is(picture:where(:not(html.◆canvas-active *, :is(td, th) *)), video) {
   height: auto;
 }
 

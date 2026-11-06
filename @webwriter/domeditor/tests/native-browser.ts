@@ -103,21 +103,55 @@ const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
 await check("table pictures keep their size in editing and preview", async () => {
   const frames: HTMLIFrameElement[] = []
-  const image = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="purple"/></svg>'
+  const bitmap = document.createElement("canvas")
+  bitmap.width = 400
+  bitmap.height = 200
+  const context = bitmap.getContext("2d")!
+  context.fillStyle = "purple"
+  context.fillRect(0, 0, bitmap.width, bitmap.height)
+  const image = bitmap.toDataURL()
+  const resizedPicture = `<picture style="width:100%;max-width:80px;aspect-ratio:2 / 1"><img src='${image}' style="width:100%;height:100%"></picture>`
+  const table = `<table style="table-layout:fixed;width:600px"><tr>
+    <td style="height:120px;vertical-align:middle">${resizedPicture}</td>
+    <th><picture><img src='${image}'></picture></th>
+    <td><img src='${image}' style="width:80px"></td>
+    </tr><tr><td><picture style="width:20px"><img src='${image}' style="width:100%"></picture></td>
+    <th style="height:120px;vertical-align:middle">${resizedPicture}</th><td>Cell text</td></tr></table>`
+  const previousTheme = defaultDocumentTheme.source.replace(
+    "/* Share sizing between modes and let cells align narrower pictures. */\n  :where(td, th) picture {\n    display: inline-block;",
+    "/* Pictures in cells need the same sizing box in editing and reading mode. */\n  :where(td, th) picture {\n    display: block;"
+  )
+  const saved = new DOMParser().parseFromString(`<!doctype html><style data-ww-theme="base">${previousTheme}</style>${table}`, "text/html")
+  const previewHTML = previewFrameHTML(saved, {
+    bridgeNonce: "", hostOrigin: location.origin, frameOrigin: location.origin, importMap: null,
+    packages: [], entryURL: "", executeScripts: false,
+  })
   try {
     for(const editing of [true, false]) {
       const frame = document.createElement("iframe")
       frame.style.cssText = "width:800px;height:400px"
-      frame.srcdoc = `<style>${defaultDocumentTheme.source}</style>${editing ? `<style>${editorStyleSource}</style>` : ""}
-        <table style="table-layout:fixed;width:600px"><tr>
-        <td><picture style="width:100%;max-width:80px;aspect-ratio:2 / 1"><img src='${image}' style="width:100%;height:100%"></picture></td>
-        <th><picture><img src='${image}'></picture></th>
-        <td><img src='${image}' style="width:80px"></td>
-        </tr><tr><td><picture style="width:20px"><img src='${image}' style="width:100%"></picture></td><td colspan="2">Cell text</td></tr></table>`
+      frame.srcdoc = editing ? `<!doctype html><style>${defaultDocumentTheme.source}</style><style>${editorStyleSource}</style>${table}` : previewHTML
       frames.push(frame)
       fixture.append(frame)
       await new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
-      await Promise.all(Array.from(frame.contentDocument!.images, img => img.decode()))
+      const doc = frame.contentDocument!
+      await Promise.all(Array.from(doc.images, img => img.decode()))
+      for(const cell of doc.querySelectorAll<HTMLTableCellElement>("td[style], th[style]")) {
+        const img = cell.querySelector("img")!
+        const box = cell.getBoundingClientRect()
+        const style = doc.defaultView!.getComputedStyle(cell)
+        const left = box.left + parseFloat(style.borderLeftWidth) / 2 + parseFloat(style.paddingLeft)
+        const right = box.right - parseFloat(style.borderRightWidth) / 2 - parseFloat(style.paddingRight)
+        for(const alignment of ["left", "center", "right"] as const) {
+          cell.style.textAlign = alignment
+          const rect = img.getBoundingClientRect()
+          const expected = alignment === "left" ? left : alignment === "right" ? right - rect.width
+            : (left + right - rect.width) / 2
+          assert(Math.abs(rect.left - expected) < 1, `${cell.localName} picture ignored ${alignment} in ${editing ? "editing" : "preview"}`)
+          assert(Math.abs(rect.top + rect.bottom - box.top - box.bottom) < 2,
+            `${cell.localName} picture lost vertical centering`)
+        }
+      }
     }
     const dimensions = frames.map(frame => Array.from(frame.contentDocument!.images, img => {
       const rect = img.getBoundingClientRect()
@@ -138,10 +172,10 @@ await check("table pictures keep their size in editing and preview", async () =>
     }
     const preview = frames[1].contentDocument!
     const override = preview.createElement("style")
-    override.textContent = "th picture { display: inline-block; width: 45px; }"
+    override.textContent = "th picture { display: block; width: 45px; }"
     preview.head.append(override)
     const picture = preview.querySelector("th picture")!
-    assert(preview.defaultView!.getComputedStyle(picture).display === "inline-block" && Math.abs(picture.getBoundingClientRect().width - 45) < 1,
+    assert(preview.defaultView!.getComputedStyle(picture).display === "block" && Math.abs(picture.getBoundingClientRect().width - 45) < 1,
       "authored picture styles did not override the theme")
   }
   finally { frames.forEach(frame => frame.remove()) }
