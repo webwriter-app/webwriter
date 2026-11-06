@@ -45,6 +45,10 @@ describe("accessibility reviewer", () => {
       resultTypes: ["violations"],
       runOnly: {type: "tag", values: expect.arrayContaining(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"])},
     })
+    expect(options.rules).toEqual({
+      "landmark-one-main": {enabled: false},
+      region: {enabled: false},
+    })
   })
 
   it("preserves the default slot, excludes appendix UI and atomic widget descendants, and maps connected authored elements", async () => {
@@ -126,31 +130,21 @@ describe("accessibility reviewer", () => {
     expect(document.documentElement.outerHTML).toBe(before)
   })
 
-  it("groups page region violations into one document finding and keeps other rules actionable", async () => {
-    document.body.innerHTML = '<header>Site header</header><section>Lesson one</section><aside>Lesson two</aside><img src="lesson.png">'
-    const blocks = [...document.body.children]
-    const image = document.querySelector("img")!
-    const editorOnly = document.createElement("div")
-    editorOnly.className = "◆editor-only"
-    document.body.append(editorOnly)
-    const disconnected = document.createElement("section")
+  it("still reports a missing title and heading in a simple document", async () => {
+    document.head.replaceChildren()
+    document.body.innerHTML = "<p>hello</p>"
     const before = document.documentElement.outerHTML
     mockRun.mockResolvedValue({violations: [
-      {id: "region", help: "All page content should be contained by landmarks", helpUrl: "https://example.test/region",
-        nodes: [...blocks.slice(0, 3), editorOnly, disconnected].map(element => ({element}))},
-      {id: "image-alt", help: "Images must have alternate text", helpUrl: "https://example.test/image-alt",
-        nodes: [{element: image}]},
+      {id: "document-title", help: "Add a document title", helpUrl: "https://example.test/title",
+        nodes: [{element: document.documentElement}]},
+      {id: "page-has-heading-one", help: "Add a level-one heading", helpUrl: "https://example.test/heading",
+        nodes: [{element: document.documentElement}]},
     ]})
     const reviewer = await createAccessibilityReviewer()
 
     const findings = await reviewer.check(document.body, schemaWith())
 
-    expect(findings).toEqual([
-      {element: image, rule: "image-alt", message: "Images must have alternate text", text: "<img>", helpUrl: "https://example.test/image-alt"},
-      {element: document.documentElement, rule: "region", message: "All page content should be contained by landmarks",
-        text: "3 blocks outside landmarks. Group related content in a main landmark.", helpUrl: "https://example.test/region"},
-    ])
-    expect(findings.filter(finding => finding.rule === "region")).toHaveLength(1)
+    expect(findings.map(finding => finding.rule)).toEqual(["document-title", "page-has-heading-one"])
     expect(document.documentElement.outerHTML).toBe(before)
   })
 
