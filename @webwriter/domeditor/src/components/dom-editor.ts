@@ -8510,8 +8510,13 @@ export class DomEditor extends LitElement {
     }
     if(isSelectionChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
+      // Package assets in the isolated editor use its service worker. The
+      // surrounding UI must load local icons from the application origin.
+      const hostIcon = <T extends {iconUrl?: string}>(item: T): T => this.editorOpaque && item.iconUrl
+        ? {...item, iconUrl: frameLocalPackageURL(item.iconUrl, editorFrameOrigin(), window.location.origin)}
+        : item
       const path = event.data.detail.path.map(item => ({
-        ...item,
+        ...hostIcon(item),
         path: [...item.path],
         ...(item.sections ? {sections: item.sections.map(section => ({
           ...section,
@@ -8578,14 +8583,16 @@ export class DomEditor extends LitElement {
         ...(event.data.detail.graphic.viewport ? {viewport: {...event.data.detail.graphic.viewport}} : {}),
       } : null
       this.elementAttributes = event.data.detail.element ? {
-        ...event.data.detail.element,
+        ...hostIcon(event.data.detail.element),
         path: event.data.detail.element.path ? [...event.data.detail.element.path] : null,
         attributes: {...event.data.detail.element.attributes},
       } : null
       this.selectedElementTypes = structuredClone(event.data.detail.selectedElementTypes ?? [])
+        .map(group => ({...group, element: hostIcon(group.element)}))
       const previousWidget = this.widgetOptions
       this.widgetOptions = event.data.detail.widget ? structuredClone(event.data.detail.widget) : null
-      this.widgetConversion = event.data.detail.widgetConversion ? structuredClone(event.data.detail.widgetConversion) : null
+      const conversion = event.data.detail.widgetConversion ? structuredClone(event.data.detail.widgetConversion) : null
+      this.widgetConversion = conversion ? {...conversion, targets: conversion.targets.map(hostIcon)} : null
       if(previousWidget?.localName !== this.widgetOptions?.localName
         || JSON.stringify(previousWidget?.path) !== JSON.stringify(this.widgetOptions?.path)) this.selectWidgetElementPackage()
       if(this.stylesVisible()) this.queueElementStyleRefresh()

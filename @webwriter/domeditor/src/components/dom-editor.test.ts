@@ -7119,6 +7119,45 @@ describe("DomEditor.execute()", () => {
     expect(toolbox.activeTool).toBeNull()
   })
 
+  it("loads isolated local widget icons from the host in the breadcrumb and toolbox", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const host = editor as any
+    const frameOrigin = new URL(host.frameShellURL("editor", 0)).origin
+    const iconPath = `${LOCAL_PACKAGE_ROUTE_PREFIX}local-demo/assets/icon.svg?revision=3`
+    const frameIcon = frameOrigin + iconPath
+    const hostIcon = location.origin + iconPath
+    const remoteIcon = `https://cdn.example${iconPath}`
+    host.editorOpaque = true
+    vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    const presentation = {name: "Local Demo", icon: "Packages", iconUrl: frameIcon}
+    const identity = {localName: "local-demo", namespaceURI: "http://www.w3.org/1999/xhtml"}
+    const element = {...identity, ...presentation, path: [0], attributes: {}}
+    const group = {
+      element, count: 1, styleProperties: [], configuredWidgetOptions: [],
+      style: {target: identity, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}},
+    }
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow, origin: frameOrigin,
+      data: {type: selectionChangeEvent, detail: {
+        path: [{path: [], name: "Document"}, {path: [0], ...presentation}], element, nodeSelected: true,
+        selectedElementTypes: [group], widgetConversion: {sourceId: "local-demo", targets: [
+          {tag: "local-other", ...presentation}, {tag: "remote-demo", ...presentation, iconUrl: remoteIcon},
+        ]},
+      }},
+    }))
+    await editor.updateComplete
+    await toolbox.updateComplete
+    const breadcrumb = editor.shadowRoot!.querySelector("dom-editor-breadcrumb")!
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('[data-specialized="local-demo"]')!
+    await drawer.updateComplete
+    expect(breadcrumb.shadowRoot!.querySelector(".item-icon img")?.getAttribute("src")).toBe(hostIcon)
+    expect(drawer.shadowRoot!.querySelector(".pane-icon img")?.getAttribute("src")).toBe(hostIcon)
+    expect(toolbox.elementAttributes?.iconUrl).toBe(hostIcon)
+    expect(toolbox.widgetConversion?.targets.map(target => target.iconUrl)).toEqual([hostIcon, remoteIcon])
+    expect(element.iconUrl).toBe(frameIcon)
+  })
+
   it("binds multi-selection drawers and routes their changes by type through the bridge", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
