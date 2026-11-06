@@ -524,6 +524,15 @@ describe("CSS-only Slides layout", () => {
     expect(Array.from(saved.querySelectorAll("nav a"), link => link.getAttribute("draggable"))).toEqual(controls.filter(control => control.localName === "a").map(() => "false"))
   })
 
+  it("presents the final caret once after controlled slide focus", () => {
+    const [, two] = seed()
+    const processSelection = vi.spyOn(editor.features.selection, "processSelection")
+    expect(editor.features.slides.selectStart(two)).toBe(true)
+    expect(processSelection).toHaveBeenCalledTimes(1)
+    expect($.anchor).toBe(two.firstElementChild)
+    expect(editor.features.slides.isSelectingForNavigation).toBe(false)
+  })
+
   it("shows Slides > Slide number > content without carousel sectioning and follows live order", () => {
     const [one, two] = seed()
     const viewport = one.parentElement!

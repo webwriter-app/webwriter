@@ -1080,6 +1080,35 @@ describe("Board layout", () => {
     expect(editor.appendix.querySelector('[aria-label^="Move card "]')).toBeNull()
   })
 
+  it("does not rebuild board anchors for selection-only refreshes", async () => {
+    convert("board"); await settle()
+    const card = cards()[0]
+    const first = document.createElement("span"), second = document.createElement("span")
+    card.querySelector("p")!.append(first, second)
+    await settle(); board().refresh()
+    const anchors = (board() as any).anchors
+    const refresh = vi.spyOn(anchors, "refresh"), bind = vi.spyOn(anchors, "bind")
+    $.move(first); editor.features.selection.processSelection(); board().refresh()
+    $.move(second); editor.features.selection.processSelection(); board().refresh()
+    expect(refresh).not.toHaveBeenCalled()
+    expect(bind).not.toHaveBeenCalled()
+  })
+
+  it("rebinds the transform overlay when selection moves to another card", async () => {
+    convert("board"); board().addCard(); await settle()
+    const [first, second] = cards()
+    $.move(first.querySelector("p")!); board().refresh()
+    const overlay = board().transformOverlay(first)!
+    const marker = Array.from(first.classList).find(name => name.startsWith("◆anchor-target-"))!
+    expect(marker).toBeDefined()
+
+    $.move(second.querySelector("p")!); board().refresh()
+    expect(overlay.isConnected).toBe(false)
+    expect(first.classList.contains(marker)).toBe(false)
+    expect(board().transformOverlay(second)).not.toBeNull()
+    expect(Array.from(second.classList).some(name => name.startsWith("◆anchor-target-"))).toBe(true)
+  })
+
   it("restores authored dimensions when a board resize gesture is cancelled", async () => {
     convert("board"); await settle()
     const card = cards()[0]

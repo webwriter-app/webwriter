@@ -835,12 +835,21 @@ export class SharedDOMDoc {
   /** Checks whether a local transaction only changed inline styles owned by a gesture. */
   isLocalStyleOnlySync(transaction: Y.Transaction, owner: Element | ((element: Element) => boolean)) {
     if(transaction.origin !== this.#domOrigin) return false
+    let hasOwnedStyle = false
     for(const [shared, keys] of transaction.changed) {
-      if(!(shared instanceof Y.XmlElement) || keys.size !== 1 || !keys.has("style")) return false
-      const element = this.#nodes.get(shared)
-      if(!isElement(element) || (typeof owner === "function" ? !owner(element) : element !== owner)) return false
+      if(shared instanceof Y.XmlElement && keys.size === 1 && keys.has("style")) {
+        const element = this.#nodes.get(shared)
+        if(!isElement(element) || (typeof owner === "function" ? !owner(element) : element !== owner)) return false
+        hasOwnedStyle = true
+        continue
+      }
+      // Local DOM transactions also stamp the current author's metadata. It
+      // cannot affect the DOM or selection and is the only non-style change
+      // safe to include in an owned style sync.
+      if(Object.is(shared, this.#documentAuthors) && keys.size === 1 && keys.has(String(this.awareness.clientID))) continue
+      return false
     }
-    return true
+    return hasOwnedStyle || transaction.changed.size === 0
   }
 
   /** Reconciles the current DOM immediately; MutationObserver normally calls this. */

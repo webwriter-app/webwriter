@@ -6492,8 +6492,8 @@ describe("unified content transfer", () => {
       const data = ribbonData("h2")
       document.body.dispatchEvent(transferEvent("dragover", data, {clientX: 200, clientY: 300}))
       expect(document.body).toHaveClass("◆drop-selection-active")
-      expect($.anchor).toBe(document.body)
-      expect($.anchorOffset).toBe(1)
+      expect($.selectedElement).toBe(image)
+      expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).not.toBeNull()
       document.body.dispatchEvent(transferEvent("drop", data, {clientX: 200, clientY: 300}))
       expect(Array.from(document.body.children).map(node => node.localName)).toEqual(["picture", "h2"])
       expect(image.isConnected).toBe(true)
@@ -6623,9 +6623,10 @@ describe("unified content transfer", () => {
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
-  it("moves the package drop caret in protected dragover mode and retains the drop point after selection changes", async () => {
+  it("previews a protected package drop without moving the selection and retains the committed drop point", async () => {
     document.body.innerHTML = '<p>before after</p><p>other</p>'
     const text = document.querySelector("p")!.firstChild!
+    $.move(text, 1)
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: text, offset: 7})
     const data = new DataTransfer()
     data.setData(ribbonInsertionDragType, "user-snippet:saved")
@@ -6633,7 +6634,8 @@ describe("unified content transfer", () => {
     document.body.dispatchEvent(transferEvent("dragover", data))
     expect(document.body).toHaveClass("◆drop-selection-active")
     expect($.anchor).toBe(text)
-    expect($.anchorOffset).toBe(7)
+    expect($.anchorOffset).toBe(1)
+    expect(editor.appendix.querySelector('[part~="drop-range-caret"]')).not.toBeNull()
     protectedData.mockRestore()
     const message = packageDrop("user-snippet:saved", document.body)!
     $.move(document.querySelectorAll("p")[1].firstChild!, 0)
@@ -8021,37 +8023,36 @@ describe("unified content transfer", () => {
     expect(editor.features.manipulation.draggedElement).toBeNull()
   })
 
-  it("moves a collapsed drop selection between text and gaps, then removes its blue state on drop", () => {
+  it("previews text and gap drop positions without changing a backward selection", () => {
     document.body.innerHTML = '<p>first</p><p>last</p>'
     const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 4, text, 1)
     const data = new DataTransfer()
     data.setData("text/plain", "inserted")
     const point = vi.spyOn($, "pointFromCoords").mockReturnValue({node: text, offset: 2})
     vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 0, 18))
     document.body.dispatchEvent(transferEvent("dragover", data))
-    expect(document.getSelection()!.isCollapsed).toBe(true)
-    expect($.isTextSelection).toBe(true)
     expect($.anchor).toBe(text)
-    expect($.anchorOffset).toBe(2)
+    expect($.anchorOffset).toBe(4)
+    expect($.focusOffset).toBe(1)
     expect(document.body).toHaveClass("◆drop-selection-active")
-    const caret = editor.features.selection.selectionCaret!
-    expect(caret.getAttribute("part")).toContain("selection-caret-text")
+    const caret = editor.appendix.querySelector<HTMLElement>('[part~="drop-range-caret"]')!
     expect(caret.style.left).toBe("20px")
     expect(caret.style.top).toBe("30px")
     expect(caret.style.height).toBe("18px")
 
     point.mockReturnValue({node: document.body, offset: 1})
     document.body.dispatchEvent(transferEvent("dragover", data))
-    expect(document.getSelection()!.isCollapsed).toBe(true)
-    expect($.isGapSelection).toBe(true)
-    expect($.anchorOffset).toBe(1)
-    expect(editor.features.selection.selectionCaret!.getAttribute("part")).toContain("gap-caret")
+    expect($.anchorOffset).toBe(4)
+    expect($.focusOffset).toBe(1)
+    expect(caret.getAttribute("part")).toContain("drop-range-gap")
     editor.doc.syncFromDOM()
     expect(editor.doc.body.toString()).not.toContain("◆drop-selection-active")
     expect(editor.toHTML(true)).not.toContain("◆drop-selection-active")
     document.body.dispatchEvent(transferEvent("drop", data))
     expectBodyToBe('<p>first</p><p>inserted</p><p>last</p>')
     expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(caret.isConnected).toBe(false)
   })
 
   it.each([
@@ -8129,18 +8130,18 @@ describe("unified content transfer", () => {
     target.dispatchEvent(transferEvent("dragover", data, {clientX: 45, clientY: 15}))
     expect(hit).toHaveBeenCalledOnce()
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
-    expect($.anchor).toBe(target.firstChild)
-    expect($.anchorOffset).toBe(2)
-    const caret = editor.features.selection.selectionCaret
-    expect(caret?.getAttribute("part")).toContain("selection-caret-text")
+    expect($.selectedElement).toBe(source)
+    const caret = editor.appendix.querySelector('[part~="drop-range-caret"]')
+    expect(caret).not.toBeNull()
     const process = vi.spyOn(editor.features.selection, "processSelection")
     target.dispatchEvent(transferEvent("dragover", data, {clientX: 45, clientY: 15}))
     expect(hit).toHaveBeenCalledTimes(2)
     expect(process).not.toHaveBeenCalled()
-    expect(editor.features.selection.selectionCaret).toBe(caret)
+    expect(editor.appendix.querySelector('[part~="drop-range-caret"]')).toBe(caret)
     hit.mockReturnValue({node: target.firstChild!, offset: 3})
     target.dispatchEvent(transferEvent("dragover", data, {clientX: 55, clientY: 15}))
-    expect($.anchorOffset).toBe(3)
+    expect($.selectedElement).toBe(source)
+    expect(process).not.toHaveBeenCalled()
     hit.mockReturnValue({node: target.firstChild!, offset: 2})
     target.dispatchEvent(transferEvent("drop", data, {clientX: 45, clientY: 15}))
     expect(source.isConnected).toBe(false)
@@ -8229,11 +8230,11 @@ describe("unified content transfer", () => {
     data.setData("text/plain", "text")
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.querySelector("p")!.firstChild!, offset: 2})
     document.body.dispatchEvent(transferEvent("dragover", data))
-    const caret = editor.features.selection.selectionCaret!
-    expect(caret.getAttribute("part")).toContain("selection-caret-text")
+    const caret = editor.appendix.querySelector('[part~="drop-range-caret"]')!
+    expect(caret).not.toBeNull()
     editor.features.manipulation.disable()
     expect(document.body).not.toHaveClass("◆drop-selection-active")
-    expect(caret.getAttribute("part")).toContain("selection-caret-hidden")
+    expect(caret.isConnected).toBe(false)
     editor.features.manipulation.enable()
   })
 })

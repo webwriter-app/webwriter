@@ -1223,6 +1223,63 @@ describe("table cell selection", () => {
     expect(first.style.width).toBe("180px")
   })
 
+  it("coalesces a burst of resize moves and flushes the latest position on release", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td></tr></tbody></table>"
+    const [first] = cells()
+    first.getBoundingClientRect = () => new DOMRect(0, 0, 100, 30)
+    const restoreCaretPosition = mockCaretPosition(first.firstChild!)
+    try {
+      first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
+      first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true}))
+      document.dispatchEvent(new PointerEvent("pointermove", {clientX: 120, clientY: 15, bubbles: true}))
+      document.dispatchEvent(new PointerEvent("pointermove", {clientX: 135, clientY: 15, bubbles: true}))
+      expect(first.style.width).toBe("")
+      document.dispatchEvent(new PointerEvent("pointerup", {clientX: 135, clientY: 15, bubbles: true}))
+      expect(first.style.width).toBe("135px")
+    }
+    finally {
+      document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
+      restoreCaretPosition()
+    }
+  })
+
+  it("skips unchanged native selectionchange events during resize but processes a changed range", () => {
+    document.body.innerHTML = "<table><tbody><tr><td><span>A</span><span>B</span></td><td>C</td></tr></tbody></table>"
+    const [first, second] = cells()
+    first.getBoundingClientRect = () => new DOMRect(0, 0, 100, 30)
+    second.getBoundingClientRect = () => new DOMRect(100, 0, 200, 30)
+    const firstText = first.querySelector("span")!.firstChild!
+    const secondText = first.querySelectorAll("span")[1].firstChild!
+    const restoreCaretPosition = mockCaretPosition(firstText)
+    $.move(firstText, 0)
+    const processSelection = vi.spyOn(editor.features.selection, "processSelection")
+    try {
+      first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
+      first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true}))
+      document.dispatchEvent(new PointerEvent("pointermove", {clientX: 120, clientY: 15, bubbles: true}))
+      processSelection.mockClear()
+      document.dispatchEvent(new Event("selectionchange"))
+      expect(processSelection).not.toHaveBeenCalled()
+
+      $.move(secondText, 0)
+      document.dispatchEvent(new Event("selectionchange"))
+      expect(processSelection).toHaveBeenCalledOnce()
+      processSelection.mockClear()
+      document.dispatchEvent(new Event("selectionchange"))
+      expect(processSelection).not.toHaveBeenCalled()
+
+      $.move(second.firstChild!, 0)
+      document.dispatchEvent(new Event("selectionchange"))
+      expect(processSelection).toHaveBeenCalled()
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
+    }
+    finally {
+      processSelection.mockRestore()
+      document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
+      restoreCaretPosition()
+    }
+  })
+
   it("keeps cell widths live in the shared document and refreshes selection for an unrelated edit", async () => {
     document.body.innerHTML = '<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>'
     const [first, other, second] = cells()
@@ -1239,11 +1296,13 @@ describe("table cell selection", () => {
       pointer("pointermove", 100, first)
       pointer("pointerdown", 100, first)
       pointer("pointermove", 120)
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       editor.doc.syncFromDOM()
       await settle()
       selection.mockClear()
 
       pointer("pointermove", 140)
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       editor.doc.syncFromDOM()
       await settle()
       expect(first.style.width).toBe("140px")
@@ -1253,6 +1312,7 @@ describe("table cell selection", () => {
 
       other.style.color = "red"
       pointer("pointermove", 150)
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       editor.doc.syncFromDOM()
       await settle()
       expect(selection).toHaveBeenCalled()
@@ -1260,6 +1320,7 @@ describe("table cell selection", () => {
       selection.mockClear()
       first.style.color = "blue"
       pointer("pointermove", 160)
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       editor.doc.syncFromDOM()
       await settle()
       expect(selection).toHaveBeenCalled()
