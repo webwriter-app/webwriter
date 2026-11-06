@@ -8862,7 +8862,9 @@ let savedSlidesHTML = ""
 await check("CSS Slides use native fragment links while editing", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px"
-  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head><body><h1>First slide</h1><p>FirstSecond</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style>
+    <style>body.ww-slides > nav.ww-slides-navigation { bottom: 1rem; }</style>
+    </head><body><h1>First slide</h1><p>FirstSecond</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
   nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
@@ -8922,7 +8924,7 @@ await check("CSS Slides use native fragment links while editing", async () => {
     }
     assert(Math.abs(headingRect.left - paragraphRect.left) < 1 && paragraphRect.width < headingRect.width
       && paragraphRect.top > headingRect.bottom && paragraphRect.bottom < slideRect.bottom - 20, "authored slide paragraph is not aligned or content sized")
-    assert(getComputedStyle(nav).position === "absolute" && nav.getBoundingClientRect().bottom <= frame.clientHeight, "navigation is not overlaid at the bottom")
+    assert(getComputedStyle(nav).position === "absolute" && nav.getBoundingClientRect().bottom <= viewportRect.top, "pagination extends past the top toolbar")
     assert(Math.abs(nav.getBoundingClientRect().left - 24) < 1, `slides pagination is not left aligned ${JSON.stringify({nav:nav.getBoundingClientRect().toJSON(), viewport:viewport.getBoundingClientRect().toJSON(), body:doc.body.getBoundingClientRect().toJSON(), style:getComputedStyle(nav).cssText, scroll:[view.scrollX,view.scrollY]})}`)
     assert(getComputedStyle(second).paddingTop === "20px" && getComputedStyle(second).paddingBottom === "20px"
       && Math.abs(parseFloat(getComputedStyle(second).paddingLeft) - parseFloat(documentGutter)) < .5, `slides do not use normal document spacing ${JSON.stringify({top:getComputedStyle(second).paddingTop,bottom:getComputedStyle(second).paddingBottom,left:getComputedStyle(second).paddingLeft,documentGutter,body:doc.body.outerHTML.slice(0,400)})}`)
@@ -9096,7 +9098,7 @@ await check("saved Slides navigate with HTML and CSS and scripting disabled", as
     assert(Math.abs(readerSlide.getBoundingClientRect().width - frame.clientWidth) < 1 && Math.abs(readerSlide.getBoundingClientRect().height - frame.clientWidth * 9 / 16) < 1, "exported slides do not fit the reader viewport at 16:9")
     const readerNav = doc.querySelector<HTMLElement>("nav.ww-slides-navigation")!
     const readerLinks = readerNav.querySelectorAll<HTMLAnchorElement>("a")
-    assert(getComputedStyle(readerNav).position === "absolute" && readerNav.getBoundingClientRect().bottom <= frame.clientHeight, "reader navigation is not overlaid at the bottom")
+    assert(getComputedStyle(readerNav).position === "absolute" && readerNav.getBoundingClientRect().bottom <= viewport.getBoundingClientRect().top, "reader pagination extends past the top toolbar")
     assert(Math.abs(readerNav.getBoundingClientRect().left - 24) < 1, "saved slides pagination is not left aligned")
     viewport.style.scrollBehavior = "auto"
     const navigationSettled = new Promise<void>(resolve => {

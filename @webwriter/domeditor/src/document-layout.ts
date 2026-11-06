@@ -209,7 +209,7 @@ body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) > :not(style, 
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) > p:not([is]) { inline-size: max-content; min-inline-size: 25px; }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]):focus { outline: none; }
 body.ww-slides > nav.ww-slides-navigation {
-  box-sizing: border-box; position: absolute; top: 8px; left: 24px;
+  box-sizing: border-box; position: absolute; top: 8px; bottom: auto; left: 24px;
   display: flex; gap: .25rem; width: max-content; max-width: max(0px, calc(100% - 380px)); overflow-x: auto; scrollbar-width: none;
   margin: 0; padding: .25rem; z-index: 1; background: #fff; color: #334155; border: 1px solid #cbd5e1; border-radius: 10px; box-shadow: 0 2px 10px #0001; scroll-target-group: auto;
 }
