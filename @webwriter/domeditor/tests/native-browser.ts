@@ -5214,11 +5214,11 @@ await check("link keyboard preserves iframe selections and applies document, web
     const title = keyboard.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Title"]')!
     title.value = "Reference source"; title.dispatchEvent(new Event("input"))
     const link = keyboard.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Link (optional)"]')!
-    link.value = ""; link.dispatchEvent(new Event("input"))
+    link.value = "../reading.html#chapter"; link.dispatchEvent(new Event("input"))
     dialog.querySelector<HTMLButtonElement>(".actions button:last-child")!.click()
     await keyboard.updateComplete
     assert(!dialog.open, "successful reference addition did not close the dialog")
-    assert(anchor.getAttribute("href")?.startsWith("#ref-"), "reference without a web representation did not get a fragment")
+    assert(anchor.getAttribute("href") === "../reading.html#chapter", "reference did not keep its relative address")
     assert(JSON.parse(anchor.dataset.reference!).title === "Reference source", "reference metadata was not applied")
     assert(anchor.textContent === "Link text" && !doc.body.innerHTML.includes("link-keyboard"), "keyboard changed authored text or leaked UI")
     const automaticBlock = doc.createElement("p"), untouchedBlock = doc.createElement("p")

@@ -1262,12 +1262,12 @@ describe("toolbox", () => {
     await toolbox.updateComplete
 
     const citation = toolbox.shadowRoot!.querySelector<HTMLInputElement>(
-      'ribbon-drawer[label="Quote"] input[type="url"]',
+      'ribbon-drawer[label="Quote"] input[inputmode="url"]',
     )!
     expect(citation.value).toBe("source.html")
     const changed = vi.fn()
     toolbox.addEventListener("element-attribute-change", changed)
-    citation.value = "https://example.test/source"
+    citation.value = "example.test/source"
     citation.dispatchEvent(new Event("change"))
     expect(changed).toHaveBeenCalledWith(expect.objectContaining({
       detail: expect.objectContaining({name: "cite", value: "https://example.test/source"}),

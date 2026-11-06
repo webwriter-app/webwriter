@@ -1,3 +1,4 @@
+import {normalizeURLInput} from "../url-input.js"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {attributionAttributes, createAttributionController, type AttributionController, type AttributionValues} from "../attribution.js"
 import {creativeCommonsLicenses} from "../document-head"
@@ -33,6 +34,7 @@ export class AttributionFeature extends EditorFeature {
     super.enable()
     this.controller = createAttributionController(document, {
       licenses: creativeCommonsLicenses,
+      normalizeURLInput,
       anchorFactory: createAnchorPositioner,
       createLicensePicker: input => {
         const picker = new AttributionLicensePicker()

@@ -1,3 +1,4 @@
+import {normalizeURLInput} from "../src/url-input.js"
 import {SharedDOMDoc} from "../src/domdoc"
 import {LiveSession} from "../src/live-session"
 import {boxStylePresets} from "../src/css-color"
@@ -35,7 +36,7 @@ async function request(path: string, init?: RequestInit) {
 
 export function parseInvitation(value: string, origin = location.origin) {
   let url: URL, server: URL
-  try { url = new URL(value); server = new URL(url.searchParams.get("liveServer") ?? "") }
+  try { url = new URL(normalizeURLInput(value)); server = new URL(url.searchParams.get("liveServer") ?? "") }
   catch { throw new Error("Paste a valid live-session invitation from this development server.") }
   const expected = new URL(origin)
   expected.protocol = expected.protocol === "https:" ? "wss:" : "ws:"
@@ -330,7 +331,7 @@ if(container) {
     <div class="scenario-actions"><button id="scenario-start" type="button" class="primary">Start scenario</button><button id="scenario-reset" type="button" disabled>Reset scenario</button><button id="scenario-end" type="button" disabled>End and remove document</button></div>
     <p id="scenario-instructions" role="status">Choose a scenario and start it.</p>
     <p><a id="scenario-editor" target="_blank" rel="noopener" hidden>Open scenario document</a></p>
-    <label id="scenario-invitation-label" hidden>Host’s live-session invitation link <input id="scenario-invitation" type="url" autocomplete="off" placeholder="Paste the learner link from the host editor"></label>
+    <label id="scenario-invitation-label" hidden>Host’s live-session invitation link <input id="scenario-invitation" inputmode="url" autocomplete="off" placeholder="Paste the learner link from the host editor"></label>
     <div id="scenario-controls" hidden>
       <div class="scenario-actions"><button id="scenario-add" type="button">Add participant</button></div>
       <div id="scenario-participants" class="list" aria-label="Simulated participants"></div>

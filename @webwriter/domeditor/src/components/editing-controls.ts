@@ -1,3 +1,4 @@
+import {normalizeURLInput} from "../url-input.js"
 import "./widget-grouping-dialog"
 import type {WidgetGroupingDialog} from "./widget-grouping-dialog"
 import type {WidgetGroupingContext} from "../widget-grouping.js"
@@ -448,9 +449,9 @@ export abstract class EditingControls extends LitElement {
     return [...primaryMarkOptions, ...secondaryMarkOptions].find(option => option.name === name)!
   }
 
-  protected dispatchMarkAttribute(mark: MarkName, attribute: string, event: Event) {
+  protected dispatchMarkAttribute(mark: MarkName, attribute: string, event: Event, url = false) {
     const input = event.currentTarget as HTMLInputElement
-    let value: string | null = input.value
+    let value: string | null = url ? normalizeURLInput(input.value) : input.value
     if(input.type === "checkbox") {
       value = input.checked ? input.value : ""
       if(attribute === "target") value = input.checked ? "_blank" : ""
@@ -479,13 +480,13 @@ export abstract class EditingControls extends LitElement {
       <input
         class="mark-dropdown-attribute"
         ?data-ribbon-input-persistent=${mark === "a"}
-        type=${option.inputType ?? "text"}
+        inputmode=${option.inputType === "url" ? "url" : nothing}
         aria-label=${`${this.markOption(mark).label}: ${option.label}`}
         placeholder=${option.placeholder}
         title=${option.label}
         .value=${this.markAttributes[mark]?.[option.name] ?? ""}
         ?disabled=${!this.canMark || !active}
-        @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event)}
+        @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event, option.inputType === "url")}
       />
     `
   }
@@ -763,10 +764,10 @@ export abstract class EditingControls extends LitElement {
           <label class="mark-attribute">
             <span>Citation</span>
             <input
-              type="url"
+              inputmode="url"
               placeholder="https://…"
               .value=${this.elementAttributes.attributes.cite ?? ""}
-              @change=${(event: Event) => this.dispatchSelectedElementAttribute("cite", (event.currentTarget as HTMLInputElement).value)}
+              @change=${(event: Event) => this.dispatchSelectedElementAttribute("cite", normalizeURLInput((event.currentTarget as HTMLInputElement).value))}
             />
           </label>
         ` : ""}
@@ -1138,7 +1139,7 @@ export abstract class EditingControls extends LitElement {
     const form = event.currentTarget as HTMLFormElement
     const data = new FormData(form)
     this.dispatchEvent(new CustomEvent("git-package-load", {bubbles: true, composed: true,
-      detail: {repository: String(data.get("repository")).trim(), ref: String(data.get("ref")).trim(), path: String(data.get("path")).trim()}}))
+      detail: {repository: normalizeURLInput(String(data.get("repository") ?? "")), ref: String(data.get("ref")).trim(), path: String(data.get("path")).trim()}}))
     form.closest("dialog")!.close()
   }
 
@@ -1232,7 +1233,7 @@ export abstract class EditingControls extends LitElement {
         <dialog class="git-package-dialog" aria-labelledby="git-package-title">
           <form @submit=${this.loadGitPackage}>
             <strong id="git-package-title">Load Git package</strong>
-            <label>Repository URL<input name="repository" type="url" required placeholder="https://github.com/owner/repository.git" /></label>
+            <label>Repository URL<input name="repository" inputmode="url" required placeholder="https://github.com/owner/repository.git" /></label>
             <label>Branch or tag<input name="ref" type="text" placeholder="Default branch" /></label>
             <label>Package folder<input name="path" type="text" placeholder="Repository root" /></label>
             <small>Public repositories only. Git package contents are read-only.</small>
@@ -1591,7 +1592,8 @@ export abstract class EditingControls extends LitElement {
         <span>${option.label}</span>
         <input
           data-ribbon-input-persistent
-          type=${option.kind === "url" ? "url" : option.kind === "number" ? "number" : "text"}
+          type=${option.kind === "number" ? "number" : "text"}
+          inputmode=${option.kind === "url" ? "url" : nothing}
           aria-label=${label}
           placeholder=${option.placeholder ?? ""}
           .value=${attributes[option.name] ?? ""}
@@ -1613,8 +1615,9 @@ export abstract class EditingControls extends LitElement {
 
   protected dispatchMediaAttribute(type: MediaType, option: MediaAttributeOption, event: Event) {
     const input = event.currentTarget as HTMLInputElement | HTMLSelectElement
+    const value = this.mediaAttributeValue(option, input)
     if(input instanceof HTMLInputElement && isWebsiteType(type) && option.name === mediaSourceAttribute(type)) {
-      const error = websiteSourceError(platformEmbedURL(input.value.trim()) ?? input.value.trim())
+      const error = websiteSourceError(platformEmbedURL(value ?? "") ?? value ?? "")
       input.setCustomValidity(error)
       if(error) {
         input.setAttribute("aria-invalid", "true")
@@ -1625,14 +1628,16 @@ export abstract class EditingControls extends LitElement {
       input.removeAttribute("aria-invalid")
       input.title = input.value
     }
-    const value = option.kind === "boolean"
-      ? (input as HTMLInputElement).checked ? "" : null
-      : input.value || null
     this.dispatchEvent(new CustomEvent("media-attribute-change", {
       detail: {type, attribute: option.name, value},
       bubbles: true,
       composed: true,
     }))
+  }
+
+  private mediaAttributeValue(option: MediaAttributeOption, input: HTMLInputElement | HTMLSelectElement) {
+    if(option.kind === "boolean") return (input as HTMLInputElement).checked ? "" : null
+    return (option.kind === "url" ? normalizeURLInput(input.value) : input.value) || null
   }
 
   protected renderMediaAttribute(type: MediaType, option: MediaAttributeOption) {
@@ -1673,9 +1678,7 @@ export abstract class EditingControls extends LitElement {
     event: Event,
   ) {
     const input = event.currentTarget as HTMLInputElement | HTMLSelectElement
-    const value = option.kind === "boolean"
-      ? (input as HTMLInputElement).checked ? "" : null
-      : input.value || null
+    const value = this.mediaAttributeValue(option, input)
     this.dispatchMediaResourceAction({
       action: "set-attribute",
       resource,
@@ -1780,7 +1783,7 @@ export abstract class EditingControls extends LitElement {
       path: area.path,
       expected: area.attributes,
       attribute: option.name,
-      value: input.value || null,
+      value: this.mediaAttributeValue(option, input),
     })
   }
 

@@ -1,3 +1,4 @@
+import {normalizeURLInput} from "../url-input.js"
 import {LitElement, css, html, nothing, type PropertyValues} from "lit"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {repeat} from "lit/directives/repeat.js"
@@ -712,7 +713,7 @@ export class AISettingsDialog extends LitElement {
     const draft = this.draft
     if(!draft || !this.store || !draft.name.trim()) return false
     try {
-      const url = new URL(draft.baseUrl.trim())
+      const url = new URL(normalizeURLInput(draft.baseUrl))
       if(url.protocol !== "http:" && url.protocol !== "https:") return false
       if(url.username || url.password) return false
     }
@@ -762,7 +763,6 @@ export class AISettingsDialog extends LitElement {
   private updateBaseUrl(event: Event) {
     this.updateDraft("baseUrl", (event.currentTarget as HTMLInputElement).value)
     this.resetAutoFetch()
-    this.scheduleAutoFetchModels()
   }
 
   private updateAuth(event: Event) {
@@ -861,7 +861,7 @@ export class AISettingsDialog extends LitElement {
     this.error = ""
     this.notice = ""
     try {
-      const provider = normalizeAIProvider(this.draft)
+      const provider = normalizeAIProvider({...this.draft, baseUrl: normalizeURLInput(this.draft.baseUrl)})
       const previous = this.store.provider(provider.id)
       if(provider.managed !== "backend") await this.persistCredential(provider, previous)
       const saved = await this.store.save(provider, this.apiKey.trim() || undefined, !this.providerId)
@@ -914,7 +914,7 @@ export class AISettingsDialog extends LitElement {
     this.error = ""
     this.notice = ""
     try {
-      const provider = normalizeAIProvider(draftAtStart)
+      const provider = normalizeAIProvider({...draftAtStart, baseUrl: normalizeURLInput(draftAtStart.baseUrl)})
       let source = provider
       let key = this.apiKey.trim() || this.store.keyFor(provider)
       if(provider.managed === "backend") {
@@ -1014,7 +1014,8 @@ export class AISettingsDialog extends LitElement {
               </label>
               <label>
                 OpenAI-compatible base URL
-                <input required inputmode="url" spellcheck="false" ?disabled=${this.loading} .value=${this.draft.baseUrl} @input=${this.updateBaseUrl}>
+                <input required inputmode="url" spellcheck="false" ?disabled=${this.loading} .value=${this.draft.baseUrl}
+                  @input=${this.updateBaseUrl} @change=${this.scheduleAutoFetchModels}>
                 <span class="hint">${this.embedded ? "Enter the provider’s OpenAI-compatible API endpoint." : this.draft.managed === "backend"
                   ? "Requests use the localhost Inference API; credentials are not sent to the browser."
                   : html`The app calls <code>/models</code> and <code>/chat/completions</code> directly from this browser.`}</span>

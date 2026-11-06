@@ -13,6 +13,7 @@ import {createDistributionValidator} from "./distribution.mjs"
 import {installLiveSignaling} from "./live-signaling.mjs"
 import {distributionGroupingRevision, formWidgetGroups, groupingTarget, validateGroupingRules} from "../src/widget-grouping.js"
 import {decodeDistributionConfig, distributionTarget} from "../src/distribution.js"
+import {normalizeURLInput} from "../src/url-input.js"
 import {fetchGitPackage, gitPackageSource, gitPackageMimeType} from "./git-packages.mjs"
 
 const serverDirectory = dirname(fileURLToPath(import.meta.url))
@@ -139,7 +140,7 @@ const documentInput = (value, previous = {}) => {
 }
 
 const normalizeBaseUrl = value => {
-  const url = new URL(String(value ?? ""))
+  const url = new URL(normalizeURLInput(String(value ?? "")))
   if(url.protocol !== "http:" && url.protocol !== "https:") throw new Error("Provider URL must use HTTP or HTTPS")
   if(url.username || url.password) throw new Error("Provider URL cannot contain credentials")
   url.search = ""

@@ -13,6 +13,10 @@ describe("link address normalization", () => {
     ["localhost:8080/path", "https://localhost:8080/path"],
     ["example.com/a b", "https://example.com/a%20b"],
     ["#chapter", "#chapter"],
+    ["/course/chapter.html#notes", "/course/chapter.html#notes"],
+    [" ./references/lesson one.html ", "./references/lesson one.html"],
+    ["../references.html", "../references.html"],
+    ["?view=notes#references", "?view=notes#references"],
     ["mailto:reader@example.com", "mailto:reader@example.com"],
     ["tel:+491234", "tel:+491234"],
     ["ftp://example.com/file", "ftp://example.com/file"],
@@ -22,7 +26,7 @@ describe("link address normalization", () => {
     expect(normalizeLinkHref(expected)).toBe(expected)
   })
 
-  it.each(["", " ", "#", "/relative", "../relative", "?query", "not a host", "https://", "javascript:alert(1)", "data:text/html,example", "example.com:99999/path"])("rejects %s without resolving against the frame", input => {
+  it.each(["", " ", "#", "not a host", "https://", "javascript:alert(1)", "javascript:123", "data:text/html,example", "example.com:99999/path"])("rejects %s without resolving against the frame", input => {
     expect(normalizeLinkHref(input)).toBeNull()
   })
 })

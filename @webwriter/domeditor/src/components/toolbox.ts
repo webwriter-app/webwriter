@@ -1,3 +1,4 @@
+import {normalizeURLInput} from "../url-input.js"
 import "./distribution-controls"
 import type {DistributionSelectionState} from "./distribution-controls"
 import type {DistributionItem} from "../distribution.js"
@@ -1371,14 +1372,14 @@ export class DomEditorToolbox extends EditingControls {
             }))
           }}>
           ${source ? ribbonIcon(sourceIcon) : nothing}
-          <input id=${id} type=${sourceKind || source.startsWith("data:") || source.startsWith("blob:") || media.attributes.srcdoc ? "text" : "url"}
+          <input id=${id}
             inputmode="url" spellcheck="false" autocapitalize="off" data-ribbon-input-persistent aria-label=${`${resource ? "Source" : this.mediaLabel(type)}: ${label}`}
             placeholder="https://…" .value=${current} title=${current}
             @input=${this.clearMediaSourceError}
             @change=${(event: Event) => {
               if((event.currentTarget as HTMLInputElement).value === current) return
-              if(resource) resourceAction("set-attribute", {attribute: "src", value: (event.currentTarget as HTMLInputElement).value || null})
-              else this.dispatchMediaAttribute(type, {name: attribute, label}, event)
+              if(resource) resourceAction("set-attribute", {attribute: "src", value: normalizeURLInput((event.currentTarget as HTMLInputElement).value) || null})
+              else this.dispatchMediaAttribute(type, {name: attribute, label, kind: "url"}, event)
             }}>
           ${source ? html`<button type="button" aria-label=${resource ? "Remove source URL" : cover ? "Remove cover image" : "Remove source"} title=${resource ? "Remove source URL" : cover ? "Remove cover image" : "Remove source"} @click=${() => resource
             ? resourceAction("set-attribute", {attribute: "src", value: null})

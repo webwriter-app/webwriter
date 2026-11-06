@@ -143,7 +143,7 @@ describe("Developer console packages", () => {
     const show = vi.spyOn(dialog, "showModal").mockImplementation(() => {dialog.open = true})
     load.dispatchEvent(new CustomEvent("ribbon-button-click", {detail: {label: "git-package-add"}, bubbles: true, composed: true}))
     expect(show).toHaveBeenCalled()
-    dialog.querySelector<HTMLInputElement>('[name="repository"]')!.value = "https://github.com/example/demo.git"
+    dialog.querySelector<HTMLInputElement>('[name="repository"]')!.value = "github.com/example/demo.git"
     dialog.querySelector<HTMLInputElement>('[name="ref"]')!.value = "v2.0.0"
     dialog.querySelector<HTMLInputElement>('[name="path"]')!.value = "packages/demo"
     const listener = vi.fn()

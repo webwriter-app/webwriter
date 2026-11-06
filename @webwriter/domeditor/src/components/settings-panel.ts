@@ -1,3 +1,4 @@
+import {normalizeURLInput} from "../url-input.js"
 import {LitElement, css, html} from "lit"
 import {repeat} from "lit/directives/repeat.js"
 import {keyed} from "lit/directives/keyed.js"
@@ -494,7 +495,7 @@ export class SettingsPanel extends LitElement {
     const form = event.currentTarget as HTMLFormElement
     try {
       const type = this.providerType
-      const url = cloudServiceURL(type === "edumix" ? EDUMIX_URL : form.querySelector<HTMLInputElement>('[name="url"]')!.value.trim())
+      const url = cloudServiceURL(type === "edumix" ? EDUMIX_URL : normalizeURLInput(form.querySelector<HTMLInputElement>('[name="url"]')!.value))
       const service = {id: crypto.randomUUID(), type, url, username: form.querySelector<HTMLInputElement>('[name="username"]')!.value.trim()}
       this.changeCloudServices([...this.settings.cloudServices, service])
       this.cloudError = ""
@@ -593,7 +594,7 @@ export class SettingsPanel extends LitElement {
       <div id="new-cloud-provider">
         ${this.providerType ? keyed(this.providerType, html`<form class="new-provider" @submit=${this.addCloudService}>
           ${this.providerType === "url" ? html`<label class="setting-label">Provider URL
-            <input name="url" type="url" aria-label="Provider URL" placeholder="https://cloud.example.org" required>
+            <input name="url" inputmode="url" aria-label="Provider URL" placeholder="https://cloud.example.org" required>
           </label>` : ""}
           ${this.renderCredentials()}
           <div class="cloud-actions">

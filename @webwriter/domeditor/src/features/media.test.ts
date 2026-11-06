@@ -1275,13 +1275,13 @@ describe("media editing", () => {
   })
 
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
-    "applies an HTTP URL to the %s source by clicking the inset arrow", media => {
+    "adds HTTPS to the %s source by clicking the inset arrow", media => {
       editor.features.media.actions.insertMedia({type: "insertMedia", media})
       const target = document.querySelector(media === "img" ? "picture" : ["embed", "object"].includes(media) ? "iframe" : media)!
       const sourceTarget = ["picture", "img"].includes(media) ? target.querySelector("img")! : target
       const placeholder = editor.features.media.placeholder
       const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
-      input.value = "  https://example.com/media?query=1#section  "
+      input.value = "  example.com/media?query=1#section  "
       placeholder.root.querySelector(".apply svg")!.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true}))
 
       expect(sourceTarget.getAttribute("src")).toBe("https://example.com/media?query=1#section")
@@ -1307,7 +1307,7 @@ describe("media editing", () => {
     expect(info.shadowRoot!.querySelector<HTMLElement>('[role="tooltip"]')!.hidden).toBe(true)
   })
 
-  it.each(["", "example.com/movie.mp4", "/movie.mp4", "//example.com/movie.mp4", "http://", "https://exa mple.com", "ftp://example.com/movie.mp4", "file:///movie.mp4", "about:blank", "data:video/mp4;base64,AAAA", "javascript:alert(1)"])(
+  it.each(["", "http://", "https://exa mple.com", "ftp://example.com/movie.mp4", "file:///movie.mp4", "about:blank", "data:video/mp4;base64,AAAA", "javascript:alert(1)"])(
     "rejects a non-HTTP or malformed URL without changing the document: %s", source => {
       editor.features.media.actions.insertMedia({type: "insertMedia", media: "video"})
       const placeholder = editor.features.media.placeholder
@@ -1325,11 +1325,19 @@ describe("media editing", () => {
     },
   )
 
+  it("preserves an explicit relative media source", () => {
+    editor.features.media.actions.insertMedia({type: "insertMedia", media: "video"})
+    const {root} = editor.features.media.placeholder
+    root.querySelector<HTMLInputElement>(".url")!.value = "../media/lesson.webm"
+    root.querySelector<HTMLButtonElement>(".apply")!.click()
+    expect(document.querySelector("video")).toHaveAttribute("src", "../media/lesson.webm")
+  })
+
   it("clears an error on editing and applies a corrected HTTP URL with Enter", () => {
     editor.features.media.actions.insertMedia({type: "insertMedia", media: "audio"})
     const placeholder = editor.features.media.placeholder
     const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
-    input.value = "invalid"
+    input.value = "not a host"
     input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
     expect(input).toHaveAttribute("aria-invalid", "true")
 
@@ -1368,7 +1376,7 @@ describe("media editing", () => {
     document.querySelector("audio")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
     const placeholder = editor.features.media.placeholder
     const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
-    input.value = "invalid"
+    input.value = "not a host"
     placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
     input.blur()
     await Promise.resolve()
@@ -2492,7 +2500,7 @@ describe("media editing", () => {
     expect(style.caretColor).toBe("auto")
     expect(style.userSelect).toBe("text")
     expect(style.getPropertyValue("-webkit-user-select")).toBe("text")
-    input.value = "https://example.org/library"
+    input.value = "example.org/library"
     input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
     expect(control.querySelector("form")).toHaveAttribute("hidden")
     const area = document.querySelector("area")!

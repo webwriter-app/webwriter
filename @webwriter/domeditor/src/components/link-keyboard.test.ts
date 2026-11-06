@@ -52,13 +52,16 @@ describe("link keyboard", () => {
     expect(keyboard.validationError).toContain("valid address")
   })
 
-  it("normalizes URLs entered in the reference dialog", async () => {
+  it.each([
+    ["source.test/book", "https://source.test/book"],
+    ["../reading/book.html#chapter", "../reading/book.html#chapter"],
+  ])("applies reference address %s", async (address, expected) => {
     const keyboard = await mount(), commands = listen(keyboard)
     await openDialog(keyboard)
     await type(keyboard, "Source", '[aria-label="Title"]')
-    await type(keyboard, "source.test/book", '[aria-label="Link (optional)"]')
+    await type(keyboard, address, '[aria-label="Link (optional)"]')
     submit(keyboard)
-    expect(commands[0].href).toBe("https://source.test/book")
+    expect(commands[0].href).toBe(expected)
   })
 
   it("defaults new links to a new tab and permits opting out for saved documents", async () => {

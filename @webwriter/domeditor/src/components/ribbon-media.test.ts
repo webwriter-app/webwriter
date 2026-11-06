@@ -379,7 +379,7 @@ describe("media ribbon drawer", () => {
     const source = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Source: Source URL"]')!
     expect(source.value).toBe("movie.webm")
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Video: Source"]')!.value).toBe("movie.mp4")
-    source.value = "movie-hd.mp4"
+    source.value = "./movie-hd.mp4"
     source.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
       type: "video",
@@ -388,7 +388,7 @@ describe("media ribbon drawer", () => {
       index: 1,
       expected: {src: "movie.webm", type: "video/webm"},
       attribute: "src",
-      value: "movie-hd.mp4",
+      value: "./movie-hd.mp4",
     }}))
 
     expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Move source 1 up"]')!.disabled).toBe(true)
@@ -431,10 +431,10 @@ describe("media ribbon drawer", () => {
 
     const input = row.querySelector<HTMLInputElement>('input[aria-label="Source: Source URL"]')!
     expect(input.value).toBe("fallback.bin")
-    input.value = "replacement.bin"
+    input.value = "media.example/replacement.bin"
     input.dispatchEvent(new Event("change", {bubbles: true}))
     expect(listener.mock.calls.at(-1)?.[0].detail).toEqual({type, action: "set-attribute", resource: "source",
-      index: 0, expected: {src: "fallback.bin", type: type === "audio" ? "audio/ogg" : "video/webm"}, attribute: "src", value: "replacement.bin"})
+      index: 0, expected: {src: "fallback.bin", type: type === "audio" ? "audio/ogg" : "video/webm"}, attribute: "src", value: "https://media.example/replacement.bin"})
     row.querySelector<HTMLButtonElement>('button[aria-label="Remove source URL"]')!.click()
     expect(listener.mock.calls.at(-1)?.[0].detail).toEqual({type, action: "set-attribute", resource: "source",
       index: 0, expected: {src: "fallback.bin", type: type === "audio" ? "audio/ogg" : "video/webm"}, attribute: "src", value: null})
@@ -700,13 +700,13 @@ describe("primary media Source control", () => {
     expect(input.getAttribute("aria-invalid")).toBe("true")
     expect(listener).not.toHaveBeenCalled()
     expect(toolbox.media.attributes.src).toBe("https://example.test/original")
-    input.value = "https://example.test/replacement"
+    input.value = "example.test/replacement"
     input.dispatchEvent(new Event("input", {bubbles: true}))
     expect(input.validationMessage).toBe("")
     input.dispatchEvent(new Event("change", {bubbles: true}))
     expect(input.validationMessage).toBe("")
     expect(input.hasAttribute("aria-invalid")).toBe(false)
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "iframe", attribute: "src", value: input.value}}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "iframe", attribute: "src", value: "https://example.test/replacement"}}))
   })
 
   it.each(["picture", "img", "audio", "video"] as const)("joins the %s input buttons and URL above Options", async type => {
@@ -728,7 +728,7 @@ describe("primary media Source control", () => {
       "selected-media-file", `selected-media-capture:screen-${type === "picture" || type === "img" ? "image" : type}`,
       `selected-media-capture:${type === "audio" ? "microphone-audio" : type === "video" ? "camera-video" : "camera-image"}`, "remove-media-source",
     ])
-    expect(toolbox.shadowRoot!.querySelector('[slot="more"] input[type="url"][aria-label$=": Source URL"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('[slot="more"] input[inputmode="url"][aria-label$=": Source URL"]')).toBeNull()
   })
 
   it.each([
@@ -865,9 +865,9 @@ describe("primary media alternative text", () => {
       expect(coverStyle.getPropertyValue(property), property).toBe(sourceStyle.getPropertyValue(property))
     }
     expect(input.value).toBe("cover.png")
-    input.value = "new-cover.png"
+    input.value = "./new-cover.png"
     input.dispatchEvent(new Event("change", {bubbles: true}))
-    expect(edits).toHaveBeenLastCalledWith(expect.objectContaining({detail: {type: "video", attribute: "poster", value: "new-cover.png"}}))
+    expect(edits).toHaveBeenLastCalledWith(expect.objectContaining({detail: {type: "video", attribute: "poster", value: "./new-cover.png"}}))
     cover.querySelector<HTMLButtonElement>('button[aria-label="Remove cover image"]')!.click()
     expect(edits).toHaveBeenLastCalledWith(expect.objectContaining({detail: {type: "video", attribute: "poster", value: null}}))
   })
