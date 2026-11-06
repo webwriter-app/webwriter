@@ -106,20 +106,21 @@ export class DeveloperConsole extends EditingControls {
     .local-package-list li:has(.local-package-item[aria-pressed="true"]) {--package-item-background: #dbe7f2}
     .local-package-list li:has(.local-package-item:hover:not(:disabled)) {--package-item-background: #e3e3e3}
     .local-package-list ul {list-style: none; margin: 0; padding: 0; display: grid; gap: .15rem}
-    .local-package-item {display: flex; flex-direction: column; align-items: stretch; gap: .2rem; width: 100%; text-align: left; padding: .5rem 1.9rem .5rem 2.5rem; min-height: 3.3rem}
+    .local-package-item {display: flex; align-items: center; gap: .25rem; width: 100%; min-height: 2.35rem; padding: .2rem 1.4rem .2rem 2.15rem; text-align: left; font-size: .75rem}
     .local-package-item[aria-pressed="true"] {color: #153b5c; background: #dbe7f2}
-    .local-package-name {overflow-wrap: anywhere; font-size: .75rem}
-    .local-package-version {font-size: .65rem; color: #667085}
-    .local-package-refresh, .local-package-source, .local-package-remove, .local-package-icon {position: absolute; box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 1.35rem; height: 1.35rem; padding: .15rem; color: #536779}
-    .local-package-refresh {right: .2rem; bottom: .15rem}
-    .package-refresh-spinner {box-sizing: border-box; width: .85rem; height: .85rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: var(--ww-ui-animation, package-refresh-spin .8s linear infinite)}
+    .local-package-name, .local-package-version {min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap}
+    .local-package-version {flex: none; max-width: 55%; font-size: .65rem; color: #667085}
+    .local-package-refresh, .local-package-source, .local-package-remove, .local-package-icon {position: absolute; box-sizing: border-box; display: flex; align-items: center; justify-content: center; color: #536779}
+    .local-package-refresh, .local-package-remove {right: .15rem; width: 1.1rem; height: 1.1rem; padding: .075rem}
+    .local-package-refresh {top: 50%}
+    .package-refresh-spinner {box-sizing: border-box; width: .75rem; height: .75rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: var(--ww-ui-animation, package-refresh-spin .8s linear infinite)}
     @keyframes package-refresh-spin {to {transform: rotate(360deg)}}
     @media (prefers-reduced-motion: reduce) {.package-refresh-spinner {animation: none}}
-    .local-package-remove {right: .2rem; top: .15rem}
-    .local-package-icon-stack {position: absolute; left: .2rem; top: 50%; transform: translateY(-50%); width: 1.65rem; height: 1.65rem}
-    .local-package-icon {position: static; width: 100%; height: 100%; pointer-events: none}
+    .local-package-remove {bottom: 50%}
+    .local-package-icon-stack {position: absolute; left: .2rem; top: 50%; transform: translateY(-50%); width: 1.45rem; height: 1.45rem}
+    .local-package-icon {position: static; width: 100%; height: 100%; padding: .15rem; pointer-events: none}
     .local-package-icon > svg {color: #000}
-    .local-package-source {right: -.25rem; top: -.25rem; width: 1.1rem; height: 1.1rem; border: 2px solid var(--package-item-background); border-radius: 50%; padding: 0; background: var(--package-item-background)}
+    .local-package-source {right: -.25rem; top: -.25rem; width: 1rem; height: 1rem; border: 2px solid var(--package-item-background); border-radius: 50%; background: var(--package-item-background)}
     .local-package-source:focus-visible {outline: 2px solid #5267df; outline-offset: 1px}
     .local-package-refresh svg, .local-package-source svg, .local-package-remove svg, .local-package-icon svg, .local-package-icon img {width: 100%; height: 100%; object-fit: contain}
     .package-source-popup {inset: auto; margin: 0; max-width: min(28rem, calc(100vw - 16px)); padding: .45rem .65rem; border: 1px solid #b9c2cc; border-radius: .3rem; background: #fff; color: #2f3742; box-shadow: 0 3px 10px #0002; font-size: .75rem; overflow-wrap: anywhere}
@@ -332,7 +333,7 @@ export class DeveloperConsole extends EditingControls {
     this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer").forEach(drawer => {
       drawer.collapsed = false
       drawer.pane = true
-      drawer.hidePaneLabel = this.review
+      drawer.hidePaneLabel = this.review || drawer.layout === "metadata"
     })
   }
 

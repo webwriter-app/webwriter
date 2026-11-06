@@ -1191,8 +1191,9 @@ export abstract class EditingControls extends LitElement {
             ${displayPackages.map((pkg, index) => html`<li>
               <button type="button" class="local-package-item"
                 aria-pressed=${this.localPackageSelectionName === pkg.name}
+                title=${`${pkg.name} ${pkg.version}`}
                 @click=${() => this.selectLocalPackageByName(pkg.name)}
-              ><span class="local-package-name">${pkg.name}</span><span class="local-package-version">${pkg.version}</span></button>
+              ><span class="local-package-name">${pkg.name}</span> <span class="local-package-version">${pkg.version}</span></button>
               <span class="local-package-icon-stack">
                 <span class="local-package-icon" aria-hidden="true">${pkg.iconUrl ? html`<img src=${pkg.iconUrl} alt="" />` : ribbonIcon("Packages")}</span>
                 <span class="local-package-source" tabindex="0" role="img" aria-label=${`${pkg.developerSource?.kind === "git" ? "Git" : "Folder"} source of ${pkg.name}`}
