@@ -2453,11 +2453,13 @@ describe("DomEditor iframe setup", () => {
     expect(reload).toHaveBeenCalledTimes(3)
   })
 
-  it("sandboxes the editor iframe while preserving its trusted same-origin bridge", async () => {
+  it("sandboxes the editor iframe while allowing fullscreen and preserving its trusted same-origin bridge", async () => {
     const {editor, iframe} = await mountEditor()
     const srcdoc = (editor as unknown as {readonly editorSrcdoc: string}).editorSrcdoc
 
     expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox")
+    expect(iframe.hasAttribute("allowfullscreen")).toBe(true)
+    expect(iframe.getAttribute("allow")).toBe("camera; microphone; display-capture")
     expect(srcdoc).toMatch(/script-src 'nonce-[^']+' 'strict-dynamic'/)
     expect(srcdoc).toMatch(/style-src 'none'/)
     expect(srcdoc).toMatch(/style-src-elem 'nonce-[^']+'/)
@@ -7912,9 +7914,11 @@ describe("DomEditor.execute()", () => {
     expect(source.getElementById("webwriter-document-viewer")!.textContent).toBe("untrusted()")
     ;(editor as any).previewActive = true
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")!.getAttribute("allow")).toBe("fullscreen; clipboard-write")
-    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")!.getAttribute("sandbox")).toContain("allow-modals")
-    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")!.getAttribute("sandbox")).toContain("allow-popups allow-popups-to-escape-sandbox")
+    const previewFrame = editor.shadowRoot!.querySelector("iframe.preview-frame")!
+    expect(previewFrame.hasAttribute("allowfullscreen")).toBe(true)
+    expect(previewFrame.getAttribute("allow")).toBe("clipboard-write")
+    expect(previewFrame.getAttribute("sandbox")).toContain("allow-modals")
+    expect(previewFrame.getAttribute("sandbox")).toContain("allow-popups allow-popups-to-escape-sandbox")
   })
 
   it("saves from the document pane only through an authenticated preview message", async () => {

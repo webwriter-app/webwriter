@@ -9342,7 +9342,8 @@ export class DomEditor extends LitElement {
         ${this.previewActive && !this.previewFramePending ? html`
           <iframe
             class="preview-frame"
-            allow="fullscreen; clipboard-write"
+            allow="clipboard-write"
+            allowfullscreen
             title=${this.replayActive ? "Session replay" : this.liveSessionActive ? "Live document preview" : "Document preview"}
             sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
             referrerpolicy="no-referrer"
@@ -9354,6 +9355,7 @@ export class DomEditor extends LitElement {
         ${this.frameStarted ? keyed(this.frameRevision, html`<iframe
           class=${`editor-frame${documentLoading || this.documentFramePending ? " loading" : ""}${this.documentRootHovered ? " root-hovered" : ""}${this.documentRootSelected ? " root-selected" : ""}`}
           allow="camera; microphone; display-capture"
+          allowfullscreen
           title="DOM editor"
           sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
           referrerpolicy="no-referrer"
