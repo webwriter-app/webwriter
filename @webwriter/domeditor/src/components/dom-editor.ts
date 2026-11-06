@@ -3058,6 +3058,7 @@ export class DomEditor extends LitElement {
       if(generation !== this.previewGeneration) return
       const lock = this.setPreviewEditingLocked(true)
       if(lock) await lock
+      if(generation !== this.previewGeneration) return
       // Preview hides the editor iframe, so close any appendix capture UI and
       // release its device streams before the authored document is previewed.
       void this.execute({type: "cancelMediaCapture"}).catch(() => {
@@ -3111,17 +3112,22 @@ export class DomEditor extends LitElement {
     if(session?.role === "host" && session.status !== "stopped" && !await this.confirmLiveSessionStop(session)) return
     if(!this.previewActive || this.previewTransition) return
     const selection = this.previewSelection
+    this.clearPreview()
+    await this.updateComplete
+    this.savedEditorSelection = selection
+    if(focusDocument) this.focusEditor(true)
+    return true
+  }
+
+  private clearPreview() {
     this.previewGeneration++
     this.previewSelection = null
+    this.previewTransition = false
     this.disposeLiveSession()
     this.previewFramePending = false
     this.previewDocumentHTML = null
     this.setPreviewEditingLocked(false)
     this.previewActive = false
-    await this.updateComplete
-    this.savedEditorSelection = selection
-    if(focusDocument) this.focusEditor(true)
-    return true
   }
 
   private async confirmLiveSessionStop(session: LiveSession) {
@@ -3157,7 +3163,8 @@ export class DomEditor extends LitElement {
       const sessionId = randomIdentifier("live")
       const serverUrl = this.backendSession?.collaborationUrl
       const identity = serverUrl ? await createLiveHostIdentity() : undefined
-      if(!this.isConnected || !this.previewActive || generation !== this.previewGeneration) return
+      if(!this.isConnected || !this.previewActive || generation !== this.previewGeneration
+        || this.fileOperationActive || this.linkedDocumentLoading) return
       let link = ""
       if(serverUrl && identity) {
         const source = new URL(location.href)
@@ -3865,6 +3872,7 @@ export class DomEditor extends LitElement {
     if(!this.isConnected || revision !== this.documentChangeSequence || frameRevision !== this.frameRevision) {
       throw new Error("The document changed while loading its widgets. Open the file again.")
     }
+    if(this.previewActive || this.previewTransition) this.clearPreview()
     if(packages.length) {
       const names = new Set(packages.map(pkg => pkg.name))
       this.installedPackages = [...this.installedPackages.filter(pkg => !names.has(pkg.name)), ...packages]
@@ -4123,8 +4131,7 @@ export class DomEditor extends LitElement {
         this.fileDirty = false
         this.linkSharingEnabled = true
         this.collaborationLink = location.href
-        this.setPreviewEditingLocked(false)
-        this.previewActive = false
+        this.focusEditor()
         return
       }
       if(!reference) throw new Error("The document link is invalid.")
@@ -4833,6 +4840,13 @@ export class DomEditor extends LitElement {
     if(label === "Preview") {
       if(this.previewActive) void this.exitPreview()
       else void this.enterPreview()
+      return
+    }
+    // Keyboard shortcuts can reach these commands without using the File menu's live-session exit.
+    if(this.liveSession?.role === "host" && this.liveSession.status !== "stopped" && (label === "New" || label === "Open")) {
+      if(!this.fileOperationActive) void this.exitPreview(false).then(exited => {
+        if(exited) this.handleRibbonButtonClick(event)
+      })
       return
     }
     if(label === "New") {

@@ -7426,6 +7426,56 @@ describe("DomEditor.execute()", () => {
     expect(iframe.hidden).toBe(true)
   })
 
+  it.each(["Open", "New"])("returns to editing when %s replaces a document in Preview", async action => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const root = editor.shadowRoot!
+    const ribbon = root.querySelector<AppRibbon>("app-ribbon")!
+    iframe.contentDocument!.body.innerHTML = "<p>Previous lesson</p>"
+    await host.enterPreview()
+    await vi.waitFor(() => expect(root.querySelector("iframe.preview-frame")).not.toBeNull())
+    expect(iframe.hidden).toBe(true)
+    vi.stubGlobal("confirm", () => true)
+
+    if(action === "Open") {
+      const file = new File(["<p>Opened lesson</p>"], "opened.html", {type: "text/html"})
+      const picker = vi.fn().mockRejectedValueOnce(new DOMException("Cancelled", "AbortError"))
+        .mockResolvedValueOnce([{name: file.name, getFile: async () => file}])
+      vi.stubGlobal("showOpenFilePicker", picker)
+      vi.spyOn(host, "rememberOpenedDocument").mockResolvedValue({id: "opened", kind: "local"})
+      const openFromMenu = async () => {
+        ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!
+          .dispatchEvent(new CustomEvent("ribbon-tab-select", {detail: {label: "File"}, bubbles: true}))
+        await ribbon.updateComplete
+        const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+        await menu.updateComplete
+        menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Open"]')!.click()
+      }
+      const preview = root.querySelector("iframe.preview-frame")
+      await openFromMenu()
+      await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
+      expect(picker).toHaveBeenCalledOnce()
+      expect(root.querySelector("iframe.preview-frame")).toBe(preview)
+      await openFromMenu()
+    }
+    else {
+      document.dispatchEvent(new KeyboardEvent("keydown", {key: "N", code: "KeyN", altKey: true, shiftKey: true, cancelable: true}))
+    }
+
+    await vi.waitFor(() => expect(host.frameRevision).toBe(1))
+    await editor.updateComplete
+    const replacement = root.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    expect(replacement).not.toBe(iframe)
+    wirePackageLoadCompletion(replacement.contentWindow!)
+    replacement.dispatchEvent(new Event("load"))
+    await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
+    expect(root.querySelector("iframe.preview-frame")).toBeNull()
+    expect(replacement.hidden).toBe(false)
+    expect(replacement.inert).toBe(false)
+    expect(replacement.contentDocument!.body.textContent?.trim()).toBe(action === "Open" ? "Opened lesson" : "")
+    expect(host.previewEditingLocked).toBe(false)
+  })
+
   it("removes authored executable content from the preview copy", async () => {
     const {editor, iframe} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = '<style>body { display: none }</style><link rel="stylesheet"><button onclick="alert(1)" formaction="javascript:alert(2)" srcdoc="<script>evil()</script>" style="color: red">Run</button><script>window.evil = true</script>'
@@ -7684,13 +7734,14 @@ describe("DomEditor.execute()", () => {
     finally { vi.useRealTimers() }
   })
 
-  it.each(["share", "preview", "return to editing", "file", "compact file"])("requires confirmation to stop a live session through %s", async action => {
+  it.each(["share", "preview", "return to editing", "file", "compact file", "new shortcut"])("requires confirmation to stop a live session through %s", async action => {
     const {editor} = await mountEditor()
     const host = editor as any
     await host.enterPreview()
     await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
     const session = host.liveSession as LiveSession
     const focusEditor = vi.spyOn(host, "focusEditor")
+    const newDocument = vi.spyOn(host, "newDocument").mockResolvedValue(undefined)
     const learner = new LiveSession({id: session.id, role: "learner"})
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     await editor.updateComplete
@@ -7706,6 +7757,7 @@ describe("DomEditor.execute()", () => {
       else if(action === "file") ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!
         .dispatchEvent(new CustomEvent("ribbon-tab-select", {detail: {label: "File"}, bubbles: true}))
       else if(action === "compact file") ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+      else if(action === "new shortcut") document.dispatchEvent(new KeyboardEvent("keydown", {key: "N", code: "KeyN", altKey: true, shiftKey: true, cancelable: true}))
       else ribbon.dispatchEvent(new Event("ribbon-preview-exit", {bubbles: true, composed: true}))
     }
     try {
@@ -7724,6 +7776,7 @@ describe("DomEditor.execute()", () => {
       expect(host.previewActive).toBe(true)
       expect(learner.status).toBe("connected")
       expect(share().checked).toBe(true)
+      expect(newDocument).not.toHaveBeenCalled()
 
       requestStop()
       await vi.waitFor(() => expect(dialog.open).toBe(true))
@@ -7733,6 +7786,7 @@ describe("DomEditor.execute()", () => {
       expect(learner.status).toBe("stopped")
       expect(host.liveSessionActive).toBe(false)
       expect(host.previewActive).toBe(action === "share")
+      if(action === "new shortcut") await vi.waitFor(() => expect(newDocument).toHaveBeenCalledOnce())
       if(action === "file" || action === "compact file") {
         await vi.waitFor(() => expect(ribbon.menuOpen).toBe(true))
         expect(ribbon.shadowRoot!.querySelector<HTMLElement>("#ribbon-file-menu")!.hidden).toBe(false)
