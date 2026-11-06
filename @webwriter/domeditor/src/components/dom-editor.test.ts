@@ -6669,6 +6669,40 @@ describe("DomEditor.execute()", () => {
     expect(console.shadowRoot!.querySelector(".version-sidebar")).not.toBeNull()
   })
 
+  it("routes Website zoom to the selected iframe type inside a figure", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const selectionType = {localName: "iframe", namespaceURI: "http://www.w3.org/1999/xhtml"}
+    const figure = {...selectionType, localName: "figure", name: "Figure", path: [0], attributes: {}}
+    const website = {...selectionType, name: "Website", path: [0, 0], attributes: {style: "zoom: 80%"}}
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type: selectionChangeEvent, detail: {
+      path: [{path: [], name: "Document"}, figure], nodeSelected: true, element: figure,
+      media: {type: "iframe", attributes: website.attributes},
+      selectedElementTypes: [{
+        element: website, count: 1, styleProperties: ["zoom"], configuredWidgetOptions: [],
+        style: {target: selectionType, inline: {zoom: {value: "80%", priority: ""}}, computed: {},
+          context: {display: "block", parentDisplay: "block"}},
+      }],
+    }}}))
+    await editor.updateComplete
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('[data-specialized="iframe"]')!
+    const styles = drawer.querySelector("element-style-editor")!
+    await styles.updateComplete
+    const zoom = styles.shadowRoot!.querySelector<import("./style-combobox").StyleCombobox>('[data-property="zoom"] style-combobox')!
+    expect(zoom.value).toBe("80%")
+    expect(zoom.options.map(option => option.value)).toContain("75%")
+    const change = (value: string) => zoom.dispatchEvent(new CustomEvent("combobox-change", {
+      detail: {value}, bubbles: true, composed: true,
+    }))
+    change("75%")
+    expect(execute).toHaveBeenCalledWith({type: "setSelectedElementStyles", selectionType, styles: {zoom: {value: "75%", priority: ""}}})
+    change("")
+    expect(execute).toHaveBeenCalledWith({type: "setSelectedElementStyles", selectionType, styles: {zoom: null}})
+  })
+
   it("routes media ribbon commands through the iframe bridge", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

@@ -8017,7 +8017,9 @@ export class DomEditor extends LitElement {
     }
     const topLevel = event.composedPath().includes(this.renderRoot.querySelector("dom-editor-toolbox")!)
       && this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Edit"
-    if(detail.selectionType !== undefined && !topLevel) {
+    const scopedZoom = Object.hasOwn(styles, "zoom") && isElementSelectionType(detail.selectionType)
+      && isWebsiteType(detail.selectionType.localName)
+    if(detail.selectionType !== undefined && (!topLevel || scopedZoom)) {
       if(!isElementSelectionType(detail.selectionType)) return
       void this.execute({type: "setSelectedElementStyles", selectionType: detail.selectionType, styles})
       return

@@ -1,3 +1,5 @@
+import {isWebsiteType} from "./media"
+
 /** CSS-wide values exposed by every property label's cycle button. */
 export const cssWideKeywords = ["inherit", "initial", "unset", "revert"] as const
 export type CSSWideKeyword = typeof cssWideKeywords[number]
@@ -373,6 +375,7 @@ export const enumerationMarkerTypes = ["decimal", "decimal-leading-zero", "lower
 /** Properties absent from the universal Style drawer, reusing CSS controls. */
 export const specializedStyleDefinitions: readonly ElementStylePropertyDefinition[] = [
   text("object-view-box", "Crop", "Media"),
+  number("zoom", "Zoom", "Website"),
   text("line-height", "Line height", "Paragraph"),
   select("list-style-type", "Marker", "Lists", values(...listMarkerTypes, ...enumerationMarkerTypes, "none")),
   select("vertical-align", "Vertical alignment", "Text", values("middle", "top", "bottom", "text-top", "text-bottom", "baseline")),
@@ -415,7 +418,8 @@ export function specializedElementStyle(localName: string): SpecializedElementSt
   if(["ul", "ol", "menu"].includes(localName)) return listStyles
   if(["picture", "img"].includes(localName)) return imageStyles
   if(localName === "video") return {...imageStyles, advanced: []}
-  if(["audio", "iframe", "embed", "object"].includes(localName)) return {primary: [], advanced: []}
+  if(isWebsiteType(localName)) return {primary: ["zoom"], advanced: []}
+  if(localName === "audio") return {primary: [], advanced: []}
   if(localName === "details") return {primary: [], advanced: []}
   if(localName === "summary") return {primary: ["list-style-type", "list-style-position"], advanced: []}
   if(localName === "table") return {primary: ["table-layout", "border-collapse", "border-spacing"], advanced: ["caption-side", "empty-cells"]}

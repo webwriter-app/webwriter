@@ -1816,7 +1816,10 @@ export class ElementStyleEditor extends LitElement {
             ? [{label: "Tight", value: "-0.1em"}, {label: "Normal", value: "normal"}, {label: "Loose", value: "0.1em"}, {label: "Wide", value: "0.25em"}]
             : definition.name === "text-indent"
               ? [{label: "None", value: "0"}, {label: "Small", value: "1em"}, {label: "Medium", value: "2em"}, {label: "Large", value: "4em"}]
-              : [{label: "None", value: "0"}, {label: "Compact", value: "2px"}, {label: "Comfortable", value: "4px"}, {label: "Spacious", value: "8px"}]
+              : definition.name === "zoom"
+                ? [{label: "Half size", value: "50%"}, {label: "Smaller", value: "75%"}, {label: "Actual size", value: "100%"},
+                  {label: "Large", value: "125%"}, {label: "Larger", value: "150%"}, {label: "Double size", value: "200%"}]
+                : [{label: "None", value: "0"}, {label: "Compact", value: "2px"}, {label: "Comfortable", value: "4px"}, {label: "Spacious", value: "8px"}]
     return html`<style-combobox .showValue=${true} .label=${definition.label}
       .value=${this.editableValue(definition.name)} placeholder="Default" .options=${suggestions}
       @combobox-change=${(event: CustomEvent<{value: string}>) => {

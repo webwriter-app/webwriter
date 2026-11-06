@@ -29,7 +29,7 @@ import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutMod
 import {choiceGroupStyles} from "./choice-group.styles"
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
 import {floatSideFromStyles, elementStyleCategories, listMarkerImageProperty, specializedStyleDefinitions, specializedElementStyle, type FloatSide} from "../element-styles"
-import {mediaCaptureOptions, mediaSourceAttribute, mediaAttributeOptions, type MediaType, type MediaAttributeOption} from "../media"
+import {isWebsiteType, mediaCaptureOptions, mediaSourceAttribute, mediaAttributeOptions, type MediaType, type MediaAttributeOption} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {canonicalMarkName} from "../marks"
 import "./style-combobox"
@@ -1140,7 +1140,7 @@ export class DomEditorToolbox extends EditingControls {
           detail: {path: attributes.path}, bubbles: true, composed: true,
         }))}>${ribbonIcon("Delete")}Delete</button>
     </ribbon-drawer>`
-    let style = this.elementStyle
+    let style = group && isWebsiteType(group.element.localName) ? group.style : this.elementStyle
     const widgetOptions = group ? group.widget : this.widgetOptions
     const singleTarget = Boolean(group?.count === 1 && this.elementAttributes && attributes
       && (attributes.localName === this.elementAttributes.localName && attributes.namespaceURI === this.elementAttributes.namespaceURI
@@ -1165,6 +1165,9 @@ export class DomEditorToolbox extends EditingControls {
         return
       }
       if(selectionType) event.detail.selectionType = selectionType
+      else if(event.type === "element-style-change" && isWebsiteType(localName)) {
+        event.detail.selectionType = {localName, namespaceURI: "http://www.w3.org/1999/xhtml"}
+      }
     }
     const dispatchOption = (name: string, value: WidgetOptionValue) => {
       this.dispatchEvent(new CustomEvent("widget-option-change", {

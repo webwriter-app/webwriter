@@ -48,6 +48,11 @@ export function adoptStylesheet(root: Document | ShadowRoot, stylesheet: CSSStyl
   }
 }
 
+export function cssZoomFactor(style: CSSStyleDeclaration) {
+  const zoom = style.getPropertyValue("zoom").trim()
+  return parseFloat(zoom) / (zoom.endsWith("%") ? 100 : 1) || 1
+}
+
 function editingLayoutChildren(element: Element, selectionRoot?: Element) {
   return Array.from(element.childNodes).flatMap<{node: Element | Text, rect: DOMRect}>(node => {
     // Closed disclosures can retain measurable boxes for hidden body content.

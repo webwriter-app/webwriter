@@ -4904,6 +4904,36 @@ describe("explicit multi-element selection editing", () => {
     expect((first as HTMLElement).style.color).toBe("")
   })
 
+  it("changes and clears website zoom without changing its figure or other declarations", () => {
+    document.body.innerHTML = '<section><figure style="zoom: 90%"><!--keep--><iframe style="width: 300px; height: 160px; max-width: 100%"></iframe><figcaption>Lesson</figcaption></figure><iframe></iframe></section>'
+    const figure = document.querySelector("figure")!
+    const [website, sibling] = document.querySelectorAll("iframe")
+    $.selectElement(figure)
+
+    const manipulation = editor.features.manipulation
+    const selectionType = {localName: "iframe", namespaceURI: htmlNamespace}
+    const setZoom = (zoom: string | null) => manipulation.actions.setSelectedElementStyles({
+      type: "setSelectedElementStyles", selectionType, styles: {zoom},
+    })
+    const state = () => manipulation.getSelectedElementTypes().find(group => group.element.localName === "iframe")!.style
+    expect(setZoom("75%")).toBe(true)
+    expect(state().inline.zoom?.value).toBe("75%")
+    expect(website.style.width).toBe("400px")
+    expect(parseFloat(website.style.height) * .75).toBeCloseTo(160)
+    expect(website.style.maxWidth).toBe("100%")
+    expect(editor.toHTML()).toContain("zoom: 75%")
+    expect(setZoom("150%")).toBe(true)
+    expect(website.style.width).toBe("200px")
+    expect(parseFloat(website.style.height) * 1.5).toBeCloseTo(160)
+    expect(setZoom(null)).toBe(true)
+    expect(state().inline.zoom).toBeUndefined()
+    expect(website.style.width).toBe("300px")
+    expect(parseFloat(website.style.height)).toBeCloseTo(160)
+    expect(sibling.hasAttribute("style")).toBe(false)
+    expect(figure.getAttribute("style")).toBe("zoom: 90%")
+    expect(figure.firstChild).toBeInstanceOf(Comment)
+  })
+
   it("does not apply a type-specific mutation to another selected element type", () => {
     document.body.innerHTML = '<p id="outside">one</p><img id="only" alt="diagram">'
     const image = document.querySelector("img")!

@@ -1,8 +1,8 @@
 import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
 import {documentThemeProperties, documentTypographyCSS, documentTypographyProperties} from "../document-theme-options"
 import {themeAccentProperties} from "../css-color"
-import {tokenize} from "@csstools/css-tokenizer"
-import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
+import {isTokenDimension, tokenize} from "@csstools/css-tokenizer"
+import {mediaElementSelector, isMediaType, isWebsiteType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {attributionAttributes} from "../attribution.js"
 import {captionedFigureContent} from "../figure-layout.js"
@@ -12,7 +12,7 @@ import { DocumentListenerMap, EditorFeature } from "."
 import { $, caretRect, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
 import {isMarkElement} from "../marks"
 import {isEmptyParagraph, isParagraphContent, isPointAtBoundary} from "../utility"
-import {createAnchorPositioner, removeEditorMarker} from "../utility"
+import {createAnchorPositioner, cssZoomFactor, removeEditorMarker} from "../utility"
 import {
   isBlockFormatTag,
   type BlockFormatTag,
@@ -58,6 +58,19 @@ type ValidatedStyleEntry = {
   name: string
   value: string | null
   priority: "" | "important"
+}
+
+const websiteDimensions = [
+  {size: "width", sides: ["left", "right"]},
+  {size: "height", sides: ["top", "bottom"]},
+] as const
+
+const websiteBorderBox = (style: CSSStyleDeclaration, {size, sides}: typeof websiteDimensions[number]) => {
+  const extra = style.boxSizing === "border-box" ? 0 : sides.reduce((total, side) =>
+    total + (parseFloat(style.getPropertyValue(`padding-${side}`)) || 0)
+    + (parseFloat(style.getPropertyValue(`border-${side}-width`)) || 0), 0)
+  const value = style.getPropertyValue(size)
+  return {extra, size: value.endsWith("px") ? parseFloat(value) + extra : NaN}
 }
 
 /** CSSOM exposes values for shorthand-expanded longhands. Read the original
@@ -5261,6 +5274,51 @@ export class ManipulationFeature extends EditorFeature {
     return true
   }
 
+  private applyWebsiteZoom(target: HTMLElement, zoom: ValidatedStyleEntry) {
+    const before = getComputedStyle(target)
+    const previousZoom = cssZoomFactor(before)
+    const sizes = websiteDimensions.map(dimension => websiteBorderBox(before, dimension).size)
+    const typed = target.computedStyleMap?.()
+    const priority = (name: string): ValidatedStyleEntry["priority"] =>
+      target.style.getPropertyPriority(name) === "important" ? "important" : ""
+    const properties = websiteDimensions.flatMap(({size}) => [size, `min-${size}`, `max-${size}`])
+    const dimensions = properties.map(name => ({
+      name,
+      value: target.style.getPropertyValue(name) || typed?.get(name)?.toString()
+        || (name.startsWith("min-") || name.startsWith("max-") ? before.getPropertyValue(name) : ""),
+      priority: priority(name),
+    }))
+
+    this.applyStyleEntries(target, [zoom])
+    const nextZoom = cssZoomFactor(getComputedStyle(target))
+    if(previousZoom === nextZoom) return
+    const ratio = previousZoom / nextZoom
+    // Percentages already resolve against the containing block's size. Only
+    // compensate lengths so percentage sizing and responsive limits still work.
+    const compensated = dimensions.flatMap(({name, value, priority}) => {
+      const scaled = tokenize({css: value}).map(token => isTokenDimension(token)
+        ? `${Number((token[4].value * ratio).toPrecision(12))}${token[4].unit}` : token[1]).join("")
+      return scaled === value ? [] : [{name, value: scaled, priority}]
+    })
+    if(compensated.length) this.applyStyleEntries(target, compensated)
+
+    // Intrinsic sizes and content-box decorations can still change the used
+    // border box. Correct that difference without using transformed client rects.
+    const after = getComputedStyle(target)
+    const corrections = websiteDimensions.flatMap((dimension, index) => {
+      const current = websiteBorderBox(after, dimension)
+      const expected = sizes[index] * ratio
+      if(!Number.isFinite(expected) || !Number.isFinite(current.size) || Math.abs(current.size - expected) * nextZoom < .5) return []
+      const name = dimension.size
+      return [{
+        name,
+        value: `${Math.max(0, expected - current.extra)}px`,
+        priority: priority(name),
+      }]
+    })
+    if(corrections.length) this.applyStyleEntries(target, corrections)
+  }
+
   /** Assigns inline styles to the live target or every explicitly selected
    * element. Null or an empty string clears a property. */
   setStyle(styles: Record<string, ElementStyleMutation>) {
@@ -5316,7 +5374,14 @@ export class ManipulationFeature extends EditorFeature {
       const layout = crop && (target instanceof HTMLImageElement || target instanceof HTMLVideoElement)
         && this.inlineStyleOf(target)?.getPropertyValue("object-view-box") !== (crop.value ?? "")
         ? this.editor.features.media.cropLayoutStyles(target, crop.value) : null
-      changed = this.applyStyleEntries(target, declarations) || changed
+      const zoom = declarations.find(entry => entry.name === "zoom")
+      if(zoom && target instanceof HTMLElement && !target.hasAttribute("is") && isWebsiteType(target.localName)) {
+        const other = declarations.filter(entry => entry !== zoom)
+        if(other.length) changed = this.applyStyleEntries(target, other) || changed
+        this.applyWebsiteZoom(target, zoom)
+        changed = true
+      }
+      else changed = this.applyStyleEntries(target, declarations) || changed
       for(const [element, styles] of layout ?? []) {
         const entries = this.validateElementStyles(styles)
         if(entries.length) changed = this.applyStyleEntries(element, entries) || changed

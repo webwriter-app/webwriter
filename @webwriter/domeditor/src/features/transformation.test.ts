@@ -3112,6 +3112,22 @@ describe("transform controls and geometry", () => {
     expect(document.body).not.toHaveClass("◆transform-scaling-nwse")
   })
 
+  it("keeps the iframe transformation frame at the same size across website zoom levels", () => {
+    document.body.innerHTML = '<section style="scale: 1.5"><iframe title="Activity" style="width: 320px; height: 180px; box-sizing: border-box"></iframe></section>'
+    const target = document.querySelector("iframe")!
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 120, 480, 270))
+    captureNode(target)
+    expect(feature.target).toBe(target)
+    const selectionType = {localName: "iframe", namespaceURI: target.namespaceURI}
+    for(const zoom of ["50%", "200%", null]) {
+      editor.features.manipulation.actions.setSelectedElementStyles({type: "setSelectedElementStyles", selectionType, styles: {zoom}})
+      feature.updateInfo()
+      expect(feature.overlay.style.width).toBe("320px")
+      expect(feature.overlay.style.height).toBe("180px")
+      expect(feature.overlay.style.transform).toBe("matrix(1.5, 0, 0, 1.5, 0, 0)")
+    }
+  })
+
   it.each([30, -20])("resizes an iframe vertically by %s pixels, preserving its DOM and undo/redo", async dy => {
     document.body.innerHTML = '<figure><!--keep--><iframe title="Activity" height="180" src="about:blank"></iframe><figcaption>Keep caption</figcaption></figure>'
     const target = document.querySelector("iframe")!

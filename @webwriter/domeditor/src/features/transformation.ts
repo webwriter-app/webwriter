@@ -4,12 +4,12 @@ import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {SVG_NAMESPACE, standaloneGraphicShape} from "../graphic"
 import {boardLayoutRole, documentLayoutMode, isSlide, slideLayoutRole} from "../document-layout"
 import {alignmentFromStyles, floatSideFromStyles, type FloatSide} from "../element-styles"
-import {mediaCropInsets} from "../media"
+import {isWebsiteType, mediaCropInsets} from "../media"
 import {captionIconSource} from "../caption-icon"
 import {mathRoot} from "../math"
 import {captionedFigureContent} from "../figure-layout.js"
 import {canvasGridSize, isCanvasStartingView} from "../canvas-viewer.js"
-import {createAnchorPositioner, isWidgetShadowInteraction} from "../utility"
+import {createAnchorPositioner, cssZoomFactor, isWidgetShadowInteraction} from "../utility"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {popupElementRole} from "../element-names"
 import groupIcon from "@tabler/icons/outline/layers-union.svg?raw"
@@ -789,7 +789,7 @@ export class TransformationFeature extends EditorFeature {
     const style = getComputedStyle(element)
     const angle = this.#angle(style.getPropertyValue("rotate"))
     const scale = this.#scale(style.getPropertyValue("scale"))
-    const zoom = parseFloat(style.getPropertyValue("zoom")) || 1
+    const zoom = cssZoomFactor(style)
     const own = new DOMMatrix().scale(zoom).rotate(angle).scale(scale[0], scale[1])
       .multiply(new DOMMatrix(style.transform && style.transform !== "none" ? style.transform : undefined))
     own.e = own.f = 0
@@ -884,6 +884,14 @@ export class TransformationFeature extends EditorFeature {
     let rect = measuredRect ?? element.getBoundingClientRect()
     let {width, height} = this.#size(element, matrices, rect)
     let matrix = this.#matrix(element, matrices)
+    if(element instanceof HTMLElement && !element.hasAttribute("is") && isWebsiteType(element.localName)) {
+      // Keep the embed's own zoom in the frame dimensions so it does not
+      // scale the outline or handles. Pointer gestures still use the full matrix.
+      const zoom = cssZoomFactor(getComputedStyle(element))
+      width *= zoom
+      height *= zoom
+      matrix = matrix.scale(1 / zoom)
+    }
     const media = cropped ? this.editor.features.media.cropTargetFor(element) : null
     const insets = media && this.#mediaCropInsets(media)
     if(media && insets?.some(value => value)) {
