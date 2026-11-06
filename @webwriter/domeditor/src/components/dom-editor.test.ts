@@ -68,6 +68,7 @@ import type {LiveSessionOverlay} from "./live-session-overlay"
 import type {LiveSessionControls} from "./live-session-controls"
 import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, loadAppSettings, loadDocumentSettings} from "../app-settings"
 import * as recentDocumentStorage from "../recent-documents"
+import * as documentRecoveryStorage from "../document-recovery"
 
 class ReplayTestWorker {
   onmessage: ((event: {data: ReplayWorkerResponse}) => void) | null = null
@@ -89,6 +90,12 @@ class ReplayTestWorker {
 const configureCloudStorage = (host: any) => {
   host.settings = {...host.settings, cloudServicesConfigured: true, activeCloudServiceId: "test-cloud",
     cloudServices: [{id: "test-cloud", type: "url", url: "http://localhost:1234/api", username: "Tester", authentication: "none"}]}
+}
+
+function seedRecoveryDraft(editor: DomEditor) {
+  const record = {id: crypto.randomUUID(), title: "Draft", updatedAt: 1}
+  Object.assign(editor, {activeDocumentRecovery: {id: record.id, release() {}}, documentRecoveryCheckpoint: record})
+  return record
 }
 
 const demoPackage: WebWriterPackage = {
@@ -1721,6 +1728,8 @@ describe("DomEditor iframe setup", () => {
     const template = iframe.contentDocument!.createElement("template")
     iframe.contentDocument!.body.append(template)
     await new Promise(resolve => setTimeout(resolve, 0))
+    const draft = seedRecoveryDraft(editor)
+    const remove = vi.spyOn(documentRecoveryStorage, "deleteDocumentRecovery").mockResolvedValue()
     let finish!: () => void
     const pending = new Promise<void>(resolve => { finish = resolve })
     const write = vi.fn(() => pending)
@@ -1742,6 +1751,8 @@ describe("DomEditor iframe setup", () => {
     finish()
     await saving
     expect(host.fileDirty).toBe(true)
+    expect(host.documentRecoveryCheckpoint).toBe(draft)
+    expect(remove).not.toHaveBeenCalled()
   })
 
   it("preserves edits made while an opened file is being read", async () => {
@@ -1900,7 +1911,7 @@ describe("DomEditor iframe setup", () => {
 
     const reload = vi.spyOn(editor as any, "reloadDocument").mockResolvedValue(undefined)
     await (editor as any).newDocument()
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining(`<html lang="${expected}">`), true)
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining(`<html lang="${expected}">`), true, null, undefined, {discardRecovery: false})
   })
 
   it("preserves authored meta refresh metadata in the editor frame HTML", async () => {
@@ -1954,7 +1965,7 @@ describe("DomEditor iframe setup", () => {
 
     await host.newDocument()
 
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining('<meta name="generator"'), true)
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining('<meta name="generator"'), true, null, undefined, {discardRecovery: false})
     expect(execute).toHaveBeenCalledWith({type: "setDocumentLayout", mode, expectedMode: "document"})
     expect(host.fileDirty).toBe(false)
     expect(host.isFreshDocumentUnchanged()).toBe(true)
@@ -1994,7 +2005,7 @@ describe("DomEditor iframe setup", () => {
     window.dispatchEvent(unload)
     expect(unload.defaultPrevented).toBe(true)
     vi.stubGlobal("confirm", vi.fn().mockReturnValue(false))
-    expect(host.confirmDiscardChanges()).toBe(false)
+    expect(host.confirmDocumentSwitch()).toBeNull()
   })
 
   it.each(["document", "canvas", "slides", "board"] as const)("creates an explicit %s layout from the New submenu without changing the default", async mode => {
@@ -3928,6 +3939,144 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect((editor as any).fileDirty).toBe(false))
   })
 
+  it("checkpoints authored changes once and removes the draft when the document becomes empty", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const write = vi.spyOn(documentRecoveryStorage, "writeDocumentRecovery").mockResolvedValue()
+    const remove = vi.spyOn(documentRecoveryStorage, "deleteDocumentRecovery").mockResolvedValue()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue("<html><body><p>Draft</p></body></html>")
+    await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
+
+    await host.checkpointDocument()
+    expect(execute).not.toHaveBeenCalled()
+
+    iframe.contentDocument!.body.innerHTML = "<p>Draft</p>"
+    await vi.waitFor(() => expect(host.fileDirty).toBe(true))
+    await host.checkpointDocument()
+    const id = host.documentRecoveryCheckpoint.id
+    expect(write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({id}), "<html><body><p>Draft</p></body></html>")
+    expect(host.documentRecoveryUnchanged).toBe(true)
+    await host.checkpointDocument()
+    expect(write).toHaveBeenCalledOnce()
+
+    iframe.contentDocument!.body.innerHTML = "<p><br></p>"
+    execute.mockResolvedValue(null)
+    await vi.waitFor(() => expect(host.documentRecoveryUnchanged).toBe(false))
+    await host.checkpointDocument()
+    expect(remove).toHaveBeenCalledExactlyOnceWith(id)
+    expect(write).toHaveBeenCalledOnce()
+    expect(host.documentRecoveryCheckpoint).toBeNull()
+  })
+
+  it("keeps a draft if navigation is cancelled and retires it after the page leaves", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const id = crypto.randomUUID()
+    const release = vi.fn()
+    let finishWrite!: () => void
+    host.documentRecoveryWrite = new Promise<void>(resolve => { finishWrite = resolve })
+    host.activeDocumentRecovery = {id, release}
+    host.documentRecoveryCheckpoint = {id, title: "Draft", updatedAt: 1}
+    host.fileDirty = true
+    const remove = vi.spyOn(documentRecoveryStorage, "deleteDocumentRecovery").mockResolvedValue()
+    try {
+      const warning = new Event("beforeunload", {cancelable: true})
+      window.dispatchEvent(warning)
+      expect(warning.defaultPrevented).toBe(true)
+      expect(documentRecoveryStorage.discardedDocumentRecoveryIds().has(id)).toBe(false)
+      expect(host.documentRecoveryCheckpoint.id).toBe(id)
+      expect(remove).not.toHaveBeenCalled()
+
+      window.dispatchEvent(new Event("pagehide"))
+      expect(documentRecoveryStorage.discardedDocumentRecoveryIds().has(id)).toBe(true)
+      expect(host.documentRecoveryCheckpoint).toBeNull()
+      expect(remove).not.toHaveBeenCalled()
+      finishWrite()
+      await vi.waitFor(() => {
+        expect(remove).toHaveBeenCalledExactlyOnceWith(id)
+        expect(release).toHaveBeenCalledOnce()
+      })
+    }
+    finally {
+      finishWrite()
+      localStorage.removeItem("webwriter-document-recovery-discarded:" + id)
+    }
+  })
+
+  it.each(["New", "Open local", "Open cloud"])("keeps the recovery draft until %s completes a confirmed switch", async action => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const host = editor as any
+    const id = crypto.randomUUID()
+    const release = vi.fn()
+    const record = {id, title: "Draft", updatedAt: 1}
+    host.activeDocumentRecovery = {id, release}
+    host.documentRecoveryCheckpoint = record
+    host.fileDirty = true
+    const confirm = vi.fn().mockReturnValue(false)
+    vi.stubGlobal("confirm", confirm)
+    const remove = vi.spyOn(documentRecoveryStorage, "deleteDocumentRecovery").mockResolvedValue()
+    const file = new File(["<p>Opened</p>"], "opened.html")
+    const picker = vi.fn().mockRejectedValueOnce(new DOMException("Cancelled", "AbortError"))
+      .mockResolvedValue([{name: file.name, getFile: async () => file}])
+    vi.stubGlobal("showOpenFilePicker", picker)
+    host.backendClient = {apiBaseUrl: "http://localhost:1234/api", getDocument: async () => ({
+      id: "lesson", title: "Lesson", content: "<p>Opened</p>", format: "html",
+    })}
+    const switchDocument = () => action === "New" ? host.newDocument("document")
+      : action === "Open local" ? host.openDocument() : host.openBackendDocument("lesson")
+    try {
+      await switchDocument()
+      expect(host.documentRecoveryCheckpoint).toBe(record)
+      expect(host.editorIframe()).toBe(iframe)
+      expect(remove).not.toHaveBeenCalled()
+      confirm.mockReturnValue(true)
+      if(action === "Open local") {
+        await switchDocument()
+        expect(host.documentRecoveryCheckpoint).toBe(record)
+        expect(host.editorIframe()).toBe(iframe)
+        expect(host.fileError).toBe("")
+        expect(remove).not.toHaveBeenCalled()
+      }
+
+      let ready!: (value: Window) => void
+      const wait = vi.spyOn(host, "waitForEditorWindow").mockReturnValue(new Promise<Window>(resolve => { ready = resolve }))
+      const switching = switchDocument()
+      await vi.waitFor(() => expect(wait).toHaveBeenCalled())
+      expect(documentRecoveryStorage.discardedDocumentRecoveryIds().has(id)).toBe(false)
+      expect(remove).not.toHaveBeenCalled()
+      expect(release).not.toHaveBeenCalled()
+      ready(editorWindow)
+      await switching
+      expect(host.editorIframe()).not.toBe(iframe)
+      expect(host.documentRecoveryCheckpoint).toBeNull()
+      await vi.waitFor(() => {
+        expect(remove).toHaveBeenCalledExactlyOnceWith(id)
+        expect(release).toHaveBeenCalledOnce()
+      })
+    }
+    finally { localStorage.removeItem("webwriter-document-recovery-discarded:" + id) }
+  })
+
+  it("keeps a confirmed switch's recovery draft when the replacement cannot initialize", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const id = crypto.randomUUID()
+    const release = vi.fn()
+    host.activeDocumentRecovery = {id, release}
+    host.documentRecoveryCheckpoint = {id, title: "Draft", updatedAt: 1}
+    host.fileDirty = true
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
+    vi.spyOn(host, "waitForEditorWindow").mockRejectedValue(new Error("Frame failed"))
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const remove = vi.spyOn(documentRecoveryStorage, "deleteDocumentRecovery").mockResolvedValue()
+
+    await host.newDocument("document")
+    expect(host.fileError).toBe("Frame failed")
+    expect(documentRecoveryStorage.discardedDocumentRecoveryIds().has(id)).toBe(false)
+    expect(remove).not.toHaveBeenCalled()
+    expect(release).toHaveBeenCalledOnce()
+  })
+
   it.each(["empty", "empty text", "placeholder break"])("clears unsaved changes for a fresh paragraph with %s content", async content => {
     const {editor, iframe} = await mountEditor()
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -3986,6 +4135,8 @@ describe("DomEditor file actions", () => {
 
   it("saves serialized HTML through the File System Access API and clears the dirty marker", async () => {
     const {editor} = await mountEditor()
+    const draft = seedRecoveryDraft(editor)
+    const remove = vi.spyOn(documentRecoveryStorage, "deleteDocumentRecovery").mockResolvedValue()
     const write = vi.fn().mockResolvedValue(undefined)
     const close = vi.fn().mockResolvedValue(undefined)
     const handle = {
@@ -4016,6 +4167,8 @@ describe("DomEditor file actions", () => {
     expect(execute).toHaveBeenCalledWith({type: "recordVersionSave", checkpointId: "saved-checkpoint"})
     expect((editor as any).fileName).toBe("lesson")
     expect((editor as any).fileDirty).toBe(false)
+    expect(remove).toHaveBeenCalledExactlyOnceWith(draft.id, expect.any(AbortSignal))
+    expect((editor as any).documentRecoveryCheckpoint).toBeNull()
     expect(new URL(location.href).searchParams.get("open")).toBe(`local:${(editor as any).recentDocuments[0].id}`)
   })
 
@@ -4051,6 +4204,8 @@ describe("DomEditor file actions", () => {
     host.fileDirty = true
     vi.spyOn(host, "reportFileError").mockImplementation(() => {})
     const failure = new Error("Save failed")
+    const draft = seedRecoveryDraft(editor)
+    const remove = vi.spyOn(documentRecoveryStorage, "deleteDocumentRecovery").mockResolvedValue()
     host.backendClient = {updateDocument: vi.fn().mockRejectedValue(failure)}
     vi.stubGlobal("showSaveFilePicker", vi.fn().mockResolvedValue({name: "failed.html",
       createWritable: async () => ({write: async () => {}, close: async () => {throw failure}})}))
@@ -4059,6 +4214,43 @@ describe("DomEditor file actions", () => {
     expect(execute).toHaveBeenCalledWith({type: "prepareVersionSave", offline: false})
     expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({type: "recordVersionSave"}))
     expect(host.fileDirty).toBe(true)
+    expect(host.documentRecoveryCheckpoint).toBe(draft)
+    expect(remove).not.toHaveBeenCalled()
+  })
+
+  it("keeps the recovery draft when Save As is cancelled in the writable file picker", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const draft = seedRecoveryDraft(editor)
+    const remove = vi.spyOn(documentRecoveryStorage, "deleteDocumentRecovery").mockResolvedValue()
+    vi.stubGlobal("showSaveFilePicker", vi.fn().mockRejectedValue(new DOMException("Cancelled", "AbortError")))
+    const execute = mockSaveSnapshot(editor, "<p>Draft</p>")
+
+    await host.saveDocument(true)
+    expect(host.documentRecoveryCheckpoint).toBe(draft)
+    expect(remove).not.toHaveBeenCalled()
+    expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({type: "prepareVersionSave"}))
+  })
+
+  it("cancels saved draft cleanup when another edit arrives before the deletion commits", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const draft = seedRecoveryDraft(editor)
+    const remove = vi.spyOn(documentRecoveryStorage, "deleteDocumentRecovery").mockImplementation((_id, signal) =>
+      new Promise((resolve, reject) => {
+        if(!signal) { resolve(); return }
+        signal.addEventListener("abort", () => reject(signal.reason), {once: true})
+      }))
+    host.fileHandle = {name: "lesson.html", createWritable: async () => ({write: async () => {}, close: async () => {}})}
+    mockSaveSnapshot(editor, "<p>Saved</p>")
+    const saving = host.saveDocument()
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledExactlyOnceWith(draft.id, expect.any(AbortSignal)))
+    iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("hr"))
+    await saving
+    expect(host.documentRecoveryCheckpoint).toBe(draft)
+    expect(host.documentRecoveryUnchanged).toBe(false)
+    expect(host.fileDirty).toBe(true)
+    expect(host.documentRecoveryError).toBe("")
   })
 
   it("uses the hidden input to open local files even when a backend is connected", async () => {
@@ -4075,7 +4267,7 @@ describe("DomEditor file actions", () => {
     Object.defineProperty(input, "files", {value: [new File(["<p>Imported</p>"], "import.html")]})
     input.dispatchEvent(new Event("change"))
     await opening
-    expect(reload).toHaveBeenCalledWith("<p>Imported</p>", false, null, true)
+    expect(reload).toHaveBeenCalledWith("<p>Imported</p>", false, null, true, {discardRecovery: false})
     expect(host.backendClient.listDocuments).not.toHaveBeenCalled()
     expect(host.fileHandle).toBeNull()
     expect(host.fileName).toBe("import")
@@ -4122,6 +4314,8 @@ describe("DomEditor file actions", () => {
     const {editor} = await mountEditor()
     const host = editor as any
     host.fileDirty = true
+    const draft = seedRecoveryDraft(editor)
+    const remove = vi.spyOn(documentRecoveryStorage, "deleteDocumentRecovery").mockResolvedValue()
     vi.stubGlobal("showSaveFilePicker", undefined)
     const prompt = vi.fn().mockReturnValueOnce("Lesson").mockReturnValueOnce("Copy.html")
     vi.stubGlobal("prompt", prompt)
@@ -4138,6 +4332,8 @@ describe("DomEditor file actions", () => {
     await host.saveDocument(true)
     expect(prompt).toHaveBeenCalledTimes(2)
     expect(downloads).toEqual(["Lesson.html", "Lesson.html", "Copy.html"])
+    expect(host.documentRecoveryCheckpoint).toBe(draft)
+    expect(remove).not.toHaveBeenCalled()
   })
 
   it("leaves the document unchanged when the fallback Save as prompt is cancelled", async () => {
@@ -4338,7 +4534,7 @@ describe("DomEditor file actions", () => {
     Object.defineProperty(input, "files", {value: [new File(["<p>Upload</p>"], "Uploaded.html")]})
     input.dispatchEvent(new Event("change"))
     await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
-    expect(reload).toHaveBeenCalledWith("<p>Upload</p>", false, null, true)
+    expect(reload).toHaveBeenCalledWith("<p>Upload</p>", false, null, true, {discardRecovery: false})
     expect(host.settings.activeCloudServiceId).toBe("test-cloud")
     expect(host.backendDocumentId).toBeNull()
   })
@@ -4352,7 +4548,7 @@ describe("DomEditor file actions", () => {
 
     await (editor as any).openDocument()
 
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<p>Opened</p>"), false, expect.stringMatching(/^local:/), true)
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<p>Opened</p>"), false, expect.stringMatching(/^local:/), true, {discardRecovery: false})
     expect((editor as any).fileHandle).toBe(handle)
     expect((editor as any).fileName).toBe("opened")
     expect((editor as any).fileDirty).toBe(false)
@@ -4414,7 +4610,7 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect((editor as any).fileName).toBe("Server lesson"))
     expect(menu.shadowRoot!.querySelector("dialog")!.open).toBe(false)
     expect(backend.getDocument).toHaveBeenCalledWith("doc-1")
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("From server"), false, null, true)
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("From server"), false, null, true, {discardRecovery: false})
     expect((editor as any).backendDocumentId).toBe("doc-1")
     expect((editor as any).fileName).toBe("Server lesson")
   })
@@ -4463,7 +4659,7 @@ describe("DomEditor file actions", () => {
     })
     await vi.waitFor(() => expect((editor as any).fileHandle).toBe(handle))
     await vi.waitFor(() => expect((editor as any).fileOperationActive).toBe(false))
-    expect(reload).toHaveBeenCalledWith("<p>Linked local document</p>", false, "local:stored", true)
+    expect(reload).toHaveBeenCalledWith("<p>Linked local document</p>", false, "local:stored", true, {discardRecovery: false})
     expect(picker).not.toHaveBeenCalled()
     expect(new URL(location.href).searchParams.get("open")).toBe("local:stored")
     expect(new URL(location.href).searchParams.get("other")).toBe("keep")
@@ -4521,7 +4717,7 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect((editor as any).fileOperationActive).toBe(false))
     expect(login).toHaveBeenCalledWith(base)
     expect(getDocument).toHaveBeenCalledWith("folder/lesson")
-    expect(reload).toHaveBeenCalledWith("<p>Cloud document</p>", false, reference, true)
+    expect(reload).toHaveBeenCalledWith("<p>Cloud document</p>", false, reference, true, {discardRecovery: false})
     expect(new URL(location.href).searchParams.get("open")).toBe(reference)
   })
 
@@ -9383,7 +9579,7 @@ describe("DomEditor.execute()", () => {
     expect(host.isFreshDocumentUnchanged()).toBe(false)
     expect(host.documentLayoutsDismissed).toBe(true)
     vi.stubGlobal("confirm", vi.fn().mockReturnValue(false))
-    expect(host.confirmDiscardChanges()).toBe(false)
+    expect(host.confirmDocumentSwitch()).toBeNull()
   })
 
   it("keeps Layouts visible for conversion mutations, then hides it on the next edit", async () => {
@@ -11484,7 +11680,7 @@ describe("document collaboration menu", () => {
     expect(client.getDocumentSharing).toHaveBeenCalledWith("saved")
     expect(disconnect).toHaveBeenCalledOnce()
     expect(rooms).toEqual([sharingEnabled ? "document-saved" : null])
-    expect(reload).toHaveBeenCalledWith(content, false, "http://localhost:1234/api/documents/saved", true)
+    expect(reload).toHaveBeenCalledWith(content, false, "http://localhost:1234/api/documents/saved", true, {discardRecovery: false})
     expect(new URL(host.syncUrl).searchParams.get("session")).toBe(sharingEnabled ? "document-saved" : null)
     expect(host.sharedDocumentToken).toBeNull()
     expect(host.linkSharingEnabled).toBe(sharingEnabled)
@@ -11664,14 +11860,21 @@ it("moves a server Save As copy into its own collaboration room", async () => {
   host.collaborationLink = "original-link"
   host.linkSharingEnabled = true
   host.backendClient = {apiBaseUrl: "http://localhost:1234/api", createDocument: vi.fn().mockResolvedValue({id: "copy", title: "Copy", format: "html", content: "<p>Copy</p>"})}
+  const draft = seedRecoveryDraft(editor)
+  const remove = vi.spyOn(documentRecoveryStorage, "deleteDocumentRecovery").mockResolvedValue()
   mockSaveSnapshot(editor, "<p>Copy</p>")
-  const reconnect = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+  const reconnect = vi.spyOn(host, "reloadEditor").mockImplementation(async () => {
+    expect(remove).not.toHaveBeenCalled()
+    host.frameRevision++
+  })
   await host.saveBackendDocument(true)
   expect(reconnect).toHaveBeenCalledOnce()
   expect(host.collaborationRoom).toBe("document-copy")
   expect(host.sharedDocumentToken).toBeNull()
   expect(host.linkSharingEnabled).toBe(false)
   expect(new URL(location.href).searchParams.get("open")).toBe("http://localhost:1234/api/documents/copy")
+  expect(remove).toHaveBeenCalledExactlyOnceWith(draft.id, expect.any(AbortSignal))
+  expect(host.documentRecoveryCheckpoint).toBeNull()
 })
 
 it("preserves the editing capability URL when saving a shared document", async () => {

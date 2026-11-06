@@ -290,3 +290,53 @@ export function slideLayoutRole(element: ReadableElement): "root" | "viewport" |
     || nativeLayoutElement(element, "nav", "ww-slide-directions") && isSlide(element.parentElement)) return "navigation"
   return null
 }
+
+/** Reduces generated blank layouts to the same placeholder on a detached document. */
+export function normalizePristineDocumentLayout(doc: Document) {
+  for(const style of doc.head.querySelectorAll("style")) {
+    if(style.attributes.length === 0 && (style.textContent === canvasStyles || style.textContent === slidesStyles || style.textContent === boardStyles)) style.remove()
+  }
+  const body = doc.body
+  body.classList.remove("ww-canvas", "ww-slides", "ww-board")
+  if(!body.classList.length) body.removeAttribute("class")
+  for(const viewport of body.querySelectorAll(":scope > div.ww-slides-viewport")) {
+    if(viewport.attributes.length !== 1 || viewport.className !== "ww-slides-viewport") return false
+    for(const slide of Array.from(viewport.children)) {
+      if(!slide.matches("section.ww-slide") || slide.className !== "ww-slide" || Array.from(slide.attributes).some(attribute => attribute.name !== "class"
+        && !(attribute.name === "tabindex" && attribute.value === "-1")
+        && !(attribute.name === "id" && /^slide-[0-9a-f-]{36}$/i.test(attribute.value)))) return false
+      slide.querySelectorAll(":scope > nav.ww-slide-directions").forEach(nav => nav.remove())
+      slide.replaceWith(...slide.childNodes)
+    }
+    viewport.replaceWith(...viewport.childNodes)
+  }
+  body.querySelectorAll(":scope > nav.ww-slides-navigation").forEach(nav => nav.remove())
+  for(const column of body.querySelectorAll(":scope > section.ww-board-column, :scope > section.ww-board-group:not([is]) > section.ww-board-column")) {
+    if(column.attributes.length !== 1 || column.className !== "ww-board-column") return false
+    for(const card of column.querySelectorAll(":scope > article.ww-board-card")) {
+      if(card.attributes.length !== 1 || card.className !== "ww-board-card") return false
+      card.replaceWith(...card.childNodes)
+    }
+    for(const heading of column.querySelectorAll(":scope > h2")) {
+      if(!heading.childNodes.length && !heading.attributes.length) heading.remove()
+    }
+    column.replaceWith(...column.childNodes)
+  }
+  for(const group of body.querySelectorAll(":scope > section.ww-board-group:not([is])")) {
+    if(group.attributes.length !== 1 || group.className !== "ww-board-group") return false
+    for(const heading of group.querySelectorAll(":scope > h2")) {
+      if(!heading.childNodes.length && !heading.attributes.length) heading.remove()
+    }
+    group.replaceWith(...group.childNodes)
+  }
+  for(const child of body.children) {
+    if(!child.matches("p, h1, h2, h3, h4, h5, h6")) return false
+    const element = child as HTMLElement
+    for(const property of Array.from({length: element.style.length}, (_, index) => element.style.item(index))) {
+      if(!emptyLayoutPlacementValues[property]?.includes(element.style.getPropertyValue(property)) || element.style.getPropertyPriority(property)) return false
+    }
+    element.removeAttribute("style")
+  }
+  if(!resetEmptyLayoutContent(body)) return false
+  return true
+}

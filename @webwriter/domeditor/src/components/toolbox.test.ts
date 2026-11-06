@@ -10,6 +10,32 @@ import {emptyDocumentHeadState} from "../document-head"
 import type {DistributionConfig, DistributionItem} from "../distribution.js"
 import type {DistributionSelectionState} from "./distribution-controls"
 
+it("shows recoverable document actions from Review and keeps close separate from discard", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.recoveredDocument = {id: "draft-1", title: "Recovered draft", updatedAt: 1_800_000_000_000}
+  toolbox.documentRecoveryNoticeOpen = true
+  await toolbox.updateComplete
+  const notice = toolbox.shadowRoot!.querySelector<HTMLElement>(".document-recovery-popover")!
+  expect(notice.textContent).toContain("Recovered draft")
+  const restore = vi.fn(), close = vi.fn(), discard = vi.fn(), reopen = vi.fn()
+  toolbox.addEventListener("restore-recovered-document", restore)
+  toolbox.addEventListener("close-document-recovery", close)
+  toolbox.addEventListener("discard-recovered-document", discard)
+  toolbox.addEventListener("open-document-recovery", reopen)
+  notice.querySelector<HTMLButtonElement>(".document-recovery-restore")!.click()
+  notice.querySelector<HTMLButtonElement>('button[aria-label="Close notification"]')!.click()
+  notice.querySelector<HTMLButtonElement>(".document-recovery-actions button:last-child")!.click()
+  expect(restore.mock.calls[0][0].detail).toEqual({id: "draft-1"})
+  expect(close.mock.calls[0][0].detail).toEqual({id: "draft-1"})
+  expect(discard.mock.calls[0][0].detail).toEqual({id: "draft-1"})
+  expect(notice.isConnected).toBe(true)
+
+  toolbox.documentRecoveryNoticeOpen = false
+  await toolbox.updateComplete
+  toolbox.shadowRoot!.querySelector<HTMLButtonElement>("#toolbox-tab-review")!.click()
+  expect(reopen).toHaveBeenCalledOnce()
+})
+
 it("combines document options without exposing a root widget or separate language attribute", async () => {
   const toolbox = await mountToolbox()
   toolbox.documentSelected = true

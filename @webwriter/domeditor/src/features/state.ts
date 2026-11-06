@@ -685,6 +685,8 @@ export class StateFeature extends EditorFeature {
     },
     serializeDocument: ({offline = false}: {type: "serializeDocument", offline?: boolean}) =>
       this.editor.serializeHTML(offline),
+    captureDocumentRecovery: ({}: {type: "captureDocumentRecovery"}) =>
+      this.aiPreview ? undefined : this.editor.serializeRecoveryHTML(),
     readAIDocument: (options: {type: "readAIDocument"} & AIReadDocumentOptions) => this.readAIDocument(options),
     inspectAIElements: (options: {type: "inspectAIElements"} & AIInspectOptions) => this.inspectAIElements(options),
     readAIEditorCapabilities: ({topic = "overview"}: {type: "readAIEditorCapabilities", topic?: string}) => {

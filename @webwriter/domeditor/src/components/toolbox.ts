@@ -1,6 +1,7 @@
 import "./distribution-controls"
 import type {DistributionSelectionState} from "./distribution-controls"
 import type {DistributionItem} from "../distribution.js"
+import type {DocumentRecovery} from "../document-recovery"
 import type {LiveSessionFeedback, LiveSessionLearner} from "../live-session"
 import "./float-info"
 import "./media-source-info"
@@ -101,6 +102,9 @@ export class DomEditorToolbox extends EditingControls {
     documentLayout: {attribute: false},
     documentLayoutError: {attribute: false},
     proofreadingState: {attribute: false},
+    recoveredDocument: {attribute: false},
+    documentRecoveryNoticeOpen: {type: Boolean, attribute: false},
+    documentRecoveryBusy: {type: Boolean, attribute: false},
   }
 
   distributionGeneral: DistributionSelectionState | null = null
@@ -122,6 +126,9 @@ export class DomEditorToolbox extends EditingControls {
   private feedbackDraft = ""
   private feedbackParticipant = ""
   private feedbackError = ""
+  recoveredDocument: DocumentRecovery | null = null
+  documentRecoveryNoticeOpen = false
+  documentRecoveryBusy = false
   private normalTool: ToolboxTool | null = null
 
   disableAI = false
@@ -404,6 +411,24 @@ export class DomEditorToolbox extends EditingControls {
     .toolbox-tab[data-comments] .toolbox-tab-label {color: #9a6700;}
     .toolbox-tab-comment-count {position: absolute; top: -.3rem; right: -.38rem; z-index: 1; min-width: .8rem; height: .8rem; padding: 0 .12rem; border: 1px solid #fff; border-radius: 999px; color: #fff; background: #b7791f; font: 700 .48rem/ .75rem system-ui, sans-serif; text-align: center;}
     .toolbox-tab-accessibility-badge {position: absolute; top: -4px; right: -5px; z-index: 2; display: grid; place-items: center; box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 3px; border: 1px solid #fff; border-radius: 999px; color: #fff; background: #087f5b; font: 700 10px/1 system-ui, sans-serif;}
+    .document-recovery-popover {box-sizing:border-box; position:fixed; inset:auto; margin:0; width:min(21rem,calc(100vw - 1rem)); max-width:none; padding:.7rem .8rem; border:1px solid #a9cce8; border-radius:.45rem; background:#edf5fc; color:#263f55; box-shadow:0 4px 16px rgb(31 52 72 / 20%); font:.75rem/1.4 system-ui,sans-serif; overflow:visible; z-index:10000}
+    .document-recovery-popover[data-fallback] {display:block}
+    .document-recovery-popover[hidden] {display:none}
+    .document-recovery-popover::before {content:""; position:absolute; top:-6px; left:calc(var(--recovery-arrow-x, 50%) - 6px); width:10px; height:10px; transform:rotate(45deg); border-top:1px solid #a9cce8; border-left:1px solid #a9cce8; background:#edf5fc}
+    .document-recovery-popover[data-above]::before {top:auto; bottom:-6px; transform:rotate(225deg)}
+    .document-recovery-header {display:flex; align-items:start; justify-content:space-between; gap:.5rem}
+    .document-recovery-header button {flex:none; display:grid; place-items:center; width:1.25rem; height:1.25rem; padding:0; border:0; border-radius:.25rem; color:inherit; background:transparent}
+    .document-recovery-header button:hover {background:#dcebf8}
+    .document-recovery-header button svg {width:.8rem; height:.8rem}
+    .document-recovery-popover p {margin:.35rem 0 .55rem; overflow-wrap:anywhere}
+    .document-recovery-popover button {font:inherit; cursor:pointer}
+    .document-recovery-popover button:disabled {opacity:.55; cursor:default}
+    .document-recovery-popover button:focus-visible {outline:2px solid #3977c7; outline-offset:2px}
+    .document-recovery-actions {display:flex; gap:.4rem; align-items:center}
+    .document-recovery-actions button {padding:.3rem .55rem; border:1px solid #a9cce8; border-radius:.3rem; background:transparent; color:inherit}
+    .document-recovery-actions button:hover:not(:disabled) {background:#dcebf8}
+    .document-recovery-actions .document-recovery-restore {border-color:#3977c7; background:#3977c7; color:white}
+    .document-recovery-actions .document-recovery-restore:hover:not(:disabled) {background:#2865b1}
 
     :host([active-tool]) .toolbox-tabs {
       padding-left: 0;
@@ -1762,6 +1787,11 @@ export class DomEditorToolbox extends EditingControls {
 
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
+    if(changed.has("documentRecoveryNoticeOpen")) {
+      if(this.documentRecoveryNoticeOpen) window.addEventListener("resize", this.positionDocumentRecoveryNotice)
+      else window.removeEventListener("resize", this.positionDocumentRecoveryNotice)
+    }
+    this.positionDocumentRecoveryNotice()
     if(this.activeTool !== "Review") {
       this.revealedHoveredIssueId = null
     }
@@ -1800,6 +1830,66 @@ export class DomEditorToolbox extends EditingControls {
       drawer.inert = drawer.getAttribute("aria-disabled") === "true"
         || this.historyState.preview !== null && drawer.layout !== "history-versions"
     })
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    if(this.documentRecoveryNoticeOpen) window.addEventListener("resize", this.positionDocumentRecoveryNotice)
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener("resize", this.positionDocumentRecoveryNotice)
+    super.disconnectedCallback()
+  }
+
+  private readonly positionDocumentRecoveryNotice = () => {
+    if(!this.documentRecoveryNoticeOpen) return
+    const notice = this.renderRoot.querySelector<HTMLElement>(".document-recovery-popover")
+    const anchor = this.renderRoot.querySelector<HTMLElement>("#toolbox-tab-review .toolbox-tab-icon")
+    if(!notice || !anchor) return
+    const target = anchor.getBoundingClientRect()
+    notice.hidden = !target.width || !target.height
+    if(notice.hidden) return
+    if(typeof notice.showPopover === "function") {
+      try { if(!notice.matches(":popover-open")) notice.showPopover() }
+      catch { notice.setAttribute("data-fallback", "") }
+    }
+    else notice.setAttribute("data-fallback", "")
+    const {width, height} = notice.getBoundingClientRect()
+    const center = target.left + target.width / 2
+    const left = Math.max(8, Math.min(center - width / 2, window.innerWidth - width - 8))
+    const above = target.bottom + height + 17 > window.innerHeight && target.top > window.innerHeight - target.bottom
+    notice.toggleAttribute("data-above", above)
+    notice.style.left = `${left}px`
+    notice.style.top = `${Math.max(8, above ? target.top - height - 9 : target.bottom + 9)}px`
+    notice.style.setProperty("--recovery-arrow-x", `${Math.max(10, Math.min(width - 10, center - left))}px`)
+  }
+
+  private renderDocumentRecoveryNotice() {
+    const record = this.recoveredDocument
+    if(!record || !this.documentRecoveryNoticeOpen || this.preview) return nothing
+    const emit = (name: string) => this.dispatchEvent(new CustomEvent(name, {detail: {id: record.id}, bubbles: true, composed: true}))
+    const close = () => {
+      emit("close-document-recovery")
+      this.renderRoot.querySelector<HTMLButtonElement>("#toolbox-tab-review")?.focus()
+    }
+    return html`<aside class="document-recovery-popover" popover="manual" role="region" aria-label="Recovered document"
+      @keydown=${(event: KeyboardEvent) => {
+        if(event.key !== "Escape" || this.documentRecoveryBusy) return
+        event.stopPropagation()
+        close()
+      }}>
+      <div class="document-recovery-header"><strong>Recovered document</strong>
+        <button type="button" aria-label="Close notification" title="Close" ?disabled=${this.documentRecoveryBusy}
+          @click=${close}>${ribbonIcon("Reject")}</button></div>
+      <p>${record.title || "Untitled document"} · ${new Date(record.updatedAt).toLocaleString()}<br>Unsaved changes were recovered on this device.</p>
+      <div class="document-recovery-actions">
+        <button class="document-recovery-restore" type="button" ?disabled=${this.documentRecoveryBusy}
+          @click=${() => emit("restore-recovered-document")}>${this.documentRecoveryBusy ? "Working…" : "Restore"}</button>
+        <button type="button" ?disabled=${this.documentRecoveryBusy}
+          @click=${() => emit("discard-recovered-document")}>Discard</button>
+      </div>
+    </aside>`
   }
 
   private renderFeedback() {
@@ -1862,6 +1952,7 @@ export class DomEditorToolbox extends EditingControls {
         @change=${this.handleRibbonInputChange}
         @keydown=${this.handleRibbonInputKeydown}
       >
+        ${this.renderDocumentRecoveryNotice()}
         <div class="toolbox-tabs-area">
           <div class="toolbox-tabs" role="tablist" aria-label="Toolbox">
             ${(this.preview ? [{label: "Feedback" as const, icon: "Comments"}] : tools).filter(tool => (tool.label !== "Style" || this.showStyleToolbox) && (tool.label !== "AI" || !this.disableAI)).map(tool => {
@@ -1874,7 +1965,7 @@ export class DomEditorToolbox extends EditingControls {
               const accessibilityCount = tool.label === "Review" && this.proofreadingState.enabled
                 ? this.proofreadingState.issues.filter(issue => issue.kind === "accessibility").length : 0
               const reviewDescription = tool.label === "Review"
-                ? [accessibilityCount > 0 ? `${accessibilityCount} accessibility ${accessibilityCount === 1 ? "issue" : "issues"}` : "", commentCount > 0 ? `${commentCount} comments` : "", this.proofreadingState.error ? "Issue checker unavailable" : ""].filter(Boolean).join(". ")
+                ? [accessibilityCount > 0 ? `${accessibilityCount} accessibility ${accessibilityCount === 1 ? "issue" : "issues"}` : "", commentCount > 0 ? `${commentCount} comments` : "", this.proofreadingState.error ? "Issue checker unavailable" : "", this.recoveredDocument ? "A recovered document is available" : ""].filter(Boolean).join(". ")
                 : ""
               return html`
                 <div
@@ -1902,7 +1993,12 @@ export class DomEditorToolbox extends EditingControls {
                     aria-controls="toolbox-pane"
                     aria-selected=${active}
                     ?disabled=${this.htmlPending && tool.label !== "Edit"}
-                    @click=${() => this.selectTool(tool.label, true)}
+                    @click=${() => {
+                      this.selectTool(tool.label, true)
+                      if(tool.label === "Review" && this.recoveredDocument && !this.documentRecoveryNoticeOpen) {
+                        this.dispatchEvent(new CustomEvent("open-document-recovery", {bubbles: true, composed: true}))
+                      }
+                    }}
                   >
                     <span class="toolbox-tab-icon" aria-hidden="true">
                       ${ribbonIcon(tool.icon)}

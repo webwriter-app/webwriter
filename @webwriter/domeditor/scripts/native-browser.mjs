@@ -12,6 +12,7 @@ const expectedChecks = [
   "table pictures keep their size in editing and preview",
   "full width resizing clears the float column",
   "interrupted live sessions recover committed data locally",
+  "document recovery checkpoints cache inline media",
   "canvas and slide movement follows the dot grid and alignment guides",
   "converted list items support repeated Backspace without clicking",
   "Command deletion stops at visual and hard line boundaries",

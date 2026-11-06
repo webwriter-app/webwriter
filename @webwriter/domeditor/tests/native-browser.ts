@@ -64,6 +64,7 @@ import {checkSlideEditing} from "./slide-editing"
 import {checkCanvasStartingView} from "./canvas-starting-view"
 import {checkSavedDocumentChecker} from "./saved-document-checker"
 import {checkLiveSessionRecovery} from "./live-session-recovery"
+import {checkDocumentRecovery} from "./document-recovery"
 import {checkRemoteWebsite} from "./iframe-policy"
 import {checkLegacyWidgetOptions} from "./legacy-widget-options"
 import {checkShapeRibbonGalleries} from "./shape-gallery"
@@ -147,6 +148,7 @@ await check("table pictures keep their size in editing and preview", async () =>
 await check("converted list items support repeated Backspace without clicking", checkListDeletion)
 await check("Command deletion stops at visual and hard line boundaries", checkLineDeletion)
 await check("interrupted live sessions recover committed data locally", checkLiveSessionRecovery)
+await check("document recovery checkpoints cache inline media", checkDocumentRecovery)
 await check("heading clipboard preserves gap headings and joins existing text", checkHeadingClipboard)
 await check("paragraph clipboard preserves separate paragraphs at a text caret", checkParagraphClipboard)
 await check("formula paste avoids placeholder breaks", checkFormulaPaste)

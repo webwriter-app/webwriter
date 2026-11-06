@@ -17,6 +17,23 @@ const hasSelector = (stylesheet: CSSStyleSheet, selector: string) =>
 const hasExactSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule => (rule as CSSStyleRule).selectorText === selector)
 
+describe("document recovery serialization", () => {
+  it("skips blank content and preserves comments, textless widgets, and inline media", async () => {
+    document.body.innerHTML = "<p><br></p>"
+    const editor = new DOMEditor()
+    try {
+      expect(await editor.serializeRecoveryHTML()).toBeNull()
+      document.body.innerHTML = '<!--authored--><custom-widget value="one"></custom-widget><img src="data:image/png;base64,AQID"><p class="◆editor-only">Temporary</p>'
+      const source = await editor.serializeRecoveryHTML()
+      expect(source).toContain("<!--authored-->")
+      expect(source).toContain('<custom-widget value="one"></custom-widget>')
+      expect(source).toContain("data:image/png;base64,AQID")
+      expect(source).not.toContain("Temporary")
+    }
+    finally { editor.destroy(); document.body.replaceChildren() }
+  })
+})
+
 describe("popup text selection styling", () => {
   it("keeps toggle text selectable with a text cursor and gives its selected text a distinct fill in the editor", () => {
     expect(editorStyleString).toMatch(/:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\]\),\s*:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\] \*\)\s*\{[^}]*user-select:\s*text;[^}]*cursor:\s*text;/)
