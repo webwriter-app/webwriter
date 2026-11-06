@@ -10,6 +10,7 @@ import type {DomEditor} from "../src/components/dom-editor"
 import type {RibbonButton} from "../src/components/ribbon-button"
 import {$, caretRect, pathFromNode, cloneWithoutEditorMarkers} from "../src/utility"
 import {defaultDocumentTheme, documentThemes, documentWidgetStyleSource} from "../src/document-themes"
+import {previewFrameHTML} from "../src/frame-document"
 import {boardStyles, canvasStyles, slidesStyles} from "../src/document-layout"
 import {appendSerializedAssets} from "../src/serialization"
 import {floatSideFromStyles} from "../src/element-styles"
@@ -75,6 +76,7 @@ import {checkRibbonSnippetDrop} from "./ribbon-snippet-drop"
 import {checkResizeAlignment} from "./resize-alignment"
 import {checkNativeFloatDrag} from "./native-float-drag"
 import {checkMediaCentering} from "./media-centering"
+import documentLayoutExample from "../examples/layouts/document.html?raw"
 
 // Keep this test-owned frame out of the authored DOM before any check creates
 // an editor. It is mounted in the root editor's appendix below.
@@ -12399,6 +12401,69 @@ await check("full width resizing clears the float column", async () => {
       doc.dispatchEvent(new KeyboardEvent("keydown", {key:"Escape", bubbles:true}))
     }
     finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+  }
+})
+
+await check("legacy bundled tables keep full width in editing, preview, and export", async () => {
+  const example = new DOMParser().parseFromString(documentLayoutExample, "text/html")
+  const legacyTheme = example.querySelector<HTMLStyleElement>('style[data-ww-theme="base"]')
+  assert(legacyTheme, "document layout example has no bundled base theme")
+  const legacyCSS = legacyTheme!.textContent ?? ""
+  const body = `<p id="custom">Custom author styling</p>
+    <table id="wide"><tbody><tr><td>Wide table</td><td>Second cell</td></tr></tbody></table>
+    <table id="normal"><tbody><tr><td>Normal table</td><td>Second cell</td></tr></tbody></table>`
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;left:0;top:0;width:1100px;height:900px;border:0"
+  frame.srcdoc = `<!doctype html><html><head><style data-ww-theme="base">${legacyCSS}</style>
+    <style>#custom { color: rgb(12, 34, 56) }</style></head><body>${body}
+    <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body></html>`
+  document.body.append(frame)
+  const reader = document.createElement("iframe")
+  reader.style.cssText = frame.style.cssText
+  reader.setAttribute("sandbox", "allow-same-origin")
+  document.body.append(reader)
+  const load = (target: HTMLIFrameElement, html: string) => new Promise<void>(resolve => {
+    target.addEventListener("load", () => resolve(), {once: true})
+    target.srcdoc = html
+  })
+  const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+  try {
+    for(let attempt = 0; !view.editor && !view.editorError && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, `legacy theme fixture did not initialize: ${view.editorError ?? "timeout"}`)
+    const editor = view.editor!, doc = frame.contentDocument!, wide = doc.querySelector<HTMLTableElement>("#wide")!
+    const checkGeometry = (rendered: Document, mode: string) => {
+      const bodyRect = rendered.body.getBoundingClientRect()
+      const bodyStyle = rendered.defaultView!.getComputedStyle(rendered.body)
+      const wideRect = rendered.querySelector("#wide")!.getBoundingClientRect()
+      const normalRect = rendered.querySelector("#normal")!.getBoundingClientRect()
+      const prose = rendered.querySelector("#custom")!
+      assert(Math.abs(wideRect.left - bodyRect.left - parseFloat(bodyStyle.paddingLeft)) < 2
+        && Math.abs(wideRect.right - bodyRect.right + parseFloat(bodyStyle.paddingRight)) < 2,
+        `full-width table did not reach both page gutters in ${mode}`)
+      assert(Math.abs(normalRect.width - prose.getBoundingClientRect().width) < 2 && normalRect.width < wideRect.width - 100,
+        `normal table did not stay at prose width in ${mode}`)
+      assert(rendered.defaultView!.getComputedStyle(prose).color === "rgb(12, 34, 56)", `custom CSS was lost in ${mode}`)
+    }
+    editor.features.selection.captureElement(wide)
+    assert(editor.features.layout.actions.setFullWidth({type: "setFullWidth", enabled: true}), "LayoutFeature rejected full-width table")
+    await layoutFrame()
+    checkGeometry(doc, "editing")
+
+    const previewHTML = previewFrameHTML(doc.cloneNode(true) as Document, {
+      bridgeNonce: "", hostOrigin: location.origin, frameOrigin: location.origin, importMap: null,
+      packages: [], entryURL: "", executeScripts: false,
+    })
+    await load(reader, previewHTML)
+    checkGeometry(reader.contentDocument!, "preview")
+    await load(reader, await editor.serializeHTML())
+    checkGeometry(reader.contentDocument!, "export")
+    assert(doc.head.querySelector('style[data-ww-theme="base"]')?.textContent === legacyCSS,
+      "preview or export rewrote the live document theme")
+  }
+  finally {
+    view.editor?.destroy()
+    frame.remove()
+    reader.remove()
   }
 })
 

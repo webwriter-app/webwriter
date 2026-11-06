@@ -61,7 +61,7 @@ import listMarkerStyleString from "./document-list-markers.css?raw"
 import * as Y from "yjs"
 import {offlinePackageStyleAttribute, originalPackageEntriesAttribute, originalURLAttribute, serializeDoctype} from "./serialization-primitives"
 import {WEBWRITER_GENERATOR, type DocumentHeadState} from "./document-head"
-import {defaultDocumentTheme} from "./document-themes"
+import {defaultDocumentTheme, upgradeBundledDocumentThemes} from "./document-themes"
 import {getSectionOption, isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
 import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
@@ -1377,7 +1377,10 @@ export class DOMEditor {
    * live editor loads its own. */
   toHTML(innerBody=false, runtimeAssets=true, data: "defaults" | "current" = "defaults") {
     const root = this.cleanDocumentClone(data)
-    if(!innerBody && runtimeAssets) this.features.dependency.appendSerializedAssets(root)
+    if(!innerBody) {
+      upgradeBundledDocumentThemes(root)
+      if(runtimeAssets) this.features.dependency.appendSerializedAssets(root)
+    }
     const serialize = prepareWidgetGroupingsForSerialization(root)
     if(innerBody) return serialize(root.body.innerHTML)
     return serialize(`${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`)
@@ -1387,6 +1390,7 @@ export class DOMEditor {
    * and fails explicitly when dependencies cannot be made self-contained. */
   async serializeHTML(offline=false, data: "defaults" | "current" = "defaults") {
     const root = this.cleanDocumentClone(data)
+    upgradeBundledDocumentThemes(root)
     this.features.dependency.appendSerializedAssets(root)
     await this.inlineBlobSources(root)
     if(offline) {

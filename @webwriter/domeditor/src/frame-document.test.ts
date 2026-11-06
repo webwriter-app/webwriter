@@ -7,6 +7,7 @@ import {LOCAL_PACKAGE_ROUTE_PREFIX} from "./local-package-worker"
 import {packageImportMapId} from "./package-dependencies"
 import {appendSerializedAssets, originalURLAttribute} from "./serialization"
 import type {WebWriterPackage} from "./packages"
+import legacyLayoutExample from "../examples/layouts/document.html?raw"
 
 const hostOrigin = "https://app.example"
 const frameOrigin = "https://editor.example"
@@ -19,6 +20,24 @@ const previewOptions = (changes: Partial<PreviewFrameOptions> = {}): PreviewFram
   entryURL: "https://editor.example/assets/preview-entry.js", executeScripts: true, ...changes,
 })
 const parse = (source: string) => new DOMParser().parseFromString(source, "text/html")
+
+it("upgrades a stock legacy theme in preview and preserves custom styles", () => {
+  const legacyCSS = parse(legacyLayoutExample).head.querySelector('style[data-ww-theme="base"]')!.textContent!
+  expect(legacyCSS).not.toContain(".ww-full-width")
+  const authoredCSS = "table { background: rgb(4, 5, 6); }"
+  const customizedCSS = legacyCSS + "\n" + authoredCSS
+  const source = parse(`<!doctype html><head><style id="legacy" data-ww-theme="base" media="screen">${legacyCSS}</style>
+    <style id="customized" data-ww-theme="base">${customizedCSS}</style><style id="authored">${authoredCSS}</style></head>
+    <body><table class="ww-full-width"><tr><td>Cell</td></tr></table></body>`)
+  const options = previewOptions({executeScripts: false})
+  const preview = parse(previewFrameHTML(parse(previewFrameHTML(source, options)), options))
+
+  expect(preview.querySelector("#legacy")?.textContent).toBe(defaultDocumentTheme.source)
+  expect(preview.querySelector("#legacy")?.getAttribute("media")).toBe("screen")
+  expect(preview.querySelector("#customized")?.textContent).toBe(customizedCSS)
+  expect(preview.querySelector("#authored")?.textContent).toBe(authoredCSS)
+  expect(preview.querySelector("table")?.className).toBe("ww-full-width")
+})
 
 describe("local live preview bundles", () => {
   it("preserves source-based sandbox policies through editing and repeated preview preparation", () => {

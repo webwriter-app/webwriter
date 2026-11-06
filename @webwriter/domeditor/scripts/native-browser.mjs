@@ -11,6 +11,7 @@ import {createServer} from "vite"
 const expectedChecks = [
   "table pictures keep their size in editing and preview",
   "full width resizing clears the float column",
+  "legacy bundled tables keep full width in editing, preview, and export",
   "interrupted live sessions recover committed data locally",
   "document recovery checkpoints cache inline media",
   "canvas and slide movement follows the dot grid and alignment guides",

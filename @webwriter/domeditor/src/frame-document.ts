@@ -1,7 +1,7 @@
 import type {IImportMap} from "@jspm/import-map"
 import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
 import {WEBWRITER_GENERATOR} from "./document-head"
-import {ensureDefaultDocumentTheme} from "./document-themes"
+import {ensureDefaultDocumentTheme, upgradeBundledDocumentThemes} from "./document-themes"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "./frame-local-packages"
 import {packageImportMapId} from "./package-dependencies"
 import type {WebWriterPackage} from "./packages"
@@ -182,6 +182,7 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
   // and preview bridge scripts in the isolated frame.
   stripActiveContent(source, {allowStyles: true, allowIframes: true, allowLocalIframes: true,
     protectedIframeOrigins: [options.hostOrigin, options.frameOrigin]})
+  upgradeBundledDocumentThemes(source)
 
   // Use the same dependency selection as saving, after stripping authored code.
   if(options.executeScripts) {

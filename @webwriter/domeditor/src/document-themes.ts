@@ -5,8 +5,11 @@ import sakuraSource from "../../core/model/schemas/resource/themes/sakura.css?ra
 import simpleSource from "../../core/model/schemas/resource/themes/simple.css?raw"
 import waterSource from "../../core/model/schemas/resource/themes/water.css?raw"
 import floatSource from "./document-floats.css?raw"
+import {toHexString} from "lib0/buffer"
+import {digest} from "lib0/hash/sha256"
 import type {WidgetSchemaDefinition} from "./schema"
 import {documentTypographyCSS} from "./document-theme-options"
+import {legacyDocumentThemeFingerprints} from "./legacy-document-theme-fingerprints"
 
 const layeredSource = (source: string) => `@layer webwriter-theme {\n${source.replace(/^@charset\s+[^;]+;\s*/i, "")}\n}`
 // Base and Pico share a trailing chevron. Keep it beside the first line
@@ -49,6 +52,19 @@ export type DocumentTheme = typeof documentThemes[number]
 export const defaultDocumentTheme = documentThemes[0]
 
 export const documentTheme = (value: string) => documentThemes.find(theme => theme.value === value)
+
+const themeEncoder = new TextEncoder()
+
+/** Upgrade bundled CSS in a detached preview or export. */
+export function upgradeBundledDocumentThemes(root: Document) {
+  for(const style of root.head?.querySelectorAll("style[data-ww-theme]") ?? []) {
+    const theme = documentTheme(style.getAttribute("data-ww-theme") ?? "")
+    const source = style.textContent
+    if(!theme || !source || source === theme.source) continue
+    const fingerprint = toHexString(digest(themeEncoder.encode(source.replace(/\r\n?/g, "\n"))).subarray(0, 16))
+    if(legacyDocumentThemeFingerprints[theme.value].includes(fingerprint)) style.textContent = theme.source
+  }
+}
 
 /** The same default theme is used in the editor, example documents, and exports. */
 export function ensureDefaultDocumentTheme(root: Document) {
