@@ -1,15 +1,50 @@
 import {deleteDocumentRecovery, listDocumentRecoveries, readDocumentRecovery, writeDocumentRecovery} from "../src/document-recovery"
 
+async function seedLegacyRecoveries(id: string, html: string) {
+  return new Promise<boolean>((resolve, reject) => {
+    // A fresh native test profile starts at v1 here, before the recovery
+    // module opens the database. Leave any existing database alone.
+    const request = indexedDB.open("webwriter-document-recovery")
+    let seeded = false
+    request.onupgradeneeded = () => {
+      seeded = true
+      const db = request.result
+      const documents = db.createObjectStore("documents", {keyPath: "id"})
+      documents.createIndex("assetDigests", "assetDigests", {multiEntry: true})
+      const metadata = db.createObjectStore("metadata", {keyPath: "id"})
+      db.createObjectStore("assets", {keyPath: "digest"})
+      for(const [suffix, updatedAt, parts] of [["old", 1, [html]], ["latest", 2, [html]], ["unidentified", 3, ["<p>Unidentified</p>"]]] as const) {
+        const draftId = id + "-" + suffix
+        documents.put({id: draftId, parts, assetDigests: []})
+        metadata.put({id: draftId, title: "Legacy draft", updatedAt})
+      }
+    }
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => { request.result.close(); resolve(seeded) }
+  })
+}
+
 export async function checkDocumentRecovery() {
   const id = crypto.randomUUID()
-  const first = {id, title: "First recovery", updatedAt: 1}
-  const second = {id: id + "-second", title: "Second recovery", updatedAt: 2}
+  const legacyHTML = `<!DOCTYPE html><html id="ww${id}" lang="en"><body><p>Recovered draft</p></body></html>`
+  const seeded = await seedLegacyRecoveries(id, legacyHTML)
+  const first = {id, documentKey: "source:local:" + id, title: "First recovery", updatedAt: 1}
+  const second = {id: id + "-second", documentKey: "source:local:" + id + "-second", title: "Second recovery", updatedAt: 2}
+  const replacement = {...first, id: id + "-replacement", updatedAt: 4}
   const image = "data:image/png;base64,AQID"
   const audio = "data:audio/mpeg;base64,BAUG"
   const video = "data:video/mp4;base64,BwgJ"
   const svg = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'></svg>"
   const html = `<!DOCTYPE html><html><body><!--authored--><img src="${image}" srcset="${image}, ${image} 2x"><img src="${svg}"><audio src="${audio}"></audio><video src="${video}"></video></body></html>`
   try {
+    if(seeded) {
+      const legacy = (await listDocumentRecoveries()).filter(item => item.id.startsWith(id + "-"))
+      if(legacy.map(item => item.id).join(",") !== `${id}-unidentified,${id}-latest`
+        || await readDocumentRecovery(id + "-latest") !== legacyHTML) throw new Error("Legacy recovery migration did not retain the latest identifiable draft")
+      const adopted = await writeDocumentRecovery(replacement, legacyHTML)
+      if(adopted?.replacedIds.join(",") !== id + "-latest") throw new Error("A known document source did not replace its legacy checkpoint")
+      await deleteDocumentRecovery(replacement.id)
+    }
     await writeDocumentRecovery(first, html)
     await writeDocumentRecovery(second, html)
     const metadata = (await listDocumentRecoveries()).filter(item => item.id === first.id || item.id === second.id)
@@ -37,9 +72,21 @@ export async function checkDocumentRecovery() {
       if(error !== cleanup.signal.reason) throw error
     })
     if(await readDocumentRecovery(first.id) !== html) throw new Error("Aborted cleanup removed the recovery draft")
-    await writeDocumentRecovery(first, "<p>Replaced</p>")
+    const [latest] = await Promise.all([
+      writeDocumentRecovery(replacement, "<p>Replaced</p>"),
+      writeDocumentRecovery({...first, updatedAt: 3}, html),
+    ])
+    const stale = await writeDocumentRecovery({...first, updatedAt: 3}, html)
+    if(latest?.replacedIds.join(",") !== first.id || stale !== null
+      || await readDocumentRecovery(replacement.id) !== "<p>Replaced</p>") throw new Error("A newer checkpoint did not replace the previous draft")
     await deleteDocumentRecovery(first.id)
-    if(await readDocumentRecovery(second.id) !== html) throw new Error("Deleting another draft removed shared media")
+    if(await readDocumentRecovery(replacement.id) !== "<p>Replaced</p>") throw new Error("Stale cleanup removed the replacement")
+    if(await readDocumentRecovery(second.id) !== html) throw new Error("Replacing another draft removed shared media")
+    const remaining = (await listDocumentRecoveries()).filter(item => item.documentKey === first.documentKey)
+    if(remaining.map(item => item.id).join(",") !== replacement.id) throw new Error("More than one checkpoint was kept for the same document")
   }
-  finally { await Promise.all([deleteDocumentRecovery(first.id), deleteDocumentRecovery(second.id)]) }
+  finally {
+    await Promise.all([first.id, second.id, replacement.id, ...(seeded ? [id + "-old", id + "-latest", id + "-unidentified"] : [])]
+      .map(draftId => deleteDocumentRecovery(draftId)))
+  }
 }

@@ -262,7 +262,7 @@ import {getDocumentRoot} from "../document-template"
 import {boardLayoutRole, documentLayoutMode, normalizePristineDocumentLayout, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type LocalFileHandle = RecentFileHandle
-type ActiveDocumentRecovery = {id: string, release: () => void}
+type ActiveDocumentRecovery = {id: string, documentKey?: string, release: () => void}
 const documentRecoveryLock = "webwriter-document-recovery:"
 
 type FilePickerWindow = Window & typeof globalThis & {
@@ -3833,10 +3833,13 @@ export class DomEditor extends LitElement {
 
   private async refreshDocumentRecoveries() {
     const revision = ++this.documentRecoveryListRevision
+    const checkpoint = this.documentRecoveryCheckpoint
     try {
       const records = await listDocumentRecoveries()
       const locks = await navigator.locks?.query()
       if(!this.isConnected || revision !== this.documentRecoveryListRevision) return
+      if(checkpoint && this.documentRecoveryCheckpoint === checkpoint && !this.documentRecoveryWrite
+        && !records.some(record => record.id === checkpoint.id)) this.documentRecoveryCheckpoint = null
       const active = new Set(locks?.held?.map(lock => lock.name))
       const discarded = discardedDocumentRecoveryIds()
       this.recoveredDocuments = records.filter(record => !discarded.has(record.id) && record.id !== this.activeDocumentRecovery?.id
@@ -3894,6 +3897,7 @@ export class DomEditor extends LitElement {
       || this.documentLayoutConversionCount || !this.fileDirty && !this.documentRecoveryCheckpoint) return
 
     const frame = this.frameRevision, revision = this.documentChangeSequence
+    const updatedAt = Date.now()
     const generation = this.documentRecoveryGeneration
     const editorWindow = this.editorWindow
     const current = () => this.isConnected && generation === this.documentRecoveryGeneration
@@ -3913,9 +3917,19 @@ export class DomEditor extends LitElement {
           if(!current()) { claim.release(); return }
           this.activeDocumentRecovery = claim
         }
-        const record = {id: this.activeDocumentRecovery.id, title: this.fileName || "Untitled document", updatedAt: Date.now()}
-        await writeDocumentRecovery(record, source)
-        if(current()) this.documentRecoveryCheckpoint = record
+        const active = this.activeDocumentRecovery
+        const documentKey = this.documentSettingsId ? "source:" + this.documentSettingsId : active.documentKey
+        const saved = await writeDocumentRecovery({id: active.id, title: this.fileName || "Untitled document", updatedAt, documentKey}, source)
+        if(current()) {
+          this.documentRecoveryCheckpoint = saved?.record ?? null
+          if(saved) active.documentKey = saved.record.documentKey
+          if(saved?.replacedIds.length) {
+            const removed = new Set(saved.replacedIds)
+            this.documentRecoveryListRevision++
+            this.recoveredDocuments = this.recoveredDocuments.filter(record => !removed.has(record.id))
+            this.documentRecoveryNoticeOpen &&= this.recoveredDocuments.length > 0
+          }
+        }
       }
       if(current()) {
         this.documentRecoveryUnchanged = revision === this.documentChangeSequence
@@ -3986,6 +4000,7 @@ export class DomEditor extends LitElement {
           this.clearDocumentCollaboration()
           await this.reloadDocument(source, false, null, undefined, {recovery: claim, discardRecovery})
           if(!this.isConnected) return
+          claim.documentKey = latest.documentKey
           this.documentRecoveryCheckpoint = latest
           this.documentRecoveryUnchanged = true
           this.fileHandle = null

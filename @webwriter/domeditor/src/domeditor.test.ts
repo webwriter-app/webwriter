@@ -18,6 +18,38 @@ const hasExactSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule => (rule as CSSStyleRule).selectorText === selector)
 
 describe("document recovery serialization", () => {
+  it.each(["", " <p> </p>\n<p><br></p> "])("skips an empty body even with document metadata and body attributes (%j)", async body => {
+    const editor = new DOMEditor()
+    const title = document.createElement("title")
+    title.textContent = "Draft title"
+    document.head.append(title)
+    document.body.setAttribute("dir", "rtl")
+    document.body.innerHTML = body
+    try {
+      expect(await editor.serializeRecoveryHTML()).toBeNull()
+    }
+    finally {
+      editor.destroy()
+      title.remove()
+      document.body.removeAttribute("dir")
+      document.body.replaceChildren()
+    }
+  })
+
+  it.each([
+    "<!--authored-->",
+    '<custom-widget value="one"></custom-widget>',
+    '<img src="data:image/png;base64,AQID">',
+    '<p style="border: 1px solid black"><br></p>',
+  ])("keeps authored body content without text (%s)", async body => {
+    document.body.innerHTML = body
+    const editor = new DOMEditor()
+    try {
+      expect(await editor.serializeRecoveryHTML()).not.toBeNull()
+    }
+    finally { editor.destroy(); document.body.replaceChildren() }
+  })
+
   it("skips blank content and preserves comments, textless widgets, and inline media", async () => {
     document.body.innerHTML = "<p><br></p>"
     const editor = new DOMEditor()

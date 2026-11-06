@@ -60,8 +60,8 @@ import editorStyleString from "./editor.css?raw"
 import listMarkerStyleString from "./document-list-markers.css?raw"
 import * as Y from "yjs"
 import {offlinePackageStyleAttribute, originalPackageEntriesAttribute, originalURLAttribute, serializeDoctype} from "./serialization-primitives"
-import {WEBWRITER_GENERATOR, type DocumentHeadState} from "./document-head"
-import {defaultDocumentTheme, upgradeBundledDocumentThemes} from "./document-themes"
+import type {DocumentHeadState} from "./document-head"
+import {upgradeBundledDocumentThemes} from "./document-themes"
 import {getSectionOption, isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
 import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
@@ -1403,17 +1403,9 @@ export class DOMEditor {
 
   async serializeRecoveryHTML() {
     const root = this.cleanDocumentClone()
-    if((!root.body.textContent?.trim() || documentLayoutMode(root.body) === "slides")) {
-      const blank = root.cloneNode(true) as Document
-      if(normalizePristineDocumentLayout(blank) && !blank.body.attributes.length
-        && !Array.from(blank.head.childNodes).some(node => {
-          if(node.nodeType === Node.TEXT_NODE) return Boolean(node.textContent?.trim())
-          if(!(node instanceof Element)) return true
-          return !(node.matches('meta[name="generator"]') && node.getAttribute("content") === WEBWRITER_GENERATOR
-            || node.matches("style[data-ww-theme]") && node.getAttribute("data-ww-theme") === defaultDocumentTheme.value
-              && node.textContent === defaultDocumentTheme.source)
-        })) return null
-    }
+    // Document metadata and body attributes alone do not warrant a checkpoint.
+    if((!root.body.textContent?.trim() || documentLayoutMode(root.body) === "slides")
+      && normalizePristineDocumentLayout(root.cloneNode(true) as Document)) return null
     // The editor restores its own runtime. Keep only the authored document,
     // embedding object URLs before their originating frame can disappear.
     await this.inlineBlobSources(root)

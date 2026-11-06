@@ -3996,7 +3996,12 @@ describe("DomEditor file actions", () => {
   it("checkpoints authored changes once and removes the draft when the document becomes empty", async () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
-    const write = vi.spyOn(documentRecoveryStorage, "writeDocumentRecovery").mockResolvedValue()
+    host.documentSettingsId = "local:document"
+    const previous = {id: "previous-draft", documentKey: "source:local:document", title: "Previous draft", updatedAt: 1}
+    host.recoveredDocuments = [previous]
+    host.documentRecoveryNoticeOpen = true
+    const write = vi.spyOn(documentRecoveryStorage, "writeDocumentRecovery")
+      .mockImplementation(async record => ({record, replacedIds: [previous.id]}))
     const remove = vi.spyOn(documentRecoveryStorage, "deleteDocumentRecovery").mockResolvedValue()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue("<html><body><p>Draft</p></body></html>")
     await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
@@ -4008,7 +4013,9 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect(host.fileDirty).toBe(true))
     await host.checkpointDocument()
     const id = host.documentRecoveryCheckpoint.id
-    expect(write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({id}), "<html><body><p>Draft</p></body></html>")
+    expect(write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({id, documentKey: previous.documentKey}), "<html><body><p>Draft</p></body></html>")
+    expect(host.recoveredDocuments).toEqual([])
+    expect(host.documentRecoveryNoticeOpen).toBe(false)
     expect(host.documentRecoveryUnchanged).toBe(true)
     await host.checkpointDocument()
     expect(write).toHaveBeenCalledOnce()

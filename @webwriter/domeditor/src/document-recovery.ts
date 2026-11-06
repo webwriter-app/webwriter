@@ -1,10 +1,11 @@
-export type DocumentRecovery = {id: string, title: string, updatedAt: number}
+export type DocumentRecovery = {id: string, title: string, updatedAt: number, documentKey?: string}
 
 const databaseName = "webwriter-document-recovery"
 const documentsStore = "documents", metadataStore = "metadata", assetsStore = "assets"
 const discardedPrefix = "webwriter-document-recovery-discarded:"
 type StoredDocument = {id: string, parts: string[], assetDigests: string[]}
 type StoredAsset = {digest: string, url: string}
+type RecoveryWrite = {record: DocumentRecovery, replacedIds: string[]}
 // Full URL attributes may contain spaces and SVG markup. The other branch
 // handles URLs embedded in CSS and comma-separated base64 srcset candidates.
 const inlineMedia = /\b(?:src|poster|data|(?:xlink:)?href)\s*=\s*(["'])(data:(?:image|audio|video)\/[\w.+-]+[^\s"',]*,[\s\S]*?)\1|data:(?:image|audio|video)\/[\w.+-]+(?:;(?!base64,)[\w=.+-]+)*(?:;base64,[\da-z+/=]*|,[^\s"'<>)]*)/gi
@@ -12,9 +13,9 @@ const inlineMedia = /\b(?:src|poster|data|(?:xlink:)?href)\s*=\s*(["'])(data:(?:
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if(!globalThis.indexedDB) { reject(new Error("IndexedDB is unavailable for document recovery")); return }
-    const request = indexedDB.open(databaseName, 1)
+    const request = indexedDB.open(databaseName, 2)
     let blocked = false
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = ({oldVersion}) => {
       const db = request.result
       if(!db.objectStoreNames.contains(documentsStore)) {
         const documents = db.createObjectStore(documentsStore, {keyPath: "id"})
@@ -22,11 +23,67 @@ function openDatabase(): Promise<IDBDatabase> {
       }
       if(!db.objectStoreNames.contains(metadataStore)) db.createObjectStore(metadataStore, {keyPath: "id"})
       if(!db.objectStoreNames.contains(assetsStore)) db.createObjectStore(assetsStore, {keyPath: "digest"})
+      if(oldVersion === 1) identifyLegacyRecoveries(request.transaction!)
     }
     request.onsuccess = () => { if(blocked) request.result.close(); else resolve(request.result) }
     request.onerror = () => reject(request.error ?? new Error("Could not open document recovery storage"))
     request.onblocked = () => { blocked = true; reject(new Error("Document recovery storage is blocked")) }
   })
+}
+
+/** Recovery captures begin with the serialized document element, after an optional doctype. */
+function htmlDocumentKey(html: string) {
+  const openingTag = html.match(/^(?:<!doctype(?:[^>"']|"[^"]*"|'[^']*')*>\s*)?(<html(?=[\s>])(?:[^>"']|"[^"]*"|'[^']*')*>)/i)?.[1]
+  if(!openingTag) return undefined
+  const id = new DOMParser().parseFromString(openingTag, "text/html").documentElement.id
+  if(/^ww[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) return "html:" + id
+}
+
+function removeUnreferencedAssets(tx: IDBTransaction, digests: Iterable<string>) {
+  const references = tx.objectStore(documentsStore).index("assetDigests")
+  const assets = tx.objectStore(assetsStore)
+  for(const digest of new Set(digests)) {
+    const count = references.count(digest)
+    count.onsuccess = () => { if(count.result === 0) assets.delete(digest) }
+  }
+}
+
+function removeRecovery(tx: IDBTransaction, id: string) {
+  const documents = tx.objectStore(documentsStore), request = documents.get(id)
+  request.onsuccess = () => {
+    const previous = request.result as StoredDocument | undefined
+    documents.delete(id)
+    tx.objectStore(metadataStore).delete(id)
+    removeUnreferencedAssets(tx, previous?.assetDigests ?? [])
+  }
+}
+
+/** Older drafts carry no source reference. Merge only those with a generated HTML identity. */
+function identifyLegacyRecoveries(tx: IDBTransaction) {
+  const metadata = tx.objectStore(metadataStore), documents = tx.objectStore(documentsStore)
+  const latest = new Map<string, DocumentRecovery>()
+  const request = metadata.openCursor()
+  request.onsuccess = () => {
+    const cursor = request.result
+    if(!cursor) return
+    const record = cursor.value as DocumentRecovery
+    if(isDocumentRecoveryDiscarded(record.id)) { cursor.continue(); return }
+    const stored = documents.get(record.id)
+    stored.onsuccess = () => {
+      const documentKey = htmlDocumentKey((stored.result as StoredDocument | undefined)?.parts.join("") ?? "")
+      if(documentKey) {
+        const previous = latest.get(documentKey)
+        if(previous && previous.updatedAt > record.updatedAt) removeRecovery(tx, record.id)
+        else {
+          if(previous) removeRecovery(tx, previous.id)
+          const identified = {...record, documentKey}
+          latest.set(documentKey, identified)
+          cursor.update(identified)
+        }
+      }
+      cursor.continue()
+    }
+  }
 }
 
 function transaction(db: IDBDatabase, stores: string[], mode: IDBTransactionMode) {
@@ -84,34 +141,45 @@ async function digestURL(url: string): Promise<string> {
   return [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, "0")).join("")
 }
 
-/** Atomically replaces a recovery snapshot and stores inline media once by digest across documents. */
-export async function writeDocumentRecovery(record: DocumentRecovery, html: string): Promise<void> {
+/** Atomically keeps the latest snapshot per document and deduplicates inline media. */
+export async function writeDocumentRecovery(record: DocumentRecovery, html: string): Promise<RecoveryWrite | null> {
+  const htmlKey = htmlDocumentKey(html)
+  const documentKey = record.documentKey ?? htmlKey
+  const snapshot = documentKey ? {...record, documentKey} : record
   const {parts, urls} = splitHTML(html)
   const digests = new Map(await Promise.all([...new Set(urls)].map(async url => [url, await digestURL(url)] as const)))
   const assetDigests = urls.map(url => digests.get(url)!)
   const db = await openDatabase()
   try {
     const tx = transaction(db, [documentsStore, metadataStore, assetsStore], "readwrite"), completion = done(tx)
-    const documents = tx.objectStore(documentsStore), assets = tx.objectStore(assetsStore)
-    const previousRequest = documents.get(record.id)
-    previousRequest.onsuccess = () => {
+    const documents = tx.objectStore(documentsStore), assets = tx.objectStore(assetsStore), metadata = tx.objectStore(metadataStore)
+    const outcome: {saved?: RecoveryWrite} = {}
+    const records = metadata.getAll()
+    records.onsuccess = () => {
       if(isDocumentRecoveryDiscarded(record.id)) return
-      const previous = previousRequest.result as StoredDocument | undefined
-      documents.put({id: record.id, parts, assetDigests} satisfies StoredDocument)
-      tx.objectStore(metadataStore).put(record)
-      const previousDigests = new Set(previous?.assetDigests)
-      for(const [url, digest] of digests) {
-        if(previousDigests.has(digest)) continue
-        const cached = assets.getKey(digest)
-        cached.onsuccess = () => { if(cached.result === undefined) assets.put({digest, url} satisfies StoredAsset) }
-      }
-      for(const digest of previousDigests) {
-        if(assetDigests.includes(digest)) continue
-        const reference = documents.index("assetDigests").count(digest)
-        reference.onsuccess = () => { if(reference.result === 0) assets.delete(digest) }
+      const replaced = (records.result as DocumentRecovery[]).filter(candidate => candidate.id !== record.id
+        && candidate.documentKey && (candidate.documentKey === documentKey || candidate.documentKey === htmlKey))
+      if(replaced.some(candidate => candidate.updatedAt > record.updatedAt && !isDocumentRecoveryDiscarded(candidate.id))) return
+      const previousRequest = documents.get(record.id)
+      previousRequest.onsuccess = () => {
+        if(isDocumentRecoveryDiscarded(record.id)) return
+        const previous = previousRequest.result as StoredDocument | undefined
+        documents.put({id: record.id, parts, assetDigests} satisfies StoredDocument)
+        metadata.put(snapshot)
+        const previousDigests = new Set(previous?.assetDigests)
+        for(const [url, digest] of digests) {
+          if(previousDigests.has(digest)) continue
+          const cached = assets.getKey(digest)
+          cached.onsuccess = () => { if(cached.result === undefined) assets.put({digest, url} satisfies StoredAsset) }
+        }
+        removeUnreferencedAssets(tx, [...previousDigests].filter(digest => !assetDigests.includes(digest)))
+        const replacedIds = replaced.map(candidate => candidate.id)
+        for(const id of replacedIds) removeRecovery(tx, id)
+        outcome.saved = {record: snapshot, replacedIds}
       }
     }
     await completion
+    return outcome.saved ?? null
   }
   finally { db.close() }
 }
@@ -174,16 +242,7 @@ export async function deleteDocumentRecovery(id: string, signal?: AbortSignal): 
       catch(error) { if(!(error instanceof DOMException && error.name === "InvalidStateError")) throw error }
     }
     signal?.addEventListener("abort", abort, {once: true})
-    const documents = tx.objectStore(documentsStore), request = documents.get(id)
-    request.onsuccess = () => {
-      const previous = request.result as StoredDocument | undefined
-      documents.delete(id)
-      tx.objectStore(metadataStore).delete(id)
-      for(const digest of new Set(previous?.assetDigests ?? [])) {
-        const references = documents.index("assetDigests").count(digest)
-        references.onsuccess = () => { if(references.result === 0) tx.objectStore(assetsStore).delete(digest) }
-      }
-    }
+    removeRecovery(tx, id)
     try { await completion }
     finally { signal?.removeEventListener("abort", abort) }
     try { localStorage.removeItem(discardedPrefix + id) }
