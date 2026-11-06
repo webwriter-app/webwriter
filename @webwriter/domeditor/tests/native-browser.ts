@@ -10,6 +10,7 @@ import type {DomEditor} from "../src/components/dom-editor"
 import type {RibbonButton} from "../src/components/ribbon-button"
 import {$, caretRect, pathFromNode, cloneWithoutEditorMarkers} from "../src/utility"
 import {defaultDocumentTheme, documentThemes, documentWidgetStyleSource} from "../src/document-themes"
+import {previewFrameHTML} from "../src/frame-document"
 import {boardStyles, canvasStyles, slidesStyles} from "../src/document-layout"
 import {appendSerializedAssets} from "../src/serialization"
 import {floatSideFromStyles} from "../src/element-styles"
@@ -64,6 +65,7 @@ import {checkSlideEditing} from "./slide-editing"
 import {checkCanvasStartingView} from "./canvas-starting-view"
 import {checkSavedDocumentChecker} from "./saved-document-checker"
 import {checkLiveSessionRecovery} from "./live-session-recovery"
+import {checkDocumentRecovery} from "./document-recovery"
 import {checkRemoteWebsite} from "./iframe-policy"
 import {checkLegacyWidgetOptions} from "./legacy-widget-options"
 import {checkShapeRibbonGalleries} from "./shape-gallery"
@@ -74,6 +76,7 @@ import {checkRibbonSnippetDrop} from "./ribbon-snippet-drop"
 import {checkResizeAlignment} from "./resize-alignment"
 import {checkNativeFloatDrag} from "./native-float-drag"
 import {checkMediaCentering} from "./media-centering"
+import documentLayoutExample from "../examples/layouts/document.html?raw"
 
 // Keep this test-owned frame out of the authored DOM before any check creates
 // an editor. It is mounted in the root editor's appendix below.
@@ -100,21 +103,55 @@ const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
 await check("table pictures keep their size in editing and preview", async () => {
   const frames: HTMLIFrameElement[] = []
-  const image = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="purple"/></svg>'
+  const bitmap = document.createElement("canvas")
+  bitmap.width = 400
+  bitmap.height = 200
+  const context = bitmap.getContext("2d")!
+  context.fillStyle = "purple"
+  context.fillRect(0, 0, bitmap.width, bitmap.height)
+  const image = bitmap.toDataURL()
+  const resizedPicture = `<picture style="width:100%;max-width:80px;aspect-ratio:2 / 1"><img src='${image}' style="width:100%;height:100%"></picture>`
+  const table = `<table style="table-layout:fixed;width:600px"><tr>
+    <td style="height:120px;vertical-align:middle">${resizedPicture}</td>
+    <th><picture><img src='${image}'></picture></th>
+    <td><img src='${image}' style="width:80px"></td>
+    </tr><tr><td><picture style="width:20px"><img src='${image}' style="width:100%"></picture></td>
+    <th style="height:120px;vertical-align:middle">${resizedPicture}</th><td>Cell text</td></tr></table>`
+  const previousTheme = defaultDocumentTheme.source.replace(
+    "/* Share sizing between modes and let cells align narrower pictures. */\n  :where(td, th) picture {\n    display: inline-block;",
+    "/* Pictures in cells need the same sizing box in editing and reading mode. */\n  :where(td, th) picture {\n    display: block;"
+  )
+  const saved = new DOMParser().parseFromString(`<!doctype html><style data-ww-theme="base">${previousTheme}</style>${table}`, "text/html")
+  const previewHTML = previewFrameHTML(saved, {
+    bridgeNonce: "", hostOrigin: location.origin, frameOrigin: location.origin, importMap: null,
+    packages: [], entryURL: "", executeScripts: false,
+  })
   try {
     for(const editing of [true, false]) {
       const frame = document.createElement("iframe")
       frame.style.cssText = "width:800px;height:400px"
-      frame.srcdoc = `<style>${defaultDocumentTheme.source}</style>${editing ? `<style>${editorStyleSource}</style>` : ""}
-        <table style="table-layout:fixed;width:600px"><tr>
-        <td><picture style="width:100%;max-width:80px;aspect-ratio:2 / 1"><img src='${image}' style="width:100%;height:100%"></picture></td>
-        <th><picture><img src='${image}'></picture></th>
-        <td><img src='${image}' style="width:80px"></td>
-        </tr><tr><td><picture style="width:20px"><img src='${image}' style="width:100%"></picture></td><td colspan="2">Cell text</td></tr></table>`
+      frame.srcdoc = editing ? `<!doctype html><style>${defaultDocumentTheme.source}</style><style>${editorStyleSource}</style>${table}` : previewHTML
       frames.push(frame)
       fixture.append(frame)
       await new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
-      await Promise.all(Array.from(frame.contentDocument!.images, img => img.decode()))
+      const doc = frame.contentDocument!
+      await Promise.all(Array.from(doc.images, img => img.decode()))
+      for(const cell of doc.querySelectorAll<HTMLTableCellElement>("td[style], th[style]")) {
+        const img = cell.querySelector("img")!
+        const box = cell.getBoundingClientRect()
+        const style = doc.defaultView!.getComputedStyle(cell)
+        const left = box.left + parseFloat(style.borderLeftWidth) / 2 + parseFloat(style.paddingLeft)
+        const right = box.right - parseFloat(style.borderRightWidth) / 2 - parseFloat(style.paddingRight)
+        for(const alignment of ["left", "center", "right"] as const) {
+          cell.style.textAlign = alignment
+          const rect = img.getBoundingClientRect()
+          const expected = alignment === "left" ? left : alignment === "right" ? right - rect.width
+            : (left + right - rect.width) / 2
+          assert(Math.abs(rect.left - expected) < 1, `${cell.localName} picture ignored ${alignment} in ${editing ? "editing" : "preview"}`)
+          assert(Math.abs(rect.top + rect.bottom - box.top - box.bottom) < 2,
+            `${cell.localName} picture lost vertical centering`)
+        }
+      }
     }
     const dimensions = frames.map(frame => Array.from(frame.contentDocument!.images, img => {
       const rect = img.getBoundingClientRect()
@@ -135,10 +172,10 @@ await check("table pictures keep their size in editing and preview", async () =>
     }
     const preview = frames[1].contentDocument!
     const override = preview.createElement("style")
-    override.textContent = "th picture { display: inline-block; width: 45px; }"
+    override.textContent = "th picture { display: block; width: 45px; }"
     preview.head.append(override)
     const picture = preview.querySelector("th picture")!
-    assert(preview.defaultView!.getComputedStyle(picture).display === "inline-block" && Math.abs(picture.getBoundingClientRect().width - 45) < 1,
+    assert(preview.defaultView!.getComputedStyle(picture).display === "block" && Math.abs(picture.getBoundingClientRect().width - 45) < 1,
       "authored picture styles did not override the theme")
   }
   finally { frames.forEach(frame => frame.remove()) }
@@ -147,6 +184,7 @@ await check("table pictures keep their size in editing and preview", async () =>
 await check("converted list items support repeated Backspace without clicking", checkListDeletion)
 await check("Command deletion stops at visual and hard line boundaries", checkLineDeletion)
 await check("interrupted live sessions recover committed data locally", checkLiveSessionRecovery)
+await check("document recovery checkpoints cache inline media", checkDocumentRecovery)
 await check("heading clipboard preserves gap headings and joins existing text", checkHeadingClipboard)
 await check("paragraph clipboard preserves separate paragraphs at a text caret", checkParagraphClipboard)
 await check("formula paste avoids placeholder breaks", checkFormulaPaste)
@@ -5176,11 +5214,11 @@ await check("link keyboard preserves iframe selections and applies document, web
     const title = keyboard.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Title"]')!
     title.value = "Reference source"; title.dispatchEvent(new Event("input"))
     const link = keyboard.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Link (optional)"]')!
-    link.value = ""; link.dispatchEvent(new Event("input"))
+    link.value = "../reading.html#chapter"; link.dispatchEvent(new Event("input"))
     dialog.querySelector<HTMLButtonElement>(".actions button:last-child")!.click()
     await keyboard.updateComplete
     assert(!dialog.open, "successful reference addition did not close the dialog")
-    assert(anchor.getAttribute("href")?.startsWith("#ref-"), "reference without a web representation did not get a fragment")
+    assert(anchor.getAttribute("href") === "../reading.html#chapter", "reference did not keep its relative address")
     assert(JSON.parse(anchor.dataset.reference!).title === "Reference source", "reference metadata was not applied")
     assert(anchor.textContent === "Link text" && !doc.body.innerHTML.includes("link-keyboard"), "keyboard changed authored text or leaked UI")
     const automaticBlock = doc.createElement("p"), untouchedBlock = doc.createElement("p")
@@ -8824,7 +8862,9 @@ let savedSlidesHTML = ""
 await check("CSS Slides use native fragment links while editing", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px"
-  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head><body><h1>First slide</h1><p>FirstSecond</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style>
+    <style>body.ww-slides > nav.ww-slides-navigation { bottom: 1rem; }</style>
+    </head><body><h1>First slide</h1><p>FirstSecond</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
   nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
@@ -8884,7 +8924,7 @@ await check("CSS Slides use native fragment links while editing", async () => {
     }
     assert(Math.abs(headingRect.left - paragraphRect.left) < 1 && paragraphRect.width < headingRect.width
       && paragraphRect.top > headingRect.bottom && paragraphRect.bottom < slideRect.bottom - 20, "authored slide paragraph is not aligned or content sized")
-    assert(getComputedStyle(nav).position === "absolute" && nav.getBoundingClientRect().bottom <= frame.clientHeight, "navigation is not overlaid at the bottom")
+    assert(getComputedStyle(nav).position === "absolute" && nav.getBoundingClientRect().bottom <= viewportRect.top, "pagination extends past the top toolbar")
     assert(Math.abs(nav.getBoundingClientRect().left - 24) < 1, `slides pagination is not left aligned ${JSON.stringify({nav:nav.getBoundingClientRect().toJSON(), viewport:viewport.getBoundingClientRect().toJSON(), body:doc.body.getBoundingClientRect().toJSON(), style:getComputedStyle(nav).cssText, scroll:[view.scrollX,view.scrollY]})}`)
     assert(getComputedStyle(second).paddingTop === "20px" && getComputedStyle(second).paddingBottom === "20px"
       && Math.abs(parseFloat(getComputedStyle(second).paddingLeft) - parseFloat(documentGutter)) < .5, `slides do not use normal document spacing ${JSON.stringify({top:getComputedStyle(second).paddingTop,bottom:getComputedStyle(second).paddingBottom,left:getComputedStyle(second).paddingLeft,documentGutter,body:doc.body.outerHTML.slice(0,400)})}`)
@@ -9058,7 +9098,7 @@ await check("saved Slides navigate with HTML and CSS and scripting disabled", as
     assert(Math.abs(readerSlide.getBoundingClientRect().width - frame.clientWidth) < 1 && Math.abs(readerSlide.getBoundingClientRect().height - frame.clientWidth * 9 / 16) < 1, "exported slides do not fit the reader viewport at 16:9")
     const readerNav = doc.querySelector<HTMLElement>("nav.ww-slides-navigation")!
     const readerLinks = readerNav.querySelectorAll<HTMLAnchorElement>("a")
-    assert(getComputedStyle(readerNav).position === "absolute" && readerNav.getBoundingClientRect().bottom <= frame.clientHeight, "reader navigation is not overlaid at the bottom")
+    assert(getComputedStyle(readerNav).position === "absolute" && readerNav.getBoundingClientRect().bottom <= viewport.getBoundingClientRect().top, "reader pagination extends past the top toolbar")
     assert(Math.abs(readerNav.getBoundingClientRect().left - 24) < 1, "saved slides pagination is not left aligned")
     viewport.style.scrollBehavior = "auto"
     const navigationSettled = new Promise<void>(resolve => {
@@ -12397,6 +12437,69 @@ await check("full width resizing clears the float column", async () => {
       doc.dispatchEvent(new KeyboardEvent("keydown", {key:"Escape", bubbles:true}))
     }
     finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+  }
+})
+
+await check("legacy bundled tables keep full width in editing, preview, and export", async () => {
+  const example = new DOMParser().parseFromString(documentLayoutExample, "text/html")
+  const legacyTheme = example.querySelector<HTMLStyleElement>('style[data-ww-theme="base"]')
+  assert(legacyTheme, "document layout example has no bundled base theme")
+  const legacyCSS = legacyTheme!.textContent ?? ""
+  const body = `<p id="custom">Custom author styling</p>
+    <table id="wide"><tbody><tr><td>Wide table</td><td>Second cell</td></tr></tbody></table>
+    <table id="normal"><tbody><tr><td>Normal table</td><td>Second cell</td></tr></tbody></table>`
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;left:0;top:0;width:1100px;height:900px;border:0"
+  frame.srcdoc = `<!doctype html><html><head><style data-ww-theme="base">${legacyCSS}</style>
+    <style>#custom { color: rgb(12, 34, 56) }</style></head><body>${body}
+    <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body></html>`
+  document.body.append(frame)
+  const reader = document.createElement("iframe")
+  reader.style.cssText = frame.style.cssText
+  reader.setAttribute("sandbox", "allow-same-origin")
+  document.body.append(reader)
+  const load = (target: HTMLIFrameElement, html: string) => new Promise<void>(resolve => {
+    target.addEventListener("load", () => resolve(), {once: true})
+    target.srcdoc = html
+  })
+  const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+  try {
+    for(let attempt = 0; !view.editor && !view.editorError && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, `legacy theme fixture did not initialize: ${view.editorError ?? "timeout"}`)
+    const editor = view.editor!, doc = frame.contentDocument!, wide = doc.querySelector<HTMLTableElement>("#wide")!
+    const checkGeometry = (rendered: Document, mode: string) => {
+      const bodyRect = rendered.body.getBoundingClientRect()
+      const bodyStyle = rendered.defaultView!.getComputedStyle(rendered.body)
+      const wideRect = rendered.querySelector("#wide")!.getBoundingClientRect()
+      const normalRect = rendered.querySelector("#normal")!.getBoundingClientRect()
+      const prose = rendered.querySelector("#custom")!
+      assert(Math.abs(wideRect.left - bodyRect.left - parseFloat(bodyStyle.paddingLeft)) < 2
+        && Math.abs(wideRect.right - bodyRect.right + parseFloat(bodyStyle.paddingRight)) < 2,
+        `full-width table did not reach both page gutters in ${mode}`)
+      assert(Math.abs(normalRect.width - prose.getBoundingClientRect().width) < 2 && normalRect.width < wideRect.width - 100,
+        `normal table did not stay at prose width in ${mode}`)
+      assert(rendered.defaultView!.getComputedStyle(prose).color === "rgb(12, 34, 56)", `custom CSS was lost in ${mode}`)
+    }
+    editor.features.selection.captureElement(wide)
+    assert(editor.features.layout.actions.setFullWidth({type: "setFullWidth", enabled: true}), "LayoutFeature rejected full-width table")
+    await layoutFrame()
+    checkGeometry(doc, "editing")
+
+    const previewHTML = previewFrameHTML(doc.cloneNode(true) as Document, {
+      bridgeNonce: "", hostOrigin: location.origin, frameOrigin: location.origin, importMap: null,
+      packages: [], entryURL: "", executeScripts: false,
+    })
+    await load(reader, previewHTML)
+    checkGeometry(reader.contentDocument!, "preview")
+    await load(reader, await editor.serializeHTML())
+    checkGeometry(reader.contentDocument!, "export")
+    assert(doc.head.querySelector('style[data-ww-theme="base"]')?.textContent === legacyCSS,
+      "preview or export rewrote the live document theme")
+  }
+  finally {
+    view.editor?.destroy()
+    frame.remove()
+    reader.remove()
   }
 })
 

@@ -12,6 +12,7 @@ import type {ReplayLrsProgress} from "../live-session-replay-lrs"
 import {LiveSessionReplayClient} from "../live-session-replay-client"
 import {isCssColor} from "../css-color"
 import {LiveSessionRecovery, listRecoveredSessions, readRecoveredSession, deleteRecoveredSession, type RecoveredSession} from "../live-session-recovery"
+import {deleteDocumentRecovery, discardedDocumentRecoveryIds, listDocumentRecoveries, markDocumentRecoveryDiscarded, readDocumentRecovery, writeDocumentRecovery, type DocumentRecovery} from "../document-recovery"
 import type {DistributionConfig, DistributionItem} from "../distribution.js"
 import {emptyDistributionConfig} from "../distribution.js"
 import type {DistributionInsertDrop} from "./distribution-controls"
@@ -256,9 +257,11 @@ import {
   type AppSettings,
 } from "../app-settings"
 import {getDocumentRoot} from "../document-template"
-import {emptyLayoutPlacementValues, canvasStyles, slidesStyles, boardStyles, boardLayoutRole, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
+import {boardLayoutRole, documentLayoutMode, normalizePristineDocumentLayout, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type LocalFileHandle = RecentFileHandle
+type ActiveDocumentRecovery = {id: string, release: () => void}
+const documentRecoveryLock = "webwriter-document-recovery:"
 
 type FilePickerWindow = Window & typeof globalThis & {
   showOpenFilePicker?: (options?: object) => Promise<LocalFileHandle[]>
@@ -419,6 +422,11 @@ export class DomEditor extends LitElement {
     elementStyle: {attribute: false, state: true},
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
+    documentRecoveryCheckpoint: {state: true},
+    recoveredDocuments: {state: true},
+    documentRecoveryNoticeOpen: {state: true},
+    documentRecoveryBusy: {state: true},
+    documentRecoveryError: {state: true},
     documentLayoutsDismissed: {attribute: false, state: true},
     sizeWarningDismissed: {state: true},
     fileError: {attribute: false, state: true},
@@ -790,6 +798,20 @@ export class DomEditor extends LitElement {
   private historyOperationCount = 0
   private historyDocumentTransitionCount = 0
   private historyError = ""
+  private documentRecoveryCheckpoint: DocumentRecovery | null = null
+  private recoveredDocuments: DocumentRecovery[] = []
+  private documentRecoveryNoticeOpen = false
+  private documentRecoveryBusy = false
+  private documentRecoveryError = ""
+  private documentRecoveryUnchanged = true
+  private documentRecoveryTimer: ReturnType<typeof setInterval> | undefined
+  private documentRecoveryWrite: Promise<void> | undefined
+  private savedRecoveryCleanup: AbortController | undefined
+  private activeDocumentRecovery: ActiveDocumentRecovery | null = null
+  private documentRecoveryListRevision = 0
+  private documentRecoveryGeneration = 0
+  private documentRecoveryRetryAt = 0
+  private pendingDocumentExit = false
   private editingSnippetId: string | null = null
   private freshDocumentLayoutSnapshot: string | null = null
   private initialDocumentLayoutStarted = false
@@ -2207,6 +2229,7 @@ export class DomEditor extends LitElement {
           if(this.historyDocumentTransitionCount === 0) {
             if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
             else this.dirtyTrackingMutationPending = true
+            this.markDocumentRecoveryChanged()
             this.updateDocumentLayoutsVisibility()
           }
           if(this.stylesVisible()) this.queueElementStyleRefresh()
@@ -2427,52 +2450,7 @@ export class DomEditor extends LitElement {
   private pristineDocumentLayoutSnapshot(snapshot: string | null) {
     if(snapshot === null) return null
     const doc = new DOMParser().parseFromString(snapshot, "text/html")
-    for(const style of doc.head.querySelectorAll("style")) {
-      if(style.attributes.length === 0 && (style.textContent === canvasStyles || style.textContent === slidesStyles || style.textContent === boardStyles)) style.remove()
-    }
-    const body = doc.body
-    body.classList.remove("ww-canvas", "ww-slides", "ww-board")
-    if(!body.classList.length) body.removeAttribute("class")
-    for(const viewport of body.querySelectorAll(":scope > div.ww-slides-viewport")) {
-      if(viewport.attributes.length !== 1 || viewport.className !== "ww-slides-viewport") return null
-      for(const slide of Array.from(viewport.children)) {
-        if(!slide.matches("section.ww-slide") || slide.className !== "ww-slide" || Array.from(slide.attributes).some(attribute => attribute.name !== "class"
-          && !(attribute.name === "tabindex" && attribute.value === "-1")
-          && !(attribute.name === "id" && /^slide-[0-9a-f-]{36}$/i.test(attribute.value)))) return null
-        slide.querySelectorAll(":scope > nav.ww-slide-directions").forEach(nav => nav.remove())
-        slide.replaceWith(...slide.childNodes)
-      }
-      viewport.replaceWith(...viewport.childNodes)
-    }
-    body.querySelectorAll(":scope > nav.ww-slides-navigation").forEach(nav => nav.remove())
-    for(const column of body.querySelectorAll(":scope > section.ww-board-column, :scope > section.ww-board-group:not([is]) > section.ww-board-column")) {
-      if(column.attributes.length !== 1 || column.className !== "ww-board-column") return null
-      for(const card of column.querySelectorAll(":scope > article.ww-board-card")) {
-        if(card.attributes.length !== 1 || card.className !== "ww-board-card") return null
-        card.replaceWith(...card.childNodes)
-      }
-      for(const heading of column.querySelectorAll(":scope > h2")) {
-        if(!heading.childNodes.length && !heading.attributes.length) heading.remove()
-      }
-      column.replaceWith(...column.childNodes)
-    }
-    for(const group of body.querySelectorAll(":scope > section.ww-board-group:not([is])")) {
-      if(group.attributes.length !== 1 || group.className !== "ww-board-group") return null
-      for(const heading of group.querySelectorAll(":scope > h2")) {
-        if(!heading.childNodes.length && !heading.attributes.length) heading.remove()
-      }
-      group.replaceWith(...group.childNodes)
-    }
-    for(const child of body.children) {
-      if(!child.matches("p, h1, h2, h3, h4, h5, h6")) return null
-      const element = child as HTMLElement
-      for(const property of Array.from({length: element.style.length}, (_, index) => element.style.item(index))) {
-        if(!emptyLayoutPlacementValues[property]?.includes(element.style.getPropertyValue(property)) || element.style.getPropertyPriority(property)) return null
-      }
-      element.removeAttribute("style")
-    }
-    if(!resetEmptyLayoutContent(body)) return null
-    return doc.documentElement.outerHTML
+    return normalizePristineDocumentLayout(doc) ? doc.documentElement.outerHTML : null
   }
 
   private updateDocumentLayoutsVisibility() {
@@ -3058,6 +3036,7 @@ export class DomEditor extends LitElement {
       if(generation !== this.previewGeneration) return
       const lock = this.setPreviewEditingLocked(true)
       if(lock) await lock
+      if(generation !== this.previewGeneration) return
       // Preview hides the editor iframe, so close any appendix capture UI and
       // release its device streams before the authored document is previewed.
       void this.execute({type: "cancelMediaCapture"}).catch(() => {
@@ -3111,17 +3090,22 @@ export class DomEditor extends LitElement {
     if(session?.role === "host" && session.status !== "stopped" && !await this.confirmLiveSessionStop(session)) return
     if(!this.previewActive || this.previewTransition) return
     const selection = this.previewSelection
+    this.clearPreview()
+    await this.updateComplete
+    this.savedEditorSelection = selection
+    if(focusDocument) this.focusEditor(true)
+    return true
+  }
+
+  private clearPreview() {
     this.previewGeneration++
     this.previewSelection = null
+    this.previewTransition = false
     this.disposeLiveSession()
     this.previewFramePending = false
     this.previewDocumentHTML = null
     this.setPreviewEditingLocked(false)
     this.previewActive = false
-    await this.updateComplete
-    this.savedEditorSelection = selection
-    if(focusDocument) this.focusEditor(true)
-    return true
   }
 
   private async confirmLiveSessionStop(session: LiveSession) {
@@ -3157,7 +3141,8 @@ export class DomEditor extends LitElement {
       const sessionId = randomIdentifier("live")
       const serverUrl = this.backendSession?.collaborationUrl
       const identity = serverUrl ? await createLiveHostIdentity() : undefined
-      if(!this.isConnected || !this.previewActive || generation !== this.previewGeneration) return
+      if(!this.isConnected || !this.previewActive || generation !== this.previewGeneration
+        || this.fileOperationActive || this.linkedDocumentLoading) return
       let link = ""
       if(serverUrl && identity) {
         const source = new URL(location.href)
@@ -3830,12 +3815,226 @@ export class DomEditor extends LitElement {
     const aiWorkActive = this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.aiWorkActive
     const liveSessionActive = this.liveSession && this.liveSession.status !== "stopped"
     if(!this.fileDirty && !this.fileOperationActive && !this.localPackageDraft && !aiWorkActive && !liveSessionActive) return
+    this.pendingDocumentExit = this.fileDirty && (navigator.userActivation?.hasBeenActive ?? true)
     event.preventDefault()
     event.returnValue = ""
   }
 
-  private confirmDiscardChanges() {
-    return !this.fileDirty || window.confirm("Discard the unsaved changes to this document?")
+  private readonly handlePageHide = () => {
+    // beforeunload also fires when the user chooses to stay. Only pagehide
+    // confirms that the page actually left after the unsaved-changes warning.
+    if(this.pendingDocumentExit && this.fileDirty) this.detachDocumentRecovery()?.(true)
+    this.pendingDocumentExit = false
+  }
+
+  private async claimDocumentRecovery(id: string): Promise<ActiveDocumentRecovery | null> {
+    if(!navigator.locks) return {id, release: () => {}}
+    return new Promise((resolve, reject) => {
+      void navigator.locks.request(documentRecoveryLock + id, {ifAvailable: true}, lock => {
+        if(!lock) { resolve(null); return }
+        return new Promise<void>(release => resolve({id, release}))
+      }).catch(reject)
+    })
+  }
+
+  private async refreshDocumentRecoveries() {
+    const revision = ++this.documentRecoveryListRevision
+    try {
+      const records = await listDocumentRecoveries()
+      const locks = await navigator.locks?.query()
+      if(!this.isConnected || revision !== this.documentRecoveryListRevision) return
+      const active = new Set(locks?.held?.map(lock => lock.name))
+      const discarded = discardedDocumentRecoveryIds()
+      this.recoveredDocuments = records.filter(record => !discarded.has(record.id) && record.id !== this.activeDocumentRecovery?.id
+        && !active.has(documentRecoveryLock + record.id))
+      this.documentRecoveryNoticeOpen = this.recoveredDocuments.length > 0
+      // Retry cleanup after an exit interrupted the original deletion. A
+      // locked draft can still have a write queued in its previous page.
+      if(locks) for(const id of discarded) {
+        if(!active.has(documentRecoveryLock + id)) void deleteDocumentRecovery(id).catch(() => {})
+      }
+    }
+    catch(error) {
+      if(this.isConnected && revision === this.documentRecoveryListRevision) this.showDocumentRecoveryError(error)
+    }
+  }
+
+  private showDocumentRecoveryError(error: unknown) {
+    this.documentRecoveryError = `Document recovery: ${error instanceof Error ? error.message : String(error)}`
+  }
+
+  private detachDocumentRecovery() {
+    const active = this.activeDocumentRecovery
+    const writing = this.documentRecoveryWrite
+    this.savedRecoveryCleanup?.abort()
+    this.documentRecoveryGeneration++
+    this.activeDocumentRecovery = null
+    this.documentRecoveryCheckpoint = null
+    this.documentRecoveryUnchanged = true
+    if(!active) return
+    return (discard = false) => {
+      if(discard) {
+        try { markDocumentRecoveryDiscarded(active.id) }
+        catch { /* Still attempt to delete the IndexedDB draft below. */ }
+        void Promise.resolve(writing).then(() => deleteDocumentRecovery(active.id)).catch(() => {}).finally(active.release)
+      }
+      else if(writing) void writing.finally(active.release)
+      else active.release()
+    }
+  }
+
+  private markDocumentRecoveryChanged() {
+    this.documentRecoveryUnchanged = false
+    this.savedRecoveryCleanup?.abort()
+  }
+
+  private readonly flushDocumentRecoveryWhenHidden = () => {
+    if(document.visibilityState === "hidden") void this.checkpointDocument()
+  }
+
+  private readonly checkpointDocument = () => {
+    if(this.documentRecoveryUnchanged || this.documentRecoveryWrite || this.documentRecoveryBusy
+      || Date.now() < this.documentRecoveryRetryAt || !this.isConnected || !this.editorWindow || !this.dirtyTrackingReady
+      || this.documentLoading || this.linkedDocumentLoading || this.fileOperationActive || this.documentFramePending
+      || this.liveSessionRole === "learner" || this.htmlPending || this.historyState.preview || this.historyDocumentTransitionCount
+      || this.documentLayoutConversionCount || !this.fileDirty && !this.documentRecoveryCheckpoint) return
+
+    const frame = this.frameRevision, revision = this.documentChangeSequence
+    const generation = this.documentRecoveryGeneration
+    const editorWindow = this.editorWindow
+    const current = () => this.isConnected && generation === this.documentRecoveryGeneration
+      && frame === this.frameRevision && editorWindow === this.editorWindow
+    this.documentRecoveryWrite = (async () => {
+      const source = await this.execute({type: "captureDocumentRecovery"})
+      if(!current() || source === undefined || this.historyDocumentTransitionCount) return
+      if(source === null) {
+        if(this.documentRecoveryCheckpoint) await deleteDocumentRecovery(this.documentRecoveryCheckpoint.id)
+        if(current()) this.documentRecoveryCheckpoint = null
+      }
+      else {
+        if(typeof source !== "string") throw new TypeError("The editor returned an invalid recovery snapshot")
+        if(!this.activeDocumentRecovery) {
+          const claim = await this.claimDocumentRecovery(crypto.randomUUID())
+          if(!claim) throw new Error("Could not claim the recovery draft")
+          if(!current()) { claim.release(); return }
+          this.activeDocumentRecovery = claim
+        }
+        const record = {id: this.activeDocumentRecovery.id, title: this.fileName || "Untitled document", updatedAt: Date.now()}
+        await writeDocumentRecovery(record, source)
+        if(current()) this.documentRecoveryCheckpoint = record
+      }
+      if(current()) {
+        this.documentRecoveryUnchanged = revision === this.documentChangeSequence
+        this.documentRecoveryError = ""
+      }
+    })().catch(error => {
+      if(!current() || this.historyState.preview || this.htmlPending) return
+      this.documentRecoveryRetryAt = Date.now() + 10000
+      this.showDocumentRecoveryError(error)
+    }).finally(() => { this.documentRecoveryWrite = undefined })
+    return this.documentRecoveryWrite
+  }
+
+  private async clearSavedDocumentRecovery(revision: number, generation: number) {
+    const matchesSave = () => this.isConnected && revision === this.documentChangeSequence
+      && generation === this.documentRecoveryGeneration
+    if(!matchesSave()) return
+    await this.documentRecoveryWrite
+    if(!matchesSave()) return
+    const record = this.documentRecoveryCheckpoint
+    if(!record) {
+      this.documentRecoveryUnchanged = true
+      return
+    }
+    const cleanup = this.savedRecoveryCleanup = new AbortController()
+    try {
+      await deleteDocumentRecovery(record.id, cleanup.signal)
+      if(this.documentRecoveryCheckpoint === record) this.documentRecoveryCheckpoint = null
+      if(!cleanup.signal.aborted && matchesSave()) this.documentRecoveryUnchanged = true
+    }
+    catch(error) { if(!cleanup.signal.aborted) this.showDocumentRecoveryError(error) }
+    finally { this.savedRecoveryCleanup = undefined }
+  }
+
+  private readonly openDocumentRecoveryNotice = () => { void this.refreshDocumentRecoveries() }
+
+  private readonly closeDocumentRecoveryNotice = () => { this.documentRecoveryNoticeOpen = false }
+
+  private readonly restoreRecoveredDocument = (event: CustomEvent<{id: string}>) =>
+    this.actOnDocumentRecovery(event.detail?.id, true)
+
+  private readonly discardRecoveredDocument = (event: CustomEvent<{id: string}>) =>
+    this.actOnDocumentRecovery(event.detail?.id, false)
+
+  private async actOnDocumentRecovery(id: string, restore: boolean) {
+    const record = this.documentRecoveryCheckpoint?.id === id ? this.documentRecoveryCheckpoint
+      : this.recoveredDocuments.find(record => record.id === id)
+    if(!record || this.documentRecoveryBusy || this.fileOperationActive || this.documentLoading || this.linkedDocumentLoading
+      || this.previewActive || this.liveSessionActive || this.htmlPending) return
+    const discardRecovery = restore ? this.confirmDocumentSwitch() : false
+    if(discardRecovery === null) return
+    await this.runFileOperation(async () => {
+      this.documentRecoveryBusy = true
+      if(restore) this.documentLoading = true
+      const revision = this.documentChangeSequence
+      const frame = this.frameRevision
+      let claim: ActiveDocumentRecovery | null = null
+      try {
+        await this.documentRecoveryWrite
+        claim = this.activeDocumentRecovery?.id === id ? this.activeDocumentRecovery : await this.claimDocumentRecovery(id)
+        if(!claim) throw new Error("This recovery draft is open in another tab")
+        if(restore) {
+          const latest = this.documentRecoveryCheckpoint?.id === id ? this.documentRecoveryCheckpoint : record
+          const source = await readDocumentRecovery(id)
+          if(!this.isConnected || revision !== this.documentChangeSequence || frame !== this.frameRevision) {
+            throw new Error("The document changed while opening the recovery draft. Try again.")
+          }
+          this.clearDocumentCollaboration()
+          await this.reloadDocument(source, false, null, undefined, {recovery: claim, discardRecovery})
+          if(!this.isConnected) return
+          this.documentRecoveryCheckpoint = latest
+          this.documentRecoveryUnchanged = true
+          this.fileHandle = null
+          this.backendDocumentId = null
+          this.downloadedFileName = null
+          this.storageLocation = "local"
+          this.fileName = latest.title
+          this.fileFormat = "html"
+          this.fileDirty = true
+          this.updateDocumentURL(null)
+          this.focusEditor()
+        }
+        else {
+          await deleteDocumentRecovery(id)
+          if(this.documentRecoveryCheckpoint?.id === id) {
+            this.documentRecoveryCheckpoint = null
+            this.documentRecoveryUnchanged = revision === this.documentChangeSequence
+          }
+        }
+        this.documentRecoveryError = ""
+        this.documentRecoveryListRevision++
+        this.recoveredDocuments = this.recoveredDocuments.filter(record => record.id !== id)
+        this.documentRecoveryNoticeOpen &&= this.recoveredDocuments.length > 0
+      }
+      catch(error) {
+        if(restore && claim && claim === this.activeDocumentRecovery && !this.documentRecoveryCheckpoint) {
+          this.detachDocumentRecovery()?.()
+          claim = null
+        }
+        if(this.isConnected) this.showDocumentRecoveryError(error)
+      }
+      finally {
+        if(claim && claim !== this.activeDocumentRecovery) claim.release()
+        this.documentRecoveryBusy = false
+        if(restore) this.documentLoading = false
+      }
+    })
+  }
+
+  /** Returns whether the switch discards unsaved changes, or null if cancelled. */
+  private confirmDocumentSwitch(): boolean | null {
+    if(!this.fileDirty) return false
+    return window.confirm("Discard the unsaved changes to this document?") ? true : null
   }
 
   private get documentProofreadingEnabled() {
@@ -3852,7 +4051,8 @@ export class DomEditor extends LitElement {
     persistDocumentSettings(id, this.documentSettings)
   }
 
-  private async reloadDocument(htmlSource: string, isNewDocument = false, settingsId: string | null = null, accessibilityReviewEnabled?: boolean) {
+  private async reloadDocument(htmlSource: string, isNewDocument = false, settingsId: string | null = null, accessibilityReviewEnabled?: boolean,
+    {recovery = null, discardRecovery = false}: {recovery?: ActiveDocumentRecovery | null, discardRecovery?: boolean} = {}) {
     this.dismissGuidedTour()
     this.freshDocumentLayoutSnapshot = null
     this.aiDocumentedPackages.clear()
@@ -3865,6 +4065,7 @@ export class DomEditor extends LitElement {
     if(!this.isConnected || revision !== this.documentChangeSequence || frameRevision !== this.frameRevision) {
       throw new Error("The document changed while loading its widgets. Open the file again.")
     }
+    if(this.previewActive || this.previewTransition) this.clearPreview()
     if(packages.length) {
       const names = new Set(packages.map(pkg => pkg.name))
       this.installedPackages = [...this.installedPackages.filter(pkg => !names.has(pkg.name)), ...packages]
@@ -3921,10 +4122,21 @@ export class DomEditor extends LitElement {
       reject(reloadError)
     })
     this.pendingExecutions.clear()
-    if(this.frameStarted) this.frameRevision++
-    else this.frameStarted = true
-    await this.updateComplete
-    await this.waitForEditorWindow()
+    // Hold the outgoing draft until the replacement frame initializes.
+    const finishRecovery = this.activeDocumentRecovery !== recovery ? this.detachDocumentRecovery() : undefined
+    if(this.activeDocumentRecovery === recovery) this.documentRecoveryGeneration++
+    this.activeDocumentRecovery = recovery
+    this.documentRecoveryUnchanged = true
+    let switched = false
+    try {
+      if(this.frameStarted) this.frameRevision++
+      else this.frameStarted = true
+      const replacementRevision = this.frameRevision
+      await this.updateComplete
+      await this.waitForEditorWindow()
+      switched = this.isConnected && this.frameRevision === replacementRevision
+    }
+    finally { finishRecovery?.(switched && discardRecovery) }
   }
 
   private markAccessibilityReviewEnabled() {
@@ -4123,8 +4335,7 @@ export class DomEditor extends LitElement {
         this.fileDirty = false
         this.linkSharingEnabled = true
         this.collaborationLink = location.href
-        this.setPreviewEditingLocked(false)
-        this.previewActive = false
+        this.focusEditor()
         return
       }
       if(!reference) throw new Error("The document link is invalid.")
@@ -4231,7 +4442,8 @@ export class DomEditor extends LitElement {
   }
 
   private async performNewDocument(layout: DocumentLayoutMode) {
-    if(!this.confirmDiscardChanges()) return
+    const discardRecovery = this.confirmDocumentSwitch()
+    if(discardRecovery === null) return
     this.documentLoading = true
     try {
       this.fileHandle = null
@@ -4240,7 +4452,7 @@ export class DomEditor extends LitElement {
       this.clearDocumentCollaboration()
       this.fileName = ""
       this.fileFormat = "html"
-      await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeHTMLAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeHTMLAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`, true)
+      await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeHTMLAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeHTMLAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`, true, null, undefined, {discardRecovery})
       await this.applyDefaultLayout(layout, this.frameRevision)
       this.fileDirty = !this.isFreshDocumentUnchanged()
       this.updateDocumentURL(null)
@@ -4267,7 +4479,8 @@ export class DomEditor extends LitElement {
   }
 
   private async performOpenDocument(storedHandle?: LocalFileHandle, storedId?: string, beforeLoad?: () => Promise<boolean>) {
-    if(!this.confirmDiscardChanges()) return
+    const discardRecovery = this.confirmDocumentSwitch()
+    if(discardRecovery === null) return
     const revision = this.documentChangeSequence
     const picker = this.filePickerWindow().showOpenFilePicker
     try {
@@ -4290,7 +4503,7 @@ export class DomEditor extends LitElement {
       }
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
       this.clearDocumentCollaboration()
-      await this.reloadDocument(source, false, localDocument ? documentOpenReference(localDocument) : null, true)
+      await this.reloadDocument(source, false, localDocument ? documentOpenReference(localDocument) : null, true, {discardRecovery})
       this.backendDocumentId = null
       this.fileHandle = handle
       this.storageLocation = "local"
@@ -4399,6 +4612,7 @@ export class DomEditor extends LitElement {
       }
       const selectedFormat = this.formatForFileName(name, requestedFormat)
       const revision = this.documentChangeSequence
+      const recoveryGeneration = this.documentRecoveryGeneration
       const frameRevision = this.frameRevision
       const snapshot = await this.execute({type: "prepareVersionSave", offline: selectedFormat === "offline"})
       if(!isRecord(snapshot) || typeof snapshot.source !== "string" || typeof snapshot.checkpointId !== "string") {
@@ -4427,6 +4641,7 @@ export class DomEditor extends LitElement {
           const saved = await this.rememberOpenedDocument({id: crypto.randomUUID(), title: handle.name, openedAt: Date.now(), kind: "local", handle})
           this.saveDocumentSettingsAs(documentOpenReference(saved))
           this.updateDocumentURL(documentOpenReference(saved))
+          await this.clearSavedDocumentRecovery(revision, recoveryGeneration)
         }
         else this.updateDocumentURL(null)
       }
@@ -4435,7 +4650,9 @@ export class DomEditor extends LitElement {
   }
 
   private async openBackendDocument(id: string, beforeLoad?: () => Promise<boolean>) {
-    if(!this.backendClient || !this.confirmDiscardChanges()) return
+    if(!this.backendClient) return
+    const discardRecovery = this.confirmDocumentSwitch()
+    if(discardRecovery === null) return
     const revision = this.documentChangeSequence
     const client = this.backendClient
     const session = this.backendSession
@@ -4456,7 +4673,7 @@ export class DomEditor extends LitElement {
       this.clearDocumentCollaboration()
       // Private documents reopen from their saved HTML, not a stale live room.
       if(sharing.enabled) this.collaborationRoom = `document-${document.id}`
-      await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client), true)
+      await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client), true, {discardRecovery})
       this.backendDocumentId = document.id
       this.fileHandle = null
       this.downloadedFileName = null
@@ -4491,6 +4708,7 @@ export class DomEditor extends LitElement {
   private async saveBackendDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat, expectedDocument?: {client: BackendClient, id: string}, target?: {name: string, id?: string}) {
     if(!this.backendClient) return
     const revision = this.documentChangeSequence
+    const recoveryGeneration = this.documentRecoveryGeneration
     const client = this.backendClient
     try {
       const frameRevision = this.frameRevision
@@ -4534,6 +4752,7 @@ export class DomEditor extends LitElement {
         try { await this.reloadEditor(this.installedPackages) }
         catch(error) {this.collaborationRoom = previousRoom; throw error}
       }
+      await this.clearSavedDocumentRecovery(revision, recoveryGeneration)
       if(!this.linkSharingBusy) void this.refreshDocumentSharing()
       return true
     }
@@ -4710,7 +4929,10 @@ export class DomEditor extends LitElement {
     try {
       const state = await this.execute({type: "previewVersionCheckpoint", checkpointId})
       this.updateHistoryState(state)
-      if(isRecord(state) && state.appliedQueuedChanges === true) this.fileDirty = true
+      if(isRecord(state) && state.appliedQueuedChanges === true) {
+        this.fileDirty = true
+        this.markDocumentRecoveryChanged()
+      }
     }
     catch(error) {
       this.historyError = error instanceof Error ? error.message : String(error)
@@ -4728,6 +4950,7 @@ export class DomEditor extends LitElement {
     try {
       this.updateHistoryState(await this.execute({type: "revertVersionCheckpoint", checkpointId}))
       this.fileDirty = true
+      this.markDocumentRecoveryChanged()
     }
     catch(error) {
       this.historyError = error instanceof Error ? error.message : String(error)
@@ -4743,7 +4966,10 @@ export class DomEditor extends LitElement {
     void this.execute({type: "clearVersionPreview"})
       .then(state => {
         this.updateHistoryState(state)
-        if(isRecord(state) && state.appliedQueuedChanges === true) this.fileDirty = true
+        if(isRecord(state) && state.appliedQueuedChanges === true) {
+          this.fileDirty = true
+          this.markDocumentRecoveryChanged()
+        }
       })
       .catch(() => {
         // The iframe may be reloading while the ribbon switches away.
@@ -4833,6 +5059,13 @@ export class DomEditor extends LitElement {
     if(label === "Preview") {
       if(this.previewActive) void this.exitPreview()
       else void this.enterPreview()
+      return
+    }
+    // Keyboard shortcuts can reach these commands without using the File menu's live-session exit.
+    if(this.liveSession?.role === "host" && this.liveSession.status !== "stopped" && (label === "New" || label === "Open")) {
+      if(!this.fileOperationActive) void this.exitPreview(false).then(exited => {
+        if(exited) this.handleRibbonButtonClick(event)
+      })
       return
     }
     if(label === "New") {
@@ -7182,6 +7415,10 @@ export class DomEditor extends LitElement {
       <div class="html-source-panel" ?inert=${!this.consoleOpen && !this.reviewOpen} aria-hidden=${String(!this.consoleOpen && !this.reviewOpen)}>
         <div class="html-source-clip">
           ${when(this.consoleRendered, () => html`<developer-console .active=${this.consoleOpen || this.reviewOpen} .review=${this.reviewOpen} .tab=${this.consoleTab} .htmlPending=${this.htmlPending} .pinned=${this.settings.pinDeveloperConsole}
+            .documentRecoveries=${this.documentRecoveryCheckpoint ? [this.documentRecoveryCheckpoint, ...this.recoveredDocuments] : this.recoveredDocuments}
+            .documentRecoveryBusy=${this.documentRecoveryBusy || this.fileOperationActive || this.documentLoading}
+            @restore-recovered-document=${this.restoreRecoveredDocument}
+            @discard-recovered-document=${this.discardRecoveredDocument}
             .packageDraft=${this.localPackageDraft?.manifest ?? null} .packageSaving=${this.localPackageDraftSaving}
             .packageDraftRevision=${this.localPackageDraftRevision}
             ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
@@ -7780,7 +8017,9 @@ export class DomEditor extends LitElement {
     }
     const topLevel = event.composedPath().includes(this.renderRoot.querySelector("dom-editor-toolbox")!)
       && this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Edit"
-    if(detail.selectionType !== undefined && !topLevel) {
+    const scopedZoom = Object.hasOwn(styles, "zoom") && isElementSelectionType(detail.selectionType)
+      && isWebsiteType(detail.selectionType.localName)
+    if(detail.selectionType !== undefined && (!topLevel || scopedZoom)) {
       if(!isElementSelectionType(detail.selectionType)) return
       void this.execute({type: "setSelectedElementStyles", selectionType: detail.selectionType, styles})
       return
@@ -8056,6 +8295,7 @@ export class DomEditor extends LitElement {
         if(this.historyDocumentTransitionCount === 0) {
           if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
           else this.dirtyTrackingMutationPending = true
+          this.markDocumentRecoveryChanged()
           this.updateDocumentLayoutsVisibility()
         }
         if(this.stylesVisible()) this.queueElementStyleRefresh()
@@ -8496,6 +8736,11 @@ export class DomEditor extends LitElement {
 
   connectedCallback() {
     super.connectedCallback()
+    if(!this.liveSessionIdFromURL()) {
+      if(globalThis.indexedDB) void this.refreshDocumentRecoveries()
+      this.documentRecoveryTimer = setInterval(this.checkpointDocument, 1000)
+      document.addEventListener("visibilitychange", this.flushDocumentRecoveryWhenHidden)
+    }
     void this.refreshRecoveredLiveReplays()
     this.recoveryRefreshTimer = setInterval(() => void this.refreshRecoveredLiveReplays(), 10000)
     this.layoutResizeObserver = new ResizeObserver(entries => {
@@ -8510,6 +8755,7 @@ export class DomEditor extends LitElement {
     this.updateCloudExpiry()
     window.addEventListener("message", this.handleEditorMessage)
     window.addEventListener("beforeunload", this.handleBeforeUnload)
+    window.addEventListener("pagehide", this.handlePageHide)
     window.addEventListener("blur", this.handleHostWindowBlur)
     window.addEventListener("focus", this.handleHostWindowFocus)
     this.addEventListener("dragstart", this.handleRibbonDragStart)
@@ -8565,6 +8811,13 @@ export class DomEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    clearInterval(this.documentRecoveryTimer)
+    this.documentRecoveryTimer = undefined
+    document.removeEventListener("visibilitychange", this.flushDocumentRecoveryWhenHidden)
+    this.documentRecoveryListRevision++
+    this.detachDocumentRecovery()?.()
+    this.recoveredDocuments = []
+    this.documentRecoveryNoticeOpen = false
     if(this.recoveryRefreshTimer !== undefined) clearInterval(this.recoveryRefreshTimer)
     this.recoveryRefreshTimer = undefined
     this.recoveryRefreshGeneration++
@@ -8599,6 +8852,8 @@ export class DomEditor extends LitElement {
     this.cloudExpiryTimer = undefined
     window.removeEventListener("message", this.handleEditorMessage)
     window.removeEventListener("beforeunload", this.handleBeforeUnload)
+    window.removeEventListener("pagehide", this.handlePageHide)
+    this.pendingDocumentExit = false
     window.removeEventListener("blur", this.handleHostWindowBlur)
     window.removeEventListener("focus", this.handleHostWindowFocus)
     this.removeEventListener("dragstart", this.handleRibbonDragStart)
@@ -9004,10 +9259,10 @@ export class DomEditor extends LitElement {
             <div class="document-loading-spinner" aria-hidden="true"></div>
           </div>
         ` : ""}
-        ${this.fileError ? html`
+        ${this.fileError || this.documentRecoveryError ? html`
           <div class="file-error" role="alert">
-            <span>${this.fileError}</span>
-            <button type="button" @click=${() => { this.fileError = "" }}>Dismiss</button>
+            <span>${this.fileError || this.documentRecoveryError}</span>
+            <button type="button" @click=${() => { if(this.fileError) this.fileError = ""; else this.documentRecoveryError = "" }}>Dismiss</button>
           </div>
         ` : ""}
         ${this.previewActive && !this.previewFramePending ? html`
@@ -9126,10 +9381,17 @@ export class DomEditor extends LitElement {
         @document-head-action=${this.handleDocumentHeadAction}
         .consoleOpen=${this.consoleOpen}
         .versionsOpen=${this.reviewOpen}
+        .recoveredDocument=${this.recoveredDocuments[0] ?? null}
+        .documentRecoveryNoticeOpen=${this.documentRecoveryNoticeOpen}
+        .documentRecoveryBusy=${this.documentRecoveryBusy || this.fileOperationActive || documentLoading || this.htmlPending}
+        @open-document-recovery=${this.openDocumentRecoveryNotice}
+        @close-document-recovery=${this.closeDocumentRecoveryNotice}
+        @restore-recovered-document=${this.restoreRecoveredDocument}
+        @discard-recovered-document=${this.discardRecoveredDocument}
         .htmlPending=${this.htmlPending}
         .table=${this.tableSelection}
         .aiSidebar=${!this.breadcrumbVisible && this.aiToolboxOpen}
-        ?hidden=${!this.previewActive && ((!this.breadcrumbVisible && !this.aiToolboxOpen) || this.liveSessionActive)}
+        ?hidden=${!this.previewActive && ((!this.breadcrumbVisible && !this.aiToolboxOpen && !this.documentRecoveryNoticeOpen) || this.liveSessionActive)}
         @toolbox-change=${this.handleToolboxChange}
         @breadcrumb-item-select=${this.handleBreadcrumbItemSelect}
         @toolbox-element-select=${(event: CustomEvent<{selectionTypes: import("../editor-bridge").ElementSelectionType[]}>) => {

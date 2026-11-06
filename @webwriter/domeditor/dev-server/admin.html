@@ -65,7 +65,7 @@
             <label>Name <input name="name" required></label>
             <label>Preset <select name="preset"><option value="openai">OpenAI</option><option value="ollama">Ollama</option><option value="lm-studio">LM Studio</option><option value="custom">Custom</option></select></label>
           </div>
-          <label>Base URL <input name="baseUrl" type="url" required value="https://api.openai.com/v1"></label>
+          <label>Base URL <input name="baseUrl" inputmode="url" required value="https://api.openai.com/v1"></label>
           <div class="row">
             <label>Authentication <select name="auth"><option value="bearer">Bearer</option><option value="api-key">api-key</option><option value="x-api-key">x-api-key</option><option value="none">None</option></select></label>
             <label>API key <input name="apiKey" type="password" autocomplete="off" placeholder="Leave blank to keep"></label>

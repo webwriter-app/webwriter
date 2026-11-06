@@ -1,23 +1,14 @@
 import {isMarkAttributeName} from "./marks"
+import {isRelativeURLInput, normalizeURLInput} from "./url-input.js"
 
 /** Interpret web addresses independently of the editor frame's URL. */
 export function normalizeLinkHref(input: string): string | null {
-  let href = input.trim()
-  if(!href) return null
-  if(href.startsWith("#")) return href.length > 1 ? href : null
-  const scheme = /^[a-z][a-z\d+.-]*:/i.exec(href)?.[0].toLowerCase()
-  if(scheme === "http:" || scheme === "https:") href = href.replace(/^https?:\/*/i, `${scheme}//`)
-  else if(scheme && !/^[^/?#:\s]+:\d+(?:[/?#]|$)/.test(href)) {
-    if(!["mailto:", "tel:", "ftp:", "file:"].includes(scheme)) return null
-  }
-  else {
-    href = href.replace(/^\/\//, "")
-    if(/^[./?]/.test(href)) return null
-    href = `https://${href}`
-  }
+  const href = normalizeURLInput(input)
+  if(!href || href === "#") return null
+  if(isRelativeURLInput(href)) return /[\u0000-\u001f\\]/.test(href) ? null : href
   try {
     const url = new URL(href)
-    if(url.protocol === "https:" && !url.hostname) return null
+    if(!["http:", "https:", "mailto:", "tel:", "ftp:", "file:"].includes(url.protocol)) return null
     // Keep valid address spelling; use the platform to encode spaces in paths.
     return /\s/.test(href) ? url.href : href
   }

@@ -209,7 +209,7 @@ body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) > :not(style, 
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) > p:not([is]) { inline-size: max-content; min-inline-size: 25px; }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]):focus { outline: none; }
 body.ww-slides > nav.ww-slides-navigation {
-  box-sizing: border-box; position: absolute; top: 8px; left: 24px;
+  box-sizing: border-box; position: absolute; top: 8px; bottom: auto; left: 24px;
   display: flex; gap: .25rem; width: max-content; max-width: max(0px, calc(100% - 380px)); overflow-x: auto; scrollbar-width: none;
   margin: 0; padding: .25rem; z-index: 1; background: #fff; color: #334155; border: 1px solid #cbd5e1; border-radius: 10px; box-shadow: 0 2px 10px #0001; scroll-target-group: auto;
 }
@@ -289,4 +289,54 @@ export function slideLayoutRole(element: ReadableElement): "root" | "viewport" |
   if(nativeLayoutElement(element, "nav", "ww-slides-navigation") && element.parentElement === body
     || nativeLayoutElement(element, "nav", "ww-slide-directions") && isSlide(element.parentElement)) return "navigation"
   return null
+}
+
+/** Reduces generated blank layouts to the same placeholder on a detached document. */
+export function normalizePristineDocumentLayout(doc: Document) {
+  for(const style of doc.head.querySelectorAll("style")) {
+    if(style.attributes.length === 0 && (style.textContent === canvasStyles || style.textContent === slidesStyles || style.textContent === boardStyles)) style.remove()
+  }
+  const body = doc.body
+  body.classList.remove("ww-canvas", "ww-slides", "ww-board")
+  if(!body.classList.length) body.removeAttribute("class")
+  for(const viewport of body.querySelectorAll(":scope > div.ww-slides-viewport")) {
+    if(viewport.attributes.length !== 1 || viewport.className !== "ww-slides-viewport") return false
+    for(const slide of Array.from(viewport.children)) {
+      if(!slide.matches("section.ww-slide") || slide.className !== "ww-slide" || Array.from(slide.attributes).some(attribute => attribute.name !== "class"
+        && !(attribute.name === "tabindex" && attribute.value === "-1")
+        && !(attribute.name === "id" && /^slide-[0-9a-f-]{36}$/i.test(attribute.value)))) return false
+      slide.querySelectorAll(":scope > nav.ww-slide-directions").forEach(nav => nav.remove())
+      slide.replaceWith(...slide.childNodes)
+    }
+    viewport.replaceWith(...viewport.childNodes)
+  }
+  body.querySelectorAll(":scope > nav.ww-slides-navigation").forEach(nav => nav.remove())
+  for(const column of body.querySelectorAll(":scope > section.ww-board-column, :scope > section.ww-board-group:not([is]) > section.ww-board-column")) {
+    if(column.attributes.length !== 1 || column.className !== "ww-board-column") return false
+    for(const card of column.querySelectorAll(":scope > article.ww-board-card")) {
+      if(card.attributes.length !== 1 || card.className !== "ww-board-card") return false
+      card.replaceWith(...card.childNodes)
+    }
+    for(const heading of column.querySelectorAll(":scope > h2")) {
+      if(!heading.childNodes.length && !heading.attributes.length) heading.remove()
+    }
+    column.replaceWith(...column.childNodes)
+  }
+  for(const group of body.querySelectorAll(":scope > section.ww-board-group:not([is])")) {
+    if(group.attributes.length !== 1 || group.className !== "ww-board-group") return false
+    for(const heading of group.querySelectorAll(":scope > h2")) {
+      if(!heading.childNodes.length && !heading.attributes.length) heading.remove()
+    }
+    group.replaceWith(...group.childNodes)
+  }
+  for(const child of body.children) {
+    if(!child.matches("p, h1, h2, h3, h4, h5, h6")) return false
+    const element = child as HTMLElement
+    for(const property of Array.from({length: element.style.length}, (_, index) => element.style.item(index))) {
+      if(!emptyLayoutPlacementValues[property]?.includes(element.style.getPropertyValue(property)) || element.style.getPropertyPriority(property)) return false
+    }
+    element.removeAttribute("style")
+  }
+  if(!resetEmptyLayoutContent(body)) return false
+  return true
 }

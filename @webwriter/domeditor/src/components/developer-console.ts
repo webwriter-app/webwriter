@@ -7,6 +7,7 @@ import {EditingControls} from "./editing-controls"
 import {packageMemberAction, type WebWriterPackage} from "../packages"
 import type {RibbonMenuGroup} from "./ribbon-menu"
 import type {RibbonDrawer} from "./ribbon-drawer"
+import type {DocumentRecovery} from "../document-recovery"
 
 export type DeveloperConsoleTab = "HTML" | "Packages" | "Tests" | "Element"
 const tabs: DeveloperConsoleTab[] = ["Packages", "Tests", "Element", "HTML"]
@@ -21,6 +22,8 @@ export class DeveloperConsole extends EditingControls {
     pinned: {type: Boolean},
     review: {type: Boolean, reflect: true},
     activeVersionId: {state: true},
+    documentRecoveries: {attribute: false},
+    documentRecoveryBusy: {type: Boolean, attribute: false},
     autoReload: {type: Boolean},
     packageDraft: {attribute: false},
     packageSaving: {type: Boolean, attribute: false},
@@ -50,6 +53,10 @@ export class DeveloperConsole extends EditingControls {
     .history-change-card .history-checkpoint-label, .history-change-card .history-checkpoint-meta {min-width: 0; overflow-wrap: anywhere}
     .history-change-card .history-card-restore-button {position: absolute; top: .25rem; right: .15rem; width: 1.2rem; height: 1.2rem; padding: .2rem; border: 0; background: transparent}
     .version-empty {margin: .65rem; font-size: .75rem; color: #667085}
+    .recovery-version .history-checkpoint-avatar svg {width: .85rem; height: .85rem}
+    .recovery-version .history-checkpoint-label {overflow: hidden; text-overflow: ellipsis}
+    .recovery-version-actions {display: flex; gap: .35rem; margin: .65rem}
+    .recovery-version-actions button {border-color: #b6c2ce}
     :host([review]) .history-preview-clear {margin-left: auto; font-size: .72rem}
     @container (width < 400px) {
       .history-change-card .history-checkpoint {grid-template-columns: 1.35rem minmax(0, 1fr); grid-template-rows: auto auto; gap: .15rem .3rem}
@@ -366,22 +373,44 @@ export class DeveloperConsole extends EditingControls {
       </div>`
   }
 
+  documentRecoveries: DocumentRecovery[] = []
+  documentRecoveryBusy = false
+
+  private renderRecoveryVersion(record: DocumentRecovery, selected: boolean) {
+    return html`<li class="recovery-version" ?data-active=${selected}>
+      <div class="history-version-card">
+        <button type="button" class="history-checkpoint" data-checkpoint-id=${record.id}
+          aria-pressed=${selected} title=${record.title}>
+          <span class="history-checkpoint-avatar" aria-hidden="true">${ribbonIcon("Restore")}</span>
+          <span class="history-checkpoint-label">Recovery version</span>
+          <span class="history-checkpoint-meta">${this.historyTimestamp(record.updatedAt)}</span>
+        </button>
+      </div>
+    </li>`
+  }
+
+  private recoveryAction(type: string, id: string) {
+    this.dispatchEvent(new CustomEvent(type, {detail: {id}, bubbles: true, composed: true}))
+  }
+
   protected render() {
     if(!this.active) return noChange
     if(this.review) {
       const versions = [...this.historyState.versions].sort((a, b) => b.timestamp - a.timestamp)
+      const recovery = this.documentRecoveries.find(record => record.id === this.activeVersionId)
+        ?? (!versions.length ? this.documentRecoveries[0] : undefined)
       const active = versions.find(version => version.id === this.activeVersionId) ?? versions[0]
       const checkpoints = new Map(this.historyState.checkpoints.map(checkpoint => [checkpoint.id, checkpoint]))
-      const initialId = this.historyState.checkpoints.at(-1)?.id
-      const changes = (active?.checkpointIds.slice(1) ?? []).filter(id => id !== initialId && checkpoints.has(id))
+      const changes = active ? this.historyChangeIds(active, checkpoints) : []
       return html`
         <aside class="version-sidebar" aria-label="Document versions">
           <ul class="version-list" @click=${(event: MouseEvent) => {
             const button = (event.target as Element).closest<HTMLElement>(".history-checkpoint")
             if(button) this.activeVersionId = button.dataset.checkpointId ?? null
           }}>
-            ${versions.map(version => html`<li ?data-active=${version.id === active?.id}>
-              ${this.renderHistoryEntry(version, true, version.isCurrent, version.isUnsaved, version.id === active?.id)}
+            ${this.documentRecoveries.map(record => this.renderRecoveryVersion(record, record === recovery))}
+            ${versions.map(version => html`<li ?data-active=${!recovery && version.id === active?.id}>
+              ${this.renderHistoryEntry(version, true, version.isCurrent, version.isUnsaved, !recovery && version.id === active?.id)}
             </li>`)}
           </ul>
         </aside>
@@ -389,7 +418,14 @@ export class DeveloperConsole extends EditingControls {
         <div role="tabpanel" id="console-panel-Review" aria-label="Version changes">
           ${this.historyError ? html`<p class="version-empty" role="alert">${this.historyError}</p>` : nothing}
           ${this.historyLoading && !versions.length ? html`<p class="version-empty">Loading versions…</p>` : nothing}
-          ${changes.length ? html`<ul class="version-change-list" aria-label=${`Changes in ${active.label}`}>
+          ${recovery ? html`
+            <p class="version-empty">${recovery.title} · Checkpoint saved on this device</p>
+            <div class="recovery-version-actions">
+              <button type="button" ?disabled=${this.documentRecoveryBusy}
+                @click=${() => this.recoveryAction("restore-recovered-document", recovery.id)}>Restore</button>
+              <button type="button" ?disabled=${this.documentRecoveryBusy}
+                @click=${() => this.recoveryAction("discard-recovered-document", recovery.id)}>Discard</button>
+            </div>` : changes.length ? html`<ul class="version-change-list" aria-label=${`Changes in ${active.label}`}>
             ${changes.map(id => {
               const checkpoint = checkpoints.get(id)!
               return html`<li>${this.renderHistoryEntry(checkpoint, false, checkpoint.id === this.historyState.currentCheckpointId)}</li>`

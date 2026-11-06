@@ -1,3 +1,4 @@
+import {normalizeURLInput} from "../url-input.js"
 import {css, html, noChange, nothing, render} from "lit"
 import {guard} from "lit/directives/guard.js"
 import {when} from "lit/directives/when.js"
@@ -2873,10 +2874,10 @@ export class AppRibbon extends EditingControls {
             event.preventDefault()
             const form = event.currentTarget as HTMLFormElement, data = new FormData(form)
             const accepted = this.dispatchEvent(new CustomEvent(this.replayActive ? "start-replay-lrs" : "start-live-lrs", {bubbles: true, composed: true, cancelable: true,
-              detail: {endpoint: String(data.get("endpoint") ?? ""), username: String(data.get("username") ?? ""), password: String(data.get("password") ?? "")}}))
+              detail: {endpoint: normalizeURLInput(String(data.get("endpoint") ?? "")), username: String(data.get("username") ?? ""), password: String(data.get("password") ?? "")}}))
             if(accepted) { form.reset(); if(!this.replayActive) this.renderRoot.querySelector<HTMLDialogElement>("#lrs-dialog")?.close() }
           }}>
-            <label>LRS base URL<input name="endpoint" type="url" required placeholder="https://lrs.example/xapi/" autocomplete="off"></label>
+            <label>LRS base URL<input name="endpoint" inputmode="url" required placeholder="https://lrs.example/xapi/" autocomplete="off"></label>
             <label>Key<input name="username" required autocomplete="off"></label>
             <label>Secret<input name="password" type="password" required autocomplete="off"></label>
             ${this.lrsError ? html`<p class="lrs-error" role="alert">${this.lrsError}</p>` : nothing}

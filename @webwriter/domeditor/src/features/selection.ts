@@ -223,10 +223,10 @@ export class SelectionFeature extends EditorFeature {
 
   #showAtomicOverlays(selection: Selection) {
     if(selection.isCollapsed || !selection.rangeCount) return
-    if($.selectedElement && (this.editor.features.canvas.active || this.editor.features.slides.active)) return
+    if((this.editor.features.canvas.active || this.editor.features.slides.active) && $.selectedElement) return
     const range = selection.getRangeAt(0)
     const visit = (element: Element) => {
-      if(!$.includesNode(element) || !range.intersectsNode(element)) return
+      if(!range.intersectsNode(element) || !$.includesNode(element)) return
       const children = element.children
       const isTable = element.localName === "table"
       const isDetails = element.localName === "details"
@@ -856,6 +856,12 @@ export class SelectionFeature extends EditorFeature {
     // publish toolbar state, and syncFromDOM mirrors the native selection.
     if(transformed && this.editor.doc.isLocalStyleOnlySync(transaction, transformed)) return
     if(this.editor.features.table.keepsSelectionDuringResize(transaction)) return
+    this.queueSelectionRefresh()
+  }
+
+  /** Coalesces a DOM command's final selection with its shared change. */
+  queueSelectionRefresh() {
+    if(this.#sharedRefreshQueued) return
     this.#sharedRefreshQueued = true
     queueMicrotask(() => {
       this.#sharedRefreshQueued = false
@@ -1573,7 +1579,8 @@ export class SelectionFeature extends EditorFeature {
       if(widget === this.#blurringWidget) this.#blurringWidget = null
       this.#focusedContentfulShadow = widget && isContentfulWidget(widget, this.editor.schema) ? widget : null
       this.#handleWidgetShadowInteraction(event)
-      if(!isAppendixInteraction(event) && !this.editor.features.media.isPlaceholderInteraction) {
+      if(!isAppendixInteraction(event) && !this.editor.features.media.isPlaceholderInteraction
+        && !this.editor.features.slides.isSelectingForNavigation) {
         this.processSelection(undefined, {scrollIntoView: false})
       }
     },
@@ -2105,7 +2112,8 @@ export class SelectionFeature extends EditorFeature {
     if(state === "node" || state === "capture") {
       this.editor.features.transformation.updateInfo()
       const selected = this.captureSelectedElement ?? this.selectedSectionElement ?? $.selectedElement
-      if(selected?.isConnected && !getComputedStyle(selected).getPropertyValue("anchor-name").split(",").some(name => name.trim() === "--selection-anchor")) {
+      if(selected?.isConnected && !this.#transformCaretTarget && !caret.style.width
+        && !getComputedStyle(selected).getPropertyValue("anchor-name").split(",").some(name => name.trim() === "--selection-anchor")) {
         const outlineTarget = this.captureSelectedElement ? figureSelectionTarget(selected) : selected
         // Transformation.updateInfo positions a masked outline when native
         // float boxes interrupt the selected element's border box. Keep that
@@ -2176,13 +2184,8 @@ export class SelectionFeature extends EditorFeature {
       this.clearTransformCaret()
       return
     }
-    if(this.#transformCaretTarget !== target) this.clearTransformCaret()
-    else {
-      this.#clearSelectionFloatOutline()
-      for(const property of ["left", "top", "width", "height", "transform", "transform-origin", "position-anchor", "position-area", "translate"]) {
-        caret.style.removeProperty(property)
-      }
-    }
+    if(this.#transformCaretTarget === target) return
+    this.clearTransformCaret()
     setPart(caret, "selection-caret-anchored")
     this.#atomicAnchors.bind(caret, target)
     this.#atomicAnchors.refresh()
@@ -2197,20 +2200,7 @@ export class SelectionFeature extends EditorFeature {
 
   /** Places a collapsed document selection, even if a widget or a table
    * previously owned editing focus. Existing caret rendering follows it. */
-  selectDropRange(range: Range, {scrollIntoView = true, preview = false} = {}) {
-    const selection = preview ? document.getSelection() : null
-    const caret = preview ? this.selectionCaret : null
-    if(selection?.isCollapsed && selection.rangeCount === 1 && selection.focusNode === range.startContainer
-      && selection.focusOffset === range.startOffset && !this.#capturedElement && !this.#selectedSection
-      && !this.isInDragSelection && !this.editor.features.table.hasCellSelection
-      && caret?.matches('[part~="selection-caret-text"]:not([visibility="hidden"])')
-      && !document.body.matches(".◆math-boundary-caret, .◆popup-boundary-caret") && !focusedWidgetHost()) {
-      const rect = caretRect(range.startContainer, range.startOffset)
-      caret.style.left = `${fixedClientX(rect.left)}px`
-      caret.style.top = `${rect.top}px`
-      caret.style.height = `${rect.height}px`
-      return
-    }
+  selectDropRange(range: Range, {scrollIntoView = true} = {}) {
     if(focusedWidgetHost()) focusEditorWindow()
     this.#releaseCaptureSelection()
     this.clearSelectedSection()
@@ -2231,8 +2221,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Clears the drop presentation, restoring the underlying selection mode. */
-  clearDropCaret(hideSelection = false) {
-    if(hideSelection) { this.#hideSelectionCaret(); return }
+  clearDropCaret() {
     const caret = this.selectionCaret
     if(!caret) return
     caret.classList.remove("◆drop-caret-before", "◆drop-caret-after")
@@ -2307,14 +2296,17 @@ export class SelectionFeature extends EditorFeature {
       element.isConnected && element.matches(".◆gap-before-selected, .◆gap-after-selected"))
     const parent = element?.parentElement
     if(!caret || !element || !parent) return
+    caret.style.setProperty("--gap-caret-inline-position", this.gapCaretInlinePosition(parent))
+  }
+
+  gapCaretInlinePosition(parent: Element) {
     const style = getComputedStyle(parent), rect = parent.getBoundingClientRect()
     const left = rect.left + (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.paddingLeft) || 0)
     const right = rect.right - (parseFloat(style.borderRightWidth) || 0) - (parseFloat(style.paddingRight) || 0)
     const themedColumn = parent.matches("body:not(.ww-canvas, .ww-slides), body:not(.ww-canvas, .ww-slides) > :is(main, article, section)")
       && getComputedStyle(document.body).getPropertyValue("--ww-float-width")
     const maximum = themedColumn ? style.getPropertyValue("--ww-prose-max").trim() || "45rem" : `${right - left}px`
-    caret.style.setProperty("--gap-caret-inline-position",
-      `calc(${fixedClientX(left)}px + max(0px, (${right - left}px - ${maximum}) / 2))`)
+    return `calc(${fixedClientX(left)}px + max(0px, (${right - left}px - ${maximum}) / 2))`
   }
 
   /** Retains marker owners so removal also cleans disconnected content. */
@@ -2743,7 +2735,12 @@ export class SelectionFeature extends EditorFeature {
       $.selectElement(figureSelectionTarget(capturedElement), false)
     }
     const transformTarget = inDragSelection ? null : layoutItem ?? selectedElement
-    this.editor.features.transformation.syncSelection(transformTarget && !boardLayoutRole(transformTarget) && !slideLayoutRole(transformTarget) ? transformTarget : null, Boolean(layoutItem && layoutItem !== selectedElement))
+    // Node presentation measures the frame after installing its caret and
+    // markers. Text and cell selections still update their layout item here.
+    this.editor.features.transformation.syncSelection(
+      transformTarget && !boardLayoutRole(transformTarget) && !slideLayoutRole(transformTarget) ? transformTarget : null,
+      Boolean(layoutItem && layoutItem !== selectedElement), !selectedElement,
+    )
     this.editor.features.board.refresh()
     this.editor.features.manipulation.refreshNodeDragTarget(inDragSelection ? null
       : this.editor.features.math.selectedMath ?? (kind === "element" ? $.selectedElement ?? null : null))
@@ -2894,9 +2891,8 @@ export class SelectionFeature extends EditorFeature {
     // Reuse the shared appendix caret at the collapsed selection's geometry.
     const touchCaret = this.#touchSelection && sel.isCollapsed && Boolean(document.activeElement?.contains(sel.focusNode))
       && !document.body.classList.contains("◆math-boundary-caret") && !document.body.classList.contains("◆popup-boundary-caret")
-    if((document.body.classList.contains("◆drop-selection-active") || touchCaret)
-      && (kind === "text" || kind === "empty") && !$.isEmptyDocumentSelection) {
-      if(touchCaret) this.#markSelection(document.body, "◆touch-caret-visible")
+    if(touchCaret && (kind === "text" || kind === "empty") && !$.isEmptyDocumentSelection) {
+      this.#markSelection(document.body, "◆touch-caret-visible")
       const rect = caretRect(sel.focusNode, sel.focusOffset)
       const caret = this.#showSelectionCaret("text")
       caret.style.left = `${fixedClientX(rect.left)}px`
@@ -2914,7 +2910,9 @@ export class SelectionFeature extends EditorFeature {
     },
     "pointermove": event => this.#extendDrag(event),
     "selectionchange": () => {
-      if(this.#boxDrag || this.editor.features.media.isPlaceholderInteraction || this.#settingBoxSelection || $.isSettingRanges) return
+      if(this.#boxDrag || this.editor.features.media.isPlaceholderInteraction || this.#settingBoxSelection || $.isSettingRanges
+        || this.editor.features.slides.isSelectingForNavigation) return
+      if(this.editor.features.table.keepsNativeSelectionDuringResize()) return
       const selection = document.getSelection()
       const current = selection?.rangeCount ? selection.getRangeAt(0) : null
       const previous = this.#selectedSectionRange

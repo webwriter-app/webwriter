@@ -1,3 +1,4 @@
+import {normalizeURLInput} from "../url-input.js"
 import {LitElement, css, html, nothing} from "lit"
 import {tokenize} from "@csstools/css-tokenizer"
 import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
@@ -1715,7 +1716,7 @@ export class ElementStyleEditor extends LitElement {
       let blob: Blob
       if(file) blob = file
       else {
-        const url = new URL(link, this.ownerDocument.baseURI)
+        const url = new URL(normalizeURLInput(link), this.ownerDocument.baseURI)
         if(!["http:", "https:", "data:"].includes(url.protocol)) throw new Error("Enter an HTTP, HTTPS, or data image URL.")
         const response = await fetch(url.href, {signal: request.signal, credentials: "omit"})
         if(!response.ok) throw new Error(`Could not load the image (${response.status}).`)
@@ -1785,14 +1786,14 @@ export class ElementStyleEditor extends LitElement {
               void this.loadMarkerImage()
             }
           }}>
-        <label>Or link to an image<input type="url" name="url" placeholder="https://example.com/marker.svg"
+        <label>Or link to an image<input inputmode="url" name="url" placeholder="https://example.com/marker.svg"
           @input=${(event: Event) => {
             this.renderRoot.querySelector<HTMLInputElement>('.marker-image-dialog [name="file"]')!.value = ""
             this.markerImageFilename = ""
             this.cancelMarkerImageRead()
             this.markerImageError = ""
             const input = event.currentTarget as HTMLInputElement
-            if(input.value.trim() && input.validity.valid) this.markerImagePreviewTimer = window.setTimeout(() => {
+            if(input.value.trim()) this.markerImagePreviewTimer = window.setTimeout(() => {
               this.markerImagePreviewTimer = null
               void this.loadMarkerImage()
             }, 250)
@@ -1816,7 +1817,10 @@ export class ElementStyleEditor extends LitElement {
             ? [{label: "Tight", value: "-0.1em"}, {label: "Normal", value: "normal"}, {label: "Loose", value: "0.1em"}, {label: "Wide", value: "0.25em"}]
             : definition.name === "text-indent"
               ? [{label: "None", value: "0"}, {label: "Small", value: "1em"}, {label: "Medium", value: "2em"}, {label: "Large", value: "4em"}]
-              : [{label: "None", value: "0"}, {label: "Compact", value: "2px"}, {label: "Comfortable", value: "4px"}, {label: "Spacious", value: "8px"}]
+              : definition.name === "zoom"
+                ? [{label: "Half size", value: "50%"}, {label: "Smaller", value: "75%"}, {label: "Actual size", value: "100%"},
+                  {label: "Large", value: "125%"}, {label: "Larger", value: "150%"}, {label: "Double size", value: "200%"}]
+                : [{label: "None", value: "0"}, {label: "Compact", value: "2px"}, {label: "Comfortable", value: "4px"}, {label: "Spacious", value: "8px"}]
     return html`<style-combobox .showValue=${true} .label=${definition.label}
       .value=${this.editableValue(definition.name)} placeholder="Default" .options=${suggestions}
       @combobox-change=${(event: CustomEvent<{value: string}>) => {

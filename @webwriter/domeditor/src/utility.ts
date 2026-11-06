@@ -48,6 +48,11 @@ export function adoptStylesheet(root: Document | ShadowRoot, stylesheet: CSSStyl
   }
 }
 
+export function cssZoomFactor(style: CSSStyleDeclaration) {
+  const zoom = style.getPropertyValue("zoom").trim()
+  return parseFloat(zoom) / (zoom.endsWith("%") ? 100 : 1) || 1
+}
+
 function editingLayoutChildren(element: Element, selectionRoot?: Element) {
   return Array.from(element.childNodes).flatMap<{node: Element | Text, rect: DOMRect}>(node => {
     // Closed disclosures can retain measurable boxes for hidden body content.
@@ -2293,36 +2298,27 @@ export function getStaticCoords(el: HTMLElement): [number, number] {
 /** Whether a collapsed native caret is at the edge of a flow container. */
 export function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
   const selection = document.getSelection()
-  if(!selection?.isCollapsed || !selection.anchorNode) {
-    return false
-  }
-  let node: Node | null = selection.anchorNode
-  let offset = selection.anchorOffset
-  while(node && node !== element) {
-    if(!element.contains(node)) {
-      return false
-    }
-    const parent: Node | null = node.parentNode
-    if(!parent) {
-      return false
-    }
-    const siblings = Array.from(parent.childNodes) as ChildNode[]
-    const index = siblings.indexOf(node as ChildNode)
-    if(boundary === "start") {
-      if(offset !== 0 || siblings.slice(0, index).some((sibling: ChildNode) => !isOutOfFlow(sibling) && (sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent))) {
-        return false
-      }
+  return Boolean(selection?.isCollapsed && selection.anchorNode
+    && isPointAtBoundary(element, selection.anchorNode, selection.anchorOffset, boundary))
+}
+
+/** Whether a DOM point is at a flow edge, including inside nested inline elements. */
+export function isPointAtBoundary(element: Element, node: Node, offset: number, boundary: "start" | "end") {
+  if(!element.contains(node)) return false
+  const atStart = boundary === "start"
+  const hasContent = (sibling: Node) => isText(sibling) ? sibling.length > 0 : isElement(sibling) && !isOutOfFlow(sibling)
+  while(true) {
+    if(isText(node)) {
+      if(offset !== (atStart ? 0 : node.length)) return false
     }
     else {
-      const length = node instanceof Text? node.length: node.childNodes.length
-      if(offset !== length || siblings.slice(index + 1).some((sibling: ChildNode) => !isOutOfFlow(sibling) && (sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent))) {
-        return false
-      }
+      const children = Array.from(node.childNodes)
+      if((atStart ? children.slice(0, offset) : children.slice(offset)).some(hasContent)) return false
     }
+    if(node === element) return true
+    const parent: Node = node.parentNode!
+    const index = Array.from(parent.childNodes).indexOf(node as ChildNode)
     node = parent
-    offset = boundary === "start"? index: index + 1
+    offset = atStart ? index : index + 1
   }
-  return node === element && Array.from(element.childNodes)
-    .slice(boundary === "start" ? 0 : offset, boundary === "start" ? offset : undefined)
-    .every(sibling => isOutOfFlow(sibling) || sibling.nodeType !== Node.ELEMENT_NODE && !sibling.textContent)
 }

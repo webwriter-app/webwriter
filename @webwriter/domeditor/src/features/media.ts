@@ -1,3 +1,4 @@
+import {isRelativeURLInput, normalizeURLInput} from "../url-input.js"
 import {EditorFeature} from "."
 import {SVG_NAMESPACE, graphicShapeGeometry} from "../graphic"
 import type {Schema} from "../schema"
@@ -327,7 +328,7 @@ class MediaPlaceholder {
         <input class="picker" type="file" hidden />
         <span class="or">or</span>
         <div class="url-row">
-          <input class="url" type="url" required />
+          <input class="url" inputmode="url" required />
           <button class="apply" type="button" aria-label="Apply URL" title="Apply URL">
             <span class="icon" aria-hidden="true">${arrowRight}</span>
           </button>
@@ -467,11 +468,12 @@ class MediaPlaceholder {
     if(!this.target || !document.body.contains(this.target) || !isEmptyMedia(this.target)
       || sourceEditingBlocked(this.target, this.getSchema())) return
     const input = this.root.querySelector<HTMLInputElement>(".url")!
-    const source = input.value.trim()
-    let url: URL | undefined
-    try { url = new URL(source) } catch {}
-    this.clearUrlError()
+    const source = normalizeURLInput(input.value)
     const website = isWebsiteType(placeholderMediaType(this.target))
+    const relative = !website && isRelativeURLInput(source)
+    let url: URL | undefined
+    try { url = new URL(source, relative ? this.target.baseURI : undefined) } catch {}
+    this.clearUrlError()
     const message = website ? websiteSourceError(platformEmbedURL(source) ?? source) || (!url ? "Enter a valid https:// website URL." : "")
       : !url || !["http:", "https:"].includes(url.protocol) ? "Enter a valid http:// or https:// URL." : ""
     if(!url || message) {
@@ -482,7 +484,7 @@ class MediaPlaceholder {
       input.reportValidity()
       return
     }
-    this.onSource?.(this.target, url.href)
+    this.onSource?.(this.target, relative ? source : url.href)
   }
 
   private clearUrlError() {
@@ -1029,7 +1031,7 @@ class ImageMapOverlay {
       if(!control) {
         control = document.createElement("div")
         control.className = "actions"
-        control.innerHTML = `<div class="action-buttons"><button class="link" type="button" aria-label="Edit hotspot link" title="Link">${linkIcon}</button><button class="popover" type="button" aria-label="Edit hotspot popover" title="Popover">${messageCircle}</button></div><form class="url-editor" novalidate hidden><input type="url" aria-label="Hotspot URL" placeholder="https://…"></form>`
+        control.innerHTML = `<div class="action-buttons"><button class="link" type="button" aria-label="Edit hotspot link" title="Link">${linkIcon}</button><button class="popover" type="button" aria-label="Edit hotspot popover" title="Popover">${messageCircle}</button></div><form class="url-editor" novalidate hidden><input inputmode="url" aria-label="Hotspot URL" placeholder="https://…"></form>`
         const input = control.querySelector<HTMLInputElement>("input")!
         const form = control.querySelector<HTMLFormElement>("form")!
         let expected: Record<string, string> | null = null
@@ -1054,7 +1056,7 @@ class ImageMapOverlay {
           if(area.isConnected) this.onAction?.(area, stateAttributes(area), "popover")
         })
         const commit = () => {
-          if(expected && area.isConnected && this.onAction?.(area, expected, "link", input.value)) expected = stateAttributes(area)
+          if(expected && area.isConnected && this.onAction?.(area, expected, "link", normalizeURLInput(input.value))) expected = stateAttributes(area)
         }
         input.addEventListener("change", commit)
         form.addEventListener("submit", event => { event.preventDefault(); commit(); form.hidden = true; this.element.focus({preventScroll:true}) })

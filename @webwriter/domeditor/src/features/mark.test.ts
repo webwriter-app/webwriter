@@ -1535,6 +1535,10 @@ describe("link keyboard edits", () => {
     expect(paragraph.querySelector("a")!.getAttribute("href")).toBe("https://example.test:8443/path")
     feature.editLink({identity: currentIdentity(), href: "http://example.test/path", attributes: {}})
     expect(paragraph.querySelector("a")!.getAttribute("href")).toBe("http://example.test/path")
+    const reference = JSON.stringify({type: "book", title: "Local reading"})
+    feature.editLink({identity: currentIdentity(), href: "../reading/book.html#chapter", attributes: {"data-reference": reference}})
+    expect(paragraph.querySelector("a")!.getAttribute("href")).toBe("../reading/book.html#chapter")
+    expect(paragraph.querySelector("a")!.dataset.reference).toBe(reference)
   })
 
   it("rejects a stale link after direct replacement or metadata changes", () => {

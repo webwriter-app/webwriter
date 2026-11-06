@@ -521,14 +521,17 @@ export class BoardFeature extends EditorFeature {
 
   private refreshAnchors() {
     for(const {button, target} of this.placements) {
-      this.anchors.bind(button, target, undefined, "::after")
-      button.hidden = !this.active || !target.isConnected || !this.editor.allows("insert", target)
+      const hidden = !this.active || !target.isConnected || !this.editor.allows("insert", target)
+      if(button.hidden !== hidden) button.hidden = hidden
+      if(this.anchorsDirty) this.anchors.bind(button, target, undefined, "::after")
     }
+    if(!this.anchorsDirty) return
     for(const [target, overlay] of this.transformOverlays) {
       if(overlay.matches('[part~="transform-overlay-board-anchored"]')) this.anchors.bind(overlay, target)
       else this.anchors.release(overlay)
     }
-    if(this.anchorsDirty) { this.anchors.refresh(); this.anchorsDirty = false }
+    this.anchors.refresh()
+    this.anchorsDirty = false
   }
 
   private refreshTransforms() {
@@ -545,10 +548,21 @@ export class BoardFeature extends EditorFeature {
       ? Array.from(this.transformOverlays.keys()).filter(target => target.isConnected && (isBoardColumn(target) || isBoardCard(target)))
       : [hoverTarget ?? card ?? column].filter((target): target is HTMLElement => Boolean(target)))
       .filter(target => this.editor.allows("select", target))
+    const matrices = new WeakMap<Element, DOMMatrix>()
+    const frames = targets.map(target => ({
+      target,
+      geometry: this.editor.features.transformation.boxTransformed(target, matrices)
+        ? this.editor.features.transformation.boxGeometry(target, true, matrices).styles : null,
+    }))
     for(const [target, overlay] of this.transformOverlays) {
-      if(!targets.includes(target)) { overlay.remove(); this.transformOverlays.delete(target); changed = true }
+      if(!targets.includes(target)) {
+        this.anchors.release(overlay)
+        overlay.remove()
+        this.transformOverlays.delete(target)
+        changed = true
+      }
     }
-    for(const target of targets) {
+    for(const {target, geometry} of frames) {
       let overlay = this.transformOverlays.get(target)
       const columns = this.columns(), column = this.containingColumn(target)!
       const label = isBoardColumn(target) ? `column ${columns.indexOf(column) + 1}`
@@ -601,13 +615,18 @@ export class BoardFeature extends EditorFeature {
           event.stopPropagation()
         })
       }
-      const measured = this.editor.features.transformation.boxTransformed(target)
-      setPart(overlay, "transform-overlay-board-anchored", !measured)
-      if(measured) {
+      const anchored = !geometry
+      if(overlay.matches('[part~="transform-overlay-board-anchored"]') !== anchored) this.anchorsDirty = true
+      setPart(overlay, "transform-overlay-board-anchored", anchored)
+      if(geometry) {
         this.measuredTransforms = true
-        Object.assign(overlay.style, this.editor.features.transformation.boxGeometry(target).styles)
+        for(const [property, value] of Object.entries(geometry)) {
+          if(overlay.style.getPropertyValue(property) !== value) overlay.style.setProperty(property, value)
+        }
       }
-      else for(const property of ["left", "top", "width", "height", "transform"]) overlay.style.removeProperty(property)
+      else for(const property of ["left", "top", "width", "height", "transform"]) {
+        if(overlay.style.getPropertyValue(property)) overlay.style.removeProperty(property)
+      }
       setPart(overlay, "transform-overlay-board-selected", explicit === target)
       setPart(overlay, "transform-overlay-board-hovered", target === hoverTarget)
       overlay.querySelectorAll<HTMLButtonElement>("button").forEach(button => {
@@ -615,26 +634,37 @@ export class BoardFeature extends EditorFeature {
         const grouping = button.getAttribute("part")?.split(" ").includes("transform-overlay-group")
         const action = grouping ? "Create group for" : button.dataset.transformMode === "move" ? "Move" : button.dataset.transformMode === "scale" ? "Resize" : "Delete"
         const permission = button.dataset.transformMode === "move" ? "move" : button.dataset.transformMode === "scale" ? "style" : "delete"
-        button.title = `${action} ${label}`; button.setAttribute("aria-label", button.title)
-        button.disabled = this.editor.isEditingLocked
-        button.hidden = grouping ? !this.groupingState(target)?.canCreate : !this.editor.allows(permission, target)
+        const title = `${action} ${label}`
+        if(button.title !== title) button.title = title
+        if(button.getAttribute("aria-label") !== title) button.setAttribute("aria-label", title)
+        if(button.disabled !== this.editor.isEditingLocked) button.disabled = this.editor.isEditingLocked
+        const hidden = grouping ? !this.groupingState(target)?.canCreate : !this.editor.allows(permission, target)
+        if(button.hidden !== hidden) button.hidden = hidden
         setPart(button, "transform-overlay-board-control-selected", explicit === target)
       })
       for(const handle of overlay.querySelectorAll<HTMLElement>('[data-transform-mode="move"]')) {
-        handle.draggable = !this.editor.isEditingLocked && this.editor.allows("move", target)
-        handle.hidden = !this.editor.allows("move", target)
+        const draggable = !this.editor.isEditingLocked && this.editor.allows("move", target)
+        const hidden = !this.editor.allows("move", target)
+        if(handle.draggable !== draggable) handle.draggable = draggable
+        if(handle.hidden !== hidden) handle.hidden = hidden
       }
       const resizeHandle = overlay.querySelector<HTMLElement>('[data-transform-mode="scale"]')
-      if(resizeHandle) resizeHandle.hidden = !this.editor.allows("style", target)
+      if(resizeHandle) {
+        const hidden = !this.editor.allows("style", target)
+        if(resizeHandle.hidden !== hidden) resizeHandle.hidden = hidden
+      }
     }
-    if(changed && !this.editor.options.reader) this.editor.features.attribution.refresh()
+    if(changed) {
+      this.anchorsDirty = true
+      if(!this.editor.options.reader) this.editor.features.attribution.refresh()
+    }
   }
 
   refresh() {
     if(!this.controls) return
     this.noteMutations(this.observer?.takeRecords() ?? [])
     if(this.contentDirty) { this.ensureContent(); this.contentDirty = false }
-    this.controls.hidden = !this.active
+    if(this.controls.hidden === this.active) this.controls.hidden = !this.active
     if(this.drag && !this.validDrag()) this.endDrag()
     const columns = this.active ? this.structureDirty ? this.columns() : this.columnsCache : []
     const groups = this.active ? this.structureDirty ? this.groups() : this.groupsCache : []
@@ -647,6 +677,7 @@ export class BoardFeature extends EditorFeature {
       this.columnsCache = columns; this.groupsCache = groups; this.locked = locked
       this.permissionSignature = permissionSignature
       this.controls.replaceChildren(); this.placements = []
+      this.anchorsDirty = true
       const button = (label: string, text: string, target: HTMLElement, position: typeof this.placements[number]["position"], run: () => unknown) => {
         const button = document.createElement("button")
         button.type = "button"; button.title = label; button.setAttribute("aria-label", label); button.textContent = text; button.disabled = locked

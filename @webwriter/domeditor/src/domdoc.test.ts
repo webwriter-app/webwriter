@@ -929,6 +929,68 @@ describe("SharedDOMDoc initialization", () => {
     expect(root.firstElementChild!.textContent).toBe("before")
   })
 
+  it("attributes live updates from older peers using their Yjs writer and presence edit signal", () => {
+    const {shared: source} = createShared("<p>Hello</p>")
+    const ydoc = new Y.Doc()
+    Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(source.doc))
+    const root = document.createElement("main")
+    const shared = new SharedDOMDoc("ws://localhost:1234", "room", [], ["◆"], {root, ydoc, connect: false})
+    sharedDocs.push(shared)
+    const provider = shared.provider!
+    const alex = cloneShared(shared).shared
+    const sam = cloneShared(shared).shared
+    const clientId = alex.awareness.clientID
+    const user = {name: "Alex", color: "#2563eb"}
+    alex.setUser(user)
+    sam.setUser({name: "Sam", lastChange: 1})
+    const sendPresence = (peer: SharedDOMDoc) => {
+      applyAwarenessUpdate(shared.awareness, encodeAwarenessUpdate(peer.awareness, [peer.awareness.clientID]), provider)
+    }
+    sendPresence(alex)
+    sendPresence(sam)
+    const authors: ReturnType<SharedDOMDoc["documentChangeAuthors"]>[] = []
+    shared.doc.on("afterTransaction", transaction => {
+      if(shared.isDocumentTransaction(transaction)) authors.push(shared.documentChangeAuthors(transaction))
+    })
+    const text = (alex.body.firstChild as Y.XmlElement).firstChild as Y.XmlText
+    const sendUpdate = (edit: () => void, snapshot = false) => {
+      const vector = Y.encodeStateVector(alex.doc)
+      edit()
+      const message = encoding.createEncoder()
+      if(snapshot) syncProtocol.writeSyncStep2(message, alex.doc, vector)
+      else syncProtocol.writeUpdate(message, Y.encodeStateAsUpdate(alex.doc, vector))
+      provider.messageHandlers[messageSync](encoding.createEncoder(), decoding.createDecoder(encoding.toUint8Array(message)), provider, true, messageSync)
+    }
+
+    sendUpdate(() => text.insert(5, "!"))
+    expect(authors.at(-1)).toEqual([[clientId, user]])
+    sendUpdate(() => {
+      text.delete(5, 1)
+      sendPresence(alex)
+    })
+    expect(root.textContent).toBe("Hello")
+    expect(authors.at(-1)).toEqual([[clientId, expect.objectContaining(user)]])
+
+    // A cursor move carrying the same lastChange must not attribute the next deletion.
+    alex.awareness.setLocalStateField("selection", {anchor: null, focus: null})
+    sendPresence(alex)
+    sendUpdate(() => text.delete(4, 1))
+    expect(authors.at(-1)).toEqual([])
+
+    sendUpdate(() => {
+      text.delete(3, 1)
+      alex.setUser({lastChange: 2})
+      sam.setUser({lastChange: 2})
+      sendPresence(alex)
+      sendPresence(sam)
+    })
+    expect(authors.at(-1)).toEqual([])
+
+    sendUpdate(() => text.insert(0, "Saved "), true)
+    expect(root.textContent).toBe("Saved Hel")
+    expect(authors.at(-1)).toEqual([])
+  })
+
   it("undoes a pending DOM edit as its own step", async () => {
     const {root, shared} = createShared("<p>one</p>")
     root.firstElementChild!.textContent = "two"

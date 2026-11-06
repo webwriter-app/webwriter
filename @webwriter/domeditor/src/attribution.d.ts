@@ -11,6 +11,7 @@ export function createAttributionController(doc: Document, options?: {
   anchorFactory?: typeof import("./anchor-positioning.js").createAnchorPositioner
   licenses?: ReadonlyArray<{code: string, name: string, url: string, description?: string}>
   createLicensePicker?: (input: HTMLInputElement) => HTMLElement & {value: string, close(reset?: boolean): void}
+  normalizeURLInput?: typeof import("./url-input.js").normalizeURLInput
   editable?: () => boolean
   canAttribute?: (element: Element) => boolean
   selectedElement?: () => Element | null

@@ -13,7 +13,7 @@ import {CanvasFeature} from "./features/canvas"
 import {isCanvasStartingView, type LoadSnapdom} from "./canvas-viewer.js"
 import {SlidesFeature} from "./features/slides"
 import {BoardFeature} from "./features/board"
-import {boardLayoutRole, documentLayoutMode, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "./document-layout"
+import {boardLayoutRole, documentLayoutMode, normalizePristineDocumentLayout, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "./document-layout"
 import { MediaFeature } from "./features/media"
 import { WidgetFeature } from "./features/widget"
 import { MigrationFeature } from "./features/migration"
@@ -60,7 +60,8 @@ import editorStyleString from "./editor.css?raw"
 import listMarkerStyleString from "./document-list-markers.css?raw"
 import * as Y from "yjs"
 import {offlinePackageStyleAttribute, originalPackageEntriesAttribute, originalURLAttribute, serializeDoctype} from "./serialization-primitives"
-import type {DocumentHeadState} from "./document-head"
+import {WEBWRITER_GENERATOR, type DocumentHeadState} from "./document-head"
+import {defaultDocumentTheme, upgradeBundledDocumentThemes} from "./document-themes"
 import {getSectionOption, isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
 import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
@@ -1376,7 +1377,10 @@ export class DOMEditor {
    * live editor loads its own. */
   toHTML(innerBody=false, runtimeAssets=true, data: "defaults" | "current" = "defaults") {
     const root = this.cleanDocumentClone(data)
-    if(!innerBody && runtimeAssets) this.features.dependency.appendSerializedAssets(root)
+    if(!innerBody) {
+      upgradeBundledDocumentThemes(root)
+      if(runtimeAssets) this.features.dependency.appendSerializedAssets(root)
+    }
     const serialize = prepareWidgetGroupingsForSerialization(root)
     if(innerBody) return serialize(root.body.innerHTML)
     return serialize(`${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`)
@@ -1386,6 +1390,7 @@ export class DOMEditor {
    * and fails explicitly when dependencies cannot be made self-contained. */
   async serializeHTML(offline=false, data: "defaults" | "current" = "defaults") {
     const root = this.cleanDocumentClone(data)
+    upgradeBundledDocumentThemes(root)
     this.features.dependency.appendSerializedAssets(root)
     await this.inlineBlobSources(root)
     if(offline) {
@@ -1394,6 +1399,25 @@ export class DOMEditor {
     }
     const serialize = prepareWidgetGroupingsForSerialization(root)
     return serialize(`${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`)
+  }
+
+  async serializeRecoveryHTML() {
+    const root = this.cleanDocumentClone()
+    if((!root.body.textContent?.trim() || documentLayoutMode(root.body) === "slides")) {
+      const blank = root.cloneNode(true) as Document
+      if(normalizePristineDocumentLayout(blank) && !blank.body.attributes.length
+        && !Array.from(blank.head.childNodes).some(node => {
+          if(node.nodeType === Node.TEXT_NODE) return Boolean(node.textContent?.trim())
+          if(!(node instanceof Element)) return true
+          return !(node.matches('meta[name="generator"]') && node.getAttribute("content") === WEBWRITER_GENERATOR
+            || node.matches("style[data-ww-theme]") && node.getAttribute("data-ww-theme") === defaultDocumentTheme.value
+              && node.textContent === defaultDocumentTheme.source)
+        })) return null
+    }
+    // The editor restores its own runtime. Keep only the authored document,
+    // embedding object URLs before their originating frame can disappear.
+    await this.inlineBlobSources(root)
+    return prepareWidgetGroupingsForSerialization(root)(`${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`)
   }
 
   /** Embed transient media for saving or replacing the editor realm. */

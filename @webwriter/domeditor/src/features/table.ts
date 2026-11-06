@@ -81,6 +81,8 @@ export class TableFeature extends EditorFeature {
   private observer: MutationObserver | null = null
   private refreshQueued = false
   private resizeHover: TableResizeEdge | null = null
+  private resizeFrame: number | null = null
+  private pendingResizeX: number | null = null
   private pendingResize: {
     edge: TableResizeEdge
     startX: number
@@ -1182,6 +1184,23 @@ export class TableFeature extends EditorFeature {
       && native.focusNode === selection.focus.node && native.focusOffset === selection.focus.offset)
   }
 
+  /** Native layout can report the same range repeatedly during a resize.
+   * Accept a real caret move, then use it as the next comparison point. */
+  keepsNativeSelectionDuringResize() {
+    const resize = this.resize
+    if(!resize || resize.ending) return false
+    if(this.resizeSelectionIsStable()) return true
+    const native = document.getSelection()
+    if(native?.isCollapsed && native.anchorNode?.isConnected && native.focusNode?.isConnected
+      && tableForNode(native.anchorNode) === resize.table && tableForNode(native.focusNode) === resize.table) {
+      resize.selection = {
+        anchor: {node: native.anchorNode, offset: native.anchorOffset},
+        focus: {node: native.focusNode, offset: native.focusOffset},
+      }
+    }
+    return false
+  }
+
   keepsSelectionDuringResize(transaction: Transaction) {
     const resize = this.resize
     if(!resize || !this.resizeSelectionIsStable()) return false
@@ -1261,7 +1280,23 @@ export class TableFeature extends EditorFeature {
       this.stopResize()
       return false
     }
-    const delta = Math.max(24, resize.startWidth + event.clientX - resize.startX) - resize.startWidth
+    this.pendingResizeX = event.clientX
+    if(this.resizeFrame === null) this.resizeFrame = requestAnimationFrame(() => {
+      this.resizeFrame = null
+      if(!this.applyPendingResize() && this.resize) this.stopResize()
+    })
+    return true
+  }
+
+  private applyPendingResize() {
+    const resize = this.resize
+    const clientX = this.pendingResizeX
+    this.pendingResizeX = null
+    if(!resize || resize.ending || clientX === null) return false
+    if(!this.editableTable(resize.table) || [...resize.cells.keys()].some(cell => tableForNode(cell) !== resize.table)) {
+      return false
+    }
+    const delta = Math.max(24, resize.startWidth + clientX - resize.startX) - resize.startWidth
     for(const [cell, state] of resize.cells) {
       const width = `${Math.round(Math.max(24, state.width + delta))}px`
       if(cell.style.width === width && !cell.style.getPropertyPriority("width")) continue
@@ -1276,6 +1311,9 @@ export class TableFeature extends EditorFeature {
   private stopResize() {
     const resize = this.resize
     if(!resize || resize.ending) return
+    if(this.resizeFrame !== null) cancelAnimationFrame(this.resizeFrame)
+    this.resizeFrame = null
+    this.applyPendingResize()
     const {endUndoGroup, checkContent, refreshMarks} = resize
     // Keep recognizing the final style-only sync while the undo group closes.
     resize.ending = true

@@ -17,6 +17,23 @@ const hasSelector = (stylesheet: CSSStyleSheet, selector: string) =>
 const hasExactSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule => (rule as CSSStyleRule).selectorText === selector)
 
+describe("document recovery serialization", () => {
+  it("skips blank content and preserves comments, textless widgets, and inline media", async () => {
+    document.body.innerHTML = "<p><br></p>"
+    const editor = new DOMEditor()
+    try {
+      expect(await editor.serializeRecoveryHTML()).toBeNull()
+      document.body.innerHTML = '<!--authored--><custom-widget value="one"></custom-widget><img src="data:image/png;base64,AQID"><p class="◆editor-only">Temporary</p>'
+      const source = await editor.serializeRecoveryHTML()
+      expect(source).toContain("<!--authored-->")
+      expect(source).toContain('<custom-widget value="one"></custom-widget>')
+      expect(source).toContain("data:image/png;base64,AQID")
+      expect(source).not.toContain("Temporary")
+    }
+    finally { editor.destroy(); document.body.replaceChildren() }
+  })
+})
+
 describe("popup text selection styling", () => {
   it("keeps toggle text selectable with a text cursor and gives its selected text a distinct fill in the editor", () => {
     expect(editorStyleString).toMatch(/:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\]\),\s*:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\] \*\)\s*\{[^}]*user-select:\s*text;[^}]*cursor:\s*text;/)
@@ -360,8 +377,8 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).not.toMatch(/:is\(ul, ol, menu\):empty[\s\S]*?display:\s*list-item;/)
     expect(editorStyleString).toMatch(/:is\(picture, img, video, iframe, embed, object\)\.◆media-empty,\s*body::part\(graphic-image-placeholder\)\s*\{[^}]*border:\s*1px dashed #6b7280;/)
     expect(editorStyleString).not.toMatch(/\.◆media-empty\.◆element-selected\s*\{/)
-    const mediaWidth = rules.find(rule => rule.selectorText === ":is(picture:where(:not(html.◆canvas-active *)), audio, video)")?.style
-    const mediaHeight = rules.find(rule => rule.selectorText === ":is(picture:where(:not(html.◆canvas-active *)), video)")?.style
+    const mediaWidth = rules.find(rule => rule.selectorText === ":is(picture:where(:not(html.◆canvas-active *, :is(td, th) *)), audio, video)")?.style
+    const mediaHeight = rules.find(rule => rule.selectorText === ":is(picture:where(:not(html.◆canvas-active *, :is(td, th) *)), video)")?.style
     expect(mediaWidth?.width).toBe("100%")
     expect(mediaWidth?.height).toBe("")
     expect(mediaWidth?.getPropertyValue("aspect-ratio")).toBe("")
@@ -653,6 +670,31 @@ describe("DOMEditor stylesheets", () => {
 })
 
 describe("DOMEditor serialization", () => {
+  it("updates the legacy table picture rule when saving a bundled theme", async () => {
+    const previousSource = `@layer webwriter-theme {
+  /* Pictures in cells need the same sizing box in editing and reading mode. */
+  :where(td, th) picture {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+}
+td picture.custom { display: block; }`
+    const theme = document.createElement("style")
+    theme.setAttribute("data-ww-theme", "base")
+    theme.textContent = previousSource
+    document.head.append(theme)
+    const editor = new DOMEditor()
+    try {
+      const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+      expect(saved.head.querySelector("style[data-ww-theme]")?.textContent).toBe(
+        previousSource.replace("display: block;", "display: inline-block;")
+      )
+      expect(theme.textContent).toBe(previousSource)
+    }
+    finally { editor.destroy(); theme.remove() }
+  })
+
   it("does not construct widgets while serializing an inert clipboard fragment", () => {
     let constructions = 0
     const tag = "domeditor-serialization-probe"

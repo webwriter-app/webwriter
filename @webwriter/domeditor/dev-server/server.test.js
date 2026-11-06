@@ -660,7 +660,7 @@ describe("development server", () => {
         id: "test-provider",
         name: "Test provider",
         preset: "custom",
-        baseUrl: "https://ai.example/v1",
+        baseUrl: "ai.example/v1",
         auth: "bearer",
         apiKey: "secret-value",
         models: ["test-model"],
@@ -672,6 +672,7 @@ describe("development server", () => {
     expect(JSON.stringify(created.value)).not.toContain("secret-value")
     expect(created.value.provider).toEqual(expect.objectContaining({
       managed: "backend",
+      baseUrl: "https://ai.example/v1",
       credentialStatus: "available",
     }))
     // Editing behavior is application-owned; providers store only extra preferences.

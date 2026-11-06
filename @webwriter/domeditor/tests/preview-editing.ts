@@ -1,4 +1,5 @@
 import type {DomEditor} from "../src/components/dom-editor"
+import type {AppSettings} from "../src/app-settings"
 
 export async function checkPreviewEditing(assert: (condition: unknown, message: string) => void) {
   const appFrame = document.createElement("iframe")
@@ -24,6 +25,7 @@ export async function checkPreviewEditing(assert: (condition: unknown, message: 
       currentPreviewHTMLFromFrame(): Promise<string>
       editorSrcdocFromHTML(html: string | null): string
       bridgeNonce: string
+      settings: AppSettings
     }
     await host.waitForEditorWindow()
     // Install a test probe alongside the trusted editor entry. The app still
@@ -33,7 +35,7 @@ export async function checkPreviewEditing(assert: (condition: unknown, message: 
       `<script class="◆ ◆editor-only" type="module" nonce="${host.bridgeNonce}" src="/tests/preview-editing-probe.ts"></script></head>`)
     await host.reloadDocument("<!doctype html><html><body><p>Keep this text</p></body></html>")
     await app.updateComplete
-    const editorFrame = app.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    let editorFrame = app.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
     const probe = (command: "place-caret" | "try-typing" | "state") => new Promise<{
       text: string, designMode: string, caret: number, blocked?: boolean, inserted?: boolean
     }>((resolve, reject) => {
@@ -97,6 +99,33 @@ export async function checkPreviewEditing(assert: (condition: unknown, message: 
       const state = await probe("state")
       return state.designMode === "on" && state.caret === edited.caret
     }, "A failed preview left the authoring document locked or lost the caret")
+
+    app.shadowRoot!.querySelector<HTMLButtonElement>(".file-error button")!.click()
+    host.settings = {...host.settings, activeCloudServiceId: null, cloudServicesConfigured: true}
+    host.currentPreviewHTMLFromFrame = snapshot
+    preview.click()
+    await waitFor(() => app.shadowRoot!.querySelector("iframe.preview-frame"), "Preview did not reopen")
+    const file = new File(["<p>Opened lesson</p>"], "opened.html", {type: "text/html"})
+    appFrame.contentWindow!.confirm = () => true
+    Object.defineProperty(appFrame.contentWindow, "showOpenFilePicker", {
+      configurable: true, value: async () => [{name: file.name, getFile: async () => file}],
+    })
+    ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!.shadowRoot!.querySelector("button")!.click()
+    const menu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
+    const open = await waitFor(() => !menu.hidden && menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Open"]') || null,
+      "The File menu did not offer Open in Preview")
+    open.click()
+    await app.updateComplete
+    const previous = editorFrame
+    editorFrame = await waitFor(() => {
+      const error = app.shadowRoot!.querySelector(".file-error span")?.textContent
+      if(error) throw new Error(`Opening a file in Preview failed: ${error}`)
+      const frame = app.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")
+      return frame !== previous && frame && !frame.hidden && !frame.inert ? frame : null
+    }, "Opening a file in Preview did not reveal the replacement editor")
+    assert(!app.shadowRoot!.querySelector("iframe.preview-frame"), "The previous document's preview remained visible")
+    const opened = await probe("state")
+    assert(opened.designMode === "on" && opened.text === "Opened lesson", "The opened file was not ready for native editing")
   }
   finally { appFrame.remove() }
 }

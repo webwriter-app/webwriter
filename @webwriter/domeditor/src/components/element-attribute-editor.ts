@@ -1,3 +1,4 @@
+import {normalizeURLInput} from "../url-input.js"
 import {LitElement, css, html, nothing} from "lit"
 import "./style-combobox"
 import {isMediaType, mediaAttributeOptions} from "../media"
@@ -345,7 +346,7 @@ export class ElementAttributeEditor extends LitElement {
     const input = event.currentTarget as HTMLInputElement | HTMLSelectElement
     const value = option.kind === "boolean"
       ? (input as HTMLInputElement).checked ? "" : null
-      : input.value || null
+      : (option.kind === "url" ? normalizeURLInput(input.value) : input.value) || null
     this.dispatchAttribute(option.name, value)
   }
 
@@ -453,7 +454,8 @@ export class ElementAttributeEditor extends LitElement {
         ${this.renderFieldLabel(option, state)}
         <input
           data-ribbon-input-persistent
-          type=${option.kind === "url" ? "url" : option.kind === "number" ? "number" : "text"}
+          type=${option.kind === "number" ? "number" : "text"}
+          inputmode=${option.kind === "url" ? "url" : nothing}
           aria-label=${`${state.name}: ${option.label}`}
           placeholder=${option.placeholder ?? ""}
           .value=${value}

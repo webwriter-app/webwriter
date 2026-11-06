@@ -36,9 +36,9 @@ export function createAttributionController(doc, options = {}) {
     const candidate = editable() ? atomicTarget(element) : element.closest(selector)
     return authored(candidate) && options.canAttribute?.(candidate) !== false ? candidate : null
   }
-  const contactURL = value => {
+  const contactURL = (value, normalize = value => value) => {
     if(!value || /\s/.test(value)) return null
-    const source = /^[^@:/]+@[^@/]+\.[^@/]+$/.test(value) ? `mailto:${value}` : value
+    const source = /^[^@:/]+@[^@/]+\.[^@/]+$/.test(value) ? `mailto:${value}` : normalize(value)
     try {
       const url = new URL(source)
       return ["http:", "https:", "mailto:"].includes(url.protocol) ? url.href : null
@@ -617,7 +617,7 @@ export function createAttributionController(doc, options = {}) {
       changed[key] = value
     }
     if(changed.contact) {
-      const url = contactURL(changed.contact)
+      const url = contactURL(changed.contact, options.normalizeURLInput)
       inputs.contact.setCustomValidity(url ? "" : "Enter an http(s) website URL or an email address.")
       if(!url) { inputs.contact.reportValidity(); return }
       changed.contact = url

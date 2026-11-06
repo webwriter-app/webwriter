@@ -112,6 +112,48 @@ describe("caption insertion content", () => {
 })
 
 describe("paragraph insertion content", () => {
+  it.each(["keydown", "beforeinput"])("inserts an unstyled paragraph above a styled one on %s at its start", eventType => {
+    document.body.innerHTML = '<section><p id="original" class="authored" style="background-color: gold"><em><!--keep-->Text</em></p></section>'
+    const original = document.querySelector("p")!, text = original.querySelector("em")!.lastChild!
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    $.move(text, 0)
+    const event = eventType === "keydown"
+      ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+      : new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, cancelable: true})
+    original.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(original.previousElementSibling?.outerHTML).toBe("<p></p>")
+    expect(original).toHaveClass("authored")
+    expect(original.id).toBe("original")
+    expect(original.style.backgroundColor).toBe("gold")
+    expect(original.innerHTML).toBe("<em><!--keep-->Text</em>")
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(0)
+    editor.doc.syncFromDOM()
+    const after = editor.toHTML(true)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("inherits paragraph styling when Enter adds a paragraph below", () => {
+    document.body.innerHTML = '<p id="original" class="authored" style="background-color: gold">Text</p>'
+    const original = document.querySelector("p")!
+    $.move(original.firstChild!, 4)
+    original.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    const continuation = original.nextElementSibling as HTMLParagraphElement
+    expect(continuation.textContent).toBe("")
+    expect(continuation).toHaveClass("authored")
+    expect(continuation.style.backgroundColor).toBe("gold")
+    expect(continuation.id).toBe("")
+    expect($.anchor).toBe(continuation)
+  })
+
   it("keeps an authored identity on the original paragraph when Enter creates a continuation", () => {
     document.body.innerHTML = '<p id="original" title="keep">Before</p>'
     const paragraph = document.querySelector("p")!
@@ -4862,6 +4904,36 @@ describe("explicit multi-element selection editing", () => {
     expect((first as HTMLElement).style.color).toBe("")
   })
 
+  it("changes and clears website zoom without changing its figure or other declarations", () => {
+    document.body.innerHTML = '<section><figure style="zoom: 90%"><!--keep--><iframe style="width: 300px; height: 160px; max-width: 100%"></iframe><figcaption>Lesson</figcaption></figure><iframe></iframe></section>'
+    const figure = document.querySelector("figure")!
+    const [website, sibling] = document.querySelectorAll("iframe")
+    $.selectElement(figure)
+
+    const manipulation = editor.features.manipulation
+    const selectionType = {localName: "iframe", namespaceURI: htmlNamespace}
+    const setZoom = (zoom: string | null) => manipulation.actions.setSelectedElementStyles({
+      type: "setSelectedElementStyles", selectionType, styles: {zoom},
+    })
+    const state = () => manipulation.getSelectedElementTypes().find(group => group.element.localName === "iframe")!.style
+    expect(setZoom("75%")).toBe(true)
+    expect(state().inline.zoom?.value).toBe("75%")
+    expect(website.style.width).toBe("400px")
+    expect(parseFloat(website.style.height) * .75).toBeCloseTo(160)
+    expect(website.style.maxWidth).toBe("100%")
+    expect(editor.toHTML()).toContain("zoom: 75%")
+    expect(setZoom("150%")).toBe(true)
+    expect(website.style.width).toBe("200px")
+    expect(parseFloat(website.style.height) * 1.5).toBeCloseTo(160)
+    expect(setZoom(null)).toBe(true)
+    expect(state().inline.zoom).toBeUndefined()
+    expect(website.style.width).toBe("300px")
+    expect(parseFloat(website.style.height)).toBeCloseTo(160)
+    expect(sibling.hasAttribute("style")).toBe(false)
+    expect(figure.getAttribute("style")).toBe("zoom: 90%")
+    expect(figure.firstChild).toBeInstanceOf(Comment)
+  })
+
   it("does not apply a type-specific mutation to another selected element type", () => {
     document.body.innerHTML = '<p id="outside">one</p><img id="only" alt="diagram">'
     const image = document.querySelector("img")!
@@ -5605,6 +5677,38 @@ describe("setStyle()", () => {
     expect(editor.features.manipulation.styleTarget).toBe(paragraph)
   })
 
+  it.each(["img", "picture"])("filters a selected %s inside Details without filtering its summary", tag => {
+    editor.schema.extendWidgets([{tagName: "slide-widget", editingConfig: {content: "flow*"}}])
+    const image = '<img src="table.png" alt="Table">'
+    const content = tag === "img" ? image : `<figure><picture>${image}</picture><figcaption>Caption</figcaption></figure>`
+    document.body.innerHTML = `<slide-widget><details open><summary style="color: teal">Table</summary><!--keep--><section>${content}<p>Other content</p></section></details></slide-widget>`
+    const details = document.querySelector("details")!, summary = details.querySelector("summary")!
+    const target = details.querySelector<HTMLElement>(tag)!
+    if(tag === "img") $.selectElement(target)
+    else editor.features.selection.captureElement(target)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const {actions} = editor.features.manipulation
+    const state = () => actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["filter"]})
+
+    expect(state().target?.localName).toBe(tag)
+    actions.setStyle({type: "setStyle", topLevel: true, styles: {filter: "grayscale(1)"}})
+
+    expect(state().inline.filter?.value).toBe("grayscale(1)")
+    expect(target.style.filter).toBe("grayscale(1)")
+    expect(details).not.toHaveAttribute("style")
+    expect(target.parentElement).not.toHaveAttribute("style")
+    expect(document.querySelector("slide-widget")).not.toHaveAttribute("style")
+    expect(summary.getAttribute("style")).toBe("color: teal")
+    expect(details.querySelector("p")).not.toHaveAttribute("style")
+    const filtered = editor.toHTML(true)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(filtered)
+  })
+
   it("uses the inner disclosure for a nested summary and preserves atomic widget selections", () => {
     document.body.innerHTML = '<details open><summary>Outer</summary><details open><summary>Inner <inline-widget>Widget</inline-widget></summary></details></details>'
     const disclosures = document.querySelectorAll("details"), widget = document.querySelector("inline-widget")!
@@ -5648,6 +5752,26 @@ describe("setStyle()", () => {
     expect(editor.toHTML(true)).toBe(original)
     editor.doc.redo()
     expect(editor.toHTML(true)).toBe(changed)
+  })
+
+  it.each([false, true])("skips blocks touched only at range boundaries (backwards: %s)", backwards => {
+    document.body.innerHTML = '<p><b>Before<!--keep--></b></p><h4 style="color: navy"><em>Selected</em></h4><p><strong><!--keep-->After</strong></p>'
+    const [before, selected, after] = Array.from(document.body.children) as HTMLElement[]
+    const start = before.querySelector("b")!.firstChild!, end = after.querySelector("strong")!.lastChild!
+    if(backwards) $.selectRange(end, 0, start, 6)
+    else $.selectRange(start, 6, end, 0)
+    const {actions} = editor.features.manipulation
+
+    const state = actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["color"]})
+    expect(state.target?.localName).toBe("h4")
+    expect(state.inline.color?.value).toBe("navy")
+    expect(editor.features.manipulation.getSelectedElementTypes().map(group => group.element.localName)).toEqual(["h4", "em"])
+    actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold"}})
+    actions.setBlockStyle({type: "setBlockStyle", styles: {"text-align": "center"}})
+
+    expect(selected).toHaveStyle({backgroundColor: "gold", textAlign: "center"})
+    expect(before).not.toHaveAttribute("style")
+    expect(after).not.toHaveAttribute("style")
   })
 
   it("styles a structural sibling range below a document template without touching its next sibling", () => {
@@ -6492,8 +6616,8 @@ describe("unified content transfer", () => {
       const data = ribbonData("h2")
       document.body.dispatchEvent(transferEvent("dragover", data, {clientX: 200, clientY: 300}))
       expect(document.body).toHaveClass("◆drop-selection-active")
-      expect($.anchor).toBe(document.body)
-      expect($.anchorOffset).toBe(1)
+      expect($.selectedElement).toBe(image)
+      expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).not.toBeNull()
       document.body.dispatchEvent(transferEvent("drop", data, {clientX: 200, clientY: 300}))
       expect(Array.from(document.body.children).map(node => node.localName)).toEqual(["picture", "h2"])
       expect(image.isConnected).toBe(true)
@@ -6623,9 +6747,10 @@ describe("unified content transfer", () => {
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
-  it("moves the package drop caret in protected dragover mode and retains the drop point after selection changes", async () => {
+  it("previews a protected package drop without moving the selection and retains the committed drop point", async () => {
     document.body.innerHTML = '<p>before after</p><p>other</p>'
     const text = document.querySelector("p")!.firstChild!
+    $.move(text, 1)
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: text, offset: 7})
     const data = new DataTransfer()
     data.setData(ribbonInsertionDragType, "user-snippet:saved")
@@ -6633,7 +6758,8 @@ describe("unified content transfer", () => {
     document.body.dispatchEvent(transferEvent("dragover", data))
     expect(document.body).toHaveClass("◆drop-selection-active")
     expect($.anchor).toBe(text)
-    expect($.anchorOffset).toBe(7)
+    expect($.anchorOffset).toBe(1)
+    expect(editor.appendix.querySelector('[part~="drop-range-caret"]')).not.toBeNull()
     protectedData.mockRestore()
     const message = packageDrop("user-snippet:saved", document.body)!
     $.move(document.querySelectorAll("p")[1].firstChild!, 0)
@@ -8021,37 +8147,36 @@ describe("unified content transfer", () => {
     expect(editor.features.manipulation.draggedElement).toBeNull()
   })
 
-  it("moves a collapsed drop selection between text and gaps, then removes its blue state on drop", () => {
+  it("previews text and gap drop positions without changing a backward selection", () => {
     document.body.innerHTML = '<p>first</p><p>last</p>'
     const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 4, text, 1)
     const data = new DataTransfer()
     data.setData("text/plain", "inserted")
     const point = vi.spyOn($, "pointFromCoords").mockReturnValue({node: text, offset: 2})
     vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 0, 18))
     document.body.dispatchEvent(transferEvent("dragover", data))
-    expect(document.getSelection()!.isCollapsed).toBe(true)
-    expect($.isTextSelection).toBe(true)
     expect($.anchor).toBe(text)
-    expect($.anchorOffset).toBe(2)
+    expect($.anchorOffset).toBe(4)
+    expect($.focusOffset).toBe(1)
     expect(document.body).toHaveClass("◆drop-selection-active")
-    const caret = editor.features.selection.selectionCaret!
-    expect(caret.getAttribute("part")).toContain("selection-caret-text")
+    const caret = editor.appendix.querySelector<HTMLElement>('[part~="drop-range-caret"]')!
     expect(caret.style.left).toBe("20px")
     expect(caret.style.top).toBe("30px")
     expect(caret.style.height).toBe("18px")
 
     point.mockReturnValue({node: document.body, offset: 1})
     document.body.dispatchEvent(transferEvent("dragover", data))
-    expect(document.getSelection()!.isCollapsed).toBe(true)
-    expect($.isGapSelection).toBe(true)
-    expect($.anchorOffset).toBe(1)
-    expect(editor.features.selection.selectionCaret!.getAttribute("part")).toContain("gap-caret")
+    expect($.anchorOffset).toBe(4)
+    expect($.focusOffset).toBe(1)
+    expect(caret.getAttribute("part")).toContain("drop-range-gap")
     editor.doc.syncFromDOM()
     expect(editor.doc.body.toString()).not.toContain("◆drop-selection-active")
     expect(editor.toHTML(true)).not.toContain("◆drop-selection-active")
     document.body.dispatchEvent(transferEvent("drop", data))
     expectBodyToBe('<p>first</p><p>inserted</p><p>last</p>')
     expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(caret.isConnected).toBe(false)
   })
 
   it.each([
@@ -8129,18 +8254,18 @@ describe("unified content transfer", () => {
     target.dispatchEvent(transferEvent("dragover", data, {clientX: 45, clientY: 15}))
     expect(hit).toHaveBeenCalledOnce()
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
-    expect($.anchor).toBe(target.firstChild)
-    expect($.anchorOffset).toBe(2)
-    const caret = editor.features.selection.selectionCaret
-    expect(caret?.getAttribute("part")).toContain("selection-caret-text")
+    expect($.selectedElement).toBe(source)
+    const caret = editor.appendix.querySelector('[part~="drop-range-caret"]')
+    expect(caret).not.toBeNull()
     const process = vi.spyOn(editor.features.selection, "processSelection")
     target.dispatchEvent(transferEvent("dragover", data, {clientX: 45, clientY: 15}))
     expect(hit).toHaveBeenCalledTimes(2)
     expect(process).not.toHaveBeenCalled()
-    expect(editor.features.selection.selectionCaret).toBe(caret)
+    expect(editor.appendix.querySelector('[part~="drop-range-caret"]')).toBe(caret)
     hit.mockReturnValue({node: target.firstChild!, offset: 3})
     target.dispatchEvent(transferEvent("dragover", data, {clientX: 55, clientY: 15}))
-    expect($.anchorOffset).toBe(3)
+    expect($.selectedElement).toBe(source)
+    expect(process).not.toHaveBeenCalled()
     hit.mockReturnValue({node: target.firstChild!, offset: 2})
     target.dispatchEvent(transferEvent("drop", data, {clientX: 45, clientY: 15}))
     expect(source.isConnected).toBe(false)
@@ -8229,11 +8354,11 @@ describe("unified content transfer", () => {
     data.setData("text/plain", "text")
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.querySelector("p")!.firstChild!, offset: 2})
     document.body.dispatchEvent(transferEvent("dragover", data))
-    const caret = editor.features.selection.selectionCaret!
-    expect(caret.getAttribute("part")).toContain("selection-caret-text")
+    const caret = editor.appendix.querySelector('[part~="drop-range-caret"]')!
+    expect(caret).not.toBeNull()
     editor.features.manipulation.disable()
     expect(document.body).not.toHaveClass("◆drop-selection-active")
-    expect(caret.getAttribute("part")).toContain("selection-caret-hidden")
+    expect(caret.isConnected).toBe(false)
     editor.features.manipulation.enable()
   })
 })

@@ -239,6 +239,20 @@ describe("CSS-only Slides layout", () => {
     expect(slidesStyles).not.toContain("width: min(100vw")
   })
 
+  it("clears the old bottom offset when opening a saved slide deck", () => {
+    editor.destroy()
+    const legacy = document.createElement("style")
+    legacy.textContent = "body.ww-slides > nav.ww-slides-navigation { bottom: 1rem; }"
+    document.head.append(legacy)
+    document.body.className = "ww-slides"
+    document.body.innerHTML = '<div class="ww-slides-viewport"><section class="ww-slide"></section></div><nav class="ww-slides-navigation"></nav>'
+    const navigation = document.querySelector("nav")!
+    expect(getComputedStyle(navigation).bottom).toBe("16px")
+    editor = new DOMEditor()
+    expect(getComputedStyle(navigation).top).toBe("8px")
+    expect(getComputedStyle(navigation).bottom).toBe("auto")
+  })
+
   it.each(["p", "h2", "details", "table", "ul", "svg", "picture", "widget", "table-command", "media-command", "details-command", "list-command"])("inserts %s directly on the current slide from nested text", async tag => {
     document.body.innerHTML = '<article><p>Keep <strong>nested</strong> text</p></article>'
     convert("slides")
@@ -522,6 +536,15 @@ describe("CSS-only Slides layout", () => {
     expect(editor.toHTML(true)).toBe(before)
     const saved = new DOMParser().parseFromString(await editor.serializeHTML(true), "text/html")
     expect(Array.from(saved.querySelectorAll("nav a"), link => link.getAttribute("draggable"))).toEqual(controls.filter(control => control.localName === "a").map(() => "false"))
+  })
+
+  it("presents the final caret once after controlled slide focus", () => {
+    const [, two] = seed()
+    const processSelection = vi.spyOn(editor.features.selection, "processSelection")
+    expect(editor.features.slides.selectStart(two)).toBe(true)
+    expect(processSelection).toHaveBeenCalledTimes(1)
+    expect($.anchor).toBe(two.firstElementChild)
+    expect(editor.features.slides.isSelectingForNavigation).toBe(false)
   })
 
   it("shows Slides > Slide number > content without carousel sectioning and follows live order", () => {

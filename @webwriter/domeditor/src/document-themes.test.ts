@@ -129,7 +129,7 @@ describe("document themes", () => {
   })
   it("shares table picture sizing with editing and standalone documents", () => {
     for(const theme of documentThemes) {
-      expect(theme.source).toContain(":where(td, th) picture {\n    display: block;\n    width: 100%;\n    height: auto;\n  }")
+      expect(theme.source).toContain(":where(td, th) picture {\n    display: inline-block;\n    width: 100%;\n    height: auto;\n  }")
       expect(editingDocumentThemeSource(theme)).toBe(theme.source)
     }
   })

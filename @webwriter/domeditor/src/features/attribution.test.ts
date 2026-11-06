@@ -645,14 +645,14 @@ describe("element attribution editing", () => {
     expect(element.hasAttribute(attributionAttributes.name)).toBe(false)
   })
 
-  it("shows a selection control without hover, preserves a website URL, and refuses locked saves", () => {
+  it("shows a selection control without hover, adds HTTPS to a website URL, and refuses locked saves", () => {
     const element = start()
     bounds(element)
     $.selectElement(element)
     document.dispatchEvent(new Event("selectionchange"))
     expect(button().parentElement).toBe(editor!.features.transformation.overlay)
     button().click()
-    input("contact").value = "https://example.com/author"
+    input("contact").value = "example.com/author"
     submit()
     expect(element.getAttribute(attributionAttributes.contact)).toBe("https://example.com/author")
     hover(element); button().click()
@@ -665,7 +665,7 @@ describe("element attribution editing", () => {
     finally { editor!.unlockEditing("attribution-test") }
   })
 
-  it.each(["javascript:alert(1)", "data:text/html,hi", "ftp://example.com", "invalid", "https://example.com/a b"])("rejects unsafe or invalid contacts: %s", value => {
+  it.each(["javascript:alert(1)", "data:text/html,hi", "ftp://example.com", "https://invalid:99999", "https://example.com/a b"])("rejects unsafe or invalid contacts: %s", value => {
     const element = start()
     bounds(element); select(element); button().click()
     input("contact").value = value

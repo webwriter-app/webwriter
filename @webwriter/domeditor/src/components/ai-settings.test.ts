@@ -44,9 +44,13 @@ describe("AI provider settings", () => {
     expect(nameInput(editors[1]).value).toBe("Unsaved second name")
     nameInput(editors[0]).value = "Saved first name"
     nameInput(editors[0]).dispatchEvent(new InputEvent("input", {bubbles: true}))
+    const endpoint = editors[0].shadowRoot!.querySelector<HTMLInputElement>('input[inputmode="url"]')!
+    endpoint.value = "provider.example/v1"
+    endpoint.dispatchEvent(new InputEvent("input", {bubbles: true}))
     await (editors[0] as any).save({preventDefault() {}})
     await settings.updateComplete
     expect(store.provider(first.id)!.name).toBe("Saved first name")
+    expect(store.provider(first.id)!.baseUrl).toBe("https://provider.example/v1")
     expect(store.activeProviderId).toBe(second.id)
     expect(nameInput(editors[1]).value).toBe("Unsaved second name")
     vi.mocked(listAIModels).mockResolvedValue(["refreshed-model"])

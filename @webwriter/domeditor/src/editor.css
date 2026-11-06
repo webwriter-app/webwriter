@@ -171,12 +171,12 @@ body > :last-child:not(:where(.◆gap-after-selected)) {
   user-select: none;
 }
 
-:is(picture:where(:not(html.◆canvas-active *)), audio, video) {
+:is(picture:where(:not(html.◆canvas-active *, :is(td, th) *)), audio, video) {
   display: block;
   width: 100%;
 }
 
-:is(picture:where(:not(html.◆canvas-active *)), video) {
+:is(picture:where(:not(html.◆canvas-active *, :is(td, th) *)), video) {
   height: auto;
 }
 
@@ -1772,23 +1772,36 @@ body.◆touch-caret-visible::part(selection-caret-text) {
   animation: var(--ww-ui-animation, blink 1s step-end infinite);
 }
 
+body::part(drop-range-caret) {
+  position-anchor: auto;
+  width: 2px;
+  background: var(--sl-color-primary-400, #0078d7);
+}
+
+body::part(drop-range-gap) {
+  position-anchor: auto;
+  color: var(--sl-color-primary-400, #0078d7);
+}
+
+body::part(drop-range-gap)::after {
+  animation: none;
+}
+
 body.◆drop-selection-active::part(selection-caret-text),
 body.◆drop-selection-active::part(selection-caret-gap),
-body.◆insertion-gap-preview::part(selection-caret-gap),
-body.◆insertion-gap-preview::part(selection-caret-text),
-body.◆insertion-gap-preview::part(empty-document-caret),
+body.◆drop-selection-active::part(selection-caret-node),
+body.◆drop-selection-active::part(selection-caret-capture),
 body.◆drop-selection-active::part(empty-document-caret) {
-  color: var(--sl-color-primary-400, #0078d7);
-  animation: none;
+  visibility: hidden;
 }
 
 body.◆insertion-gap-preview::part(selection-caret-gap),
 body.◆insertion-gap-preview::part(selection-caret-text),
 body.◆insertion-gap-preview::part(empty-document-caret) {
   color: #c8d2df;
+  animation: none;
 }
 
-body.◆drop-selection-active::part(selection-caret-gap)::after,
 body.◆insertion-gap-preview::part(selection-caret-gap)::after {
   animation: none;
 }

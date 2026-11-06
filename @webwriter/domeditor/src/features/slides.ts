@@ -67,6 +67,8 @@ export class SlidesFeature extends EditorFeature {
   private activeLink: HTMLAnchorElement | null = null
   private frame: number | null = null
   private navigationFrame: number | null = null
+  private selectingForNavigation = false
+  get isSelectingForNavigation() { return this.selectingForNavigation }
   private signature = ""
   private selected: HTMLElement | null = null
   private hoverDirty = true
@@ -130,15 +132,19 @@ export class SlidesFeature extends EditorFeature {
     if(!this.active || !slide.isConnected || !isSlide(slide) || this.editor.isEditingLocked) return false
     this.ensureContent()
     const first = this.content(slide)[0]
-    slide.focus({preventScroll: true})
-    this.cancelNavigation()
-    if(!first) $.move(slide, 0)
-    else if(first instanceof Text || first instanceof Element && this.editor.features.manipulation.isTextBlock(first)
-      && !first.closest('[contenteditable="false" i], [inert]')) $.move(first)
-    else if(first instanceof Element) $.selectGap(first, "before")
-    // The fragment owns scrolling. Revealing this caret during its smooth
-    // animation can replace the destination with an intermediate snap point.
-    this.editor.features.selection.selectDropRange($.range, {scrollIntoView: false})
+    this.selectingForNavigation = true
+    try {
+      slide.focus({preventScroll: true})
+      this.cancelNavigation()
+      if(!first) $.move(slide, 0)
+      else if(first instanceof Text || first instanceof Element && this.editor.features.manipulation.isTextBlock(first)
+        && !first.closest('[contenteditable="false" i], [inert]')) $.move(first)
+      else if(first instanceof Element) $.selectGap(first, "before")
+      // The fragment owns scrolling. Revealing this caret during its smooth
+      // animation can replace the destination with an intermediate snap point.
+      this.editor.features.selection.selectDropRange($.range, {scrollIntoView: false})
+    }
+    finally { this.selectingForNavigation = false }
     this.editor.postSelectionPath()
     return true
   }

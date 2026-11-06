@@ -124,7 +124,7 @@ export const timedMediaResourceAttributeOptions: Record<TimedMediaResourceType, 
     ]},
     {name: "srclang", label: "Language", placeholder: "en"},
     {name: "label", label: "Label", placeholder: "English"},
-    {name: "src", label: "Track URL", kind: "url", placeholder: "captions.vtt"},
+    {name: "src", label: "Track URL", kind: "url", placeholder: "./captions.vtt"},
     {name: "default", label: "Default", kind: "boolean"},
   ],
 }

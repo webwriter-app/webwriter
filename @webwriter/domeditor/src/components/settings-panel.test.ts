@@ -791,9 +791,10 @@ describe("identity and cloud settings", () => {
     click("Custom provider")
     await panel.updateComplete
     const url = root.querySelector<HTMLInputElement>('.new-provider [name="url"]')!
-    url.value = "https://cloud.example"
+    url.value = "cloud.example"
     await submitProvider()
     expect(panel.settings.cloudServices.map(service => service.type)).toEqual(["edumix", "url"])
+    expect(panel.settings.cloudServices[1].url).toBe("https://cloud.example")
     const radios = root.querySelectorAll<HTMLInputElement>('input[name="active-cloud"]')
     radios[1].click()
     await panel.updateComplete

@@ -3,7 +3,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
-import {sharedDOMBody} from "../domdoc"
+import {SharedDOMDoc, sharedDOMBody} from "../domdoc"
 import {executeFailureEvent, type VersionHistoryState} from "../editor-bridge"
 import {defaultGroupingRules} from "../widget-grouping.js"
 import {readWidgetGrouping, writeWidgetGrouping} from "../widget-grouping-dom"
@@ -199,6 +199,85 @@ describe("collaborative version history", () => {
       expect(publish).not.toHaveBeenCalled()
     }
     finally { remote.destroy() }
+  })
+
+  it.each([false, true])("attributes remote deletions after the peer leaves (preview: %s)", async preview => {
+    const history = editor.features.history
+    editor.doc.setUser({name: "Ada Lovelace"})
+    const baseline = history.state().checkpoints[0].id
+    const peerDocument = document.implementation.createHTMLDocument()
+    const peerYDoc = new Y.Doc()
+    Y.applyUpdate(peerYDoc, Y.encodeStateAsUpdate(editor.doc.doc))
+    const peer = new SharedDOMDoc(undefined, undefined, [], [], {
+      root: peerDocument.body, ydoc: peerYDoc, user: {name: "Grace Hopper", color: "#2563eb"},
+    })
+    try {
+      const peerAuthor = {clientId: peer.awareness.clientID, name: "Grace Hopper", initials: "GH", color: "#2563eb"}
+      const localVector = Y.encodeStateVector(editor.doc.doc)
+      ;(peerDocument.querySelector("p")!.firstChild as Text).deleteData(4, 1)
+      peer.flushDOMChanges()
+      const update = Y.encodeStateAsUpdate(peerYDoc, localVector)
+      const deletedVector = Y.encodeStateVector(peerYDoc)
+      peer.undo()
+      const undoUpdate = Y.encodeStateAsUpdate(peerYDoc, deletedVector)
+      peer.destroy()
+      if(preview) history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: baseline})
+      Y.applyUpdate(editor.doc.doc, update, "remote-client")
+      if(preview) {
+        expect(document.body.textContent).toBe("Hello")
+        history.clearPreview()
+      }
+      expect(document.body.textContent).toBe("Hell")
+      const remote = history.actions.getVersionHistory({type: "getVersionHistory"})
+      expect(remote.checkpoints[0]).toMatchObject({label: preview ? "Collaborative changes" : "Edited by Grace Hopper", user: peerAuthor})
+      expect(remote.versions[0].user).toEqual(peerAuthor)
+
+      Y.applyUpdate(editor.doc.doc, undoUpdate, "remote-client")
+      expect(document.body.textContent).toBe("Hello")
+      const undone = history.actions.getVersionHistory({type: "getVersionHistory"})
+      expect(undone.checkpoints[0].id).not.toBe(remote.checkpoints[0].id)
+      expect(undone.checkpoints[0].user).toEqual(peerAuthor)
+
+      document.querySelector("p")!.textContent = "Hello again"
+      await mutationsDelivered()
+      const local = history.actions.getVersionHistory({type: "getVersionHistory"})
+      expect(local.checkpoints[0].user).toMatchObject({clientId: local.currentUserId, name: "Ada Lovelace"})
+      expect(local.checkpoints[1].user).toEqual(peerAuthor)
+      expect(local.versions[0].user).toEqual(local.checkpoints[0].user)
+    }
+    finally { if(!peerYDoc.isDestroyed) peer.destroy() }
+  })
+
+  it.each([false, true])("groups authors only across edits still awaiting a checkpoint (shared checkpoint: %s)", checkpointed => {
+    const history = editor.features.history
+    editor.doc.setUser({name: "Ada Lovelace"})
+    const peerDocument = document.implementation.createHTMLDocument()
+    const peerYDoc = new Y.Doc()
+    Y.applyUpdate(peerYDoc, Y.encodeStateAsUpdate(editor.doc.doc))
+    const peer = new SharedDOMDoc(undefined, undefined, [], [], {
+      root: peerDocument.body, ydoc: peerYDoc, user: {name: "Grace Hopper"},
+    })
+    try {
+      document.body.append(document.createElement("hr"))
+      editor.doc.flushDOMChanges()
+      if(checkpointed) {
+        peerYDoc.getArray("version-history").push([{
+          id: "shared-checkpoint", timestamp: Date.now(), label: "Edited by Ada Lovelace",
+          user: {clientId: editor.doc.awareness.clientID, name: "Ada Lovelace", initials: "AL", color: "#e11d48"},
+          changes: {added: 1, removed: 0, modified: 0}, source: editor.toHTML(false, false),
+        }])
+        Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(peerYDoc, Y.encodeStateVector(editor.doc.doc)))
+      }
+      ;(peerDocument.querySelector("p")!.firstChild as Text).appendData(" from Grace")
+      peer.flushDOMChanges()
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(peerYDoc, Y.encodeStateVector(editor.doc.doc)))
+      const state = history.actions.getVersionHistory({type: "getVersionHistory"})
+      expect(state.checkpoints[0].user.name.split(", ").sort())
+        .toEqual(checkpointed ? ["Grace Hopper"] : ["Ada Lovelace", "Grace Hopper"])
+      expect(state.versions[0].user).toEqual(state.checkpoints[0].user)
+      expect(state.currentUserId).not.toBe(state.checkpoints[0].user.clientId)
+    }
+    finally { peer.destroy() }
   })
 
   it("groups changes under distinct saves and keeps later edits in the unsaved version", async () => {
@@ -792,6 +871,7 @@ describe("collaborative version history", () => {
     const resumed = history.actions.clearVersionPreview({type: "clearVersionPreview"})
     expect(resumed.appliedQueuedChanges).toBe(true)
     expect(resumed.preview).toBeNull()
+    expect(resumed.checkpoints[0]).toMatchObject({label: "Collaborative changes", user: {name: "Unknown author"}})
     expect(editor.toHTML(true)).toBe("<p>Remote</p>")
     expect(document.body.inert).toBe(false)
     remote.destroy()
