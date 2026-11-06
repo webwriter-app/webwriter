@@ -26,11 +26,19 @@ type StoredComment = VersionHistoryComment
 
 type StoredVersion = StoredCheckpoint & {checkpointIds: string[]}
 
+type PreparedCheckpoint = {
+  source: string
+  changes?: VersionHistoryChanges
+  restoredFrom?: string
+  stateDiff?: {beforeSource: string, afterSource: string, changes: VersionHistoryChanges}
+}
+
 const checkpointDelay = 700
 const deferredCheckpointSize = 100000
 const unsavedVersionId = "unsaved"
 
 const emptyChanges = (): VersionHistoryChanges => ({added: 0, removed: 0, modified: 0})
+const unknownAuthor: VersionHistoryUser = {clientId: -1, name: "Unknown author", initials: "?", color: safeCssColor(undefined)}
 const isEditorOnlyNode = (node: Node) => Boolean(
   (node instanceof Element ? node : node.parentElement)?.closest(".◆editor-only, [data-webwriter-editor-only]"),
 )
@@ -44,6 +52,7 @@ export class HistoryFeature extends EditorFeature {
   #checkpointTimer: ReturnType<typeof setTimeout> | undefined
   #checkpointGeneration = 0
   #checkpointWorking = false
+  readonly #checkpointAuthors = new Map<number, VersionHistoryUser>()
   #previewCheckpointId: string | null = null
   #previewChanges: VersionHistoryState["preview"] = null
   #previewCurrentSource: string | null = null
@@ -73,7 +82,7 @@ export class HistoryFeature extends EditorFeature {
     prepareVersionSave: async ({offline = false}: {type: "prepareVersionSave", offline?: boolean}) => {
       this.editor.doc.syncFromDOM()
       this.#flushCheckpoint()
-      const checkpointId = this.#recordCheckpoint().id
+      const checkpointId = this.#recordPendingCheckpoint().id
       // serializeHTML clones synchronously before bundling offline assets.
       // Capture both snapshots in this action, before another edit can arrive.
       return {checkpointId, source: await this.editor.serializeHTML(offline)}
@@ -140,8 +149,13 @@ export class HistoryFeature extends EditorFeature {
 
   readonly #handleHistoryChange = () => {
     if(this.#publishingSource !== null) return
-    if(this.#checkpointWorking) this.#queueCheckpoint()
     const source = this.#previewCheckpointId ? null : this.#source()
+    if(source !== null && this.#checkpoints.toArray().at(-1)?.source === source) {
+      // A collaborator may publish the same snapshot before our debounce ends.
+      this.#cancelCheckpoint()
+      this.#checkpointAuthors.clear()
+    }
+    else if(this.#checkpointWorking) this.#queueCheckpoint()
     this.postState(this.#state(source ?? undefined))
   }
 
@@ -153,12 +167,14 @@ export class HistoryFeature extends EditorFeature {
   }
 
   readonly #handleTransaction = (transaction: Y.Transaction) => {
-    if(!this.#isDocumentTransaction(transaction)) return
+    if(!this.editor.doc.isDocumentTransaction(transaction) || this.#restoring) return
+    const authors = this.editor.doc.documentChangeAuthors(transaction)
+    if(!authors) return
+    for(const [clientId, value] of authors) this.#checkpointAuthors.set(clientId, this.#user(clientId, value))
+    if(!authors.length) this.#checkpointAuthors.set(unknownAuthor.clientId, unknownAuthor)
     if(this.#previewCheckpointId) return
-    if(this.#restoring) return
     // Document transactions can arrive for every small DOM mutation. Keep the
     // edit path cheap and serialize only at the debounce or a state boundary.
-    // Capture remote and local edits through the same history boundary.
     this.#queueCheckpoint()
   }
 
@@ -196,6 +212,7 @@ export class HistoryFeature extends EditorFeature {
     this.#versions.unobserve(this.#handleHistoryChange)
     this.editor.doc.doc.off("afterTransaction", this.#handleTransaction)
     this.clearPreview()
+    this.#checkpointAuthors.clear()
     this.#currentCheckpointId = null
     super.disable()
   }
@@ -247,7 +264,7 @@ export class HistoryFeature extends EditorFeature {
         id: unsavedVersionId,
         timestamp: unsaved.timestamp,
         label: "Unsaved changes",
-        user: this.#localUser(),
+        user: unsaved.user,
         changes,
         checkpointIds: [
           ...pending.filter(checkpoint => checkpoint.id === unsaved.id),
@@ -289,7 +306,7 @@ export class HistoryFeature extends EditorFeature {
       this.#restoring = false
       this.editor.unlockEditing(this)
     }
-    if(appliedQueuedChanges) this.#recordCheckpoint("Collaborative changes")
+    if(appliedQueuedChanges) this.#recordPendingCheckpoint("Collaborative changes")
     return appliedQueuedChanges
   }
 
@@ -308,7 +325,7 @@ export class HistoryFeature extends EditorFeature {
     this.#checkpointTimer = setTimeout(() => {
       this.#checkpointTimer = undefined
       const source = this.#source()
-      if(source.length < deferredCheckpointSize) this.#recordCheckpoint(undefined, {source})
+      if(source.length < deferredCheckpointSize) this.#recordPendingCheckpoint(undefined, {source})
       else {
         const generation = this.#checkpointGeneration
         this.#checkpointWorking = true
@@ -329,7 +346,7 @@ export class HistoryFeature extends EditorFeature {
   #flushCheckpoint() {
     if(this.#checkpointTimer === undefined && !this.#checkpointWorking) return
     this.#cancelCheckpoint()
-    this.#recordCheckpoint()
+    this.#recordPendingCheckpoint()
   }
 
   async #recordDeferredCheckpoint(source: string, generation: number) {
@@ -346,11 +363,16 @@ export class HistoryFeature extends EditorFeature {
       this.#queueCheckpoint()
       return
     }
-    this.#recordCheckpoint(undefined, {source, changes, stateDiff: {beforeSource: diffSource, afterSource: source, changes: stateChanges}})
+    this.#recordPendingCheckpoint(undefined, {source, changes, stateDiff: {beforeSource: diffSource, afterSource: source, changes: stateChanges}})
   }
 
-  #recordCheckpoint(label?: string, prepared?: {source: string, changes?: VersionHistoryChanges, restoredFrom?: string,
-    stateDiff?: {beforeSource: string, afterSource: string, changes: VersionHistoryChanges}}) {
+  #recordPendingCheckpoint(label?: string, prepared?: PreparedCheckpoint) {
+    const user = this.#pendingAuthor()
+    this.#checkpointAuthors.clear()
+    return this.#recordCheckpoint(label, prepared, user)
+  }
+
+  #recordCheckpoint(label?: string, prepared?: PreparedCheckpoint, user = this.#localUser()) {
     const source = prepared?.source ?? this.#source()
     const matchingCheckpoint = this.#checkpoints.toArray().at(-1)
     if(matchingCheckpoint?.source === source) {
@@ -360,7 +382,6 @@ export class HistoryFeature extends EditorFeature {
       return matchingCheckpoint
     }
     const previous = this.#checkpoints.toArray().at(-1)
-    const user = this.#localUser()
     const changes = prepared?.changes ?? (previous ? this.#diff(previous.source, source) : emptyChanges())
     const checkpoint: StoredCheckpoint = {
       id: this.#id("checkpoint"),
@@ -570,6 +591,7 @@ export class HistoryFeature extends EditorFeature {
     }
     return latest?.source === source ? latest : {
       id: unsavedVersionId, source, label: "Unsaved changes", timestamp: latest?.timestamp ?? Date.now(),
+      user: this.#pendingAuthor(),
     }
   }
 
@@ -648,26 +670,19 @@ export class HistoryFeature extends EditorFeature {
     return checkpointId
   }
 
-  #isDocumentTransaction(transaction: Y.Transaction) {
-    const roots = new Set<unknown>([
-      this.editor.doc.body,
-      this.editor.doc.head,
-      this.editor.doc.headElement,
-      this.editor.doc.documentAttributes,
-    ])
-    for(const changedType of transaction.changedParentTypes.keys()) {
-      let current: any = changedType
-      while(current) {
-        if(roots.has(current)) return true
-        current = current.parent
-      }
-    }
-    return false
+  #pendingAuthor() {
+    const authors = Array.from(this.#checkpointAuthors.values())
+    if(authors.length < 2) return authors[0] ?? unknownAuthor
+    const name = authors.sort((a, b) => a.clientId - b.clientId).map(user => user.name).join(", ")
+    return {clientId: -2, name, initials: "…", color: unknownAuthor.color}
   }
 
   #localUser(): VersionHistoryUser {
-    const clientId = this.editor.doc.awareness.clientID
-    const value = this.editor.doc.awareness.getLocalState()?.user
+    const {awareness} = this.editor.doc
+    return this.#user(awareness.clientID, awareness.getLocalState()?.user)
+  }
+
+  #user(clientId: number, value: unknown): VersionHistoryUser {
     const user = value && typeof value === "object" ? value as {name?: unknown, color?: unknown} : {}
     const name = typeof user.name === "string" && user.name.trim()
       ? user.name.trim()

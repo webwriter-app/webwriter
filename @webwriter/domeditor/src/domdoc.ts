@@ -1,5 +1,7 @@
 import * as Y from "yjs"
+import {peekVarUint} from "lib0/decoding"
 import {Awareness} from "y-protocols/awareness"
+import {messageYjsUpdate} from "y-protocols/sync"
 import {messageSync, WebsocketProvider} from "y-websocket"
 import {$, cloneWithoutEditorMarkers, createInertScript, isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
 import {documentLayoutMode} from "./document-layout"
@@ -23,6 +25,7 @@ const LANGUAGE_INITIALIZED_KEY = "language-initialized"
 const ROOT_INITIALIZED_KEY = "root-attributes-initialized"
 const SHARED_DOCUMENT_KEY = "document"
 const historySelection = Symbol("history-selection")
+const presenceEditWindow = 2000
 
 type HistorySelection = {before: RelativeSelection | null, after: RelativeSelection | null}
 
@@ -176,6 +179,8 @@ export class SharedDOMDoc {
   readonly #headRoot: HTMLHeadElement | null
   #headMetadata: Y.Map<unknown>
   readonly #metadata: Y.Map<unknown>
+  readonly #documentAuthors: Y.Map<unknown> | null
+  readonly #presenceEdits = new Map<number, {lastChange: number | undefined, receivedAt?: number}>()
   #undoManager: Y.UndoManager
   readonly #capturedChanges = new Map<string, Y.UndoManager>()
   readonly #observer: MutationObserver
@@ -203,6 +208,7 @@ export class SharedDOMDoc {
   readonly #renderedDocObservers = new Set<(doc: Y.Doc) => void>()
   #observedTemplates = new Set<DocumentFragment>()
   #awaitingInitialSync = false
+  #receivingLiveUpdate = false
   #undoGroupDepth = 0
   #undoGroupTimeout = 0
   #undoGroup: object | undefined
@@ -235,6 +241,7 @@ export class SharedDOMDoc {
     this.#document = this.root.ownerDocument
     this.doc = options.ydoc ?? new Y.Doc()
     this.#metadata = this.doc.getMap("domeditor")
+    this.#documentAuthors = previewSource ? null : this.doc.getMap("document-change-authors")
     const mirror = this.#metadata.get(SHARED_DOCUMENT_KEY)
     this.#body = sharedDOMBody(this.doc)
     this.#headRoot = this.root === this.#document.body ? this.#document.head : null
@@ -313,8 +320,14 @@ export class SharedDOMDoc {
       const handleSyncMessage = this.provider.messageHandlers[messageSync]
       this.provider.messageHandlers[messageSync] = (...args) => {
         this.#commitPendingDOMChanges()
-        handleSyncMessage(...args)
+        this.#receivingLiveUpdate = args[3] && peekVarUint(args[1]) === messageYjsUpdate
+        try { handleSyncMessage(...args) }
+        finally { this.#receivingLiveUpdate = false }
       }
+      this.awareness.on("change", this.#trackPresenceEdits)
+      this.provider.on("status", ({status}: {status: string}) => {
+        if(status === "disconnected") this.#presenceEdits.clear()
+      })
       this.provider.on("sync", (synced: boolean) => {
         if(!synced || !this.#awaitingInitialSync) return
         this.#awaitingInitialSync = false
@@ -588,12 +601,99 @@ export class SharedDOMDoc {
 
   readonly #publishLastChange = (transaction: Y.Transaction) => {
     if(!transaction.local || transaction.origin === this.#initialOrigin || transaction.origin === this.#remoteReactionOrigin) return
-    const changedTypes = transaction.changedParentTypes
-    if(![this.#body, this.#documentHead, this.#documentAttributes, this.#headMetadata]
-      .some(type => type && changedTypes.has(type as Y.AbstractType<any>))) return
+    if(!this.isDocumentTransaction(transaction)) return
     const user = this.awareness.getLocalState()?.user
     if(!user || typeof user !== "object") return
     this.awareness.setLocalStateField("user", {...user, lastChange: Date.now()})
+  }
+
+  /** Authorship travels with the document update, including delete-only edits
+   * and updates delivered after the author has left awareness. */
+  #stampDocumentAuthor() {
+    const {name, color} = this.awareness.getLocalState()?.user ?? {}
+    this.#documentAuthors?.set(String(this.awareness.clientID), {name, color})
+  }
+
+  isDocumentTransaction(transaction: Y.Transaction) {
+    return this.#undoScopes().some(scope => transaction.changedParentTypes.has(scope as Y.AbstractType<any>))
+  }
+
+  readonly #trackPresenceEdits = (
+    {added, updated, removed}: {added: number[], updated: number[], removed: number[]},
+    origin: unknown,
+  ) => {
+    if(origin !== this.provider) return
+    for(const clientId of removed) this.#presenceEdits.delete(clientId)
+    for(const clientId of [...added, ...updated]) {
+      if(clientId === this.awareness.clientID) continue
+      const lastChange: number | undefined = this.awareness.getStates().get(clientId)?.user?.lastChange
+      const previous = this.#presenceEdits.get(clientId)
+      if(previous && lastChange === previous.lastChange) continue
+      // Initial presence and cursor movements carry no new edit signal.
+      this.#presenceEdits.set(clientId, {lastChange,
+        ...(previous && Number.isFinite(lastChange) ? {receivedAt: performance.now()} : {}),
+      })
+    }
+  }
+
+  documentChangeAuthors(transaction: Y.Transaction): [number, unknown][] | null {
+    if(transaction.origin === this.#initialOrigin || transaction.origin === this.#remoteReactionOrigin) return null
+    if(transaction.local) return [[this.awareness.clientID, this.awareness.getLocalState()?.user]]
+    const authors = this.#documentAuthors
+    if(!authors) return []
+    const result: [number, unknown][] = []
+    for(const key of transaction.changed.get(authors as Y.AbstractType<any>) ?? []) {
+      const id = Number(key)
+      if(key !== null && Number.isInteger(id) && id >= 0 && authors.has(key)) result.push([id, authors.get(key)])
+    }
+    if(result.length || !this.#receivingLiveUpdate || transaction.origin !== this.provider) {
+      for(const [clientId] of result) this.#consumePresenceEdit(clientId)
+      return result
+    }
+    return this.#legacyChangeAuthors(transaction)
+  }
+
+  #consumePresenceEdit(clientId: number) {
+    const edit = this.#presenceEdits.get(clientId)
+    if(edit) delete edit.receivedAt
+  }
+
+  #legacyChangeAuthors(transaction: Y.Transaction): [number, unknown][] {
+    const writers = [...transaction.afterState]
+      .filter(([clientId, clock]) => clock > (transaction.beforeState.get(clientId) ?? 0))
+      .map(([clientId]) => clientId)
+    if(writers.length > 1) {
+      writers.forEach(clientId => this.#consumePresenceEdit(clientId))
+      return []
+    }
+    // Yjs deletions may advance no client clock. Older peers announce the edit
+    // in awareness just before sending their update. Use a single fresh signal
+    // once, and leave attribution unknown when several peers could have sent it.
+    const recent = writers.length ? writers : [...this.#presenceEdits]
+      .filter(([, edit]) => edit.receivedAt !== undefined && performance.now() - edit.receivedAt <= presenceEditWindow)
+      .map(([clientId]) => clientId)
+    recent.forEach(clientId => this.#consumePresenceEdit(clientId))
+    if(recent.length !== 1 || recent[0] === this.awareness.clientID) return []
+    const user = this.awareness.getStates().get(recent[0])?.user
+    return typeof user?.name === "string" && user.name.trim() ? [[recent[0], user]] : []
+  }
+
+  #transactDOMChange(change: () => void, origin: unknown) {
+    this.doc.transact(transaction => {
+      change()
+      if(!this.#documentAuthors || origin === this.#initialOrigin || origin === this.#remoteReactionOrigin) return
+      const scopes = this.#undoScopes()
+      for(const type of transaction.changed.keys()) {
+        let current: Y.AbstractType<any> | null = type
+        while(current) {
+          if(scopes.some(scope => current === scope)) {
+            this.#stampDocumentAuthor()
+            return
+          }
+          current = current.parent
+        }
+      }
+    }, origin)
   }
 
   setSelection(anchorNode: YXmlNode, anchorOffset = 0, focusNode = anchorNode, focusOffset = anchorOffset) {
@@ -764,7 +864,7 @@ export class SharedDOMDoc {
       // Generated attributes and ownership metadata join the content batch.
       if(records) records = [...records, ...this.#observer.takeRecords()]
     }
-    this.doc.transact(() => {
+    this.#transactDOMChange(() => {
       if(records) this.#reconcileMutations(records)
       else this.#reconcileDocument()
       this.#reconcileMinimumRepairs()
@@ -797,7 +897,7 @@ export class SharedDOMDoc {
       this.syncFromDOM()
       // Removing a temporary marker may not itself produce a relevant mutation.
       const shared = this.#xmlNodes.get(element)
-      if(shared instanceof Y.XmlElement) this.doc.transact(() => this.#copyDOMAttributesToY(element, shared), this.#domOrigin)
+      if(shared instanceof Y.XmlElement) this.#transactDOMChange(() => this.#copyDOMAttributesToY(element, shared), this.#domOrigin)
     }
     finally { this.#authoredDetailsChanges.delete(element) }
   }
@@ -1198,7 +1298,7 @@ export class SharedDOMDoc {
       captureTimeout: 0,
     })
     try {
-      Y.applyUpdate(this.doc, update, origin)
+      this.#transactDOMChange(() => Y.applyUpdate(this.doc, update, origin), origin)
       undoManager.stopCapturing()
       this.#capturedChanges.set(changeId, undoManager)
     }
@@ -1330,6 +1430,7 @@ export class SharedDOMDoc {
     if(this.#ownsWidgetData) this.widgetData.destroy()
     this.doc.off("beforeTransaction", this.#flushPendingDOMChanges)
     this.doc.off("afterTransaction", this.#publishLastChange)
+    this.awareness.off("change", this.#trackPresenceEdits)
     this.#metadata.unobserve(this.#handleMirrorChange)
     this.#body.unobserveDeep(this.#handleYChanges)
     this.#documentHead?.unobserveDeep(this.#handleYChanges)
@@ -1367,6 +1468,9 @@ export class SharedDOMDoc {
   readonly #flushPendingDOMChanges = (transaction: Y.Transaction) => {
     if(transaction.origin === this.#domOrigin || transaction.origin === this.#remoteReactionOrigin) return
     this.#commitPendingDOMChanges()
+    const manager = transaction.origin
+    if(manager instanceof Y.UndoManager && manager.scope.includes(this.#body) &&
+      (manager.undoing && manager.canUndo() || manager.redoing && manager.canRedo())) this.#stampDocumentAuthor()
   }
 
   readonly #handleYChanges = (events: Y.YEvent<YXmlNode>[], transaction: Y.Transaction) => {

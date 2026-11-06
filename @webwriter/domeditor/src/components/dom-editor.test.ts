@@ -6401,6 +6401,7 @@ describe("DomEditor.execute()", () => {
     const {editor} = await mountEditor(editor => Object.assign(editor, {undoState: {canUndo: true, canRedo: false}}))
     vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
     const user = {clientId: 7, name: "Ada Lovelace", initials: "AL", color: "#e11d48"}
+    const peer = {clientId: 8, name: "Grace Hopper", initials: "GH", color: "#2563eb"}
     const checkpoint = (id: string, timestamp: number) => ({id, timestamp, label: "Edited by Ada Lovelace",
       user, changes: {added: 1, removed: 2, modified: 3}, commentCount: 0})
     const initial = {...checkpoint("initial", 0), label: "Document created", changes: {added: 0, removed: 0, modified: 0}}
@@ -6409,7 +6410,9 @@ describe("DomEditor.execute()", () => {
     const unsaved = {...checkpoint("unsaved", 3), label: "Unsaved changes", checkpointIds: ["third"],
       isUnsaved: true, isCurrent: true}
     const state: VersionHistoryState = {
-      versions: [unsaved, saved], checkpoints: [checkpoint("third", 3), checkpoint("second", 2), checkpoint("first", 1), initial],
+      versions: [unsaved, saved],
+      checkpoints: [checkpoint("third", 3), {...checkpoint("second", 2), user: peer, label: "Edited by Grace Hopper"},
+        checkpoint("first", 1), initial],
       comments: [], preview: null, currentCheckpointId: "third", currentUserId: 7,
     }
     const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
@@ -6437,7 +6440,9 @@ describe("DomEditor.execute()", () => {
     console.shadowRoot!.querySelector<HTMLButtonElement>('.version-sidebar .history-checkpoint[data-checkpoint-id="saved"]')!.click()
     await console.updateComplete
     expect(Array.from(console.shadowRoot!.querySelectorAll<HTMLElement>(".history-change-card"))
-      .map(card => card.dataset.checkpointId)).toEqual(["first"])
+      .map(card => card.dataset.checkpointId)).toEqual(["second", "first"])
+    expect(console.shadowRoot!.querySelector('.history-change-card[data-checkpoint-id="second"] .history-checkpoint-meta')?.textContent)
+      .toBe("By Grace Hopper")
 
     for(const id of ["saved", "first", "unsaved"]) {
       console.shadowRoot!.querySelector<HTMLButtonElement>(`.history-checkpoint[data-checkpoint-id="${id}"]`)!.click()

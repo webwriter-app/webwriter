@@ -2958,6 +2958,16 @@ export abstract class EditingControls extends LitElement {
     return user.clientId === this.historyState.currentUserId ? "you" : user.name
   }
 
+  protected historyChangeIds(version: VersionHistoryState["versions"][number], checkpoints: Map<string, VersionHistoryCheckpoint>) {
+    const initialId = this.historyState.checkpoints.at(-1)?.id
+    return version.checkpointIds.filter((id, index) => {
+      const checkpoint = checkpoints.get(id)
+      if(!checkpoint || id === initialId) return false
+      // The version card represents the newest checkpoint when the authors agree.
+      return index !== 0 || checkpoint.user.clientId !== version.user.clientId || checkpoint.user.name !== version.user.name
+    })
+  }
+
   protected selectHistoryCheckpoint = (event: Event) => {
     const checkpointId = (event.currentTarget as HTMLElement).dataset.checkpointId
     if(!checkpointId) return
@@ -3018,7 +3028,6 @@ export abstract class EditingControls extends LitElement {
 
   protected renderHistoryVersionsDrawer(expandedChanges = false, showPreviewClear = true) {
     const checkpoints = new Map(this.historyState.checkpoints.map(checkpoint => [checkpoint.id, checkpoint]))
-    const initialCheckpointId = this.historyState.checkpoints.at(-1)?.id
     return html`
       <ribbon-drawer label="Versions" icon="History" layout="history-versions">
         <div class="history-timeline" role="list" aria-label="Document versions">
@@ -3029,10 +3038,7 @@ export abstract class EditingControls extends LitElement {
             : !this.historyState.versions.length
               ? html`<div class="history-empty">No versions yet</div>`
               : repeat(this.historyState.versions, version => version.id, version => {
-                // The version card already represents its newest checkpoint.
-                // Creation is the baseline, rather than an authored change.
-                const changeIds = version.checkpointIds.slice(1)
-                  .filter(id => id !== initialCheckpointId && checkpoints.has(id))
+                const changeIds = this.historyChangeIds(version, checkpoints)
                 return html`
                 <div class="history-version-group" role="listitem">
                   ${this.renderHistoryEntry(version, true, version.isCurrent, version.isUnsaved)}

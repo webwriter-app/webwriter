@@ -372,8 +372,7 @@ export class DeveloperConsole extends EditingControls {
       const versions = [...this.historyState.versions].sort((a, b) => b.timestamp - a.timestamp)
       const active = versions.find(version => version.id === this.activeVersionId) ?? versions[0]
       const checkpoints = new Map(this.historyState.checkpoints.map(checkpoint => [checkpoint.id, checkpoint]))
-      const initialId = this.historyState.checkpoints.at(-1)?.id
-      const changes = (active?.checkpointIds.slice(1) ?? []).filter(id => id !== initialId && checkpoints.has(id))
+      const changes = active ? this.historyChangeIds(active, checkpoints) : []
       return html`
         <aside class="version-sidebar" aria-label="Document versions">
           <ul class="version-list" @click=${(event: MouseEvent) => {
