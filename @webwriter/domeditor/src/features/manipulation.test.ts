@@ -112,6 +112,48 @@ describe("caption insertion content", () => {
 })
 
 describe("paragraph insertion content", () => {
+  it.each(["keydown", "beforeinput"])("inserts an unstyled paragraph above a styled one on %s at its start", eventType => {
+    document.body.innerHTML = '<section><p id="original" class="authored" style="background-color: gold"><em><!--keep-->Text</em></p></section>'
+    const original = document.querySelector("p")!, text = original.querySelector("em")!.lastChild!
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    $.move(text, 0)
+    const event = eventType === "keydown"
+      ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+      : new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, cancelable: true})
+    original.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(original.previousElementSibling?.outerHTML).toBe("<p></p>")
+    expect(original).toHaveClass("authored")
+    expect(original.id).toBe("original")
+    expect(original.style.backgroundColor).toBe("gold")
+    expect(original.innerHTML).toBe("<em><!--keep-->Text</em>")
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(0)
+    editor.doc.syncFromDOM()
+    const after = editor.toHTML(true)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("inherits paragraph styling when Enter adds a paragraph below", () => {
+    document.body.innerHTML = '<p id="original" class="authored" style="background-color: gold">Text</p>'
+    const original = document.querySelector("p")!
+    $.move(original.firstChild!, 4)
+    original.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    const continuation = original.nextElementSibling as HTMLParagraphElement
+    expect(continuation.textContent).toBe("")
+    expect(continuation).toHaveClass("authored")
+    expect(continuation.style.backgroundColor).toBe("gold")
+    expect(continuation.id).toBe("")
+    expect($.anchor).toBe(continuation)
+  })
+
   it("keeps an authored identity on the original paragraph when Enter creates a continuation", () => {
     document.body.innerHTML = '<p id="original" title="keep">Before</p>'
     const paragraph = document.querySelector("p")!
@@ -5605,6 +5647,38 @@ describe("setStyle()", () => {
     expect(editor.features.manipulation.styleTarget).toBe(paragraph)
   })
 
+  it.each(["img", "picture"])("filters a selected %s inside Details without filtering its summary", tag => {
+    editor.schema.extendWidgets([{tagName: "slide-widget", editingConfig: {content: "flow*"}}])
+    const image = '<img src="table.png" alt="Table">'
+    const content = tag === "img" ? image : `<figure><picture>${image}</picture><figcaption>Caption</figcaption></figure>`
+    document.body.innerHTML = `<slide-widget><details open><summary style="color: teal">Table</summary><!--keep--><section>${content}<p>Other content</p></section></details></slide-widget>`
+    const details = document.querySelector("details")!, summary = details.querySelector("summary")!
+    const target = details.querySelector<HTMLElement>(tag)!
+    if(tag === "img") $.selectElement(target)
+    else editor.features.selection.captureElement(target)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const {actions} = editor.features.manipulation
+    const state = () => actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["filter"]})
+
+    expect(state().target?.localName).toBe(tag)
+    actions.setStyle({type: "setStyle", topLevel: true, styles: {filter: "grayscale(1)"}})
+
+    expect(state().inline.filter?.value).toBe("grayscale(1)")
+    expect(target.style.filter).toBe("grayscale(1)")
+    expect(details).not.toHaveAttribute("style")
+    expect(target.parentElement).not.toHaveAttribute("style")
+    expect(document.querySelector("slide-widget")).not.toHaveAttribute("style")
+    expect(summary.getAttribute("style")).toBe("color: teal")
+    expect(details.querySelector("p")).not.toHaveAttribute("style")
+    const filtered = editor.toHTML(true)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(filtered)
+  })
+
   it("uses the inner disclosure for a nested summary and preserves atomic widget selections", () => {
     document.body.innerHTML = '<details open><summary>Outer</summary><details open><summary>Inner <inline-widget>Widget</inline-widget></summary></details></details>'
     const disclosures = document.querySelectorAll("details"), widget = document.querySelector("inline-widget")!
@@ -5648,6 +5722,26 @@ describe("setStyle()", () => {
     expect(editor.toHTML(true)).toBe(original)
     editor.doc.redo()
     expect(editor.toHTML(true)).toBe(changed)
+  })
+
+  it.each([false, true])("skips blocks touched only at range boundaries (backwards: %s)", backwards => {
+    document.body.innerHTML = '<p><b>Before<!--keep--></b></p><h4 style="color: navy"><em>Selected</em></h4><p><strong><!--keep-->After</strong></p>'
+    const [before, selected, after] = Array.from(document.body.children) as HTMLElement[]
+    const start = before.querySelector("b")!.firstChild!, end = after.querySelector("strong")!.lastChild!
+    if(backwards) $.selectRange(end, 0, start, 6)
+    else $.selectRange(start, 6, end, 0)
+    const {actions} = editor.features.manipulation
+
+    const state = actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["color"]})
+    expect(state.target?.localName).toBe("h4")
+    expect(state.inline.color?.value).toBe("navy")
+    expect(editor.features.manipulation.getSelectedElementTypes().map(group => group.element.localName)).toEqual(["h4", "em"])
+    actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold"}})
+    actions.setBlockStyle({type: "setBlockStyle", styles: {"text-align": "center"}})
+
+    expect(selected).toHaveStyle({backgroundColor: "gold", textAlign: "center"})
+    expect(before).not.toHaveAttribute("style")
+    expect(after).not.toHaveAttribute("style")
   })
 
   it("styles a structural sibling range below a document template without touching its next sibling", () => {

@@ -11,7 +11,7 @@ import {boardLayoutRole, documentLayoutMode, isBoardCard, isSlide, slideLayoutRo
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, caretRect, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
 import {isMarkElement} from "../marks"
-import {isParagraphContent} from "../utility"
+import {isEmptyParagraph, isParagraphContent, isPointAtBoundary} from "../utility"
 import {createAnchorPositioner, removeEditorMarker} from "../utility"
 import {
   isBlockFormatTag,
@@ -2657,6 +2657,11 @@ export class ManipulationFeature extends EditorFeature {
     let target = this.styleTarget
     if(["toggle", "content"].includes(popupElementRole(target) ?? "")) return target
     if(target.matches("details:not([is])")) return target
+    // A selected image inside a disclosure has its own effects. Styling
+    // the containing block would also filter the summary and other content.
+    const selected = this.editor.features.selection.captureSelectedElement ?? $.selectedElement ?? null
+    const image = selected?.closest("details:not([is])") && atomicEditingContainer(selected, this.editor.schema)
+    if(image?.matches(":is(img, picture):not([is])") && root.contains(image)) return image
     // Table and cell selections keep their scope inside sections and templates.
     const cell = cellForNode(target)
     if(cell && !atomicEditingContainer(cell, this.editor.schema)) return cell
@@ -2694,7 +2699,15 @@ export class ManipulationFeature extends EditorFeature {
     // A range across siblings has the root as its common ancestor, but its
     // styles belong to the selected children rather than the whole document.
     return Array.from(root.children).filter(element => $.includesNode(element)
-      && ranges.some(range => range.intersectsNode(element)))
+      && ranges.some(range => this.rangeOverlapsContent(range, element)))
+  }
+
+  private rangeOverlapsContent(range: Range, element: Element) {
+    // Native selections can include a paragraph separator and stop at the
+    // start of the next block. Intersecting that block's shell selects no content.
+    return range.intersectsNode(element)
+      && !isPointAtBoundary(element, range.endContainer, range.endOffset, "start")
+      && !isPointAtBoundary(element, range.startContainer, range.startOffset, "end")
   }
 
   private inlineStyleOf(element: Element | null): CSSStyleDeclaration | null {
@@ -2745,7 +2758,7 @@ export class ManipulationFeature extends EditorFeature {
       .filter((element): element is HTMLElement => {
         if(!$.includesNode(element) || !this.isTextBlock(element)) return false
         try {
-          return range.intersectsNode(element)
+          return this.rangeOverlapsContent(range, element)
         }
         catch {
           return false
@@ -3008,15 +3021,13 @@ export class ManipulationFeature extends EditorFeature {
         const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
           acceptNode: node => {
             const element = node as Element
-            if(!range.intersectsNode(element)) return NodeFilter.FILTER_REJECT
+            if(!this.rangeOverlapsContent(range, element)) return NodeFilter.FILTER_REJECT
             const atomic = atomicEditingContainer(element, this.editor.schema)
             if(atomic && atomic !== element) return NodeFilter.FILTER_REJECT
             return NodeFilter.FILTER_ACCEPT
           },
         })
         while(walker.nextNode()) addContainer(walker.currentNode as Element)
-        addContainer(range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement)
-        addContainer(range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement)
       }
     }
     // Associated popup content remains outside the void IMG in the authored DOM.
@@ -3677,7 +3688,8 @@ export class ManipulationFeature extends EditorFeature {
    * element whose content model may have changed. */
   private splitRange(range: Range, splitDepth: number, strict: boolean) {
     let container = this.splitContainer(range)
-    let offset = this.splitTextLikePoint(container, range)
+    const insertAbove = splitDepth === 0 && !strict && this.startsStyledParagraph(range, container)
+    let offset = insertAbove ? 0 : this.splitTextLikePoint(container, range)
     let target: Element | null = null
     const affected = new Set<Element>()
     // Native or widget-authored text can live directly in a contentful host.
@@ -3706,6 +3718,11 @@ export class ManipulationFeature extends EditorFeature {
           || this.editor.features.slides.active && container.parentElement?.matches("section.ww-slide")) || container.nodeName === "HTML") break
       const parent = container.parentElement
       if(!parent) break
+      if(insertAbove) {
+        const paragraph = this.editor.schema.create("p", container.ownerDocument) as Element
+        container.before(paragraph)
+        return {affected: new Set([container, paragraph, parent]), target: container}
+      }
       const schema = this.editor.schema.get(container)
       const next = (splittingSummary || container.matches("h1, h2, h3, h4, h5, h6") || strict && schema.inseperable
         ? this.editor.schema.create(undefined, container.ownerDocument)
@@ -3748,6 +3765,12 @@ export class ManipulationFeature extends EditorFeature {
     let element = isElement(range.startContainer) ? range.startContainer : range.startContainer.parentElement
     while(element && isMarkElement(element)) element = element.parentElement
     return element && isSectionElement(element) ? element : container
+  }
+
+  private startsStyledParagraph(range: Range, container: Element) {
+    return range.collapsed && container instanceof HTMLParagraphElement && container.matches('p:not([is], [contenteditable="false"])')
+      && Boolean(container.getAttribute("style")?.trim() || authoredClassValue(container.getAttribute("class")))
+      && isPointAtBoundary(container, range.startContainer, range.startOffset, "start") && !isEmptyParagraph(container)
   }
 
   /** Only widgets that explicitly permit structural splitting may be continued
@@ -4414,13 +4437,15 @@ export class ManipulationFeature extends EditorFeature {
         this.delete(ev.inputType.toLowerCase().includes("backward") ? "backward" : "forward")
         return
       }
-      const summary = $.anchorContainer?.closest("summary")
+      const container = $.anchorContainer
+      const summary = container?.closest("summary")
       if(ev.inputType.startsWith("delete") && ($.anchorContainer?.closest("details") || this.widgetEditingScope($.anchor))) {
         ev.preventDefault()
         this.deleteInput(ev)
         return
       }
       if(ev.inputType === "insertParagraph" && (summary?.parentElement?.matches("details")
+        || !ev.isComposing && container && this.startsStyledParagraph($.range, container)
         || $.anchorContainer?.closest("caption, figcaption")
         || this.widgetEditingScope($.anchor)
         || $.anchorContainer?.matches("h1, h2, h3, h4, h5, h6")
