@@ -2,7 +2,7 @@ import {normalizeURLInput} from "../url-input.js"
 import {LitElement, css, html, nothing} from "lit"
 import "./style-combobox"
 import {isMediaType, mediaAttributeOptions} from "../media"
-import {groupedLanguageOptions} from "../language-suggestions"
+import {documentLanguageName, orderedLanguageOptions} from "../language-suggestions"
 import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {choiceGroupStyles} from "./choice-group.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
@@ -31,8 +31,6 @@ const emptyAttributeState: ElementAttributeState = {
   name: "Element",
   attributes: {},
 }
-
-const languageOptions = groupedLanguageOptions()
 
 const numericSuggestions = (name: string) => {
   if(name === "width" || name === "height") return [
@@ -366,12 +364,12 @@ export class ElementAttributeEditor extends LitElement {
       return html`
         <div class="field">
           ${this.renderFieldLabel(option, state)}
-          <style-combobox
+          <style-combobox language-picker
             aria-label=${`${state.name}: ${option.label}`}
             .label=${`${state.name}: ${option.label}`}
             .value=${value}
             .placeholder=${option.placeholder ?? ""}
-            .options=${languageOptions}
+            .options=${orderedLanguageOptions()} .formatValue=${documentLanguageName}
             .disabled=${this.disabled || !editability.editable}
             @combobox-change=${(event: CustomEvent<{value: string}>) => this.dispatchAttribute("lang", event.detail.value || null)}
           ></style-combobox>
@@ -489,17 +487,16 @@ export class ElementAttributeEditor extends LitElement {
       const value = state.attributes.lang ?? ""
       const documentLanguage = this.documentLanguage
       const different = Boolean(value && documentLanguage && value.toLowerCase() !== documentLanguage.toLowerCase())
-      const name = languageOptions.find(option => option.value.toLowerCase() === value.toLowerCase())?.label ?? value
-      const documentName = languageOptions.find(option => option.value.toLowerCase() === documentLanguage.toLowerCase())?.label ?? documentLanguage
-      const current = value ? `${name} (${value})` : `Inherit document language${documentLanguage ? `: ${documentName} (${documentLanguage})` : ""}`
+      const documentName = documentLanguageName(documentLanguage)
+      const current = value ? documentLanguageName(value) : `Inherit document language${documentName ? `: ${documentName}` : ""}`
       return html`<div class="language-control">
         <button type="button" class="language-trigger" aria-label=${`Set ${state.name} language`} title=${`Language: ${current}`}
           aria-haspopup="listbox" aria-expanded=${this.languageOpen} ?data-different=${different} ?disabled=${this.disabled}
           @click=${this.openLanguage}>${ribbonIcon("Language")}</button>
         <div class="language-popup" popover="auto" ?hidden=${!this.languageOpen}
           @toggle=${(event: ToggleEvent) => { if(event.newState === "closed") this.closeLanguage() }}>
-          <style-combobox language-picker aria-label=${`${state.name}: Language`} .label=${`${state.name}: Language`}
-            .value=${value} .placeholder=${documentName || "Language"} .options=${languageOptions}
+          <style-combobox language-picker="popup" aria-label=${`${state.name}: Language`} .label=${`${state.name}: Language`}
+            .value=${value} .placeholder=${documentName || "Language"} .options=${orderedLanguageOptions()} .formatValue=${documentLanguageName}
             .disabled=${this.disabled || !elementAttributeEditability("lang", state.localName, state.namespaceURI).editable}
             @combobox-toggle=${(event: CustomEvent<{open: boolean}>) => {
               if(event.detail.open) this.languageListOpened = true

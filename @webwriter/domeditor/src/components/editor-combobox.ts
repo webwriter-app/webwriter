@@ -25,6 +25,7 @@ export class EditorCombobox extends LitElement {
     label: {type: String},
     placeholder: {type: String},
     options: {attribute: false},
+    formatValue: {attribute: false},
     showValue: {type: Boolean, attribute: "show-value", reflect: true},
     editable: {type: Boolean},
     multiple: {type: Boolean, reflect: true},
@@ -276,6 +277,13 @@ export class EditorCombobox extends LitElement {
       line-height: 0.95rem;
     }
 
+    :host([language-picker]) .listbox {min-width: min(7rem, calc(100vw - 1rem));}
+    :host([language-picker]) .option > .option-name {
+      flex-shrink: 0;
+      overflow: visible;
+      text-overflow: clip;
+    }
+
     .option-description {
       font-size: 0.68rem;
       font-style: italic;
@@ -289,6 +297,7 @@ export class EditorCombobox extends LitElement {
   label = "Choose"
   placeholder = ""
   options: readonly ComboboxOption[] = []
+  formatValue?: (value: string) => string
   showValue = false
   editable = true
   multiple = false
@@ -338,12 +347,12 @@ export class EditorCombobox extends LitElement {
 
   protected willUpdate(changed: Map<string, unknown>) {
     if(changed.has("disabled") && this.disabled) this.close(true)
-    if((changed.has("value") || changed.has("showValue") || changed.has("options") || changed.has("multiple")) && !this.editing) this.draft = this.displayedValue()
+    if((changed.has("value") || changed.has("showValue") || changed.has("options") || changed.has("formatValue") || changed.has("multiple")) && !this.editing) this.draft = this.displayedValue()
   }
 
   protected displayedValue() {
     if(this.multiple) return ""
-    return this.showValue ? this.value : this.selectedOption()?.label ?? this.value
+    return this.showValue ? this.value : this.selectedOption()?.label ?? this.formatValue?.(this.value) ?? this.value
   }
 
   protected renderToggleIcon(): unknown {
@@ -410,9 +419,8 @@ export class EditorCombobox extends LitElement {
 
   protected filteredOptions() {
     if(!this.editable || this.multiple) return this.options
-    const selected = this.selectedOption()
     const query = this.draft.trim().toLocaleLowerCase("en")
-    if(!query || query === selected?.label.toLocaleLowerCase("en") || query === this.value.toLocaleLowerCase("en")) {
+    if(!query || query === this.displayedValue().toLocaleLowerCase("en") || query === this.value.toLocaleLowerCase("en")) {
       return this.options
     }
     return this.options.filter(option => [option.label, option.value, option.description ?? "", option.detail ?? ""]
@@ -456,7 +464,7 @@ export class EditorCombobox extends LitElement {
     if(this.disabled) return
     this.value = value
     this.editing = false
-    this.draft = this.showValue ? value : this.selectedOption()?.label ?? value
+    this.draft = this.displayedValue()
     this.close()
     this.dispatchEvent(new CustomEvent<{value: string}>("combobox-change", {
       detail: {value},
@@ -492,7 +500,7 @@ export class EditorCombobox extends LitElement {
     const exact = this.options.find(option => option.value.toLocaleLowerCase("en") === draft.toLocaleLowerCase("en")
       || option.label.toLocaleLowerCase("en") === draft.toLocaleLowerCase("en"))
     if(exact?.disabled) { this.close(true); return }
-    const value = exact?.value ?? draft
+    const value = exact?.value ?? (draft === this.displayedValue() ? this.value : draft)
     if(value !== this.value) this.emit(value)
     else this.close(true)
   }

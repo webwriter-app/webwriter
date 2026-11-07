@@ -1906,7 +1906,7 @@ describe("DomEditor iframe setup", () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["de-DE", "en-US"])
     if(language) localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({language, shortcutsVersion: 2}))
     const {editor, iframe} = await mountEditor()
-    const expected = language ?? "de"
+    const expected = language ?? "de-DE"
     expect(iframe.contentDocument!.documentElement.lang).toBe(expected)
     expect((editor as any).settings.language).toBe(expected)
 

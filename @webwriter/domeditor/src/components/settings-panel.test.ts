@@ -320,7 +320,7 @@ describe("settings panel", () => {
       persistAppSettings(settings)
     })
 
-    expect(language.value).toBe("en")
+    expect(language.value).toBe("en-US")
     expect(root.querySelector('[aria-label="Language"]')!.textContent)
       .toContain("Language for new documents and widgets.")
     expect(root.querySelector('[aria-label="Language"]')!.textContent)
@@ -330,12 +330,26 @@ describe("settings panel", () => {
     expect(root.textContent).toContain("Save the active document")
     expect(root.textContent).toContain("Toggle bold formatting")
 
-    language.value = "de"
+    language.value = "de-CH"
     language.dispatchEvent(new Event("change", {bubbles: true}))
-    expect(changes.at(-1)?.language).toBe("de")
-    expect(loadAppSettings().language).toBe("de")
+    expect(changes.at(-1)?.language).toBe("de-CH")
+    expect(loadAppSettings().language).toBe("de-CH")
     await panel.updateComplete
-    expect(language.value).toBe("de")
+    expect(language.value).toBe("de-CH")
+  })
+
+  it("shows the saved legacy language without offering it as a supported choice", async () => {
+    const panel = await mountPanel({...defaultAppSettings(), language: "de"})
+    const picker = panel.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Document language"]')!
+    expect(picker.value).toBe("de")
+    expect(picker.selectedOptions[0].disabled).toBe(true)
+    expect(picker.selectedOptions[0].textContent).toBe("German (current)")
+    expect([...picker.options].filter(option => !option.disabled)).toHaveLength(101)
+
+    panel.settings = {...panel.settings, language: "sr-Latn"}
+    await panel.updateComplete
+    expect(picker.value).toBe("sr-Latn")
+    expect([...picker.options].some(option => option.value === "de")).toBe(false)
   })
 
   it("places element-specific shortcuts in collapsed categories after general commands", async () => {

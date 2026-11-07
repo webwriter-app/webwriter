@@ -23,13 +23,14 @@ async function mount(localName = "details", attributes: Record<string, string> =
 
 describe("element attribute editor", () => {
   it("opens the heading language list and highlights an override of the document language", async () => {
-    const editor = await mount("p", {lang: "de"})
+    const editor = await mount("p", {lang: "de-DE"})
     editor.languageButton = true
-    editor.documentLanguage = "en"
+    editor.documentLanguage = "en-US"
     await editor.updateComplete
     const trigger = editor.shadowRoot!.querySelector<HTMLButtonElement>(".language-trigger")!
     expect(trigger.hasAttribute("data-different")).toBe(true)
-    expect(trigger.getAttribute("title")).toContain("German (de)")
+    expect(trigger.getAttribute("title")).toContain("German (Germany)")
+    expect(trigger.getAttribute("title")).not.toContain("de-DE")
     trigger.click()
     await editor.updateComplete
     const popup = editor.shadowRoot!.querySelector<HTMLElement>(".language-popup")!
@@ -38,8 +39,8 @@ describe("element attribute editor", () => {
     expect(popup.querySelector(".language-current")).toBeNull()
     expect(popup.querySelectorAll("style-combobox")).toHaveLength(1)
     const picker = popup.querySelector("style-combobox")!
-    await vi.waitFor(() => expect(Array.from(picker.shadowRoot!.querySelectorAll('[role="group"]')).map(group => group.getAttribute("aria-label")))
-      .toEqual(["World languages", "European languages", "Other languages"]))
+    await vi.waitFor(() => expect(picker.shadowRoot!.querySelector('[role="listbox"]')).not.toBeNull())
+    expect(picker.shadowRoot!.querySelector('[role="group"]')).toBeNull()
     expect(picker.shadowRoot!.activeElement).toBe(picker.shadowRoot!.querySelector("input"))
     expect(getComputedStyle(picker.shadowRoot!.querySelector(".toggle")!).display).toBe("none")
     const change = vi.fn()
@@ -49,7 +50,7 @@ describe("element attribute editor", () => {
     await editor.updateComplete
     expect(popup.hidden).toBe(true)
     expect(trigger.getAttribute("aria-expanded")).toBe("false")
-    editor.documentLanguage = "de"
+    editor.documentLanguage = "de-DE"
     await editor.updateComplete
     expect(trigger.hasAttribute("data-different")).toBe(false)
   })
@@ -339,7 +340,7 @@ describe("element attribute editor", () => {
     expect(editor.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="course-quiz: difficulty"]')).not.toBeDisabled()
   })
 
-  it.each(["div", "course-quiz"])("offers grouped language choices and arbitrary strings for %s", async localName => {
+  it.each(["div", "course-quiz"])("offers alphabetical language choices and arbitrary strings for %s", async localName => {
     const editor = await mount(localName, {lang: "de"})
     const picker = editor.shadowRoot!.querySelector("style-combobox")!
     await picker.updateComplete
@@ -350,22 +351,21 @@ describe("element attribute editor", () => {
 
     picker.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
     await picker.updateComplete
-    expect(Array.from(picker.shadowRoot!.querySelectorAll('[role="group"]')).map(group => group.getAttribute("aria-label")))
-      .toEqual(["World languages", "European languages", "Other languages"])
+    expect(picker.shadowRoot!.querySelector('[role="group"]')).toBeNull()
+    expect(picker.shadowRoot!.querySelector('[role="separator"]')).not.toBeNull()
     input.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true}))
     input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
     expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({name: "lang", value: "en"}),
+      detail: expect.objectContaining({name: "lang", value: "en-AU"}),
     }))
 
     input.value = "German"
     input.dispatchEvent(new InputEvent("input", {bubbles: true}))
     await picker.updateComplete
-    expect(picker.shadowRoot!.querySelector('[role="group"]')?.getAttribute("aria-label")).toBe("European languages")
-    expect(picker.shadowRoot!.querySelectorAll('[role="option"]')).toHaveLength(2) // German and Swiss German.
+    expect(picker.shadowRoot!.querySelectorAll('[role="option"]')).toHaveLength(3)
     picker.shadowRoot!.querySelector<HTMLButtonElement>('[role="option"]')!.click()
     expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({name: "lang", value: "de"}),
+      detail: expect.objectContaining({name: "lang", value: "de-AT"}),
     }))
 
     for(const value of ["x-custom", "any arbitrary string", ""]) {
@@ -386,11 +386,11 @@ describe("element attribute editor", () => {
     expect(input.placeholder).toBe("English")
     expect(input.value).toBe("")
 
-    editor.state = {...editor.state!, attributes: {lang: "en"}}
+    editor.state = {...editor.state!, attributes: {lang: "en-US"}}
     await editor.updateComplete
     await picker.updateComplete
-    expect(input.value).toBe("English")
-    expect(picker.value).toBe("en")
+    expect(input.value).toBe("English (US)")
+    expect(picker.value).toBe("en-US")
   })
 
   it("disables the language combobox along with the attribute editor", async () => {

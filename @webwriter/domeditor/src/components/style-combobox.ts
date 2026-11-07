@@ -16,10 +16,10 @@ export class StyleCombobox extends EditorCombobox {
     .control {border: var(--editor-control-border-width, .5px) solid #c5ccd5; border-radius: var(--style-combobox-radius, 4px);}
     .control:hover {border-color: #8eb6df; background: #eef4fb;}
     :host([open]) .control {border-radius: 4px 4px 0 0;}
-    :host([language-picker]) .control {border-radius: 0 0 4px 4px; background: #fff;}
-    :host([language-picker][open]) .control {border-radius: 0;}
-    :host([language-picker]) .toggle {display: none;}
-    :host([language-picker]) .listbox {max-height: min(26rem, var(--language-list-max-height, 26rem));}
+    :host([language-picker="popup"]) .control {border-radius: 0 0 4px 4px; background: #fff;}
+    :host([language-picker="popup"][open]) .control {border-radius: 0;}
+    :host([language-picker="popup"]) .toggle {display: none;}
+    :host([language-picker="popup"]) .listbox {max-height: min(26rem, var(--language-list-max-height, 26rem));}
     :host([joined]) .control {border-top-left-radius: 0; border-bottom-left-radius: 0;}
     .control:focus-within {border-color: #c5ccd5; outline: 2px solid #b9d7f5; outline-offset: 0;}
     input {padding: .2rem;}
