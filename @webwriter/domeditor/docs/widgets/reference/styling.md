@@ -22,4 +22,4 @@ The base theme provides these sizing properties. Widgets can use them in their o
 
 Block widgets should fit their parent, allow wrapping, and use natural height. Inline widgets choose their own inline formatting. See [responsive layout](../guides/responsiveness.md) for a starting stylesheet and [Responsiveness](../../responsiveness.md) for page and float controls.
 
-Classes beginning with `◆` belong to the editor. Do not depend on them for saved presentation or add editor-only attributes, wrappers, or inline styles to authored content.
+WebWriter keeps transient editor presentation outside authored content. It filters legacy `◆` classes from collaboration and saved HTML. Use authored classes, widget parts, or CSS custom properties for styles that should persist. Keep temporary widget UI state in the widget's shadow DOM.

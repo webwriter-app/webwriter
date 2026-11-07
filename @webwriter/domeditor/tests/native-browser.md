@@ -16,6 +16,8 @@ It retains the editing board and script-free export after checking native media,
 
 Formula checks verify native inline MathML rendering, preserved operand identity, empty argument dimensions, pointer placement followed by typing, editing-only backgrounds, and shadow appendix cleanup. They also exercise distinct text insertion positions before, at the start, at the end, and after inline formulas in different text-block positions, plus gaps around block formulas.
 
+Run `node scripts/native-browser.mjs --filter='leaving a gap restores the native text caret'` to verify that moving from a gap into text restores the native caret and hides the gap caret. The figure, SVG overflow, Canvas hand panning, and hotspot checks cover other rendering paths that use transient presentation state.
+
 ## Live widget aggregation checks
 
 For focused live widget aggregation checks, run `node scripts/native-browser.mjs --widget-aggregation`.
@@ -32,8 +34,9 @@ widget data. The runner uses a disposable Chrome profile and a loopback-only ser
 Each operation has three warmups and twenty timed samples at several document sizes.
 Reported medians and maxima are machine-specific development-build timings; they
 do not include end-to-end typing latency or painting. Assertions verify skipped
-style reads and parses, CSSOM float rediscovery, and the real bridge's marker-only,
-text, and structural update behavior without imposing machine-specific deadlines.
+style reads and parses, CSSOM float rediscovery, and the real bridge's text and
+structural updates. A compatibility check verifies that legacy marker-only class
+mutations do not publish document updates.
 The catalog check renders 10, 100 and 300 packages (including overflow), compares
 the former per-keyword formatter construction against the cached rendering path,
 and reports constructor/lookup counts over twenty unrelated selection updates.
@@ -80,6 +83,13 @@ Both commands use disposable Chrome profiles and loopback-only HTTP/debugging
 servers. Output includes environment information and browser exceptions. These
 synthetic fixtures exclude external widget startup, real network latency and
 proofreading; the separate widget benchmarks cover widget data and persistence.
+
+Use the same production fixture and browser for both versions when comparing
+gesture latency. For Canvas rotation in a document with 60 figures, run
+`node scripts/performance-profile.mjs --production --only=gestures --gesture='canvas rotate with figures'`.
+Each movement step waits for an animation frame, so a missed frame can shift the
+median by roughly one frame. Repeat a comparison before attributing that shift to
+a code change.
 
 ## Cross-browser smoke matrix
 

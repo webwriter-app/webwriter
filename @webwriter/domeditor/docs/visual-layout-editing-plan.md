@@ -52,7 +52,7 @@ Editor block splits and replacements preserve the item's layout declarations. In
 
 Create one undo item for insertion/wrapping and initial inline styles. Select the connected wrapper using the existing explicit section-selection machinery and emit the local `inserted` selection signal. The host's existing `openEditToolbox()` path then opens the specialized controls.
 
-No placeholder labels, insertion buttons, measurement nodes, permanent editor metadata, or UI styles enter authored content. Empty-cell hints and all editing handles live in `DOMEditor.appendix`. Only temporary `◆` marker classes may touch authored elements, with teardown and serialization exclusions.
+Keep placeholder labels, insertion buttons, measurements, and editing handles in `DOMEditor.appendix`. Track temporary layout selection and previews in memory and style them through the shared presentation state and appendix parts. Authored elements carry the layout declarations that belong in saved HTML.
 
 ## Detailed toolbox
 
@@ -129,7 +129,7 @@ Geometry must account for the content box, borders, padding, gaps, alignment dis
 | `src/components/editing-controls.ts`, `editing-controls.styles.ts` | Render common grid/flex controls and the new track editor; reuse property widgets. |
 | `src/components/element-style-editor.ts`, `src/element-styles.ts` | Minimal filtering/presentation extension if needed for reusable layout property groups. |
 | `src/components/dom-editor.ts`, `toolbox.ts`, `editing-ui-bindings.ts` | Carry layout context, route actions, and auto-open Edit after successful local insertion. |
-| `src/editor.css` and appendix-owned styles | Layout selection markers and affordance presentation, with artifact exclusion and complete cleanup. |
+| `src/editor.css`, `src/presentation-state.js`, and appendix-owned styles | Temporary layout selection and controls, with artifact exclusion and complete cleanup. |
 
 A focused layout feature is justified by its distinct track commands, DOM-derived state, and overlay lifecycle. It should reuse existing manipulation, styling, and geometry primitives rather than build a second selection, style, or document subsystem.
 
@@ -159,7 +159,7 @@ Acceptance coverage:
 - Grid row/column add/remove and sizing preserve supported arbitrary content and node identity, including comments, unfamiliar elements, nested layouts, and widgets.
 - Explicit versus automatic tracks remain accurately represented after content-preserving removal.
 - No stale selection or changed target causes a command to edit a replacement node or BODY; remote changes during drag are preserved.
-- One drag and one insertion each undo/redo as a single user operation; all cancellation and lifecycle paths clean up markers and appendix elements.
+- One drag and one insertion each undo and redo as a single user operation. Cancellation and teardown clear presentation state and remove appendix elements.
 - Fraction sizing remains fluid; automatic rows retain their authored sizing until deliberately resized; complex unsupported declarations are preserved verbatim at the property level.
 
 Run focused Vitest files during implementation, then `npx vitest run` and `npm run typecheck` before handoff. Extend and run the existing loopback-only native browser harness for actual grid geometry, scrolling/zoom, pointer interactions, collapsed rows, and flex wrapping: the current Happy DOM test environment cannot establish those layout properties. Manually verify narrow ribbon states and keyboard access in the real UI.
