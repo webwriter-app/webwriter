@@ -20,7 +20,7 @@ import {readDistributionConfigs} from "./distribution-dom"
 import {packageWidgetSchemaDefinitions, type WebWriterPackage} from "./packages"
 import type {IImportMap} from "@jspm/import-map"
 import {hasImportMapEntries, packageImportMapId, packageImportMapScript, packageModuleEntries} from "./package-dependencies"
-import {originalURLAttribute, originalPackageEntriesAttribute, offlinePackageStyleAttribute, escapeHTMLAttribute, serializeDoctype} from "./serialization-primitives"
+import {originalURLAttribute, originalPackageEntriesAttribute, offlinePackageStyleAttribute, escapeHTMLAttribute, serializeDoctype, type HTMLDocumentParts} from "./serialization-primitives"
 import {documentWidgetStyleSource} from "./document-themes"
 export {originalURLAttribute, originalPackageEntriesAttribute, offlinePackageStyleAttribute, escapeHTMLAttribute, serializeDoctype} from "./serialization-primitives"
 import {scopedCustomElementRegistryScript} from "./scoped-custom-element-registry-script"
@@ -83,39 +83,41 @@ export function restoreOriginalResourceURLs(root: ParentNode) {
 }
 
 /** Adds the widget and template resources required by a detached document. */
-export function appendSerializedAssets(root: Document, packages: WebWriterPackage[], importMap?: IImportMap | null) {
+export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWriterPackage[], importMap?: IImportMap | null) {
+  const {documentElement, body, baseURI} = root
+  const owner = documentElement.ownerDocument
   const distribution = readDistributionConfigs(root)
-  removeSerializedReaderScripts(root)
+  removeSerializedReaderScripts(documentElement)
   const permissions = new Set(distribution.flatMap(config => config.permissions))
   const resourceKey = (url: string) => {
-    try { return new URL(url, root.baseURI).href }
+    try { return new URL(url, baseURI).href }
     catch { return url }
   }
-  const head = root.head ?? root.documentElement.insertBefore(root.createElement("head"), root.body)
-  if(root.body.querySelector("figure > figcaption")) {
-    const script = root.createElement("script")
+  const head = root.head ?? documentElement.insertBefore(owner.createElement("head"), body)
+  if(body.querySelector("figure > figcaption")) {
+    const script = owner.createElement("script")
     script.id = "webwriter-figure-layout"
     script.type = "module"
     script.textContent = `${figureLayoutSource}\ncreateFigureLayout(document)\n`.replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
-  if(root.body.querySelector(Object.values(attributionAttributes).map(name => `[${name}]`).join(","))) {
-    const script = root.createElement("script")
+  if(body.querySelector(Object.values(attributionAttributes).map(name => `[${name}]`).join(","))) {
+    const script = owner.createElement("script")
     script.id = "webwriter-attribution-reader"
     script.type = "module"
     script.textContent = `${anchorRuntimeSource}\n${attributionSource}\nmountAttributionReader(${JSON.stringify(creativeCommonsLicenses)}, createAnchorPositioner)\n`
       .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
-  root.querySelectorAll('style[id="webwriter-list-marker-styles"]').forEach(style => style.remove())
-  if(root.body.querySelector(':is(ul, ol, menu)[style*="--ww-list-marker-image:"]')) {
-    const style = root.createElement("style")
+  documentElement.querySelectorAll('style[id="webwriter-list-marker-styles"]').forEach(style => style.remove())
+  if(body.querySelector(':is(ul, ol, menu)[style*="--ww-list-marker-image:"]')) {
+    const style = owner.createElement("style")
     style.id = "webwriter-list-marker-styles"
     style.textContent = listMarkerStyleSource
     head.append(style)
   }
-  if(root.querySelector("img[usemap]") && root.querySelector("map area")) {
-    const script = root.createElement("script")
+  if(documentElement.querySelector("img[usemap]") && documentElement.querySelector("map area")) {
+    const script = owner.createElement("script")
     script.id = "webwriter-image-map-popovers"
     script.type = "module"
     script.textContent = `${anchorRuntimeSource}
@@ -134,30 +136,31 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
 })();`.replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
-  root.querySelectorAll(`script#${packageImportMapId}`).forEach(script => script.remove())
-  root.querySelectorAll('script[id="webwriter-scoped-registry"]').forEach(script => script.remove())
+  documentElement.querySelectorAll(`script#${packageImportMapId}`).forEach(script => script.remove())
+  documentElement.querySelectorAll('script[id="webwriter-scoped-registry"]').forEach(script => script.remove())
   // Replace an earlier export's runtime, including after a template change.
-  if(documentLayoutMode(root.body) === "board") {
-    const script = root.createElement("script")
+  const layout = documentLayoutMode(body)
+  if(layout === "board") {
+    const script = owner.createElement("script")
     script.id = "webwriter-layout-print"
     script.type = "module"
     script.textContent = `${layoutPrintSource}\ncreateLayoutPrint(document)\n`
     head.append(script)
   }
-  if(getDocumentRoot(root.body) === root.body && documentLayoutMode(root.body) === "document") {
-    const script = root.createElement("script")
+  if(getDocumentRoot(body) === body && layout === "document") {
+    const script = owner.createElement("script")
     script.id = "webwriter-document-viewer"
     script.type = "module"
-    const hasReferences = collectReferences(root.body).length > 0
-    const locale = (root.documentElement.lang || "").toLowerCase().split(/[-_]/)[0]
+    const hasReferences = collectReferences(body).length > 0
+    const locale = (documentElement.lang || "").toLowerCase().split(/[-_]/)[0]
     const translations = siteTranslations[locale] ?? {}
     script.textContent = `${hasReferences ? referenceFormatterSource : ""}\n${anchorRuntimeSource}\n${documentViewerSource}\nmountDocumentReader(${JSON.stringify(creativeCommonsLicenses)}, ${JSON.stringify(`data:image/svg+xml,${encodeURIComponent(appIconSource)}`)}, ${hasReferences ? "referenceFormatter.formatReferences" : "null"}, ${JSON.stringify(translations)}, createAnchorPositioner)\n`
       .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
-  const canvas = documentLayoutMode(root.body) === "canvas"
+  const canvas = layout === "canvas"
   if(canvas) {
-    const script = root.createElement("script")
+    const script = owner.createElement("script")
     script.id = permissions.size ? "webwriter-layout-print" : "webwriter-canvas-viewer"
     script.type = "module"
     // Evaluate the initial camera before the browser paints authored content.
@@ -167,7 +170,7 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     head.append(script)
   }
   const tags = new Set<string>()
-  const collectTags = (node: Document | DocumentFragment) => {
+  const collectTags = (node: ParentNode) => {
     node.querySelectorAll("*").forEach(element => {
       tags.add(element.localName)
       if(element.localName === "template" && element.namespaceURI === "http://www.w3.org/1999/xhtml") {
@@ -175,29 +178,29 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
       }
     })
   }
-  collectTags(root)
+  collectTags(documentElement)
   // Templates held in policy data also contribute resources before their first insertion.
   for(const config of distribution.filter(config => config.permissions.includes("insert"))) for(const item of config.items) {
-    const template = root.createElement("template")
+    const template = owner.createElement("template")
     template.innerHTML = item.html
     collectTags(template.content)
   }
-  root.querySelectorAll('style[id="webwriter-widget-sizing"]').forEach(style => style.remove())
+  documentElement.querySelectorAll('style[id="webwriter-widget-sizing"]').forEach(style => style.remove())
   const widgetSizing = documentWidgetStyleSource(packageWidgetSchemaDefinitions(packages))
   if(widgetSizing) {
-    const style = root.createElement("style")
+    const style = owner.createElement("style")
     style.id = "webwriter-widget-sizing"
     style.textContent = widgetSizing
     head.append(style)
   }
   if(permissions.size) {
-    const script = root.createElement("script")
+    const script = owner.createElement("script")
     script.id = "webwriter-distribution-reader"
     script.type = "module"
     const actions = permissions.has("insert") ? ["insert"] as const : []
     const widgets = packageWidgetSchemaDefinitions(packages).filter(widget => tags.has(widget.tagName))
     script.textContent = `${distributionReaderSources.core}\n${canvas ? canvasSnapdomSource : ""}const distributionContext = distributionReader.mountDistributionReader(document, {widgets: ${JSON.stringify(widgets)}${canvas ? ", loadCanvasSnapdom" : ""}});\nif(distributionContext) {\n${actions.map(action => `${distributionReaderSources[action as keyof typeof distributionReaderSources]}\ndistributionAction.install(distributionContext);`).join("\n")}\n}`.replace(/<\/script/gi, "<\\/script")
-    root.head.append(script)
+    head.append(script)
   }
   const known = new Set<string>()
   const required = new Set<string>()
@@ -218,22 +221,23 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
   ].filter(asset => required.has(resourceKey(asset.url)))
   const moduleEntries = new Set(packageModuleEntries(packages).map(resourceKey))
   if(hasImportMapEntries(importMap) && assets.some(asset => asset.isScript && moduleEntries.has(resourceKey(asset.url)))) {
-    head.insertBefore(packageImportMapScript(root, importMap), head.querySelector(":scope > script"))
+    head.insertBefore(packageImportMapScript(owner, importMap), head.querySelector(":scope > script"))
   }
   const needsScopedRegistry = assets.some(asset => asset.isScript)
-  root.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[rel~='stylesheet'][href]").forEach(element => {
-    const key = resourceKey(element.localName === "script" ? (element as HTMLScriptElement).src : (element as HTMLLinkElement).href)
+  const existingAssets = documentElement.querySelectorAll("script[src], link[rel~='stylesheet'][href]")
+  const existing = new Set<string>()
+  existingAssets.forEach(element => {
+    const key = resourceKey(element.getAttribute(element.localName === "script" ? "src" : "href")!)
     if(known.has(key) && !required.has(key)
       || key === legacyScopedRegistryPolyfillURL) element.remove()
+    else existing.add(key)
   })
-  const existing = new Set([...root.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[rel~='stylesheet'][href]")]
-    .map(element => resourceKey(element.localName === "script" ? (element as HTMLScriptElement).src : (element as HTMLLinkElement).href)))
   // Keep early metadata (especially charset) ahead of the inline runtime.
-  if(needsScopedRegistry) head.insertBefore(scopedCustomElementRegistryScript(root), head.querySelector(":scope > script"))
+  if(needsScopedRegistry) head.insertBefore(scopedCustomElementRegistryScript(owner), head.querySelector(":scope > script"))
   for(const {url, isScript} of assets) {
     const key = resourceKey(url)
     if(!key || existing.has(key)) continue
-    const clone = root.createElement(isScript ? "script" : "link") as HTMLScriptElement | HTMLLinkElement
+    const clone = owner.createElement(isScript ? "script" : "link") as HTMLScriptElement | HTMLLinkElement
     if(isScript) {
       clone.type = "module"
       clone.setAttribute("src", url)

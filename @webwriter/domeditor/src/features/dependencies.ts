@@ -121,7 +121,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
   }
 
   /** Adds runtime resources required by the detached authored document. */
-  appendSerializedAssets(root: Document) {
+  appendSerializedAssets(root: import("../serialization-primitives").HTMLDocumentParts) {
     this.editor.appendSerializedAssets(root, this.widgetPackages, this.dependencyPlan?.map)
   }
 

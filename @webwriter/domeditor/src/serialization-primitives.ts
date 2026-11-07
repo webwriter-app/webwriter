@@ -2,6 +2,9 @@ export const originalURLAttribute = (name: string) => `data-webwriter-original-$
 export const originalPackageEntriesAttribute = "data-webwriter-original-package-entries"
 export const offlinePackageStyleAttribute = "data-webwriter-offline-package-style"
 
+/** The DOM nodes used to assemble a document export, including disconnected copies. */
+export type HTMLDocumentParts = Pick<Document, "documentElement" | "head" | "body" | "baseURI">
+
 /** Escape a value inserted into a double-quoted HTML attribute. */
 export const escapeHTMLAttribute = (value: string) => value
   .replaceAll("&", "&amp;")

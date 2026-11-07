@@ -63,7 +63,7 @@ const legacyTablePictureRule = `/* Pictures in cells need the same sizing box in
 const tablePictureRule = legacyTablePictureRule.replace("display: block", "display: inline-block")
 
 /** Upgrade bundled CSS in a detached editing, preview or export document. */
-export function upgradeBundledDocumentThemes(root: Document) {
+export function upgradeBundledDocumentThemes(root: Pick<Document, "head">) {
   for(const style of root.head?.querySelectorAll("style[data-ww-theme]") ?? []) {
     const theme = documentTheme(style.getAttribute("data-ww-theme") ?? "")
     const source = style.textContent

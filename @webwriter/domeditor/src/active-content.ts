@@ -30,7 +30,7 @@ const unsafeElementSelector = "script, style, iframe, object, embed, base, meta[
 /** External websites need their real origin for fetch and storage. Local HTML
  * and WebWriter's own origins must remain opaque. An authored sandbox can
  * restrict the default further, but cannot grant additional capabilities. */
-export function applyIframeSandboxPolicy(root: ParentNode, protectedOrigins: readonly string[] = [], pendingSource?: string | null) {
+export function applyIframeSandboxPolicy(root: ParentNode, protectedOrigins: readonly string[] = [], pendingSource?: string | null, baseURL?: string) {
   const origins = new Set([location.origin, ...protectedOrigins]
     .flatMap(value => {
       try { return value ? [new URL(value).origin] : [] }
@@ -46,7 +46,8 @@ export function applyIframeSandboxPolicy(root: ParentNode, protectedOrigins: rea
       if(!source && !frame.hasAttribute("srcdoc")) continue
       let external = false
       try {
-        const url = new URL(source ?? "", frame.ownerDocument.baseURI)
+        const frameBaseURL = frame.ownerDocument === root.ownerDocument ? baseURL : undefined
+        const url = new URL(source ?? "", frameBaseURL ?? frame.ownerDocument.baseURI)
         external = !frame.hasAttribute("srcdoc") && url.protocol === "https:"
           && !url.username && !url.password && !origins.has(url.origin)
       }

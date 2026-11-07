@@ -6520,6 +6520,42 @@ await check("bundled layouts render under the strict editor CSP without widgets"
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("serialization keeps authored styles without triggering editor CSP violations", async () => {
+  const {editorFrameHTML} = await import("../src/frame-document")
+  const frame = document.createElement("iframe")
+  const css = "body { border-top: 37px solid red }"
+  frame.srcdoc = editorFrameHTML(`<!doctype html><html lang="fr"><head><style>${css}</style></head>
+    <body><!--kept--><p><br></p><template><svg viewBox="0 0 5 5"><path d="M0 0H5"/></svg></template></body></html>`, {
+    bridgeNonce: crypto.randomUUID(), hostOrigin: location.origin, revision: 0, language: "en", packages: [],
+    entryURL: new URL("./native-browser-frame.ts?proofreading-disabled", import.meta.url).href, executeScripts: true,
+  })
+  const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+  nativeRootEditor.addAppendix(frame)
+  try {
+    await loaded
+    const view = frame.contentWindow!, doc = frame.contentDocument!, frameEditor = view.editor!
+    assert(frameEditor, `strict editor did not initialize: ${view.editorError}`)
+    assert(view.getComputedStyle(doc.body).borderTopWidth === "0px", "the editor's CSP allowed an authored stylesheet")
+    await layoutFrame()
+    const violations: SecurityPolicyViolationEvent[] = []
+    doc.addEventListener("securitypolicyviolation", event => { if(event.effectiveDirective === "style-src-elem") violations.push(event) })
+
+    const saved = [frameEditor.toHTML(), await frameEditor.serializeHTML(), await frameEditor.serializeRecoveryHTML()]
+    await layoutFrame()
+    assert(!violations.length, `serialization caused ${violations.length} stylesheet CSP violations`)
+    for(const html of saved) {
+      assert(html?.startsWith("<!DOCTYPE html>") && html.includes("<!--kept-->"), "serialization lost the doctype or comment")
+      const parsed = new DOMParser().parseFromString(html!, "text/html")
+      assert(parsed.documentElement.lang === "fr", "serialization lost the document language")
+      assert(parsed.head.querySelector("style")?.textContent === css, "serialization lost authored CSS")
+      assert(parsed.querySelector("template")?.content.querySelector("path")?.namespaceURI === "http://www.w3.org/2000/svg",
+        "serialization lost a namespaced node inside a template")
+      assert(!parsed.querySelector('meta[http-equiv="Content-Security-Policy"]'), "serialization included the editor's CSP")
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("remote websites retain their origin in editing, preview and exports", () => checkRemoteWebsite(assert, editor))
 
 await check("local HTML websites load as isolated blob and saved data frames", async () => {

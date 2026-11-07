@@ -39,7 +39,7 @@ function visit(root: Node, callback: (node: Node) => void) {
   walk(root)
 }
 
-function headInstructions(root: Document): {target: string; config: DistributionConfig}[] {
+function headInstructions(root: Pick<Document, "head">): {target: string; config: DistributionConfig}[] {
   const head = root.head
   if(!head) return []
   const result: {target: string; config: DistributionConfig}[] = []
@@ -57,20 +57,22 @@ function headInstructions(root: Document): {target: string; config: Distribution
   return result
 }
 
-function elementsWithId(root: Document, id: string): Element[] {
-  return Array.from(root.querySelectorAll("[id]")).filter(element => element.id === id)
+function elementsWithId(root: Document | Element, id: string): Element[] {
+  const elements = Array.from(root.querySelectorAll("[id]")).filter(element => element.id === id)
+  if(root.nodeType === 1 && (root as Element).id === id) elements.unshift(root as Element)
+  return elements
 }
 
-function assertUniqueReferencedIds(root: Document, instructions: {target: string}[]) {
+function assertUniqueReferencedIds(root: Document | Element, instructions: {target: string}[]) {
   for(const {target} of instructions) {
     if(elementsWithId(root, target).length > 1) throw new TypeError(`Duplicate DOM id referenced by distribution: ${target}`)
   }
 }
 
 /** Read canonical distribution instructions from document.head. */
-export function readDistributionConfigs(root: Document): DistributionConfig[] {
+export function readDistributionConfigs(root: Pick<Document, "head" | "documentElement">): DistributionConfig[] {
   const instructions = headInstructions(root)
-  assertUniqueReferencedIds(root, instructions)
+  assertUniqueReferencedIds(root.documentElement, instructions)
   return instructions.map(({config}) => config)
 }
 

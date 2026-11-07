@@ -292,7 +292,7 @@ export function slideLayoutRole(element: ReadableElement): "root" | "viewport" |
 }
 
 /** Reduces generated blank layouts to the same placeholder on a detached document. */
-export function normalizePristineDocumentLayout(doc: Document) {
+export function normalizePristineDocumentLayout(doc: Pick<Document, "head" | "body">) {
   for(const style of doc.head.querySelectorAll("style")) {
     if(style.attributes.length === 0 && (style.textContent === canvasStyles || style.textContent === slidesStyles || style.textContent === boardStyles)) style.remove()
   }
