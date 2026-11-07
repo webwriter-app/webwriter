@@ -225,6 +225,8 @@ describe("rich widget options drawer", () => {
     const changes = vi.fn()
     toolbox.addEventListener("widget-option-change", changes)
     const tree = drawer.querySelector(".widget-option-tree")!
+    const branches = Array.from(tree.querySelectorAll("details"))
+    expect(branches.map(details => details.open)).toEqual([false, false])
     const branch = tree.querySelector<HTMLInputElement>('input[data-tree-group="Group"]')!
     expect(branch.indeterminate).toBe(true)
     expect(tree.querySelector<HTMLInputElement>('input[data-value="a"]')?.checked).toBe(true)
@@ -236,6 +238,12 @@ describe("rich widget options drawer", () => {
     selectAll.checked = false
     selectAll.dispatchEvent(new Event("change", {bubbles: true}))
     expect(changes.mock.calls.at(-1)?.[0].detail).toEqual({name: "tree", value: ["unknown"]})
+
+    branches[0].open = true
+    const state = toolbox.widgetOptions!
+    toolbox.widgetOptions = {...state, options: [{...state.options[0], value: ["unknown"]}]}
+    await toolbox.updateComplete
+    expect(Array.from(tree.querySelectorAll("details"), details => details.open)).toEqual([true, false])
   })
 
   it("shows missing references without silently changing the stored value", async () => {

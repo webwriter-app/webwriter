@@ -2658,7 +2658,7 @@ export abstract class EditingControls extends LitElement {
           @change=${(event: Event) => toggle(values, (event.currentTarget as HTMLInputElement).checked)} />${label}</label>`
       }
       const renderNodes = (nodes: WidgetOptionTreeNode[]): TemplateResult => html`<ul>${nodes.map(node => html`<li>
-        ${node.children ? html`<details .open=${true}><summary>${checkbox(node.children, node.label, node.label)}</summary>
+        ${node.children ? html`<details><summary>${checkbox(node.children, node.label, node.label)}</summary>
           ${renderNodes(node.children)}</details>` : html`<label title=${node.description ?? ""}>
           <input type="checkbox" data-value=${node.value} .checked=${selected.has(node.value!)} ?disabled=${locked}
             @change=${(event: Event) => toggle([node.value!], (event.currentTarget as HTMLInputElement).checked)} />${node.label}</label>`}

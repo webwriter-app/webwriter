@@ -541,11 +541,12 @@ export const editingControlStyles = css`
     .widget-option-value output, .widget-option-unit { flex: 0 0 auto; }
     .widget-option-field > .develop-field-help { grid-column: 1 / -1; }
     .widget-option-tree { min-width: 0; overflow-wrap: anywhere; }
-    .widget-option-tree ul { list-style: none; padding: 0 0 0 0.8rem; margin: 0.25rem 0 0; }
+    .widget-option-tree ul { list-style: none; padding: 0; padding-inline-start: 0.8rem; margin: 0.25rem 0 0; }
     .widget-option-tree li { margin: 0.25rem 0; }
     .widget-option-tree label { display: inline-flex; align-items: flex-start; gap: 0.3rem; max-width: 100%; }
     .widget-option-tree input { flex: 0 0 auto; margin: .05rem 0 0; }
-    .widget-option-tree summary {cursor: pointer; padding-inline-start: .8rem; list-style-position: outside;}
+    .widget-option-tree :is(summary, li > label) { box-sizing: border-box; padding-inline-start: 0.8rem; }
+    .widget-option-tree summary {cursor: pointer; list-style-position: outside;}
     .widget-option-tree summary > label {vertical-align: top;}
     .widget-option-unit { color: #526b86; font-size: 0.65rem; }
     .widget-option-radios { display: grid; gap: 0.3rem; }
