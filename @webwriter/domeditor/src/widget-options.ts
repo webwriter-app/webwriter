@@ -113,6 +113,7 @@ export type WidgetActionState = Omit<Availability, "readOnly"> & {
   label: string
   description?: string
   group?: string
+  buttonGroup?: string
   icon?: string
   intent?: "default" | "danger"
   confirm?: string
@@ -274,6 +275,7 @@ export function widgetActionState(name: string, declaration: unknown, locale: st
   return {name, label: text(decl.label, locale) ?? titleCase(name), ...(description ? {description} : {}),
     ...availability(decl, locale),
     ...(typeof decl.group === "string" ? {group: decl.group} : {}),
+    ...(typeof decl.buttonGroup === "string" ? {buttonGroup: decl.buttonGroup} : {}),
     ...(typeof decl.icon === "string" ? {icon: decl.icon} : {}),
     ...(decl.intent === "default" || decl.intent === "danger" ? {intent: decl.intent} : {}),
     ...(text(decl.confirm, locale) ? {confirm: text(decl.confirm, locale)} : {}),
@@ -351,7 +353,7 @@ export function isWidgetOptionsState(value: unknown): value is WidgetOptionsStat
         && typeof choice.value === "string" && typeof choice.label === "string" && strings(choice, ["description"]))))
     && Array.isArray(value.actions) && value.actions.every(action => isRecord(action)
       && typeof action.name === "string" && typeof action.label === "string" && available(action)
-      && strings(action, ["icon", "confirm", "error"]) && booleans(action, ["busy"])
+      && strings(action, ["buttonGroup", "icon", "confirm", "error"]) && booleans(action, ["busy"])
       && (action.input === undefined || isRecord(action.input) && action.input.type === "file"
         && strings(action.input, ["accept"]) && booleans(action.input, ["multiple"]))
       && (action.intent === undefined || action.intent === "default" || action.intent === "danger")

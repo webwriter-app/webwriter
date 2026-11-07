@@ -107,6 +107,36 @@ describe("rich widget options drawer", () => {
     expect(drawer.querySelectorAll(".widget-action")).toHaveLength(2)
   })
 
+  it("joins adjacent visible widget actions and shows icons only when requested", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.widgetOptions = widgetState([], [
+      {name: "complete", label: "Complete DFA with sink", group: "editing", disabled: true, disabledReason: "Add a state first"},
+      {name: "dfa", label: "Switch to DFA", group: "editing", buttonGroup: "type", hidden: true},
+      {name: "nfa", label: "Switch to NFA", group: "editing", buttonGroup: "type"},
+      {name: "pda", label: "Switch to PDA", group: "editing", buttonGroup: "type", icon: "Settings"},
+      {name: "reset", label: "Reset", group: "editing"},
+      {name: "separate", label: "Separate", group: "editing", buttonGroup: "type"},
+      {name: "other", label: "Other", group: "advanced", buttonGroup: "type"},
+    ])
+    await toolbox.updateComplete
+    const drawer = drawerFor(toolbox)
+    await settleChildren(drawer)
+    const buttons = Array.from(drawer.querySelectorAll<RibbonButton>(".widget-action"))
+    expect(buttons.map(button => button.label)).toEqual(["Complete DFA with sink", "Switch to NFA", "Switch to PDA", "Reset", "Separate", "Other"])
+    expect(buttons[0].shadowRoot!.querySelector(".button-icon")).toBeNull()
+    expect(buttons[2].shadowRoot!.querySelector(".button-icon svg")).not.toBeNull()
+    expect(drawer.querySelectorAll(".widget-action-group")).toHaveLength(1)
+    const group = drawer.querySelector('.widget-action-group[role="group"]')!
+    expect(Array.from(group.querySelectorAll(".widget-action"))).toEqual(buttons.slice(1, 3))
+    expect(drawer.textContent).toContain("Add a state first")
+
+    const changes = vi.fn()
+    toolbox.addEventListener("widget-action", changes)
+    buttons[0].shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    buttons[1].shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    expect(changes.mock.calls.map(([event]) => event.detail)).toEqual([{name: "nfa"}])
+  })
+
   it("confirms metadata actions and emits no event when confirmation is declined", async () => {
     const confirm = vi.fn()
     vi.stubGlobal("confirm", confirm)

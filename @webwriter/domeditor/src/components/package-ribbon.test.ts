@@ -1138,7 +1138,7 @@ describe("package ribbon controls", () => {
     expect(details.textContent).not.toContain("webwriter-widget")
     expect(details.querySelector(".icon-tabler-backpack")).not.toBeNull()
     expect(details.querySelector(".icon-tabler-flask")).not.toBeNull()
-    expect(RibbonButton.styles.toString()).not.toContain("background: #f2f2f2")
+    expect(getComputedStyle(details).backgroundColor).toBe("#fff")
   })
 
   it("delays widget details and cancels pending tooltips while moving between packages", async () => {

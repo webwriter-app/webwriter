@@ -2784,7 +2784,7 @@ export abstract class EditingControls extends LitElement {
   protected renderWidgetAction(action: WidgetActionState, selectionType?: ElementSelectionType) {
     if(action.hidden) return nothing
     return html`<div class="widget-action-item">
-      <ribbon-button class="widget-action" variant="toolbar" .label=${action.label} .icon=${action.icon ?? ""}
+      <ribbon-button class="widget-action" variant="widget-action" .label=${action.label} .icon=${action.icon ?? ""}
         title=${action.disabledReason ?? action.description ?? action.label}
         data-intent=${action.intent ?? nothing} .disabled=${Boolean(action.disabled || action.busy)} .loading=${Boolean(action.busy)}
         @ribbon-button-click=${(event: Event) => {
@@ -2798,6 +2798,21 @@ export abstract class EditingControls extends LitElement {
       ${action.disabledReason && action.disabled ? html`<span class="develop-field-help">${action.disabledReason}</span>` : nothing}
       ${action.error ? html`<span class="widget-action-error" role="alert">${action.error}</span>` : nothing}
     </div>`
+  }
+
+  protected renderWidgetActions(actions: WidgetActionState[], selectionType?: ElementSelectionType) {
+    if(!actions.length) return nothing
+    const rows: WidgetActionState[][] = []
+    for(const action of actions) {
+      const row = rows.at(-1)
+      if(action.buttonGroup && row?.[0].buttonGroup === action.buttonGroup) row.push(action)
+      else rows.push([action])
+    }
+    return html`<div class="widget-actions">${rows.map(row => row.length === 1
+      ? this.renderWidgetAction(row[0], selectionType)
+      : html`<div class="choice-group widget-action-group" role="group">
+        ${row.map(action => this.renderWidgetAction(action, selectionType))}
+      </div>`)}</div>`
   }
 
   protected renderWidgetSharing() {
@@ -2846,9 +2861,7 @@ export abstract class EditingControls extends LitElement {
     const fields = (group?: string) => html`
       ${visibleOptions.filter(option => (option.group || undefined) === group)
         .map(option => this.renderWidgetOptionField(option, dispatch, `${state.path.join("-")}-`))}
-      ${actions.some(action => (action.group || undefined) === group) ? html`<div class="widget-actions">
-        ${actions.filter(action => (action.group || undefined) === group).map(action => this.renderWidgetAction(action, selectionType))}
-      </div>` : nothing}`
+      ${this.renderWidgetActions(actions.filter(action => (action.group || undefined) === group), selectionType)}`
     const groups = [...state.groups ?? []]
     for(const item of [...visibleOptions, ...actions]) {
       if(item.group && !groups.some(group => group.name === item.group)) groups.push({name: item.group, label: item.group})

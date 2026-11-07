@@ -118,6 +118,8 @@ export interface ActionDeclaration extends OptionAvailability {
   /** Native chooser input; the action method receives transient File[]. */
   input?: {type: "file", accept?: string, multiple?: boolean}
   group?: string
+  /** Joins adjacent visible actions with the same ID within an option group. */
+  buttonGroup?: string
   icon?: string
   intent?: "default" | "danger"
   confirm?: LocalizedText

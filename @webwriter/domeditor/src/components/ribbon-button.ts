@@ -861,6 +861,30 @@ export class RibbonButton extends LitElement {
       height: 0.85rem;
     }
 
+    :host([variant="widget-action"]) {display: block; min-width: 0;}
+
+    :host([variant="widget-action"]) .button-row {
+      height: 100%;
+      border-width: var(--widget-action-border-width, 1px);
+      border-color: #c5ccd5;
+      border-radius: var(--widget-action-border-radius, 4px);
+      background: #f7f7f7;
+    }
+
+    :host([variant="widget-action"][disabled]) .button-row,
+    :host([variant="widget-action"][disabled]) .button-row:hover {border-color: #c5ccd5; background: #f2f2f2;}
+
+    :host([variant="widget-action"]) .main-button {
+      flex-direction: row;
+      min-height: 1.65rem;
+      padding: .2rem .35rem;
+      font-size: .68rem;
+    }
+
+    :host([variant="widget-action"]) .main-button:disabled {color: #748090; opacity: 1;}
+    :host([variant="widget-action"]) .button-label-text {white-space: normal; overflow-wrap: anywhere;}
+    :host([variant="widget-action"]) .button-icon {flex: 0 0 .85rem; width: .85rem; height: .85rem;}
+
     :host([package-add]) {height: 100%}
     :host([package-add]) .button-row {height: 100%; min-height: 0; border: 0; border-radius: 0}
     :host([package-add]) .main-button {height: 100%; min-height: 0; justify-content: flex-start; padding: 0 .65rem; border-radius: 0}
@@ -1318,6 +1342,7 @@ export class RibbonButton extends LitElement {
 
   private renderIcon() {
     if(this.loading) return html`<span class="button-icon icon-loading" aria-hidden="true"></span>`
+    if(this.variant === "widget-action" && !this.icon) return nothing
     if(this.variant === "qr") return html`
       <span class="button-icon" aria-hidden="true">
         <webwriter-qr-code .value=${this.qrValue} .size=${56}></webwriter-qr-code>
