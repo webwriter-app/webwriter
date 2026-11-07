@@ -14,6 +14,7 @@ import {
 } from "./utility"
 import { Schema } from "./schema"
 import {clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, nodeEdgeRect, isTextFieldInteraction} from "./utility"
+import {widgetLookupForTags} from "./editor-artifacts"
 
 describe("native text field interactions", () => {
   it.each([
@@ -2108,9 +2109,11 @@ describe("DOM path and text point helpers", () => {
 
 
 describe("authored snapshot cleanup", () => {
+  const isWidget = widgetLookupForTags(["demo-widget"])
+
   it("preserves unfamiliar content and namespaces while cleaning nested templates", () => {
     const root = document.createElement("template")
-    root.innerHTML = '<unfamiliar-node class="keep ◆selected" data-authored="yes" data-ignore="remove"><!--keep--><template><demo-widget class="◆widget-editable keep" contenteditable=""><i class="◆editor-only">UI</i><template><b class="◆caret keep">nested</b></template></demo-widget></template><svg><template class="keep ◆selected"></template></svg></unfamiliar-node>'
+    root.innerHTML = '<unfamiliar-node class="keep ◆selected" data-authored="yes" data-ignore="remove" contenteditable=""><!--keep--><template><demo-widget class="keep" contenteditable=""><i class="◆editor-only">UI</i><template><b class="◆caret keep">nested</b></template></demo-widget></template><svg><template class="keep ◆selected"></template></svg></unfamiliar-node>'
     const node = root.content.firstElementChild!
     const comment = node.firstChild
     const template = node.querySelector("template")!
@@ -2118,12 +2121,13 @@ describe("authored snapshot cleanup", () => {
     const nested = widget.querySelector("template")!
     const svgTemplate = node.querySelector("svg template")!
 
-    expect(clearEditorArtifacts(root.content, ["data-ignore"])).toBe(root.content)
+    expect(clearEditorArtifacts(root.content, ["data-ignore"], isWidget)).toBe(root.content)
 
     expect(root.content.firstElementChild).toBe(node)
     expect(node.firstChild).toBe(comment)
     expect(node.getAttribute("data-authored")).toBe("yes")
     expect(node.hasAttribute("data-ignore")).toBe(false)
+    expect(node.getAttribute("contenteditable")).toBe("")
     expect(node.className).toBe("keep")
     expect(widget.hasAttribute("contenteditable")).toBe(false)
     expect(widget.querySelector("i")).toBeNull()
@@ -2134,14 +2138,14 @@ describe("authored snapshot cleanup", () => {
 
   it("cleans the root and preserves authored editability and private widget shadows", () => {
     const root = document.createElement("div")
-    root.innerHTML = '<p contenteditable="">authored</p><p contenteditable="false">locked</p><demo-widget class="◆widget-editable" contenteditable=""></demo-widget><aside data-webwriter-editor-only>UI</aside>'
+    root.innerHTML = '<p contenteditable="">authored</p><p contenteditable="false">locked</p><demo-widget contenteditable=""></demo-widget><aside data-webwriter-editor-only>UI</aside>'
     root.className = "authored ◆selected"
     const widget = root.querySelector("demo-widget")!
     const shadow = widget.attachShadow({mode: "open"})
     shadow.innerHTML = '<p class="◆selected" contenteditable="">private</p>'
     const privateHTML = shadow.innerHTML
 
-    clearEditorArtifacts(root)
+    clearEditorArtifacts(root, [], isWidget)
 
     expect(root.className).toBe("authored")
     expect(root.querySelectorAll("p")[0].getAttribute("contenteditable")).toBe("")
@@ -2154,11 +2158,11 @@ describe("authored snapshot cleanup", () => {
 
   it("keeps attribute-only and marker-only cleaning contracts distinct", () => {
     const root = document.createElement("template")
-    root.innerHTML = '<demo-widget class="keep ◆widget-editable" contenteditable=""><span class="◆editor-only">UI</span></demo-widget>'
+    root.innerHTML = '<demo-widget class="keep ◆selected" contenteditable=""><span class="◆editor-only">UI</span></demo-widget>'
     const widget = root.content.firstElementChild!
-    clearEditorOwnedAttributes(root)
+    clearEditorOwnedAttributes(root, isWidget)
     expect(widget.hasAttribute("contenteditable")).toBe(false)
-    expect(widget.className).toBe("keep ◆widget-editable")
+    expect(widget.className).toBe("keep ◆selected")
     clearEditorMarkerClasses(root)
     expect(widget.className).toBe("keep")
     expect(widget.querySelector("span")?.textContent).toBe("UI")

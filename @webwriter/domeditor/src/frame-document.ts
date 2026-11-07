@@ -4,9 +4,9 @@ import {WEBWRITER_GENERATOR} from "./document-head"
 import {documentTheme, ensureDefaultDocumentTheme, upgradeBundledDocumentThemes} from "./document-themes"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "./frame-local-packages"
 import {packageImportMapId} from "./package-dependencies"
-import type {WebWriterPackage} from "./packages"
+import {packageWidgetSchemaDefinitions, type WebWriterPackage} from "./packages"
 import {appendSerializedAssets, escapeHTMLAttribute, removeSerializedReaderScripts, restoreOriginalResourceURLs, scopedCustomElementRegistryScript, serializeDoctype} from "./serialization"
-import {clearEditorArtifacts} from "./editor-artifacts"
+import {clearEditorArtifacts, widgetLookupForTags} from "./editor-artifacts"
 import proofreadingWorkerURL from "./proofreading-worker.ts?worker&url"
 import {editorFrameOrigin} from "./frame-origins"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "./local-package-worker"
@@ -197,9 +197,10 @@ document.querySelectorAll("script.◆pending-module").forEach((script, index) =>
 /** Prepare a detached document for the isolated preview frame. */
 export function previewFrameHTML(source: Document, options: PreviewFrameOptions) {
   const nonce = crypto.randomUUID()
+  const widgetTags = packageWidgetSchemaDefinitions(options.packages).map(widget => widget.tagName)
   // Keep fragment links authored as fragments. The frame link handler resolves
   // them against its current URL, including previews hosted by frame-shell.
-  clearEditorArtifacts(source)
+  clearEditorArtifacts(source, [], widgetLookupForTags(widgetTags))
 
   // Remove authored executable content before installing the trusted widget
   // and preview bridge scripts in the isolated frame.
@@ -254,10 +255,14 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
         bridge.name = "webwriter-preview-bridge"
         bridge.setAttribute("data-nonce", options.bridgeNonce)
         bridge.setAttribute("data-host-origin", options.hostOrigin)
+        if(widgetTags.length) bridge.setAttribute("data-widget-tags", widgetTags.join(" "))
         source.head.append(bridge)
       }
       const entry = source.createElement("script")
-      if(options.standalone) entry.id = "webwriter-live-learner"
+      if(options.standalone) {
+        entry.id = "webwriter-live-learner"
+        if(widgetTags.length) entry.setAttribute("data-widget-tags", widgetTags.join(" "))
+      }
       entry.className = "◆ ◆editor-only"
       entry.type = "module"
       entry.src = options.standalone ? options.learnerEntryURL! : options.entryURL

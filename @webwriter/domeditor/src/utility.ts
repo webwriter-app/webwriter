@@ -1,6 +1,6 @@
-import {clearEditorMarkerClasses} from "./editor-artifacts"
+import {clearEditorMarkerClasses, editorWidgetLookup, isEditorOwnedAttribute, setEditorWidgetLookup} from "./editor-artifacts"
 export {createAnchorPositioner, type AnchorPositioner} from "./anchor-positioning.js"
-export {authoredClassValue, clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, isEditorOwnedAttribute, removeEditorMarker, widgetEditableMarker} from "./editor-artifacts"
+export {authoredClassValue, clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, isEditorOwnedAttribute, removeEditorMarker} from "./editor-artifacts"
 import type { Schema } from "./schema"
 import {isMarkElement} from "./marks"
 import {mediaElementSelector} from "./media"
@@ -1115,7 +1115,7 @@ export class EditingSelection {
     if(!this.isEmpty || !isElement(parent) || !getDocumentRoot().contains(parent)
       || parent.matches("table, thead, tbody, tfoot, tr, colgroup")) return null
     for(let node: Element | null = parent; node && node !== getDocumentRoot(); node = node.parentElement) {
-      if(isAtomicEditingElement(node) && !node.classList.contains("◆widget-editable")) return null
+      if(isAtomicEditingElement(node) && !isEditorOwnedAttribute(node, "contenteditable")) return null
     }
     const before = adjacentElement(parent.childNodes, this.anchorOffset, "before")
     const after = adjacentElement(parent.childNodes, this.anchorOffset, "after")
@@ -1617,7 +1617,7 @@ export class EditingSelection {
   static emptyParagraphAtBoundary(node: Node, offset: number) {
     if(!isElement(node) || !getDocumentRoot().contains(node)) return null
     const atomic = atomicEditingContainer(node)
-    if(atomic && !atomic.classList.contains("◆widget-editable")) return null
+    if(atomic && !isEditorOwnedAttribute(atomic, "contenteditable")) return null
     const after = adjacentElement(node.childNodes, offset, "after")
     const before = adjacentElement(node.childNodes, offset, "before")
     return isEmptyParagraph(after) && !isOutOfFlow(after) ? after
@@ -1748,6 +1748,7 @@ export function getInertDocument(node: Node = document) {
   let inert = inertDocuments.get(owner)
   if(!inert) {
     inert = owner.implementation.createHTMLDocument("")
+    setEditorWidgetLookup(inert, element => editorWidgetLookup(owner)?.(element) ?? false)
     inertDocuments.set(owner, inert)
   }
   return inert
@@ -1872,7 +1873,7 @@ export function textPointAtOffset(root: Element, offset: number, fallback?: [Nod
 
 /** Clones a node without copying transient editor marker classes. */
 export function cloneWithoutEditorMarkers<T extends Node>(node: T, deep=false, {inert = false} = {}) {
-  return clearEditorMarkerClasses(inert ? cloneInert(node, deep) : node.cloneNode(deep)) as T
+  return clearEditorMarkerClasses(inert ? cloneInert(node, deep) : node.cloneNode(deep), editorWidgetLookup(node)) as T
 }
 
 /** Removes inline size and placement overrides, letting authored CSS take over. */

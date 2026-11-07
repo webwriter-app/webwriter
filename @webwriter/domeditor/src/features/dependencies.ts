@@ -153,9 +153,11 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
     const plan: PackageDependencyPlan = {entries, map: message.importMap ?? null}
     globalThis.DOMEDITOR_PACKAGE_ITEMS = packageInsertionItems(packages, true)
     const widgetDefinitions = packageWidgetSchemaDefinitions(packages)
-    this.editor.schema = new Schema()
-    this.editor.schema.extendWidgets(widgetDefinitions)
-    this.editor.features.widget.refresh()
+    const previousSchema = this.editor.schema
+    const schema = new Schema()
+    schema.extendWidgets(widgetDefinitions)
+    this.editor.schema = schema
+    this.editor.features.widget.refresh(previousSchema)
     // Old cached metadata can still infer CSS that a wildcard export never
     // published. Only that inferred CSS is optional; explicit assets must load.
     const inferredStyles = new Set(packages.flatMap(pkg => Object.entries(pkg.manifest?.exports ?? {}).flatMap(([exportName, target]) => {

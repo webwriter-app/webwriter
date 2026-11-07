@@ -58,7 +58,7 @@ import type {LayoutSelectionState} from "../layouts"
 import type { EditingAction } from "../domeditor"
 import {elementDragType, insertionMenuItems, ribbonElementInsertionAction, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
-import {isAuthoredMutation} from "../editor-artifacts"
+import {isAuthoredContentEditableMutation, isAuthoredMutation} from "../editor-artifacts"
 import {
   defaultPackageExportSource,
   describePackageExport,
@@ -781,7 +781,10 @@ export class DomEditor extends LitElement {
   private liveThumbnailWidgets = new Set<string>()
   private liveSelectedAggregates = new Map<string, string>()
   private liveAggregateOptions = new Map<string, LiveWidgetAggregateOptions>()
-  private readonly livePreview = new LivePreview()
+  private readonly isInstalledWidget = (element: Element) => element.namespaceURI === "http://www.w3.org/1999/xhtml"
+    && this.installedPackages.some(pkg => pkg.members.some(member => member.kind === "widget"
+      && member.tagName?.toLowerCase() === element.localName))
+  private readonly livePreview = new LivePreview(this.isInstalledWidget)
   private fileFormat: FileFormat = "html"
   private fileHandle: LocalFileHandle | null = null
   private storageLocation: StorageLocation = "local"
@@ -1299,7 +1302,7 @@ export class DomEditor extends LitElement {
     if(!source?.documentElement) return this.frameDocumentHTML
     const inertDocument = getInertDocument(source)
     const root = inertDocument.importNode(source.documentElement, true) as HTMLElement
-    clearEditorArtifacts(root)
+    clearEditorArtifacts(root, [], this.isInstalledWidget)
     return `${serializeDoctype(source.doctype)}${root.outerHTML}`
   }
 
@@ -2415,7 +2418,7 @@ export class DomEditor extends LitElement {
     if(cached && this.authoredSnapshotCache?.document === this.editorDocument) return this.authoredSnapshotCache.value
     const root = source?.documentElement.cloneNode(true) as HTMLElement | undefined
     if(!root) return null
-    clearEditorArtifacts(root)
+    clearEditorArtifacts(root, [], this.isInstalledWidget)
     for(const element of [root, ...root.querySelectorAll("*")]) {
       const classes = authoredClassValue(element.getAttribute("class"))
       if(classes) element.setAttribute("class", classes)
@@ -2472,7 +2475,7 @@ export class DomEditor extends LitElement {
     })
     if(text.nextNode()) { this.documentLayoutsDismissed = true; return }
     const body = current.cloneNode(true) as HTMLElement
-    clearEditorArtifacts(body)
+    clearEditorArtifacts(body, [], this.isInstalledWidget)
     this.documentLayoutsDismissed = this.pristineDocumentLayoutSnapshot(body.outerHTML) === null
   }
 
@@ -2577,7 +2580,7 @@ export class DomEditor extends LitElement {
   }
 
   private isAuthoredMutation(mutation: MutationRecord) {
-    return isAuthoredMutation(mutation)
+    return isAuthoredMutation(mutation) && isAuthoredContentEditableMutation(mutation, this.isInstalledWidget) !== false
   }
 
   private dismissFloatInfo = () => {

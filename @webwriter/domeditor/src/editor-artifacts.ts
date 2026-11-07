@@ -1,5 +1,21 @@
-/** Marks a widget whose `contenteditable` attribute the editor set. */
-export const widgetEditableMarker = "◆widget-editable"
+export type WidgetLookup = (element: Element) => boolean
+
+const widgetLookups = new WeakMap<Document, WidgetLookup>()
+
+export function setEditorWidgetLookup(document: Document, lookup?: WidgetLookup) {
+  if(lookup) widgetLookups.set(document, lookup)
+  else widgetLookups.delete(document)
+}
+
+export function editorWidgetLookup(node: Node) {
+  const owner = node.nodeType === 9 ? node as Document : node.ownerDocument
+  return owner ? widgetLookups.get(owner) : undefined
+}
+
+export function widgetLookupForTags(tags: Iterable<string>): WidgetLookup {
+  const names = new Set(Array.from(tags, tag => tag.toLowerCase()))
+  return element => element.namespaceURI === "http://www.w3.org/1999/xhtml" && names.has(element.localName)
+}
 export const temporaryDetailsOpenMarker = "◆details-temporary-open"
 export const temporaryDetailsClosedMarker = "◆details-temporary-closed"
 export const isHTMLDetailsElement = (element: Element): boolean =>
@@ -44,8 +60,8 @@ export function isAuthoredMutation(mutation: MutationRecord) {
     const current = mutation.attributeNamespace
       ? element?.getAttributeNS(mutation.attributeNamespace, name) ?? null
       : element?.getAttribute(name) ?? null
-    if(name.toLowerCase() === "contenteditable" && element?.classList.contains(widgetEditableMarker)
-      && (current === "" || mutation.oldValue === "" && current === null)) return false
+    const contentEditableChanged = isAuthoredContentEditableMutation(mutation)
+    if(contentEditableChanged !== undefined) return contentEditableChanged
     if(name === "class") return authoredClassValue(mutation.oldValue) !== authoredClassValue(current)
     return mutation.oldValue !== current
   }
@@ -56,6 +72,17 @@ export function isAuthoredMutation(mutation: MutationRecord) {
   ))
 }
 
+/** Compare the authored values on either side of a widget runtime change. */
+export function isAuthoredContentEditableMutation(mutation: MutationRecord, isWidget?: WidgetLookup) {
+  if(mutation.attributeName !== "contenteditable" || mutation.attributeNamespace !== null) return
+  const element = mutation.target as Element
+  const current = element.getAttributeNS(null, "contenteditable")
+  if((current === "" || mutation.oldValue === "") && (isWidget ?? editorWidgetLookup(element))?.(element)) {
+    return (mutation.oldValue || null) !== (current || null)
+  }
+  return mutation.oldValue !== current
+}
+
 /** Returns authored class names, omitting transient editor markers.
  * Set `canonical` when comparing class values independent of authored order. */
 export function authoredClassValue(value: string | null, canonical = false) {
@@ -64,12 +91,11 @@ export function authoredClassValue(value: string | null, canonical = false) {
   return names.join(" ")
 }
 
-/** Whether the editor set this attribute to tell a widget that it is being
- * edited. It is never authored content, so collaboration, history and
- * serialization ignore it. */
-export function isEditorOwnedAttribute(element: Element, name: string) {
-  return name.toLowerCase() === "contenteditable" && element.classList.contains(widgetEditableMarker)
-    && element.getAttribute("contenteditable") === ""
+/** The empty value on an installed widget is runtime state. Collaboration,
+ * history and serialization preserve explicit authored values. */
+export function isEditorOwnedAttribute(element: Element, name: string, isWidget?: WidgetLookup) {
+  return name === "contenteditable" && element.getAttributeNS(null, name) === ""
+    && ((isWidget ?? editorWidgetLookup(element))?.(element) ?? false)
 }
 
 /** Visit authored elements, including inert template contents but never
@@ -91,15 +117,15 @@ function visitAuthoredElements(root: Node, visitElement: (element: Element) => v
 
 /** Removes editor-owned attributes from a node and all descendants,
  * including inert template contents. */
-export function clearEditorOwnedAttributes(root: Node) {
+export function clearEditorOwnedAttributes(root: Node, isWidget = editorWidgetLookup(root)) {
   return visitAuthoredElements(root, element => {
-    if(isEditorOwnedAttribute(element, "contenteditable")) element.removeAttribute("contenteditable")
+    if(isEditorOwnedAttribute(element, "contenteditable", isWidget)) element.removeAttributeNS(null, "contenteditable")
   })
 }
 
-function clearElementEditorMarkers(element: Element) {
+function clearElementEditorMarkers(element: Element, isWidget?: WidgetLookup) {
   if(isHTMLDetailsElement(element)) restoreAuthoredDetailsState(element)
-  if(isEditorOwnedAttribute(element, "contenteditable")) element.removeAttribute("contenteditable")
+  if(isEditorOwnedAttribute(element, "contenteditable", isWidget)) element.removeAttributeNS(null, "contenteditable")
   const markers = Array.from(element.classList).filter(name => name.startsWith("◆"))
   if(markers.length) element.classList.remove(...markers)
   if(!element.classList.length) element.removeAttribute("class")
@@ -107,14 +133,12 @@ function clearElementEditorMarkers(element: Element) {
 
 /** Removes transient editor marker classes from a node and all descendants,
  * including inert template contents, while preserving authored classes. */
-export function clearEditorMarkerClasses(root: Node) {
-  return visitAuthoredElements(root, clearElementEditorMarkers)
+export function clearEditorMarkerClasses(root: Node, isWidget = editorWidgetLookup(root)) {
+  return visitAuthoredElements(root, element => clearElementEditorMarkers(element, isWidget))
 }
 
-/** Clean a detached snapshot for serialization or preview. Remove editor UI
- * subtrees before clearing markers so the widget runtime attribute contract
- * remains distinguishable from authored contenteditable attributes. */
-export function clearEditorArtifacts(root: Node, ignoredAttributes: Iterable<string> = []) {
+/** Clean a detached snapshot for serialization or preview. */
+export function clearEditorArtifacts(root: Node, ignoredAttributes: Iterable<string> = [], isWidget = editorWidgetLookup(root)) {
   const attributes = Array.from(ignoredAttributes)
   return visitAuthoredElements(root, element => {
     if(element !== root && (element.classList.contains("◆editor-only") || element.hasAttribute("data-webwriter-editor-only"))) {
@@ -122,7 +146,7 @@ export function clearEditorArtifacts(root: Node, ignoredAttributes: Iterable<str
       return false
     }
     attributes.forEach(attribute => element.removeAttribute(attribute))
-    clearElementEditorMarkers(element)
+    clearElementEditorMarkers(element, isWidget)
   })
 }
 

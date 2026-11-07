@@ -9,7 +9,6 @@ function snapshot(node) {
   const original = Object.fromEntries(node.attrs.map(attribute => [attribute.prefix ? `${attribute.prefix}:${attribute.name}` : attribute.name, attribute.value]))
   const classes = (original.class ?? "").split(/\s+/)
   if(classes.includes("◆editor-only") || Object.hasOwn(original, "data-webwriter-editor-only")) return null
-  if(original.contenteditable === "" && classes.includes("◆widget-editable")) delete original.contenteditable
   if(Object.hasOwn(original, "class")) {
     original.class = classes.filter(name => name && !name.startsWith("◆")).join(" ")
     if(!original.class) delete original.class

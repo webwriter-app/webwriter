@@ -1,4 +1,5 @@
 import {CanvasViewer, canvasControlsStyles, canvasIcons, canvasStartingView, createCanvasPanSurface, groupCanvasZoomPresets, isCanvasStartingView, updateCanvasZoomControls, type CanvasStartingViewBounds} from "../canvas-viewer.js"
+import {isAuthoredMutation} from "../editor-artifacts"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearInlinePlacement, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
@@ -552,7 +553,7 @@ export class CanvasFeature extends EditorFeature {
     if(this.background) this.background.hidden = !this.active
     if(this.active && !this.slot) {
       this.slot = this.editor.appendix.querySelector<HTMLSlotElement>("slot:not([name])")!
-      this.viewer = new CanvasViewer(this.slot, this.background!, this.controls!, this.panSurface, this.cameraChanged, this.editor.options.loadCanvasSnapdom)
+      this.viewer = new CanvasViewer(this.slot, this.background!, this.controls!, this.panSurface, this.cameraChanged, this.editor.options.loadCanvasSnapdom, isAuthoredMutation)
       if(!this.viewer.startView()) this.viewer.applyCamera()
       this.viewer.mountMinimap(this.controlButtons!.parentElement!, {
         add: () => this.saveStartingView(),

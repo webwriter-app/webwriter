@@ -5,6 +5,7 @@ import {WidgetDataBindings} from "./widget-data"
 import * as Y from "yjs"
 import {previewFrameHTML} from "./frame-document"
 import {applyPreviewUpdate} from "./live-session-permissions.js"
+import {widgetLookupForTags} from "./editor-artifacts"
 
 const previews: LivePreview[] = []
 afterEach(() => {
@@ -79,16 +80,27 @@ describe("live preview lifecycle", () => {
 
   it("cleans editor-only artifacts and markers inside nested template contents", () => {
     const template = document.createElement("template")
-    template.innerHTML = '<div class="authored ◆widget-editable" contenteditable=""><span class="◆editor-only">remove</span><i data-webwriter-editor-only></i></div>'
+    template.innerHTML = '<demo-widget class="authored" contenteditable=""><span class="◆editor-only">remove</span><i data-webwriter-editor-only></i></demo-widget>'
     const nested = document.createElement("template")
     nested.innerHTML = '<b class="◆caret authored">text</b>'
-    template.content.querySelector("div")!.append(nested)
+    template.content.querySelector("demo-widget")!.append(nested)
 
-    cleanPreviewEditorArtifacts(template.content)
+    cleanPreviewEditorArtifacts(template.content, [], widgetLookupForTags(["demo-widget"]))
 
     expect(template.content.querySelector("[contenteditable], [data-webwriter-editor-only], .◆editor-only")).toBeNull()
-    expect(template.content.querySelector("div")?.className).toBe("authored")
+    expect(template.content.querySelector("demo-widget")?.className).toBe("authored")
     expect((template.content.querySelector("template") as HTMLTemplateElement).content.querySelector("b")?.className).toBe("authored")
+  })
+
+  it("records installed widgets without their runtime editability and preserves authored locks", () => {
+    const {owner} = mount()
+    const preview = new LivePreview(widgetLookupForTags(["demo-widget"]))
+    owner.body.innerHTML = '<demo-widget contenteditable=""></demo-widget><demo-widget contenteditable="false"></demo-widget>'
+
+    expect(preview.captureWidgetStates(owner).map(widget => widget.html)).toEqual([
+      "<demo-widget></demo-widget>",
+      '<demo-widget contenteditable="false"></demo-widget>',
+    ])
   })
 
   it("applies widget snapshots identically and ignores malformed HTML values", () => {

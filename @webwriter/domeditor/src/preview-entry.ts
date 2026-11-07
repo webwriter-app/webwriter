@@ -1,6 +1,7 @@
 import {applyPreviewWidgetSnapshot, LivePreview, previewElementPath, previewWidgetElements} from "./live-preview"
 import type {LiveSessionWidgetState} from "./live-session"
 import {openFrameLinksInNewTabs} from "./frame-links"
+import {widgetLookupForTags} from "./editor-artifacts"
 
 openFrameLinksInNewTabs(window)
 
@@ -9,7 +10,7 @@ const nonce = bridge?.getAttribute("data-nonce")
 const hostOrigin = bridge?.getAttribute("data-host-origin")
 
 if(nonce && hostOrigin && window.parent !== window) {
-  const preview = new LivePreview()
+  const preview = new LivePreview(widgetLookupForTags((bridge?.getAttribute("data-widget-tags") ?? "").split(" ")))
   const post = (message: object) => window.parent.postMessage({...message, bridgeNonce: nonce}, hostOrigin)
   window.addEventListener("webwriter-document-save", event => {
     event.preventDefault()

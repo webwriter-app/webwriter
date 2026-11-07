@@ -41,7 +41,7 @@ export async function checkLegacyWidgetOptions() {
         const part = shadow.querySelector<HTMLElement>("[part~='options']")!
         const context = `${theme.value}/${mode}/${width}`
         await layoutFrame()
-        assert(widget.hasAttribute("contenteditable") && widget.classList.contains("◆widget-editable"), `${context}: installed widget was not made editable by runtime`)
+        assert(widget.getAttribute("contenteditable") === "", `${context}: installed widget was not made editable by runtime`)
         assert(view.getComputedStyle(part).display === "none", `${context}: unselected options are visible`)
 
         editor.features.selection.selectElement(widget)
@@ -85,7 +85,8 @@ export async function checkLegacyWidgetOptions() {
 
         const serialized = editor.toHTML(true)
         assert(!serialized.includes("◆"), `${context}: selection/editability markers leaked into serialization`)
-        assert(!serialized.includes('legacy-options-widget contenteditable=""'), `${context}: runtime contenteditable leaked into serialization`)
+        assert(!new DOMParser().parseFromString(serialized, "text/html").querySelector('legacy-options-widget[contenteditable]'),
+          `${context}: runtime contenteditable leaked into serialization`)
         assert(serialized.includes("<!--keep-->") && serialized.includes("Authored widget content"), `${context}: serialization changed authored widget content`)
         assert(doc.body.innerHTML.includes("<!--keep-->") && doc.body.innerHTML.includes("Authored widget content"), `${context}: selection changed authored content`)
         editor.destroy()

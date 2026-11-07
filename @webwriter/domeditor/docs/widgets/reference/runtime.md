@@ -16,7 +16,7 @@ A widget script defines the custom element named by its export, for example `./w
 | `static convertFrom` / `convertFrom`, `static convertTo` / `convertTo` | [DOM conversions and file import or export](../guides/conversions.md). |
 | `static aggregate` | [Aggregated View](aggregated-view.md) declaration for aggregate views. |
 
-WebWriter gives installed widgets a persistent `id` if missing. It adds temporary marker classes and `contenteditable=""` while editing if no authored `contenteditable` exists. These editor artifacts are not saved or shared. Preserve authored IDs and unfamiliar content.
+WebWriter gives installed widgets a persistent `id` if missing. It adds `contenteditable=""` while editing if the widget has no `contenteditable` attribute. The empty value on installed widgets is temporary and is excluded from saved and shared HTML. Explicit values such as `contenteditable="false"` are preserved.
 
 Shadow-DOM events are ignored by editor features unless `propagateEvents` opts in. Deliberate widget changes to authored DOM are still observed and synchronized.
 

@@ -136,7 +136,7 @@ class CanvasMinimap {
     this.map.addEventListener("lostpointercapture", endDrag)
     this.toggle.addEventListener("click", () => this.setOpen(this.map.hidden))
     this.observer = new MutationObserver(records => {
-      if(records.some(record => this.contentChanged(record, records))) {
+      if(records.some(record => this.contentChanged(record))) {
         if(!this.refreshPaused) this.updateStartingView()
         this.invalidate()
       }
@@ -308,7 +308,7 @@ class CanvasMinimap {
     if(drag?.handle.hasPointerCapture(drag.id)) drag.handle.releasePointerCapture(drag.id)
   }
 
-  contentChanged(record, records) {
+  contentChanged(record) {
     const target = record.target instanceof Element ? record.target : record.target.parentElement
     if(target?.closest(minimapExcluded)) return false
     if(record.type === "childList") {
@@ -318,9 +318,7 @@ class CanvasMinimap {
       })
     }
     if(record.attributeName === "class") return authoredClass(record.oldValue) !== authoredClass(target.getAttribute("class"))
-    if(record.attributeName === "contenteditable" && !record.oldValue && !target.getAttribute("contenteditable")
-      && (target.classList.contains("◆widget-editable") || records.some(entry => entry.target === target
-        && entry.attributeName === "class" && entry.oldValue?.split(/\s+/).includes("◆widget-editable")))) return false
+    if(record.attributeName === "contenteditable" && this.viewer.isAuthoredMutation) return this.viewer.isAuthoredMutation(record)
     if(record.type === "attributes" && record.oldValue === target.getAttributeNS(record.attributeNamespace, record.attributeName)) return false
     return true
   }
@@ -676,7 +674,7 @@ class CanvasMinimap {
 }
 
 export class CanvasViewer {
-  constructor(slot, background, controls, panSurface = null, onChange = () => {}, loadSnapdom = null) {
+  constructor(slot, background, controls, panSurface = null, onChange = () => {}, loadSnapdom = null, isAuthoredMutation = null) {
     slot.dispatchEvent(new Event("webwriter-canvas-viewer-dispose"))
     this.body = document.body
     this.slot = slot
@@ -685,6 +683,7 @@ export class CanvasViewer {
     this.panSurface = panSurface
     this.onChange = onChange
     this.loadSnapdom = loadSnapdom
+    this.isAuthoredMutation = isAuthoredMutation
     this.minimap = null
     this.camera = {x: 32, y: 32, zoom: 1}
     this.appliedZoom = 1

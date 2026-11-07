@@ -10,7 +10,8 @@ import {getDocumentRoot} from "../document-template"
 import {boardLayoutRole, slideLayoutRole} from "../document-layout"
 import {captionedFigureContent} from "../figure-layout.js"
 import {getElementPresentation} from "../element-names"
-import {$, atomicEditingContainer, clearEditorArtifacts, cloneInert, getInertDocument, isEditorOwnedAttribute, pathFromNode, removeEditorMarker, widgetEditableMarker} from "../utility"
+import {$, atomicEditingContainer, clearEditorArtifacts, cloneInert, getInertDocument, pathFromNode, removeEditorMarker} from "../utility"
+import type {Schema} from "../schema"
 import {
   isWidgetFileFormat,
   matchesWidgetFileFormat,
@@ -66,9 +67,9 @@ export class WidgetFeature extends EditorFeature {
   }
 
   /** Whether an element is an installed widget according to the schema. */
-  isWidget(element: Element) {
+  readonly isWidget = (element: Element, schema = this.editor.schema) => {
     if(element.namespaceURI !== "http://www.w3.org/1999/xhtml" || !element.localName.includes("-")) return false
-    const groups = this.editor.schema.get(element)?.group ?? []
+    const groups = schema.get(element.localName)?.group ?? []
     return groups.includes("widget") || groups.includes("widgetinline")
   }
 
@@ -111,20 +112,24 @@ export class WidgetFeature extends EditorFeature {
 
   /** Assigns missing widget IDs and marks installed widgets as editable. Call
    * after the schema changes. */
-  refresh() {
+  refresh(previousSchema: Schema = this.editor.schema) {
     if(!this.isEnabled) return
     document.body.querySelectorAll("*").forEach(element => {
       if(this.isWidget(element)) this.#connectWidget(element)
-      else this.#unmarkEditable(element)
+      else this.#clearEditable(element, previousSchema)
     })
     this.editor.doc.widgetData.sync()
   }
 
   /** IDs are authored state and survive removal and reconnection.
    * Widgets observe `contenteditable` (or `isContentEditable`) to switch
-   * into their editing presentation. An authored value is left untouched. */
+   * into their editing presentation. Explicit authored values are left untouched. */
   #connectWidget(element: Element, prefill = true) {
-    if(!document.body.contains(element) || !this.isWidget(element) || !this.editor.allows("edit", element)) return
+    if(!document.body.contains(element) || !this.isWidget(element)) return
+    if(!this.editor.allows("edit", element)) {
+      this.#clearEditable(element)
+      return
+    }
     const id = element.getAttribute("id")
     if((id === null || id === "") && !this.editor.options.reader) element.setAttribute("id", `ww${crypto.randomUUID()}`)
     if(!this.editor.options.reader && !this.#initializedContent.has(element)) {
@@ -132,9 +137,13 @@ export class WidgetFeature extends EditorFeature {
       try { if(prefill) this.#prefillContent(element) }
       catch { /* An unfillable schema leaves the original widget untouched. */ }
     }
-    if(element.hasAttribute("contenteditable")) return
-    element.classList.add("◆", widgetEditableMarker)
-    element.setAttribute("contenteditable", "")
+    if(!element.hasAttributeNS(null, "contenteditable")) element.setAttributeNS(null, "contenteditable", "")
+  }
+
+  #clearEditable(element: Element, schema = this.editor.schema) {
+    if(element.getAttributeNS(null, "contenteditable") === "" && this.isWidget(element, schema)) {
+      element.removeAttributeNS(null, "contenteditable")
+    }
   }
 
   #contentNodes(element: Element) {
@@ -145,7 +154,7 @@ export class WidgetFeature extends EditorFeature {
   /** Add missing required children, preserving the identity and order of every
    * existing node. This never removes, wraps or normalizes authored content. */
   #prefillContent(element: Element, ancestors = new Set<string>(), initial = true) {
-    if(element.getAttribute("contenteditable") === "false" || !this.editor.schema.get(element)?.content) return
+    if(element.getAttributeNS(null, "contenteditable") === "false" || !this.editor.schema.get(element)?.content) return
     const original = this.#contentNodes(element)
     if((initial && original.length) || this.editor.schema.isContentValid(element, original)) return
     const key = `${element.namespaceURI}:${element.localName}`
@@ -207,12 +216,6 @@ export class WidgetFeature extends EditorFeature {
         content.filter(child => !candidates.has(child) || retained.has(child))) && !retained.has(element)
     }
     catch { return false }
-  }
-
-  #unmarkEditable(element: Element) {
-    if(!element.classList.contains(widgetEditableMarker)) return
-    if(isEditorOwnedAttribute(element, "contenteditable")) element.removeAttribute("contenteditable")
-    removeEditorMarker(element, widgetEditableMarker)
   }
 
   actions = {
@@ -428,10 +431,10 @@ export class WidgetFeature extends EditorFeature {
     }
     const method = this.#conversionMethod(widget, this.#declarations(widget, direction)[format])
     if(!method) return false
-    const snapshot = importing ? clearEditorArtifacts(cloneInert(widget, true)) : null
+    const snapshot = importing ? clearEditorArtifacts(cloneInert(widget, true), [], this.isWidget) : null
     const current = () => this.#canConvertFile(widget)
       && this.#conversionMethod(widget, this.#declarations(widget, direction)[format])
-      && (!snapshot || snapshot.isEqualNode(clearEditorArtifacts(cloneInert(widget, true))))
+      && (!snapshot || snapshot.isEqualNode(clearEditorArtifacts(cloneInert(widget, true), [], this.isWidget)))
     const signal = this.#fileConversions.signal
     let timer: ReturnType<typeof setTimeout> | undefined
     let cancel: (() => void) | undefined
@@ -485,7 +488,7 @@ export class WidgetFeature extends EditorFeature {
       const replacement = document.createElement(target)
       const method = this.#conversionMethod(replacement, this.#declarations(replacement, "convertFrom")[element.localName])
       if(!method || !this.isWidget(replacement)) return false
-      const copy = clearEditorArtifacts(cloneInert(element, true))
+      const copy = clearEditorArtifacts(cloneInert(element, true), [], this.isWidget)
       const fragment = copy.ownerDocument!.createDocumentFragment()
       fragment.append(copy)
       const result = method.call(replacement, fragment)
@@ -498,7 +501,7 @@ export class WidgetFeature extends EditorFeature {
       ? node.namespaceURI !== htmlNamespace || node.localName !== target || node.hasAttribute("is")
         || node.matches(".◆editor-only, [data-webwriter-editor-only]")
       : node.nodeType !== Node.COMMENT_NODE && !(node instanceof Text && !node.data.trim()))) return false
-    clearEditorArtifacts(detached)
+    clearEditorArtifacts(detached, [], this.isWidget)
     const fits = () => this.#canConvert(element, parent) && this.editor.schema.isContentValid(parent,
       Array.from(parent.childNodes).flatMap(node => node === element ? nodes : [node]))
     if(!fits()) return false
@@ -506,7 +509,7 @@ export class WidgetFeature extends EditorFeature {
     try {
       if(!fits()) return false
       element.replaceWith(...nodes)
-      if(widget) this.#unmarkEditable(element)
+      if(widget) this.#clearEditable(element)
       if(elements.length === 1) {
         if(this.isWidget(elements[0])) this.editor.features.selection.captureElement(elements[0])
         else this.editor.features.selection.selectElement(elements[0])
@@ -576,7 +579,7 @@ export class WidgetFeature extends EditorFeature {
       }
       if(option.type === "reference" && !this.#observingReferences) {
         this.#observingReferences = true
-        this.#observer?.observe(document.body, {childList: true, subtree: true, attributes: true, characterData: true})
+        this.#observer?.observe(document.body, {childList: true, subtree: true, attributes: true, attributeOldValue: true, characterData: true})
       }
       return this.#referenceOption(widget, option)
     })
@@ -831,6 +834,13 @@ export class WidgetFeature extends EditorFeature {
     if(this.#legacyOptions && !document.body.contains(this.#legacyOptions.widget)) this.#closeLegacyOptions()
     if(this.#observingReferences) this.#queueOptionsRefresh()
     for(const record of records) {
+      if(record.attributeName === "contenteditable" && record.attributeNamespace === null && record.target instanceof Element) {
+        const widget = record.target
+        if(!document.body.contains(widget) || !this.isWidget(widget)) continue
+        if(!this.editor.allows("edit", widget)) this.#clearEditable(widget)
+        else if(record.oldValue && !widget.hasAttributeNS(null, "contenteditable")) widget.setAttributeNS(null, "contenteditable", "")
+        continue
+      }
       record.addedNodes.forEach(node => {
         if(!(node instanceof Element) || !document.body.contains(node)) return
         this.#connectWidget(node, prefill)
@@ -854,7 +864,7 @@ export class WidgetFeature extends EditorFeature {
     super.enable()
     const Observer = document.defaultView?.MutationObserver ?? MutationObserver
     this.#observer = new Observer(this.#handleMutations)
-    this.#observer.observe(document.body, {childList: true, subtree: true, ...(this.#observingReferences ? {attributes: true, characterData: true} : {})})
+    this.#observer.observe(document.body, {childList: true, subtree: true, attributeOldValue: true, attributeFilter: ["contenteditable"]})
     this.refresh()
   }
 
@@ -866,7 +876,7 @@ export class WidgetFeature extends EditorFeature {
     this.#observer = null
     this.#observingReferences = false
     this.#pendingFileAction?.cancel()
-    document.body.querySelectorAll(`.${CSS.escape(widgetEditableMarker)}`).forEach(element => this.#unmarkEditable(element))
+    document.body.querySelectorAll('[contenteditable=""]').forEach(element => this.#clearEditable(element))
     super.disable()
   }
 }

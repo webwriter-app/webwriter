@@ -1,6 +1,6 @@
 import {hydrateWidgetGroupings, prepareWidgetGroupingsForSerialization, restoreWidgetGroupingClones} from "./widget-grouping-dom"
 import {SharedDOMDoc, type EditingMutation} from "./domdoc"
-import {isAuthoredMutation, restoreAuthoredDetailsState, temporaryDetailsClosedMarker, temporaryDetailsOpenMarker} from "./editor-artifacts"
+import {isAuthoredMutation, restoreAuthoredDetailsState, setEditorWidgetLookup, temporaryDetailsClosedMarker, temporaryDetailsOpenMarker} from "./editor-artifacts"
 import {collectFeatureActions} from "./features"
 import {editorFeatureNames, type EditorFeatures, type EditorExtensionFactory} from "./editor-features"
 import { HistoryFeature } from "./features/history"
@@ -430,6 +430,7 @@ export class DOMEditor {
     this.#documentSession = null
     if(!session || documentEditorSessions.get(document) !== session) return
     documentEditorSessions.delete(document)
+    setEditorWidgetLookup(document)
     document.body.inert = session.state.inert
     document.designMode = session.state.designMode
     if(!session.hadEditorStylesheet) {
@@ -511,6 +512,7 @@ export class DOMEditor {
     }
     try {
       this.registerDocumentSession()
+      setEditorWidgetLookup(document, this.features.widget.isWidget)
     }
     catch(error) {
       initialYDoc?.destroy()
@@ -1788,7 +1790,7 @@ export class DOMEditor {
   }
 
   clearEditingArtifacts(node: Node = document) {
-    clearEditorArtifacts(node, this.ignoreAttrs)
+    clearEditorArtifacts(node, this.ignoreAttrs, this.features.widget.isWidget)
   }
 
   /** Sanitizes detached authored HTML and repairs it with the active schema

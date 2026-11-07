@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {isAuthoredMutation, widgetEditableMarker} from "./editor-artifacts"
+import {isAuthoredContentEditableMutation, isAuthoredMutation, widgetLookupForTags} from "./editor-artifacts"
+
+const isWidget = widgetLookupForTags(["demo-widget"])
 
 async function recordMutation(target: Node, mutate: () => void, options: MutationObserverInit) {
   const records = await recordMutations(target, mutate, options)
@@ -33,21 +35,20 @@ describe("isAuthoredMutation", () => {
   })
 
   it("ignores same-value attributes and the widget editable contract", async () => {
-    const element = document.createElement("div")
+    const element = document.createElement("demo-widget")
     element.setAttribute("title", "same")
     const sameValue = await recordMutation(element, () => element.setAttribute("title", "same"),
       {attributes: true, attributeOldValue: true})
-    element.classList.add(widgetEditableMarker)
     const editable = await recordMutation(element, () => element.setAttribute("contenteditable", ""),
       {attributes: true, attributeOldValue: true})
     expect(isAuthoredMutation(sameValue)).toBe(false)
-    expect(isAuthoredMutation(editable)).toBe(false)
+    expect(isAuthoredContentEditableMutation(editable, isWidget)).toBe(false)
 
     for(const value of ["false", "plaintext-only"]) {
       element.setAttribute("contenteditable", "")
       const authoredEditable = await recordMutation(element, () => element.setAttribute("contenteditable", value),
         {attributes: true, attributeOldValue: true})
-      expect(isAuthoredMutation(authoredEditable)).toBe(true)
+      expect(isAuthoredContentEditableMutation(authoredEditable, isWidget)).toBe(true)
     }
 
     const authored = await recordMutation(element, () => element.setAttribute("data-authored", "yes"),
@@ -59,14 +60,18 @@ describe("isAuthoredMutation", () => {
     expect(isAuthoredMutation(namespaced)).toBe(true)
   })
 
-  it("ignores installing the widget marker and empty editable attribute in one batch", async () => {
-    const element = document.createElement("div")
-    const records = await recordMutations(element, () => {
-      element.classList.add(widgetEditableMarker)
-      element.setAttribute("contenteditable", "")
-    }, {attributes: true, attributeOldValue: true})
-    expect(records).toHaveLength(2)
-    expect(records.every(isAuthoredMutation)).toBe(false)
+  it("ignores removing the runtime value and detects clearing an authored widget lock", async () => {
+    const element = document.createElement("demo-widget")
+    const options = {attributes: true, attributeOldValue: true}
+    element.setAttribute("contenteditable", "")
+    const removed = await recordMutation(element, () => element.removeAttribute("contenteditable"), options)
+    expect(isAuthoredContentEditableMutation(removed, isWidget)).toBe(false)
+    element.setAttribute("contenteditable", "false")
+    const unlocked = await recordMutation(element, () => element.setAttribute("contenteditable", ""), options)
+    expect(isAuthoredContentEditableMutation(unlocked, isWidget)).toBe(true)
+    const unknown = document.createElement("unknown-widget")
+    const authored = await recordMutation(unknown, () => unknown.setAttribute("contenteditable", ""), options)
+    expect(isAuthoredContentEditableMutation(authored, isWidget)).toBe(true)
   })
 
   it("distinguishes temporary Details toggles from authored open changes", async () => {

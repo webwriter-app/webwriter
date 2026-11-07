@@ -48,7 +48,6 @@ body {
 
 /* Legacy widget-owned controls stay in their original shadow/context tree.
  * The selected part is a manual popover, outside authored layout and clipping. */
-.◆widget-editable::part(options),
 [contenteditable]::part(options) {
   display: none !important;
 }

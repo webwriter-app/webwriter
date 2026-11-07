@@ -290,16 +290,21 @@ describe("isolated frame documents", () => {
   })
 
   it("cleans a preview copy and installs only the trusted runtime with a separate script nonce", () => {
-    const source = parse('<html><head><script>authored()</script><style>.authored {color: red}</style></head><body><p class="authored ◆selected" contenteditable="">text</p><demo-widget class="◆widget-editable" contenteditable=""></demo-widget><aside class="◆editor-only">UI</aside><template><i data-webwriter-editor-only>UI</i><b class="◆caret authored">nested</b></template></body></html>')
-    const root = parse(previewFrameHTML(source, previewOptions()))
+    const pkg: WebWriterPackage = {name: "fixture", version: "1", label: "Fixture", authors: [], keywords: [], links: {},
+      scripts: [], styles: [], members: [{id: "widget", packageName: "fixture", packageVersion: "1", exportName: "./widget",
+        kind: "widget", label: "Widget", insertable: true, tagName: "demo-widget"}]}
+    const source = parse('<html><head><script>authored()</script><style>.authored {color: red}</style></head><body><p class="authored ◆selected" contenteditable="">text</p><demo-widget contenteditable=""></demo-widget><demo-widget id="locked" contenteditable="false"></demo-widget><aside class="◆editor-only">UI</aside><template><i data-webwriter-editor-only>UI</i><b class="◆caret authored">nested</b></template></body></html>')
+    const root = parse(previewFrameHTML(source, previewOptions({packages: [pkg]})))
     expect(root.querySelector("aside")).toBeNull()
     expect(root.querySelector("p")?.outerHTML).toBe('<p class="authored" contenteditable="">text</p>')
     expect(root.querySelector("demo-widget")?.hasAttribute("contenteditable")).toBe(false)
+    expect(root.querySelector("#locked")?.getAttribute("contenteditable")).toBe("false")
     expect(root.querySelector("template")?.innerHTML).toBe('<b class="authored">nested</b>')
     expect(root.querySelector("style")?.textContent).toBe(".authored {color: red}")
     expect(Array.from(root.querySelectorAll("script")).some(script => script.textContent === "authored()")).toBe(false)
     const bridge = root.querySelector('meta[name="webwriter-preview-bridge"]')!
     expect(bridge.getAttribute("data-nonce")).toBe("host-bridge-nonce")
+    expect(bridge.getAttribute("data-widget-tags")).toBe("demo-widget")
     const scripts = Array.from(root.querySelectorAll("script"))
     expect(scripts.some(script => script.getAttribute("src") === previewOptions().entryURL)).toBe(true)
     const nonce = scripts[0].getAttribute("nonce")!

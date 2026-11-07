@@ -1641,9 +1641,10 @@ describe("DomEditor iframe setup", () => {
       <html lang="fr"><head><title>Keep title</title>
         <script class="◆ ◆editor-only">bootstrap</script>
         <meta data-webwriter-editor-only=""></head><body>
-        <!-- retain body comment --><x-widget data-custom="keep" class="authored ◆selected ◆widget-editable" contenteditable="">
+        <!-- retain body comment --><webwriter-demo data-custom="keep" class="authored ◆selected" contenteditable="">
           <template><!-- retain template comment --><x-child data-template="keep"></x-child></template>
-        </x-widget></body></html>`, "text/html")
+        </webwriter-demo></body></html>`, "text/html")
+    host.installedPackages = [{...demoPackage, scripts: [], styles: []}]
     host.editorDocument = source
     host.editorWindow = iframe.contentWindow
     host.editorOpaque = false
@@ -1689,7 +1690,7 @@ describe("DomEditor iframe setup", () => {
     expect(payload.html).toContain('data-custom="keep"')
     expect(payload.html).toContain('data-template="keep"')
     const bootstrapped = new DOMParser().parseFromString(payload.html, "text/html")
-    expect(bootstrapped.body.querySelector("x-widget")?.getAttribute("class")).toBe("authored")
+    expect(bootstrapped.body.querySelector("webwriter-demo")?.getAttribute("class")).toBe("authored")
     expect(bootstrapped.querySelector('meta[data-webwriter-editor-only]')).toBeNull()
     expect(bootstrapped.querySelector('script:not([src])')?.textContent).not.toContain("bootstrap")
     expect(bootstrapped.body.querySelector("[contenteditable]")).toBeNull()

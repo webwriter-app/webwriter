@@ -11,6 +11,7 @@ import {authoredClassValue, isAppendixInteraction, isEditorOwnedAttribute, isFor
 import {userInitials} from "../user-identity"
 import {hydrateWidgetGroupings} from "../widget-grouping-dom"
 import {safeCssColor} from "../css-color"
+import {isAuthoredContentEditableMutation} from "../editor-artifacts"
 
 type StoredCheckpoint = {
   id: string
@@ -609,7 +610,7 @@ export class HistoryFeature extends EditorFeature {
           if(record.type === "attributes") {
             const target = record.target as Element
             const name = record.attributeName!
-            if(this.editor.ignoreAttrs.includes(name) || isEditorOwnedAttribute(target, name)) continue
+            if(this.editor.ignoreAttrs.includes(name) || isAuthoredContentEditableMutation(record, this.editor.features.widget.isWidget) === false) continue
             if(name === "class") {
               const markers = Array.from(target.classList).filter(value => value.startsWith("◆"))
               const authored = authoredClassValue(record.oldValue).split(" ").filter(Boolean)
@@ -782,7 +783,7 @@ export class HistoryFeature extends EditorFeature {
     return Array.from(element.attributes)
       .flatMap(attribute => {
         if(this.editor.ignoreAttrs.some(name => name.toLowerCase() === attribute.name.toLowerCase())
-          || isEditorOwnedAttribute(element, attribute.name)) return []
+          || attribute.namespaceURI === null && isEditorOwnedAttribute(element, attribute.name, this.editor.features.widget.isWidget)) return []
         if(attribute.name.toLowerCase() !== "class") return [[attribute.name, attribute.value] as const]
         const className = authoredClassValue(attribute.value)
         return className ? [[attribute.name, className] as const] : []

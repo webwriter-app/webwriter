@@ -2498,7 +2498,7 @@ describe("contentful widgets", () => {
     expect(widget.querySelector('[class*="selected"]')).toBeNull()
     expect(document.body).not.toHaveClass("◆gap-caret-visible", "◆node-selection-active")
     // Widget editing remains enabled independently of selection presentation.
-    expect(widget.querySelector("timeline-item")).toHaveClass("◆widget-editable")
+    expect(widget.querySelector("timeline-item")?.getAttribute("contenteditable")).toBe("")
   })
 })
 
