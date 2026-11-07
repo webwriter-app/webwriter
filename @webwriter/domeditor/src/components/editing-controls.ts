@@ -2785,7 +2785,8 @@ export abstract class EditingControls extends LitElement {
     if(action.hidden) return nothing
     return html`<div class="widget-action-item">
       <ribbon-button class="widget-action" variant="widget-action" .label=${action.label} .icon=${action.icon ?? ""}
-        title=${action.disabledReason ?? action.description ?? action.label}
+        title=${action.disabled && action.disabledReason ? nothing : action.description ?? action.label}
+        .disabledReason=${action.disabledReason ?? ""}
         data-intent=${action.intent ?? nothing} .disabled=${Boolean(action.disabled || action.busy)} .loading=${Boolean(action.busy)}
         @ribbon-button-click=${(event: Event) => {
           event.stopPropagation()
@@ -2795,7 +2796,6 @@ export abstract class EditingControls extends LitElement {
             ...(action.confirm ? {confirmed: true} : {}), ...(selectionType ? {selectionType} : {})}, bubbles: true, composed: true}))
         }}></ribbon-button>
       ${action.description ? html`<span class="develop-field-help">${action.description}</span>` : nothing}
-      ${action.disabledReason && action.disabled ? html`<span class="develop-field-help">${action.disabledReason}</span>` : nothing}
       ${action.error ? html`<span class="widget-action-error" role="alert">${action.error}</span>` : nothing}
     </div>`
   }

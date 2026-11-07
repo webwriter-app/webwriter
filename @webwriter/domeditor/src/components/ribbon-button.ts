@@ -29,6 +29,7 @@ export class RibbonButton extends LitElement {
     active: {type: Boolean, reflect: true},
     compact: {type: Boolean, reflect: true},
     disabled: {type: Boolean, reflect: true},
+    disabledReason: {attribute: false},
     loading: {type: Boolean, reflect: true},
     icon: {type: String},
     hoverIcon: {type: String, attribute: "hover-icon"},
@@ -138,7 +139,7 @@ export class RibbonButton extends LitElement {
       background: #c4dcf4;
     }
 
-    .button-row:not([data-connected]) button:active {
+    .button-row:not([data-connected]) button:active:not([aria-disabled="true"]) {
       color: var(--ribbon-control-color, #1e4f87);
       background: #c4dcf4;
     }
@@ -765,6 +766,7 @@ export class RibbonButton extends LitElement {
     }
 
     :host([details-open]) .details { display: block; }
+    .details.disabled-reason { width: max-content; overflow-wrap: anywhere; }
     .details h3 { margin: 0; font-size: 0.8rem; }
     .details-subheading { color: #667085; font-size: 0.63rem; }
     .details-authors {
@@ -881,7 +883,8 @@ export class RibbonButton extends LitElement {
       font-size: .68rem;
     }
 
-    :host([variant="widget-action"]) .main-button:disabled {color: #748090; opacity: 1;}
+    :host([variant="widget-action"]) .main-button:is(:disabled, [aria-disabled="true"]) {color: #748090; opacity: 1;}
+    .main-button[aria-disabled="true"] {cursor: help;}
     :host([variant="widget-action"]) .button-label-text {white-space: normal; overflow-wrap: anywhere;}
     :host([variant="widget-action"]) .button-icon {flex: 0 0 .85rem; width: .85rem; height: .85rem;}
 
@@ -1088,6 +1091,7 @@ export class RibbonButton extends LitElement {
   active = false
   compact = false
   disabled = false
+  disabledReason = ""
   icon = ""
   hoverIcon = ""
   loading = false
@@ -1161,15 +1165,22 @@ export class RibbonButton extends LitElement {
   }
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
-    if(!this.submenuOpen || event.composedPath().includes(this)) return
-    this.closeSubmenuPopover()
+    const tooltipOpen = this.disabledTooltip && this.detailsOpen
+    if(!(this.submenuOpen || tooltipOpen) || event.composedPath().includes(this)) return
+    if(this.submenuOpen) this.closeSubmenuPopover()
+    if(tooltipOpen) this.hideDetails()
   }
 
   private readonly handleDocumentKeydown = (event: KeyboardEvent) => {
-    if(this.submenuOpen && event.key === "Escape") {
+    if(event.key !== "Escape") return
+    if(this.submenuOpen) {
       event.preventDefault()
       event.stopPropagation()
       this.closeSubmenuPopover(true)
+    }
+    else if(this.disabledTooltip && (this.detailsOpen || this.detailsShowTimer !== undefined)) {
+      event.preventDefault()
+      this.hideDetails()
     }
   }
 
@@ -1274,6 +1285,12 @@ export class RibbonButton extends LitElement {
   }
 
   private handleClick(event: Event) {
+    if(this.disabled) {
+      event.preventDefault()
+      event.stopPropagation()
+      if(this.disabledTooltip) this.showDetails()
+      return
+    }
     if(this.dropdownOnClick && this.hasDropdown) {
       this.toggleSubmenu(event)
       return
@@ -1370,7 +1387,7 @@ export class RibbonButton extends LitElement {
 
   private scheduleDetailsShow = () => {
     this.cancelDetailsHide()
-    if(this.detailsOpen || this.detailsShowTimer !== undefined || !this.details) return
+    if(this.detailsOpen || this.detailsShowTimer !== undefined || !(this.disabledTooltip || this.details)) return
     this.detailsShowTimer = setTimeout(() => {
       this.detailsShowTimer = undefined
       this.showDetails()
@@ -1386,14 +1403,16 @@ export class RibbonButton extends LitElement {
     this.cancelDetailsShow()
     this.cancelDetailsHide()
     if(this.detailsOpen) return
-    if(!this.details || !this.isConnected) return
+    if(!(this.disabledTooltip || this.details) || !this.isConnected) return
     this.detailsOpen = true
     void this.updateComplete.then(() => {
       if(!this.detailsOpen || !this.isConnected) return
       const details = this.renderRoot.querySelector<HTMLElement>(".details")
       if(!details) return
       this.showPopoverElement(details)
-      this.anchors.bind(details, this, popupAnchorCSS(6) + "position-area:left span-bottom;justify-self:end;align-self:start;margin:0 6px;")
+      this.anchors.bind(details, this, popupAnchorCSS(6) + (this.disabledTooltip
+        ? "position-area:top span-left;justify-self:end;align-self:end;max-width:min(17rem, calc(100vw - 16px));"
+        : "position-area:left span-bottom;justify-self:end;align-self:start;margin:0 6px;"))
       this.anchors.refresh()
     })
   }
@@ -1425,6 +1444,14 @@ export class RibbonButton extends LitElement {
     return this.submenu.length > 0 || Boolean(this.submenuGroups?.length) || this.dropdown !== null
   }
 
+  private get disabledTooltip() {
+    return this.disabled ? this.disabledReason : ""
+  }
+
+  protected willUpdate() {
+    if((this.detailsOpen || this.detailsShowTimer !== undefined) && !(this.disabledTooltip || this.details)) this.hideDetails()
+  }
+
   render() {
     const hasDropdown = this.hasDropdown
     const showSubmenuTrigger = (hasDropdown || this.openDrawer) && (!this.dropdownOnClick || Boolean(this.iconAction))
@@ -1433,6 +1460,7 @@ export class RibbonButton extends LitElement {
     const dragTag = !conversion && (this.variant === "insertion" || dragAction === "Formula") ? ribbonElementTag(this.label, dragAction) : null
     const dragPackageInsertion = this.variant === "package" && ribbonInsertionAction(dragAction)
     const shapeGallery = this.submenu.some(item => typeof item !== "string" && item.category)
+    const disabledTooltip = this.disabledTooltip
     const title = dragAction.startsWith("widget-conversion:") ? `Convert to ${this.label}`
       : `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
@@ -1457,12 +1485,14 @@ export class RibbonButton extends LitElement {
           type="button"
           draggable=${String(Boolean(dragTag || dragPackageInsertion) && !this.disabled)}
           aria-label=${conversion ? title : this.label}
+          aria-disabled=${disabledTooltip ? "true" : nothing}
+          aria-describedby=${disabledTooltip ? "disabled-reason" : nothing}
           aria-busy=${this.loading ? "true" : nothing}
           aria-pressed=${this.toggle? String(this.active): nothing}
           aria-haspopup=${this.dropdownOnClick && hasDropdown ? this.dropdown !== null ? "dialog" : "menu" : nothing}
           aria-expanded=${this.dropdownOnClick && hasDropdown ? String(this.submenuOpen) : nothing}
-          title=${title}
-          ?disabled=${this.disabled}
+          title=${disabledTooltip ? "" : title}
+          ?disabled=${this.disabled && !disabledTooltip}
           @mouseenter=${() => this.dispatchInsertionHover(true, "pointer")}
           @mouseleave=${() => this.dispatchInsertionHover(false, "pointer")}
           @focus=${() => { this.showDetails(); this.dispatchInsertionHover(true, "focus") }}
@@ -1535,7 +1565,10 @@ export class RibbonButton extends LitElement {
           ` : ""}
         </ribbon-menu>
       ` : ""}
-      ${this.details ? html`
+      ${disabledTooltip ? html`
+        <aside id="disabled-reason" class="details disabled-reason" role="tooltip" popover="manual"
+          @mouseenter=${this.cancelDetailsHide} @mouseleave=${this.leaveDetails}>${disabledTooltip}</aside>
+      ` : this.details ? html`
         <aside
           class="details"
           role="tooltip"

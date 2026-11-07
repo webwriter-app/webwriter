@@ -128,11 +128,16 @@ describe("rich widget options drawer", () => {
     expect(drawer.querySelectorAll(".widget-action-group")).toHaveLength(1)
     const group = drawer.querySelector('.widget-action-group[role="group"]')!
     expect(Array.from(group.querySelectorAll(".widget-action"))).toEqual(buttons.slice(1, 3))
-    expect(drawer.textContent).toContain("Add a state first")
+    expect(drawer.textContent).not.toContain("Add a state first")
+    const complete = buttons[0].shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    const reason = buttons[0].shadowRoot!.querySelector('[role="tooltip"]')!
+    expect(complete.getAttribute("aria-disabled")).toBe("true")
+    expect(complete.getAttribute("aria-describedby")).toBe(reason.id)
+    expect(reason.textContent).toBe("Add a state first")
 
     const changes = vi.fn()
     toolbox.addEventListener("widget-action", changes)
-    buttons[0].shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    complete.click()
     buttons[1].shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
     expect(changes.mock.calls.map(([event]) => event.detail)).toEqual([{name: "nfa"}])
   })

@@ -8,6 +8,33 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+it("shows a disabled reason on focus and clears the tooltip when the action becomes available", async () => {
+  const button = new RibbonButton()
+  Object.assign(button, {disabled: true, disabledReason: "Add a state first"})
+  document.body.append(button)
+  await button.updateComplete
+  const main = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+  main.focus()
+  await button.updateComplete
+  expect(button.shadowRoot!.activeElement).toBe(main)
+  expect(button.hasAttribute("details-open")).toBe(true)
+
+  const escape = new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true})
+  main.dispatchEvent(escape)
+  await button.updateComplete
+  expect(escape.defaultPrevented).toBe(true)
+  expect(button.hasAttribute("details-open")).toBe(false)
+
+  main.click()
+  await button.updateComplete
+  expect(button.hasAttribute("details-open")).toBe(true)
+  button.disabled = false
+  await button.updateComplete
+  expect(button.hasAttribute("details-open")).toBe(false)
+  expect(button.shadowRoot!.querySelector('[role="tooltip"]')).toBeNull()
+  expect(main.hasAttribute("aria-describedby")).toBe(false)
+})
+
 describe("ribbon button dropdown positioning", () => {
   it("converts the fixed CSS inset for root gutters while keeping the join in client coordinates", async () => {
     const root = document.documentElement

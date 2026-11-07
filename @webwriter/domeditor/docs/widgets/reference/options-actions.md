@@ -142,7 +142,7 @@ Visibility and availability describe the widget UI; they do not enforce learner 
 
 ## Action declaration
 
-Actions support `label` and `description` as `LocalizedText`. The default label is the title-cased method name. `group` assigns the action to an option group. `hidden` and `disabled` control its availability, and `disabledReason` can explain why a disabled action is unavailable. To add an icon, set `icon` to an existing ribbon icon name. `intent` is `"default"` or `"danger"`. `confirm` supplies a `LocalizedText` prompt shown by the UI before execution. Optional `input` currently supports the file chooser described above.
+Actions support `label` and `description` as `LocalizedText`. The default label is the title-cased method name. `group` assigns the action to an option group. `hidden` and `disabled` control its availability. For a disabled action, `disabledReason` supplies the button's tooltip. To add an icon, set `icon` to an existing ribbon icon name. `intent` is `"default"` or `"danger"`. `confirm` supplies a `LocalizedText` prompt shown by the UI before execution. Optional `input` currently supports the file chooser described above.
 
 Give adjacent actions the same `buttonGroup` string to join their buttons in the inspector. Each option group lays out its buttons separately and skips hidden actions. A single visible action renders as a standalone button.
 
