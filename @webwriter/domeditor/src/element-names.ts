@@ -3,7 +3,7 @@ import {boardColumns, boardLayoutRole, documentLayoutMode, isBoardCard, isBoardC
 import {widgetNameLabel, type PackageInsertionItem} from "./packages"
 
 /** Attributes that change outline membership, relationships or presentation. */
-export const documentTreeAttributeNames = new Set(["class", "is", "id", "name", "role", "usemap", "popovertarget", "interestfor", "popover", "display"])
+export const documentTreeAttributeNames = new Set(["class", "is", "id", "name", "role", "usemap", "popovertarget", "interestfor", "popover", "display", "type", "src"])
 
 export type ElementPresentation = {
   name: string

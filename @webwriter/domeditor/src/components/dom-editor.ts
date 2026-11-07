@@ -4,6 +4,7 @@ import type {DistributionSelection} from "../features/distribution"
 import * as Y from "yjs"
 import {decodeSharedDOMAttribute, INTERNAL_NAMESPACE, INTERNAL_NODE_KIND, INTERNAL_QUALIFIED_NAME} from "../domdoc-codec"
 import {EditorDocumentReplica, isEditorDocumentUpdate} from "../editor-document-sync"
+import {isDataBlock} from "../active-content"
 import {closestElement, containsElement, hasClass, readableNodePath, type ReadableElement, type ReadableNode} from "../dom-readers"
 import {applyPreviewUpdate} from "../live-session-permissions.js"
 import {createBrowserDistributionValidator} from "../distribution-snapshot"
@@ -7837,6 +7838,7 @@ export class DomEditor extends LitElement {
         Array.from(container.childNodes).forEach((child, index) => {
           if(child.nodeType !== Node.ELEMENT_NODE) return
           const childElement = child as ReadableElement
+          if(isDataBlock(childElement)) return
           const slideRole = slideLayoutRole(childElement)
           if(slideRole === "navigation" || (childElement.localName === "div" && hasClass(childElement, "ww-canvas-starting-view") && !childElement.hasAttribute("is") && childElement.parentElement === body)) return
           if((["source", "caption", "figcaption"].includes(childElement.localName) || childElement.localName === "summary" && childElement.parentElement?.localName === "details")

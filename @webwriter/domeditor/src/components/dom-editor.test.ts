@@ -10119,6 +10119,42 @@ describe("DomEditor.execute()", () => {
     expect(tree.children.map(child => child.children)).toEqual([[], []])
   })
 
+  it.each([false, true])("hides data blocks from the breadcrumb outline (isolated frame: %s)", async isolated => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const host = editor as any
+    host.editorOpaque = isolated
+    vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    const live = iframe.contentDocument!
+    live.body.innerHTML = '<test-widget><script type="application/json" slot="data">{"choice":""}</script></test-widget><test-widget><script type="application/xml"><state/></script><!--keep--><p>Visible child</p></test-widget>'
+    const publish = async () => {
+      if(isolated) window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: frameUpdate(host, live)}))
+      else await new Promise(resolve => setTimeout(resolve, 0))
+      await editor.updateComplete
+    }
+    await publish()
+    window.dispatchEvent(new MessageEvent("message", {
+      source: editorWindow,
+      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}, {path: [0], name: "Widget"}]}},
+    }))
+    await editor.updateComplete
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+
+    expect(breadcrumb.tree!.children.map(item => item.children)).toEqual([
+      [], [expect.objectContaining({name: "Paragraph", path: [1, 2]})],
+    ])
+    expect(breadcrumb.shadowRoot!.querySelector('[aria-label="Show Widget tree"]')).toBeNull()
+    const block = live.body.querySelector("script[slot=data]")!
+    expect(block.textContent).toBe('{"choice":""}')
+
+    block.type = "text/javascript"
+    await publish()
+    expect(breadcrumb.tree!.children[0].children.map(item => item.path)).toEqual([[0, 0]])
+    block.type = "application/json"
+    await publish()
+    expect(breadcrumb.tree!.children[0].children).toEqual([])
+  })
+
   it("opens the outline from a breadcrumb separator and preserves the full path", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<section><ul><li><p></p></li></ul><aside></aside></section>"
