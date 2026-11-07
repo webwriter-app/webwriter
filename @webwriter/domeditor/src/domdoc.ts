@@ -5,12 +5,13 @@ import {messageYjsUpdate} from "y-protocols/sync"
 import {messageSync, WebsocketProvider} from "y-websocket"
 import {$, cloneWithoutEditorMarkers, createInertScript, isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
 import {documentLayoutMode} from "./document-layout"
+import {affectsAuthoredElementIds, ensureAuthoredElementIds} from "./authored-identities"
 import {updateDocumentPermalinks} from "./document-permalinks"
 import {SVG_NAMESPACE} from "./graphic"
 import type {EditorStateSnapshot} from "./editor-state"
 import {WidgetDataBindings, stampUndo, widgetDataHistoryTime, widgetDataHistoryGroup, type WidgetDataOptions} from "./widget-data"
 import {authoredDetailsOpen, clearTemporaryDetailsState, editorWidgetLookup, isAuthoredContentEditableMutation,
-  isHTMLDetailsElement, markTemporaryDetailsState, temporaryDetailsClosedMarker, temporaryDetailsOpenMarker,
+  hasTemporaryDetailsState, isInsideEditorOnlyNode, isHTMLDetailsElement, markTemporaryDetailsState,
   type WidgetLookup} from "./editor-artifacts"
 
 import {
@@ -96,6 +97,8 @@ export type SharedDOMDocOptions = {
   /** Whether a pristine generated child can be removed from a nested container. */
   canRemoveMinimumContentRepair?: (element: Element, repairs: readonly Element[]) => boolean
   documentPermalinks?: boolean
+  /** Assign stable IDs to authored targets created by local DOM edits. */
+  ensureAuthoredIds?: boolean
   widgetData?: WidgetDataOptions
   supportsWidgetData?: (widget: Element) => boolean
   isWidget?: WidgetLookup
@@ -222,6 +225,7 @@ export class SharedDOMDoc {
   #restoredHistorySelection: RelativeSelection | null | undefined
   #historyStateQueued = false
   readonly #documentPermalinks: boolean
+  readonly #ensureAuthoredIds: boolean
   readonly #beforeSyncFromDOM?: (local: boolean) => void
   readonly #canRemoveMinimumContentRepair?: (element: Element, repairs: readonly Element[]) => boolean
   readonly #scopeBoundary?: (element: Element) => boolean
@@ -242,6 +246,7 @@ export class SharedDOMDoc {
     this.#canRemoveMinimumContentRepair = options.canRemoveMinimumContentRepair
     this.#scopeBoundary = options.scopeBoundary
     this.#documentPermalinks = options.documentPermalinks ?? false
+    this.#ensureAuthoredIds = options.ensureAuthoredIds ?? false
     this.#document = this.root.ownerDocument
     this.doc = options.ydoc ?? new Y.Doc()
     this.#metadata = this.doc.getMap("domeditor")
@@ -368,6 +373,7 @@ export class SharedDOMDoc {
       if(!hasSharedDOM) {
         this.#beforeSyncFromDOM?.(true)
         if(this.#documentPermalinks) updateDocumentPermalinks(this.root)
+        if(this.#ensureAuthoredIds) ensureAuthoredElementIds(this.root)
         this.#metadata.set(INITIALIZED_KEY, true)
         this.#reconcileYElement(this.root, this.#body)
       }
@@ -877,6 +883,10 @@ export class SharedDOMDoc {
       // Generated attributes and ownership metadata join the content batch.
       if(records) records = [...records, ...this.#observer.takeRecords()]
     }
+    if(this.#ensureAuthoredIds && (!records || records.some(affectsAuthoredElementIds))) {
+      ensureAuthoredElementIds(this.root)
+      if(records) records = [...records, ...this.#observer.takeRecords()]
+    }
     this.#transactDOMChange(() => {
       if(records) this.#reconcileMutations(records)
       else this.#reconcileDocument()
@@ -923,8 +933,7 @@ export class SharedDOMDoc {
       if(!defaults.has(record.target)) {
         const element = record.target
         const shared = this.#xmlNodes.get(element)
-        defaults.set(element, element.classList.contains(temporaryDetailsOpenMarker) ? false
-          : element.classList.contains(temporaryDetailsClosedMarker) ? true
+        defaults.set(element, hasTemporaryDetailsState(element) ? authoredDetailsOpen(element)
           : shared instanceof Y.XmlElement ? shared.getAttribute("open") !== undefined : record.oldValue !== null)
       }
     }
@@ -1230,6 +1239,7 @@ export class SharedDOMDoc {
       const user = this.awareness.getLocalState()?.user
       previewDoc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses, {
         documentPermalinks: this.#documentPermalinks,
+        ensureAuthoredIds: this.#ensureAuthoredIds,
         isWidget: this.#isWidget,
         root: this.root,
         ydoc: previewYDoc,
@@ -1697,7 +1707,7 @@ export class SharedDOMDoc {
 
   #isInsideIgnoredElement(node: Node) {
     const element = isElement(node) ? node : node.parentElement
-    return Boolean(element?.closest(".◆editor-only, [data-webwriter-editor-only]"))
+    return isInsideEditorOnlyNode(element)
   }
 
   #isScopeBoundary(element: Element) {
@@ -1918,8 +1928,7 @@ export class SharedDOMDoc {
 
   #copyYAttributesToDOM(yElement: Y.XmlElement, element: Element, excluded: string[] = []) {
     const shared = yElement.getAttributes()
-    const temporaryDetails = isHTMLDetailsElement(element) && (element.classList.contains(temporaryDetailsOpenMarker)
-      || element.classList.contains(temporaryDetailsClosedMarker))
+    const temporaryDetails = isHTMLDetailsElement(element) && hasTemporaryDetailsState(element)
     const preserveTemporaryOpen = temporaryDetails && authoredDetailsOpen(element) === Object.hasOwn(shared, "open")
     if(temporaryDetails && !preserveTemporaryOpen) clearTemporaryDetailsState(element)
     if(this.#xmlNodes.get(element) === yElement && typeof shared[INTERNAL_MINIMUM_REPAIR] === "string") this.#minimumRepairs.add(element)

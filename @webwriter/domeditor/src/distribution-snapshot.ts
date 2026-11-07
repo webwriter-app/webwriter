@@ -1,7 +1,7 @@
 import type {DistributionNode} from "./distribution-validation.js"
 import {validateDistributionChange} from "./distribution-validation.js"
 import {readDistributionConfigs} from "./distribution-dom"
-import {editorWidgetLookup, isEditorOwnedAttribute} from "./editor-artifacts"
+import {editorWidgetLookup, isEditorOnlyNode, isEditorOwnedAttribute} from "./editor-artifacts"
 
 /** Stable, artifact-free validation projection; never stored as an editor model. */
 export function distributionSnapshot(node: Node, isWidget = editorWidgetLookup(node)): DistributionNode | null {
@@ -13,7 +13,7 @@ export function distributionSnapshot(node: Node, isWidget = editorWidgetLookup(n
   }
   if(node.nodeType !== 1) return null
   const element = node as Element
-  if(element.classList.contains("◆editor-only") || element.hasAttribute("data-webwriter-editor-only")) return null
+  if(isEditorOnlyNode(element)) return null
   const attrs: Record<string, string> = {}
   for(const attribute of Array.from(element.attributes).sort((a, b) => a.name.localeCompare(b.name))) {
     if(attribute.namespaceURI === null && isEditorOwnedAttribute(element, attribute.name, isWidget)) continue

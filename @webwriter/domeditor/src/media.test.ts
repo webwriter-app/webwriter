@@ -131,6 +131,8 @@ describe("image-map reading mode", () => {
     const exported = new DOMParser().parseFromString(authored, "text/html")
     appendSerializedAssets(exported, [])
     const code = exported.querySelector("#webwriter-image-map-popovers")!.textContent!
+    expect(code).toContain("border-radius:0.6rem")
+    expect(code).not.toContain("◆hotspot-popup")
     new Function("document", "window", code)(document, window)
     expect(document.body.shadowRoot!.querySelector(".◆image-map-reader")!.shadowRoot!.querySelectorAll("a")).toHaveLength(2)
     expect(cloneWithoutEditorMarkers(document.body, true).innerHTML).toBe(authored)

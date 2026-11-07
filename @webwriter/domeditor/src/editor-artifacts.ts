@@ -1,6 +1,40 @@
 export type WidgetLookup = (element: Element) => boolean
 
 const widgetLookups = new WeakMap<Document, WidgetLookup>()
+const editorOnlyKey = Symbol.for("webwriter.editor-only-nodes")
+type ArtifactDocument = Document & {[editorOnlyKey]?: WeakSet<Element>}
+const detailsStateDocuments = new WeakSet<Document>()
+
+export function markEditorOnlyNode<T extends Element>(element: T): T {
+  const doc = element.ownerDocument as ArtifactDocument
+  ;(doc[editorOnlyKey] ??= new WeakSet()).add(element)
+  return element
+}
+
+export function isEditorOnlyNode(node: Node): boolean {
+  if(node.nodeType !== 1) return false
+  const element = node as Element
+  return (element.ownerDocument as ArtifactDocument)[editorOnlyKey]?.has(element) === true || element.classList.contains("◆editor-only") || element.hasAttribute("data-webwriter-editor-only")
+}
+
+export function isInsideEditorOnlyNode(element: Element | null | undefined): boolean {
+  for(let node = element; node; node = node.parentElement) if(isEditorOnlyNode(node)) return true
+  return false
+}
+
+/** Frame resources already have a browser CSP nonce. Use it to recover their
+ * provenance after HTML parsing, without an extra class or attribute. */
+export function registerFrameArtifacts(doc: Document, expectedNonce?: string) {
+  const policy = doc.head?.firstElementChild
+  if(policy?.localName !== "meta" || policy.getAttribute("http-equiv")?.toLowerCase() !== "content-security-policy") return
+  const nonce = policy.getAttribute("content")?.match(/^default-src 'none'; script-src 'nonce-([^']+)' 'strict-dynamic'/)?.[1]
+  if(!nonce || expectedNonce && nonce !== expectedNonce) return
+  markEditorOnlyNode(policy)
+  for(const element of doc.head.children) {
+    if(element.matches('meta[name="webwriter-editor-bridge"], meta[name="webwriter-preview-bridge"]')
+      || element.matches("script, link") && ((element as HTMLElement).nonce || element.getAttribute("nonce")) === nonce) markEditorOnlyNode(element)
+  }
+}
 
 export function setEditorWidgetLookup(document: Document, lookup?: WidgetLookup) {
   if(lookup) widgetLookups.set(document, lookup)
@@ -18,30 +52,76 @@ export function widgetLookupForTags(tags: Iterable<string>): WidgetLookup {
 }
 export const temporaryDetailsOpenMarker = "◆details-temporary-open"
 export const temporaryDetailsClosedMarker = "◆details-temporary-closed"
+const temporaryDetailsStates = new WeakMap<Element, boolean>()
 export const isHTMLDetailsElement = (element: Element): boolean =>
   element.localName === "details" && element.namespaceURI === "http://www.w3.org/1999/xhtml"
 
 /** The authored default, which may differ from a temporarily toggled live disclosure. */
 export function authoredDetailsOpen(element: Element) {
+  const temporary = temporaryDetailsStates.get(element)
+  if(temporary !== undefined) return temporary
   if(element.classList.contains(temporaryDetailsOpenMarker)) return false
   if(element.classList.contains(temporaryDetailsClosedMarker)) return true
   return element.hasAttribute("open")
 }
 
 export function markTemporaryDetailsState(element: Element, authoredOpen: boolean) {
-  removeEditorMarker(element, temporaryDetailsOpenMarker, temporaryDetailsClosedMarker)
+  clearLegacyTemporaryDetailsMarkers(element)
   if(element.hasAttribute("open") !== authoredOpen) {
-    element.classList.add(element.hasAttribute("open") ? temporaryDetailsOpenMarker : temporaryDetailsClosedMarker)
+    temporaryDetailsStates.set(element, authoredOpen)
+    detailsStateDocuments.add(element.ownerDocument)
   }
+  else temporaryDetailsStates.delete(element)
 }
 
 export function clearTemporaryDetailsState(element: Element) {
-  removeEditorMarker(element, temporaryDetailsOpenMarker, temporaryDetailsClosedMarker)
+  temporaryDetailsStates.delete(element)
+  clearLegacyTemporaryDetailsMarkers(element)
+}
+
+export function hasTemporaryDetailsState(element: Element) {
+  return temporaryDetailsStates.has(element) || element.classList.contains(temporaryDetailsOpenMarker)
+    || element.classList.contains(temporaryDetailsClosedMarker)
+}
+
+function clearLegacyTemporaryDetailsMarkers(element: Element) {
+  if(element.classList.contains(temporaryDetailsOpenMarker) || element.classList.contains(temporaryDetailsClosedMarker)) {
+    removeEditorMarker(element, temporaryDetailsOpenMarker, temporaryDetailsClosedMarker)
+  }
+}
+
+/** Copies runtime node and disclosure provenance alongside a structural DOM clone. */
+export function copyEditorArtifactState(source: Node, clone: Node, deep = true) {
+  const doc = (source.nodeType === 9 ? source : source.ownerDocument) as ArtifactDocument | null
+  if(!doc || !doc[editorOnlyKey] && !detailsStateDocuments.has(doc)) return clone
+  const copy = (from: Node, to: Node): void => {
+    if(from.nodeType === 1 && to.nodeType === 1 && (from.ownerDocument as ArtifactDocument)[editorOnlyKey]?.has(from as Element)) markEditorOnlyNode(to as Element)
+    if(isHTMLDetailsElement(from as Element) && isHTMLDetailsElement(to as Element)) {
+      const baseline = temporaryDetailsStates.get(from as Element)
+      if(baseline !== undefined) {
+        temporaryDetailsStates.set(to as Element, baseline)
+        detailsStateDocuments.add((to as Element).ownerDocument)
+      }
+    }
+    if(!deep) return
+    if(from.nodeType === Node.ELEMENT_NODE && (from as Element).localName === "template" && "content" in from) {
+      const fromChildren = Array.from((from as HTMLTemplateElement).content.childNodes)
+      const toChildren = Array.from((to as HTMLTemplateElement).content.childNodes)
+      fromChildren.forEach((child, index) => { if(toChildren[index]) copy(child, toChildren[index]!) })
+      return
+    }
+    const fromChildren = Array.from(from.childNodes), toChildren = Array.from(to.childNodes)
+    fromChildren.forEach((child, index) => { if(toChildren[index]) copy(child, toChildren[index]!) })
+  }
+  copy(source, clone)
+  return clone
 }
 
 export function restoreAuthoredDetailsState(element: Element) {
-  if(element.classList.contains(temporaryDetailsOpenMarker)) element.removeAttribute("open")
-  else if(element.classList.contains(temporaryDetailsClosedMarker)) element.setAttribute("open", "")
+  if(!hasTemporaryDetailsState(element)) return
+  const authoredOpen = authoredDetailsOpen(element)
+  if(authoredOpen) element.setAttribute("open", "")
+  else element.removeAttribute("open")
   clearTemporaryDetailsState(element)
 }
 
@@ -51,12 +131,11 @@ export function isAuthoredMutation(mutation: MutationRecord) {
     ? mutation.target as Element : mutation.target.parentElement
   // Editor UI can live in the observed document in older integrations. Its
   // subtree is presentation state rather than authored content.
-  if(element?.closest(".◆editor-only, [data-webwriter-editor-only]")) return false
+  if(isInsideEditorOnlyNode(element)) return false
   if(mutation.type === "characterData") return mutation.oldValue !== mutation.target.nodeValue
   if(mutation.type === "attributes") {
     const name = mutation.attributeName!
-    if(name === "open" && element && isHTMLDetailsElement(element)
-      && (element.classList.contains(temporaryDetailsOpenMarker) || element.classList.contains(temporaryDetailsClosedMarker))) return false
+    if(name === "open" && element && isHTMLDetailsElement(element) && hasTemporaryDetailsState(element)) return false
     const current = mutation.attributeNamespace
       ? element?.getAttributeNS(mutation.attributeNamespace, name) ?? null
       : element?.getAttribute(name) ?? null
@@ -66,10 +145,7 @@ export function isAuthoredMutation(mutation: MutationRecord) {
     return mutation.oldValue !== current
   }
   const nodes = [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)]
-  return nodes.some(node => !(
-    node.nodeType === Node.ELEMENT_NODE && ((node as Element).classList.contains("◆editor-only")
-      || (node as Element).hasAttribute("data-webwriter-editor-only"))
-  ))
+  return nodes.some(node => !isEditorOnlyNode(node))
 }
 
 /** Compare the authored values on either side of a widget runtime change. */
@@ -141,7 +217,7 @@ export function clearEditorMarkerClasses(root: Node, isWidget = editorWidgetLook
 export function clearEditorArtifacts(root: Node, ignoredAttributes: Iterable<string> = [], isWidget = editorWidgetLookup(root)) {
   const attributes = Array.from(ignoredAttributes)
   return visitAuthoredElements(root, element => {
-    if(element !== root && (element.classList.contains("◆editor-only") || element.hasAttribute("data-webwriter-editor-only"))) {
+    if(element !== root && isEditorOnlyNode(element)) {
       element.remove()
       return false
     }

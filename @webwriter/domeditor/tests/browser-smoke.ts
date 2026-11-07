@@ -1,3 +1,4 @@
+import {setPresentationState} from "../src/presentation-state.js"
 import * as Y from "yjs"
 import {DOMEditor} from "../src/domeditor"
 import {sharedDOMBody} from "../src/domdoc"
@@ -286,7 +287,7 @@ await check("document frames align with text", async () => {
     const target = paragraph.getBoundingClientRect(), selected = selectionFrame!.getBoundingClientRect()
     assert(Math.abs(target.left - selected.left) < 2,
       `selection frame offset: ${JSON.stringify({target: target.toJSON(), selected: selected.toJSON()})}`)
-    paragraph.classList.add("◆element-hovered")
+    setPresentationState(paragraph, "element-hovered")
     paragraph.dispatchEvent(new PointerEvent("pointerover", {bubbles: true, composed: true}))
     await new Promise(requestAnimationFrame)
     const hoverFrame = fresh.features.selection.hoverCaret

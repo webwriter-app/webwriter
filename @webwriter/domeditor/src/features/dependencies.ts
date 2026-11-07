@@ -1,3 +1,4 @@
+import {markEditorOnlyNode} from "../editor-artifacts"
 import {escapeHTMLAttribute} from "../serialization-primitives"
 import {scopedCustomElementRegistryScript} from "../scoped-custom-element-registry-script"
 import { EditorFeature } from "."
@@ -175,7 +176,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
       link.rel = "stylesheet"
       link.href = href
       link.nonce = this.editor.trustedScriptNonce
-      link.classList.add("◆", "◆editor-only")
+      markEditorOnlyNode(link)
       return link
     })
     const scripts = [...new Set(packages.flatMap(pkg => pkg.scripts))].map(src => {
@@ -185,7 +186,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
       // Package bundles are an explicit trusted-code boundary. The editor
       // frame's nonce admits these resources while blocking authored scripts.
       script.nonce = this.editor.trustedScriptNonce
-      script.classList.add("◆", "◆editor-only")
+      markEditorOnlyNode(script)
       return script
     })
     this.widgetPackages = packages
@@ -223,7 +224,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
     const sizingStyle = document.createElement("style")
     sizingStyle.id = "webwriter-widget-sizing"
     sizingStyle.nonce = this.editor.trustedScriptNonce
-    sizingStyle.classList.add("◆", "◆editor-only")
+    markEditorOnlyNode(sizingStyle)
     sizingStyle.textContent = documentWidgetStyleSource(widgetDefinitions)
     if(sizingStyle.textContent) document.head.append(sizingStyle)
     this.editor.features.insertion.menu.requestUpdate()

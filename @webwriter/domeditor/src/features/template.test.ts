@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {hasPresentationState} from "../presentation-state.js"
 import {beforeEach, describe, expect, it} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import {DOMEditor} from "../domeditor"
@@ -34,11 +35,11 @@ describe("document templates", () => {
   it("mirrors template state to a temporary BODY marker", async () => {
     document.body.innerHTML = '<slides-widget role="document"></slides-widget>'
     await Promise.resolve()
-    expect(document.body).toHaveClass("◆", "◆template-active")
+    expect(hasPresentationState(document.body, "template-active")).toBe(true)
 
     document.body.firstElementChild!.removeAttribute("role")
     await Promise.resolve()
-    expect(document.body).not.toHaveClass("◆template-active")
+    expect(hasPresentationState(document.body, "template-active")).toBe(false)
   })
 
   it("returns to BODY without rebuilding the widget or removing other role fallbacks", () => {
@@ -53,6 +54,6 @@ describe("document templates", () => {
     expect(widget).toHaveAttribute("role", "application")
     expect(getDocumentRoot()).toBe(document.body)
     expect($.selectedElement).toBe(document.body)
-    expect(document.body).not.toHaveClass("◆template-active")
+    expect(hasPresentationState(document.body, "template-active")).toBe(false)
   })
 })

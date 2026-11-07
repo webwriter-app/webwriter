@@ -64,6 +64,7 @@ const expectedChecks = [
   "LitElementWw uses native registries and shared data handlers without the adapter",
   "legacy and native scoped registries coexist without replacing browser globals",
   "global directional shorthands preserve authored overrides in native CSSOM",
+  "leaving a gap restores the native text caret",
   "gap carets track their authored boundary",
   "popup content drags stay inside the bubble",
   "popup table content clicks keep the bubble open",

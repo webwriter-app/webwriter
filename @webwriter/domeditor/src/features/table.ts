@@ -1,3 +1,4 @@
+import {batchPresentationStates, clearPresentationState, hasPresentationState, presentationStateElements, setPresentationState} from "../presentation-state.js"
 import {EditorFeature} from "."
 import {popupContentAncestor} from "../element-names"
 import {isAuthoredMutation} from "../editor-artifacts"
@@ -442,25 +443,22 @@ export class TableFeature extends EditorFeature {
   }
 
   private clearCellMarkers() {
-    document.querySelectorAll(".◆table-cell-selected").forEach(cell => removeEditorMarker(cell, "◆table-cell-selected"))
-    removeEditorMarker(document.body, "◆table-cell-selection")
+    batchPresentationStates(document, () => {
+      presentationStateElements(document, "table-cell-selected").forEach(cell => clearPresentationState(cell, "table-cell-selected"))
+      clearPresentationState(document.body, "table-cell-selection")
+    })
   }
 
   private applyCellMarkers() {
     const cells = this.selectedCells
     const selected = new Set(cells)
-    document.querySelectorAll(".◆table-cell-selected").forEach(cell => {
-      if(!selected.has(cell as HTMLTableCellElement)) removeEditorMarker(cell, "◆table-cell-selected")
+    batchPresentationStates(document, () => {
+      presentationStateElements<HTMLTableCellElement>(document, "table-cell-selected").forEach(cell => {
+        if(!selected.has(cell)) clearPresentationState(cell, "table-cell-selected")
+      })
+      cells.forEach(cell => setPresentationState(cell, "table-cell-selected"))
+      setPresentationState(document.body, "table-cell-selection", Boolean(cells.length))
     })
-    cells.forEach(cell => {
-      if(!cell.classList.contains("◆table-cell-selected")) cell.classList.add("◆", "◆table-cell-selected")
-    })
-    const active = Boolean(cells.length)
-    if(document.body.classList.contains("◆table-cell-selection") !== active) {
-      document.body.classList.toggle("◆table-cell-selection", active)
-    }
-    if(active && !document.body.classList.contains("◆")) document.body.classList.add("◆")
-    else removeEditorMarker(document.body)
   }
 
   clearCellSelection(post = true) {
@@ -1118,9 +1116,7 @@ export class TableFeature extends EditorFeature {
 
   private setResizeHover(edge: TableResizeEdge | null) {
     this.resizeHover = edge
-    document.body.classList.toggle("◆table-column-edge", Boolean(edge))
-    if(edge) document.body.classList.add("◆")
-    else removeEditorMarker(document.body)
+    setPresentationState(document.body, "table-column-edge", Boolean(edge))
   }
 
   private startResize(edge: TableResizeEdge, startX: number) {
@@ -1145,7 +1141,7 @@ export class TableFeature extends EditorFeature {
         anchor: {node: native.anchorNode, offset: native.anchorOffset},
         focus: {node: native.focusNode, offset: native.focusOffset},
       } : null
-      document.body.classList.add("◆", "◆table-column-resize")
+      setPresentationState(document.body, "table-column-resize")
       this.resize = {table: edge.table, column: edge.column, cells, startX, startWidth, endUndoGroup, selection}
       return true
     }
@@ -1318,7 +1314,7 @@ export class TableFeature extends EditorFeature {
     // Keep recognizing the final style-only sync while the undo group closes.
     resize.ending = true
     try {
-      removeEditorMarker(document.body, "◆table-column-resize")
+      clearPresentationState(document.body, "table-column-resize")
       checkContent?.()
     }
     finally {
@@ -1461,7 +1457,7 @@ export class TableFeature extends EditorFeature {
         return
       }
       const edge = this.resizeEdge(event, cell)
-      const resizeArmed = document.body.classList.contains("◆table-column-edge")
+      const resizeArmed = hasPresentationState(document.body, "table-column-edge")
         && this.sameResizeEdge(edge, this.resizeHover)
       if(event.shiftKey && this.hasCellSelection && tableForNode(this.anchorCell) === tableForNode(cell)) {
         this.setResizeHover(null)

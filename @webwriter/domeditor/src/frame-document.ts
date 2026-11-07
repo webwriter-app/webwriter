@@ -6,10 +6,11 @@ import {frameImportMap, frameLocalPackageURL, framePackages} from "./frame-local
 import {packageImportMapId} from "./package-dependencies"
 import {packageWidgetSchemaDefinitions, type WebWriterPackage} from "./packages"
 import {appendSerializedAssets, escapeHTMLAttribute, removeSerializedReaderScripts, restoreOriginalResourceURLs, scopedCustomElementRegistryScript, serializeDoctype} from "./serialization"
-import {clearEditorArtifacts, widgetLookupForTags} from "./editor-artifacts"
+import {clearEditorArtifacts, registerFrameArtifacts, widgetLookupForTags} from "./editor-artifacts"
 import proofreadingWorkerURL from "./proofreading-worker.ts?worker&url"
 import {editorFrameOrigin} from "./frame-origins"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "./local-package-worker"
+import {ensureAuthoredElementIds} from "./authored-identities"
 
 type FrameDocumentOptions = {
   bridgeNonce: string
@@ -34,8 +35,9 @@ export type PreviewFrameOptions = FrameDocumentOptions & {
 }
 
 const prepareEditorThemes = (root: Document, nonce?: string) => {
+  const finishScripts = new Set<HTMLScriptElement>()
   ensureDefaultDocumentTheme(root)
-  if(!nonce) return
+  if(!nonce) return finishScripts
   for(const style of root.head.querySelectorAll<HTMLStyleElement>(":scope > style[data-ww-theme]")) {
     const theme = documentTheme(style.getAttribute("data-ww-theme") ?? "")
     if(style.namespaceURI !== "http://www.w3.org/1999/xhtml" || !theme || style.textContent !== theme.source || style.hasAttribute("nonce")) continue
@@ -43,7 +45,7 @@ const prepareEditorThemes = (root: Document, nonce?: string) => {
     // leave the authored style intact and let HeadFeature render its own sheet.
     style.setAttribute("nonce", nonce)
     const finish = root.createElement("script")
-    finish.className = "◆ ◆editor-only"
+    finishScripts.add(finish)
     finish.setAttribute("nonce", nonce)
     finish.textContent = `{
   const script = document.currentScript;
@@ -56,6 +58,7 @@ const prepareEditorThemes = (root: Document, nonce?: string) => {
 }`
     style.after(finish)
   }
+  return finishScripts
 }
 
 /** Embed the local widget graph before sharing a preview with other browsers.
@@ -130,8 +133,8 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   const workerSource = new URL(proofreadingWorkerURL, entryURL).origin
   const testShell = new URL(`${import.meta.env.BASE_URL}frame-shell.html`, `${entryURL.origin}/`).href
   const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation} 'wasm-unsafe-eval'; style-src 'none'; style-src-elem ${packageStyles}; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src * data: blob:; media-src * data: blob:; frame-src https: blob: data: ${testShell}; worker-src blob: https: ${workerSource}; object-src 'none'; base-uri 'none'; form-action 'none'`
-  const csp = `<meta class="◆ ◆editor-only" http-equiv="Content-Security-Policy" content="${escapeHTMLAttribute(policy)}">`
-  const bridge = `<meta class="◆ ◆editor-only" name="webwriter-editor-bridge" data-nonce="${nonce}" data-host-origin="${escapeHTMLAttribute(options.hostOrigin)}">`
+  const csp = `<meta http-equiv="Content-Security-Policy" content="${escapeHTMLAttribute(policy)}">`
+  const bridge = `<meta name="webwriter-editor-bridge" data-nonce="${nonce}" data-host-origin="${escapeHTMLAttribute(options.hostOrigin)}">`
   // Happy DOM deliberately disables external script execution but reports
   // each attempted iframe load as an uncaught exception. Keep virtual test
   // frames inert; browser builds retain the executable script types.
@@ -142,7 +145,7 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
     if(!options.executeScripts) registryScript.type = "application/json"
   }
   const scopedRegistry = registryScript?.outerHTML ?? ""
-  const bootstrapScripts = `<script class="◆ ◆editor-only" nonce="${nonce}">globalThis.litIssuedWarnings ??= new Set(); globalThis.litIssuedWarnings.add("dev-mode");</script>${scopedRegistry}<script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}" src="${escapeHTMLAttribute(options.entryURL)}"></script>`
+  const bootstrapScripts = `<script nonce="${nonce}">globalThis.litIssuedWarnings ??= new Set(); globalThis.litIssuedWarnings.add("dev-mode");</script>${scopedRegistry}<script nonce="${nonce}" type="${editorScriptType}" src="${escapeHTMLAttribute(options.entryURL)}"></script>`
   const bootstrap = `${csp}${bridge}${bootstrapScripts}`
   const themeNonce = options.executeScripts && !hasWidgetScripts ? options.bridgeNonce : undefined
   if(documentHTML === null) {
@@ -169,24 +172,29 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   // then restore their attributes before the editor module initializes.
   const authoredModules = (options.executeScripts ? [...parsed.querySelectorAll<HTMLScriptElement>('script[type="module"][src]')] : [])
     .filter(script => script.namespaceURI === "http://www.w3.org/1999/xhtml")
-  const moduleAttributes = authoredModules.map(script => [script.getAttribute("src"), script.getAttribute("class")])
-  authoredModules.forEach(script => {
-    script.removeAttribute("src")
-    script.classList.add("◆pending-module")
-  })
-  const restoreModules = moduleAttributes.length ? `<script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}">
-const attributes = ${JSON.stringify(moduleAttributes).replaceAll("<", "\\u003c")};
-document.querySelectorAll("script.◆pending-module").forEach((script, index) => {
-  const [src, className] = attributes[index];
-  script.setAttribute("src", src);
-  if(className === null) script.removeAttribute("class");
-  else script.setAttribute("class", className);
-});
-</script>` : ""
-  prepareEditorThemes(parsed, themeNonce)
-  parsed.head.insertAdjacentHTML("beforeend", `${restoreModules}${bridge}${bootstrapScripts}`)
+  const originalModuleSources = authoredModules.map(script => script.getAttribute("src"))
+  authoredModules.forEach(script => script.removeAttribute("src"))
+  const finishScripts = prepareEditorThemes(parsed, themeNonce)
+  let restoreModules: HTMLScriptElement | undefined
+  if(authoredModules.length) {
+    restoreModules = parsed.createElement("script")
+    restoreModules.setAttribute("nonce", nonce)
+    restoreModules.type = editorScriptType
+    parsed.head.append(restoreModules)
+  }
+  parsed.head.insertAdjacentHTML("beforeend", `${bridge}${bootstrapScripts}`)
+  if(restoreModules) {
+    // The parser completes the body before evaluating this module. Record the
+    // final script positions after adding the head bootstrap scripts.
+    const scripts = Array.from(parsed.scripts).filter(script => !finishScripts.has(script))
+    const entries = authoredModules.map((script, index) => [scripts.indexOf(script), originalModuleSources[index]])
+    restoreModules.textContent = `{
+  const entries = ${JSON.stringify(entries).replaceAll("<", "\\u003c")};
+  const scripts = [...document.scripts];
+  for (const [index, src] of entries) scripts[index]?.setAttribute("src", src);
+}`
+  }
   const cspElement = parsed.createElement("meta")
-  cspElement.classList.add("◆", "◆editor-only")
   cspElement.httpEquiv = "Content-Security-Policy"
   cspElement.content = policy
   parsed.head.prepend(cspElement)
@@ -200,6 +208,7 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
   const widgetTags = packageWidgetSchemaDefinitions(options.packages).map(widget => widget.tagName)
   // Keep fragment links authored as fragments. The frame link handler resolves
   // them against its current URL, including previews hosted by frame-shell.
+  registerFrameArtifacts(source)
   clearEditorArtifacts(source, [], widgetLookupForTags(widgetTags))
 
   // Remove authored executable content before installing the trusted widget
@@ -207,6 +216,7 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
   stripActiveContent(source, {allowStyles: true, allowIframes: true, allowLocalIframes: true,
     protectedIframeOrigins: [options.hostOrigin, options.frameOrigin]})
   upgradeBundledDocumentThemes(source)
+  ensureAuthoredElementIds(source.body)
 
   // Use the same dependency selection as saving, after stripping authored code.
   if(options.executeScripts) {
@@ -228,7 +238,7 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
   // document snapshots so a small interaction never resends widget bundles.
   const packageStyles = new Set(packages.flatMap(pkg => pkg.styles))
   source.head.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]').forEach(link => {
-    if(packageStyles.has(link.getAttribute("href")!)) link.classList.add("◆", "◆editor-only")
+    if(packageStyles.has(link.getAttribute("href")!)) link.setAttribute("nonce", nonce)
   })
   if(source.head) {
     if(options.standalone) {
@@ -239,11 +249,9 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
       source.head.prepend(base)
     }
     const scripts = Array.from(source.head.querySelectorAll("script"))
-    scripts.forEach(script => script.classList.add("◆", "◆editor-only"))
     const policy = source.createElement("meta")
     // A live-session learner prepares this preview again with a fresh nonce.
     // Remove the earlier policy along with the other preview bootstrap nodes.
-    policy.className = "◆ ◆editor-only"
     policy.httpEquiv = "Content-Security-Policy"
     const packageEvaluation = scripts.some(script => script.hasAttribute("src")) ? " 'unsafe-eval'" : ""
     policy.content = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation}; style-src * data: 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src * data: blob:; frame-src https: blob: data:; worker-src blob: https:; object-src 'none'; base-uri ${options.standalone ? "'self'" : "'none'"}; form-action 'none'`
@@ -251,7 +259,6 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
     if(options.executeScripts && (!options.standalone || options.learnerEntryURL)) {
       if(!options.standalone) {
         const bridge = source.createElement("meta")
-        bridge.className = "◆ ◆editor-only"
         bridge.name = "webwriter-preview-bridge"
         bridge.setAttribute("data-nonce", options.bridgeNonce)
         bridge.setAttribute("data-host-origin", options.hostOrigin)
@@ -263,7 +270,6 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
         entry.id = "webwriter-live-learner"
         if(widgetTags.length) entry.setAttribute("data-widget-tags", widgetTags.join(" "))
       }
-      entry.className = "◆ ◆editor-only"
       entry.type = "module"
       entry.src = options.standalone ? options.learnerEntryURL! : options.entryURL
       source.head.append(entry)

@@ -1,3 +1,4 @@
+import {batchPresentationStates, clearPresentationState, hasPresentationState, setPresentationState} from "../presentation-state.js"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, fixedClientX, createAnchorPositioner, cloneWithoutEditorMarkers, clearEditorMarkerClasses, authoredClassValue, isAppendixInteraction, isFormControlInteraction, isOnApple, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathElement, mathOutsidePoint, mathRoot, mathRowNames, mathStructureOptions, mathTokenNames, mathTokenType, parseMathFragment, type MathSelectionState} from "../math"
@@ -272,7 +273,7 @@ export class MathFeature extends EditorFeature {
   disable() {
     const captured = this.editor.features.selection.captureSelectedElement
     super.disable()
-    if(captured?.localName === "math" || Array.from(this.marked).some(element => element.classList.contains("◆element-capture-selected"))) {
+    if(captured?.localName === "math" || Array.from(this.marked).some(element => hasPresentationState(element, "element-capture-selected"))) {
       this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
     }
     this.observer?.disconnect()
@@ -283,7 +284,7 @@ export class MathFeature extends EditorFeature {
     this.placeholders.forEach((placeholder, root) => {
       placeholder.remove()
       this.anchors.release(placeholder)
-      removeEditorMarker(root, "◆math-empty")
+      clearPresentationState(root, "math-empty")
     })
     this.placeholders.clear()
     if(this.placeholderFrame !== null) cancelAnimationFrame(this.placeholderFrame)
@@ -1333,9 +1334,9 @@ export class MathFeature extends EditorFeature {
 
   private setHovered(element: Element | null) {
     if(element === this.hovered) return
-    if(this.hovered) removeEditorMarker(this.hovered, "◆math-hovered")
+    if(this.hovered) clearPresentationState(this.hovered, "math-hovered")
     this.hovered = element
-    element?.classList.add("◆math-hovered")
+    setPresentationState(element, "math-hovered")
     this.scheduleRefresh()
   }
 
@@ -1486,13 +1487,13 @@ export class MathFeature extends EditorFeature {
   }
 
   private clearPresentation() {
-    if(document.body.classList.contains("◆math-structural-caret")) removeEditorMarker(document.body, "◆math-structural-caret")
+    if(hasPresentationState(document.body, "math-structural-caret")) clearPresentationState(document.body, "math-structural-caret")
     this.resizeObserver?.disconnect()
     this.observedRoot = null
     this.marked.forEach(element => {
-      removeEditorMarker(element, "◆math-slot")
-      removeEditorMarker(element, "◆math-editing")
-      removeEditorMarker(element, "◆math-structural-caret")
+      clearPresentationState(element, "math-slot")
+      clearPresentationState(element, "math-editing")
+      clearPresentationState(element, "math-structural-caret")
     })
     this.marked.clear()
     this.overlay?.remove()
@@ -1542,7 +1543,7 @@ export class MathFeature extends EditorFeature {
       // order, which differs from insertion between MathML siblings.
       const container = token ? element.parentElement! : element
       const row = copies[originals.indexOf(container)]
-      if(!node.childNodes.length && (node === root || element.classList.contains("◆math-slot"))) {
+      if(!node.childNodes.length && (node === root || hasPresentationState(element, "math-slot"))) {
         row.setAttribute("style", `${row.getAttribute("style")};display:math;min-width:0;min-height:0`)
       }
       const character = outside ? document.createElement("span") : mathElement("mi", "x")
@@ -1644,7 +1645,7 @@ export class MathFeature extends EditorFeature {
       if(roots.has(root)) return
       placeholder.remove()
       this.anchors.release(placeholder)
-      removeEditorMarker(root, "◆math-empty")
+      clearPresentationState(root, "math-empty")
       this.placeholderResizeObserver?.unobserve(root)
       this.placeholders.delete(root)
     })
@@ -1652,7 +1653,7 @@ export class MathFeature extends EditorFeature {
     roots.forEach(root => {
       let placeholder = this.placeholders.get(root)
       if(!placeholder) {
-        root.classList.add("◆math-empty")
+        setPresentationState(root, "math-empty")
         placeholder = document.createElement("div")
         placeholder.setAttribute("part", "math-placeholder")
         placeholder.setAttribute("aria-hidden", "true")
@@ -1717,7 +1718,7 @@ export class MathFeature extends EditorFeature {
     if(removed) this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
     if(root ? this.editor.features.selection.captureSelectedElement !== (root.getAttribute("display") === "block"
       && (this.selectedMath !== root || this.editor.features.selection.captureSelectedElement === root) ? root : null)
-      : Array.from(this.marked).some(element => element.classList.contains("◆element-capture-selected"))) {
+      : Array.from(this.marked).some(element => hasPresentationState(element, "element-capture-selected"))) {
       this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
     }
     if(!root || root.getAttribute("display") === "block" && this.selectedMath === root && !this.editor.features.selection.isCaptureSelection) {
@@ -1729,18 +1730,18 @@ export class MathFeature extends EditorFeature {
       this.resizeObserver?.observe(root)
       this.observedRoot = root
     }
-    const markers = new Map<Element, string>([[root, "◆math-editing"]])
+    const markers = new Map<Element, string>([[root, "math-editing"]])
     this.stops(root).forEach(([node]) => {
-      if(node !== root && isRow(node) && !node.childNodes.length) markers.set(node, "◆math-slot")
+      if(node !== root && isRow(node) && !node.childNodes.length) markers.set(node, "math-slot")
     })
     this.marked.forEach(element => {
       if(!markers.has(element)) {
-        removeEditorMarker(element, "◆math-slot")
-        removeEditorMarker(element, "◆math-editing")
-        removeEditorMarker(element, "◆math-structural-caret")
+        clearPresentationState(element, "math-slot")
+        clearPresentationState(element, "math-editing")
+        clearPresentationState(element, "math-structural-caret")
       }
     })
-    markers.forEach((marker, element) => { if(!element.classList.contains(marker)) element.classList.add(marker) })
+    batchPresentationStates(document, () => markers.forEach((marker, element) => setPresentationState(element, marker)))
     this.marked = new Set(markers.keys())
     if(!this.overlay) {
       this.overlay = document.createElement("div")
@@ -1761,12 +1762,12 @@ export class MathFeature extends EditorFeature {
       && !(caretNode === root && root.childNodes.length && root.getAttribute("display") !== "block"
         && (caretOffset === 0 || caretOffset === root.childNodes.length)))
     if(!structuralCaret) { this.caret?.remove(); this.caret = null }
-    if(structuralCaret && !root.classList.contains("◆math-structural-caret")) root.classList.add("◆math-structural-caret")
-    else if(!structuralCaret) removeEditorMarker(root, "◆math-structural-caret")
+    if(structuralCaret && !hasPresentationState(root, "math-structural-caret")) setPresentationState(root, "math-structural-caret")
+    else if(!structuralCaret) clearPresentationState(root, "math-structural-caret")
     // Mirror the caret state instead of making every authored insertion
     // invalidate a document-wide :has() rule.
-    if(structuralCaret && !document.body.classList.contains("◆math-structural-caret")) document.body.classList.add("◆math-structural-caret")
-    else if(!structuralCaret && document.body.classList.contains("◆math-structural-caret")) removeEditorMarker(document.body, "◆math-structural-caret")
+    if(structuralCaret && !hasPresentationState(document.body, "math-structural-caret")) setPresentationState(document.body, "math-structural-caret")
+    else if(!structuralCaret && hasPresentationState(document.body, "math-structural-caret")) clearPresentationState(document.body, "math-structural-caret")
     const outerRows = new Set<Element>([root])
     let outer = root
     while(outer.children.length === 1 && outer.firstElementChild?.localName === "mrow") {
@@ -1774,7 +1775,7 @@ export class MathFeature extends EditorFeature {
       outerRows.add(outer)
     }
     markers.forEach((marker, element) => {
-      if(marker !== "◆math-slot" || outerRows.has(element) || emptyBlock) return
+      if(marker !== "math-slot" || outerRows.has(element) || emptyBlock) return
       const rect = element.getBoundingClientRect()
       const glyph = this.isFencedPlaceholder(element) ? this.structuralTextRect(element, 0) : null
       const style = getComputedStyle(element)
@@ -1792,7 +1793,7 @@ export class MathFeature extends EditorFeature {
       const rect = this.pointRect(caretPoint ?? [selection.focusNode, selection.focusOffset], structuralCaret)
       this.input?.refresh(rect)
       if(structuralCaret) {
-        const inset = !emptyBlock && caretNode instanceof Element && markers.get(caretNode) === "◆math-slot" && !outerRows.has(caretNode) ? 1 : 0
+        const inset = !emptyBlock && caretNode instanceof Element && markers.get(caretNode) === "math-slot" && !outerRows.has(caretNode) ? 1 : 0
         const caret = this.caret ??= document.createElement("span")
         caret.setAttribute("part", "math-caret")
         caret.style.cssText = `position:absolute;background:currentColor;width:1px;left:${rect.left + inset}px;top:${rect.top}px;height:${rect.height}px;animation:var(--ww-ui-animation, blink 1s step-end 0s infinite)`

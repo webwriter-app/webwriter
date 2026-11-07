@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, expect, it, vi} from "vitest"
 import {GuidedTour} from "./guided-tour"
+import {hasAnchorTarget} from "../anchor-positioning.test-utils"
 
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks() })
 
@@ -84,7 +85,7 @@ it("walks forwards and backwards, then finishes without changing the document or
   next()
   expect(dismiss).toHaveBeenCalledOnce()
   expect(document.activeElement).toBe(anchor)
-  expect(anchor.className).toContain("◆anchor-target-")
+  expect(hasAnchorTarget(anchor)).toBe(true)
   tour.remove()
   expect(anchor.outerHTML).toBe("<button></button>")
 })

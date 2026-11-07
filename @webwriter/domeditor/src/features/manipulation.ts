@@ -1,3 +1,5 @@
+import {remapPastedAuthoredIds} from "../authored-identities"
+import {clearPresentationState, hasPresentationState, setPresentationState} from "../presentation-state.js"
 import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
 import {documentThemeProperties, documentTypographyCSS, documentTypographyProperties} from "../document-theme-options"
 import {themeAccentProperties} from "../css-color"
@@ -584,7 +586,7 @@ export class ManipulationFeature extends EditorFeature {
       this.showDropRangePreview(range)
       this.clearFloatDropPreview("transfer")
     }
-    if(!document.body.classList.contains("◆drop-selection-active")) document.body.classList.add("◆drop-selection-active")
+    if(!hasPresentationState(document.body, "drop-selection-active")) setPresentationState(document.body, "drop-selection-active")
     event.dataTransfer!.dropEffect = this.nodeDrag && !event.ctrlKey && !event.altKey ? "move" : "copy"
   }
 
@@ -622,7 +624,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private clearDropSelection() {
-    removeEditorMarker(document.body, "◆drop-selection-active")
+    clearPresentationState(document.body, "drop-selection-active")
     this.dropRangeCaret?.remove()
     this.dropRangeCaret = null
     this.clearFloatDropPreview("transfer")
@@ -1089,7 +1091,15 @@ export class ManipulationFeature extends EditorFeature {
         context.style.cssText = `display:flow-root!important;inline-size:${available}px!important;max-inline-size:none!important;min-block-size:0!important;margin:0!important;padding:0!important;border:0!important`
         const measured = source.cloneNode(true) as HTMLElement
         measured.style.cssText += `;float:${side};--ww-float-size:${width}px;inline-size:${width}px!important;margin:0!important`
-        if(measured.matches("picture, img, video, iframe, embed, object")) measured.classList.add("◆media-empty")
+        if(measured.matches("picture, img, video, iframe, embed, object")) {
+          measured.style.boxSizing = "border-box"
+          measured.style.border = "1px solid transparent"
+          measured.style.display = "block"
+          if(measured.matches("picture, img, video")) measured.style.aspectRatio = "16 / 9"
+          measured.querySelectorAll("img:not([src]):not([srcset])").forEach(image => {
+            if(image instanceof HTMLElement) image.style.display = "none"
+          })
+        }
         context.append(measured)
         shadow.append(context)
         height = measured.getBoundingClientRect().height
@@ -1198,7 +1208,7 @@ export class ManipulationFeature extends EditorFeature {
       if(measured) this.insertionPreviewResizeObserver?.observe(measured)
       this.insertionPreviewTarget = measured
     }
-    if(document.body.classList.contains("◆insertion-gap-preview") !== gap) document.body.classList.toggle("◆insertion-gap-preview", gap)
+    if(hasPresentationState(document.body, "insertion-gap-preview") !== gap) setPresentationState(document.body, "insertion-gap-preview", gap)
     let overlay = this.editor.appendix.querySelector<HTMLElement>("#◆insertion-preview")
     if(target) {
       this.clearFloatDropPreview("insertion")
@@ -3389,6 +3399,7 @@ export class ManipulationFeature extends EditorFeature {
         if(invoker.style.getPropertyValue("anchor-name").trim() === `--${id}`) invoker.style.setProperty("anchor-name", `--${replacement}`)
       })
     }
+    remapPastedAuthoredIds(fragment, document)
     this.selectCapturedElementForInsertion()
     if(this.insertLayoutPaste(fragment)) return
     if(this.insertListPaste(fragment)) return true
@@ -4388,7 +4399,7 @@ export class ManipulationFeature extends EditorFeature {
     },
     "dragend": () => {
       if(this.nodeDrag || this.floatDropTargets || this.floatDropPreviewOwner === "transfer"
-        || document.body.classList.contains("◆drop-selection-active")) this.endNodeDrag()
+        || hasPresentationState(document.body, "drop-selection-active")) this.endNodeDrag()
     },
   }
 

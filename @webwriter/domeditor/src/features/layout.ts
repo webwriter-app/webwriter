@@ -47,6 +47,7 @@ export class LayoutFeature extends EditorFeature {
     super.disable()
   }
   refreshFigureLayout(target?: Element) { this.figures?.refresh(target) }
+  hasFigureFlow(figure: Element) { return this.figures?.isActive(figure) ?? false }
   refresh() { this.refreshFigureLayout(); this.syncColumnWidth() }
   getState() { return null }
 

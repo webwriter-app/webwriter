@@ -1,5 +1,6 @@
+import {clearPresentationState, hasPresentationState, presentationStateElements, setPresentationState} from "../presentation-state.js"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, closestAlignment, fixedClientX, clearInlinePlacement, editingFlowRoot, figureSelectionTarget, findContainingBlock, findScrollingAncestor, findStackingContainer, flowSibling, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
+import { $, closestAlignment, fixedClientX, clearInlinePlacement, editingFlowRoot, figureSelectionTarget, findContainingBlock, findScrollingAncestor, findStackingContainer, flowSibling, getDescendantsInStackingOrder, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {SVG_NAMESPACE, standaloneGraphicShape} from "../graphic"
 import {boardLayoutRole, documentLayoutMode, isSlide, slideLayoutRole} from "../document-layout"
@@ -123,6 +124,7 @@ export class TransformationFeature extends EditorFeature {
   #observer: MutationObserver | null = null
   #anchors = createAnchorPositioner()
   #anchored = false
+  #narrow = false
   #resizeObserver: ResizeObserver | null = null
   #observedElements: Element[] = []
   readonly refreshGeometry = () => {
@@ -450,6 +452,7 @@ export class TransformationFeature extends EditorFeature {
   get overlay() {
     const existing = this.editor.appendix.querySelector<HTMLElement>("#◆transform-overlay")
     if(existing) return existing
+    this.#narrow = false
     const overlay = this.#createOverlay()
     this.editor.addAppendix(overlay)
     return overlay
@@ -463,7 +466,7 @@ export class TransformationFeature extends EditorFeature {
   get arranger() { return this.overlay.querySelector<HTMLElement>("#◆transform-overlay-arranger")! }
   get orderer() { return this.overlay.querySelector<HTMLElement>("#◆transform-overlay-orderer")! }
   get anchor() { return this.overlay.querySelector<HTMLElement>("#◆transform-overlay-anchor")! }
-  get isNarrow() { return this.overlay.classList.contains("◆transform-overlay-narrow") }
+  get isNarrow() { return this.#narrow }
 
   controlContainer(element: Element) {
     return !this.#group.length && this.target
@@ -503,7 +506,7 @@ export class TransformationFeature extends EditorFeature {
       this.#group = elements
       this.#target = elements[0]
     }
-    for(const element of this.#group) element.classList.add("◆transform-target")
+    for(const element of this.#group) setPresentationState(element, "transform-target")
     this.overlay.removeAttribute("visibility")
     setPart(this.overlay, "transform-overlay-content-selected", false)
     this.updateInfo()
@@ -516,7 +519,7 @@ export class TransformationFeature extends EditorFeature {
       this.clearTransform()
       this.#target = element
     }
-    if(!element.classList.contains("◆transform-target")) element.classList.add("◆transform-target")
+    if(!hasPresentationState(element, "transform-target")) setPresentationState(element, "transform-target")
     this.overlay.removeAttribute("visibility")
     if(measure) this.updateInfo()
     this.#scheduleFrame()
@@ -854,21 +857,6 @@ export class TransformationFeature extends EditorFeature {
     return {x: matrix.a * x + matrix.c * y, y: matrix.b * x + matrix.d * y}
   }
 
-  get targetOriginRect(): DOMRect {
-    const target = this.target
-    if(!target) return new DOMRect()
-    const position = (getComputedStyle(target).position || "static") as "static" | "relative" | "absolute" | "fixed" | "sticky"
-    if(position === "relative" || position === "sticky") {
-      const [top, left] = getStaticCoords(target as HTMLElement)
-      return new DOMRect(left, top, 0, 0)
-    }
-    const block = findContainingBlock(target as HTMLElement, position)
-    if(block === window) return new DOMRect(position === "fixed" ? 0 : -window.scrollX, position === "fixed" ? 0 : -window.scrollY, window.innerWidth, window.innerHeight)
-    const element = block as HTMLElement
-    const rect = element.getBoundingClientRect()
-    return new DOMRect(rect.left + element.clientLeft - element.scrollLeft, rect.top + element.clientTop - element.scrollTop, element.clientWidth, element.clientHeight)
-  }
-
   #mediaCropInsets(media: HTMLImageElement | HTMLVideoElement) {
     const crop = this.#gesture?.crop
     return crop?.target === media ? crop.edges : null
@@ -877,7 +865,7 @@ export class TransformationFeature extends EditorFeature {
   /** Border-box geometry shared by transform, selection and hover overlays.
    * Matrices may be shared only within one synchronous batch of layout reads. */
   boxGeometry(element: TransformElement, cropped = true, matrices = new WeakMap<Element, DOMMatrix>(), measuredRect?: DOMRect): BoxGeometry {
-    if(element.localName === "figure" && Array.from(element.classList).some(name => name.startsWith("◆figure-flow-"))) {
+    if(element.localName === "figure" && this.editor.features.layout.hasFigureFlow(element)) {
       const content = captionedFigureContent(element)
       if(content && this.#canTransform(content)) return this.boxGeometry(content, cropped, matrices)
     }
@@ -947,7 +935,7 @@ export class TransformationFeature extends EditorFeature {
       const {width, height, center, matrix} = this.#positionGroupFrame(this.overlay, this.#group, angle, this.isResizingOrRotatingGroup)
       this.overlay.querySelector<HTMLElement>('[part="transform-overlay-crop-frame"]')!.hidden = true
       this.#positionFlowControls(width, height, [])
-      this.overlay.classList.toggle("◆transform-overlay-narrow", width < 120)
+      this.#narrow = width < 120
       setPart(this.overlay, "transform-overlay-at-top", center.y - (Math.abs(matrix.b) * width + Math.abs(matrix.d) * height) / 2 < 50)
       if(!this.#gesture) this.#syncControlParts()
       return
@@ -1000,7 +988,7 @@ export class TransformationFeature extends EditorFeature {
       Object.assign(overlay.style, {...styles, left: fixedLeft})
       this.editor.features.selection.positionTransformCaret(target, overlay.style, floats)
     }
-    overlay.classList.toggle("◆transform-overlay-narrow", rect.width < 120)
+    this.#narrow = rect.width < 120
     const centerY = rect.top + rect.height / 2
     const controlRadius = 8 * (Math.abs(matrix.b) + Math.abs(matrix.d))
     const rotateTop = centerY + matrix.d * (-height / 2 - 34) - controlRadius
@@ -1010,9 +998,6 @@ export class TransformationFeature extends EditorFeature {
       ? centerY - Math.abs(matrix.b) * (width / 2 + 3) + matrix.d * (-height / 2 - 34) - controlRadius
       : Infinity
     setPart(overlay, "transform-overlay-at-top", Math.min(rotateTop, ordererTop, cornerControlsTop) < 0)
-    const transformedContent = captionedFigureContent(target)
-    overlay.classList.toggle("◆transform-overlay-changed", ["rotate", "scale", "width", "height", "max-width", "max-height", "position", "top", "left", "float", "z-index"].some(key => target.style.getPropertyValue(key))
-      || Boolean(transformedContent && ["rotate", "scale", "translate", "transform"].some(key => (transformedContent as TransformElement).style?.getPropertyValue(key))))
     // Controls stay in the transformed overlay, but sit upright at the live
     // containing block's corner, with the sticky toggle just below the anchor.
     if(matrix.is2D && Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) >= 1e-8) {
@@ -1218,9 +1203,9 @@ export class TransformationFeature extends EditorFeature {
   }
 
   #updateContextMarkers(block: Element | Window | null = null, scroller: Element | null = null) {
-    for(const [marker, current] of [["◆transform-containing-block", block], ["◆transform-scrolling-ancestor", scroller]] as const) {
-      document.querySelectorAll(`.${marker}`).forEach(element => { if(element !== current) removeEditorMarker(element, marker) })
-      if(current instanceof Element && !current.classList.contains(marker)) current.classList.add(marker)
+    for(const [marker, current] of [["transform-containing-block", block], ["transform-scrolling-ancestor", scroller]] as const) {
+      presentationStateElements(document, marker).forEach(element => { if(element !== current) clearPresentationState(element, marker) })
+      if(current instanceof Element) setPresentationState(current, marker)
     }
   }
 
@@ -1273,7 +1258,7 @@ export class TransformationFeature extends EditorFeature {
     if(!gesture || gesture.group || gesture.captured || gesture.mode !== "scale" && gesture.mode !== "rotate" && !this.#isSpatialMove(gesture)
       || this.#drop || this.#normalDropRange || this.editor.isEditingLocked) return null
     const {target, parent} = gesture
-    if(!target.isConnected || target.parentElement !== parent || !target.classList.contains("◆element-selected")
+    if(!target.isConnected || target.parentElement !== parent || !hasPresentationState(target, "element-selected")
       || this.editor.features.selection.isCaptureSelection || this.editor.features.selection.selectedSectionElement
       || this.editor.features.table.hasCellSelection) return null
     const ranges = $.ranges
@@ -1422,14 +1407,14 @@ export class TransformationFeature extends EditorFeature {
     if(gesture.mode === "move") {
       movement = this.#snapMovement(event, dx, dy)
       transform = transform.translate(movement.offset.x, movement.offset.y)
-      document.body.classList.add("◆transform-moving")
+      setPresentationState(document.body, "transform-moving")
     }
     else if(gesture.mode === "rotate") {
       const degrees = (Math.atan2(event.clientY - cy, event.clientX - cx) - Math.atan2(gesture.y - cy, gesture.x - cx)) * 180 / Math.PI
       const delta = round(degrees)
       group.angle = (gesture.rotate + delta) % 360
       transform = transform.translate(cx, cy).rotate(delta).translate(-cx, -cy)
-      document.body.classList.add("◆transform-rotating")
+      setPresentationState(document.body, "transform-rotating")
     }
     else {
       const direction = gesture.handle.dataset.resizeDirection ?? ""
@@ -1447,7 +1432,7 @@ export class TransformationFeature extends EditorFeature {
       const ax = cx - anchor.x, ay = cy - anchor.y
       transform = transform.translate(ax, ay).multiply(gesture.matrix).scale(sx, sy).multiply(inverse).translate(-ax, -ay)
       resize = {x: sx, y: sy, inverse}
-      document.body.classList.add(`◆transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
+      setPresentationState(document.body, `transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
     }
     const linear = new DOMMatrix([transform.a, transform.b, transform.c, transform.d, 0, 0])
     // Apply each member's size or transform before measuring any of the new
@@ -1585,7 +1570,7 @@ export class TransformationFeature extends EditorFeature {
     }
     this.#suppressClick = null
     if(mode === "crop") {
-      document.body.classList.add(`◆transform-cropping-${handle.dataset.cropDirection}`)
+      setPresentationState(document.body, `transform-cropping-${handle.dataset.cropDirection}`)
       this.updateInfo()
     }
     event.preventDefault()
@@ -1794,7 +1779,7 @@ export class TransformationFeature extends EditorFeature {
     if(!gesture.moved && Math.hypot(dx, dy) < 8) return
     const overlayLeft = fixedClientX(0)
     gesture.moved = true
-    document.body.classList.add("◆transform-moving")
+    setPresentationState(document.body, "transform-moving")
     if(gesture.mode === "anchor" || modifierKeyDown(event) || !this.editor.features.canvas.active && !this.editor.features.slides.active) {
       if(this.#panFrame !== null) cancelAnimationFrame(this.#panFrame)
       this.#panFrame = null
@@ -1969,7 +1954,7 @@ export class TransformationFeature extends EditorFeature {
     else if(x) dw = Math.max(dw, minDW)
     const crop = gesture.canvas && !event.altKey
     const scaleInsteadOfResize = event.shiftKey && !crop && !text && !image
-    document.body.classList.add(`◆transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
+    setPresentationState(document.body, `transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
     const popup = target.closest("[popover]")
     const insidePopup = Boolean(popup && popup !== target && popupElementRole(popup) === "content")
     const resizeMode = `${Boolean(crop)}:${scaleInsteadOfResize}:${floatSideFromStyles(float, target.style, target.classList)}:${insidePopup}`
@@ -2129,7 +2114,7 @@ export class TransformationFeature extends EditorFeature {
     if(Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) < 1 && !gesture.moved) return
     if(!gesture.moved) {
       gesture.moved = true
-      document.body.classList.add("◆transform-rotating")
+      setPresentationState(document.body, "transform-rotating")
     }
     const cx = gesture.rect.left + gesture.rect.width / 2, cy = gesture.rect.top + gesture.rect.height / 2
     const inverse = gesture.parentMatrix.inverse()
@@ -2185,13 +2170,13 @@ export class TransformationFeature extends EditorFeature {
     const rect = element.getBoundingClientRect()
     const placement = event.clientY < rect.top + rect.height / 2 ? "before" : "after"
     this.#drop = {element, placement, parent: element.parentNode!}
-    element.classList.add(`◆drop-caret-${placement}`)
+    setPresentationState(element, `drop-caret-${placement}`)
     this.editor.features.selection.showDropCaret(placement)
   }
 
   #clearDrop(keepFloatPreview = false) {
     const hadDrop = this.#drop || this.#normalDropRange
-    if(this.#drop) removeEditorMarker(this.#drop.element, `◆drop-caret-${this.#drop.placement}`)
+    if(this.#drop) clearPresentationState(this.#drop.element, `drop-caret-${this.#drop.placement}`)
     this.#drop = null
     this.#normalDropRange = null
     this.editor.features.manipulation.clearFloatDropPreview("transformation", keepFloatPreview)
@@ -2291,8 +2276,8 @@ export class TransformationFeature extends EditorFeature {
     if(picture && !picture.style.length) picture.removeAttribute("style")
     if(gesture.crop && !gesture.crop.target.style.length) gesture.crop.target.removeAttribute("style")
     if(gesture.pointerId !== undefined && gesture.handle.hasPointerCapture?.(gesture.pointerId)) gesture.handle.releasePointerCapture(gesture.pointerId)
-    document.body.classList.remove("◆transform-moving", "◆transform-rotating", "◆transform-scaling-ew", "◆transform-scaling-ns", "◆transform-scaling-nwse", "◆transform-scaling-nesw")
-    document.body.classList.remove(...cropDirections.map(direction => `◆transform-cropping-${direction}`))
+    clearPresentationState(document.body, "transform-moving", "transform-rotating", "transform-scaling-ew", "transform-scaling-ns", "transform-scaling-nwse", "transform-scaling-nesw")
+    clearPresentationState(document.body, ...cropDirections.map(direction => `transform-cropping-${direction}`))
     this.#clearDrop()
     this.editor.features.manipulation.clearFloatDropTargets()
     gesture.endUndoGroup()
@@ -2413,8 +2398,8 @@ export class TransformationFeature extends EditorFeature {
     this.#resizeObserver?.disconnect(); this.#observedElements = []
     this.#suppressClick = null
     this.editor.features.selection.clearTransformCaret()
-    const targets = new Set([...this.#group, ...(this.#target ? [this.#target] : []), ...document.querySelectorAll(".◆transform-target")])
-    for(const target of targets) removeEditorMarker(target, "◆transform-target")
+    const targets = new Set([...this.#group, ...(this.#target ? [this.#target] : []), ...presentationStateElements(document, "transform-target")])
+    for(const target of targets) clearPresentationState(target, "transform-target")
     this.#target = null
     this.#group = []
     this.#clearGroupContext()

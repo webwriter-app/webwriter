@@ -1,3 +1,4 @@
+import {clearPresentationState, hasPresentationState, presentationStateElements, resolvePresentationSelector, setPresentationState} from "../src/presentation-state.js"
 import {captionEnumerationCSS, defaultCaptionEnumeration} from "../src/caption-enumeration"
 import {attributionAttributes} from "../src/attribution.js"
 import {graphicShapeSections} from "../src/graphic"
@@ -1717,7 +1718,7 @@ await check("insertion and saved-reader controls align inside symmetric scrollba
     figure.style.removeProperty("transform")
     await layoutFrame()
     assert(permalink.style.top === "" && fullscreenButton.style.left === ""
-      && figure.classList.toString().includes("◆anchor-target-"),
+      && getComputedStyle(figure).getPropertyValue("anchor-name").includes("--ww-ui-anchor-"),
     "saved reader controls did not restore native anchors after the transform")
     figure.style.translate = "26px 0px"
     await layoutFrame()
@@ -1845,10 +1846,19 @@ await check("SVG overflow fades while retaining native shape selection", async (
     doc.body.innerHTML = '<svg viewBox="100 50 600 300" style="display:block;margin:150px auto;width:600px;height:300px;overflow:hidden;filter:grayscale(0.2)"><!--keep--><rect x="40" y="100" width="120" height="80" fill="red"/><rect x="640" y="200" width="120" height="80" fill="blue"/><rect x="250" y="0" width="80" height="100" fill="green"/><g transform="rotate(15 450 330)"><rect x="410" y="280" width="80" height="100" fill="orange"/></g></svg>'
     const graphic = doc.querySelector("svg")!, shapes = Array.from(graphic.querySelectorAll("rect"))
     const authored = graphic.getAttribute("style")
+    const themeReset = doc.createElement("style")
+    themeReset.textContent = "* { background-repeat: no-repeat; }"
+    doc.head.append(themeReset)
     editor.features.selection.captureElement(graphic)
+    await layoutFrame()
+    const grid = view.getComputedStyle(graphic)
+    assert(grid.backgroundImage.includes("linear-gradient") && grid.backgroundRepeat.split(/,\s*/).every(repeat => repeat === "repeat"),
+      `the SVG editing grid did not repeat over the theme reset: ${grid.backgroundImage}, ${grid.backgroundRepeat}, ${graphic.id}, ${hasPresentationState(graphic, "graphic-grid-visible")}`)
     editor.features.graphic.actions.toggleGraphicOption({type:"toggleGraphicOption", name:"grid"})
     await layoutFrame()
     const presentation = view.getComputedStyle(graphic)
+    assert(!presentation.backgroundImage.includes("linear-gradient")
+      && presentation.backgroundRepeat === "no-repeat", "turning off the SVG grid left its background in place")
     assert(graphic.getAttribute("style") === authored, "editing changed authored styles")
     assert(presentation.overflow === "visible", `editing still clips SVG overflow: ${graphic.className.baseVal}; ${presentation.filter}`)
     assert(presentation.filter.startsWith("grayscale(0.2) url("), "overflow fading replaced the authored filter")
@@ -2372,7 +2382,7 @@ await check("widget shadow interactions capture hosts while slotted children sta
       document.dispatchEvent(new Event("selectionchange"))
       await layoutFrame()
       assert(editor.features.selection.captureSelectedWidget === widget, `${mode} top-bar host focus lost capture`)
-      assert(!document.body.classList.contains("◆gap-caret-visible"), `${mode} top bar painted a gap instead of capture`)
+      assert(!hasPresentationState(document.body, "gap-caret-visible"), `${mode} top bar painted a gap instead of capture`)
       assert(editor.features.selection.selectionCaret!.getAttribute("part")!.includes("selection-caret-capture"), `${mode} top bar lost the capture outline`)
       assert(getComputedStyle(widget).outlineStyle === "none", `${mode} top bar retained the native inner focus outline`)
       input.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
@@ -2381,7 +2391,7 @@ await check("widget shadow interactions capture hosts while slotted children sta
       document.dispatchEvent(new Event("selectionchange"))
       assert(editor.features.selection.captureSelectedWidget === widget, `${mode} shadow input did not capture its host`)
       assert(input.selectionStart === 1 && input.selectionEnd === 3, `${mode} shadow input lost its native selection`)
-      assert(widget.classList.contains("◆element-capture-selected"), "capture outline marker is missing")
+      assert(hasPresentationState(widget, "element-capture-selected"), "capture outline marker is missing")
       const caret = editor.features.selection.selectionCaret!
       assert(getComputedStyle(caret).display !== "none", "capture outline is hidden")
       assert(caret.getBoundingClientRect().width > 0, "capture outline has no width")
@@ -2531,8 +2541,8 @@ await check("nested widget pages keep insertion, splitting and deletion inside t
       document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
       assert(pointer.defaultPrevented, `${placement} page gap was left to native text selection`)
       assert($.anchor === page && $.anchorOffset === (placement === "before" ? 0 : 1) && $.isGapSelection, `${placement} graphic gap escaped its page`)
-      assert(!editor.features.selection.isCaptureSelection && graphic.classList.contains(`◆gap-${placement}-selected`), `${placement} gap retained graphic or widget capture`)
-      assert(document.body.classList.contains("◆gap-caret-visible"), `${placement} page gap caret is hidden`)
+      assert(!editor.features.selection.isCaptureSelection && hasPresentationState(graphic, `gap-${placement}-selected`), `${placement} gap retained graphic or widget capture`)
+      assert(hasPresentationState(document.body, "gap-caret-visible"), `${placement} page gap caret is hidden`)
       page.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "Inserted", bubbles: true, composed: true, cancelable: true}))
       assert(page.querySelector("p")?.textContent === "Inserted" && graphic.isConnected, "typing at a graphic gap did not stay in the page")
     }
@@ -2605,7 +2615,7 @@ await check("popup content drags stay inside the bubble", async () => {
     editor.features.selection.processSelection()
     editor.features.dialog.refresh()
     await layoutFrame()
-    assert(content.classList.contains("◆popup-visible") && content.getBoundingClientRect().height > 0,
+    assert(hasPresentationState(content, "popup-visible") && content.getBoundingClientRect().height > 0,
       "popup did not open for its content selection")
     const range = doc.createRange()
     range.setStart(first, 3); range.collapse(true)
@@ -2626,12 +2636,12 @@ await check("popup content drags stay inside the bubble", async () => {
       editor.features.dialog.refresh()
       assert(content.contains(selection.anchorNode) && content.contains(selection.focusNode),
         "popup drag selected text outside its dialog")
-      assert(content.classList.contains("◆popup-visible"), "popup closed during its own drag")
+      assert(hasPresentationState(content, "popup-visible"), "popup closed during its own drag")
     }
     doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerType: "mouse", pointerId: 81}))
     editor.features.dialog.refresh()
     assert(content.contains(selection.anchorNode) && content.contains(selection.focusNode)
-      && content.classList.contains("◆popup-visible"), "popup drag escaped or closed on release")
+      && hasPresentationState(content, "popup-visible"), "popup drag escaped or closed on release")
   }
   finally { view.editor?.destroy(); frame.remove() }
 })
@@ -2652,7 +2662,7 @@ await check("popup table content clicks keep the bubble open", async () => {
     editor.features.selection.processSelection()
     editor.features.dialog.refresh()
     await layoutFrame()
-    assert(content.classList.contains("◆popup-visible"), "popup did not open in the table cell")
+    assert(hasPresentationState(content, "popup-visible"), "popup did not open in the table cell")
     const range = doc.createRange()
     range.setStart(text, 3); range.collapse(true)
     const rect = range.getBoundingClientRect(), bubble = content.getBoundingClientRect()
@@ -2669,7 +2679,7 @@ await check("popup table content clicks keep the bubble open", async () => {
       editor.features.dialog.refresh()
       assert(content.contains(selection.anchorNode) && content.contains(selection.focusNode),
         `clicking popup content in a table moved the selection out of the bubble: ${selection.anchorNode?.nodeName}@${selection.anchorOffset}, hit ${hit.localName}`)
-      assert(content.classList.contains("◆popup-visible"), "clicking popup content in a table closed the bubble")
+      assert(hasPresentationState(content, "popup-visible"), "clicking popup content in a table closed the bubble")
       assert(!editor.features.table.hasCellSelection, "clicking popup content selected the table cell")
     }
   }
@@ -2693,7 +2703,7 @@ await check("popup table trailing gap accepts Enter", async () => {
     editor.features.dialog.refresh()
     doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true}))
     assert(selection.anchorNode === content && selection.anchorOffset === 1
-      && last.classList.contains("◆gap-after-selected") && doc.body.classList.contains("◆gap-caret-visible"),
+      && hasPresentationState(last, "gap-after-selected") && hasPresentationState(doc.body, "gap-caret-visible"),
     "Arrow Down from the last popup paragraph in a table did not show its trailing gap")
     const caret = editor.features.selection.gapCaret!.getBoundingClientRect()
     const paragraph = last.getBoundingClientRect(), bubble = content.getBoundingClientRect()
@@ -2701,7 +2711,7 @@ await check("popup table trailing gap accepts Enter", async () => {
       "the trailing popup gap caret is not below its paragraph inside the bubble")
     doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
     assert(content.querySelectorAll(":scope > p").length === 2
-      && content.lastElementChild?.textContent === "" && content.classList.contains("◆popup-visible"),
+      && content.lastElementChild?.textContent === "" && hasPresentationState(content, "popup-visible"),
     "Enter at the trailing popup gap in a table did not insert a paragraph")
   }
   finally { view.editor?.destroy(); frame.remove() }
@@ -2802,13 +2812,13 @@ await check("popup content gaps support backward joins", async () => {
     ] as const) {
       clickGap(atY)
       assert(selection.isCollapsed && selection.anchorNode === content && selection.anchorOffset === offset
-        && marked.classList.contains(marker), "click at a popup content edge missed its gap")
+        && hasPresentationState(marked, marker.slice(1)), "click at a popup content edge missed its gap")
       const caret = editor.features.selection.gapCaret!, box = caret.getBoundingClientRect()
       const expected = marker === "◆gap-before-selected" ? marked.getBoundingClientRect().top
         : marked.getBoundingClientRect().bottom + (parseFloat(view.getComputedStyle(caret).marginTop) || 0)
       assert(Math.abs(box.top - expected) < 2 && contentBox.left <= box.left && box.left <= contentBox.right,
         "popup gap caret is detached from its content")
-      assert(content.classList.contains("◆popup-visible"), "popup closed at a content edge")
+      assert(hasPresentationState(content, "popup-visible"), "popup closed at a content edge")
     }
     selection.setPosition(content, 0)
     editor.features.selection.processSelection()
@@ -2817,12 +2827,12 @@ await check("popup content gaps support backward joins", async () => {
     selection.setPosition(second.firstChild, second.textContent!.length)
     editor.features.selection.processSelection()
     doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true}))
-    assert(selection.anchorNode === content && selection.anchorOffset === 2 && second.classList.contains("◆gap-after-selected")
-      && content.classList.contains("◆popup-visible"), "Arrow Down from the last popup element missed its trailing gap")
+    assert(selection.anchorNode === content && selection.anchorOffset === 2 && hasPresentationState(second, "gap-after-selected")
+      && hasPresentationState(content, "popup-visible"), "Arrow Down from the last popup element missed its trailing gap")
     clickGap(y)
     assert(selection.isCollapsed && selection.anchorNode === content && selection.anchorOffset === 1
-      && first.classList.contains("◆gap-after-selected"), "click between popup paragraphs missed the gap")
-    assert(content.classList.contains("◆popup-visible"), "popup closed at a content gap")
+      && hasPresentationState(first, "gap-after-selected"), "click between popup paragraphs missed the gap")
+    assert(hasPresentationState(content, "popup-visible"), "popup closed at a content gap")
     doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
     assert(content.querySelectorAll("p").length === 1 && content.querySelector("p")?.textContent === "FirstSecond",
       "Backspace at the popup gap did not join its paragraphs")
@@ -2842,9 +2852,35 @@ await check("popup content gaps support backward joins", async () => {
       doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
       assert(content.querySelectorAll("p").length === 1 && only.isConnected && only.innerHTML === html
         && selection.anchorNode === only && selection.anchorOffset === 0
-        && !doc.body.classList.contains("◆gap-caret-visible"),
+        && !hasPresentationState(doc.body, "gap-caret-visible"),
       "Backspace in the sole empty popup paragraph moved to a gap")
     }
+  }
+  finally { view.editor?.destroy(); frame.remove() }
+})
+
+await check("leaving a gap restores the native text caret", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:960px;height:360px"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Text caret</p></body>`
+  nativeRootEditor.addAppendix(frame)
+  const view = frame.contentWindow!
+  try {
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "gap-to-text fixture did not initialize")
+    const doc = frame.contentDocument!, selection = doc.getSelection()!, feature = view.editor!.features.selection
+    doc.body.innerHTML = "<p>Text caret</p>"
+    const paragraph = doc.querySelector("p")!
+    doc.body.focus()
+    selection.setPosition(doc.body, 0)
+    feature.processSelection(undefined, {scrollIntoView: false})
+    await layoutFrame()
+    assert(view.getComputedStyle(paragraph).caretColor === "rgba(0, 0, 0, 0)", "a gap did not suppress the native caret")
+    selection.setPosition(paragraph.firstChild, 2)
+    feature.processSelection(undefined, {scrollIntoView: false})
+    await layoutFrame()
+    assert(view.getComputedStyle(paragraph).caretColor !== "rgba(0, 0, 0, 0)", "moving from a gap into text left the native caret hidden")
+    assert(feature.gapCaret?.getAttribute("visibility") === "hidden", "moving into text left the gap caret visible")
   }
   finally { view.editor?.destroy(); frame.remove() }
 })
@@ -2885,10 +2921,10 @@ await check("gap carets track their authored boundary", async () => {
           emptyStyle.sheet!.insertRule("p:empty { inline-size: 320px }")
           await layoutFrame()
         }
-        const anchor = doc.querySelector<HTMLElement>(".◆gap-before-selected, .◆gap-after-selected")!
+        const anchor = (presentationStateElements<HTMLElement>(doc, "gap-before-selected", "gap-after-selected")[0] ?? null)!
         assert(anchor, `missing gap anchor: html=${html}, offset=${offset}, selection=${selection.anchorNode?.nodeName}:${selection.anchorOffset}`)
         const box = anchor.getBoundingClientRect(), caret = feature.gapCaret!.getBoundingClientRect()
-        const expected = anchor.classList.contains("◆gap-before-selected") ? box.top
+        const expected = hasPresentationState(anchor, "gap-before-selected") ? box.top
           : box.bottom + (parseFloat(view.getComputedStyle(feature.gapCaret!).marginTop) || 0)
         assert(Math.abs(caret.top - expected) < 1,
           `gap caret is detached from its insertion boundary: offset=${offset}, caret=${caret.left},${caret.top}, anchor=${box.left},${expected}`)
@@ -2899,7 +2935,7 @@ await check("gap carets track their authored boundary", async () => {
         assert(Math.abs(inserted.getBoundingClientRect().left - caret.left) < 1,
           `gap caret misses the content column: html=${html}, offset=${offset}, caret=${caret.left}, inserted=${inserted.getBoundingClientRect().left}`)
         feature.processSelection(undefined, {scrollIntoView: false})
-        assert(!doc.querySelector(".◆gap-before-selected, .◆gap-after-selected"), "gap markers survived typing")
+        assert(!(presentationStateElements(doc, "gap-before-selected", "gap-after-selected")[0] ?? null), "gap markers survived typing")
         assert(!view.editor!.toHTML(true).includes("◆"), "gap presentation leaked into serialized HTML")
         if(emptyStyle.sheet!.cssRules.length) emptyStyle.sheet!.deleteRule(0)
         doc.body.innerHTML = html
@@ -2919,7 +2955,7 @@ await check("gap carets track their authored boundary", async () => {
         selection.setPosition(text, before ? 0 : 4)
         doc.dispatchEvent(new listView.KeyboardEvent("keydown", {key: before ? "ArrowUp" : "ArrowDown", bubbles: true, cancelable: true}))
         assert(selection.anchorNode === parent && selection.anchorOffset === index + (before ? 0 : 1), `${tag}: keyboard missed ${placement} gap`)
-        assert(list.classList.contains(`◆gap-${placement}-selected`), `${tag}: missing ${placement} gap marker`)
+        assert(hasPresentationState(list, `gap-${placement}-selected`), `${tag}: missing ${placement} gap marker`)
         await layoutFrame()
         const box = list.getBoundingClientRect(), caret = feature.gapCaret!.getBoundingClientRect()
         assert(caret.width > 0 && Math.abs(caret.top - (before ? box.top : box.bottom + (parseFloat(view.getComputedStyle(list).marginBottom) || 0))) < 1,
@@ -2949,7 +2985,7 @@ await check("gap carets track their authored boundary", async () => {
         const key = new listView.KeyboardEvent("keydown", {key: before ? "ArrowUp" : "ArrowDown", bubbles: true, cancelable: true})
         doc.dispatchEvent(key)
         assert(key.defaultPrevented && selection.anchorNode === doc.body && selection.anchorOffset === (before ? 0 : 1), `${tag}: keyboard missed ${placement} gap`)
-        assert(element.classList.contains(`◆gap-${placement}-selected`), `${tag}: keyboard gap marker is missing`)
+        assert(hasPresentationState(element, `gap-${placement}-selected`), `${tag}: keyboard gap marker is missing`)
         await layoutFrame()
         const box = element.getBoundingClientRect(), caret = feature.gapCaret!.getBoundingClientRect()
         const expected = before ? box.top : box.bottom + (parseFloat(view.getComputedStyle(element).marginBottom) || 0)
@@ -2973,7 +3009,7 @@ await check("gap carets track their authored boundary", async () => {
     const downKey = new listView.KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true})
     doc.dispatchEvent(downKey)
     assert(downKey.defaultPrevented && selection.anchorNode === doc.body && selection.anchorOffset === 3
-      && trailingTable.classList.contains("◆gap-after-selected"), "Arrow Down missed the gap after the final table")
+      && hasPresentationState(trailingTable, "gap-after-selected"), "Arrow Down missed the gap after the final table")
     await layoutFrame()
     const tableBox = trailingTable.getBoundingClientRect(), x = tableBox.left + tableBox.width / 2, y = tableBox.bottom + 4
     const target = doc.elementFromPoint(x, y) ?? doc.body
@@ -2982,19 +3018,20 @@ await check("gap carets track their authored boundary", async () => {
     target.dispatchEvent(down)
     target.dispatchEvent(new listView.PointerEvent("pointerup", {button: 0, pointerId: 1, pointerType: "mouse", clientX: x, clientY: y, bubbles: true, cancelable: true}))
     assert(down.defaultPrevented && selection.anchorNode === doc.body && selection.anchorOffset === 3
-      && trailingTable.classList.contains("◆gap-after-selected"), "click below the final table jumped above it")
+      && hasPresentationState(trailingTable, "gap-after-selected"), "click below the final table jumped above it")
     doc.body.dispatchEvent(new view.InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "After"}))
     assert(trailingTable.nextElementSibling?.textContent === "After" && trailingTable.querySelector("td")?.textContent === "Cell", "typing after the final table missed its gap")
     doc.body.innerHTML = "<p>one one</p><!--keep--><p><span>two</span></p>"
     const second = doc.querySelectorAll("p")[1], text = second.querySelector("span")!.firstChild!
     selection.setPosition(doc.body, doc.body.childNodes.length)
     feature.processSelection(undefined, {scrollIntoView: false})
-    assert(second.classList.contains("◆gap-after-selected"), "trailing gap did not select the second paragraph")
+    assert(hasPresentationState(second, "gap-after-selected"), "trailing gap did not select the second paragraph")
     const up = new (view as Window & typeof globalThis).KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true})
     doc.dispatchEvent(up)
     assert(up.defaultPrevented, "ArrowUp from the trailing gap was left to native navigation")
     assert(selection.anchorNode === text && selection.anchorOffset === 0, "ArrowUp skipped the adjacent paragraph")
     assert(!view.editor!.toHTML(true).includes("◆"), "gap navigation leaked markers into HTML")
+
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
@@ -3021,7 +3058,7 @@ await check("crop preview reveals the source and restores content outside the fr
     const box = handle.getBoundingClientRect()
     const before = editor.toHTML(true)
     handle.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, clientX: box.left, clientY: box.top}))
-    assert(document.body.classList.contains("◆transform-cropping-up-left"), "crop gesture did not start")
+    assert(hasPresentationState(document.body, "transform-cropping-up-left"), "crop gesture did not start")
     await layoutFrame()
     const preview = editor.features.transformation.overlay.querySelector("canvas")!
     assert(!preview.hidden && preview.getBoundingClientRect().left < image.getBoundingClientRect().left,
@@ -3901,10 +3938,10 @@ await check("empty caption numbering is visible as a grey editing placeholder", 
     assert(style.display === "inline-block" && style.whiteSpace === "pre", "caption prefix does not reserve the text origin")
     assert(style.borderInlineEndWidth === "1px", "caption caret is not at the end of the prefix")
     assert(style.borderInlineStartWidth === "0px", "caption caret is still before the prefix")
-    caption.classList.add("◆", "◆pointer-hovered")
+    setPresentationState(caption, "pointer-hovered")
     await layoutFrame()
     assert(getComputedStyle(editor.features.selection.hoverCaret!).display === "none", "figure caption shows a dotted hover outline")
-    caption.classList.remove("◆pointer-hovered")
+    clearPresentationState(caption, "pointer-hovered")
     caption.textContent = "Caption text"
     $.move(caption.firstChild!, 1)
     editor.features.selection.processSelection(undefined, {scrollIntoView: false})
@@ -4032,7 +4069,7 @@ await check("triple clicks preserve native paragraph selections in Document and 
         const index = Array.from(parent.childNodes).indexOf(picture)
         assert(selection.toString().trim() === "Test!" && range.comparePoint(parent, index + 1) === 1,
           `${mode}: paragraph selection included the following image`)
-        assert(!picture.classList.contains("◆atomic-range-selected") && !editor.features.selection.captureSelectedElement,
+        assert(!hasPresentationState(picture, "atomic-range-selected") && !editor.features.selection.captureSelectedElement,
           `${mode}: paragraph selection highlighted or captured the following image`)
       }
     }
@@ -4200,8 +4237,8 @@ await check("attribution inputs keep visible carets during element and capture s
       const ui = editor.appendix.querySelector<HTMLElement>(".◆attribution-ui")!
       ui.querySelector<HTMLElement>(".attribution-note")!.click()
       const popup = ui.querySelector<HTMLElement>(".popup")!
-      assert(!popup.hidden && document.body.classList.contains("◆node-selection-active"), "opening attribution discarded the element selection")
-      assert(paragraph.classList.contains("◆element-capture-selected") === captured, "opening attribution changed the selection kind")
+      assert(!popup.hidden && hasPresentationState(document.body, "node-selection-active"), "opening attribution discarded the element selection")
+      assert(hasPresentationState(paragraph, "element-capture-selected") === captured, "opening attribution changed the selection kind")
       for(const field of popup.querySelectorAll<HTMLInputElement>('input:not([type="hidden"])')) {
         field.focus()
         field.setSelectionRange(field.value.length, field.value.length)
@@ -4370,12 +4407,12 @@ await check("native MathML editing preserves inline rendering and argument hit t
   editor.features.math.execute("move:up")
   editor.features.math.execute("structure:sup")
   await layoutFrame()
-  const slot = math.querySelector(".◆math-slot")!
+  const slot = (presentationStateElements(math, "math-slot")[0] ?? null)!
   assert(slot && slot.getBoundingClientRect().width > 0 && slot.getBoundingClientRect().height > 0, "empty argument has no native hit target")
   assert(editor.appendix.querySelector(".◆math-overlay"), "formula presentation missing from appendix")
   assert(!paragraph.querySelector(".◆math-overlay"), "formula UI leaked into content")
   assert(!editor.features.selection.captureSelectedElement, "inline formula has capture selection")
-  assert(!math.classList.contains("◆element-selected"), "inline formula has a node outline")
+  assert(!hasPresentationState(math, "element-selected"), "inline formula has a node outline")
   assert(getComputedStyle(math).backgroundColor === "rgb(238, 238, 238)", "editing formula background is missing")
   assert(getComputedStyle(slot).caretColor === "rgba(0, 0, 0, 0)", "native empty argument caret competes with the measured caret")
   assert(getComputedStyle(math).padding === "2px", "formula padding is not 2px on all sides")
@@ -4648,7 +4685,7 @@ await check("empty roots keep their baseline and one caret across focus and form
         }
       }
       activate(paragraph.lastChild!, 1)
-      assert(!math.classList.contains("◆math-structural-caret") && !editor.appendix.querySelector(".◆math-overlay"), "leaving the formula retains its caret")
+      assert(!hasPresentationState(math, "math-structural-caret") && !editor.appendix.querySelector(".◆math-overlay"), "leaving the formula retains its caret")
     }
   }
   finally { paragraph.remove(); editor.features.math.refresh() }
@@ -4694,7 +4731,7 @@ await check("structural formula carets match inserted text without duplicate cap
           "caret does not use the insertion position")
         // Populated MathML tokens also use the measured appendix caret. Check
         // ownership after typing, rather than requiring a duplicate native caret.
-        assert(math.classList.contains("◆math-structural-caret")
+        assert(hasPresentationState(math, "math-structural-caret")
           && editor.appendix.querySelectorAll('[part="math-caret"]').length === 1
           && getComputedStyle(text.parentElement!).caretColor === "rgba(0, 0, 0, 0)", "typed formula does not retain exactly one caret")
       }
@@ -4830,7 +4867,7 @@ await check("formula clicks distinguish script endings and select whole formulas
     assert($.focus === token.firstChild && $.focusOffset === 2, `${name}: did not reach the script's final character`)
     click(script.getBoundingClientRect().right + 2, bounds.top + bounds.height / 2)
     assert($.focus === row && $.focusOffset === 1, `${name}: did not reach the row after the script`)
-    assert(math.classList.contains("◆math-structural-caret"), "structural caret is not drawn")
+    assert(hasPresentationState(math, "math-structural-caret"), "structural caret is not drawn")
     const caret = editor.appendix.querySelector<HTMLElement>(".◆math-overlay > span")!
     const baseRange = document.createRange()
     baseRange.selectNodeContents(script.firstElementChild!)
@@ -4839,7 +4876,7 @@ await check("formula clicks distinguish script endings and select whole formulas
     const selected = document.getSelection()!.getRangeAt(0)
     assert(selected.cloneContents().textContent === math.textContent && !selected.collapsed,
       `double click did not select the whole formula: ${selected.cloneContents().textContent} (${selected.startContainer.nodeName}:${selected.startOffset}–${selected.endContainer.nodeName}:${selected.endOffset})`)
-    assert(!math.classList.contains("◆math-structural-caret"), "structural caret survived range selection")
+    assert(!hasPresentationState(math, "math-structural-caret"), "structural caret survived range selection")
   }
   paragraph.remove()
 })
@@ -4862,7 +4899,7 @@ await check("inline formula edges use text selections and block formula edges us
       assert($.anchor === paragraph && $.anchorOffset === (after ? 1 : 0), `pointer did not reach the ${after ? "after" : "before"} ${display} boundary`)
       assert($.isGapSelection === (display === "block"), `${display} formula boundary has the wrong selection kind`)
       assert(!editor.features.selection.captureSelectedElement, "formula boundary retained capture")
-      assert(!math.querySelector(".◆gap-before-selected, .◆gap-after-selected"), "gap marker leaked into formula")
+      assert(!(presentationStateElements(math, "gap-before-selected", "gap-after-selected")[0] ?? null), "gap marker leaked into formula")
       if(display === "inline") {
         await layoutFrame()
         const caret = editor.features.selection.selectionCaret!
@@ -4953,7 +4990,7 @@ await check("inline formulas retain distinct inner and outer text insertion posi
       assert(padding.every(value => value >= 1.9), `filled formula has insufficient inner padding: ${JSON.stringify(padding)}`)
       assert($.anchor === node && $.anchorOffset === offset, `${placement}/${position} caret moved`)
       assert($.isTextSelection && !$.isGapSelection && !editor.features.selection.captureSelectedElement, `${placement}/${position} is not text selection`)
-      assert(math.classList.contains("◆math-editing") === inside, `${placement}/${position} has the wrong editing background`)
+      assert(hasPresentationState(math, "math-editing") === inside, `${placement}/${position} has the wrong editing background`)
       const caret = editor.features.selection.selectionCaret!.getBoundingClientRect()
       assert(caret.width > 0 && caret.height > 0, `${placement}/${position} caret is invisible`)
       if(inside) assert(caret.left >= formulaBounds.left + 1.9 && caret.right <= formulaBounds.right - 1.9, `${placement}/${position} caret overlaps the formula padding`)
@@ -5318,7 +5355,7 @@ await check("touch caret and ranges use shared pointer selection", async () => {
       touch("pointerdown"); touch("pointerup")
       await layoutFrame()
       const caret = editor.features.selection.selectionCaret!
-      assert(caret?.classList.contains("◆selection-caret-text") && getComputedStyle(caret).display !== "none"
+      assert(caret?.matches('[part~="selection-caret-text"]') && getComputedStyle(caret).display !== "none"
         && caret.getBoundingClientRect().height > 0, `touch release hid the shared text caret: ${caret?.getAttribute("part")}, ${caret && getComputedStyle(caret).display}, ${caret?.getBoundingClientRect().height}, focus ${document.activeElement?.localName}`)
       assert(caret.getRootNode() === editor.appendix && !editor.toHTML(true).includes("◆touch-caret-visible"), "touch caret leaked into authored HTML")
     }
@@ -5327,7 +5364,7 @@ await check("touch caret and ranges use shared pointer selection", async () => {
     touch("pointermove", end)
     touch("pointerup", end)
     assert($.anchor === before && $.anchorOffset === 2 && $.focus === after && $.focusOffset === 2, "touch drag did not use shared range selection")
-    assert(!editor.features.selection.isInDragSelection && !document.body.classList.contains("◆selection-dragging"), "touch selection did not clean up")
+    assert(!editor.features.selection.isInDragSelection, "touch selection did not clean up")
     start = point(before); end = point(after)
     touch("pointerdown")
     touch("pointermove", end)
@@ -5338,11 +5375,11 @@ await check("touch caret and ranges use shared pointer selection", async () => {
     document.dispatchEvent(new Event("selectionchange"))
     const transform = editor.appendix.querySelector<HTMLElement>("#◆transform-overlay")
     assert(editor.features.selection.isInDragSelection && $.selectedElement === paragraph, "drag did not reach the transient element range")
-    assert(!paragraph.classList.contains("◆element-selected") && !document.body.classList.contains("◆node-selection-active")
+    assert(!hasPresentationState(paragraph, "element-selected") && !hasPresentationState(document.body, "node-selection-active")
       && editor.features.transformation.target === null && transform?.getAttribute("visibility") === "hidden",
       "transient element range showed active element controls during drag")
     touch("pointerup", end)
-    assert(paragraph.classList.contains("◆element-selected") && editor.features.transformation.target === paragraph,
+    assert(hasPresentationState(paragraph, "element-selected") && editor.features.transformation.target === paragraph,
       "released drag did not restore the element selection")
     const relay = (event: "pointerdown" | "pointermove" | "pointerup", coordinates = start) => replayHostPointer({
       event, x: coordinates.clientX, y: coordinates.clientY, pointerId: 72, buttons: event === "pointerup" ? 0 : 1,
@@ -5352,7 +5389,7 @@ await check("touch caret and ranges use shared pointer selection", async () => {
       relay("pointerdown"); relay("pointerup")
       await layoutFrame()
       assert($.anchor === before && $.anchorOffset === 2 && $.isEmpty
-        && document.body.classList.contains("◆touch-caret-visible"), "relayed touch tap lost the shared caret")
+        && hasPresentationState(document.body, "touch-caret-visible"), "relayed touch tap lost the shared caret")
     }
     start = point(before); end = point(after)
     relay("pointerdown"); relay("pointermove", end); relay("pointerup", end)
@@ -5488,7 +5525,7 @@ await check("selection feature treats custom element as atomic", async () => {
   $.selectElement(widget)
   editor.features.selection.processSelection()
   assert($.isElementSelection && $.selectedElement === widget, "selection feature did not select the widget host")
-  assert(widget.classList.contains("◆element-selected"), "selection marker missing from widget host")
+  assert(hasPresentationState(widget, "element-selected"), "selection marker missing from widget host")
   assert(widget.shadowRoot!.querySelector("button"), "widget shadow DOM missing")
   assert(widget.getAttribute("contenteditable") === "false", "editor changed authored widget editability")
   const paragraph = document.createElement("p")
@@ -5544,11 +5581,11 @@ await check("selection feature treats custom element as atomic", async () => {
       assert($.anchor === paragraph && $.anchorOffset === (backward ? 3 : 1), "Shift-arrow moved its anchor")
       assert($.isBackwards === backward, "selection refresh lost the Shift-arrow direction")
       press(backward ? "ArrowLeft" : "ArrowRight")
-      assert(leaves.every(element => element.classList.contains("◆atomic-range-selected")), "consecutive leaves were not selected")
+      assert(leaves.every(element => hasPresentationState(element, "atomic-range-selected")), "consecutive leaves were not selected")
       press(backward ? "ArrowRight" : "ArrowLeft")
       press(backward ? "ArrowRight" : "ArrowLeft")
       assert($.isEmpty && $.anchorOffset === (backward ? 3 : 1), "reversing Shift-arrow did not shrink to its anchor")
-      assert(leaves.every(element => !element.classList.contains("◆atomic-range-selected")), "shrinking left an atomic marker")
+      assert(leaves.every(element => !hasPresentationState(element, "atomic-range-selected")), "shrinking left an atomic marker")
     }
   }
   finally { paragraph.remove(); $.selectElement(widget); editor.features.selection.processSelection() }
@@ -5615,12 +5652,12 @@ await check("drag ranges keep empty media icons while hiding source controls", a
     assert(editor.features.selection.isInDragSelection, "selection refresh cleared the drag state")
     assert(!selection.isCollapsed && selection.anchorNode === paragraph && selection.focusNode === doc.body
       && selection.focusOffset === 2, "live range did not include the image")
-    assert(image.classList.contains("◆atomic-range-selected") && overlay, "image did not join the visible live range")
+    assert(hasPresentationState(image, "atomic-range-selected") && overlay, "image did not join the visible live range")
     const painted = overlay!.getBoundingClientRect()
     assert(painted.width >= media.width - 1 && painted.height >= media.height - 1
       && Math.abs(painted.left - media.left) < 2 && Math.abs(painted.top - media.top) < 2,
     "image selection overlay does not cover the image")
-    assert(!paragraph.classList.contains("◆empty-selected") && !doc.body.classList.contains("◆node-selection-active")
+    assert(!hasPresentationState(paragraph, "empty-selected") && !hasPresentationState(doc.body, "node-selection-active")
       && !editor.features.transformation.target, "drag exposed an empty caret or active element selection")
     assert(!editor.toHTML(true).includes("◆"), "selection marker entered authored HTML")
     image.removeAttribute("src")
@@ -5632,7 +5669,7 @@ await check("drag ranges keep empty media icons while hiding source controls", a
     await layoutFrame()
     assert(!placeholder.element.hasAttribute("data-open") && view.getComputedStyle(placeholder.element).display === "none",
       "empty image controls stayed visible during the range drag")
-    assert(image.classList.contains("◆atomic-range-selected")
+    assert(hasPresentationState(image, "atomic-range-selected")
       && editor.appendix.querySelector('[part~="atomic-selection-overlay"]'), "empty image lost its live range overlay")
     editor.features.selection.isInDragSelection = false
     editor.features.selection.processSelection()
@@ -5678,7 +5715,7 @@ await check("backward media ranges suppress the boundary text caret", async () =
     doc.getSelection()!.setBaseAndExtent(text, 0, doc.body, 0)
     editor.features.selection.isInDragSelection = true
     editor.features.selection.processSelection(true)
-    assert(!doc.getSelection()!.isCollapsed && video.classList.contains("◆atomic-range-selected"),
+    assert(!doc.getSelection()!.isCollapsed && hasPresentationState(video, "atomic-range-selected"),
       "backward drag did not include the video")
     assert(view.getComputedStyle(paragraph).caretColor === "rgba(0, 0, 0, 0)",
       "backward drag showed a caret beside the selected video")
@@ -5688,7 +5725,7 @@ await check("backward media ranges suppress the boundary text caret", async () =
       "boundary caret returned while the video remained selected")
     doc.getSelection()!.collapse(text, 0)
     editor.features.selection.processSelection(false)
-    assert(!video.classList.contains("◆atomic-range-selected")
+    assert(!hasPresentationState(video, "atomic-range-selected")
       && view.getComputedStyle(paragraph).caretColor !== "rgba(0, 0, 0, 0)",
       "ordinary paragraph caret did not return after the range collapsed")
   }
@@ -5757,7 +5794,7 @@ await check("paragraph and heading drags join text at the native caret", async (
         assert(target.querySelector("b")?.textContent === "source", "join lost inline formatting")
         assert(document.getSelection()?.isCollapsed && target.contains($.anchor), "join lost its text caret")
         assert(document.execCommand("insertText", false, "!") && target.textContent === "target".slice(0, offset) + "source!" + "target".slice(offset), "typing did not continue after joined text")
-        assert(!document.body.classList.contains("◆drop-selection-active"), "join retained the drop marker")
+        assert(!hasPresentationState(document.body, "drop-selection-active"), "join retained the drop marker")
       }
       finally { section.remove() }
     }
@@ -5911,7 +5948,7 @@ await check("shape labels retain capture while typing and selecting text", async
     proxy.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowRight", shiftKey: true, bubbles: true, cancelable: true}))
     assert(editor.features.graphic.textEditingRange!.toString() === "el te", "backwards Shift selection lost its anchor")
     editor.features.selection.processSelection()
-    assert(editor.features.selection.captureSelectedElement === graphic && graphic.classList.contains("◆element-capture-selected"), "text selection lost graphic capture")
+    assert(editor.features.selection.captureSelectedElement === graphic && hasPresentationState(graphic, "element-capture-selected"), "text selection lost graphic capture")
     proxy.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "!", cancelable: true}))
     assert(text.textContent === "Lab!xt", "typing did not replace the selected text")
     const word = point(5)
@@ -6751,7 +6788,7 @@ await check("canvas and slide element selections keep Delete borderless", async 
       doc.getSelection()!.addRange(range)
       editor.features.selection.processSelection(false, {scrollIntoView: false})
       await layoutFrame()
-      assert(target.classList.contains("◆element-selected"), `${mode}: image is not element-selected`)
+      assert(hasPresentationState(target, "element-selected"), `${mode}: image is not element-selected`)
       const deleter = editor.features.transformation.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!
       const style = view.getComputedStyle(deleter)
       assert(!deleter.hidden && style.display !== "none", `${mode}: Delete is hidden`)
@@ -6951,7 +6988,7 @@ await check("canvas and slide delete affordances follow rotation placement", asy
       assert(Math.hypot(rotatedCenter.x - pivot.x, rotatedCenter.y - pivot.y) < 1, `${mode}: rotation moved the figure content's pivot`)
       assert(Math.hypot(overlayCenter.x - pivot.x, overlayCenter.y - pivot.y) < 1, `${mode}: the live frame missed the rotated content`)
       doc.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
-      assert(!content.style.rotate && !figure.className.includes("◆figure-flow-"), `${mode}: cancellation left rotated content or caption flow behind`)
+      assert(!content.style.rotate && view.getComputedStyle(figure, "::before").shapeOutside === "none", `${mode}: cancellation left rotated content or caption flow behind`)
     }
     finally {frame.contentWindow?.editor?.destroy(); frame.remove()}
   }
@@ -7148,7 +7185,7 @@ await check("dead-key composition stays outside authored formulas", async () => 
       const input = editor.appendix.querySelector<HTMLTextAreaElement>('textarea[aria-label="Formula exponent input"]')!
       assert(input && editor.appendix.activeElement === input, "native composition did not move to the appendix input")
       await layoutFrame()
-      assert(math.querySelector(".◆math-slot"), "exponent placeholder disappeared during composition")
+      assert((presentationStateElements(math, "math-slot")[0] ?? null), "exponent placeholder disappeared during composition")
       if(data === "cancel") {
         const prose = document.createTextNode("outside")
         paragraph.append(prose)
@@ -7158,7 +7195,7 @@ await check("dead-key composition stays outside authored formulas", async () => 
         editor.features.math.refresh()
         await layoutFrame()
         assert(!input.isConnected && !editor.features.math.isComposingPower, "composition input lingered after leaving the formula")
-        assert(!editor.appendix.querySelector(".◆math-overlay") && !math.querySelector(".◆math-slot"), "formula presentation lingered after leaving")
+        assert(!editor.appendix.querySelector(".◆math-overlay") && !(presentationStateElements(math, "math-slot")[0] ?? null), "formula presentation lingered after leaving")
         input.dispatchEvent(new CompositionEvent("compositionend", {bubbles: true, data: "^2"}))
         assert(document.getSelection()!.focusNode === prose && math.textContent === "xa", "late composition returned to the old formula")
         continue
@@ -7225,7 +7262,7 @@ await check("repeated canvas modifier selections preserve item placement and cam
           item.dispatchEvent(new view.PointerEvent("pointerup", options))
           item.dispatchEvent(new view.MouseEvent("click", options))
           await layoutFrame()
-          assert((i % 2 === 0) === item.classList.contains("◆element-selected"), `${tag}: modifier click did not toggle selection`)
+          assert((i % 2 === 0) === hasPresentationState(item, "element-selected"), `${tag}: modifier click did not toggle selection`)
           assert(slot.style.transform === camera, `${tag} at ${zoom}: selection ${i} moved the camera: ${camera} -> ${slot.style.transform}`)
           const after = item.getBoundingClientRect()
           assert(Math.abs(after.left - initial.left) < .01 && Math.abs(after.top - initial.top) < .01,
@@ -7237,7 +7274,7 @@ await check("repeated canvas modifier selections preserve item placement and cam
         }
       }
       editor.destroy()
-      assert(!doc.querySelector(".◆element-selected, .◆element-capture-selected, .◆transform-target"), `${tag}: selection markers survived teardown`)
+      assert(!(presentationStateElements(doc, "element-selected", "element-capture-selected", "transform-target")[0] ?? null), `${tag}: selection markers survived teardown`)
     }
     finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
   }
@@ -7269,10 +7306,10 @@ await check("canvas box selection retains disjoint ranges and stays in the docum
       `selection box does not start at the pointer: expected=${left},${top}, actual=${boxRect.left},${boxRect.top}`)
     assert(getComputedStyle(box).pointerEvents === "none" && box.getRootNode() === doc.body.shadowRoot, "selection box intercepts content or escapes the appendix")
     assert(canvasEditor.appendix.querySelectorAll('[part~="box-selection-preview"]').length === 2, "box preview missed an enclosed item")
-    assert(!first.classList.contains("◆element-selected") && !last.classList.contains("◆element-selected") && !hole.classList.contains("◆element-selected"), "box committed a selection before release")
+    assert(!hasPresentationState(first, "element-selected") && !hasPresentationState(last, "element-selected") && !hasPresentationState(hole, "element-selected"), "box committed a selection before release")
     doc.body.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 91, clientX: right, clientY: bottom}))
     await layoutFrame()
-    assert(!box.isConnected && first.classList.contains("◆element-selected") && last.classList.contains("◆element-selected"), "selection did not survive pointerup and native refresh")
+    assert(!box.isConnected && hasPresentationState(first, "element-selected") && hasPresentationState(last, "element-selected"), "selection did not survive pointerup and native refresh")
     assert(canvasEditor.appendix.querySelectorAll('[part~="multi-selection-overlay"]').length === 2, "selected items do not have separate overlays")
     const selection = canvasEditor.doc.snapshot().selection
     assert(selection?.ranges?.length === 2, "snapshot lost disjoint ranges")
@@ -7563,7 +7600,7 @@ await check("canvas slot preserves hit testing and document coordinates at diffe
     $.move(paragraph.firstChild!, 3)
     editor.features.selection.processSelection()
     assert(getSelection()?.anchorNode === paragraph.firstChild, "canvas text lost its native selection")
-    assert(editor.features.transformation.target === paragraph && !paragraph.classList.contains("◆element-selected"), "canvas caret does not show item controls independently of node selection")
+    assert(editor.features.transformation.target === paragraph && !hasPresentationState(paragraph, "element-selected"), "canvas caret does not show item controls independently of node selection")
     assert(getComputedStyle(editor.features.transformation.overlay).outlineStyle === "dotted", "canvas text selection lacks the dotted item outline")
     assert(getComputedStyle(paragraph).caretColor !== "rgba(0, 0, 0, 0)", "canvas item controls hide the text caret")
     for(const surface of [document.body, slot]) {
@@ -7678,10 +7715,10 @@ await check("canvas slot preserves hit testing and document coordinates at diffe
       $.selectElement(deletionTarget)
       editor.features.selection.processSelection(false, {scrollIntoView: false})
       editor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: true})
-      assert(document.querySelector(".◆snippet-hovered") === deletionTarget && getComputedStyle(editor.features.selection.hoverCaret!).display === "block",
+      assert((presentationStateElements(document, "snippet-hovered")[0] ?? null) === deletionTarget && getComputedStyle(editor.features.selection.hoverCaret!).display === "block",
         "selected canvas root suppresses the future snippet outline")
       editor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: false})
-      assert(!deletionTarget.classList.contains("◆snippet-hovered"), "canvas snippet preview was not cleared")
+      assert(!hasPresentationState(deletionTarget, "snippet-hovered"), "canvas snippet preview was not cleared")
       deletionTarget.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
       await layoutFrame()
       assert(!deletionTarget.isConnected, "Backspace did not delete the canvas root")
@@ -7690,7 +7727,7 @@ await check("canvas slot preserves hit testing and document coordinates at diffe
     finally { deletionTarget.remove() }
     const exported = new DOMParser().parseFromString(editor.toHTML(), "text/html")
     assert(exported.body.classList.contains("ww-canvas") && !exported.body.outerHTML.includes("canvas-controls")
-      && !exported.documentElement.classList.contains("◆canvas-active"), "serialization mixed camera and authored layout")
+      && !hasPresentationState(exported.documentElement, "canvas-active"), "serialization mixed camera and authored layout")
     await checkFreeformCapture(editor, document.body)
   }
   finally {
@@ -7717,7 +7754,7 @@ await check("canvas Enter inserts a line break and conversion returns normal flo
     assert(paragraph.innerHTML === "First<br>Sec<br>ond", "canvas native paragraph input did not insert a line break")
     editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "document", expectedMode: "canvas"})
     assert(getComputedStyle(paragraph).position === "static", "document conversion retained absolute placement")
-    assert(!document.documentElement.classList.contains("◆canvas-active"), "document conversion retained camera marker")
+    assert(!hasPresentationState(document.documentElement, "canvas-active"), "document conversion retained camera marker")
   }
   finally {
     editor.features.canvas.actions.setDocumentLayout({type: "setDocumentLayout", mode: "document", expectedMode: "canvas"})
@@ -7837,7 +7874,7 @@ await check("relayed standard elements preview and drop into a blank document", 
     const data = {"application/x-webwriter-ribbon-insertion": "element:audio"}
     const x = frame.clientWidth / 2, y = 250
     assert(replayHostDrag({event: "dragover", x, y, data}, doc), "blank document did not accept Audio hover")
-    assert(doc.body.classList.contains("◆drop-selection-active"), "Audio hover showed no drop caret")
+    assert(hasPresentationState(doc.body, "drop-selection-active"), "Audio hover showed no drop caret")
     assert(replayHostDrag({event: "drop", x, y, data}, doc), "blank document did not accept Audio drop")
     assert(doc.body.querySelector("audio"), `Audio was not inserted: ${doc.body.innerHTML}`)
   }
@@ -7909,7 +7946,7 @@ await check("relayed ribbon elements drop onto the selected element beneath edit
     assert(doc.elementFromPoint(x, y) === doc.body, "the selected element is not covered by an editor overlay")
     const data = {"application/x-webwriter-element-tag": "table", "application/x-webwriter-element-tag-table": "table", "text/html": "<table></table>"}
     assert(replayHostDrag({event: "dragover", x, y, data}, doc), "drag over the selected element was not accepted")
-    assert(doc.body.classList.contains("◆drop-selection-active"), "drag over the selected element shows no drop caret")
+    assert(hasPresentationState(doc.body, "drop-selection-active"), "drag over the selected element shows no drop caret")
     assert(replayHostDrag({event: "drop", x, y, data}, doc), "drop on the selected element was not accepted")
     assert(doc.body.querySelector("table") && heading.isConnected,
       `drop on the selected element did not insert the table: ${doc.body.innerHTML}`)
@@ -7934,7 +7971,7 @@ await check("relayed ribbon elements drop onto the selected element beneath edit
       await layoutFrame(); await layoutFrame()
       const before = doc.querySelectorAll("h2").length
       assert(replayHostDrag({event: "dragover", x: dropX, y: dropY, data: nativeData}, doc), "drag over selected image was rejected")
-      assert(doc.body.classList.contains("◆drop-selection-active"), "selected image prevented the drop caret")
+      assert(hasPresentationState(doc.body, "drop-selection-active"), "selected image prevented the drop caret")
       assert(replayHostDrag({event: "drop", x: dropX, y: dropY, data: nativeData}, doc), "drop near selected image was rejected")
       assert(doc.querySelectorAll("h2").length === before + 1 && image.isConnected, "selected image prevented native insertion")
     }
@@ -7952,7 +7989,7 @@ await check("relayed ribbon elements drop onto the selected element beneath edit
       const count = doc.querySelectorAll(tag).length
       const nextData = {"application/x-webwriter-ribbon-insertion": `element:${tag}`}
       replayHostDrag({event: "dragover", x: 300, y: 400, data: nextData}, doc)
-      assert(doc.body.classList.contains("◆drop-selection-active"), `image drop blocked ${tag} caret`)
+      assert(hasPresentationState(doc.body, "drop-selection-active"), `image drop blocked ${tag} caret`)
       replayHostDrag({event: "drop", x: 300, y: 400, data: nextData}, doc)
       assert(doc.querySelectorAll(tag).length > count, `image drop blocked ${tag} insertion`)
       await layoutFrame(); await layoutFrame()
@@ -8423,6 +8460,9 @@ await check("image hotspots scale and open popovers in preview and standalone re
         hit.dispatchEvent(new view.MouseEvent("click", {bubbles:true, composed:true, cancelable:true}))
         const popover = doc.querySelector<HTMLElement>("#details")!
         assert(popover.matches(":popover-open"), "reading-mode hotspot did not open its popover")
+        const appearance = view.getComputedStyle(popover)
+        assert(parseFloat(appearance.borderTopLeftRadius) > 0 && parseFloat(appearance.paddingLeft) > 0
+          && view.getComputedStyle(popover, "::before").transform !== "none", "hotspot popover lost its bubble styling")
         assert(popover.getBoundingClientRect().right <= view.innerWidth, "hotspot popover overflowed the viewport")
         popover.hidePopover()
       }
@@ -8583,7 +8623,7 @@ await check("exported canvas runs its standalone viewer without editor dependenc
     assert(view.getComputedStyle(doc.documentElement).overflow === "clip", "reader viewport is not clipped")
     doc.body.classList.remove("ww-canvas")
     await new Promise(resolve => setTimeout(resolve, 0))
-    assert(!appendix.querySelector("[part=canvas-controls]") && !doc.documentElement.classList.contains("◆canvas-active"), "reader did not clean up after a mode change")
+    assert(!appendix.querySelector("[part=canvas-controls]") && !hasPresentationState(doc.documentElement, "canvas-active"), "reader did not clean up after a mode change")
   }
   finally { frame.remove() }
 })
@@ -8759,18 +8799,18 @@ await check("Board columns and cards retain native editing and standalone layout
     const scrollBefore = {x: view.scrollX, y: view.scrollY}
     first.dispatchEvent(new (view as Window & typeof globalThis).PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
     await layoutFrame()
-    assert(first.classList.contains("◆element-selected") && board.transformOverlay(first), "column background click did not select the column")
+    assert(hasPresentationState(first, "element-selected") && board.transformOverlay(first), "column background click did not select the column")
     assert(view.scrollX === scrollBefore.x && view.scrollY === scrollBefore.y, "column background click scrolled the column into view")
     assert(view.getComputedStyle(first).cursor === "pointer" && view.getComputedStyle(paragraph).cursor !== "pointer", "column background cursor leaked into card contents")
     view.scrollTo(0, 0); await layoutFrame()
     editor.features.selection.selectElement(first)
-    assert(first.classList.contains("◆element-selected") && selection.getRangeAt(0).startContainer === doc.body, "column selection did not select the container")
+    assert(hasPresentationState(first, "element-selected") && selection.getRangeAt(0).startContainer === doc.body, "column selection did not select the container")
     assert(view.getComputedStyle(first).userSelect !== "none" && view.getComputedStyle(paragraph).userSelect !== "none", "column selection disabled authored text selection")
     assert(Array.from(editor.appendix.querySelectorAll('[part=board-actions] button')).every(button => view.getComputedStyle(button).userSelect === "none"), "board add-button labels remained selectable")
     assert(view.getComputedStyle(paragraph, "::selection").backgroundColor === "rgba(0, 0, 0, 0)", "column selection painted descendant text")
     selection.collapse(paragraph.firstChild!, 5)
     editor.features.selection.processSelection(false, {scrollIntoView: false})
-    assert(!first.classList.contains("◆element-selected") && view.getComputedStyle(paragraph).userSelect !== "none", "column selection suppression leaked into card text editing")
+    assert(!hasPresentationState(first, "element-selected") && view.getComputedStyle(paragraph).userSelect !== "none", "column selection suppression leaked into card text editing")
     assert(doc.execCommand("insertText", false, " new"), "native card typing failed")
     assert(paragraph.textContent === "First new card", "native card typing changed structure")
     paragraph.dispatchEvent(new (view as Window & typeof globalThis).KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
@@ -8805,13 +8845,13 @@ await check("Board columns and cards retain native editing and standalone layout
       const win = view as Window & typeof globalThis, data = new win.DataTransfer()
       const start = new win.DragEvent("dragstart", {bubbles: true, composed: true, cancelable: true, dataTransfer: data})
       grip.dispatchEvent(start)
-      assert(!start.defaultPrevented && !!data.getData("application/x-webwriter-board") && !!doc.querySelector(".◆board-dragging"), `native Board drag failed to start: prevented=${start.defaultPrevented}, effect=${data.effectAllowed}, token=${data.getData("application/x-webwriter-board")}, marked=${!!doc.querySelector(".◆board-dragging")}, connected=${grip.isConnected}`)
+      assert(!start.defaultPrevented && !!data.getData("application/x-webwriter-board") && !!(presentationStateElements(doc, "board-dragging")[0] ?? null), `native Board drag failed to start: prevented=${start.defaultPrevented}, effect=${data.effectAllowed}, token=${data.getData("application/x-webwriter-board")}, marked=${!!(presentationStateElements(doc, "board-dragging")[0] ?? null)}, connected=${grip.isConnected}`)
       const over = new win.DragEvent("dragover", {bubbles: true, composed: true, cancelable: true, dataTransfer: data, clientX: x, clientY: y})
       doc.body.dispatchEvent(over)
       assert(over.defaultPrevented && !editor.appendix.querySelector<HTMLElement>("[part=board-drop-indicator]")!.hidden, "Board did not show an insertion target")
       doc.body.dispatchEvent(new win.DragEvent("drop", {bubbles: true, composed: true, cancelable: true, dataTransfer: data, clientX: x, clientY: y}))
       await layoutFrame()
-      assert(doc.querySelector(".◆board-dragging") === null, "Board drag marker leaked after drop")
+      assert((presentationStateElements(doc, "board-dragging")[0] ?? null) === null, "Board drag marker leaked after drop")
     }
     await drag("Drag card 1 in column 1", first.getBoundingClientRect().left + 60, first.getBoundingClientRect().bottom - 10)
     assert(board.cards(first).at(-1) === card, "native card drag did not reorder vertically")
@@ -8972,7 +9012,7 @@ await check("CSS Slides use native fragment links while editing", async () => {
     assert(viewport.scrollLeft > viewport.clientWidth / 2, `native editor link did not scroll: ${link.href}, scrollLeft=${viewport.scrollLeft}`)
     assert(doc.getSelection()?.isCollapsed && doc.getSelection()?.anchorNode === second.firstElementChild
       && doc.getSelection()?.anchorOffset === 0, "slide navigation did not place a caret at the first text block")
-    assert(slideEditor.features.transformation.target === second.firstElementChild && !second.firstElementChild!.classList.contains("◆element-selected"), "slide caret does not show item controls independently of node selection")
+    assert(slideEditor.features.transformation.target === second.firstElementChild && !hasPresentationState(second.firstElementChild!, "element-selected"), "slide caret does not show item controls independently of node selection")
     assert(getComputedStyle(slideEditor.features.transformation.overlay).outlineStyle === "dotted", "slide text selection lacks the dotted item outline")
     assert(getComputedStyle(second.firstElementChild!).caretColor !== "rgba(0, 0, 0, 0)", "slide item controls hide the text caret")
     assert(getComputedStyle(second).width === "1280px" && getComputedStyle(second).height === "720px", "slide dimensions depend on the viewport")
@@ -9082,7 +9122,7 @@ await check("CSS Slides use native fragment links while editing", async () => {
     "moving a slide text box did not retain its element selection")
     assert(slideEditor.features.transformation.target === presetHeading
       && !slideFrame.part.contains("transform-overlay-content-selected")
-      && presetHeading.classList.contains("◆element-selected"),
+      && hasPresentationState(presetHeading, "element-selected"),
     "moving did not retain the selected slide text box")
     await new Promise(resolve => setTimeout(resolve, 200))
     assert(getComputedStyle(slideHandle).backgroundColor === getComputedStyle(slideFrame).outlineColor,
@@ -9102,7 +9142,7 @@ await check("CSS Slides use native fragment links while editing", async () => {
     doc.getSelection()!.removeAllRanges(); doc.getSelection()!.addRange(snippetRange)
     slideEditor.features.selection.processSelection(false, {scrollIntoView: false})
     slideEditor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: true})
-    assert(doc.querySelector(".◆snippet-hovered") === presetText && getComputedStyle(slideEditor.features.selection.hoverCaret!).display === "block",
+    assert((presentationStateElements(doc, "snippet-hovered")[0] ?? null) === presetText && getComputedStyle(slideEditor.features.selection.hoverCaret!).display === "block",
       "selected slide root suppresses the future snippet outline")
     slideEditor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: false})
     const selection = doc.getSelection()!
@@ -9113,7 +9153,7 @@ await check("CSS Slides use native fragment links while editing", async () => {
         const selectedSlide = slideEditor.features.slides.containingSlide(selection.anchorNode)
         assert(selectedSlide && slideEditor.features.slides.containingSlide(selection.focusNode) === selectedSlide,
           "outer carousel gap escaped the slide selection boundary")
-        assert(!doc.querySelector('.ww-slide.◆gap-before-selected, .ww-slide.◆gap-after-selected, .ww-slides-viewport.◆gap-before-selected, .ww-slides-viewport.◆gap-after-selected'),
+        assert(!doc.querySelector(resolvePresentationSelector(doc, ".ww-slide:state(ww-gap-before-selected), .ww-slide:state(ww-gap-after-selected), .ww-slides-viewport:state(ww-gap-before-selected), .ww-slides-viewport:state(ww-gap-after-selected)")),
           "outer slide gap still shows an editing caret")
       }
     }
@@ -9731,7 +9771,7 @@ await check("float previews match projected media bounds", async () => {
         editor.features.manipulation.actions.hoverInsertion({type:"hoverInsertion", hovered:true, tag})
         await layoutFrame()
         assert(!editor.appendix.querySelector("#◆float-drop-preview"), "ribbon hover preview suggested automatic floating")
-        assert(doc.body.classList.contains("◆insertion-gap-preview"), "ribbon insertion did not highlight its caret")
+        assert(hasPresentationState(doc.body, "insertion-gap-preview"), "ribbon insertion did not highlight its caret")
         editor.features.manipulation.actions.insertElement({type:"insertElement", tag})
         await layoutFrame()
         const inserted = doc.querySelector<HTMLElement>(tag)!
@@ -10358,7 +10398,7 @@ await check("empty document gutters prefer floats throughout the viewport", asyn
       else assert(inserted.nextElementSibling?.localName === "p", "sole floated widget left no editable paragraph")
       assert(!(inserted as HTMLElement).style.position, "gutter drop added spatial positioning to the element")
       if(widget) assert(inserted === widget && widget.innerHTML.includes("<!--keep-->"), "gutter drop rebuilt the widget")
-      assert(!editor.appendix.querySelector("#◆float-drop-preview") && !doc.body.classList.contains("◆drop-selection-active"), "gutter drop left editing artifacts")
+      assert(!editor.appendix.querySelector("#◆float-drop-preview") && !hasPresentationState(doc.body, "drop-selection-active"), "gutter drop left editing artifacts")
       assert(!editor.toHTML(true).includes("◆"), "gutter drop serialized editor markers")
     }
   }
@@ -10553,7 +10593,7 @@ await check("shape keyboard drops stay in captured graphics and ribbon shapes us
         assert(replayHostDrag({event: "drop", x: box.left + box.width / 2, y: box.bottom + 8, data}, doc), "keyboard drop was not claimed")
         await layoutFrame()
         assert(!main.querySelector("svg") && main.innerHTML === before, "keyboard shape changed ordinary document content")
-        assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), "rejected keyboard drop left a preview")
+        assert(!hasPresentationState(doc.body, "drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), "rejected keyboard drop left a preview")
         continue
       }
       let x = box.left + box.width / 2, y = box.bottom + 8
@@ -10579,7 +10619,7 @@ await check("shape keyboard drops stay in captured graphics and ribbon shapes us
         assert(Math.abs(shapeBox.left + shapeBox.width / 2 - anchorBox.left - anchorBox.width / 2) < 1, `${source}: flow shape is outside the content column`)
       }
       else assert(graphic.nextElementSibling === anchor, `${source} ${side}: float is not beside its anchor`)
-      assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), "shape drop left editing artifacts")
+      assert(!hasPresentationState(doc.body, "drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), "shape drop left editing artifacts")
       assert(!editor.toHTML(true).includes("◆"), "serialized shape contains editing artifacts")
     }
     frame.style.minWidth = "0"
@@ -10605,7 +10645,7 @@ await check("shape keyboard drops stay in captured graphics and ribbon shapes us
       if(source === "keyboard") {
         assert(!graphic, `${width}: uncaptured keyboard drop inserted a graphic`)
         assert(insertion.isConnected && after.isConnected && after.textContent === "After", `${width}: rejected keyboard drop changed document flow`)
-        assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), `${width}: rejected keyboard drop left insertion chrome`)
+        assert(!hasPresentationState(doc.body, "drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), `${width}: rejected keyboard drop left insertion chrome`)
         continue
       }
       assert(graphic && view.getComputedStyle(graphic).position === "static", `${source} ${width}: new shape is spatially positioned`)
@@ -10665,7 +10705,7 @@ await check("ribbon elements are rejected over captured graphics with native con
       assert(hostMessages.length === 0, `${action}: rejected graphic drop emitted a host ribbon message`)
       assert(graphic.innerHTML === original && graphic.querySelector("rect") === rect && after.isConnected && after.textContent === "After", `${action}: source DOM changed`)
       assert(editor.features.selection.captureSelectedElement === graphic, `${action}: capture changed`)
-      assert(!doc.body.classList.contains("◆drop-selection-active"), `${action}: drop selection marker remained`)
+      assert(!hasPresentationState(doc.body, "drop-selection-active"), `${action}: drop selection marker remained`)
       const caret = editor.appendix.querySelector(".◆selection-caret")
       assert(!editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview") && !caret?.getAttribute("part")?.includes("drop-caret"), `${action}: drop caret/preview remained`)
       assert(!graphic.querySelector('[class*="◆drop-caret"]'), `${action}: authored drop caret remained`)
@@ -10733,7 +10773,7 @@ await check("shape keyboard drags retain capture through appendix surfaces", asy
       if(type === "drop") assert(ending.defaultPrevented, "slot drop was not claimed")
       await layoutFrame()
       assert(doc.querySelectorAll("svg").length === 2, `slot ${type} inserted another graphic`)
-      assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), `slot ${type} left a float preview behind`)
+      assert(!hasPresentationState(doc.body, "drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), `slot ${type} left a float preview behind`)
     }
     assert(paragraph.textContent === "Document drop target" && !editor.toHTML(true).includes("◆"), "keyboard dragging altered document text or serialized editor chrome")
   }
@@ -11664,11 +11704,11 @@ await check("bottom layout cards retain native editing focus after rendering", a
     const pin = snippets.shadowRoot.querySelector('[aria-label="Add snippet"]')!
     assert(pin, "Snippets has no dedicated add icon")
     pin.dispatchEvent(new MouseEvent("mouseenter"))
-    for(let attempt = 0; !paragraph.classList.contains("◆snippet-hovered") && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
-    assert(paragraph.classList.contains("◆snippet-hovered"), "snippet icon hover did not outline its text container")
+    for(let attempt = 0; !hasPresentationState(paragraph, "snippet-hovered") && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
+    assert(hasPresentationState(paragraph, "snippet-hovered"), "snippet icon hover did not outline its text container")
     pin.dispatchEvent(new MouseEvent("mouseleave"))
-    for(let attempt = 0; paragraph.classList.contains("◆snippet-hovered") && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
-    assert(!paragraph.classList.contains("◆snippet-hovered"), "snippet icon exit retained the preview outline")
+    for(let attempt = 0; hasPresentationState(paragraph, "snippet-hovered") && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
+    assert(!hasPresentationState(paragraph, "snippet-hovered"), "snippet icon exit retained the preview outline")
     pin.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, cancelable: true}))
     pin.click()
     for(let attempt = 0; (app as any).settings.userSnippets.length === snippetsBefore && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
@@ -12380,7 +12420,11 @@ await check("rotated figure captions flow upright and their transformation frame
     frame.src = `/tests/figure-rotation.html${standalone ? "?standalone" : ""}`
     document.body.append(frame)
     try {
-      for(let attempt = 0; !frame.contentDocument?.querySelector("figure[class*='◆figure-flow-']") && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      for(let attempt = 0; attempt < 100; attempt++) {
+        const candidate = frame.contentDocument?.querySelector("figure")
+        if(candidate && frame.contentWindow!.getComputedStyle(candidate, "::before").shapeOutside.startsWith("polygon(")) break
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
       const doc = frame.contentDocument!, view = frame.contentWindow!
       const figure = doc.querySelector<HTMLElement>("figure")!, image = figure.querySelector("img")!, caption = figure.querySelector<HTMLElement>("figcaption")!
       assert(figure && image && caption, "figure fixture did not initialize")
@@ -12429,8 +12473,7 @@ await check("rotated figure captions flow upright and their transformation frame
         await loaded
         await layoutFrame(); await layoutFrame()
         const savedFigure = frame.contentDocument!.querySelector("figure")!
-        assert(Array.from(savedFigure.classList).some(name => name.startsWith("◆figure-flow-")), "saved HTML did not activate its caption layout")
-        assert(frame.contentWindow!.getComputedStyle(savedFigure, "::before").shapeOutside.startsWith("polygon("), "saved HTML did not restore shape-aware wrapping")
+        assert(frame.contentWindow!.getComputedStyle(savedFigure, "::before").shapeOutside.startsWith("polygon("), "saved HTML did not activate its caption layout")
       }
     }
     finally { frame.remove() }

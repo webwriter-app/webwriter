@@ -2,6 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {RibbonButton} from "./ribbon-button"
 import type {RibbonMenu} from "./ribbon-menu"
+import {hasAnchorTarget} from "../anchor-positioning.test-utils"
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -65,7 +66,7 @@ describe("ribbon button dropdown positioning", () => {
 
     expect(menu.style.left).toBe("")
     expect(menu.style.top).toBe("")
-    expect(row.className).toContain("◆anchor-target-")
+    expect(hasAnchorTarget(row)).toBe(true)
     expect(menu.style.getPropertyValue("--ribbon-menu-join-left")).toBe("1px")
     expect(menu.style.getPropertyValue("--ribbon-menu-join-width")).toBe("88px")
     button.closeSubmenu()

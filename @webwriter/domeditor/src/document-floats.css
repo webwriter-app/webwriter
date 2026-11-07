@@ -13,6 +13,9 @@
   .ww-popup > button[popovertarget] {
     margin-block-end: 0;
   }
+  /* Keep the hotspot class branch for documents using older reader runtimes.
+   * Current hotspot popovers receive equivalent rules from their ID-scoped
+   * presentation stylesheet and do not write this class into authored HTML. */
   :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover]) {
     anchor-name: --ww-popup-bubble;
     container-type: anchored;

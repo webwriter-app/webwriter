@@ -1,3 +1,4 @@
+import {clearPresentationState, setPresentationState} from "../presentation-state.js"
 import { EditorFeature } from "."
 import {emptyElementHTML, InsertionMenu, type InsertionMenuItem} from "../components/insertion-menu"
 import { $, getContainer, isElement, isText, modifierKeyDown, textPointAtOffset } from "../utility"
@@ -20,7 +21,6 @@ export class InsertionFeature extends EditorFeature {
   private commandStartOffset = 0
   private commandTriggerLength = 0
   private commandTrigger: Range | null = null
-  private triggerBodyMarkerAdded = false
   private emptyTextBlock: Element | null = null
   private commandObserver: MutationObserver | null = null
   private commandUpdateTimeout: ReturnType<typeof setTimeout> | null = null
@@ -307,11 +307,7 @@ export class InsertionFeature extends EditorFeature {
       return false
     }
     this.commandTrigger = triggerRange.cloneRange()
-    if(!document.body.classList.contains("◆")) {
-      document.body.classList.add("◆")
-      this.triggerBodyMarkerAdded = true
-    }
-    document.body.classList.add("◆insertion-trigger")
+    setPresentationState(document.body, "insertion-trigger")
     if(!this.openMenu(length)) {
       this.close(false)
       return false
@@ -331,11 +327,7 @@ export class InsertionFeature extends EditorFeature {
       const highlights = CSS.highlights as unknown as CustomHighlightRegistry
       highlights.delete("insertion-trigger")
     }
-    document.body.classList.remove("◆insertion-trigger")
-    if(this.triggerBodyMarkerAdded) {
-      document.body.classList.remove("◆")
-      this.triggerBodyMarkerAdded = false
-    }
+    clearPresentationState(document.body, "insertion-trigger")
   }
 
   /** True when the next content in the current text block is non-whitespace.

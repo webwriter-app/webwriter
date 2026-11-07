@@ -1,5 +1,6 @@
+import {batchPresentationStates, clearPresentationState, flushPresentationStyles, hasPresentationState, presentationStateElements, setPresentationState, setPresentationStates} from "../presentation-state.js"
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isCaretAtBoundary, isEmptyParagraph, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, textOffsetIn, textPointAtOffset, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isCaretAtBoundary, isEmptyParagraph, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, setPart, textOffsetIn, textPointAtOffset, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {SVG_NAMESPACE, graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -17,13 +18,11 @@ import type {Transaction} from "yjs"
 
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
-const selectionPresentationMarkers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
-  "◆element-capture-selected", "◆text-selected", "◆empty-selected", "◆caption-placeholder", "◆caption-editing",
-  "◆gap-caret-visible", "◆touch-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded",
-  "◆math-boundary-caret", "◆math-caret-inside-left", "◆math-caret-inside-right", "◆math-caret-outside-left", "◆math-caret-outside-right",
-  "◆popup-boundary-caret", "◆popup-caret-inside-left", "◆popup-caret-inside-right", "◆popup-caret-outside-left", "◆popup-caret-outside-right"]
-const selectionPresentationSelector = selectionPresentationMarkers.map(marker => `.${marker}`).join(",")
-
+const selectionPresentationStates = ["gap-before-selected", "gap-after-selected", "element-selected",
+  "element-capture-selected", "text-selected", "empty-selected", "caption-placeholder", "caption-editing",
+  "gap-caret-visible", "touch-caret-visible", "node-selection-active", "atomic-range-selected", "flow-excluded",
+  "math-boundary-caret", "math-caret-inside-left", "math-caret-inside-right", "math-caret-outside-left", "math-caret-outside-right",
+  "popup-boundary-caret", "popup-caret-inside-left", "popup-caret-inside-right", "popup-caret-outside-left", "popup-caret-outside-right"]
 function arrowDirection(key: string) {
   return key === "ArrowUp" || key === "ArrowLeft"
     ? "backward" as const
@@ -59,7 +58,7 @@ function isCaretAtStartOf(element: Element) {
 
 /** Editing feature that visualizes the current selection. It classifies every
  * selection change into an editing-relevant kind (element, text, gap, empty)
- * and applies the corresponding `◆…-selected` marker classes, manages the
+ * and applies the corresponding selection presentation state, manages the
  * selection and hover overlays in BODY's shadow tree, mirrors modifier key
  * state onto the body, and implements
  * pointer-based selection (drag selection, modifier-click element selection). */
@@ -94,22 +93,9 @@ export class SelectionFeature extends EditorFeature {
   #floatCandidates: {root: Element, elements: Element[], expires: number} | null = null
   readonly #invalidateFloatCandidates = () => { this.#floatCandidates = null }
 
-  #trackSelectionMarkers(records: MutationRecord[]) {
-    const track = (node: Node) => {
-      if(isElement(node) && node.getRootNode() === document && node.matches(selectionPresentationSelector)) this.#selectionMarkers.add(node)
-    }
-    for(const record of records) {
-      if(record.type === "attributes" && record.attributeName === "class") track(record.target)
-      else if(record.type === "childList") for(const node of record.addedNodes) {
-        track(node)
-        if(isElement(node) && node.getRootNode() === document) node.querySelectorAll(selectionPresentationSelector).forEach(track)
-      }
-    }
-  }
-
   readonly #handlePresentationChanges = (records: MutationRecord[]) => {
-    this.#trackSelectionMarkers(records)
     if(records.some(isAuthoredMutation)) {
+      flushPresentationStyles(document)
       this.#invalidateFloatCandidates()
       this.#refreshGapCaretInlinePosition()
       // Geometry changes leave native anchor bindings intact. Refresh the
@@ -241,7 +227,7 @@ export class SelectionFeature extends EditorFeature {
         const wholeFormulaContents = isFormula && range.comparePoint(element, 0) === 0
           && range.comparePoint(element, element.childNodes.length) === 0
         if(wholeNode || wholeFormulaContents) {
-          this.#markSelection(element, "◆atomic-range-selected")
+          this.#markSelection(element, "atomic-range-selected")
           if($.selectedElement === element && standaloneGraphicShape(element)) return
           const overlay = document.createElement("div")
           overlay.classList.add("◆", "◆editor-only")
@@ -971,7 +957,7 @@ export class SelectionFeature extends EditorFeature {
       && document.body.childNodes.length === 1 && !first.childNodes.length) $.move(first)
     else if(!this.editor.options.reader) $.selectDocumentStart()
     super.enable()
-    this.#selectionMarkers = new Set(document.querySelectorAll(selectionPresentationSelector))
+    this.#selectionMarkers = new Set(presentationStateElements(document, ...selectionPresentationStates))
     this.#floatObserver = new MutationObserver(this.#handlePresentationChanges)
     this.#floatObserver.observe(document.documentElement, {
       subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true,
@@ -989,7 +975,6 @@ export class SelectionFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.editor.features.widget.syncLegacyOptions(null)
-    this.#trackSelectionMarkers(this.#floatObserver?.takeRecords() ?? [])
     this.#floatObserver?.disconnect()
     this.#floatObserver = null
     this.#invalidateFloatCandidates()
@@ -1037,7 +1022,7 @@ export class SelectionFeature extends EditorFeature {
 
   #clearKeyState() {
     ;[document.documentElement, document.body].forEach(element => {
-      removeEditorMarker(element, "◆key-mod-down", "◆key-alt-down", "◆key-shift-down")
+      clearPresentationState(element, "key-mod-down")
     })
   }
 
@@ -1048,10 +1033,12 @@ export class SelectionFeature extends EditorFeature {
     for(let element = target; element && element !== document.body && document.body.contains(element); element = element.parentElement) {
       hovered.add(element)
     }
-    for(const element of this.#pointerHovered) {
-      if(!hovered.has(element)) removeEditorMarker(element, "◆pointer-hovered")
-    }
-    for(const element of hovered) element.classList.add("◆", "◆pointer-hovered")
+    batchPresentationStates(document, () => {
+      for(const element of this.#pointerHovered) {
+        if(!hovered.has(element)) clearPresentationState(element, "pointer-hovered")
+      }
+      for(const element of hovered) setPresentationState(element, "pointer-hovered")
+    })
     this.#pointerHovered = hovered
     if(this.#drag) {
       this.#nativeHoverTarget = target
@@ -1079,7 +1066,6 @@ export class SelectionFeature extends EditorFeature {
     this.dragAnchor = null
     this.isInDragSelection = false
     this.#updatePointerHover(null)
-    document.body.classList.remove("◆selection-dragging")
     if(wasDragging) {
       this.editor.postSelectionPath()
       this.editor.postMarkState()
@@ -1193,7 +1179,6 @@ export class SelectionFeature extends EditorFeature {
     if(!drag.moved && atOrigin) return
     if(!drag.moved) {
       drag.moved = true
-      document.body.classList.add("◆", "◆selection-dragging")
     }
     let x = Math.max(0, Math.min(event.clientX, window.innerWidth - 1))
     let y = Math.max(0, Math.min(event.clientY, window.innerHeight - 1))
@@ -1242,7 +1227,6 @@ export class SelectionFeature extends EditorFeature {
     this.#boxDrag = {root, x: event.clientX + window.scrollX, y: event.clientY + window.scrollY,
       pointerId: event.pointerId, pointerType: event.pointerType, overlay, elements: [], previews: new Map()}
     this.isInDragSelection = true
-    document.body.classList.add("◆", "◆selection-dragging")
     this.editor.features.media.refreshPlaceholder()
     this.editor.postSelectionPath()
     if(event.pointerId !== undefined) {
@@ -1646,15 +1630,10 @@ export class SelectionFeature extends EditorFeature {
   /** Mirrors the physical modifier state onto BODY without depending on the
    * regular feature listeners, which intentionally ignore widget events. */
   readonly #handleKeyState = (event: KeyboardEvent | MouseEvent) => {
-    const states = [
-      ["◆key-mod-down", modifierKeyDown(event)],
-      ["◆key-alt-down", event.altKey],
-      ["◆key-shift-down", event.shiftKey],
-    ] as const
-    ;[document.documentElement, document.body].forEach(element => {
-      states.forEach(([marker, active]) => element.classList.toggle(marker, active))
-      if(states.some(([, active]) => active)) element.classList.add("◆")
-      else removeEditorMarker(element)
+    const active = modifierKeyDown(event)
+    batchPresentationStates(document, () => {
+      setPresentationState(document.documentElement, "key-mod-down", active)
+      setPresentationState(document.body, "key-mod-down", active)
     })
   }
 
@@ -1817,7 +1796,7 @@ export class SelectionFeature extends EditorFeature {
       const pathElement = this.#elementAtPath(path)
       if(inlineMathRoot(pathElement) || slideLayoutRole(pathElement)) return
       const element = figureSelectionTarget(pathElement.closest("table") ?? pathElement)
-      element.classList.add("◆", "◆element-hovered")
+      setPresentationState(element, "element-hovered")
       this.#refreshHoverGeometry()
     },
     hoverSection: ({path}: {type: "hoverSection", path: number[] | null}) => {
@@ -1828,7 +1807,7 @@ export class SelectionFeature extends EditorFeature {
       const section = this.#rawElementAtPath(path)
       if(!isSectionElement(section)) throw new TypeError("A section path must resolve to a section element")
       if(slideLayoutRole(section)) return
-      section.classList.add("◆", "◆element-hovered")
+      setPresentationState(section, "element-hovered")
       this.#refreshHoverGeometry()
     },
     hoverStyleTarget: ({hovered, topLevel}: {type: "hoverStyleTarget", hovered: boolean, topLevel?: boolean}) => {
@@ -1840,7 +1819,7 @@ export class SelectionFeature extends EditorFeature {
     this.#clearStyleTargetHover()
     if(!target || !document.body.contains(target) || slideLayoutRole(target)) return
     this.#clearElementHover()
-    target.classList.add("◆", "◆style-target-hovered")
+    setPresentationState(target, "style-target-hovered")
     this.#refreshHoverGeometry()
   }
 
@@ -1851,7 +1830,7 @@ export class SelectionFeature extends EditorFeature {
     this.#clearStyleTargetHover()
     if(!target?.isConnected || !document.body.contains(target)) return
     this.#snippetHoverTarget = target
-    target.classList.add("◆", "◆element-hovered", "◆snippet-hovered")
+    setPresentationStates(target, "element-hovered", "snippet-hovered")
     this.#refreshHoverGeometry()
   }
 
@@ -1884,7 +1863,7 @@ export class SelectionFeature extends EditorFeature {
   /** The element marked as the anchor of the current gap selection (the
    * element the gap caret is attached to), or null. */
   static get gapAnchor() {
-    return document.querySelector(".◆gap-before-selected, .◆gap-after-selected")
+    return (presentationStateElements(document, "gap-before-selected", "gap-after-selected")[0] ?? null)
   }
 
   /** Creates the shared ordinary/breadcrumb hover outline in BODY's shadow tree. */
@@ -1910,7 +1889,7 @@ export class SelectionFeature extends EditorFeature {
   #clearHoverGeometry(releaseAnchor = true) {
     if(this.#hoverFrame !== null) cancelAnimationFrame(this.#hoverFrame)
     this.#hoverFrame = null
-    if(this.#hoverOwner && !this.#hoverOwner.isConnected) removeEditorMarker(this.#hoverOwner, "◆element-hovered", "◆style-target-hovered", "◆snippet-hovered")
+    if(this.#hoverOwner && !this.#hoverOwner.isConnected) clearPresentationState(this.#hoverOwner, "element-hovered", "style-target-hovered", "snippet-hovered")
     this.#hoverOwner = null
     const caret = this.hoverCaret
     if(!caret) return
@@ -1928,12 +1907,15 @@ export class SelectionFeature extends EditorFeature {
   #refreshHoverGeometry = () => {
     if(this.#hoverFrame !== null) cancelAnimationFrame(this.#hoverFrame)
     this.#hoverFrame = null
-    const explicit = document.querySelector(".◆element-hovered, .◆style-target-hovered")
+    const explicit = (presentationStateElements(document, "element-hovered", "style-target-hovered")[0] ?? null)
     const freeform = this.editor.features.canvas.active || this.editor.features.slides.active
     const native = this.#nativeHoverTarget
     const candidate = explicit ?? (freeform ? this.#layoutSelectionItem(native, native)
       : atomicEditingContainer(native, this.editor.schema) ?? (native ? mediaContainerForNode(native) ?? graphicContainerForNode(native) : null) ?? this.#modifierSelectionTarget(native))
     const target = candidate ? figureSelectionTarget(candidate) : null
+    const boardHover = explicit && boardLayoutRole(explicit) ? explicit : null
+    const wasBoardHover = this.hoverCaret?.matches('[part~="hover-caret-board"]')
+    if(boardHover || wasBoardHover) this.editor.features.board.refresh()
     if(!this.isEnabled || !this.editor.allows("select", target)
       || !(target instanceof HTMLElement || target instanceof SVGSVGElement) || !getDocumentRoot().contains(target) || isDocumentRoot(target) || slideLayoutRole(target)) {
       this.#clearHoverGeometry()
@@ -1944,7 +1926,7 @@ export class SelectionFeature extends EditorFeature {
       setPart(this.#ensureHoverCaret(), "hover-caret-board", true)
       return
     }
-    if(this.#hoverOwner && this.#hoverOwner !== target && !this.#hoverOwner.isConnected) removeEditorMarker(this.#hoverOwner, "◆element-hovered", "◆style-target-hovered", "◆snippet-hovered")
+    if(this.#hoverOwner && this.#hoverOwner !== target && !this.#hoverOwner.isConnected) clearPresentationState(this.#hoverOwner, "element-hovered", "style-target-hovered", "snippet-hovered")
     this.#hoverOwner = target
     const caret = this.#ensureHoverCaret()
     if(!freeform) {
@@ -1973,7 +1955,7 @@ export class SelectionFeature extends EditorFeature {
     caret.style.setProperty("translate", "none", "important")
     caret.style.setProperty("transform-origin", "center", "important")
     setPart(caret, "hover-caret-transformed")
-    setPart(caret, "hover-caret-selected-root", target.classList.contains("◆element-selected")
+    setPart(caret, "hover-caret-selected-root", hasPresentationState(target, "element-selected")
       && this.#layoutSelectionItem(target, target) === target)
     this.#hoverFrame = requestAnimationFrame(this.#refreshHoverGeometry)
   }
@@ -2085,17 +2067,7 @@ export class SelectionFeature extends EditorFeature {
     caret.style.removeProperty("--popup-caret-height")
     caret.style.removeProperty("color")
     for(const property of ["width", "position-area", "position-anchor", "translate", "transform", "transform-origin"]) caret.style.removeProperty(property)
-    ;["node", "capture", "gap", "text"].forEach(state => {
-      if(caret.classList.contains(`◆selection-caret-${state}`)) caret.classList.remove(`◆selection-caret-${state}`)
-      setPart(caret, `selection-caret-${state}`, false)
-    })
-    const removed = [
-      "◆gap-before-selected",
-      "◆gap-after-selected",
-      "◆drop-caret-before",
-      "◆drop-caret-after",
-    ].filter(marker => caret.classList.contains(marker))
-    if(removed.length) caret.classList.remove(...removed)
+    ;["node", "capture", "gap", "text"].forEach(state => setPart(caret, `selection-caret-${state}`, false))
     setPart(caret, "gap-caret", false)
     ;["gap-before-selected", "gap-after-selected", "drop-caret-before", "drop-caret-after"]
       .forEach(state => setPart(caret, `gap-caret-${state}`, false))
@@ -2104,7 +2076,6 @@ export class SelectionFeature extends EditorFeature {
   /** Shows the shared caret using one of its selection presentations. */
   #showSelectionCaret(state: "node" | "capture" | "gap" | "text") {
     const caret = this.selectionCaret ?? this.#createSelectionCaret()
-    caret.classList.add(`◆selection-caret-${state}`)
     setPart(caret, `selection-caret-${state}`)
     setPart(caret, "selection-caret-hidden", false)
     if(state === "gap") setPart(caret, "gap-caret")
@@ -2132,7 +2103,7 @@ export class SelectionFeature extends EditorFeature {
     const owner = captured ?? this.selectedSectionElement ?? this.editor.features.transformation.stableSingleTransformTarget() ?? $.selectedElement
     const outlineOwner = captured ? figureSelectionTarget(captured) : owner
     if(owner !== element && outlineOwner !== element || !element.isConnected || !caret
-      || !caret.classList.contains("◆selection-caret-node") && !caret.classList.contains("◆selection-caret-capture")) return
+      || !caret.matches('[part~="selection-caret-node"]') && !caret.matches('[part~="selection-caret-capture"]')) return
     this.#releaseTransformCaretAnchor(caret)
     if(outlineOwner !== element && outlineOwner instanceof HTMLElement) {
       const box = this.editor.features.transformation.boxGeometry(outlineOwner)
@@ -2149,7 +2120,7 @@ export class SelectionFeature extends EditorFeature {
     if(floats.length) this.#floatOutline(caret, new DOMRect(0, 0, parseFloat(geometry.width), parseFloat(geometry.height)), floats, "selection")
     else this.#clearSelectionFloatOutline()
     const outline = caret.querySelector('[part~="selection-float-outline"]')
-    if(outline) setPart(outline, "selection-float-outline-capture", caret.classList.contains("◆selection-caret-capture"))
+    if(outline) setPart(outline, "selection-float-outline-capture", caret.matches('[part~="selection-caret-capture"]'))
   }
 
   #clearSelectionFloatOutline() {
@@ -2180,7 +2151,7 @@ export class SelectionFeature extends EditorFeature {
     const owner = captured ?? this.selectedSectionElement ?? $.selectedElement
     const target = captured ? figureSelectionTarget(captured) : element
     if(!target.isConnected || owner !== element && target !== element
-      || !caret.classList.contains("◆selection-caret-node") && !caret.classList.contains("◆selection-caret-capture")) {
+      || !caret.matches('[part~="selection-caret-node"]') && !caret.matches('[part~="selection-caret-capture"]')) {
       this.clearTransformCaret()
       return
     }
@@ -2213,10 +2184,10 @@ export class SelectionFeature extends EditorFeature {
   /** Reuses the shared caret to preview a transformation drop gap. */
   showDropCaret(placement: "before" | "after") {
     const caret = this.#showSelectionCaret("gap")
-    caret.classList.remove("◆drop-caret-before", "◆drop-caret-after")
+
     setPart(caret, "gap-caret-drop-caret-before", false)
     setPart(caret, "gap-caret-drop-caret-after", false)
-    caret.classList.add(`◆drop-caret-${placement}`)
+
     setPart(caret, `gap-caret-drop-caret-${placement}`)
   }
 
@@ -2224,18 +2195,17 @@ export class SelectionFeature extends EditorFeature {
   clearDropCaret() {
     const caret = this.selectionCaret
     if(!caret) return
-    caret.classList.remove("◆drop-caret-before", "◆drop-caret-after")
+
     setPart(caret, "gap-caret-drop-caret-before", false)
     setPart(caret, "gap-caret-drop-caret-after", false)
-    const hasGapSelection = caret.classList.contains("◆gap-before-selected")
-      || caret.classList.contains("◆gap-after-selected")
+    const hasGapSelection = caret.matches('[part~="gap-caret-gap-before-selected"]')
+      || caret.matches('[part~="gap-caret-gap-after-selected"]')
     if(!hasGapSelection) {
-      caret.classList.remove("◆selection-caret-gap")
       setPart(caret, "selection-caret-gap", false)
       setPart(caret, "gap-caret", false)
     }
     const hasSelectionPresentation = ["node", "capture"].some(state =>
-      caret.classList.contains(`◆selection-caret-${state}`),
+      caret.matches(`[part~="selection-caret-${state}"]`),
     ) || hasGapSelection
     if(!hasSelectionPresentation) {
       caret.setAttribute("visibility", "hidden")
@@ -2248,22 +2218,21 @@ export class SelectionFeature extends EditorFeature {
   }
 
   #clearElementHover() {
-    if(this.#snippetHoverTarget) removeEditorMarker(this.#snippetHoverTarget, "◆element-hovered", "◆snippet-hovered")
+    if(this.#snippetHoverTarget) clearPresentationState(this.#snippetHoverTarget, "element-hovered", "snippet-hovered")
     this.#snippetHoverTarget = null
-    this.#clearHoverMarker("◆element-hovered")
+    this.#clearHoverState("element-hovered")
   }
 
   #clearStyleTargetHover() {
-    this.#clearHoverMarker("◆style-target-hovered")
+    this.#clearHoverState("style-target-hovered")
   }
 
-  #clearHoverMarker(marker: "◆element-hovered" | "◆style-target-hovered") {
-    const hoveredElements = Array.from(document.querySelectorAll(`.${marker}`))
-    if(document.body.classList.contains(marker)) {
-      hoveredElements.unshift(document.body)
-    }
-    hoveredElements.forEach(el => {
-      removeEditorMarker(el, marker, ...(marker === "◆element-hovered" ? ["◆snippet-hovered"] : []))
+  #clearHoverState(state: "element-hovered" | "style-target-hovered") {
+    batchPresentationStates(document, () => {
+      for(const element of presentationStateElements(document, state)) {
+        clearPresentationState(element, state)
+        if(state === "element-hovered") clearPresentationState(element, "snippet-hovered")
+      }
     })
     this.#refreshHoverGeometry()
   }
@@ -2293,7 +2262,7 @@ export class SelectionFeature extends EditorFeature {
   readonly #refreshGapCaretInlinePosition = () => {
     const caret = this.gapCaret
     const element = Array.from(this.#selectionMarkers).find(element =>
-      element.isConnected && element.matches(".◆gap-before-selected, .◆gap-after-selected"))
+      element.isConnected && (hasPresentationState(element, "gap-before-selected") || hasPresentationState(element, "gap-after-selected")))
     const parent = element?.parentElement
     if(!caret || !element || !parent) return
     caret.style.setProperty("--gap-caret-inline-position", this.gapCaretInlinePosition(parent))
@@ -2311,8 +2280,7 @@ export class SelectionFeature extends EditorFeature {
 
   /** Retains marker owners so removal also cleans disconnected content. */
   #markSelection(element: Element, ...markers: string[]) {
-    const added = ["◆", ...markers].filter(marker => !element.classList.contains(marker))
-    if(added.length) element.classList.add(...added)
+    setPresentationStates(element, ...markers)
     this.#selectionMarkers.add(element)
   }
 
@@ -2320,18 +2288,19 @@ export class SelectionFeature extends EditorFeature {
   #clearSelections(retainedElement: Element | null = null, retainedKind?: "node" | "capture" | "text" | "empty") {
     this.#clearAtomicOverlays()
     this.#handlePresentationChanges(this.#floatObserver?.takeRecords() ?? [])
-    const retainedMarker = retainedKind === "text" ? "◆text-selected"
-      : retainedKind === "empty" ? "◆empty-selected" : "◆element-selected"
-    this.#selectionMarkers.forEach(element => {
-      const removed = selectionPresentationMarkers.filter(marker => !(
-        element === retainedElement && (marker === retainedMarker || marker === "◆element-capture-selected" && retainedKind === "capture")
-        || element === document.body && retainedElement && (retainedKind === "node" || retainedKind === "capture") && marker === "◆node-selection-active"
+    const retainedMarker = retainedKind === "text" ? "text-selected"
+      : retainedKind === "empty" ? "empty-selected" : "element-selected"
+    batchPresentationStates(document, () => this.#selectionMarkers.forEach(element => {
+      const removed = selectionPresentationStates.filter(marker => !(
+        element === retainedElement && (marker === retainedMarker || marker === "element-capture-selected" && retainedKind === "capture")
+        || element === document.body && retainedElement && (retainedKind === "node" || retainedKind === "capture") && marker === "node-selection-active"
       ))
-      removeEditorMarker(element, ...removed)
-    })
+      clearPresentationState(element, ...removed)
+    }))
     this.#selectionMarkers.clear()
     if(retainedElement) this.#selectionMarkers.add(retainedElement)
-    if(!retainedKind || !this.selectionCaret?.classList.contains(`◆selection-caret-${retainedKind}`)) this.#hideSelectionCaret()
+    if(hasPresentationState(document.body, "node-selection-active")) this.#selectionMarkers.add(document.body)
+    if(!retainedKind || !this.selectionCaret?.matches(`[part~="selection-caret-${retainedKind}"]`)) this.#hideSelectionCaret()
   }
 
   /** Replaces malformed or newly entered element selections with one
@@ -2562,6 +2531,7 @@ export class SelectionFeature extends EditorFeature {
    * preserve the last interaction's scroll target without revealing it again. */
   processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true, refreshGraphic = true} = {}) {
     if(this.#boxDrag || this.#settingBoxSelection || $.isSettingRanges) return
+    flushPresentationStyles(document)
     if(!this.editor.allowsSelection("select")) {
       this.editor.features.widget.syncLegacyOptions(null)
       this.#releaseCaptureSelection()
@@ -2599,7 +2569,7 @@ export class SelectionFeature extends EditorFeature {
       const captured = this.captureSelectedElement
       const retained = captured?.namespaceURI === SVG_NAMESPACE && captured.localName === "svg" ? captured
         : Array.from(this.#selectionMarkers).find(element => element.isConnected
-          && element.classList.contains("◆element-selected") && standaloneGraphicShape(element))
+          && hasPresentationState(element, "element-selected") && standaloneGraphicShape(element))
       if(retained) $.selectElement(retained, false)
     }
     if($.isMultiElementSelection && !inDragSelection) {
@@ -2608,8 +2578,8 @@ export class SelectionFeature extends EditorFeature {
       // existing presentation when a group drag syncs the same live selection.
       if(!this.#capturedElement && this.editor.features.transformation.hasStableGroupSelection(elements)
         && this.#atomicOverlays.size === elements.length && elements.every(element =>
-          this.#atomicOverlays.get(element)?.isConnected && element.classList.contains("◆element-selected")
-          && element.classList.contains("◆atomic-range-selected"))) {
+          this.#atomicOverlays.get(element)?.isConnected && hasPresentationState(element, "element-selected")
+          && hasPresentationState(element, "atomic-range-selected"))) {
         this.editor.doc.updateLocalSelection()
         return
       }
@@ -2622,10 +2592,10 @@ export class SelectionFeature extends EditorFeature {
       this.editor.features.transformation.syncGroupSelection(elements)
       this.editor.features.board.refresh()
       this.editor.features.manipulation.refreshNodeDragTarget(null)
-      document.body.classList.add("◆", "◆node-selection-active")
+      this.#markSelection(document.body, "node-selection-active")
       for(const element of elements) {
         this.#revealDetails(element.parentNode)
-        this.#markSelection(element, "◆element-selected", "◆atomic-range-selected")
+        this.#markSelection(element, "element-selected", "atomic-range-selected")
         const overlay = document.createElement("div")
         overlay.classList.add("◆", "◆editor-only")
         overlay.setAttribute("part", "atomic-selection-overlay multi-selection-overlay")
@@ -2713,15 +2683,17 @@ export class SelectionFeature extends EditorFeature {
       ? getContainer(sel.getRangeAt(0).commonAncestorContainer) : null
     const presentationElement = selectedElement ?? (isElement(textElement) ? textElement : null)
     const retainedKind = kind === "text" || kind === "empty" ? kind : kind === "capture" ? "capture" : "node"
-    const marker = kind === "text" ? "◆text-selected" : kind === "empty" ? "◆empty-selected" : "◆element-selected"
-    const hadPopupBoundaryCaret = document.body.classList.contains("◆popup-boundary-caret")
+    const marker = kind === "text" ? "text-selected" : kind === "empty" ? "empty-selected" : "element-selected"
+    const hadPopupBoundaryCaret = hasPresentationState(document.body, "popup-boundary-caret")
+    const hadTouchCaret = hasPresentationState(document.body, "touch-caret-visible")
     const retained = presentationElement && this.#selectionMarkers.has(presentationElement)
-      && presentationElement.isConnected && presentationElement.classList.contains(marker) ? presentationElement : null
+      && presentationElement.isConnected && hasPresentationState(presentationElement, marker) ? presentationElement : null
     this.#clearSelections(retained, retained ? retainedKind : undefined)
     if(hadPopupBoundaryCaret && (kind !== "text" || !sel?.isCollapsed)) this.#hideSelectionCaret()
+    if(hadTouchCaret && (!this.#touchSelection || !sel?.isCollapsed)) this.#hideSelectionCaret()
     this.editor.features.widget.syncLegacyOptions(selectedElement ?? (sel?.rangeCount === 1 ? sel.getRangeAt(0).commonAncestorContainer : null))
     if(sel?.rangeCount && !sel.isCollapsed) {
-      $.excludedFlowElements.forEach(element => this.#markSelection(element, "◆flow-excluded"))
+      $.excludedFlowElements.forEach(element => this.#markSelection(element, "flow-excluded"))
     }
     const selectionOwner = selectedElement ?? (kind === "cell" ? this.editor.features.table.selectedTable : null)
     const layoutItem = this.#layoutSelectionItem(selectionOwner ?? sel?.anchorNode ?? null, selectionOwner ?? sel?.focusNode ?? null)
@@ -2762,9 +2734,9 @@ export class SelectionFeature extends EditorFeature {
       if(caption && !caption.textContent?.trim()
         && !Array.from(caption.querySelectorAll("*")).some(element =>
           Boolean(isAtomicEditingElement(element, this.editor.schema)) || element.matches("math, table, canvas"))) {
-        this.#markSelection(caption, "◆caption-placeholder")
+        this.#markSelection(caption, "caption-placeholder")
         if(caption === editingCaption) {
-          this.#markSelection(caption, "◆caption-editing")
+          this.#markSelection(caption, "caption-editing")
           captionPlaceholder = true
         }
       }
@@ -2775,8 +2747,8 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     if(kind === "capture" && capturedElement) {
-      document.body.classList.add("◆", "◆node-selection-active")
-      this.#markSelection(capturedElement, "◆element-selected", "◆element-capture-selected")
+      this.#markSelection(document.body, "node-selection-active")
+      this.#markSelection(capturedElement, "element-selected", "element-capture-selected")
       this.#showSelectionCaret("capture")
       if(capturedElement.localName === "math" && sel) this.#showAtomicOverlays(sel)
       return
@@ -2784,8 +2756,8 @@ export class SelectionFeature extends EditorFeature {
     if(kind === "section") {
       const section = this.selectedSectionElement
       if(!section) return
-      document.body.classList.add("◆", "◆node-selection-active")
-      this.#markSelection(section, "◆element-selected")
+      this.#markSelection(document.body, "node-selection-active")
+      this.#markSelection(section, "element-selected")
       this.#showSelectionCaret("node")
       return
     }
@@ -2808,34 +2780,34 @@ export class SelectionFeature extends EditorFeature {
           return
         }
         const gapCaret = this.#showSelectionCaret("gap")
-        this.#markSelection(element, `◆gap-${placement}-selected`)
+        this.#markSelection(element, `gap-${placement}-selected`)
         this.#refreshGapCaretInlinePosition()
         // Include the trailing margin in the insertion position. The gap
         // marker previews the theme's spacing even on its current last block.
         gapCaret.style.setProperty("--gap-caret-block-offset", placement === "after"
           ? `${parseFloat(getComputedStyle(element).marginBottom) || 0}px` : "0px")
-        gapCaret.classList.add(`◆gap-${placement}-selected`)
+
         setPart(gapCaret, `gap-caret-gap-${placement}-selected`)
-        document.body.classList.add("◆gap-caret-visible")
+        this.#markSelection(document.body, "gap-caret-visible")
       }
 
     }
     else if(kind === "element") {
       const element = sel.anchorNode!.childNodes.item(Math.min(sel.anchorOffset, sel.focusOffset)) as Element
       if(isElement(element)) {
-        document.body.classList.add("◆", "◆node-selection-active")
-        this.#markSelection(element, "◆element-selected")
+        this.#markSelection(document.body, "node-selection-active")
+        this.#markSelection(element, "element-selected")
         this.#showSelectionCaret("node")
       }
     }
     else if(kind === "text") {
       const element = getContainer($.commonAncestor)
-      if(isElement(element)) this.#markSelection(element, "◆text-selected")
+      if(isElement(element)) this.#markSelection(element, "text-selected")
     }
     else if(kind === "empty") {
       const element = getContainer($.commonAncestor)
       if(!element) return
-      this.#markSelection(element, "◆empty-selected")
+      this.#markSelection(element, "empty-selected")
       if(element.matches("li")) this.editor.features.list.refreshSelectionPresentation()
       if(element === getDocumentRoot()) {
         const caret = this.emptyDocumentCaret ?? this.#createEmptyDocumentCaret()
@@ -2853,8 +2825,8 @@ export class SelectionFeature extends EditorFeature {
       if(hadPopupBoundaryCaret && !popup) this.#hideSelectionCaret()
       if(popup) {
         const left = getComputedStyle(popup.toggle).direction === "rtl" ? !popup.start : popup.start
-        this.#markSelection(popup.wrapper, `◆popup-caret-${popup.inside ? "inside" : "outside"}-${left ? "left" : "right"}`)
-        this.#markSelection(document.body, "◆popup-boundary-caret")
+        this.#markSelection(popup.wrapper, `popup-caret-${popup.inside ? "inside" : "outside"}-${left ? "left" : "right"}`)
+        this.#markSelection(document.body, "popup-boundary-caret")
         const caret = this.#showSelectionCaret("text")
         const point = popup.inside ? [sel.focusNode, sel.focusOffset] as const
           : textPointAtOffset(popup.toggle, popup.start ? 0 : popup.toggle.textContent?.length ?? 0,
@@ -2875,8 +2847,8 @@ export class SelectionFeature extends EditorFeature {
       if(!popup && formula && (atInnerEdge && inside!.childNodes.length > 0 || outside)) {
         const start = inside ? sel.focusOffset === 0 : boundary!.placement === "before"
         const left = getComputedStyle(formula).direction === "rtl" ? !start : start
-        this.#markSelection(formula, `◆math-caret-${inside ? "inside" : "outside"}-${left ? "left" : "right"}`)
-        this.#markSelection(document.body, "◆math-boundary-caret")
+        this.#markSelection(formula, `math-caret-${inside ? "inside" : "outside"}-${left ? "left" : "right"}`)
+        this.#markSelection(document.body, "math-boundary-caret")
         const caret = this.#showSelectionCaret("text")
         caret.style.fontSize = getComputedStyle(inside ?? formula.parentElement ?? formula).fontSize
         const rect = this.editor.features.math.structuralTextRect(formula, start ? 0 : formula.childNodes.length, !inside)
@@ -2890,9 +2862,9 @@ export class SelectionFeature extends EditorFeature {
     // while another app owns the drag.
     // Reuse the shared appendix caret at the collapsed selection's geometry.
     const touchCaret = this.#touchSelection && sel.isCollapsed && Boolean(document.activeElement?.contains(sel.focusNode))
-      && !document.body.classList.contains("◆math-boundary-caret") && !document.body.classList.contains("◆popup-boundary-caret")
+      && !hasPresentationState(document.body, "math-boundary-caret") && !hasPresentationState(document.body, "popup-boundary-caret")
     if(touchCaret && (kind === "text" || kind === "empty") && !$.isEmptyDocumentSelection) {
-      this.#markSelection(document.body, "◆touch-caret-visible")
+      this.#markSelection(document.body, "touch-caret-visible")
       const rect = caretRect(sel.focusNode, sel.focusOffset)
       const caret = this.#showSelectionCaret("text")
       caret.style.left = `${fixedClientX(rect.left)}px`
@@ -2903,7 +2875,7 @@ export class SelectionFeature extends EditorFeature {
 
   /** Observing behavior: re-apply markers on every selection change, extend
    * the drag selection on pointer moves, and mirror modifier key state onto
-   * the body (`◆key-mod/alt/shift-down`). */
+   * the body and root presentation. */
   passiveListeners: DocumentListenerMap = {
     "visibilitychange": () => {
       if(document.visibilityState === "hidden") this.#handleWindowBlur()

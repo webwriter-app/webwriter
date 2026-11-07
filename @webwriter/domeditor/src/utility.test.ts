@@ -8,13 +8,13 @@ import {
   getIndexBefore, isElement, isComment, isText, isDocument, isOnApple, modifierKeyDown,
   cloneInert, cloneRangeIn, cloneRangeContents, cloneWithoutEditorMarkers, roundByDPR, roundTo, midpoint, findClosest, findContainingBlock,
   findScrollingAncestor, compareStackingOrder, getDescendantsInStackingOrder,
-  createsStackingContext, findStackingContainer, getStaticCoords,
+  createsStackingContext, findStackingContainer,
   isContentfulWidget, isAtomicEditingElement, atomicEditingContainer, authoredClassValue, removeEditorMarker,
   pathFromNode, nodeAtPath, textOffsetIn, textPointAtOffset, createInertScript, clearInlinePlacement, setPart
 } from "./utility"
 import { Schema } from "./schema"
 import {clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, nodeEdgeRect, isTextFieldInteraction} from "./utility"
-import {widgetLookupForTags} from "./editor-artifacts"
+import {authoredDetailsOpen, hasTemporaryDetailsState, markTemporaryDetailsState, widgetLookupForTags} from "./editor-artifacts"
 
 describe("native text field interactions", () => {
   it.each([
@@ -1816,6 +1816,24 @@ describe("cloneWithoutEditorMarkers()", () => {
     expect(clone.className).toBe("authored")
     expect(clone.content.querySelector("span")?.className).toBe("nested")
   })
+
+  it("carries temporary disclosure defaults through inert clones and cleans authored clones", () => {
+    const details = document.createElement("details")
+    details.open = true
+    markTemporaryDetailsState(details, false)
+
+    const inert = cloneInert(details, true) as HTMLDetailsElement
+    expect(inert.open).toBe(true)
+    expect(hasTemporaryDetailsState(inert)).toBe(true)
+    expect(authoredDetailsOpen(inert)).toBe(false)
+
+    const authored = cloneWithoutEditorMarkers(details, true) as HTMLDetailsElement
+    expect(authored.open).toBe(false)
+    expect(hasTemporaryDetailsState(authored)).toBe(false)
+    expect(authored.className).toBe("")
+    expect(details.open).toBe(true)
+    expect(hasTemporaryDetailsState(details)).toBe(true)
+  })
 })
 
 describe("roundByDPR()", () => {
@@ -1980,29 +1998,6 @@ describe("getDescendantsInStackingOrder()", () => {
     setBody(`<div id="top" style="position: relative; z-index: 2"></div><div id="bottom" style="position: relative; z-index: 1"></div>`)
     const ordered = getDescendantsInStackingOrder(document.body, "div")
     expect(ordered.map(el => el.id)).toEqual(["bottom", "top"])
-  })
-})
-
-describe("getStaticCoords()", () => {
-  it("measures with a temporary marker class and never inserts authored nodes", async () => {
-    setBody('<p>hello</p><p class="authored">world</p>')
-    const target = document.body.lastElementChild as HTMLElement
-    Object.defineProperty(target, "getBoundingClientRect", {
-      configurable: true,
-      value: () => target.classList.contains("◆measure-static-position")
-        ? {top: 12, left: 34}
-        : {top: 56, left: 78},
-    })
-    const mutations: MutationRecord[] = []
-    const observer = new MutationObserver(records => mutations.push(...records))
-    observer.observe(document.body, {attributes: true, childList: true, characterData: true, subtree: true})
-
-    expect(getStaticCoords(target)).toEqual([12, 34])
-    await Promise.resolve()
-    observer.disconnect()
-
-    expect(document.body.innerHTML).toBe('<p>hello</p><p class="authored">world</p>')
-    expect(mutations.some(mutation => mutation.type === "childList" || mutation.type === "characterData")).toBe(false)
   })
 })
 

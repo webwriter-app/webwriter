@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
+import {hasPresentationState, presentationStateElements} from "../presentation-state.js"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import {$, isOnApple} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathStructureOptions, mathToolGroups} from "../math"
+import {hasAnchorTarget} from "../anchor-positioning.test-utils"
 import {isMarkStateChangeMessage, markStateChangeEvent, isSelectionChangeMessage, selectionChangeEvent, mathKeyboardTabEvent, type SelectionChangeDetail} from "../editor-bridge"
 import * as Y from "yjs"
 
@@ -153,14 +155,14 @@ describe("DOM MathML editing", () => {
       editor.features.selection.processSelection(undefined, {scrollIntoView: false})
       editor.features.math.refresh()
       expect(overlays()).toHaveLength(1)
-      expect(math.classList.contains("◆atomic-range-selected")).toBe(true)
-      expect(math.querySelector(".◆atomic-range-selected")).toBeNull()
+      expect(hasPresentationState(math, "atomic-range-selected")).toBe(true)
+      expect((presentationStateElements(math, "atomic-range-selected")[0] ?? null)).toBeNull()
       expect(clean()).toBe(authored)
       const text = math.querySelector("mi")!.firstChild!
       document.getSelection()!.setBaseAndExtent(text, 0, text, 1)
       editor.features.selection.processSelection(undefined, {scrollIntoView: false})
       expect(overlays()).toHaveLength(0)
-      expect(math.classList.contains("◆atomic-range-selected")).toBe(false)
+      expect(hasPresentationState(math, "atomic-range-selected")).toBe(false)
     }
   })
 
@@ -177,7 +179,7 @@ describe("DOM MathML editing", () => {
     expect(clean()).not.toContain("math-caret")
     editor.features.math.disable()
     expect(editor.appendix.querySelector('[part="math-caret"]')).toBeNull()
-    expect(document.body.classList.contains("◆math-structural-caret")).toBe(false)
+    expect(hasPresentationState(document.body, "math-structural-caret")).toBe(false)
   })
 
   it.each(["", "<mrow></mrow>", "<mrow><mrow></mrow></mrow>", "<mstyle><mrow></mrow></mstyle>", "<mtext></mtext>"])("centers the caret in the whole empty block instead of its inner row: %s", content => {
@@ -210,14 +212,14 @@ describe("DOM MathML editing", () => {
     const math = load("<mrow></mrow>")
     $.move(math.firstElementChild!, 0)
     editor.features.math.refresh()
-    expect(document.body.classList.contains("◆math-structural-caret")).toBe(true)
+    expect(hasPresentationState(document.body, "math-structural-caret")).toBe(true)
     editor.doc.syncFromDOM()
     expect(editor.doc.body.getAttribute("class")).toBe("authored")
     expect(clean()).not.toContain("◆math-structural-caret")
 
     math.remove()
     editor.features.math.refresh()
-    expect(document.body.classList.contains("◆math-structural-caret")).toBe(false)
+    expect(hasPresentationState(document.body, "math-structural-caret")).toBe(false)
     expect(document.body.classList.contains("authored")).toBe(true)
     document.body.classList.remove("authored")
   })
@@ -234,19 +236,19 @@ describe("DOM MathML editing", () => {
     const original = clean()
     $.move(slot, 0)
     editor.features.math.refresh()
-    expect(math.classList.contains("◆math-structural-caret")).toBe(true)
-    expect(document.body.classList.contains("◆math-structural-caret")).toBe(true)
+    expect(hasPresentationState(math, "math-structural-caret")).toBe(true)
+    expect(hasPresentationState(document.body, "math-structural-caret")).toBe(true)
     expect(Array.from(editor.appendix.querySelectorAll<HTMLElement>(".◆math-overlay > span"))
       .filter(element => element.style.background)).toHaveLength(1)
     expect(clean()).toBe(original)
     $.move(math, math.childNodes.length)
     editor.features.math.refresh()
-    expect(math.classList.contains("◆math-structural-caret")).toBe(false)
-    expect(document.body.classList.contains("◆math-structural-caret")).toBe(false)
+    expect(hasPresentationState(math, "math-structural-caret")).toBe(false)
+    expect(hasPresentationState(document.body, "math-structural-caret")).toBe(false)
     $.move(math.nextSibling!, 1)
     editor.features.math.refresh()
     expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
-    expect(math.querySelector(".◆math-slot")).toBeNull()
+    expect((presentationStateElements(math, "math-slot")[0] ?? null)).toBeNull()
     expect(clean()).toBe(original)
   })
 
@@ -256,17 +258,17 @@ describe("DOM MathML editing", () => {
     const authored = clean()
     $.move(row, offset)
     editor.features.math.refresh()
-    expect(math.classList.contains("◆math-structural-caret")).toBe(true)
+    expect(hasPresentationState(math, "math-structural-caret")).toBe(true)
     expect(editor.appendix.querySelectorAll('[part="math-caret"]')).toHaveLength(1)
     expect(clean()).toBe(authored)
     $.move(row.lastElementChild!.firstChild!, 1)
     editor.features.math.refresh()
     expect(editor.appendix.querySelectorAll('[part="math-caret"]')).toHaveLength(1)
-    expect(math.classList.contains("◆math-structural-caret")).toBe(true)
+    expect(hasPresentationState(math, "math-structural-caret")).toBe(true)
     $.move(math.nextSibling!, 1)
     editor.features.math.refresh()
     expect(editor.appendix.querySelector('[part="math-caret"]')).toBeNull()
-    expect(math.classList.contains("◆math-structural-caret")).toBe(false)
+    expect(hasPresentationState(math, "math-structural-caret")).toBe(false)
   })
 
   it.each([0, 1])("keeps block-root insertion at boundary %s inside the centered formula", offset => {
@@ -322,7 +324,7 @@ describe("DOM MathML editing", () => {
     expect(clean()).not.toContain("◆")
     editor.features.math.disable()
     expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
-    expect(math.querySelector(".◆math-slot")).toBeNull()
+    expect((presentationStateElements(math, "math-slot")[0] ?? null)).toBeNull()
   })
 
   it.each(["ltr", "rtl"])("keeps %s placeholder guides out of spacing reserved for operators", direction => {
@@ -342,7 +344,7 @@ describe("DOM MathML editing", () => {
     expect(editor.appendix.querySelector('[part="math-caret"]')).toBe(caret)
     expect(clean()).toBe(authored)
     editor.features.math.disable()
-    expect(math.querySelector(".◆math-slot")).toBeNull()
+    expect((presentationStateElements(math, "math-slot")[0] ?? null)).toBeNull()
     expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
   })
 
@@ -360,7 +362,7 @@ describe("DOM MathML editing", () => {
     expect(clean()).toBe(authored)
     editor.features.math.disable()
     expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
-    expect(math.querySelector(".◆math-slot")).toBeNull()
+    expect((presentationStateElements(math, "math-slot")[0] ?? null)).toBeNull()
   })
 
   it("highlights only the hovered structure placeholder border and restores it on exit", () => {
@@ -388,11 +390,11 @@ describe("DOM MathML editing", () => {
     vi.spyOn(radicand, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 20, 20, 20))
     vi.spyOn(degree, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 10, 10))
     math.dispatchEvent(new PointerEvent("pointerover", {bubbles: true, clientX: 15, clientY: 15}))
-    expect(Array.from(math.querySelectorAll(".◆math-hovered"))).toEqual([degree])
+    expect(Array.from(presentationStateElements(math, "math-hovered"))).toEqual([degree])
     math.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 35, clientY: 25}))
-    expect(Array.from(math.querySelectorAll(".◆math-hovered"))).toEqual([radicand])
+    expect(Array.from(presentationStateElements(math, "math-hovered"))).toEqual([radicand])
     math.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 60, clientY: 25}))
-    expect(math.querySelector(".◆math-hovered")).toBeNull()
+    expect((presentationStateElements(math, "math-hovered")[0] ?? null)).toBeNull()
   })
 
   it.each([
@@ -406,15 +408,15 @@ describe("DOM MathML editing", () => {
     const hover = (element: Element) => element.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
     for(const container of [math, ...math.querySelectorAll("mrow, mstyle, msqrt, mfrac")]) {
       hover(part)
-      expect(Array.from(math.querySelectorAll(".◆math-hovered"))).toEqual([part])
+      expect(Array.from(presentationStateElements(math, "math-hovered"))).toEqual([part])
       hover(container)
-      expect(math.querySelector(".◆math-hovered")).toBeNull()
-      expect(math.classList.contains("◆math-hovered")).toBe(false)
+      expect((presentationStateElements(math, "math-hovered")[0] ?? null)).toBeNull()
+      expect(hasPresentationState(math, "math-hovered")).toBe(false)
     }
     vi.spyOn(math.firstElementChild!, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 100, 30))
     hover(part)
     math.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 15, clientY: 15}))
-    expect(math.querySelector(".◆math-hovered")).toBeNull()
+    expect((presentationStateElements(math, "math-hovered")[0] ?? null)).toBeNull()
   })
 
   it("highlights exactly the innermost hovered argument and excludes the marker from saved and shared HTML", () => {
@@ -422,41 +424,41 @@ describe("DOM MathML editing", () => {
     const hover = (element: Element) => element.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
     const radicand = math.querySelector("mrow")!
     hover(radicand.firstElementChild!)
-    expect(Array.from(math.querySelectorAll(".◆math-hovered"))).toEqual([radicand])
+    expect(Array.from(presentationStateElements(math, "math-hovered"))).toEqual([radicand])
     const numerator = math.querySelector("mfrac > mi")!
     hover(numerator)
-    expect(Array.from(math.querySelectorAll(".◆math-hovered"))).toEqual([numerator])
+    expect(Array.from(presentationStateElements(math, "math-hovered"))).toEqual([numerator])
     const degree = math.querySelector("mn")!
     hover(degree)
-    expect(Array.from(math.querySelectorAll(".◆math-hovered"))).toEqual([degree])
+    expect(Array.from(presentationStateElements(math, "math-hovered"))).toEqual([degree])
     expect(clean()).not.toContain("◆math-hovered")
     editor.doc.syncFromDOM()
     expect(editor.doc.body.toString()).not.toContain("◆math-hovered")
     degree.dispatchEvent(new PointerEvent("pointerout", {bubbles: true}))
-    expect(math.querySelector(".◆math-hovered")).toBeNull()
+    expect((presentationStateElements(math, "math-hovered")[0] ?? null)).toBeNull()
     hover(degree)
     degree.remove()
     editor.features.math.refresh()
-    expect(degree.classList.contains("◆math-hovered")).toBe(false)
+    expect(hasPresentationState(degree, "math-hovered")).toBe(false)
     hover(numerator)
     editor.features.math.disable()
-    expect(math.querySelector(".◆math-hovered")).toBeNull()
+    expect((presentationStateElements(math, "math-hovered")[0] ?? null)).toBeNull()
   })
 
   it("does not highlight math owned by widgets or read-only content", () => {
     const math = load('<mroot><mi>x</mi><mrow></mrow></mroot>')
     const degree = math.querySelector("mrow")!
     degree.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
-    expect(degree.classList.contains("◆math-hovered")).toBe(true)
+    expect(hasPresentationState(degree, "math-hovered")).toBe(true)
     math.setAttribute("contenteditable", "false")
     degree.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
-    expect(math.querySelector(".◆math-hovered")).toBeNull()
+    expect((presentationStateElements(math, "math-hovered")[0] ?? null)).toBeNull()
     math.removeAttribute("contenteditable")
     const widget = document.createElement("test-widget")
     math.replaceWith(widget)
     widget.append(math)
     degree.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
-    expect(math.querySelector(".◆math-hovered")).toBeNull()
+    expect((presentationStateElements(math, "math-hovered")[0] ?? null)).toBeNull()
   })
 
   it("splits nested marks around a block formula and wraps it when converted back", () => {
@@ -606,8 +608,8 @@ describe("DOM MathML editing", () => {
       expect($.isTextSelection).toBe(true)
       expect($.isGapSelection).toBe(false)
       expect(editor.features.selection.captureSelectedElement).toBeNull()
-      expect(math.classList.contains("◆element-selected")).toBe(false)
-      expect(math.classList.contains("◆math-editing")).toBe(node === math)
+      expect(hasPresentationState(math, "element-selected")).toBe(false)
+      expect(hasPresentationState(math, "math-editing")).toBe(node === math)
     }
     $.move(parent, index)
     key("ArrowRight")
@@ -666,7 +668,7 @@ describe("DOM MathML editing", () => {
       expect(document.getSelection()!.toString()).toBe("x")
       expect(editor.features.selection.captureSelectedElement).toBeNull()
       editor.features.selection.actions.hoverNode({type: "hoverNode", path: [0, 1]})
-      expect(math.classList.contains("◆element-hovered")).toBe(false)
+      expect(hasPresentationState(math, "element-hovered")).toBe(false)
       document.getSelection()!.setBaseAndExtent(math, 1, math, 0)
       editor.features.selection.processSelection()
       editor.postSelectionPath()
@@ -680,11 +682,11 @@ describe("DOM MathML editing", () => {
   it.each(["", "<mrow></mrow>", "<mrow><mrow></mrow></mrow>"])("does not draw an outer dashed guide for %s", content => {
     const math = load(content)
     editor.features.math.refresh()
-    expect(math.classList.contains("◆math-editing")).toBe(true)
+    expect(hasPresentationState(math, "math-editing")).toBe(true)
     expect(Array.from(editor.appendix.querySelectorAll<HTMLElement>(".◆math-overlay > span"))
       .filter(element => element.style.borderStyle === "dashed")).toHaveLength(0)
     command("exit")
-    expect(math.classList.contains("◆math-editing")).toBe(false)
+    expect(hasPresentationState(math, "math-editing")).toBe(false)
   })
 
   it("extends a text drag from an inline formula into surrounding prose", () => {
@@ -712,8 +714,8 @@ describe("DOM MathML editing", () => {
     $.move(text, 1)
     editor.features.selection.processSelection()
     expect(editor.features.selection.captureSelectedElement).toBe(math)
-    expect(math.classList.contains("◆element-capture-selected")).toBe(true)
-    expect(editor.features.selection.selectionCaret?.classList.contains("◆selection-caret-capture")).toBe(true)
+    expect(hasPresentationState(math, "element-capture-selected")).toBe(true)
+    expect(editor.features.selection.selectionCaret?.matches('[part~="selection-caret-capture"]')).toBe(true)
     expect($.anchor).toBe(text)
     expect($.anchorOffset).toBe(1)
     expect(key("q").defaultPrevented).toBe(true)
@@ -724,7 +726,7 @@ describe("DOM MathML editing", () => {
     expect(editor.appendix.querySelector(".◆math-overlay")?.children).toHaveLength(0)
     command("exit")
     expect(editor.features.selection.captureSelectedElement).toBeNull()
-    expect(math.classList.contains("◆element-capture-selected")).toBe(false)
+    expect(hasPresentationState(math, "element-capture-selected")).toBe(false)
     expect($.isGapSelection).toBe(true)
   })
 
@@ -792,9 +794,9 @@ describe("DOM MathML editing", () => {
     editor.features.math.refresh()
     expect($.selectedElement).toBe(math)
     expect(editor.features.selection.captureSelectedElement).toBeNull()
-    expect(math.classList.contains("◆element-selected")).toBe(true)
-    expect(math.classList.contains("◆element-capture-selected")).toBe(false)
-    expect(math.classList.contains("◆math-editing")).toBe(false)
+    expect(hasPresentationState(math, "element-selected")).toBe(true)
+    expect(hasPresentationState(math, "element-capture-selected")).toBe(false)
+    expect(hasPresentationState(math, "math-editing")).toBe(false)
     math.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 8}))
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 8}))
     expect(editor.features.selection.captureSelectedElement).toBe(math)
@@ -827,7 +829,7 @@ describe("DOM MathML editing", () => {
     expect($.focus).toBe(math.parentNode)
     expect($.focusOffset).toBe(arrow === "ArrowRight" ? 2 : 1)
     expect(editor.features.selection.captureSelectedElement).toBeNull()
-    expect(math.classList.contains("◆atomic-range-selected")).toBe(true)
+    expect(hasPresentationState(math, "atomic-range-selected")).toBe(true)
   })
 
   it.each(["", "<mrow></mrow>", "<mstyle><mrow> </mrow></mstyle>"])("shows an appendix placeholder for an empty block formula: %s", html => {
@@ -835,7 +837,7 @@ describe("DOM MathML editing", () => {
     math.setAttribute("display", "block")
     const original = clean()
     editor.features.math.refresh()
-    expect(math.classList.contains("◆math-empty")).toBe(true)
+    expect(hasPresentationState(math, "math-empty")).toBe(true)
     expect(editor.appendix.querySelector('[part~="math-placeholder"] svg')).not.toBeNull()
     expect(clean()).toBe(original)
     editor.doc.syncFromDOM()
@@ -843,13 +845,13 @@ describe("DOM MathML editing", () => {
     math.replaceChildren(document.createElementNS(MATH_NAMESPACE, "mi"))
     math.firstElementChild!.textContent = "x"
     editor.features.math.refresh()
-    expect(math.classList.contains("◆math-empty")).toBe(false)
+    expect(hasPresentationState(math, "math-empty")).toBe(false)
     expect(editor.appendix.querySelector('[part~="math-placeholder"]')).toBeNull()
     math.replaceChildren()
     editor.features.math.refresh()
-    expect(math.classList.contains("◆math-empty")).toBe(true)
+    expect(hasPresentationState(math, "math-empty")).toBe(true)
     editor.features.math.disable()
-    expect(math.classList.contains("◆math-empty")).toBe(false)
+    expect(hasPresentationState(math, "math-empty")).toBe(false)
     expect(editor.appendix.querySelector('[part~="math-placeholder"]')).toBeNull()
   })
 
@@ -862,7 +864,7 @@ describe("DOM MathML editing", () => {
     widget.append(math)
     document.body.append(widget)
     editor.features.math.refresh()
-    expect(math.classList.contains("◆math-empty")).toBe(false)
+    expect(hasPresentationState(math, "math-empty")).toBe(false)
     expect(editor.appendix.querySelector('[part~="math-placeholder"]')).toBeNull()
   })
 
@@ -889,7 +891,7 @@ describe("DOM MathML editing", () => {
     expect(placeholder.style.display).toBe("")
     expect(placeholder.style.left).toBe("")
     expect(placeholder.style.top).toBe("")
-    expect(math.className).toContain("◆anchor-target-")
+    expect(hasAnchorTarget(math)).toBe(true)
     $.move(math.firstChild!, 0)
     editor.features.selection.processSelection()
     editor.features.math.refresh()
@@ -910,7 +912,7 @@ describe("DOM MathML editing", () => {
     expect($.selectedElement).toBe(math)
     editor.features.math.disable()
     expect(editor.features.selection.captureSelectedElement).toBeNull()
-    expect(math.classList.contains("◆element-capture-selected")).toBe(false)
+    expect(hasPresentationState(math, "element-capture-selected")).toBe(false)
   })
 
   it("releases capture from another interactive element when clicking an inline formula", () => {
@@ -924,7 +926,7 @@ describe("DOM MathML editing", () => {
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 8}))
     expect(editor.features.selection.captureSelectedElement).toBeNull()
     expect(editor.features.math.activeMath).toBe(math)
-    expect(button.classList.contains("◆element-capture-selected")).toBe(false)
+    expect(hasPresentationState(button, "element-capture-selected")).toBe(false)
     expect(key("q").defaultPrevented).toBe(true)
     expect(math.textContent).toContain("q")
   })
@@ -939,7 +941,7 @@ describe("DOM MathML editing", () => {
         expect($.isGapSelection).toBe(false)
         expect($.isTextSelection).toBe(true)
         expect(editor.features.selection.captureSelectedElement).toBe(display === "block" ? math : null)
-        expect(document.body.classList.contains("◆gap-caret-visible")).toBe(false)
+        expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
       }
     }
   })
@@ -974,7 +976,7 @@ describe("DOM MathML editing", () => {
       expect($.isGapSelection).toBe(display === "block")
       expect($.isTextSelection).toBe(display === "inline")
       expect(editor.features.selection.captureSelectedElement).toBeNull()
-      expect(document.body.classList.contains("◆gap-caret-visible")).toBe(display === "block")
+      expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(display === "block")
     }
   })
 
@@ -1481,7 +1483,7 @@ describe("DOM MathML editing", () => {
     expect(document.getSelection()!.focusNode).toBe(input)
     editor.features.math.refresh()
     const slot = math.querySelector("msup")!.lastElementChild!
-    expect(slot.classList.contains("◆math-slot")).toBe(true)
+    expect(hasPresentationState(slot, "math-slot")).toBe(true)
     input.dispatchEvent(new KeyboardEvent("keyup", {key: "Dead", code: "IntlBackslash", isComposing: true, bubbles: true}))
     expect(input.isConnected).toBe(false)
     expect(document.getSelection()!.focusNode).toBe(slot)
@@ -1505,8 +1507,8 @@ describe("DOM MathML editing", () => {
     expect(input.isConnected).toBe(false)
     expect(editor.features.math.isComposingPower).toBe(false)
     expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
-    expect(math.querySelector(".◆math-slot")).toBeNull()
-    expect(math.classList.contains("◆math-structural-caret")).toBe(false)
+    expect((presentationStateElements(math, "math-slot")[0] ?? null)).toBeNull()
+    expect(hasPresentationState(math, "math-structural-caret")).toBe(false)
     input.dispatchEvent(Object.assign(new Event("compositionend", {bubbles: true}), {data: "^2"}))
     expect(document.getSelection()!.focusNode).toBe(prose.firstChild)
     expect(math.textContent).toBe("x")
@@ -1652,8 +1654,8 @@ describe("DOM MathML editing", () => {
     editor.doc.syncFromDOM()
     expect(editor.doc.body.toString()).not.toContain("◆math")
     editor.features.math.disable()
-    expect(math.querySelector(".◆math-slot")).toBeNull()
-    expect(math.classList.contains("◆math-editing")).toBe(false)
+    expect((presentationStateElements(math, "math-slot")[0] ?? null)).toBeNull()
+    expect(hasPresentationState(math, "math-editing")).toBe(false)
     expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
   })
 
@@ -1662,7 +1664,7 @@ describe("DOM MathML editing", () => {
     editor.features.math.refresh()
     command("display:block")
     command("text:x")
-    expect(math.classList.contains("◆math-slot")).toBe(false)
+    expect(hasPresentationState(math, "math-slot")).toBe(false)
     expect(math.getAttribute("display")).toBe("block")
     expect(editor.features.math.getState()).toEqual({active: true, display: "block"})
   })

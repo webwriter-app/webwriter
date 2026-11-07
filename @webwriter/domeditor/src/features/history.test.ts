@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {hasPresentationState} from "../presentation-state.js"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
@@ -452,7 +453,7 @@ describe("collaborative version history", () => {
     expect(document.querySelector("custom-widget")).toBe(widget)
     expect(editor.doc.body.toString()).not.toContain("Blocked")
     history.clearPreview()
-    expect(document.body).not.toHaveClass("◆editing-locked")
+    expect(hasPresentationState(document.body, "editing-locked")).toBe(false)
     document.querySelector("p")!.textContent = "Editable again"
     await mutationsDelivered()
     expect(editor.doc.body.toString()).toContain("Editable again")
@@ -738,10 +739,10 @@ describe("collaborative version history", () => {
     expect(slot.inert).toBe(false)
     expect(document.body.contentEditable).toBe("inherit")
     expect(document.designMode).toBe("on")
-    expect(document.body).toHaveClass("◆editing-locked")
+    expect(hasPresentationState(document.body, "editing-locked")).toBe(true)
     const lockedAffordanceRule = editor.appendix.adoptedStyleSheets
       .flatMap(stylesheet => Array.from(stylesheet.cssRules))
-      .find(rule => (rule as CSSStyleRule).selectorText === ":host(.◆editing-locked) > :not(slot):not(.◆ai-review-toolbar)") as CSSStyleRule
+      .find(rule => (rule as CSSStyleRule).selectorText ?.endsWith("> :not(slot):not(.◆ai-review-toolbar)")) as CSSStyleRule
     expect(lockedAffordanceRule.style.display).toBe("none")
 
     const beforeInput = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText"})
@@ -769,7 +770,7 @@ describe("collaborative version history", () => {
     expect(slot.inert).toBe(false)
     expect(document.body.contentEditable).toBe("inherit")
     expect(document.designMode).toBe("on")
-    expect(document.body).not.toHaveClass("◆editing-locked")
+    expect(hasPresentationState(document.body, "editing-locked")).toBe(false)
   })
 
   it("switches between complete version renderings without adding editor wrappers", async () => {

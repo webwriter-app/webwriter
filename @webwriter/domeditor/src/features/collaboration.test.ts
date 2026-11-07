@@ -4,6 +4,7 @@ import * as Y from "yjs"
 import {Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates} from "y-protocols/awareness"
 import {DOMEditor} from "../domeditor"
 import {$} from "../utility"
+import {hasPresentationState, presentationStateElements} from "../presentation-state.js"
 
 let editor: DOMEditor
 let remoteDoc: Y.Doc | null = null
@@ -161,7 +162,7 @@ describe("DOMEditor collaboration wiring", () => {
     })
     await mutationsDelivered()
 
-    expect(dialog.classList.contains("◆dialog-editing")).toBe(true)
+    expect(hasPresentationState(dialog, "dialog-editing")).toBe(true)
     expect(editor.doc.body.toString()).toContain('closedby="any"')
     expect(editor.doc.body.toString()).not.toContain("◆")
     expect(editor.toHTML(true)).toBe('<dialog id="notice" closedby="any"><p>Notice</p></dialog>')
@@ -383,7 +384,7 @@ describe("collaboration presence", () => {
     expect(selection?.style.opacity).toBe("")
     expect(label?.textContent).toBe("GH")
     expect(label?.getAttribute("part")).toContain("presence-element-selection-label")
-    expect(document.querySelector(".◆element-selected")).toBeNull()
+    expect((presentationStateElements(document, "element-selected")[0] ?? null)).toBeNull()
     expect(editor.toHTML()).not.toContain("◆presence")
   })
 

@@ -1,3 +1,4 @@
+import {batchPresentationStates, clearPresentationState, hasPresentationState, presentationStateElements, setPresentationState} from "../presentation-state.js"
 import {isRelativeURLInput, normalizeURLInput} from "../url-input.js"
 import {EditorFeature} from "."
 import {SVG_NAMESPACE, graphicShapeGeometry} from "../graphic"
@@ -1631,10 +1632,10 @@ export class MediaFeature extends EditorFeature {
     this.graphicImagePlaceholders.clear()
     this.selectedPopup = null
     this.shieldReleasePending.clear()
-    document.querySelectorAll(".◆media-empty").forEach(element => this.setEmptyMarker(element, false))
-    document.querySelectorAll(".◆hotspot-placeholder, .◆hotspot-popup").forEach(element => {
-      removeEditorMarker(element, "◆hotspot-placeholder")
-      removeEditorMarker(element, "◆hotspot-popup")
+    presentationStateElements(document, "media-empty").forEach(element => this.setEmptyMarker(element, false))
+    presentationStateElements(document, "hotspot-placeholder", "hotspot-popup").forEach(element => {
+      clearPresentationState(element, "hotspot-placeholder")
+      clearPresentationState(element, "hotspot-popup")
     })
     super.disable()
   }
@@ -2736,8 +2737,8 @@ export class MediaFeature extends EditorFeature {
   }
 
   private setEmptyMarker(element: Element, empty: boolean) {
-    if(empty) element.classList.add("◆", "◆media-empty")
-    else removeEditorMarker(element, "◆media-empty")
+    if(empty) setPresentationState(element, "media-empty")
+    else clearPresentationState(element, "media-empty")
   }
 
   // Scroll and camera movement do not change media membership or image-map
@@ -2809,14 +2810,16 @@ export class MediaFeature extends EditorFeature {
   private refresh() {
     this.refreshAfterTransform = false
     if(this.mediaCapture && !this.mediaCapture.valid()) this.mediaCapture.controller.close()
-    document.querySelectorAll(`${mediaSelector}, svg image`).forEach(element => {
-      if(sourceEditingBlocked(element, this.editor.schema)) {
-        if(element.classList.contains("◆media-empty")) this.setEmptyMarker(element, false)
-        return
-      }
-      if(element.matches("audio, video") && !element.hasAttribute("controls")) element.setAttribute("controls", "")
-      const empty = isEmptyMedia(element) && !(element.matches("img") && element.closest("picture"))
-      if(element.classList.contains("◆media-empty") !== empty) this.setEmptyMarker(element, empty)
+    batchPresentationStates(document, () => {
+      document.querySelectorAll(`${mediaSelector}, svg image`).forEach(element => {
+        if(sourceEditingBlocked(element, this.editor.schema)) {
+          if(hasPresentationState(element, "media-empty")) this.setEmptyMarker(element, false)
+          return
+        }
+        if(element.matches("audio, video") && !element.hasAttribute("controls")) element.setAttribute("controls", "")
+        const empty = isEmptyMedia(element) && !(element.matches("img") && element.closest("picture"))
+        if(hasPresentationState(element, "media-empty") !== empty) this.setEmptyMarker(element, empty)
+      })
     })
     const selected = this.refreshPlaceholder()
 
@@ -2832,17 +2835,19 @@ export class MediaFeature extends EditorFeature {
         && paragraph?.matches("p") && !paragraph.textContent
         && (paragraph.children.length === 0 || paragraph.children.length === 1 && paragraph.firstElementChild?.matches("br"))) placeholders.add(paragraph)
     })
-    document.querySelectorAll(".◆hotspot-popup").forEach(element => {
-      if(!popups.has(element)) removeEditorMarker(element, "◆hotspot-popup")
-    })
-    popups.forEach(element => {
-      if(!element.classList.contains("◆hotspot-popup")) element.classList.add("◆hotspot-popup")
-    })
-    document.querySelectorAll(".◆hotspot-placeholder").forEach(element => {
-      if(!placeholders.has(element)) removeEditorMarker(element, "◆hotspot-placeholder")
-    })
-    placeholders.forEach(element => {
-      if(!element.classList.contains("◆hotspot-placeholder")) element.classList.add("◆hotspot-placeholder")
+    batchPresentationStates(document, () => {
+      presentationStateElements(document, "hotspot-popup").forEach(element => {
+        if(!popups.has(element)) clearPresentationState(element, "hotspot-popup")
+      })
+      popups.forEach(element => {
+        if(!hasPresentationState(element, "hotspot-popup")) setPresentationState(element, "hotspot-popup")
+      })
+      presentationStateElements(document, "hotspot-placeholder").forEach(element => {
+        if(!placeholders.has(element)) clearPresentationState(element, "hotspot-placeholder")
+      })
+      placeholders.forEach(element => {
+        if(!hasPresentationState(element, "hotspot-placeholder")) setPresentationState(element, "hotspot-placeholder")
+      })
     })
 
     const anchor = $.selectedElement ?? ($.anchor instanceof Element ? $.anchor : $.anchor?.parentElement)

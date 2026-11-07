@@ -1,3 +1,4 @@
+import {registerFrameArtifacts} from "./editor-artifacts"
 import { DOMEditor } from "./domeditor"
 import {openFrameLinksInNewTabs} from "./frame-links"
 import {publishEditorDocument} from "./editor-document-sync"
@@ -191,6 +192,7 @@ window.addEventListener("message", initialize)
 const bridge = document.querySelector<HTMLMetaElement>('meta[name="webwriter-editor-bridge"]')
 const bridgeNonce = bridge?.getAttribute("data-nonce")
 const hostOrigin = bridge?.getAttribute("data-host-origin")
+if(bridgeNonce) registerFrameArtifacts(document, bridgeNonce)
 if(window.parent !== window && bridgeNonce && hostOrigin) {
   window.parent.postMessage({type: "webwriter-editor-frame-ready", bridgeNonce}, hostOrigin)
 }

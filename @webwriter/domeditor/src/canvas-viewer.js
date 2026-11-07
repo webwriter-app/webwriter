@@ -1,3 +1,4 @@
+import {clearPresentationState, hasPresentationState, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
 /** Shared DOM canvas camera. Exports embed this source and supply SnapDOM
  * locally, without an editor dependency or a network request. */
 export const canvasGridSize = 20
@@ -693,8 +694,9 @@ export class CanvasViewer {
     Object.assign(slot.style, {display: "block", position: "relative", width: "1280px", height: "720px", transformOrigin: "0 0"})
     this.stylesheet = new CSSStyleSheet()
     this.stylesheet.replaceSync(canvasViewportStyles)
+    this.untrackStyles = trackPresentationStyles(document, this.stylesheet)
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, this.stylesheet]
-    document.documentElement.classList.add("◆canvas-active")
+    setPresentationState(document.documentElement, "canvas-active")
   }
 
   get active() { return this.slot.isConnected && document.body === this.body }
@@ -705,19 +707,15 @@ export class CanvasViewer {
       (el instanceof HTMLElement || el instanceof SVGSVGElement) && !el.matches("style, script, link, meta, template") && !isCanvasStartingView(el))
   }
 
-  removeMarker(element, marker) {
-    element.classList.remove(marker)
-    if(!element.classList.length) element.removeAttribute("class")
-  }
-
   destroy() {
     this.minimap?.destroy()
     this.stopPan()
     this.stopWheelPan()
     document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.stylesheet)
+    this.untrackStyles()
     if(this.slotStyle === null) this.slot.removeAttribute("style")
     else this.slot.setAttribute("style", this.slotStyle)
-    this.removeMarker(document.documentElement, "◆canvas-active")
+    clearPresentationState(document.documentElement, "canvas-active")
     if(this.appliedZoom !== 1) document.dispatchEvent(new Event("webwriter-canvas-zoom"))
   }
 
@@ -725,7 +723,7 @@ export class CanvasViewer {
     event.preventDefault()
     event.stopImmediatePropagation()
     this.panning = {id: event.pointerId, start: {x: event.clientX, y: event.clientY}, camera: {...this.camera}}
-    document.body.classList.add("◆canvas-panning")
+    setPresentationState(document.body, "canvas-panning")
     this.updatePanSurface()
     try { this.slot.setPointerCapture(event.pointerId) } catch {}
   }
@@ -749,8 +747,13 @@ export class CanvasViewer {
 
   updatePanSurface() {
     if(!this.panSurface) return
-    const hidden = !this.active || !this.panning && this.wheelPanTimer === null && !this.body.classList.contains("◆canvas-hand")
+    const hand = this.active && hasPresentationState(this.body, "canvas-hand")
+    const hidden = !this.active || !this.panning && this.wheelPanTimer === null && !hand
     if(this.panSurface.hidden !== hidden) this.panSurface.hidden = hidden
+    const surfaceParts = "canvas-pan-surface" + (hand ? " canvas-pan-surface-hand" : "") + (this.panning ? " canvas-pan-surface-dragging" : "")
+    const controlParts = hand ? "canvas-controls canvas-controls-hand" : "canvas-controls"
+    if(this.panSurface.getAttribute("part") !== surfaceParts) this.panSurface.setAttribute("part", surfaceParts)
+    if(this.controls.getAttribute("part") !== controlParts) this.controls.setAttribute("part", controlParts)
   }
 
   continuesWheelPan(event) {
@@ -913,17 +916,18 @@ export class CanvasViewer {
     const pan = this.panning
     this.panning = null
     try { if(pan && this.slot?.hasPointerCapture(pan.id)) this.slot.releasePointerCapture(pan.id) } catch {}
-    this.removeMarker(this.body, "◆canvas-panning")
+    clearPresentationState(this.body, "canvas-panning")
     if(this.minimap?.queued) this.minimap.schedule()
     this.updatePanSurface()
   }
 }
 
 export const canvasControlsStyles = `
-      :host(.ww-canvas) > [part=canvas-pan-surface]:not([hidden]) { position: fixed; inset: 0; z-index: 999; pointer-events: auto; }
+      [part~=canvas-pan-surface]:not([hidden]) { position: fixed; inset: 0; z-index: 999; pointer-events: auto; }
       /* Place the Hand surface above the editor's media shields and under its own toolbar. */
-      :host(.◆canvas-hand) > [part=canvas-pan-surface]:not([hidden]) { z-index: 2147483643; touch-action: none; }
-      :host(.◆canvas-hand) > .◆canvas-controls { z-index: 2147483643; }
+      [part~=canvas-pan-surface-hand]:not([hidden]) { z-index: 2147483643; touch-action: none; cursor: grab; }
+      [part~=canvas-pan-surface-dragging]:not([hidden]) { cursor: grabbing; }
+      [part~=canvas-controls-hand].◆canvas-controls { z-index: 2147483643; }
       .◆canvas-controls, .◆canvas-controls * { user-select: none; -webkit-user-select: none; }
       .◆canvas-controls { position: fixed; top: 8px; right: 8px; max-width: calc(100vw - 16px); box-sizing: border-box; flex-wrap: wrap; z-index: 1000; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; color: #334155; box-shadow: 0 2px 10px #0001; font: 13px system-ui; }
       .◆canvas-controls[hidden] { display: none; }
@@ -990,7 +994,7 @@ export const canvasControlsStyles = `
       [part=canvas-minimap-starting-view] > [data-corner=se] { bottom: -4px; right: -4px; cursor: nwse-resize; }
       [part=canvas-minimap-measurements] { position: fixed; left: -100000px; top: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 
-@media print { .◆canvas-controls, [part=canvas-pan-surface], [part=canvas-minimap-measurements] { display: none; } }
+@media print { .◆canvas-controls, [part~=canvas-pan-surface], [part=canvas-minimap-measurements] { display: none; } }
 `
 
 const canvasViewportStyles = `
@@ -1003,13 +1007,13 @@ body.ww-canvas > div.ww-canvas-starting-view:not([is]) { visibility: hidden; poi
 
 @media screen {
 /* The viewport is finite; the appendix slot supplies an unbounded camera. */
-html.◆canvas-active:has(> body.ww-canvas) {
+html:state(ww-canvas-active):has(> body.ww-canvas) {
   overflow: clip;
   background: white;
   cursor: default;
 }
 
-html.◆canvas-active body {
+html:state(ww-canvas-active) body {
   margin: 0 !important;
   padding: 0 !important;
   width: 100vw !important;
@@ -1024,15 +1028,15 @@ html.◆canvas-active body {
 
 /* The camera slot inherits the background cursor; authored items retain
  * native text/link cursors and any cursor supplied by their own styles. */
-:where(html.◆canvas-active body > *) {
+:where(html:state(ww-canvas-active) body > *) {
   cursor: auto;
 }
 
-body.◆canvas-hand, body.◆canvas-hand * {
+body:state(ww-canvas-hand), body:state(ww-canvas-hand) * {
   cursor: grab !important;
 }
 
-body.◆canvas-panning, body.◆canvas-panning * {
+body:state(ww-canvas-panning), body:state(ww-canvas-panning) * {
   cursor: grabbing !important;
   user-select: none !important;
 }
@@ -1045,7 +1049,7 @@ export function mountCanvasReader(loadSnapdom) {
   const body = document.body
   const template = body?.children.length === 1 ? body.firstElementChild : null
   if(!body?.classList.contains("ww-canvas") || body.classList.contains("ww-slides")
-    || document.designMode === "on" || document.documentElement.classList.contains("◆canvas-active")
+    || document.designMode === "on" || hasPresentationState(document.documentElement, "canvas-active")
     || template && (template.localName.includes("-") || template.hasAttribute("is"))
       && template.getAttribute("role")?.toLowerCase().split(/\s+/).includes("document")) return null
   const appendix = body.shadowRoot ?? body.attachShadow({mode: "open"})
@@ -1065,11 +1069,12 @@ export function mountCanvasReader(loadSnapdom) {
   controls.setAttribute("part", "canvas-controls")
   controls.setAttribute("role", "toolbar")
   controls.setAttribute("aria-label", "Document canvas")
-  const style = document.createElement("style")
-  style.textContent = canvasControlsStyles + `
+  const style = new CSSStyleSheet()
+  style.replaceSync(canvasControlsStyles + `
     @media print { [part=canvas-background] { display: none; } }
-  `
-  appendix.append(background, panSurface, controls, style)
+  `)
+  appendix.adoptedStyleSheets = [...appendix.adoptedStyleSheets, style]
+  appendix.append(background, panSurface, controls)
   const viewer = new CanvasViewer(slot, background, controls, panSurface, undefined, loadSnapdom)
   let hand = false
   const button = (name, label, title = label) => {
@@ -1091,8 +1096,8 @@ export function mountCanvasReader(loadSnapdom) {
   const setHand = active => {
     hand = active
     handButton.setAttribute("aria-pressed", String(hand))
-    if(hand) body.classList.add("◆canvas-hand")
-    else { viewer.removeMarker(body, "◆canvas-hand"); release() }
+    if(hand) setPresentationState(body, "canvas-hand")
+    else { clearPresentationState(body, "canvas-hand"); release() }
     viewer.stopWheelPan()
   }
   const onContent = event => event.composedPath().some(target => target instanceof Element && target !== body && body.contains(target))
@@ -1154,8 +1159,9 @@ export function mountCanvasReader(loadSnapdom) {
     window.removeEventListener("blur", cancelPanning)
     window.removeEventListener("hashchange", revealHash)
     viewer.destroy()
-    viewer.removeMarker(body, "◆canvas-hand")
-    background.remove(); panSurface.remove(); controls.remove(); style.remove()
+    clearPresentationState(body, "canvas-hand")
+    background.remove(); panSurface.remove(); controls.remove()
+    appendix.adoptedStyleSheets = appendix.adoptedStyleSheets.filter(sheet => sheet !== style)
   }
   const observer = new MutationObserver(() => {
     if(document.body !== body || !body.classList.contains("ww-canvas") || body.classList.contains("ww-slides")

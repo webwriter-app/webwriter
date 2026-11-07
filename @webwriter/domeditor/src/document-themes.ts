@@ -87,7 +87,7 @@ export function ensureDefaultDocumentTheme(root: Document) {
 }
 
 /** All bundled themes share a low-priority layer in editing and exports. */
-export const editingDocumentThemeSource = (theme: DocumentTheme) => theme.source
+export const editingDocumentThemeSource = (theme: DocumentTheme) => theme.source.replaceAll(".◆hotspot-popup", ":state(ww-hotspot-popup)")
 
 /** Default sizing and inherited text colors for installed widgets. Tag names
  * come from the widget schema so arbitrary custom elements remain supported. */

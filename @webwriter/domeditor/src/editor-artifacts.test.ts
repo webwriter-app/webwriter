@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {isAuthoredContentEditableMutation, isAuthoredMutation, widgetLookupForTags} from "./editor-artifacts"
+import {isAuthoredContentEditableMutation, isAuthoredMutation, markTemporaryDetailsState, widgetLookupForTags} from "./editor-artifacts"
 
 const isWidget = widgetLookupForTags(["demo-widget"])
 
@@ -85,6 +85,16 @@ describe("isAuthoredMutation", () => {
     const authored = await recordMutation(details, () => details.setAttribute("open", ""),
       {attributes: true, attributeOldValue: true})
     expect(isAuthoredMutation(authored)).toBe(true)
+  })
+
+  it("keeps temporary Details provenance outside the authored DOM", async () => {
+    const details = document.createElement("details")
+    details.setAttribute("open", "")
+    markTemporaryDetailsState(details, false)
+    const temporary = await recordMutation(details, () => details.removeAttribute("open"),
+      {attributes: true, attributeOldValue: true})
+    expect(details.className).toBe("")
+    expect(isAuthoredMutation(temporary)).toBe(false)
   })
 
   it("detects text, comments, and authored child changes while ignoring editor UI", async () => {

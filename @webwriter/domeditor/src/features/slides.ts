@@ -1,3 +1,4 @@
+import {clearPresentationState, setPresentationState} from "../presentation-state.js"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {canvasControlsStyles, groupCanvasZoomPresets, updateCanvasZoomControls, type CanvasNavigation} from "../canvas-viewer.js"
 import {$, clearInlinePlacement, createAnchorPositioner, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
@@ -478,12 +479,12 @@ export class SlidesFeature extends EditorFeature {
     if(this.zoomControls) this.zoomControls.hidden = !this.active
     const nav = this.active ? this.navigation() : null
     if(nav !== this.markedNavigation) {
-      if(this.markedNavigation) removeEditorMarker(this.markedNavigation, "◆slide-navigation-editing")
+      if(this.markedNavigation) clearPresentationState(this.markedNavigation, "slide-navigation-editing")
       this.navigationVisibility?.disconnect(); this.navigationVisibility = null
       this.navigationResize?.disconnect(); this.navigationResize = null
       this.markedNavigation = nav
       if(nav) {
-        nav.classList.add("◆slide-navigation-editing")
+        setPresentationState(nav, "slide-navigation-editing")
         if(typeof ResizeObserver !== "undefined") { this.navigationResize = new ResizeObserver(this.schedule); this.navigationResize.observe(nav) }
         if(typeof IntersectionObserver !== "undefined") this.navigationVisibility = new IntersectionObserver(entries => {
           for(const entry of entries) {
@@ -502,9 +503,9 @@ export class SlidesFeature extends EditorFeature {
     }) : []
     const activeLink = targets.find(target => target.slide === selected)?.link ?? null
     if(this.activeLink !== activeLink) {
-      if(this.activeLink) removeEditorMarker(this.activeLink, "◆slide-current")
+      if(this.activeLink) clearPresentationState(this.activeLink, "slide-current")
       this.activeLink = activeLink
-      activeLink?.classList.add("◆slide-current")
+      setPresentationState(activeLink, "slide-current")
     }
     const canInsert = this.editor.allows("insert", this.viewport() ?? document.body)
     const signature = JSON.stringify([this.active, this.editor.isEditingLocked, slides.length, canInsert,
@@ -632,8 +633,8 @@ export class SlidesFeature extends EditorFeature {
     this.removeZoomStyle?.(); this.removeZoomStyle = null
     this.zoomControls?.remove(); this.zoomControls = null
     this.viewing = false; this.viewZoom = 1
-    if(this.markedNavigation) removeEditorMarker(this.markedNavigation, "◆slide-navigation-editing")
-    if(this.activeLink) removeEditorMarker(this.activeLink, "◆slide-current")
+    if(this.markedNavigation) clearPresentationState(this.markedNavigation, "slide-navigation-editing")
+    if(this.activeLink) clearPresentationState(this.activeLink, "slide-current")
     this.activeLink = null
     this.markedNavigation = null
     if(this.frame !== null) cancelAnimationFrame(this.frame)

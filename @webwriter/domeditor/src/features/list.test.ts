@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {hasPresentationState} from "../presentation-state.js"
 import {afterAll, beforeAll, beforeEach, describe, expect, it, vi} from "vitest"
 import "happy-dom"
 import * as Y from "yjs"
@@ -168,7 +169,7 @@ describe("semantic list editing", () => {
     const marker = editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")!
     expect(marker.style.left).toBe("")
     expect(marker.style.top).toBe("")
-    expect(list.classList.contains("◆virtual-list-selected")).toBe(true)
+    expect(hasPresentationState(list, "virtual-list-selected")).toBe(true)
 
     window.dispatchEvent(new Event("blur"))
 
@@ -217,7 +218,7 @@ describe("semantic list editing", () => {
     window.dispatchEvent(new Event("blur"))
 
     expect(marker.getAttribute("part")).toContain("virtual-list-item-hidden")
-    expect(document.querySelector("ul")?.classList.contains("◆virtual-list-selected")).toBe(false)
+    expect(hasPresentationState(document.querySelector("ul"), "virtual-list-selected")).toBe(false)
   })
 
   it("uses the insertion state when an empty paragraph is toggled into a list", () => {
@@ -325,7 +326,7 @@ describe("semantic list editing", () => {
     expect($.anchor).toBe(empty)
     expect(empty.matches(":empty")).toBe(true)
     expect(marker.getAttribute("part")).toContain("virtual-list-item-hidden")
-    expect(document.body.classList.contains("◆gap-caret-visible")).toBe(false)
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
     expect(editor.features.selection.selectionCaret?.getAttribute("part") ?? "selection-caret-hidden")
       .toContain("selection-caret-hidden")
   })
@@ -338,12 +339,12 @@ describe("semantic list editing", () => {
     $.move(item, 0)
     editor.features.list.refreshSelectionPresentation()
     const marker = editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")!
-    expect(item.classList.contains("◆list-empty-caret")).toBe(true)
+    expect(hasPresentationState(item, "list-empty-caret")).toBe(true)
     expect(marker.getAttribute("part")).toContain("virtual-list-item-caret-only")
     expect(editor.toHTML(true)).not.toContain("◆")
     $.move(document.querySelector("p")!.firstChild!, 0)
     editor.features.list.refreshSelectionPresentation()
-    expect(item.classList.contains("◆list-empty-caret")).toBe(false)
+    expect(hasPresentationState(item, "list-empty-caret")).toBe(false)
     expect(marker.getAttribute("part")).toContain("virtual-list-item-hidden")
   })
 
@@ -405,7 +406,7 @@ describe("semantic list editing", () => {
 
       expect(editor.appendix.querySelector(".◆virtual-list-item")?.getAttribute("part"))
         .toContain("virtual-list-item-hidden")
-      expect(document.body.classList.contains("◆gap-caret-visible")).toBe(true)
+      expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(true)
       expect(editor.features.selection.selectionCaret?.getAttribute("part"))
         .not.toContain("selection-caret-hidden")
     }
@@ -1426,7 +1427,7 @@ describe("semantic list editing", () => {
     expect(marker.querySelector(".◆virtual-list-placeholder")?.textContent).toBe("Term")
     expect(marker.querySelector(".◆virtual-list-placeholder-secondary")?.textContent).toBe("Description")
     expect(marker.querySelector(".◆virtual-list-caret")).not.toBeNull()
-    expect(document.body.classList.contains("◆gap-caret-visible")).toBe(false)
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
   })
 
   it("keeps a real empty description placeholder after a term is entered", () => {

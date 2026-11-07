@@ -1,3 +1,4 @@
+import {hasPresentationState, resolvePresentationSelector} from "../src/presentation-state.js"
 import {createAnchorPositioner} from "../src/anchor-positioning.js"
 
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -75,7 +76,7 @@ export async function checkElementAnchors(inspect = false) {
 
     const img = doc.createElement("img"); img.alt = "atomic"; img.width = 48; img.height = 32; target.append(img)
     editor.features.selection.selectElement(img)
-    assert(img.classList.contains("◆element-selected"), "native editor selection did not mark the atomic image")
+    assert(hasPresentationState(img, "element-selected"), "native editor selection did not mark the atomic image")
     await layout(view)
     const assertOverlayMatchesImage = (label: string) => {
       const selectionOverlay = appendix.querySelector<HTMLElement>('[part~="atomic-selection-overlay"]')
@@ -118,7 +119,7 @@ export async function checkElementAnchors(inspect = false) {
     nav.style.width = "220px"
     const slideActions = appendix.querySelector<HTMLElement>('[part="slide-navigation-actions"]')!
     const addSlideButton = slideActions.querySelector<HTMLButtonElement>('[name="add"]')!
-    const selectedSlideLink = nav.querySelector<HTMLAnchorElement>("a.◆slide-current")!
+    const selectedSlideLink = nav.querySelector<HTMLAnchorElement>(resolvePresentationSelector((nav.ownerDocument ?? document), "a:state(ww-slide-current)"))!
     const removeSlideButton = slideActions.querySelector<HTMLButtonElement>('[name="remove"].shown')!
     const assertSlideControlsAnchored = (label: string) => {
       const navRect = nav.getBoundingClientRect(), addRect = addSlideButton.getBoundingClientRect()

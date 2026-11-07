@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {hasPresentationState, presentationStateElements, setPresentationState} from "../presentation-state.js"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
@@ -7,6 +8,7 @@ import {$, pathFromNode} from "../utility"
 import {boardStyles, documentLayoutMode, type DocumentLayoutMode} from "../document-layout"
 import {selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
 import {getElementPresentation} from "../element-names"
+import {hasAnchorTarget} from "../anchor-positioning.test-utils"
 
 let editor: DOMEditor
 const head = document.head.cloneNode(true)
@@ -275,13 +277,13 @@ describe("Board layout", () => {
     group.dispatchEvent(dragEvent("drop", data, 350, 10))
     expect(one.parentElement).toBe(group); expect(columns()).toEqual([one, two])
     expect(Array.from(card.childNodes)).toEqual(children)
-    expect(document.querySelector(".◆board-dragging")).toBeNull()
+    expect((presentationStateElements(document, "board-dragging")[0] ?? null)).toBeNull()
     expect(board().setGrouping("none", two)).toBe(true)
     const next = new DataTransfer()
     grip("Drag column 1").dispatchEvent(dragEvent("dragstart", next))
     document.body.dispatchEvent(dragEvent("drop", next, 1100, 10))
     expect(one.parentElement).toBe(document.body); expect(group.isConnected).toBe(false)
-    expect(document.querySelector(".◆board-dragging")).toBeNull()
+    expect((presentationStateElements(document, "board-dragging")[0] ?? null)).toBeNull()
   })
 
   it("recognizes remotely replaced groups and rejects stale columns and drag sources", async () => {
@@ -305,7 +307,7 @@ describe("Board layout", () => {
       expect(board().groups()[0].querySelector("h2")!.textContent).toBe("Remote group")
       expect(board().setGrouping("new", original)).toBe(false)
       document.body.dispatchEvent(dragEvent("drop", data, 100, 100))
-      expect(document.querySelector(".◆board-dragging")).toBeNull()
+      expect((presentationStateElements(document, "board-dragging")[0] ?? null)).toBeNull()
       expect(board().groupingState(columns()[0])?.grouped).toBe(true)
       $.move(columns()[0].querySelector("h2")!); editor.features.selection.processSelection()
       expect(board().addCard()).toBe(true)
@@ -382,8 +384,8 @@ describe("Board layout", () => {
     const heading = columns()[0].querySelector("h2")!
     heading.innerHTML = placeholder
     $.move(heading); editor.features.selection.processSelection()
-    heading.classList.add("◆", "◆empty-selected")
-    expect(heading.className).toContain("◆")
+    setPresentationState(heading, "empty-selected")
+    expect(hasPresentationState(heading, "empty-selected")).toBe(true)
     expect(convert("slides")).toBe(true)
     expect(document.querySelector("h2")).toBeNull()
     expect(document.querySelector(".ww-slide")).not.toBeNull()
@@ -707,8 +709,8 @@ describe("Board layout", () => {
       destination.dispatchEvent(dragEvent("drop", data, invalid === "outside" ? -200 : 400, 100))
       editor.unlockEditing(owner); await settle()
       expect(board().cards(destination)).toHaveLength(0)
-      expect(card.classList.contains("◆board-dragging")).toBe(false)
-      expect(source.classList.contains("◆board-dragging")).toBe(false)
+      expect(hasPresentationState(card, "board-dragging")).toBe(false)
+      expect(hasPresentationState(source, "board-dragging")).toBe(false)
     }
     const data = new DataTransfer(); data.setData("application/x-webwriter-board", "foreign")
     destination.dispatchEvent(dragEvent("drop", data, 400, 100))
@@ -718,14 +720,14 @@ describe("Board layout", () => {
   it("excludes drag artifacts from shared/exported HTML and cleans up cancellation and destruction", async () => {
     convert("board"); await settle(); geometry()
     const source = cards()[0], data = new DataTransfer(), handle = grip("Drag card 1 in column 1")
-    handle.dispatchEvent(dragEvent("dragstart", data)); expect(source.classList.contains("◆board-dragging")).toBe(true)
+    handle.dispatchEvent(dragEvent("dragstart", data)); expect(hasPresentationState(source, "board-dragging")).toBe(true)
     editor.doc.syncFromDOM()
     expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆board-dragging")
     const saved = await editor.serializeHTML(true)
     expect(saved).not.toContain("board-drop-indicator"); expect(saved).not.toContain("◆board-dragging")
-    handle.dispatchEvent(dragEvent("dragend", data)); expect(source.classList.contains("◆board-dragging")).toBe(false)
+    handle.dispatchEvent(dragEvent("dragend", data)); expect(hasPresentationState(source, "board-dragging")).toBe(false)
     handle.dispatchEvent(dragEvent("dragstart", data)); editor.features.board.disable()
-    expect(source.classList.contains("◆board-dragging")).toBe(false)
+    expect(hasPresentationState(source, "board-dragging")).toBe(false)
     expect(editor.appendix.querySelector("[part=board-drop-indicator], [part=board-actions]")).toBeNull()
   })
 
@@ -737,7 +739,7 @@ describe("Board layout", () => {
     expect(handle.isConnected).toBe(true)
     const data = new DataTransfer(); handle.dispatchEvent(dragEvent("dragstart", data))
     handle.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true, composed: true})); await settle()
-    expect(handle.isConnected).toBe(true); expect(source.classList.contains("◆board-dragging")).toBe(true)
+    expect(handle.isConnected).toBe(true); expect(hasPresentationState(source, "board-dragging")).toBe(true)
     columns()[1].dispatchEvent(dragEvent("drop", data, 400, 100)); await settle()
     expect(board().cards(columns()[1])).toEqual([source])
   })
@@ -748,10 +750,10 @@ describe("Board layout", () => {
     vi.spyOn(data, "setDragImage").mockImplementation(() => { throw new Error("Unavailable") })
     const start = dragEvent("dragstart", data)
     grip("Drag card 1 in column 1").dispatchEvent(start)
-    expect(start.defaultPrevented).toBe(true); expect(source.classList.contains("◆board-dragging")).toBe(false)
+    expect(start.defaultPrevented).toBe(true); expect(hasPresentationState(source, "board-dragging")).toBe(false)
     grip("Drag card 1 in column 1").dispatchEvent(dragEvent("dragstart", new DataTransfer()))
     convert("document")
-    expect(source.classList.contains("◆board-dragging")).toBe(false)
+    expect(hasPresentationState(source, "board-dragging")).toBe(false)
     expect(document.body.innerHTML).not.toContain("◆board-dragging")
     expect(editor.appendix.querySelector<HTMLElement>("[part=board-drop-indicator]")!.hidden).toBe(true)
   })
@@ -893,7 +895,7 @@ describe("Board layout", () => {
     const geometry = vi.spyOn(editor.features.transformation, "boxGeometry")
     board().refresh()
     const overlay = board().transformOverlay(card)!
-    expect(geometry).toHaveBeenCalledWith(card)
+    expect(geometry.mock.calls[0][0]).toBe(card)
     expect(overlay.matches('[part~="transform-overlay-board-anchored"]')).toBe(false)
     expect(overlay.style.transform).toContain("matrix(")
     column.style.removeProperty("rotate"); geometry.mockClear()
@@ -918,10 +920,9 @@ describe("Board layout", () => {
     const clone = column.cloneNode(true) as HTMLElement
     column.replaceWith(clone)
     board().refresh()
-    const marker = (element: Element) => Array.from(element.classList).filter(name => name.startsWith("◆anchor-target-"))
-    expect(marker(column)).toEqual([]); expect(marker(card)).toEqual([])
-    expect(marker(clone)).toHaveLength(1)
-    expect(marker(clone.querySelector("article")!)).toEqual([])
+    expect(hasAnchorTarget(column)).toBe(false); expect(hasAnchorTarget(card)).toBe(false)
+    expect(hasAnchorTarget(clone)).toBe(true)
+    expect(hasAnchorTarget(clone.querySelector("article")!)).toBe(false)
     expect(editor.toHTML(true)).not.toContain("◆anchor-target-")
     editor.doc.syncFromDOM()
     expect(editor.doc.body.toString()).not.toContain("◆anchor-target-")
@@ -935,6 +936,7 @@ describe("Board layout", () => {
     document.body.append(clone)
     board().disable()
     expect(document.body.querySelector('[class*="◆anchor-target-"]')).toBeNull()
+    expect(hasAnchorTarget(column)).toBe(false)
     expect(column.className).toBe("ww-board-column")
   })
 
@@ -949,7 +951,7 @@ describe("Board layout", () => {
       expect(getComputedStyle(button).userSelect).toBe("none")
     }
     $.move(paragraph); editor.features.selection.processSelection()
-    expect(column.classList.contains("◆element-selected")).toBe(false)
+    expect(hasPresentationState(column, "element-selected")).toBe(false)
     expect(getComputedStyle(paragraph).userSelect).not.toBe("none")
   })
 
@@ -1041,7 +1043,7 @@ describe("Board layout", () => {
     const handle = overlay.querySelector<HTMLElement>(selector)!
     handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: 35}))
     expect($.selectedElement).toBe(target)
-    expect(target.classList.contains("◆element-selected")).toBe(true)
+    expect(hasPresentationState(target, "element-selected")).toBe(true)
     document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true, composed: true, pointerId: 35}))
     expect($.selectedElement).toBe(target)
     expect(editor.toHTML(true)).not.toContain("◆")
@@ -1099,14 +1101,13 @@ describe("Board layout", () => {
     const [first, second] = cards()
     $.move(first.querySelector("p")!); board().refresh()
     const overlay = board().transformOverlay(first)!
-    const marker = Array.from(first.classList).find(name => name.startsWith("◆anchor-target-"))!
-    expect(marker).toBeDefined()
+    expect(hasAnchorTarget(first)).toBe(true)
 
     $.move(second.querySelector("p")!); board().refresh()
     expect(overlay.isConnected).toBe(false)
-    expect(first.classList.contains(marker)).toBe(false)
+    expect(hasAnchorTarget(first)).toBe(false)
     expect(board().transformOverlay(second)).not.toBeNull()
-    expect(Array.from(second.classList).some(name => name.startsWith("◆anchor-target-"))).toBe(true)
+    expect(hasAnchorTarget(second)).toBe(true)
   })
 
   it("restores authored dimensions when a board resize gesture is cancelled", async () => {
@@ -1161,6 +1162,7 @@ describe("Board layout", () => {
     convert("board"); await settle()
     const card = cards()[0]
     card.innerHTML = '<!--keep--><figure title="Authored"><picture><source srcset="image.png"><img src="image.png" alt="Keep" width="800" height="600" style="width: 100%; height: auto"></picture><figcaption>Caption</figcaption></figure><custom-card answer="42"></custom-card>'
+    editor.doc.flushDOMChanges()
     const content = card.innerHTML, children = Array.from(card.childNodes)
     geometry(); editor.features.selection.selectElement(card); board().refresh()
     await settle(); editor.doc.syncFromDOM(); editor.doc.stopCapturing()

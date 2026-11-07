@@ -1,3 +1,4 @@
+import {clearPresentationState, setPresentationState} from "../presentation-state.js"
 import type {ElementSelectionType, WidgetConversionState} from "../editor-bridge"
 import {readWidgetGrouping, writeWidgetGrouping} from "../widget-grouping-dom"
 import type {WidgetGroupingRules, WidgetGroupingContext} from "../widget-grouping.js"
@@ -92,7 +93,7 @@ export class WidgetFeature extends EditorFeature {
     if(this.#legacyOptions?.widget === widget && this.#legacyOptions.panel === panel) return
     this.#closeLegacyOptions()
     this.#legacyOptions = {widget, panel, popover: panel.getAttribute("popover")}
-    widget.classList.add("◆", "◆widget-options")
+    setPresentationState(widget, "widget-options")
     panel.setAttribute("popover", "manual")
     try { panel.showPopover?.() }
     catch { this.#closeLegacyOptions() }
@@ -106,7 +107,7 @@ export class WidgetFeature extends EditorFeature {
       catch { /* A widget may replace its options part while it is open. */ }
       if(previous.popover === null) previous.panel.removeAttribute("popover")
       else previous.panel.setAttribute("popover", previous.popover)
-      removeEditorMarker(previous.widget, "◆widget-options")
+      clearPresentationState(previous.widget, "widget-options")
     }
   }
 

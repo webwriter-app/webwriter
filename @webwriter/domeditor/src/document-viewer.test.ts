@@ -5,6 +5,7 @@ import {createAnchorPositioner} from "./anchor-positioning.js"
 import {clearEditorMarkerClasses} from "./editor-artifacts"
 import {creativeCommonsLicenses} from "./document-head"
 import {formatReferences} from "./reference-format"
+import {hasAnchorControl, hasAnchorTarget} from "./anchor-positioning.test-utils"
 
 let reader: ReturnType<typeof mountDocumentReader>
 const settle = async () => { await new Promise<void>(resolve => setTimeout(resolve, 0)) }
@@ -305,8 +306,8 @@ describe("document reader controls", () => {
     expect(permalink.style.top).toBe("")
     expect(fullscreen.style.left).toBe("")
     expect(fullscreen.style.top).toBe("")
-    expect(figure.querySelector("figcaption")!.className).toContain("◆anchor-target-")
-    expect(image.className).toContain("◆anchor-target-")
+    expect(hasAnchorTarget(figure.querySelector("figcaption")!)).toBe(true)
+    expect(hasAnchorTarget(image)).toBe(true)
   })
 
   it("refreshes measured controls while a transformed ancestor animates", async () => {
@@ -347,8 +348,8 @@ describe("document reader controls", () => {
     expect(figureLink.style.top).toBe("")
     expect(fullscreen.style.left).toBe("")
     expect(fullscreen.style.top).toBe("")
-    expect(document.querySelector("h1")!.className).toContain("◆anchor-target-")
-    expect(figure.querySelector("img")!.className).toContain("◆anchor-target-")
+    expect(hasAnchorTarget(document.querySelector("h1")!)).toBe(true)
+    expect(hasAnchorTarget(figure.querySelector("img")!)).toBe(true)
     const serialized = document.body.cloneNode(true) as HTMLElement
     clearEditorMarkerClasses(serialized)
     expect(serialized.innerHTML).toBe(authored)
@@ -358,7 +359,7 @@ describe("document reader controls", () => {
     const feedback = document.body.shadowRoot!.querySelector<HTMLElement>(".◆document-reader-feedback")!
     expect(feedback.style.left).toBe("")
     expect(feedback.style.top).toBe("")
-    expect(feedback.className).toContain("◆anchor-control-")
+    expect(hasAnchorControl(feedback)).toBe(true)
 
     reader.destroy()
     expect(document.adoptedStyleSheets).toEqual(sheets)

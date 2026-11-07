@@ -5,14 +5,12 @@ import {
 } from "../dialog"
 import {$, atomicEditingContainer, authoredClassValue, getContainer, isAppendixInteraction, isAtomicEditingElement, isCaretAtBoundary, isElement, isWidgetShadowInteraction, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
 import {popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
-
-const editingMarker = "◆dialog-editing"
-const popupMarker = "◆popup-visible"
+import {clearPresentationState, setPresentationState} from "../presentation-state.js"
 const dialogCommands = new Set(["show-modal", "close", "request-close"])
 const editableAttributes = new Set(["id", "open", "closedby", "aria-label", "aria-labelledby", "title"])
 
 /** Declarative dialog authoring. Closed dialogs are exposed for editing with
- * a collaboration-filtered marker; native modal/close commands remain
+ * presentation-only state; native modal/close commands remain
  * authored but do not execute until the document is previewed. */
 export class DialogFeature extends EditorFeature {
   protected handlesFormControlInteractions = true
@@ -23,14 +21,14 @@ export class DialogFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
-    if(!this.editor.options.reader) document.body.classList.add("◆popup-editing")
+    if(!this.editor.options.reader) setPresentationState(document.body, "popup-editing")
     this.refresh()
   }
 
   disable() {
     if(!this.isEnabled) return
     this.clearEditingMarkers()
-    removeEditorMarker(document.body, "◆popup-editing")
+    clearPresentationState(document.body, "popup-editing")
     super.disable()
   }
 
@@ -49,7 +47,7 @@ export class DialogFeature extends EditorFeature {
       const parent = content.parentNode
       const index = parent ? Array.from(parent.childNodes).indexOf(content) : 0
       const moveSelection = touches(content)
-      removeEditorMarker(content, popupMarker)
+      clearPresentationState(content, "popup-visible")
       content.remove()
       if(moveSelection && parent?.isConnected) $.move(parent, index)
     }
@@ -171,7 +169,7 @@ export class DialogFeature extends EditorFeature {
       }
       event.preventDefault()
       event.stopImmediatePropagation()
-      popup.classList.add(popupMarker)
+      setPresentationState(popup, "popup-visible")
       const first = popup.firstElementChild
       const text = firstText(first ?? popup)
       this.popupReturn = {wrapper: new WeakRef(wrapper), offset}
@@ -212,11 +210,8 @@ export class DialogFeature extends EditorFeature {
     const active = this.activeDialog
     const previous = this.markedDialog?.deref()
     if(previous && previous !== active) this.removeEditingMarker(previous)
-    document.querySelectorAll<HTMLDialogElement>(`dialog.${editingMarker}`).forEach(dialog => {
-      if(dialog !== active) this.removeEditingMarker(dialog)
-    })
     if(active) {
-      active.classList.add("◆", editingMarker)
+      setPresentationState(active, "dialog-editing")
       this.markedDialog = new WeakRef(active)
     }
     else this.markedDialog = null
@@ -243,11 +238,8 @@ export class DialogFeature extends EditorFeature {
     }
     const previous = this.markedPopup?.deref()
     if(!popup || this.popupReturn && popupDisplayToggle(popup)?.closest(".ww-popup") !== this.popupReturn.wrapper.deref()) this.popupReturn = null
-    if(previous && previous !== popup) removeEditorMarker(previous, popupMarker)
-    document.querySelectorAll(`.${popupMarker}`).forEach(element => {
-      if(element !== popup) removeEditorMarker(element, popupMarker)
-    })
-    if(popup) popup.classList.add(popupMarker)
+    if(previous && previous !== popup) clearPresentationState(previous, "popup-visible")
+    if(popup) setPresentationState(popup, "popup-visible")
     this.markedPopup = popup ? new WeakRef(popup) : null
   }
 
@@ -322,18 +314,14 @@ export class DialogFeature extends EditorFeature {
   private clearEditingMarkers() {
     this.popupReturn = null
     const popup = this.markedPopup?.deref()
-    if(popup) removeEditorMarker(popup, popupMarker)
+    if(popup) clearPresentationState(popup, "popup-visible")
     this.markedPopup = null
-    document.querySelectorAll(`.${popupMarker}`).forEach(element => removeEditorMarker(element, popupMarker))
     const marked = this.markedDialog?.deref()
     if(marked) this.removeEditingMarker(marked)
     this.markedDialog = null
-    document.querySelectorAll<HTMLDialogElement>(`dialog.${editingMarker}`).forEach(dialog => {
-      this.removeEditingMarker(dialog)
-    })
   }
 
   private removeEditingMarker(dialog: HTMLDialogElement) {
-    removeEditorMarker(dialog, editingMarker)
+    clearPresentationState(dialog, "dialog-editing")
   }
 }

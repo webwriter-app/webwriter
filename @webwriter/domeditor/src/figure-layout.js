@@ -1,5 +1,4 @@
-/** Shape-aware caption flow, shared by editing and standalone documents.
- * Generated rules and temporary markers never become document content. */
+/** Shape-aware caption flow, shared by editing and standalone documents. */
 export function captionedFigureContent(figure) {
   if(!figure.matches("figure:not([is])")) return null
   const children = Array.from(figure.children)
@@ -13,13 +12,9 @@ export function createFigureLayout(doc) {
   const view = doc.defaultView, body = doc.body
   const sheet = new view.CSSStyleSheet()
   doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet]
-  const markers = new Map(), observed = new Set()
+  const observed = new Set()
   const rulesByFigure = new Map(), watchedByFigure = new Map(), dirty = new Set()
-  const unmark = (figure, marker) => {
-    figure.classList.remove(marker)
-    if(!figure.classList.length) figure.removeAttribute("class")
-  }
-  let sequence = 0, frame = 0, destroyed = false, allDirty = true
+  let frame = 0, destroyed = false, allDirty = true
   const angle = value => {
     const token = (value || "0").trim().split(/\s+/).at(-1)
     const number = parseFloat(token) || 0
@@ -31,10 +26,12 @@ export function createFigureLayout(doc) {
     if(frame) view.cancelAnimationFrame(frame)
     frame = 0
     const full = allDirty
-    const figures = full ? Array.from(body.querySelectorAll("figure:not([is])")) : [...dirty]
+    const figures = full ? Array.from(body.querySelectorAll("figure:not([is])"))
+      : [...dirty].filter(figure => rulesByFigure.has(figure) || figure.matches("figure:not([is])"))
     allDirty = false; dirty.clear()
-    // Documents without figures need no generated rules or stylesheet reset.
-    if(!markers.size && !body.querySelector("figure:not([is])")) return
+    // Ordinary canvas gestures flush a local placement edit. They have no
+    // figure layout work unless the affected element actually has a caption.
+    if(!figures.length && (!full || !rulesByFigure.size && !watchedByFigure.size)) return
     // Remove only the affected rules before reading natural layout. Other
     // figures retain their rules and do not need to be measured again.
     const positions = new Map()
@@ -52,9 +49,11 @@ export function createFigureLayout(doc) {
       }
       rulesByFigure.delete(figure); watchedByFigure.delete(figure)
     }
-    const rules = new Map(), active = new Set(), pendingMarkers = []
+    const rules = new Map()
     for(const figure of figures) {
       if(!body.contains(figure) || !figure.matches("figure:not([is])")) continue
+      const id = figure.id
+      if(!id || doc.getElementById(id) !== figure) continue
       let atomic = false
       for(let parent = figure.parentElement; parent && parent !== body; parent = parent.parentElement) {
         if(parent.localName.includes("-") || parent.hasAttribute("is")) { atomic = true; break }
@@ -95,10 +94,10 @@ export function createFigureLayout(doc) {
       const rightAligned = alignment === "right" || alignment === "end" && captionStyle.direction !== "rtl"
         || alignment === "start" && captionStyle.direction === "rtl"
       const side = rightAligned ? "left" : "right"
-      let marker = markers.get(figure)
-      if(!marker) { marker = `◆figure-flow-${++sequence}`; markers.set(figure, marker); pendingMarkers.push([figure, marker]) }
-      active.add(figure)
-      const selector = `.${marker}`
+      const escapedId = view.CSS.escape(id)
+      if(doc.querySelectorAll(`#${escapedId}`).length !== 1) continue
+      // Keep the same cascade weight as the previous class-based rule.
+      const selector = `[id="${escapedId}"]`
       const contour = points.map(point => ({x: point.x - left + inset, y: point.y - top}))
       // Fill slivers narrower than a few words. Otherwise themes that allow
       // emergency word wrapping can turn a caption into one-letter lines.
@@ -121,8 +120,6 @@ ${selector}::before { content: ""; float: ${side}; width: 100%; height: ${boxHei
 ${selector} > :not(figcaption) { position: absolute !important; float: none !important; margin: 0 !important; left: ${inset - left - tx + (parseFloat(parentStyle.paddingLeft) || 0)}px !important; top: ${-top - ty + (parseFloat(parentStyle.paddingTop) || 0)}px !important; right: auto !important; bottom: auto !important; width: ${style.width === "auto" ? `${width}px` : style.width} !important; height: ${style.height === "auto" ? `${height}px` : style.height} !important; }
 ${selector} > figcaption { display: block; margin: 0; min-height: ${boxHeight}px; box-sizing: border-box; padding-top: ${below ? boxHeight / 2 : 0}px; }`)
     }
-    for(const [figure, marker] of markers) if((full || figures.includes(figure)) && !active.has(figure)) { unmark(figure, marker); markers.delete(figure) }
-    for(const [figure, marker] of pendingMarkers) figure.classList.add(marker)
     for(const [figure, source] of rules) {
       const inserted = []
       let index = Math.min(positions.get(figure) ?? sheet.cssRules.length, sheet.cssRules.length)
@@ -171,19 +168,21 @@ ${selector} > figcaption { display: block; margin: 0; min-height: ${boxHeight}px
     else allDirty = true
     flush()
   }
-  const refreshAll = () => { allDirty = true; schedule() }
+  const refreshAll = () => {
+    if(!watchedByFigure.size && !body.querySelector("figure:not([is])")) return
+    allDirty = true
+    schedule()
+  }
   body.addEventListener("load", refreshAll, true)
   view.addEventListener("resize", refreshAll)
   refresh()
-  return {refresh, destroy() {
+  return {refresh, isActive(figure) { return rulesByFigure.has(figure) }, destroy() {
     destroyed = true
     observer.disconnect()
     resize?.disconnect()
     view.cancelAnimationFrame(frame)
     body.removeEventListener("load", refreshAll, true)
     view.removeEventListener("resize", refreshAll)
-    for(const [figure, marker] of markers) unmark(figure, marker)
-    markers.clear()
     rulesByFigure.clear(); watchedByFigure.clear(); dirty.clear()
     doc.adoptedStyleSheets = doc.adoptedStyleSheets.filter(current => current !== sheet)
   }}

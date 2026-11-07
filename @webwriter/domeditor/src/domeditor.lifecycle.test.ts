@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {setPresentationState} from "./presentation-state.js"
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "./domeditor"
 import * as Y from "yjs"
@@ -38,8 +39,8 @@ describe("DOMEditor lifecycle", () => {
       await settle()
       const paragraph = document.body.querySelector("p")!
       const check = vi.spyOn(editor.schema, "ensureStaticContent")
-      paragraph.classList.add("◆", "◆text-selected")
-      document.body.classList.add("◆", "◆node-selection-active")
+      setPresentationState(paragraph, "text-selected")
+      setPresentationState(document.body, "node-selection-active")
       await settle()
       expect(check).not.toHaveBeenCalled()
       paragraph.style.position = "absolute"

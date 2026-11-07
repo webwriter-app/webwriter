@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {hasPresentationState, presentationStateElements} from "../presentation-state.js"
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
@@ -106,15 +107,15 @@ describe("document state operation boundaries", () => {
         state.previewAIOperations({type: "previewAIOperations", editId: "review-location", summary: "Revise text", operations: [
           {type: "set_text", target: aiElementTarget(editor, "p"), text: "After"},
         ]})
-        const marker = Array.from(paragraph.classList).find(name => name.startsWith("◆ai-edit-"))!
-        expect(marker).toBeDefined()
+        const marker = "ai-edit-1"
+        expect(hasPresentationState(paragraph, marker)).toBe(true)
         const pulse = {animationName: "◆ai-preview-pulse", currentTime: 80, play: vi.fn()}
         Object.defineProperty(paragraph, "getAnimations", {configurable: true, value: () => [pulse]})
         vi.spyOn(paragraph, "offsetWidth", "get").mockImplementation(() => { throw new Error("layout read") })
         scroll.mockClear()
         expect(state.gotoAIEdit({type: "gotoAIEdit", editId: "review-location"})).toEqual({status: "located"})
         expect(scroll).toHaveBeenCalledExactlyOnceWith({block: "center", behavior})
-        expect(paragraph.classList.contains("◆ai-preview-pulse")).toBe(true)
+        expect(hasPresentationState(paragraph, "ai-preview-pulse")).toBe(true)
         expect(pulse.currentTime).toBe(0)
         expect(pulse.play).toHaveBeenCalledOnce()
         vi.advanceTimersByTime(600)
@@ -123,14 +124,14 @@ describe("document state operation boundaries", () => {
         expect(pulse.currentTime).toBe(0)
         expect(pulse.play).toHaveBeenCalledTimes(2)
         vi.advanceTimersByTime(600)
-        expect(paragraph.classList.contains("◆ai-preview-pulse")).toBe(true)
+        expect(hasPresentationState(paragraph, "ai-preview-pulse")).toBe(true)
         vi.advanceTimersByTime(600)
-        expect(paragraph.classList.contains("◆ai-preview-pulse")).toBe(false)
+        expect(hasPresentationState(paragraph, "ai-preview-pulse")).toBe(false)
         expect(state.acceptAIEdit({type: "acceptAIEdit", editId: "review-location"})).toMatchObject({status: "applied"})
         expect(document.querySelector("p")).toBe(paragraph)
         expect(document.querySelector("aside")).toBe(aside)
-        expect(paragraph.classList.contains(marker)).toBe(true)
-        expect(paragraph.classList.contains("◆ai-preview-change")).toBe(false)
+        expect(hasPresentationState(paragraph, marker)).toBe(true)
+        expect(hasPresentationState(paragraph, "ai-preview-change")).toBe(false)
         expect(editor.toHTML(true)).not.toContain("◆")
         expect(editor.isEditingLocked).toBe(false)
       })
@@ -155,7 +156,7 @@ describe("document state operation boundaries", () => {
       expect(editor.toHTML(true)).toBe('<state-removing-widget title="Before"></state-removing-widget><aside>Keep</aside>')
       expect(editor.isEditingLocked).toBe(false)
       expect(editor.appendix.querySelector(".◆ai-review-toolbar")).toBeNull()
-      expect(document.querySelector(".◆ai-preview-change")).toBeNull()
+      expect((presentationStateElements(document, "ai-preview-change")[0] ?? null)).toBeNull()
     })
   })
 
@@ -178,7 +179,7 @@ describe("document state operation boundaries", () => {
       state.discardHTMLSelectionEdit({type: "discardHTMLSelectionEdit"})
       expect(Array.from(document.body.childNodes)).toEqual(nodes)
       expect(editor.isEditingLocked).toBe(false)
-      expect(document.querySelector(".◆html-source-pending, .◆style-target-hovered")).toBeNull()
+      expect((presentationStateElements(document, "html-source-pending", "style-target-hovered")[0] ?? null)).toBeNull()
     })
   })
 
@@ -193,12 +194,12 @@ describe("document state operation boundaries", () => {
       expect(() => state.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit", path: [1]})).toThrow("pending HTML change")
       expect(editor.features.state.isHTMLSelectionEditPending).toBe(true)
       expect(editor.isEditingLocked).toBe(true)
-      expect(paragraph.classList.contains("◆html-source-pending")).toBe(true)
+      expect(hasPresentationState(paragraph, "html-source-pending")).toBe(true)
       expect(editor.toHTML(true)).toBe("<p>Keep</p><aside>Other</aside>")
 
       state.discardHTMLSelectionEdit({type: "discardHTMLSelectionEdit"})
       expect(editor.isEditingLocked).toBe(false)
-      expect(paragraph.classList.contains("◆html-source-pending")).toBe(false)
+      expect(hasPresentationState(paragraph, "html-source-pending")).toBe(false)
     })
   })
 
@@ -214,7 +215,7 @@ describe("document state operation boundaries", () => {
       const state = editor.features.state.actions
       expect(state.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit"})).toEqual({html: "<!--note-->"})
       state.setHTMLSelectionEditPending({type: "setHTMLSelectionEditPending", pending: true})
-      expect(document.body.classList.contains("◆html-source-pending")).toBe(true)
+      expect(hasPresentationState(document.body, "html-source-pending")).toBe(true)
       expect(editor.toHTML(true)).toBe("<p>Keep</p><!--note--><aside>Other</aside>")
       selection.setPosition(document.querySelector("aside")!.firstChild!, 2)
       state.discardHTMLSelectionEdit({type: "discardHTMLSelectionEdit"})
@@ -222,7 +223,7 @@ describe("document state operation boundaries", () => {
       expect(selection.getRangeAt(0).startOffset).toBe(1)
       expect(selection.getRangeAt(0).endOffset).toBe(2)
       expect(document.body.childNodes[1]).toBe(comment)
-      expect(document.body.classList.contains("◆html-source-pending")).toBe(false)
+      expect(hasPresentationState(document.body, "html-source-pending")).toBe(false)
     })
   })
 
@@ -236,11 +237,11 @@ describe("document state operation boundaries", () => {
       const state = editor.features.state.actions
       state.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit"})
       state.setHTMLSelectionEditPending({type: "setHTMLSelectionEditPending", pending: true})
-      expect(section.classList.contains("◆html-source-pending")).toBe(true)
-      expect(aside.classList.contains("◆html-source-pending")).toBe(true)
-      expect(outside.classList.contains("◆html-source-pending")).toBe(false)
+      expect(hasPresentationState(section, "html-source-pending")).toBe(true)
+      expect(hasPresentationState(aside, "html-source-pending")).toBe(true)
+      expect(hasPresentationState(outside, "html-source-pending")).toBe(false)
       state.discardHTMLSelectionEdit({type: "discardHTMLSelectionEdit"})
-      expect(document.querySelector(".◆html-source-pending")).toBeNull()
+      expect((presentationStateElements(document, "html-source-pending")[0] ?? null)).toBeNull()
       expect(editor.toHTML(true)).toBe("<section><p>First</p></section><!--keep--><aside>Other</aside><p>Outside</p>")
     })
   })
@@ -268,8 +269,8 @@ describe("document state operation boundaries", () => {
       sync.mockRestore()
       state.discardHTMLSelectionEdit({type: "discardHTMLSelectionEdit"})
       expect(editor.isEditingLocked).toBe(false)
-      expect(document.querySelector(".◆html-source-pending, .◆style-target-hovered")).toBeNull()
-      expect(document.documentElement.classList.contains("◆html-source-review-active")).toBe(false)
+      expect((presentationStateElements(document, "html-source-pending", "style-target-hovered")[0] ?? null)).toBeNull()
+      expect(hasPresentationState(document.documentElement, "html-source-review-active")).toBe(false)
       editor.doc.syncFromDOM()
       expect(editor.doc.body.toString()).toContain("After")
       expect(document.querySelector("aside")!.textContent).toBe("Keep")
@@ -451,7 +452,7 @@ describe("Focused AI proposals", () => {
       expect(paragraph.nextSibling).toBe(comment)
       expect(document.querySelector("aside")).toBe(aside)
       expect(editor.toHTML(true)).toBe('<p title="New" aria-label="Description">Keep</p><!--retain--><aside>Other</aside>')
-      expect(document.querySelector(".◆ai-preview-change")).toBeNull()
+      expect((presentationStateElements(document, "ai-preview-change")[0] ?? null)).toBeNull()
       expect(editor.appendix.querySelector(".◆ai-review-toolbar")).toBeNull()
     })
   })
@@ -908,16 +909,16 @@ describe("StateFeature", () => {
       editor.features.state.actions.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit"})
       editor.features.state.actions.setHTMLSelectionEditPending({type: "setHTMLSelectionEditPending", pending: true})
       expect(editor.isEditingLocked).toBe(true)
-      expect(paragraph.classList.contains("◆html-source-pending")).toBe(true)
+      expect(hasPresentationState(paragraph, "html-source-pending")).toBe(true)
       paragraph.remove()
       if(ending === "disable") editor.features.state.disable()
       else editor.destroy()
       expect(paragraph.classList.contains("authored")).toBe(true)
-      expect(paragraph.classList.contains("◆html-source-pending")).toBe(false)
-      expect(paragraph.classList.contains("◆style-target-hovered")).toBe(false)
+      expect(hasPresentationState(paragraph, "html-source-pending")).toBe(false)
+      expect(hasPresentationState(paragraph, "style-target-hovered")).toBe(false)
       if(ending === "disable") editor.features.selection.disable()
       expect(paragraph.className).toBe("authored")
-      expect(document.documentElement.classList.contains("◆html-source-review-active")).toBe(false)
+      expect(hasPresentationState(document.documentElement, "html-source-review-active")).toBe(false)
       expect(editor.isEditingLocked).toBe(false)
       expect(keep.isConnected).toBe(true)
       expect(keep.textContent).toBe("Keep")
@@ -1215,20 +1216,20 @@ describe("StateFeature", () => {
     expect(selection.isCollapsed).toBe(true)
     expect(selection.anchorNode).toBe(text)
     expect(selection.anchorOffset).toBe(2)
-    expect(document.querySelector(".◆style-target-hovered")).toBeNull()
+    expect((presentationStateElements(document, "style-target-hovered")[0] ?? null)).toBeNull()
     expect(selection.isCollapsed).toBe(true)
     editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
     expect(selection.anchorNode).toBe(text)
     expect(selection.anchorOffset).toBe(2)
     expect(selection.isCollapsed).toBe(true)
-    expect(document.querySelector(".◆style-target-hovered")).toBeNull()
+    expect((presentationStateElements(document, "style-target-hovered")[0] ?? null)).toBeNull()
     editor.destroy()
   })
 
   it.each(["<p><b>Text</b></p>", "<unknown-widget><!--keep--><span>Text</span></unknown-widget>", '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" /></svg>'])("reads HTML without adding hover markers or changing the selection: %s", html => {
     document.body.innerHTML = html + "<p>Other</p>"
-    const expected = document.body.firstElementChild!.outerHTML
     const editor = new DOMEditor()
+    const expected = document.body.firstElementChild!.outerHTML
     const selection = document.getSelection()!
     selection.setPosition(document.body, 0)
     const target = document.body.firstElementChild!
@@ -1236,7 +1237,7 @@ describe("StateFeature", () => {
     for(let i = 0; i < 3; i++) {
       expect(editor.features.state.actions.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit", path: [0]})).toEqual({html: expected})
     }
-    expect(document.querySelector(".◆style-target-hovered, .◆element-hovered")).toBeNull()
+    expect((presentationStateElements(document, "style-target-hovered", "element-hovered")[0] ?? null)).toBeNull()
     expect(document.body.firstElementChild).toBe(target)
     expect(editor.toHTML(true)).toBe(before)
     expect(selection.anchorNode).toBe(document.body)
@@ -1355,7 +1356,7 @@ describe("StateFeature", () => {
 
     expect(editor.features.state.isHTMLSelectionEditPending).toBe(true)
     expect(editor.isEditingLocked).toBe(true)
-    expect(paragraph.classList.contains("◆html-source-pending")).toBe(true)
+    expect(hasPresentationState(paragraph, "html-source-pending")).toBe(true)
     expect(editor.toHTML(true)).toBe("<p>Before</p>")
     const beforeInput = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText"})
     paragraph.dispatchEvent(beforeInput)
@@ -1386,7 +1387,7 @@ describe("StateFeature", () => {
     expect(result.status).toBe("applied")
     expect(result.removedUnsafeItems).toBe(0)
     expect(editor.toHTML(true)).toBe('<section style="color: red"><p>After</p></section>')
-    expect(document.querySelector(".◆html-source-pending")).toBeNull()
+    expect((presentationStateElements(document, "html-source-pending")[0] ?? null)).toBeNull()
     expect(editor.isEditingLocked).toBe(false)
     editor.destroy()
   })
@@ -1524,7 +1525,7 @@ describe("StateFeature", () => {
     expect(document.body.contentEditable).toBe("inherit")
     expect(document.querySelector(".◆ai-review-toolbar")).toBeNull()
     expect(editor.appendix.querySelector(".◆ai-review-toolbar")?.textContent).toContain("Replace the paragraph")
-    expect(document.querySelector(".◆ai-preview-change")).not.toBeNull()
+    expect((presentationStateElements(document, "ai-preview-change")[0] ?? null)).not.toBeNull()
     const beforeInput = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "x"})
     const paragraph = document.querySelector("p")!
     Object.defineProperty(beforeInput, "composedPath", {
@@ -1594,8 +1595,8 @@ describe("StateFeature", () => {
     editor.getActionHandler("acceptAIEdit")({type: "acceptAIEdit", editId: "edit-accept"})
 
     expect(editor.toHTML(true)).toBe("<main>After</main>")
-    expect(document.querySelector(".◆ai-preview-change")).toBeNull()
-    expect(document.getElementsByClassName("◆ai-edit-1")).toHaveLength(1)
+    expect((presentationStateElements(document, "ai-preview-change")[0] ?? null)).toBeNull()
+    expect(presentationStateElements(document, "ai-edit-1")).toHaveLength(1)
 
     const aside = document.createElement("aside")
     aside.textContent = "Later local edit"

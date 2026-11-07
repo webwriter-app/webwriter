@@ -1,3 +1,4 @@
+import {hasPresentationState} from "../src/presentation-state.js"
 import {documentThemes} from "../src/document-themes"
 import {boardStyles, canvasStyles, slidesStyles} from "../src/document-layout"
 import type {DOMEditor} from "../src/domeditor"
@@ -52,7 +53,7 @@ export async function checkLegacyWidgetOptions() {
         await layoutFrame()
         const bounds = () => ({host: widget.getBoundingClientRect(), options: part.getBoundingClientRect()})
         let {host: widgetBounds, options} = bounds()
-        assert(widget.classList.contains("◆element-capture-selected"), `${context}: capture marker was not set by selection runtime`)
+        assert(hasPresentationState(widget, "element-capture-selected"), `${context}: capture marker was not set by selection runtime`)
         assert(part.matches(":popover-open") && view.getComputedStyle(part).display !== "none", `${context}: captured options did not open`)
         assert(options.width > 100 && options.height > 0, `${context}: options have no visible geometry`)
         assert(view.getComputedStyle(part).position === "fixed", `${context}: options are not outside widget layout`)
@@ -81,7 +82,7 @@ export async function checkLegacyWidgetOptions() {
         editor.features.selection.selectElement(doc.querySelector("p")!)
         await layoutFrame()
         assert(!otherPart.matches(":popover-open") && view.getComputedStyle(otherPart).display === "none", `${context}: clearing capture left options open`)
-        assert(!widget.classList.contains("◆element-capture-selected") && !other.classList.contains("◆element-capture-selected"), `${context}: selection markers survived capture cleanup`)
+        assert(!hasPresentationState(widget, "element-capture-selected") && !hasPresentationState(other, "element-capture-selected"), `${context}: selection markers survived capture cleanup`)
 
         const serialized = editor.toHTML(true)
         assert(!serialized.includes("◆"), `${context}: selection/editability markers leaked into serialization`)

@@ -2549,7 +2549,7 @@ describe("DomEditor iframe setup", () => {
     }), window.location.origin))
     const registryAdapter = new DOMParser().parseFromString(srcdoc, "text/html").querySelector<HTMLScriptElement>("#webwriter-scoped-registry")
     expect(registryAdapter?.textContent).toBeTruthy()
-    expect(registryAdapter?.classList.contains("◆editor-only")).toBe(true)
+    expect(registryAdapter?.hasAttribute("class")).toBe(false)
     expect(registryAdapter?.getAttribute("nonce")).toBeTruthy()
     expect(srcdoc.indexOf("webwriter-scoped-registry")).toBeLessThan(srcdoc.indexOf("editor-entry"))
     expect(srcdoc).not.toContain("Demo Widget")

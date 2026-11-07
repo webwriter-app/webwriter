@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {hasPresentationState, setPresentationState} from "./presentation-state.js"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {CanvasViewer, canvasStartingView, mountCanvasReader} from "./canvas-viewer.js"
 import {DOMEditor} from "./domeditor"
@@ -172,7 +173,7 @@ describe("standalone canvas reader", () => {
     pointer("pointermove", 594, 47)
     expect(slot.style.transform).toBe(dragged)
     expect(reader.viewer.zoom).toBeCloseTo(1.2)
-    document.body.firstElementChild!.classList.add("◆element-selected")
+    setPresentationState(document.body.firstElementChild!, "element-selected")
     await new Promise(resolve => setTimeout(resolve, 160))
     expect(snapshot).toHaveBeenCalledTimes(1)
 
@@ -228,7 +229,7 @@ describe("standalone canvas reader", () => {
     toggle.click()
     window.dispatchEvent(new Event("resize"))
     paragraph.setAttribute("style", paragraph.getAttribute("style")!)
-    paragraph.classList.add("◆element-selected")
+    setPresentationState(paragraph, "element-selected")
     await new Promise(resolve => setTimeout(resolve, 160))
     expect(snapshot).toHaveBeenCalledTimes(1)
 
@@ -686,9 +687,9 @@ describe("standalone canvas reader", () => {
     expect(wheel(scroll).defaultPrevented).toBe(false)
     slot.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 1, clientX: 10}))
     document.dispatchEvent(new PointerEvent("pointermove", {pointerId: 1, clientX: 50}))
-    expect(document.body.classList.contains("◆canvas-panning")).toBe(true)
+    expect(hasPresentationState(document.body, "canvas-panning")).toBe(true)
     window.dispatchEvent(new Event("blur"))
-    expect(document.body.classList.contains("◆canvas-panning")).toBe(false)
+    expect(hasPresentationState(document.body, "canvas-panning")).toBe(false)
   })
 
   it("keeps a background wheel pan when later events target an interactive widget", () => {
@@ -793,7 +794,7 @@ describe("standalone canvas reader", () => {
     const slot = document.body.shadowRoot!.querySelector("slot")!
     const camera = new CanvasViewer(slot, document.createElement("div"), document.createElement("div"))
     expect(document.body.shadowRoot!.querySelector("[part=canvas-controls]")).toBeNull()
-    expect(document.documentElement.classList.contains("◆canvas-active")).toBe(true)
+    expect(hasPresentationState(document.documentElement, "canvas-active")).toBe(true)
     camera.destroy()
     expect(slot.hasAttribute("style")).toBe(false)
   })

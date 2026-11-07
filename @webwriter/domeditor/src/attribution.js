@@ -1,3 +1,4 @@
+import {hasPresentationState, presentationElementSelector} from "./presentation-state.js"
 /** Authored metadata, shared by editing, collaboration and standalone readers. */
 export const attributionAttributes = {
   name: "data-ww-attribution-name",
@@ -156,8 +157,6 @@ export function createAttributionController(doc, options = {}) {
   const noteResize = view.ResizeObserver ? new view.ResizeObserver(() => { notesDirty = true; schedule() }) : null
   const removeNote = (element, record) => {
     noteResize?.unobserve(element)
-    element.classList.remove(record.marker)
-    if(!record.hadClass && !element.classList.length) element.removeAttribute("class")
     record.group.remove()
     record.contactLabel?.remove()
     notes.delete(element)
@@ -190,7 +189,7 @@ export function createAttributionController(doc, options = {}) {
   }
   const exceedsTwoLines = (part, size) => size > 2 * parseFloat(view.getComputedStyle(part).lineHeight) + .1
   const syncNotes = (zoomOnly = false) => {
-    const canvasTransform = doc.documentElement.classList.contains("◆canvas-active")
+    const canvasTransform = hasPresentationState(doc.documentElement, "canvas-active")
       && appendix.querySelector("slot:not([name])")?.style.transform
     // Anchors follow the camera, but labels use at most the item's 100% bounds.
     const scale = canvasTransform ? Math.max(1, new view.DOMMatrix(canvasTransform).a) : 1
@@ -246,6 +245,8 @@ export function createAttributionController(doc, options = {}) {
         left: float === "left" || singleRightGutter && !inFloat, anchor: style?.anchorName})
     }
     for(const {element, data, box, float, left, anchor} of targets) {
+      const selector = presentationElementSelector(element, true)
+      if(!selector) continue
       let record = notes.get(element)
       const signature = JSON.stringify([data, editable()])
       // Spatial labels follow their anchors without reflow when only an
@@ -253,11 +254,10 @@ export function createAttributionController(doc, options = {}) {
       // direct, widget and remote edits can resize or replace the labels.
       if(!zoomOnly && root.classList.contains("non-document-layout") && float === "none" && record?.float === "none"
         && record.signature === signature && Math.abs(record.width - box.width) < 1e-6 && Math.abs(record.height - box.height) < 1e-6
-        && record.left === left && element.classList.contains(record.marker)) continue
+        && record.left === left && record.selector === selector) continue
       if(!record) {
         const index = noteSequence++
         const name = `--ww-attribution-${index}`
-        const marker = `◆attribution-${index}`
         const part = `attribution-note-${index}`
         const label = doc.createElement("div")
         const group = doc.createElement("div")
@@ -265,16 +265,13 @@ export function createAttributionController(doc, options = {}) {
         group.append(label)
         label.className = "attribution-note"
         label.setAttribute("part", part)
-        record = {marker, name, part, label, group, signature: "", hadClass: element.hasAttribute("class"), anchor}
+        record = {selector, name, part, label, group, signature: "", anchor}
         notes.set(element, record)
         noteResize?.observe(element)
         bindNote(label, element)
         root.append(group)
       }
-      if(!element.classList.contains(record.marker)) {
-        record.hadClass = element.hasAttribute("class")
-        element.classList.add(record.marker)
-      }
+      record.selector = selector
       // Follow responsive float placement, and keep column labels out of a
       // shared right gutter without flipping labels belonging to its floats.
       if(!zoomOnly) {
@@ -412,12 +409,12 @@ export function createAttributionController(doc, options = {}) {
         node.setAttribute("aria-haspopup", "dialog")
         node.setAttribute("aria-label", `${editable() ? "Edit" : "Show"} attribution: ${[first?.textContent, contact?.textContent].filter(Boolean).join(" ")}`)
       }
-      const {marker, name, part, anchor} = record
+      const {name, part, anchor} = record
       const position = (part, left) => `body::part(${part}) { position-anchor: ${name}; bottom: anchor(bottom); left: anchor(${left ? "left" : "right"}); }`
       const horizontalWidth = canvasTransform ? `${box.width}px` : "anchor-size(width)"
       const horizontalPosition = `body::part(${part}) { position-anchor: ${name}; left: auto; right: anchor(right); width: ${horizontalWidth}; ${below ? "top: calc(anchor(bottom) + 2px); bottom: auto;" : "bottom: calc(anchor(top) + 2px); top: auto;"} }`
       record.before = horizontal && !below ? annotationSpace : 0
-      record.rules = `.${view.CSS.escape(marker)} { anchor-name: ${anchor && anchor !== "none" ? `${anchor}, ` : ""}${name} !important; --ww-attribution-after: ${horizontal && below ? annotationSpace : 0}px; }\n${horizontal ? horizontalPosition : position(part, left)}${wrapped && contact && !compact ? `\n${position(`${part}-contact`, horizontal ? left : !left)}` : ""}`
+      record.rules = `:where(${selector}):nth-child(n) { anchor-name: ${anchor && anchor !== "none" ? `${anchor}, ` : ""}${name} !important; --ww-attribution-after: ${horizontal && below ? annotationSpace : 0}px; }\n${horizontal ? horizontalPosition : position(part, left)}${wrapped && contact && !compact ? `\n${position(`${part}-contact`, horizontal ? left : !left)}` : ""}`
     }
     if(footnoteList?.children.length) footnotes.append(footnoteList)
     if(current) for(const [element, record] of notes) if(!current.has(element)) removeNote(element, record)

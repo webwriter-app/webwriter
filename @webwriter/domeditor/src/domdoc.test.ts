@@ -10,6 +10,7 @@ import {applyAwarenessUpdate, encodeAwarenessUpdate} from "y-protocols/awareness
 import {SharedDOMDoc, sharedDOMBody} from "./domdoc"
 import {collectReferences} from "./document-viewer.js"
 import {elementAttributeState} from "./element-attributes"
+import {authoredDetailsOpen, hasTemporaryDetailsState} from "./editor-artifacts"
 import {$} from "./utility"
 
 const sharedDocs: SharedDOMDoc[] = []
@@ -31,7 +32,7 @@ function cloneShared(source: SharedDOMDoc, staleHTML = "") {
   return createShared(staleHTML, ydoc)
 }
 
-function createDocumentShared(headHTML = "", bodyHTML = "", language = "", ydoc?: Y.Doc, documentPermalinks = false) {
+function createDocumentShared(headHTML = "", bodyHTML = "", language = "", ydoc?: Y.Doc, documentPermalinks = false, ensureAuthoredIds = false) {
   const owner = document.implementation.createHTMLDocument("")
   owner.head.innerHTML = headHTML
   owner.body.innerHTML = bodyHTML
@@ -40,6 +41,7 @@ function createDocumentShared(headHTML = "", bodyHTML = "", language = "", ydoc?
     root: owner.body,
     ydoc,
     documentPermalinks,
+    ensureAuthoredIds,
   })
   sharedDocs.push(shared)
   return {owner, shared}
@@ -77,7 +79,9 @@ describe("temporary details disclosure", () => {
 
     expect(details.open).toBe(!defaultOpen)
     expect(mirrored.getAttribute("open") !== undefined).toBe(defaultOpen)
-    expect(details.classList.contains(defaultOpen ? "◆details-temporary-closed" : "◆details-temporary-open")).toBe(true)
+    expect(hasTemporaryDetailsState(details)).toBe(true)
+    expect(authoredDetailsOpen(details)).toBe(defaultOpen)
+    expect(details.className).toBe("")
     expect(elementAttributeState(details, [0]).attributes.open !== undefined).toBe(defaultOpen)
 
     const copy = cloneShared(shared)
@@ -87,7 +91,7 @@ describe("temporary details disclosure", () => {
 
     details.open = defaultOpen
     await mutationsDelivered()
-    expect(details.classList.contains("◆details-temporary-open") || details.classList.contains("◆details-temporary-closed")).toBe(false)
+    expect(hasTemporaryDetailsState(details)).toBe(false)
   })
 
   it("commits the checkbox default, and remote edits replace an earlier temporary state", async () => {
@@ -98,7 +102,7 @@ describe("temporary details disclosure", () => {
     await mutationsDelivered()
     shared.commitAuthoredDetailsOpen(details, () => details.setAttribute("open", ""))
     expect(mirrored.getAttribute("open") !== undefined).toBe(true)
-    expect(details.classList.contains("◆details-temporary-open")).toBe(false)
+    expect(hasTemporaryDetailsState(details)).toBe(false)
     shared.undo()
     expect(details.open).toBe(false)
     shared.redo()
@@ -106,10 +110,10 @@ describe("temporary details disclosure", () => {
 
     details.open = false
     await mutationsDelivered()
-    expect(details.classList.contains("◆details-temporary-closed")).toBe(true)
+    expect(hasTemporaryDetailsState(details)).toBe(true)
     shared.doc.transact(() => mirrored.removeAttribute("open"), "remote-test")
     expect(details.open).toBe(false)
-    expect(details.classList.contains("◆details-temporary-closed")).toBe(false)
+    expect(hasTemporaryDetailsState(details)).toBe(false)
     expect(elementAttributeState(details, [0]).attributes.open).toBeUndefined()
   })
 })
@@ -478,6 +482,23 @@ afterEach(() => {
   document.body.replaceChildren()
   document.body.removeAttribute("class")
   vi.restoreAllMocks()
+})
+
+describe("authored presentation identities", () => {
+  it("derives IDs for imports and older collaborators and mirrors them to a live reader", () => {
+    const author = createDocumentShared("", '<dialog></dialog>', "", undefined, false, true)
+    const oldClient = cloneDocumentShared(author.shared)
+    expect(author.owner.querySelector("dialog")?.id).toBeTruthy()
+    oldClient.owner.body.insertAdjacentHTML("beforeend", '<svg><rect width="10"/></svg>')
+    oldClient.shared.syncFromDOM()
+    Y.applyUpdate(author.shared.doc, Y.encodeStateAsUpdate(oldClient.shared.doc), "remote")
+    const id = author.owner.querySelector("rect")?.id
+    expect(id).toBeTruthy()
+    expect(author.shared.body.toString()).toContain(id)
+    const reader = cloneDocumentShared(author.shared)
+    expect(reader.owner.querySelector("rect")?.id).toBe(id)
+    expect(reader.owner.querySelector("rect")?.getAttribute("class")).toBeNull()
+  })
 })
 
 describe("content-derived document permalinks", () => {

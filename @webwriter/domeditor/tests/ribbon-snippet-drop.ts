@@ -1,3 +1,4 @@
+import {hasPresentationState} from "../src/presentation-state.js"
 import type {DOMEditor} from "../src/domeditor"
 import type {RibbonDropPosition} from "../src/editor-bridge"
 
@@ -102,7 +103,7 @@ export async function checkRibbonSnippetDrop(nativeRootEditor: HostEditor, asser
         assert(target.querySelectorAll("x-prepared-drop").length === index + 1, `${mode}: repeated prepared drop failed`)
         assert(!message, "prepared drop unnecessarily requested host insertion")
       }
-      assert(!doc.body.classList.contains("◆drop-selection-active"), "drop selection marker leaked")
+      assert(!hasPresentationState(doc.body, "drop-selection-active"), "drop selection marker leaked")
     }
     finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
   }

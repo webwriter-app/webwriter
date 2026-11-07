@@ -58,7 +58,7 @@ import type {LayoutSelectionState} from "../layouts"
 import type { EditingAction } from "../domeditor"
 import {elementDragType, insertionMenuItems, ribbonElementInsertionAction, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
-import {isAuthoredContentEditableMutation, isAuthoredMutation} from "../editor-artifacts"
+import {copyEditorArtifactState, isAuthoredContentEditableMutation, isAuthoredMutation, isEditorOnlyNode, registerFrameArtifacts} from "../editor-artifacts"
 import {
   defaultPackageExportSource,
   describePackageExport,
@@ -2164,6 +2164,7 @@ export class DomEditor extends LitElement {
     this.documentReplicaSyncPending = false
     this.editorOpaque = iframe.contentDocument === null
     this.editorDocument = iframe.contentDocument
+    if(this.editorDocument) registerFrameArtifacts(this.editorDocument, this.bridgeNonce)
     this.syncDocumentPalette()
     this.editorWindow = iframe.contentWindow
     this.updateMotionPreference()
@@ -2416,8 +2417,9 @@ export class DomEditor extends LitElement {
   private authoredDocumentSnapshot(cached = false, source: Document | null = this.editorDocument) {
     if(this.editorOpaque && source === this.editorDocument && this.documentReplica) return this.documentReplica.authoredSignature()
     if(cached && this.authoredSnapshotCache?.document === this.editorDocument) return this.authoredSnapshotCache.value
-    const root = source?.documentElement.cloneNode(true) as HTMLElement | undefined
-    if(!root) return null
+    if(!source) return null
+    const root = source.documentElement.cloneNode(true) as HTMLElement
+    copyEditorArtifactState(source.documentElement, root)
     clearEditorArtifacts(root, [], this.isInstalledWidget)
     for(const element of [root, ...root.querySelectorAll("*")]) {
       const classes = authoredClassValue(element.getAttribute("class"))
@@ -2470,11 +2472,12 @@ export class DomEditor extends LitElement {
     // cloning, cleaning and reparsing a large document on every snapshot.
     const text = current.ownerDocument.createTreeWalker(current, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
       acceptNode: node => node.nodeType === Node.ELEMENT_NODE
-        ? (node as Element).matches(".◆editor-only, [data-webwriter-editor-only], body.ww-slides > nav.ww-slides-navigation, body.ww-slides > .ww-slides-viewport > .ww-slide > nav.ww-slide-directions") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP
+        ? isEditorOnlyNode(node) || (node as Element).matches("body.ww-slides > nav.ww-slides-navigation, body.ww-slides > .ww-slides-viewport > .ww-slide > nav.ww-slide-directions") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP
         : node.nodeValue?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
     })
     if(text.nextNode()) { this.documentLayoutsDismissed = true; return }
     const body = current.cloneNode(true) as HTMLElement
+    copyEditorArtifactState(current, body)
     clearEditorArtifacts(body, [], this.isInstalledWidget)
     this.documentLayoutsDismissed = this.pristineDocumentLayoutSnapshot(body.outerHTML) === null
   }
@@ -2537,12 +2540,13 @@ export class DomEditor extends LitElement {
     if(/^ww[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(root.id)) initialAttributes.id = root.id
     if(!hasAttributes(body) || !hasAttributes(head) || !hasAttributes(root, initialAttributes)) return false
 
-    const authoredHeadNodes = Array.from(head.childNodes).filter(node => !(
-      node.nodeType === Node.ELEMENT_NODE && (
-        hasClass(node as ReadableElement, "◆editor-only")
-        || (node as ReadableElement).hasAttribute("data-webwriter-editor-only")
-      )
-    ))
+    const authoredNode = (node: ReadableNode) => {
+      if(!this.documentReplica) return !isEditorOnlyNode(node as Node)
+      if(node.nodeType !== Node.ELEMENT_NODE) return true
+      const element = node as ReadableElement
+      return !hasClass(element, "◆editor-only") && !element.hasAttribute("data-webwriter-editor-only")
+    }
+    const authoredHeadNodes = Array.from(head.childNodes).filter(authoredNode)
     const generator = authoredHeadNodes[0]
     const theme = authoredHeadNodes[1]
     const headUnchanged = authoredHeadNodes.length === 2
@@ -2558,12 +2562,7 @@ export class DomEditor extends LitElement {
       && hasAttributes(theme as ReadableElement, {"data-ww-theme": defaultDocumentTheme.value, blocking: "render"})
     if(!headUnchanged) return false
 
-    const authoredChildren = Array.from(body.childNodes).filter(node => {
-      if(node.nodeType !== Node.ELEMENT_NODE) return true
-      const element = node as ReadableElement
-      return !hasClass(element, "◆editor-only")
-        && !element.hasAttribute("data-webwriter-editor-only")
-    })
+    const authoredChildren = Array.from(body.childNodes).filter(authoredNode)
     if(authoredChildren.length === 0) return true
 
     const onlyChild = authoredChildren[0]

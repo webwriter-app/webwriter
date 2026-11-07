@@ -1,3 +1,4 @@
+import {hasPresentationState} from "../src/presentation-state.js"
 import type {DOMEditor} from "../src/domeditor"
 import {editorFrameControlMessage, initializeEditorMessage} from "../src/editor-bridge"
 
@@ -46,7 +47,7 @@ export async function checkGraphicImage() {
       doc.getSelection()!.collapse(paragraph.firstChild!, 1)
       await settle()
       assert(!editor.features.selection.captureSelectedElement, `${layout}: moving to document text retained capture`)
-      assert(!image.classList.contains("◆graphic-shape-selected"), `${layout}: leaving the graphic retained the image marker`)
+      assert(!hasPresentationState(image, "graphic-shape-selected"), `${layout}: leaving the graphic retained the image marker`)
       const box = image.getBoundingClientRect()
       image.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 9,
         clientX: box.x + box.width / 2, clientY: box.y + box.height / 2}))

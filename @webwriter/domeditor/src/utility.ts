@@ -1,4 +1,4 @@
-import {clearEditorMarkerClasses, editorWidgetLookup, isEditorOwnedAttribute, setEditorWidgetLookup} from "./editor-artifacts"
+import {clearEditorMarkerClasses, copyEditorArtifactState, editorWidgetLookup, isEditorOwnedAttribute, setEditorWidgetLookup} from "./editor-artifacts"
 export {createAnchorPositioner, type AnchorPositioner} from "./anchor-positioning.js"
 export {authoredClassValue, clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, isEditorOwnedAttribute, removeEditorMarker} from "./editor-artifacts"
 import type { Schema } from "./schema"
@@ -1776,9 +1776,11 @@ export function createInertScript(document: Document, namespace: string | null =
 /** Copies authored DOM without running custom-element constructors. Inserting
  * the result into the live document upgrades its widgets when needed. */
 export function cloneInert<T extends Node>(node: T, deep=false): T {
-  return node.nodeType === Node.DOCUMENT_NODE
+  const clone = node.nodeType === Node.DOCUMENT_NODE
     ? node.cloneNode(deep) as T
     : getInertDocument(node).importNode(node, deep) as T
+  copyEditorArtifactState(node, clone, deep)
+  return clone
 }
 
 /** Maps a range into an inert copy for structural validation or serialization.
@@ -1873,7 +1875,8 @@ export function textPointAtOffset(root: Element, offset: number, fallback?: [Nod
 
 /** Clones a node without copying transient editor marker classes. */
 export function cloneWithoutEditorMarkers<T extends Node>(node: T, deep=false, {inert = false} = {}) {
-  return clearEditorMarkerClasses(inert ? cloneInert(node, deep) : node.cloneNode(deep), editorWidgetLookup(node)) as T
+  const clone = inert ? cloneInert(node, deep) : copyEditorArtifactState(node, node.cloneNode(deep), deep)
+  return clearEditorMarkerClasses(clone, editorWidgetLookup(node)) as T
 }
 
 /** Removes inline size and placement overrides, letting authored CSS take over. */
@@ -2274,25 +2277,6 @@ function parseDisplayStyle(display: string): DisplayTuple | DisplayBox | Display
   }
   else {
     throw Error("Invalid display value")
-  }
-}
-
-/** The [top, left] viewport coordinates of the element's static position.
- * A collaboration-filtered marker class temporarily disables positioning;
- * no editor-owned nodes or inline styles enter the authored DOM. */
-export function getStaticCoords(el: HTMLElement): [number, number] {
-  const marker = "◆measure-static-position"
-  const hadMarker = el.classList.contains(marker)
-  if(!hadMarker) el.classList.add(marker)
-  try {
-    const {top, left} = el.getBoundingClientRect()
-    return [top, left]
-  }
-  finally {
-    if(!hadMarker) {
-      el.classList.remove(marker)
-      if(!el.classList.length) el.removeAttribute("class")
-    }
   }
 }
 

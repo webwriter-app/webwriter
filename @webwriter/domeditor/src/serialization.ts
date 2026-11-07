@@ -1,9 +1,10 @@
-import {createImageMapPopoverController, imageMapHotspotBounds, imageMapHotspotShape, imageMapScale, mountImageMapReader} from "./media"
+import {createImageMapPopoverController, imageMapHotspotBounds, imageMapHotspotShape, imageMapPopoverAppearance, imageMapScale, mountImageMapReader} from "./media"
 import appIconSource from "../../../static/assets/app-icon-transparent.svg?raw"
 import canvasViewerSource from "./canvas-viewer.js?raw"
 import canvasSnapdomSource from "virtual:canvas-snapdom-source"
 import documentViewerSource from "./document-viewer.js?raw"
 import anchorPositioningSource from "./anchor-positioning.js?raw"
+import presentationStateSource from "./presentation-state.js?raw"
 import figureLayoutSource from "./figure-layout.js?raw"
 import layoutPrintSource from "./document-layout-print.js?raw"
 import attributionSource from "./attribution.js?raw"
@@ -27,7 +28,9 @@ import {scopedCustomElementRegistryScript} from "./scoped-custom-element-registr
 export {scopedCustomElementRegistryScript} from "./scoped-custom-element-registry-script"
 
 const legacyScopedRegistryPolyfillURL = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
-const anchorRuntimeSource = anchorPositioningSource.replace(/^export /gm, "")
+const presentationRuntimeSource = presentationStateSource.replace(/^export /gm, "")
+const inlinePresentationRuntime = (source: string) => source.replace(/^import \{[^}]+\} from "\.\/presentation-state\.js"\n/m, "")
+const anchorRuntimeSource = `${presentationRuntimeSource}\n${inlinePresentationRuntime(anchorPositioningSource).replace(/^export /gm, "")}`
 
 const serializedReaderScriptIds = [
   "webwriter-figure-layout", "webwriter-attribution-reader", "webwriter-image-map-popovers",
@@ -105,7 +108,7 @@ export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWri
     const script = owner.createElement("script")
     script.id = "webwriter-attribution-reader"
     script.type = "module"
-    script.textContent = `${anchorRuntimeSource}\n${attributionSource}\nmountAttributionReader(${JSON.stringify(creativeCommonsLicenses)}, createAnchorPositioner)\n`
+    script.textContent = `${anchorRuntimeSource}\n${inlinePresentationRuntime(attributionSource)}\nmountAttributionReader(${JSON.stringify(creativeCommonsLicenses)}, createAnchorPositioner)\n`
       .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
@@ -125,9 +128,12 @@ export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWri
   const imageMapScale = ${imageMapScale.toString()};
   const imageMapHotspotBounds = ${imageMapHotspotBounds.toString()};
   const imageMapHotspotShape = ${imageMapHotspotShape.toString()};
+  const imageMapPopoverAppearance = ${JSON.stringify(imageMapPopoverAppearance)};
   const createImageMapPopoverController = ${createImageMapPopoverController.toString()};
   const mountImageMapReader = ${mountImageMapReader.toString()};
-  const controller = createImageMapPopoverController(document, (area, image) => imageMapHotspotBounds(area, image, imageMapScale));
+  const controller = createImageMapPopoverController(document, (area, image) => imageMapHotspotBounds(area, image, imageMapScale), imageMapPopoverAppearance, {
+    elementSelector: presentationElementSelector, has: hasPresentationState, set: setPresentationState, clear: clearPresentationState,
+  });
   const reader = mountImageMapReader(document, controller, imageMapHotspotShape, createAnchorPositioner, imageMapScale);
   const handle = controller.handleEvent;
   document.addEventListener("click", handle);
@@ -165,7 +171,7 @@ export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWri
     script.type = "module"
     // Evaluate the initial camera before the browser paints authored content.
     script.setAttribute("blocking", "render")
-    script.textContent = `${layoutPrintSource}\n${permissions.size ? "" : `${canvasViewerSource}\n${canvasSnapdomSource}\nmountCanvasReader(loadCanvasSnapdom)\n`}createLayoutPrint(document)\n`
+    script.textContent = `${layoutPrintSource}\n${permissions.size ? "" : `${presentationRuntimeSource}\n${inlinePresentationRuntime(canvasViewerSource)}\n${canvasSnapdomSource}\nmountCanvasReader(loadCanvasSnapdom)\n`}createLayoutPrint(document)\n`
       .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }

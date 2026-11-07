@@ -1,6 +1,6 @@
 import {hydrateWidgetGroupings, prepareWidgetGroupingsForSerialization, restoreWidgetGroupingClones} from "./widget-grouping-dom"
 import {SharedDOMDoc, type EditingMutation} from "./domdoc"
-import {isAuthoredMutation, restoreAuthoredDetailsState, setEditorWidgetLookup, temporaryDetailsClosedMarker, temporaryDetailsOpenMarker} from "./editor-artifacts"
+import {isAuthoredMutation, isHTMLDetailsElement, restoreAuthoredDetailsState, setEditorWidgetLookup} from "./editor-artifacts"
 import {collectFeatureActions} from "./features"
 import {editorFeatureNames, type EditorFeatures, type EditorExtensionFactory} from "./editor-features"
 import { HistoryFeature } from "./features/history"
@@ -26,6 +26,7 @@ import { HeadFeature } from "./features/head"
 import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
 import {floatSideFromStyles} from "./element-styles"
+import {clearEditorPresentation, clearPresentationState, hasPresentationState, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, atomicEditingContainer, clearEditorArtifacts, cloneInert, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
@@ -71,6 +72,7 @@ import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
 import {runtimeDocumentBaseURL} from "./document-base-url"
 
 const editorStylesheet = createStylesheet(editorStyleString + "\n" + listMarkerStyleString)
+trackPresentationStyles(document, editorStylesheet)
 const appendixStylesheet = createStylesheet(`
   :where(:host > :not(slot)) {
     user-select: none;
@@ -85,10 +87,6 @@ const appendixStylesheet = createStylesheet(`
 
   @keyframes blink {
     50% { opacity: 0; }
-  }
-
-  :host(.◆editing-locked) > :not(slot):not(.◆ai-review-toolbar) {
-    display: none !important;
   }
 
   .◆ai-review-toolbar {
@@ -156,6 +154,9 @@ const appendixStylesheet = createStylesheet(`
     outline-offset: 2px;
   }
 
+`)
+const lockedAppendixStylesheet = createStylesheet(`
+  :host > :not(slot):not(.◆ai-review-toolbar) { display: none !important; }
 `)
 
 /** DOMEditor
@@ -295,7 +296,8 @@ export class DOMEditor {
       if(!keepEditingMode) document.designMode = "off"
       document.body.inert = false
       slot.inert = !keepEditingMode
-      document.body.classList.add("◆", "◆editing-locked")
+      setPresentationState(document.body, "editing-locked")
+      adoptStylesheet(this.appendix, lockedAppendixStylesheet)
       if(document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
         document.activeElement.blur()
       }
@@ -314,7 +316,9 @@ export class DOMEditor {
     this.defaultAppendixSlot.inert = state.slotInert
     document.body.inert = state.bodyInert
     document.designMode = state.designMode
-    removeEditorMarker(document.body, "◆editing-locked")
+    clearPresentationState(document.body, "editing-locked")
+    const appendix = this.appendix
+    appendix.adoptedStyleSheets = appendix.adoptedStyleSheets.filter(sheet => sheet !== lockedAppendixStylesheet)
   }
 
 
@@ -544,6 +548,7 @@ export class DOMEditor {
         this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses, {
           connectionParams: Object.fromEntries([...syncUrl.searchParams].filter(([key]) => key !== "session")),
           documentPermalinks: !options.reader,
+          ensureAuthoredIds: !options.reader,
           beforeSyncFromDOM,
           canRemoveMinimumContentRepair: (element, repairs) => this.features.widget.canRemoveMinimumContentRepair(element, repairs),
           widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
@@ -554,6 +559,7 @@ export class DOMEditor {
       else {
         this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses, {
           documentPermalinks: !options.reader,
+          ensureAuthoredIds: !options.reader,
           beforeSyncFromDOM,
           canRemoveMinimumContentRepair: (element, repairs) => this.features.widget.canRemoveMinimumContentRepair(element, repairs),
           widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
@@ -745,10 +751,12 @@ export class DOMEditor {
     }
     for(const owner of Array.from(this.#editingLocks)) attempt(() => this.unlockEditing(owner))
     Object.values(this.features).forEach(feature => attempt(() => feature.disable()))
+    if(this.#documentSession) attempt(() => clearEditorPresentation(document))
     if(this.doc) attempt(() => {
       this.doc.syncFromDOM()
-      this.doc.root.querySelectorAll(`details.${temporaryDetailsOpenMarker}, details.${temporaryDetailsClosedMarker}`)
-        .forEach(restoreAuthoredDetailsState)
+      this.doc.root.querySelectorAll("details").forEach(element => {
+        if(isHTMLDetailsElement(element)) restoreAuthoredDetailsState(element)
+      })
     })
     this.mediaBlobs.forEach((_, url) => attempt(() => URL.revokeObjectURL(url)))
     this.mediaBlobs.clear()
@@ -1017,8 +1025,8 @@ export class DOMEditor {
     for(const currentElement of elements) {
       if(slideLayoutRole(currentElement)) continue
       const popupRole = popupElementRole(currentElement)
-      if(popupRole === "content" && currentElement.classList.contains("◆popup-visible")
-        || popupRole === "popup" && Array.from(currentElement.children).some(child => child.classList.contains("◆popup-visible"))) continue
+      if(popupRole === "content" && hasPresentationState(currentElement, "popup-visible")
+        || popupRole === "popup" && Array.from(currentElement.children).some(child => hasPresentationState(child, "popup-visible"))) continue
       const style = getComputedStyle(currentElement)
       const position = style.position
       if(position !== "absolute" && position !== "fixed" && position !== "relative" && position !== "sticky") continue
@@ -1337,7 +1345,7 @@ export class DOMEditor {
   private cleanDocumentClone(data: "defaults" | "current" = "defaults") {
     // A save immediately after a direct/native edit must include its derived
     // fragment IDs, even before the MutationObserver delivers that batch.
-    this.doc.syncFromDOM()
+    this.doc.flushDOMChanges()
     if(data === "current") this.doc.widgetData.sync()
     // Keep the imported tree disconnected. Chromium checks styles against the
     // frame's CSP if the copy is attached, even to a document without a window.

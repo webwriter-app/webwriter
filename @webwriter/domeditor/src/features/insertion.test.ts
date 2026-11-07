@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {hasPresentationState} from "../presentation-state.js"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import "@testing-library/jest-dom/vitest"
 import { DOMEditor } from "../domeditor"
@@ -90,7 +91,7 @@ describe("insertion menu", () => {
 
     expect(menu.open).toBe(true)
     expect(editorHTML()).toBe("<p>++</p>")
-    expect(document.body.classList.contains("◆insertion-trigger")).toBe(true)
+    expect(hasPresentationState(document.body, "insertion-trigger")).toBe(true)
     expect(menu.activeItem).toBeUndefined()
     expect(menu.shadowRoot?.querySelector(".item[data-active]")).toBeNull()
     expect(Array.from(menu.shadowRoot!.querySelectorAll("h2"), heading => heading.textContent)).toEqual(["Elements", "Packages"])
@@ -372,8 +373,8 @@ describe("insertion menu", () => {
     expect(widget.id).toMatch(/^ww[0-9a-f]/)
     expect(widget.hasAttribute("contenteditable")).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
-    expect(widget.classList.contains("◆element-selected")).toBe(true)
-    expect(widget.classList.contains("◆element-capture-selected")).toBe(true)
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(true)
     expect(menu.open).toBe(false)
   })
 
@@ -417,7 +418,7 @@ describe("insertion menu", () => {
     expect(editorHTML()).toBe(`<p>before</p><webwriter-demo id="${widget.id}"></webwriter-demo>`)
     expect(widget.previousElementSibling).toBe(document.querySelector("p"))
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected") && hasPresentationState(widget, "element-capture-selected")).toBe(true)
     expect(document.getSelection()!.isCollapsed).toBe(true)
   })
 
@@ -466,7 +467,7 @@ describe("insertion menu", () => {
 
       expect(editorHTML()).toBe("<p>++paragraph</p>")
       expect(menu.open).toBe(false)
-      expect(document.body.classList.contains("◆insertion-trigger")).toBe(false)
+      expect(hasPresentationState(document.body, "insertion-trigger")).toBe(false)
       expect(editor.appendix.querySelector(".◆insertion-trigger")).toBeNull()
     }
     finally { parse.mockRestore() }
@@ -569,7 +570,7 @@ describe("insertion menu", () => {
       expect(menu.filteredItems.map(item => item.tag)).toEqual(["table"])
       expect(editorHTML()).toBe("<p>++table</p>")
       document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
-      expect(document.body.classList.contains("◆insertion-trigger")).toBe(false)
+      expect(hasPresentationState(document.body, "insertion-trigger")).toBe(false)
     }
     finally { observerConstructor.mockRestore() }
   })
@@ -652,7 +653,7 @@ describe("insertion menu", () => {
     }))
 
     expect(menu.open).toBe(false)
-    expect(document.body.classList.contains("◆insertion-trigger")).toBe(false)
+    expect(hasPresentationState(document.body, "insertion-trigger")).toBe(false)
     expect(editorHTML()).toBe("<p>++</p>")
   })
 
@@ -725,5 +726,5 @@ it("converts the text container from a typed heading command", async () => {
   editor.features.insertion.menu.dispatchEvent(new CustomEvent("insertion-menu-select", {detail: {tag: "h2"}}))
   expect(editorHTML()).toBe(`<h2 id="intro">Text <b>here</b></h2>`)
   expect(document.querySelector("b")).toBe(bold)
-  expect(document.body.classList.contains("◆insertion-trigger")).toBe(false)
+  expect(hasPresentationState(document.body, "insertion-trigger")).toBe(false)
 })

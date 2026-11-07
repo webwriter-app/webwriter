@@ -1,3 +1,4 @@
+import {presentationStateElements} from "../src/presentation-state.js"
 import {DOMEditor} from "../src/domeditor"
 import {$} from "../src/utility"
 import {mathElement, mathStructureOptions} from "../src/math"
@@ -126,7 +127,7 @@ export async function auditMathVisuals(editor: DOMEditor, fixture: HTMLElement, 
           }
           if(!painted && !native.height) errors.push("native caret bounds unavailable; slot geometry is shown as a diagnostic")
           const guides = guidesFor(editor)
-          const reserved = Array.from(math.querySelectorAll(".◆math-slot"))
+          const reserved = Array.from(presentationStateElements(math, "math-slot"))
           if(guides.length !== reserved.length) errors.push(`expected ${reserved.length} placeholders, found ${guides.length}`)
           guides.forEach((guide, i) => {
             const rect = guide.getBoundingClientRect(), bounds = reserved[i]?.getBoundingClientRect()
