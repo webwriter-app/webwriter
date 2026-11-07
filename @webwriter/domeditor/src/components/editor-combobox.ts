@@ -31,7 +31,6 @@ export class EditorCombobox extends LitElement {
     values: {attribute: false},
     disabled: {type: Boolean, reflect: true},
     open: {type: Boolean, reflect: true, state: true},
-    visibleTagCount: {state: true},
   }
 
   static styles: CSSResultGroup = css`
@@ -300,7 +299,6 @@ export class EditorCombobox extends LitElement {
   private editing = false
   private typeahead = ""
   private lastTypeahead = 0
-  private visibleTagCount?: number
   private tagStrip?: Element
   private tagResizeObserver?: ResizeObserver
   protected activeIndex = -1
@@ -367,31 +365,43 @@ export class EditorCombobox extends LitElement {
 
   private fitSelectionTags() {
     const strip = this.tagStrip
-    const width = strip?.getBoundingClientRect().width
-    if(!strip || !width) return
-
-    const gap = parseFloat(getComputedStyle(strip).columnGap)
+    if(!strip) return
     const tags = Array.from(strip.querySelectorAll<HTMLElement>(".selection-tag:not(.selection-tag-count)"))
-    const widths = tags.map(tag => {
-      const label = tag.querySelector<HTMLElement>(".selection-tag-label")!
-      // Include the clipped text when a long first tag is already sharing space with the count.
-      return tag.getBoundingClientRect().width + Math.max(0, label.scrollWidth - label.clientWidth)
-    })
-    const total = widths.reduce((sum, tagWidth) => sum + tagWidth, 0) + gap * (tags.length - 1)
-    if(total <= width || tags.length === 1) {
-      this.visibleTagCount = tags.length
-      return
-    }
-
     const counter = strip.querySelector<HTMLElement>(".selection-tag-count")!
-    const available = width - counter.getBoundingClientRect().width
-    let used = widths[0] + gap
-    let visible = 1
-    while(visible < tags.length && used + widths[visible] + gap <= available) {
-      used += widths[visible] + gap
-      visible++
+    const width = strip.getBoundingClientRect().width
+    let visible = Math.min(1, tags.length)
+    if(width && tags.length > 1) {
+      const gap = parseFloat(getComputedStyle(strip).columnGap) || 0
+      const widths = tags.map(tag => {
+        const label = tag.querySelector<HTMLElement>(".selection-tag-label")!
+        // Include the clipped text when a long first tag is already sharing space with the count.
+        return tag.getBoundingClientRect().width + Math.max(0, label.scrollWidth - label.clientWidth)
+      })
+      const total = widths.reduce((sum, tagWidth) => sum + tagWidth, 0) + gap * (tags.length - 1)
+      if(total <= width) visible = tags.length
+      else {
+        let used = widths[0] + gap
+        let counterWidth = counter.getBoundingClientRect().width
+        while(visible < tags.length - 1) {
+          const count = `+${tags.length - visible - 1}`
+          // The counter uses tabular digits, so its width only changes at a digit boundary.
+          if(count.length !== counter.textContent?.length) {
+            counter.textContent = count
+            counterWidth = counter.getBoundingClientRect().width
+          }
+          const next = used + widths[visible] + gap
+          if(next + counterWidth > width) break
+          used = next
+          visible++
+        }
+      }
     }
-    this.visibleTagCount = visible
+    // Apply measured layout directly to the rendered tags without requesting another render.
+    tags.forEach((tag, index) => { tag.hidden = index >= visible })
+    const hiddenCount = tags.length - visible
+    counter.hidden = hiddenCount === 0
+    const count = `+${hiddenCount}`
+    if(counter.textContent !== count) counter.textContent = count
   }
 
   protected selectedOption() {
@@ -651,13 +661,11 @@ export class EditorCombobox extends LitElement {
   }
 
   private renderSelectionTags() {
-    const visible = this.visibleTagCount ?? 1
-    const hiddenCount = Math.max(0, this.values.length - visible)
     return html`
       <span class="selection-tags" ${ref(this.observeTagStrip)} @click=${this.handleToggleClick}>
-        ${this.values.map((value, index) => {
+        ${this.values.map(value => {
           const label = this.options.find(option => option.value === value)?.label ?? value
-          return html`<span class="selection-tag" ?hidden=${index >= visible}>
+          return html`<span class="selection-tag">
             <span class="selection-tag-label" title=${label}>${label}</span>
             <button class="selection-remove" type="button" aria-label=${`Remove ${label}`} title=${`Remove ${label}`}
               ?disabled=${this.disabled} @click=${(event: MouseEvent) => {
@@ -667,7 +675,7 @@ export class EditorCombobox extends LitElement {
             >${ribbonIcon("Reject")}</button>
           </span>`
         })}
-        <span class="selection-tag selection-tag-count" ?hidden=${!hiddenCount} aria-hidden="true">+${hiddenCount || this.values.length}</span>
+        <span class="selection-tag selection-tag-count" hidden aria-hidden="true"></span>
       </span>
     `
   }

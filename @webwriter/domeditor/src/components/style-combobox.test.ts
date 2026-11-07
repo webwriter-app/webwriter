@@ -91,14 +91,12 @@ describe("shared Style combobox", () => {
     }
     const visible = () => [...strip.querySelectorAll(".selection-tag:not([hidden])")].map(tag => tag.textContent!.trim())
     combo.requestUpdate()
-    await combo.updateComplete
-    await combo.updateComplete
+    await expect(combo.updateComplete).resolves.toBe(true)
     expect(visible()).toEqual(["Small", "Large", "+1"])
 
     width = 124
     combo.requestUpdate()
-    await combo.updateComplete
-    await combo.updateComplete
+    await expect(combo.updateComplete).resolves.toBe(true)
     expect(visible()).toEqual(["Small", "Large", "custom"])
   })
 
