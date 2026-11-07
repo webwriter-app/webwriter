@@ -224,6 +224,7 @@ const expectedChecks = [
   "canvas and slide copyright controls share freeform placement",
   "canvas and slide captions remain available through toolbox commands",
   "bundled layouts render under the strict editor CSP without widgets",
+  "bundled themes start without editor CSP violations",
   "serialization keeps authored styles without triggering editor CSP violations",
   "editing frame blocks meta refresh and retains same-document navigation",
   "canvas box selection retains disjoint ranges and stays in the document top layer",

@@ -1,7 +1,7 @@
 import type {IImportMap} from "@jspm/import-map"
 import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
 import {WEBWRITER_GENERATOR} from "./document-head"
-import {ensureDefaultDocumentTheme, upgradeBundledDocumentThemes} from "./document-themes"
+import {documentTheme, ensureDefaultDocumentTheme, upgradeBundledDocumentThemes} from "./document-themes"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "./frame-local-packages"
 import {packageImportMapId} from "./package-dependencies"
 import type {WebWriterPackage} from "./packages"
@@ -33,10 +33,29 @@ export type PreviewFrameOptions = FrameDocumentOptions & {
   learnerEntryURL?: string
 }
 
-const defaultDocumentThemeHTML = () => {
-  const root = document.implementation.createHTMLDocument()
+const prepareEditorThemes = (root: Document, nonce?: string) => {
   ensureDefaultDocumentTheme(root)
-  return root.head.querySelector("style")!.outerHTML
+  if(!nonce) return
+  for(const style of root.head.querySelectorAll<HTMLStyleElement>(":scope > style[data-ww-theme]")) {
+    const theme = documentTheme(style.getAttribute("data-ww-theme") ?? "")
+    if(style.namespaceURI !== "http://www.w3.org/1999/xhtml" || !theme || style.textContent !== theme.source || style.hasAttribute("nonce")) continue
+    // Admit only exact bundled CSS at parse time. Before the editor starts,
+    // leave the authored style intact and let HeadFeature render its own sheet.
+    style.setAttribute("nonce", nonce)
+    const finish = root.createElement("script")
+    finish.className = "◆ ◆editor-only"
+    finish.setAttribute("nonce", nonce)
+    finish.textContent = `{
+  const script = document.currentScript;
+  const style = script.previousElementSibling;
+  if (style instanceof HTMLStyleElement && style.nonce === script.nonce) {
+    if (style.sheet) style.sheet.disabled = true;
+    style.removeAttribute("nonce");
+  }
+  script.remove();
+}`
+    style.after(finish)
+  }
 }
 
 /** Embed the local widget graph before sharing a preview with other browsers.
@@ -125,8 +144,11 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   const scopedRegistry = registryScript?.outerHTML ?? ""
   const bootstrapScripts = `<script class="◆ ◆editor-only" nonce="${nonce}">globalThis.litIssuedWarnings ??= new Set(); globalThis.litIssuedWarnings.add("dev-mode");</script>${scopedRegistry}<script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}" src="${escapeHTMLAttribute(options.entryURL)}"></script>`
   const bootstrap = `${csp}${bridge}${bootstrapScripts}`
+  const themeNonce = options.executeScripts && !hasWidgetScripts ? options.bridgeNonce : undefined
   if(documentHTML === null) {
-    return `<!-- frame ${options.revision} --><!DOCTYPE html><html lang="${escapeHTMLAttribute(options.language)}"><head>${bootstrap}<meta name="generator" content="${escapeHTMLAttribute(WEBWRITER_GENERATOR)}">${defaultDocumentThemeHTML()}</head><body></body></html>`
+    const root = document.implementation.createHTMLDocument()
+    prepareEditorThemes(root, themeNonce)
+    return `<!-- frame ${options.revision} --><!DOCTYPE html><html lang="${escapeHTMLAttribute(options.language)}"><head>${bootstrap}<meta name="generator" content="${escapeHTMLAttribute(WEBWRITER_GENERATOR)}">${root.head.innerHTML}</head><body></body></html>`
   }
 
   const parsed = new DOMParser().parseFromString(documentHTML, "text/html")
@@ -161,7 +183,7 @@ document.querySelectorAll("script.◆pending-module").forEach((script, index) =>
   else script.setAttribute("class", className);
 });
 </script>` : ""
-  ensureDefaultDocumentTheme(parsed)
+  prepareEditorThemes(parsed, themeNonce)
   parsed.head.insertAdjacentHTML("beforeend", `${restoreModules}${bridge}${bootstrapScripts}`)
   const cspElement = parsed.createElement("meta")
   cspElement.classList.add("◆", "◆editor-only")

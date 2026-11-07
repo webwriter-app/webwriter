@@ -6520,6 +6520,46 @@ await check("bundled layouts render under the strict editor CSP without widgets"
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("bundled themes start without editor CSP violations", async () => {
+  const {editorFrameHTML} = await import("../src/frame-document")
+  const bridgeNonce = crypto.randomUUID()
+  const observe = `<script nonce="${bridgeNonce}">
+window.styleViolations = [];
+document.addEventListener("securitypolicyviolation", event => {
+  if (event.effectiveDirective === "style-src-elem") window.styleViolations.push(event);
+});</script>`
+  const water = documentThemes.find(theme => theme.value === "water")!
+  for(const source of [null, `<!doctype html><head><style data-ww-theme="water">${water.source}</style></head><body><p>Opened</p></body>`]) {
+    const frame = document.createElement("iframe")
+    const html = editorFrameHTML(source, {bridgeNonce, hostOrigin: location.origin, revision: 0, language: "en", packages: [],
+      entryURL: new URL("./native-browser-frame.ts?proofreading-disabled", import.meta.url).href, executeScripts: true})
+      .replace("<head>", `<head>${observe}`)
+    const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    nativeRootEditor.addAppendix(frame)
+    try {
+      await loaded
+      const doc = frame.contentDocument!
+      const parsed = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      doc.open()
+      doc.write(html)
+      doc.close()
+      await parsed
+      await layoutFrame()
+      const view = frame.contentWindow as Window & {styleViolations: SecurityPolicyViolationEvent[]}
+      const name = source === null ? "base" : "water"
+      assert(view.editor, `strict editor did not initialize: ${view.editorError}`)
+      assert(!view.styleViolations.length, `${name} triggered ${view.styleViolations.length} stylesheet CSP violations at startup`)
+      const selector = `style[data-ww-theme="${name}"]`
+      const style = doc.head.querySelector<HTMLStyleElement>(selector)!
+      assert(style && !style.hasAttribute("nonce") && !style.nonce, `${name} retained its startup nonce`)
+      assert(!style.sheet || style.sheet.disabled, `${name} still applies its inline sheet in the editor`)
+      const saved = new DOMParser().parseFromString(view.editor!.toHTML(), "text/html").head.querySelector(selector)
+      assert(saved?.textContent === style.textContent && !saved.hasAttribute("nonce"), `${name} changed its portable stylesheet on save`)
+    }
+    finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+  }
+})
+
 await check("serialization keeps authored styles without triggering editor CSP violations", async () => {
   const {editorFrameHTML} = await import("../src/frame-document")
   const frame = document.createElement("iframe")

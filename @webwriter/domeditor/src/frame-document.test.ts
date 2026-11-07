@@ -63,6 +63,22 @@ describe("local live preview bundles", () => {
     const policy = parse(source).head.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
     expect(policy).toContain("style-src-elem 'nonce-font-test' https://fonts.bunny.net data:;")
   })
+
+  it("uses the existing nonce only for exact bundled theme CSS at startup", () => {
+    const theme = documentTheme("water")!
+    const source = `<head><style id="bundled" data-ww-theme="water">${theme.source}</style>
+      <style id="customized" data-ww-theme="water">${theme.source}\np {color: red}</style></head>`
+    const root = parse(editorFrameHTML(source, editorOptions()))
+
+    const bundled = root.getElementById("bundled")!
+    expect(bundled.getAttribute("nonce")).toBe(editorOptions().bridgeNonce)
+    expect(bundled.nextElementSibling?.getAttribute("nonce")).toBe(editorOptions().bridgeNonce)
+    expect(bundled.nextElementSibling?.classList.contains("◆editor-only")).toBe(true)
+    expect(root.getElementById("customized")!.hasAttribute("nonce")).toBe(false)
+    expect(root.head.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content"))
+      .toContain("style-src-elem 'nonce-host-bridge-nonce' https://fonts.bunny.net data:;")
+  })
+
   afterEach(() => vi.restoreAllMocks())
   const script = `${hostOrigin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/widget.js?revision=2`
   const style = `${hostOrigin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/widget.css?revision=2`
