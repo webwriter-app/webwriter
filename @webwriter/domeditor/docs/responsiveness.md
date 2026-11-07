@@ -30,9 +30,9 @@ This contract applies to block widgets. Inline widgets, such as an inline equati
 
 Use this declaration in each block widget's own styles so it also has a sensible default when nested. The base theme also gives ordinary block children a prose-width maximum and centers them in the page. A widget host can use `--ww-widget-max` to choose its own maximum.
 
-Block widgets should support allocated widths from **280 CSS px through 2160 CSS px**. The 280 CSS px value is a test target, not a `min-width`. A widget must narrow gracefully below 280 CSS px as well, including in a 280 CSS px viewport where page gutters reduce the content width. Do not assume that the widget's width equals the browser viewport or a desktop monitor width.
+Design block widgets for allocated widths from **300px to 2100px**. Use the width the parent allocates when choosing layout breakpoints.
 
-The widget owns its internal layout and its natural height. Do not set a fixed host height to make a wide layout fit. Let text wrap and controls stack as the allocation changes.
+The widget owns its internal layout and its natural height. Set `min-height` and `max-height` to suit the widget, and let content determine its height within those bounds. Keep content reachable when it overflows. Let text wrap and controls stack as the allocation changes.
 
 ## Set page and reading widths
 
@@ -204,9 +204,6 @@ Do not add a resize protocol, breakpoint attributes, or serialized layout state.
 Avoid these patterns:
 
 ```css
-/* Do not turn the test target into a minimum width. */
-:host { min-inline-size: 280px; }
-
 /* Do not clip the document to hide an overflowing layout. */
 body { overflow: hidden; }
 
@@ -220,10 +217,11 @@ Authors size widgets with ordinary CSS. Do not add editor wrappers or state attr
 
 ## Test allocated widths
 
-Test parent allocations of **280, 320, 640, 960, 1440, 1920, and 2160 CSS px**, plus at least one narrower allocation. A default widget should stop growing at the prose maximum; a widget that opts out should use the available width. Check the rendered DOM and shadow DOM at each width, including:
+Test parent allocations of **300, 640, 960, 1440, 1920, and 2100 CSS px**. A default widget should stop growing at the prose maximum; a widget that opts out should use the available width. Check the rendered DOM and shadow DOM at each width, including:
 
 - controls, labels, and results remain readable and usable;
 - columns have no horizontal overflow and the work area gets the available space;
+- content remains reachable when the widget reaches its maximum height;
 - nested widgets and nested editable content still fit their parent;
 - ordinary direct body children receive the reading width, structural containers can use the full page width, and authored document rules can change either;
 - changing `--ww-prose-max` updates default widgets, including widgets that adopt the theme in shadow DOM;
@@ -231,4 +229,4 @@ Test parent allocations of **280, 320, 640, 960, 1440, 1920, and 2160 CSS px**, 
 - native editing, preview, and export preserve the same authored DOM;
 - resizing while the widget is active does not lose focus, selection, or local work.
 
-For the editor's base-theme and widget fixture, the local test harness is available at `http://127.0.0.1:1234/tests/responsiveness.html` while the development server is running. It checks the base theme and fixture widget; published widgets still need their own test coverage. Use browser developer tools or automated viewport tests as appropriate. Include a 280 CSS px viewport with its gutters in the test matrix so the widget is exercised at an allocation narrower than the 280 CSS px target.
+For the editor's base-theme and widget fixture, the local test harness is available at `http://127.0.0.1:1234/tests/responsiveness.html` while the development server is running. It checks the base theme and fixture widget; published widgets still need their own test coverage. Use browser developer tools or automated viewport tests as appropriate.
