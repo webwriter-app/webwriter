@@ -298,5 +298,18 @@ it("publishes document updates, owns only document shortcuts, and disconnects co
     type: editorFrameControlMessage, bridgeNonce: nonce, command: "disconnect-collaboration",
   }}))
   expect(providerDisconnect).toHaveBeenCalledOnce()
-  window.dispatchEvent(new Event("unload"))
+
+  const updateCount = () => postMessage.mock.calls.filter(([message]) => message.type === "editor-frame-update").length
+  const beforePageHide = updateCount()
+  window.dispatchEvent(Object.assign(new Event("pagehide"), {persisted: true}))
+  window.dispatchEvent(Object.assign(new Event("pageshow"), {persisted: true}))
+  paragraph.append("After cache restore")
+  await flushMutations()
+  const afterRestore = updateCount()
+  expect(afterRestore).toBeGreaterThan(beforePageHide)
+
+  window.dispatchEvent(Object.assign(new Event("pagehide"), {persisted: false}))
+  paragraph.append("After teardown")
+  await flushMutations()
+  expect(updateCount()).toBe(afterRestore)
 })

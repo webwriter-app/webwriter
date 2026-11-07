@@ -57,7 +57,12 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   if(settings.username !== undefined) setUsername(settings.username)
   setMotion(settings.disableAnimations === true)
   const documentSync = publishEditorDocument(editor.doc, settings.documentReplicaId ?? nonce, message => window.parent.postMessage({...message, documentReplicaId: settings.documentReplicaId, bridgeNonce: nonce}, origin))
-  window.addEventListener("unload", () => documentSync.destroy(), {once: true})
+  const stopDocumentSync = (event: PageTransitionEvent) => {
+    if(event.persisted) return
+    window.removeEventListener("pagehide", stopDocumentSync)
+    documentSync.destroy()
+  }
+  window.addEventListener("pagehide", stopDocumentSync)
   // Run before feature capture listeners can claim canvas/slide gestures.
   window.addEventListener("pointerdown", event => {
     const target = event.target as Node | null
