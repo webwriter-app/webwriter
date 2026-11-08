@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {hasPresentationState, resolvePresentationSelector} from "./presentation-state.js"
 import { afterAll, beforeAll, describe, it, expect, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
@@ -18,6 +19,38 @@ const hasExactSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule => (rule as CSSStyleRule).selectorText === selector)
 
 describe("document recovery serialization", () => {
+  it.each(["", " <p> </p>\n<p><br></p> "])("skips an empty body even with document metadata and body attributes (%j)", async body => {
+    const editor = new DOMEditor()
+    const title = document.createElement("title")
+    title.textContent = "Draft title"
+    document.head.append(title)
+    document.body.setAttribute("dir", "rtl")
+    document.body.innerHTML = body
+    try {
+      expect(await editor.serializeRecoveryHTML()).toBeNull()
+    }
+    finally {
+      editor.destroy()
+      title.remove()
+      document.body.removeAttribute("dir")
+      document.body.replaceChildren()
+    }
+  })
+
+  it.each([
+    "<!--authored-->",
+    '<custom-widget value="one"></custom-widget>',
+    '<img src="data:image/png;base64,AQID">',
+    '<p style="border: 1px solid black"><br></p>',
+  ])("keeps authored body content without text (%s)", async body => {
+    document.body.innerHTML = body
+    const editor = new DOMEditor()
+    try {
+      expect(await editor.serializeRecoveryHTML()).not.toBeNull()
+    }
+    finally { editor.destroy(); document.body.replaceChildren() }
+  })
+
   it("skips blank content and preserves comments, textless widgets, and inline media", async () => {
     document.body.innerHTML = "<p><br></p>"
     const editor = new DOMEditor()
@@ -36,8 +69,8 @@ describe("document recovery serialization", () => {
 
 describe("popup text selection styling", () => {
   it("keeps toggle text selectable with a text cursor and gives its selected text a distinct fill in the editor", () => {
-    expect(editorStyleString).toMatch(/:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\]\),\s*:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\] \*\)\s*\{[^}]*user-select:\s*text;[^}]*cursor:\s*text;/)
-    expect(editorStyleString).toMatch(/:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\]\)::selection,\s*:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\] \*\)::selection\s*\{[^}]*background-color:\s*#fbbf24;[^}]*color:\s*#1f2937;/)
+    expect(editorStyleString).toMatch(/:where\(body:state\(ww-popup-editing\) \.ww-popup > button\[popovertarget\]\),\s*:where\(body:state\(ww-popup-editing\) \.ww-popup > button\[popovertarget\] \*\)\s*\{[^}]*user-select:\s*text;[^}]*cursor:\s*text;/)
+    expect(editorStyleString).toMatch(/:where\(body:state\(ww-popup-editing\) \.ww-popup > button\[popovertarget\]\)::selection,\s*:where\(body:state\(ww-popup-editing\) \.ww-popup > button\[popovertarget\] \*\)::selection\s*\{[^}]*background-color:\s*#fbbf24;[^}]*color:\s*#1f2937;/)
   })
 })
 
@@ -192,16 +225,20 @@ describe("DOMEditor stylesheets", () => {
     const appendix = editor.appendix
     const overlay = editor.features.transformation.overlay
     const stylesheet = document.adoptedStyleSheets.find(sheet => hasExactSelector(sheet, "html"))
-    const appendixStylesheet = appendix.adoptedStyleSheets.find(sheet =>
-      hasExactSelector(sheet, ":host(.◆editing-locked) > :not(slot):not(.◆ai-review-toolbar)"),
+    const owner = {}
+    editor.lockEditing(owner)
+    const lockSheet = appendix.adoptedStyleSheets.find(sheet =>
+      Array.from(sheet.cssRules).some(rule => (rule as CSSStyleRule).selectorText?.endsWith("> :not(slot):not(.◆ai-review-toolbar)")),
     )
+    editor.unlockEditing(owner)
 
     expect(stylesheet).toBeInstanceOf(CSSStyleSheet)
-    expect(appendixStylesheet).toBeInstanceOf(CSSStyleSheet)
-    const lockRule = Array.from(appendixStylesheet!.cssRules).find(rule =>
-      (rule as CSSStyleRule).selectorText === ":host(.◆editing-locked) > :not(slot):not(.◆ai-review-toolbar)") as CSSStyleRule
+    expect(lockSheet).toBeInstanceOf(CSSStyleSheet)
+    expect(appendix.adoptedStyleSheets).not.toContain(lockSheet)
+    const lockRule = Array.from(lockSheet!.cssRules).find(rule =>
+      (rule as CSSStyleRule).selectorText?.endsWith("> :not(slot):not(.◆ai-review-toolbar)")) as CSSStyleRule
     expect(lockRule.style.display).toBe("none")
-    expect(Array.from(appendixStylesheet!.cssRules).some(rule => (rule as CSSKeyframesRule).name === "blink")).toBe(true)
+    expect(appendix.adoptedStyleSheets.some(sheet => Array.from(sheet.cssRules).some(rule => (rule as CSSKeyframesRule).name === "blink"))).toBe(true)
     expect(editorStyleString).toContain("body::part(transform-overlay)")
     expect(overlay.getAttribute("part")).toContain("transform-overlay")
     expect(overlay.querySelector("#◆transform-overlay-scale-up-left")?.getAttribute("part"))
@@ -247,7 +284,6 @@ describe("DOMEditor stylesheets", () => {
     ["svg", 32, 32], ["iframe", 320, 70], ["embed", 320, 70], ["object", 320, 70],
   ] as const)("sets minimum editing dimensions for %s", (tag, width, height) => {
     const element = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", "svg") : document.createElement(tag)
-    element.classList.add("◆media-empty")
     if(tag === "svg") element.setAttribute("viewBox", "0 0 1600 900")
     document.body.append(element)
     try {
@@ -303,28 +339,28 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toContain("body::part(presence-caret)")
     expect(editorStyleString).toContain("body::part(presence-element-selection)")
     expect(editorStyleString).toContain("body::part(presence-element-selection-label)")
-    expect(editorStyleString).toMatch(/\.◆element-selected\s*\{[\s\S]*?anchor-name:\s*--selection-anchor;/)
-    expect(editorStyleString).toMatch(/\.◆element-selected,\s*\.◆element-selected:hover\s*\{[\s\S]*?outline:\s*none;/)
+    expect(editorStyleString).toMatch(/:state\(ww-element-selected\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor;/)
+    expect(editorStyleString).toMatch(/:state\(ww-element-selected\),\s*:state\(ww-element-selected\):hover\s*\{[\s\S]*?outline:\s*none;/)
     expect(editorStyleString).toMatch(/body::part\(selection-caret\)\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?position-anchor:\s*--selection-anchor;/)
     expect(editorStyleString).toMatch(/body::part\(selection-caret-node\),[\s\S]*?body::part\(selection-caret-capture\)\s*\{[\s\S]*?left:\s*anchor\(left\);[\s\S]*?width:\s*anchor-size\(width\);[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).toMatch(/body::part\(selection-caret-capture\)\s*\{[\s\S]*?outline:\s*2px solid var\(--sl-color-primary-400\);/)
     expect(editorStyleString).toMatch(/body\s+\*:not\(\s*:where\(/)
-    expect(editorStyleString).toContain("body:has(.◆element-capture-selected:is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered))::part(hover-caret) {\n  display: none;")
-    expect(editorStyleString).toMatch(/\.◆element-selected\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
-    expect(editorStyleString).toMatch(/body\.◆node-selection-active,\s*body\.◆node-selection-active\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
-    expect(editorStyleString).toMatch(/body\.◆node-selection-active\s+\.◆element-capture-selected,\s*body\.◆node-selection-active\s+math\.◆element-capture-selected\s+\*\s*\{[\s\S]*?caret-color:\s*auto\s*!important;/)
-    expect(editorStyleString).toMatch(/body\.◆table-cell-selection,\s*body\.◆table-cell-selection\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
-    expect(editorStyleString).toMatch(/body\.◆table-cell-selection::selection,\s*body\.◆table-cell-selection\s+\*::selection\s*\{[\s\S]*?background:\s*transparent;/)
-    expect(editorStyleString).toMatch(/body\.◆editing-locked,\s*body\.◆editing-locked\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
-    expect(editorStyleString).toMatch(/body\.◆editing-locked::selection,\s*body\.◆editing-locked\s+\*::selection\s*\{[\s\S]*?background:\s*transparent\s*!important;/)
-    expect(editorStyleString).toMatch(/td\.◆table-cell-selected,\s*th\.◆table-cell-selected\s*\{[\s\S]*?box-shadow:\s*inset 0 0 0 2px var\(--sl-color-primary-400\);[\s\S]*?rgb\(56 189 248 \/ 6%\)/)
-    expect(editorStyleString).toMatch(/\.◆element-selected:not\(\.◆element-capture-selected\)::selection,\s*\.◆element-selected:not\(\.◆element-capture-selected\)\s+\*::selection\s*\{[\s\S]*?background:\s*transparent;/)
-    expect(editorStyleString).not.toMatch(/\.◆element-selected::selection[\s\S]*?background:\s*transparent;/)
-    expect(editorStyleString).not.toMatch(/\.◆element-selected\s*,\s*\.◆element-selected\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
+    expect(editorStyleString).toContain("body:has(:state(ww-element-capture-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered), :state(ww-style-target-hovered)))::part(hover-caret) {\n  display: none;")
+    expect(editorStyleString).toMatch(/:state\(ww-element-selected\)\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
+    expect(editorStyleString).toMatch(/body:state\(ww-node-selection-active\),\s*body:state\(ww-node-selection-active\)\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
+    expect(editorStyleString).toMatch(/body:state\(ww-node-selection-active\)\s+:state\(ww-element-capture-selected\),\s*body:state\(ww-node-selection-active\)\s+math:state\(ww-element-capture-selected\)\s+\*\s*\{[\s\S]*?caret-color:\s*auto\s*!important;/)
+    expect(editorStyleString).toMatch(/body:state\(ww-table-cell-selection\),\s*body:state\(ww-table-cell-selection\)\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
+    expect(editorStyleString).toMatch(/body:state\(ww-table-cell-selection\)::selection,\s*body:state\(ww-table-cell-selection\)\s+\*::selection\s*\{[\s\S]*?background:\s*transparent;/)
+    expect(editorStyleString).toMatch(/body:state\(ww-editing-locked\),\s*body:state\(ww-editing-locked\)\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
+    expect(editorStyleString).toMatch(/body:state\(ww-editing-locked\)::selection,\s*body:state\(ww-editing-locked\)\s+\*::selection\s*\{[\s\S]*?background:\s*transparent\s*!important;/)
+    expect(editorStyleString).toMatch(/td:state\(ww-table-cell-selected\),\s*th:state\(ww-table-cell-selected\)\s*\{[\s\S]*?box-shadow:\s*inset 0 0 0 2px var\(--sl-color-primary-400\);[\s\S]*?rgb\(56 189 248 \/ 6%\)/)
+    expect(editorStyleString).toMatch(/:state\(ww-element-selected\):not\(:state\(ww-element-capture-selected\)\)::selection,\s*:state\(ww-element-selected\):not\(:state\(ww-element-capture-selected\)\)\s+\*::selection\s*\{[\s\S]*?background:\s*transparent;/)
+    expect(editorStyleString).not.toMatch(/:state\(ww-element-selected\)::selection[\s\S]*?background:\s*transparent;/)
+    expect(editorStyleString).not.toMatch(/:state\(ww-element-selected\)\s*,\s*:state\(ww-element-selected\)\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body::part\(presence-element-selection\)[\s\S]*?outline:\s*2px solid color-mix\(in srgb, var\(--presence-color\) 40%, transparent\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).toContain("body::part(selection-caret)")
     expect(editorStyleString).not.toMatch(/body\s*>\s*\*\s*\+\s*\*\s*\{[^}]*margin-block-start:/)
-    expect(editorStyleString).toMatch(/body\s*>\s*:last-child:not\(:where\(\.◆gap-after-selected\)\)\s*\{[^}]*margin-block-end:\s*0;/)
+    expect(editorStyleString).toMatch(/body\s*>\s*:last-child:not\(:where\(:state\(ww-gap-after-selected\)\)\)\s*\{[^}]*margin-block-end:\s*0;/)
     expect(editorStyleString).not.toMatch(/body:has\(>\s*:last-child\)\s*\{[^}]*padding/)
     expect(editorStyleString).toMatch(/body::part\(presence-caret-label\)[\s\S]*?width:\s*1\.125rem;/)
     expect(editorStyleString).toMatch(/body::part\(presence-caret-label\)[\s\S]*?font:\s*8px\/1\.25/)
@@ -337,56 +373,56 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(presence-gap-caret\)[\s\S]*?color:\s*color-mix\(in srgb, var\(--presence-color\) 40%, transparent\);/)
 
     expect(editorStyleString).toMatch(/body::part\(presence-gap-caret\)::after\s*\{[\s\S]*?animation:\s*none;/)
-    expect(editorStyleString).toMatch(/\):is\(:hover, \.◆pointer-hovered\)\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
-    expect(editorStyleString).toMatch(/\.◆element-hovered\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
-    expect(editorStyleString).toMatch(/\.◆style-target-hovered\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
-    expect(editorStyleString).toMatch(/\):not\(table \*\):is\(:hover, \.◆pointer-hovered\)\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
-    expect(editorStyleString).toMatch(/body table:is\(:hover, \.◆pointer-hovered\)\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
-    expect(editorStyleString).toMatch(/\.◆element-selected:is\(:hover, \.◆pointer-hovered, \.◆element-hovered\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
-    expect(editorStyleString).toMatch(/\.◆element-selected\.◆style-target-hovered:not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
-    expect(editorStyleString).toMatch(/\.◆empty-selected:is\(:hover, \.◆pointer-hovered, \.◆element-hovered\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--empty-selected, --hover-anchor;/)
+    expect(editorStyleString).toMatch(/\):is\(:hover, :state\(ww-pointer-hovered\)\)\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
+    expect(editorStyleString).toMatch(/:state\(ww-element-hovered\)\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
+    expect(editorStyleString).toMatch(/:state\(ww-style-target-hovered\)\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
+    expect(editorStyleString).toMatch(/\):not\(table \*\):is\(:hover, :state\(ww-pointer-hovered\)\)\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
+    expect(editorStyleString).toMatch(/body table:is\(:hover, :state\(ww-pointer-hovered\)\)\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
+    expect(editorStyleString).toMatch(/:state\(ww-element-selected\):is\(:hover, :state\(ww-pointer-hovered\), :state\(ww-element-hovered\)\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
+    expect(editorStyleString).toMatch(/:state\(ww-element-selected\):state\(ww-style-target-hovered\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
+    expect(editorStyleString).toMatch(/:state\(ww-empty-selected\):is\(:hover, :state\(ww-pointer-hovered\), :state\(ww-element-hovered\)\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--empty-selected, --hover-anchor;/)
     expect(editorStyleString).toContain("anchor-name: --ww-popup-bubble, --hover-anchor;")
     expect(editorStyleString).toContain("anchor-name: --ww-popup-bubble, --selection-anchor;")
     expect(editorStyleString).toContain("anchor-name: --ww-popup-bubble, --selection-anchor, --hover-anchor;")
     expect(editorStyleString).toMatch(/body::part\(hover-caret\)\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?position-anchor:\s*--hover-anchor;[\s\S]*?width:\s*anchor-size\(width\);[\s\S]*?outline:\s*1px dotted var\(--sl-color-gray-400, black\);[\s\S]*?outline-offset:\s*2px;/)
-    expect(editorStyleString).toMatch(/body:has\(\.◆style-target-hovered\)::part\(hover-caret\),\s*body\.◆style-target-hovered::part\(hover-caret\)\s*\{[\s\S]*?display:\s*block;/)
-    expect(editorStyleString).toMatch(/body:has\(\.◆element-hovered\)::part\(hover-caret\)\s*\{[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);/)
-    expect(editorStyleString).toMatch(/body\.◆element-hovered::part\(hover-caret\)\s*\{[\s\S]*?position-anchor:\s*auto;[\s\S]*?inset:\s*0;[\s\S]*?background:\s*transparent;/)
-    expect(editorStyleString).not.toContain("body.◆element-hovered::after")
-    expect(editorStyleString).toMatch(/body\.◆element-selected::part\(selection-caret-node\)\s*\{[\s\S]*?inset:\s*0;[\s\S]*?outline:\s*none;[\s\S]*?background:\s*transparent;/)
-    expect(editorStyleString).not.toContain("body.◆element-selected::after")
+    expect(editorStyleString).toMatch(/body:has\(:state\(ww-style-target-hovered\)\)::part\(hover-caret\),\s*body:state\(ww-style-target-hovered\)::part\(hover-caret\)\s*\{[\s\S]*?display:\s*block;/)
+    expect(editorStyleString).toMatch(/body:has\(:state\(ww-element-hovered\)\)::part\(hover-caret\)\s*\{[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);/)
+    expect(editorStyleString).toMatch(/body:state\(ww-element-hovered\)::part\(hover-caret\)\s*\{[\s\S]*?position-anchor:\s*auto;[\s\S]*?inset:\s*0;[\s\S]*?background:\s*transparent;/)
+    expect(editorStyleString).not.toContain("body:state(ww-element-hovered)::after")
+    expect(editorStyleString).toMatch(/body:state\(ww-element-selected\)::part\(selection-caret-node\)\s*\{[\s\S]*?inset:\s*0;[\s\S]*?outline:\s*none;[\s\S]*?background:\s*transparent;/)
+    expect(editorStyleString).not.toContain("body:state(ww-element-selected)::after")
     expect(editorStyleString).toContain("body::part(hover-caret)")
     expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\)::before\s*\{[\s\S]*?content:\s*"Summary";/)
     expect(editorStyleString).toMatch(/summary,\s*figcaption\s*\{\s*cursor:\s*text;/)
-    expect(editorStyleString).toMatch(/body:has\(:is\(summary, figcaption\):is\(:hover, \.◆pointer-hovered, \.◆element-hovered, \.◆style-target-hovered\)\)::part\(hover-caret\)\s*\{\s*display:\s*none;/)
+    expect(editorStyleString).toMatch(/body:has\(:is\(summary, figcaption\):is\(:hover, :state\(ww-pointer-hovered\), :state\(ww-element-hovered\), :state\(ww-style-target-hovered\)\)\)::part\(hover-caret\)\s*\{\s*display:\s*none;/)
     expect(editorStyleString).toMatch(/summary::after\s*\{\s*cursor:\s*pointer;\s*\}/)
     expect(editorStyleString).not.toMatch(/summary:is\([^{}]*\)::after\s*\{[^}]*content:/)
     expect(editorStyleString).toMatch(/details > summary:first-child \+ p:last-child:is\(:empty, :has\(> br:only-child\)\)::after\s*\{\s*content:\s*"Details";/)
     expect(editorStyleString).toMatch(/details > summary:first-child \+ p:last-child:has\(> br:only-child\) > br\s*\{\s*display:\s*none;/)
     expect(editorStyleString).toContain("body::part(virtual-list-caret)")
-    expect(editorStyleString).not.toMatch(/^(?:html|body)(?:\.◆template-active)?\s*\{[^}]*overflow(?:-x)?:\s*hidden;/m)
-    expect(editorStyleString).not.toMatch(/body\.◆template-active\s*\{/)
-    expect(editorStyleString).not.toMatch(/body\.◆template-active > \[role~="document"\]:only-child\s*\{/)
-    expect(editorStyleString).toMatch(/body\.◆template-active:has\(> \[role~="document"\]\.◆element-selected:only-child\)::part\(selection-caret-node\)[\s\S]*?background:\s*transparent;/)
+    expect(editorStyleString).not.toMatch(/^(?:html|body)(?::state\(ww-template-active\))?\s*\{[^}]*overflow(?:-x)?:\s*hidden;/m)
+    expect(editorStyleString).not.toMatch(/body:state\(ww-template-active\)\s*\{/)
+    expect(editorStyleString).not.toMatch(/body:state\(ww-template-active\) > \[role~="document"\]:only-child\s*\{/)
+    expect(editorStyleString).toMatch(/body:state\(ww-template-active\):has\(> \[role~="document"\]:state\(ww-element-selected\):only-child\)::part\(selection-caret-node\)[\s\S]*?background:\s*transparent;/)
     expect(editorStyleString).not.toContain("template-add")
     expect(editorStyleString).not.toContain('content: "Content"')
-    expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\)\.◆empty-selected::before[\s\S]*?border-inline-start-color:\s*currentColor;/)
+    expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\):state\(ww-empty-selected\)::before[\s\S]*?border-inline-start-color:\s*currentColor;/)
     expect(editorStyleString).toMatch(/@keyframes summary-caret-blink\s*\{\s*50%\s*\{\s*border-inline-start-color:\s*transparent;/)
     expect(editorStyleString).toMatch(/dl > dt:is\(:empty, :has\(br:only-child\)\)::after[\s\S]*?content:\s*"Term";/)
     expect(editorStyleString).toMatch(/dl > dd:is\(:empty, :has\(br:only-child\)\)::after[\s\S]*?content:\s*"Description";/)
     expect(editorStyleString).not.toMatch(/:is\(ul, ol, menu\):empty[\s\S]*?display:\s*list-item;/)
-    expect(editorStyleString).toMatch(/:is\(picture, img, video, iframe, embed, object\)\.◆media-empty,\s*body::part\(graphic-image-placeholder\)\s*\{[^}]*border:\s*1px dashed #6b7280;/)
-    expect(editorStyleString).not.toMatch(/\.◆media-empty\.◆element-selected\s*\{/)
-    const mediaWidth = rules.find(rule => rule.selectorText === ":is(picture:where(:not(html.◆canvas-active *, :is(td, th) *)), audio, video)")?.style
-    const mediaHeight = rules.find(rule => rule.selectorText === ":is(picture:where(:not(html.◆canvas-active *, :is(td, th) *)), video)")?.style
+    expect(editorStyleString).toMatch(/:is\(picture, img, video, iframe, embed, object\):state\(ww-media-empty\),\s*body::part\(graphic-image-placeholder\)\s*\{[^}]*border:\s*1px dashed #6b7280;/)
+    expect(editorStyleString).not.toMatch(/:state\(ww-media-empty\):state\(ww-element-selected\)\s*\{/)
+    const mediaWidth = rules.find(rule => rule.selectorText === resolvePresentationSelector(document, ":is(picture:where(:not(html:state(ww-canvas-active) *, :is(td, th) *)), audio, video)"))?.style
+    const mediaHeight = rules.find(rule => rule.selectorText === resolvePresentationSelector(document, ":is(picture:where(:not(html:state(ww-canvas-active) *, :is(td, th) *)), video)"))?.style
     expect(mediaWidth?.width).toBe("100%")
     expect(mediaWidth?.height).toBe("")
     expect(mediaWidth?.getPropertyValue("aspect-ratio")).toBe("")
     expect(mediaHeight?.height).toBe("auto")
-    expect(editorStyleString).toMatch(/:is\(picture, img, video\)\.◆media-empty\s*\{[^}]*?aspect-ratio:\s*16\s*\/\s*9;/)
-    expect(editorStyleString).not.toContain("audio.◆media-empty::-webkit-media-controls-enclosure")
-    expect(editorStyleString).not.toMatch(/:is\([^)]*audio[^)]*\)\.◆media-empty\s*\{/)
-    expect(editorStyleString).not.toMatch(/body:has\(\.◆media-empty:is\(\.◆gap-before-selected, \.◆gap-after-selected\)\)::part\(gap-caret\)\s*\{[\s\S]*?display:\s*none;/)
+    expect(editorStyleString).toMatch(/:is\(picture, img, video\):state\(ww-media-empty\)\s*\{[^}]*?aspect-ratio:\s*16\s*\/\s*9;/)
+    expect(editorStyleString).not.toContain("audio:state(ww-media-empty)::-webkit-media-controls-enclosure")
+    expect(editorStyleString).not.toMatch(/:is\([^)]*audio[^)]*\):state\(ww-media-empty\)\s*\{/)
+    expect(editorStyleString).not.toMatch(/body:has\(:state\(ww-media-empty\):is\(:state\(ww-gap-before-selected\), :state\(ww-gap-after-selected\)\)\)::part\(gap-caret\)\s*\{[\s\S]*?display:\s*none;/)
   })
 
   it("restores the default paragraph after a direct DOM change empties the body", async () => {
@@ -616,8 +652,8 @@ describe("DOMEditor stylesheets", () => {
   })
 
   it("keeps a selected closed dialog in editable document flow", () => {
-    expect(editorStyleString).toMatch(/dialog\.◆dialog-editing\s*\{[\s\S]*?display:\s*block\s*!important;[\s\S]*?position:\s*static\s*!important;[\s\S]*?z-index:\s*auto\s*!important;[\s\S]*?min-width:\s*0\s*!important;[\s\S]*?max-height:\s*none\s*!important;[\s\S]*?overflow:\s*visible\s*!important;/)
-    expect(editorStyleString).toMatch(/dialog\.◆dialog-editing::backdrop\s*\{[\s\S]*?display:\s*none\s*!important;/)
+    expect(editorStyleString).toMatch(/dialog:state\(ww-dialog-editing\)\s*\{[\s\S]*?display:\s*block\s*!important;[\s\S]*?position:\s*static\s*!important;[\s\S]*?z-index:\s*auto\s*!important;[\s\S]*?min-width:\s*0\s*!important;[\s\S]*?max-height:\s*none\s*!important;[\s\S]*?overflow:\s*visible\s*!important;/)
+    expect(editorStyleString).toMatch(/dialog:state\(ww-dialog-editing\)::backdrop\s*\{[\s\S]*?display:\s*none\s*!important;/)
   })
 
   it("does not duplicate constructed stylesheets when the appendix is revisited", () => {
@@ -637,14 +673,14 @@ describe("DOMEditor stylesheets", () => {
     const slot = Array.from(editor.appendix.children)
       .find(element => element.localName === "slot" && !element.hasAttribute("name")) as HTMLSlotElement
 
-    expect(document.body).toHaveClass("◆editing-locked")
+    expect(hasPresentationState(document.body, "editing-locked")).toBe(true)
     expect(document.body.inert).toBe(false)
     expect(slot.inert).toBe(true)
     expect(editor.toHTML()).not.toContain("◆editing-locked")
     expect(editor.toHTML()).not.toContain(" inert")
 
     editor.unlockEditing(owner)
-    expect(document.body).not.toHaveClass("◆editing-locked")
+    expect(hasPresentationState(document.body, "editing-locked")).toBe(false)
     expect(slot.inert).toBe(false)
   })
 
@@ -754,7 +790,7 @@ describe("widget shadow interactions", () => {
 
     expect(propagated).toHaveBeenCalledWith(event)
     expect(event.defaultPrevented).toBe(false)
-    expect(widget).toHaveClass("◆element-selected")
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
     expect(widget.shadowRoot?.activeElement).toBe(input)
     document.removeEventListener("keydown", propagated)
     widget.remove()

@@ -16,7 +16,8 @@ import {
 import {adoptStylesheet, authoredClassValue, createStylesheet} from "../utility"
 import {elementAttributeEditability, isUnsafeElementAttributeValue, setElementAttributeValue} from "../element-attributes"
 
-const editorOnlySelector = ".◆editor-only, [data-webwriter-editor-only]"
+import {isInsideEditorOnlyNode} from "../editor-artifacts"
+import {trackPresentationStyles} from "../presentation-state.js"
 const textContentElements = new Set(["script", "style", "title", "noscript", "template"])
 
 const metaName = (element: Element) => element.localName === "meta"
@@ -28,8 +29,7 @@ const relTokens = (element: Element) => (element.getAttribute("rel") ?? "")
   .split(/\s+/)
   .filter(Boolean)
 
-const isEditorOnly = (element: Element) => element.matches(editorOnlySelector)
-  || element.closest(editorOnlySelector) !== null
+const isEditorOnly = isInsideEditorOnlyNode
 
 const isBlockedAuthoredContent = (element: Element) => element.localName === "script"
   || element.localName === "style"
@@ -110,6 +110,7 @@ export class HeadFeature extends EditorFeature {
   private enumerationStylesheet: CSSStyleSheet | null = null
   private enumerationCSS = ""
   private activeThemeStylesheet: CSSStyleSheet | null = null
+  private untrackThemeStyles?: () => void
   private readonly handleMutations = (mutations: MutationRecord[]) => {
     const head = document.head
     const relevant = mutations.some(mutation => (
@@ -211,6 +212,8 @@ export class HeadFeature extends EditorFeature {
         .filter(stylesheet => stylesheet !== this.activeThemeStylesheet)
       this.activeThemeStylesheet = null
     }
+    this.untrackThemeStyles?.()
+    this.untrackThemeStyles = undefined
     super.disable()
   }
 
@@ -225,6 +228,8 @@ export class HeadFeature extends EditorFeature {
       document.adoptedStyleSheets = document.adoptedStyleSheets
         .filter(current => current !== this.activeThemeStylesheet)
     }
+    this.untrackThemeStyles?.()
+    this.untrackThemeStyles = trackPresentationStyles(document, stylesheet)
     this.activeThemeStylesheet = stylesheet
     adoptStylesheet(document, stylesheet)
   }

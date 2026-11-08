@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {hasPresentationState, presentationStateElements} from "../presentation-state.js"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 
@@ -233,7 +234,7 @@ it("finishes a stable text resize without reprocessing the unchanged node select
   expect(selection).not.toHaveBeenCalled()
   expect($.selectedElement).toBe(target)
   expect(feature.target).toBe(target)
-  expect(target).toHaveClass("◆element-selected")
+  expect(hasPresentationState(target, "element-selected")).toBe(true)
 })
 
 it("hides transforms for a zero-area widget host and recovers when its live box returns", () => {
@@ -617,6 +618,25 @@ describe.each(["img", "picture"])("%s stretching", tag => {
     return {target, image}
   }
 
+  it("stops proportional resizing at the CSS minimum width and grows again", () => {
+    const {target} = imageTarget()
+    target.style.minWidth = "120px"
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    const move = (clientX: number, clientY: number) => movePointer(pointer("pointermove",
+      {pointerId: 3, clientX, clientY, shiftKey: true, altKey: true}))
+
+    move(160, 175)
+    expect(target.style.maxWidth).toBe("120px")
+    expect(target.style.maxHeight).toBe("60px")
+    expect(target.style.aspectRatio).toBe("120 / 60")
+    move(240, 170)
+    expect(target.style.maxWidth).toBe("140px")
+    expect(target.style.maxHeight).toBe("70px")
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.minWidth).toBe("120px")
+  })
+
   it.each([{dx: 60, dy: -20}, {dx: -40, dy: 30}, {dx: 0, dy: 40}, {dx: 40, dy: 0}])("changes dimensions independently by $dx/$dy and preserves undo", async ({dx, dy}) => {
     const {target, image} = imageTarget()
     const children = Array.from(target.childNodes)
@@ -725,6 +745,21 @@ describe.each(["img", "picture"])("%s stretching", tag => {
 })
 
 describe("resize alignment", () => {
+  it("clamps a floated widget to its stylesheet minimum width", () => {
+    floatStylesheet.textContent += " demo-widget { min-width: 120px }"
+    const target = targetElement("demo-widget")
+    Object.assign(target.style, {width: "200px", height: "100px", float: "right"})
+    mockRect(target, {width: 200, height: 100})
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-left")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 200}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 270, clientY: 180, altKey: true}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.maxWidth).toBe("120px")
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("120px")
+    expect(target.style.minWidth).toBe("")
+  })
+
   it.each([
     {marginLeft: "0px", marginRight: "auto", float: "none", corner: "down-right", width: 230},
     {marginLeft: "20px", marginRight: "20px", float: "none", corner: "down-right", width: 230},
@@ -1137,8 +1172,8 @@ describe("freeform group transformation", () => {
     await mutationsDelivered()
     expect(first.style.width).toBe("100px")
     expect($.selectedElements).toEqual([first, outside])
-    expect(last).not.toHaveClass("◆atomic-range-selected")
-    expect(outside).toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(last, "atomic-range-selected")).toBe(false)
+    expect(hasPresentationState(outside, "atomic-range-selected")).toBe(true)
     expect(original.every(outline => !outline.isConnected)).toBe(true)
   })
 
@@ -1360,10 +1395,10 @@ describe("freeform group transformation", () => {
     expect(first.style.cssText).toBe(initial)
     expect(first.title).toBe("Concurrent unrelated edit")
     expect(last.style.left).toBe(outcome === "concurrent" ? "500px" : "200px")
-    expect(document.body).not.toHaveClass("◆transform-moving")
+    expect(hasPresentationState(document.body, "transform-moving")).toBe(false)
     editor.features.selection.selectElement(first)
-    expect(last).not.toHaveClass("◆transform-target")
-    expect(document.querySelectorAll(".◆transform-target")).toHaveLength(outcome === "disable" || outcome === "destroy" ? 0 : 1)
+    expect(hasPresentationState(last, "transform-target")).toBe(false)
+    expect(presentationStateElements(document, "transform-target")).toHaveLength(outcome === "disable" || outcome === "destroy" ? 0 : 1)
   })
 
   it("deletes all selected members in one undo step", () => {
@@ -1485,7 +1520,7 @@ describe("selection-owned transformation", () => {
     expect(feature.overlay.querySelector<HTMLElement>('.◆transform-overlay-crop-frame')!.hidden).toBe(false)
     const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-crop-${direction}`)!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 42, clientX: 100, clientY: 100}))
-    expect(document.body.classList.contains(`◆transform-cropping-${direction}`)).toBe(true)
+    expect(hasPresentationState(document.body, `transform-cropping-${direction}`)).toBe(true)
     movePointer(pointer("pointermove", {pointerId: 42, clientX: direction === "up-left" ? 110 : 90, clientY: direction === "up-left" ? 105 : 95}))
     expect(video.style.maxWidth).toBe("")
     expect(video.style.maxHeight).toBe("")
@@ -1983,7 +2018,7 @@ describe("selection-owned transformation", () => {
       expect($.selectedElement).toBe(article)
       expect(article.style.left).toBe("0px")
       expect(article.style.top).toBe("0px")
-      expect(document.body).not.toHaveClass("◆transform-moving")
+      expect(hasPresentationState(document.body, "transform-moving")).toBe(false)
     })
 
     it.each(["selection", "remote replacement", "remote text edit", "local text edit"])("respects a concurrent %s while moving a text box", outcome => {
@@ -2020,14 +2055,14 @@ describe("selection-owned transformation", () => {
       else if(outcome === "remote replacement") {
         expect(article.isConnected).toBe(false)
         expect(document.getSelection()!.anchorNode).not.toBe(text)
-        expect(article).not.toHaveClass("◆transform-target")
+        expect(hasPresentationState(article, "transform-target")).toBe(false)
       }
       else {
         expect($.selectedElement).toBe(article)
         expect(text.data).toBe(outcome === "local text edit" ? "local world" : "remote world")
       }
       expect(neighbor.textContent).toBe("Neighbor")
-      expect(document.body).not.toHaveClass("◆transform-moving")
+      expect(hasPresentationState(document.body, "transform-moving")).toBe(false)
     })
 
     it("selects the whole text box when its border is clicked without dragging", () => {
@@ -2148,8 +2183,8 @@ describe("selection-owned transformation", () => {
       const check = () => {
         editor.features.selection.processSelection(undefined, {scrollIntoView: false})
         expect(feature.target).toBe(article)
-        expect(article).toHaveClass("◆transform-target")
-        expect(article).not.toHaveClass("◆element-selected")
+        expect(hasPresentationState(article, "transform-target")).toBe(true)
+        expect(hasPresentationState(article, "element-selected")).toBe(false)
         expect(feature.overlay).not.toHaveAttribute("visibility", "hidden")
         expect(feature.overlay.getAttribute("part")?.split(/\s+/)).toContain("transform-overlay-content-selected")
       }
@@ -2179,7 +2214,7 @@ describe("selection-owned transformation", () => {
       const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-${control}`)!
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
       expect($.selectedElement).toBe(article)
-      expect(article).toHaveClass("◆element-selected")
+      expect(hasPresentationState(article, "element-selected")).toBe(true)
       expect(feature.overlay.getAttribute("part")?.split(/\s+/)).not.toContain("transform-overlay-content-selected")
       document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
       expect($.selectedElement).toBe(article)
@@ -2200,7 +2235,7 @@ describe("selection-owned transformation", () => {
       article.after(next)
       editor.features.selection.selectDropRange((() => { const range = document.createRange(); range.setStart(next.firstChild!, 1); range.collapse(true); return range })())
       expect(feature.target).toBe(next)
-      expect(article).not.toHaveClass("◆transform-target")
+      expect(hasPresentationState(article, "transform-target")).toBe(false)
     })
 
     it("cleans up disconnected targets and excludes controls from saved and shared content", async () => {
@@ -2215,7 +2250,7 @@ describe("selection-owned transformation", () => {
       await mutationsDelivered()
       editor.features.selection.processSelection(undefined, {scrollIntoView: false})
       expect(feature.target).not.toBe(article)
-      expect(article).not.toHaveClass("◆transform-target")
+      expect(hasPresentationState(article, "transform-target")).toBe(false)
     })
   })
 
@@ -2224,7 +2259,7 @@ describe("selection-owned transformation", () => {
     $.move(paragraph.firstChild!, 2)
     editor.features.selection.processSelection()
     expect(feature.target).toBeNull()
-    expect(paragraph).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(paragraph, "element-selected")).toBe(false)
   })
 
   it("starts from ordinary element selection", () => {
@@ -2232,7 +2267,7 @@ describe("selection-owned transformation", () => {
     selectNode(target)
 
     expect(feature.target).toBe(target)
-    expect(target).toHaveClass("◆transform-target")
+    expect(hasPresentationState(target, "transform-target")).toBe(true)
     expect(feature.overlay).toBe(editor.appendix.querySelector("#◆transform-overlay"))
   })
 
@@ -2338,7 +2373,7 @@ describe("selection-owned transformation", () => {
     editor.features.selection.processSelection()
 
     expect(feature.target).toBeNull()
-    expect(target).not.toHaveClass("◆transform-target")
+    expect(hasPresentationState(target, "transform-target")).toBe(false)
     expect(feature.overlay).toHaveAttribute("visibility", "hidden")
   })
 
@@ -2350,7 +2385,7 @@ describe("selection-owned transformation", () => {
     await Promise.resolve()
 
     expect(feature.target).toBeNull()
-    expect(target).not.toHaveClass("◆transform-target")
+    expect(hasPresentationState(target, "transform-target")).toBe(false)
     expect(target.firstElementChild).toBe(child)
   })
 })
@@ -2512,8 +2547,8 @@ describe("transform controls and geometry", () => {
     feature.disable()
     expect(caret.style.transform).toBe("")
     expect(caret.style.getPropertyValue("position-anchor")).toBe("")
-    expect(caret).toHaveClass("◆selection-caret-capture")
-    expect(target).not.toHaveClass("◆transform-target")
+    expect(caret?.getAttribute("part")).toContain("selection-caret-capture")
+    expect(hasPresentationState(target, "transform-target")).toBe(false)
   })
 
   it.each([
@@ -2767,7 +2802,7 @@ describe("transform controls and geometry", () => {
     await mutationsDelivered()
     tick()
     expect(pan).toHaveBeenCalledTimes(2)
-    expect(document.body).not.toHaveClass("◆transform-moving")
+    expect(hasPresentationState(document.body, "transform-moving")).toBe(false)
     expect(minimap).toHaveBeenLastCalledWith(false)
   })
 
@@ -2956,7 +2991,7 @@ describe("transform controls and geometry", () => {
     document.dispatchEvent(pointer("pointerup", {pointerId: 17, clientX: 400, clientY: 250}))
     expect(target.style.left).toBe("300px")
     expect(target.style.top).toBe("160px")
-    expect(document.body).not.toHaveClass("◆transform-moving")
+    expect(hasPresentationState(document.body, "transform-moving")).toBe(false)
     await mutationsDelivered()
     editor.doc.syncFromDOM()
     const moved = editor.toHTML(true)
@@ -2991,7 +3026,7 @@ describe("transform controls and geometry", () => {
       expect(target.style.left).toBe("0px")
       expect(target.style.top).toBe(scenario === "changed" ? "777px" : "0px")
     }
-    expect(document.body).not.toHaveClass("◆transform-moving")
+    expect(hasPresentationState(document.body, "transform-moving")).toBe(false)
   })
 
   it.each(["document", "slides", "nested-canvas", "right-button", "locked", "disconnected"])("does not automatically raise a move in %s", scenario => {
@@ -3033,7 +3068,7 @@ describe("transform controls and geometry", () => {
     expect(target.style.zIndex).toBe("3")
     expect(sibling.style.zIndex).toBe("2")
     expect(target.style.left).toBe("0px")
-    expect(document.body).not.toHaveClass("◆transform-moving")
+    expect(hasPresentationState(document.body, "transform-moving")).toBe(false)
 
     mover.dispatchEvent(pointer("pointerdown", {pointerId: 4, clientX: 100, clientY: 100}))
     target.style.zIndex = "9"
@@ -3085,7 +3120,7 @@ describe("transform controls and geometry", () => {
     expect(target.style.maxHeight).toBe("50px")
     expect(target.style.left).toBe("0px")
     expect(target.style.top).toBe("0px")
-    expect(target).toHaveClass("◆transform-target")
+    expect(hasPresentationState(target, "transform-target")).toBe(true)
   })
 
   it("cancels a captioned canvas picture resize when its image is replaced", () => {
@@ -3109,7 +3144,7 @@ describe("transform controls and geometry", () => {
     expect(picture.firstElementChild).toBe(replacement)
     expect(replacement.style.width).toBe("175px")
     expect(figure.querySelector("figcaption")?.textContent).toBe("Keep caption")
-    expect(document.body).not.toHaveClass("◆transform-scaling-nwse")
+    expect(hasPresentationState(document.body, "transform-scaling-nwse")).toBe(false)
   })
 
   it("keeps the iframe transformation frame at the same size across website zoom levels", () => {
@@ -3176,7 +3211,7 @@ describe("transform controls and geometry", () => {
     expect(target.style.height).toBe("180px")
     expect(target.style.maxHeight).toBe("")
     expect(target.title).toBe("Updated activity")
-    expect(document.body).not.toHaveClass("◆transform-scaling-nwse")
+    expect(hasPresentationState(document.body, "transform-scaling-nwse")).toBe(false)
   })
 
   describe.each(["figure", "demo-widget"])("static %s resizing", tag => {
@@ -3211,7 +3246,7 @@ describe("transform controls and geometry", () => {
         expect(target.style.position).toBe(initialPosition)
         expect(target.style.maxWidth).toBe("")
         expect(target.style.maxHeight).toBe("")
-        expect(document.body).not.toHaveClass("◆transform-scaling-ew", "◆transform-scaling-ns", "◆transform-scaling-nwse", "◆transform-scaling-nesw")
+        expect(hasPresentationState(document.body, "transform-scaling-ew") || hasPresentationState(document.body, "transform-scaling-ns") || hasPresentationState(document.body, "transform-scaling-nwse") || hasPresentationState(document.body, "transform-scaling-nesw")).toBe(false)
       }
     })
   })
@@ -3237,7 +3272,7 @@ describe("transform controls and geometry", () => {
 
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: x, clientY: y}))
       movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: x + dx, clientY: y + dy}))
-      expect(document.body).toHaveClass(`◆transform-scaling-${dx === 13 ? "ns" : "ew"}`)
+      expect(hasPresentationState(document.body, `transform-scaling-${dx === 13 ? "ns" : "ew"}`)).toBe(true)
       document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
 
       expect(target.style.maxWidth).toBe(width)
@@ -3250,9 +3285,9 @@ describe("transform controls and geometry", () => {
       expect(target.firstElementChild).toBe(child)
       expect(target.lastChild?.nodeType).toBe(Node.COMMENT_NODE)
       expect(target).toHaveAttribute("data-authored", "keep")
-      expect(target).toHaveClass("◆element-selected")
+      expect(hasPresentationState(target, "element-selected")).toBe(true)
       expect(editor.features.selection.captureSelectedElement).toBe(captured ? target : null)
-      expect(document.body).not.toHaveClass("◆transform-scaling-ew", "◆transform-scaling-ns")
+      expect(hasPresentationState(document.body, "transform-scaling-ew") || hasPresentationState(document.body, "transform-scaling-ns")).toBe(false)
       editor.doc.syncFromDOM()
       expect(editor.toHTML(true)).not.toContain("transform-overlay-edge")
       expect(editor.doc.body.toString()).not.toContain("transform-overlay-edge")
@@ -3304,7 +3339,7 @@ describe("transform controls and geometry", () => {
     expect(target.style.width).toBe("100px")
     expect(target.style.maxWidth).toBe("")
     expect(target.style.color).toBe("red")
-    expect(document.body).not.toHaveClass("◆transform-scaling-ew", "◆transform-scaling-ns")
+    expect(hasPresentationState(document.body, "transform-scaling-ew") || hasPresentationState(document.body, "transform-scaling-ns")).toBe(false)
   })
 
   it.each(["horizontal-tb", "vertical-rl", "vertical-lr", "sideways-rl"])("maps resize edges to physical maxima in %s", writingMode => {
@@ -3352,7 +3387,6 @@ describe("transform controls and geometry", () => {
     expect(target.style.height).toBe("")
     expect(target.getBoundingClientRect().width).toBe(120)
     expect(target.style.position).toBe("")
-    expect(feature.overlay).toHaveClass("◆transform-overlay-changed")
     expect(editor.toHTML(true)).toContain("max-width: 120px")
     expect(editor.doc.body.toString()).toContain("max-width: 120px")
     expect(editor.doc.body.toString()).not.toContain("position:")
@@ -3417,7 +3451,7 @@ describe("transform controls and geometry", () => {
     expect(target.style.maxWidth).toBe("90px")
     expect(target.style.maxHeight).toBe("50px")
     expect(target.style.getPropertyPriority("max-height")).toBe("important")
-    expect(document.body).not.toHaveClass("◆transform-scaling-nwse")
+    expect(hasPresentationState(document.body, "transform-scaling-nwse")).toBe(false)
   })
 
   it("constrains an SVG root without altering its authored dimensions or children", () => {
@@ -3549,7 +3583,7 @@ describe("transform controls and geometry", () => {
       document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Escape"}))
       expect(target.style.cssText).toBe(initial)
       expect(minimap).toHaveBeenLastCalledWith(false)
-      expect(document.body).not.toHaveClass("◆transform-rotating")
+      expect(hasPresentationState(document.body, "transform-rotating")).toBe(false)
     }
     finally { observer.disconnect() }
   })
@@ -3664,7 +3698,7 @@ describe("drop, cancellation, and document ownership", () => {
   it("excludes editor markers from serialized and shared HTML", () => {
     const target = targetElement()
     selectNode(target)
-    expect(target).toHaveClass("◆transform-target")
+    expect(hasPresentationState(target, "transform-target")).toBe(true)
     editor.doc.syncFromDOM()
 
     expect(editor.toHTML(true)).not.toContain("◆transform-target")
@@ -3681,13 +3715,13 @@ describe("drop, cancellation, and document ownership", () => {
     mockRect(target)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
     feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 130, clientY: 100}))
-    expect(document.body).toHaveClass("◆transform-moving")
+    expect(hasPresentationState(document.body, "transform-moving")).toBe(true)
 
     feature.disable()
 
     expect(editor.appendix.querySelector("#◆transform-overlay")).toBeNull()
-    expect(document.body).not.toHaveClass("◆transform-moving", "◆transform-rotating", "◆transform-scaling-ew", "◆transform-scaling-ns")
-    expect(target).not.toHaveClass("◆transform-target")
+    expect(hasPresentationState(document.body, "transform-moving") || hasPresentationState(document.body, "transform-rotating") || hasPresentationState(document.body, "transform-scaling-ew") || hasPresentationState(document.body, "transform-scaling-ns")).toBe(false)
+    expect(hasPresentationState(target, "transform-target")).toBe(false)
   })
 
   it.each([125, 175])("does not apply a float when dragging over itself or its descendants at x=%i", x => {
@@ -3733,7 +3767,7 @@ describe("drop, cancellation, and document ownership", () => {
     expect(preview.style.top).toBe("100px")
     expect(parseFloat(preview.style.width)).toBeCloseTo(40)
     expect(preview.style.height).toBe("50px")
-    expect(paragraph).not.toHaveClass("◆drop-caret-before", "◆drop-caret-after")
+    expect(hasPresentationState(paragraph, "drop-caret-before") || hasPresentationState(paragraph, "drop-caret-after")).toBe(false)
     feature.handleMoveEnd()
     expect(target.parentElement!.parentElement).toBe(paragraph.parentElement!.parentElement)
     expect(target).toHaveClass(side === "left" ? "ww-float-left" : "ww-float-right")
@@ -3779,7 +3813,7 @@ describe("drop, cancellation, and document ownership", () => {
     feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 250, clientY: y, ctrlKey: true}))
 
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
-    expect(paragraph).toHaveClass(`◆drop-caret-${placement}`)
+    expect(hasPresentationState(paragraph, `drop-caret-${placement}`)).toBe(true)
     feature.handleMoveEnd()
 
     expect(target.style.float).toBe("")
@@ -4165,7 +4199,7 @@ describe.each(["canvas", "slides"] as const)("%s movement grid and guides", mode
     expect(selection).not.toHaveBeenCalled()
     expect($.selectedElement).toBe(target)
     expect(feature.target).toBe(target)
-    expect(target).toHaveClass("◆element-selected")
+    expect(hasPresentationState(target, "element-selected")).toBe(true)
   })
 
   it("bypasses all snapping with Alt and leaves the locked Shift axis unchanged", () => {
@@ -4227,7 +4261,7 @@ describe("queued pointer movement", () => {
 
     flushAnimationFrame()
     expect(drag).toHaveBeenCalledOnce()
-    expect(drag).toHaveBeenCalledWith(expect.objectContaining({clientX: 135, clientY: 125}))
+    expect(drag.mock.calls[0][0]).toMatchObject({clientX: 135, clientY: 125})
     document.dispatchEvent(pointer("pointerup", {pointerId}))
   })
 
@@ -4320,7 +4354,7 @@ describe("queued pointer movement", () => {
     else if(ending === "removed" || ending === "replaced") expect(target.isConnected).toBe(false)
     else expect(target.style.cssText).toBe(initialStyle)
     expect(document.body.className).not.toContain("◆transform-moving")
-    expect(document.querySelectorAll(".◆transform-moving")).toHaveLength(0)
+    expect(presentationStateElements(document, "transform-moving")).toHaveLength(0)
   })
 
   it.each(["move", "resize"] as const)("does not write styles again for an identical %s frame", mode => {

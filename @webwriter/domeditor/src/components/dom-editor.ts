@@ -1,7 +1,10 @@
+/// <reference lib="dom.asynciterable" />
+
 import type {DistributionSelection} from "../features/distribution"
 import * as Y from "yjs"
 import {decodeSharedDOMAttribute, INTERNAL_NAMESPACE, INTERNAL_NODE_KIND, INTERNAL_QUALIFIED_NAME} from "../domdoc-codec"
 import {EditorDocumentReplica, isEditorDocumentUpdate} from "../editor-document-sync"
+import {isDataBlock} from "../active-content"
 import {closestElement, containsElement, hasClass, readableNodePath, type ReadableElement, type ReadableNode} from "../dom-readers"
 import {applyPreviewUpdate} from "../live-session-permissions.js"
 import {createBrowserDistributionValidator} from "../distribution-snapshot"
@@ -56,7 +59,7 @@ import type {LayoutSelectionState} from "../layouts"
 import type { EditingAction } from "../domeditor"
 import {elementDragType, insertionMenuItems, ribbonElementInsertionAction, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
-import {isAuthoredMutation} from "../editor-artifacts"
+import {copyEditorArtifactState, isAuthoredContentEditableMutation, isAuthoredMutation, isEditorOnlyNode, registerFrameArtifacts} from "../editor-artifacts"
 import {
   defaultPackageExportSource,
   describePackageExport,
@@ -260,7 +263,7 @@ import {getDocumentRoot} from "../document-template"
 import {boardLayoutRole, documentLayoutMode, normalizePristineDocumentLayout, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type LocalFileHandle = RecentFileHandle
-type ActiveDocumentRecovery = {id: string, release: () => void}
+type ActiveDocumentRecovery = {id: string, documentKey?: string, release: () => void}
 const documentRecoveryLock = "webwriter-document-recovery:"
 
 type FilePickerWindow = Window & typeof globalThis & {
@@ -669,15 +672,7 @@ export class DomEditor extends LitElement {
     refreshing: names => { this.localPackageRefreshingNames = names },
     error: message => { this.localPackageError = message },
     loaded: record => this.selectLocalPackage(record.package.name),
-    install: async(pkg, previousName) => {
-      const client = this.backendClient
-      const documentId = this.backendDocumentId
-      await this.reloadEditor([
-        ...this.installedPackages.filter(candidate => candidate.name !== previousName && candidate.name !== pkg.name),
-        pkg,
-      ])
-      if(previousName && client && documentId) await this.autosaveCloudAfterBundleReload({client, id: documentId})
-    },
+    install: (pkg, previousName) => this.installDeveloperPackages([{pkg, previousName}]),
   })
   private frameState: EditorStateSnapshot | undefined
   // Key the iframe by revision so old windows and their queued messages are retired.
@@ -787,7 +782,10 @@ export class DomEditor extends LitElement {
   private liveThumbnailWidgets = new Set<string>()
   private liveSelectedAggregates = new Map<string, string>()
   private liveAggregateOptions = new Map<string, LiveWidgetAggregateOptions>()
-  private readonly livePreview = new LivePreview()
+  private readonly isInstalledWidget = (element: Element) => element.namespaceURI === "http://www.w3.org/1999/xhtml"
+    && this.installedPackages.some(pkg => pkg.members.some(member => member.kind === "widget"
+      && member.tagName?.toLowerCase() === element.localName))
+  private readonly livePreview = new LivePreview(this.isInstalledWidget)
   private fileFormat: FileFormat = "html"
   private fileHandle: LocalFileHandle | null = null
   private storageLocation: StorageLocation = "local"
@@ -1305,7 +1303,7 @@ export class DomEditor extends LitElement {
     if(!source?.documentElement) return this.frameDocumentHTML
     const inertDocument = getInertDocument(source)
     const root = inertDocument.importNode(source.documentElement, true) as HTMLElement
-    clearEditorArtifacts(root)
+    clearEditorArtifacts(root, [], this.isInstalledWidget)
     return `${serializeDoctype(source.doctype)}${root.outerHTML}`
   }
 
@@ -2167,6 +2165,7 @@ export class DomEditor extends LitElement {
     this.documentReplicaSyncPending = false
     this.editorOpaque = iframe.contentDocument === null
     this.editorDocument = iframe.contentDocument
+    if(this.editorDocument) registerFrameArtifacts(this.editorDocument, this.bridgeNonce)
     this.syncDocumentPalette()
     this.editorWindow = iframe.contentWindow
     this.updateMotionPreference()
@@ -2419,9 +2418,10 @@ export class DomEditor extends LitElement {
   private authoredDocumentSnapshot(cached = false, source: Document | null = this.editorDocument) {
     if(this.editorOpaque && source === this.editorDocument && this.documentReplica) return this.documentReplica.authoredSignature()
     if(cached && this.authoredSnapshotCache?.document === this.editorDocument) return this.authoredSnapshotCache.value
-    const root = source?.documentElement.cloneNode(true) as HTMLElement | undefined
-    if(!root) return null
-    clearEditorArtifacts(root)
+    if(!source) return null
+    const root = source.documentElement.cloneNode(true) as HTMLElement
+    copyEditorArtifactState(source.documentElement, root)
+    clearEditorArtifacts(root, [], this.isInstalledWidget)
     for(const element of [root, ...root.querySelectorAll("*")]) {
       const classes = authoredClassValue(element.getAttribute("class"))
       if(classes) element.setAttribute("class", classes)
@@ -2473,12 +2473,13 @@ export class DomEditor extends LitElement {
     // cloning, cleaning and reparsing a large document on every snapshot.
     const text = current.ownerDocument.createTreeWalker(current, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
       acceptNode: node => node.nodeType === Node.ELEMENT_NODE
-        ? (node as Element).matches(".◆editor-only, [data-webwriter-editor-only], body.ww-slides > nav.ww-slides-navigation, body.ww-slides > .ww-slides-viewport > .ww-slide > nav.ww-slide-directions") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP
+        ? isEditorOnlyNode(node) || (node as Element).matches("body.ww-slides > nav.ww-slides-navigation, body.ww-slides > .ww-slides-viewport > .ww-slide > nav.ww-slide-directions") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP
         : node.nodeValue?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
     })
     if(text.nextNode()) { this.documentLayoutsDismissed = true; return }
     const body = current.cloneNode(true) as HTMLElement
-    clearEditorArtifacts(body)
+    copyEditorArtifactState(current, body)
+    clearEditorArtifacts(body, [], this.isInstalledWidget)
     this.documentLayoutsDismissed = this.pristineDocumentLayoutSnapshot(body.outerHTML) === null
   }
 
@@ -2540,12 +2541,13 @@ export class DomEditor extends LitElement {
     if(/^ww[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(root.id)) initialAttributes.id = root.id
     if(!hasAttributes(body) || !hasAttributes(head) || !hasAttributes(root, initialAttributes)) return false
 
-    const authoredHeadNodes = Array.from(head.childNodes).filter(node => !(
-      node.nodeType === Node.ELEMENT_NODE && (
-        hasClass(node as ReadableElement, "◆editor-only")
-        || (node as ReadableElement).hasAttribute("data-webwriter-editor-only")
-      )
-    ))
+    const authoredNode = (node: ReadableNode) => {
+      if(!this.documentReplica) return !isEditorOnlyNode(node as Node)
+      if(node.nodeType !== Node.ELEMENT_NODE) return true
+      const element = node as ReadableElement
+      return !hasClass(element, "◆editor-only") && !element.hasAttribute("data-webwriter-editor-only")
+    }
+    const authoredHeadNodes = Array.from(head.childNodes).filter(authoredNode)
     const generator = authoredHeadNodes[0]
     const theme = authoredHeadNodes[1]
     const headUnchanged = authoredHeadNodes.length === 2
@@ -2561,12 +2563,7 @@ export class DomEditor extends LitElement {
       && hasAttributes(theme as ReadableElement, {"data-ww-theme": defaultDocumentTheme.value, blocking: "render"})
     if(!headUnchanged) return false
 
-    const authoredChildren = Array.from(body.childNodes).filter(node => {
-      if(node.nodeType !== Node.ELEMENT_NODE) return true
-      const element = node as ReadableElement
-      return !hasClass(element, "◆editor-only")
-        && !element.hasAttribute("data-webwriter-editor-only")
-    })
+    const authoredChildren = Array.from(body.childNodes).filter(authoredNode)
     if(authoredChildren.length === 0) return true
 
     const onlyChild = authoredChildren[0]
@@ -2583,7 +2580,7 @@ export class DomEditor extends LitElement {
   }
 
   private isAuthoredMutation(mutation: MutationRecord) {
-    return isAuthoredMutation(mutation)
+    return isAuthoredMutation(mutation) && isAuthoredContentEditableMutation(mutation, this.isInstalledWidget) !== false
   }
 
   private dismissFloatInfo = () => {
@@ -3839,10 +3836,13 @@ export class DomEditor extends LitElement {
 
   private async refreshDocumentRecoveries() {
     const revision = ++this.documentRecoveryListRevision
+    const checkpoint = this.documentRecoveryCheckpoint
     try {
       const records = await listDocumentRecoveries()
       const locks = await navigator.locks?.query()
       if(!this.isConnected || revision !== this.documentRecoveryListRevision) return
+      if(checkpoint && this.documentRecoveryCheckpoint === checkpoint && !this.documentRecoveryWrite
+        && !records.some(record => record.id === checkpoint.id)) this.documentRecoveryCheckpoint = null
       const active = new Set(locks?.held?.map(lock => lock.name))
       const discarded = discardedDocumentRecoveryIds()
       this.recoveredDocuments = records.filter(record => !discarded.has(record.id) && record.id !== this.activeDocumentRecovery?.id
@@ -3900,6 +3900,7 @@ export class DomEditor extends LitElement {
       || this.documentLayoutConversionCount || !this.fileDirty && !this.documentRecoveryCheckpoint) return
 
     const frame = this.frameRevision, revision = this.documentChangeSequence
+    const updatedAt = Date.now()
     const generation = this.documentRecoveryGeneration
     const editorWindow = this.editorWindow
     const current = () => this.isConnected && generation === this.documentRecoveryGeneration
@@ -3919,9 +3920,19 @@ export class DomEditor extends LitElement {
           if(!current()) { claim.release(); return }
           this.activeDocumentRecovery = claim
         }
-        const record = {id: this.activeDocumentRecovery.id, title: this.fileName || "Untitled document", updatedAt: Date.now()}
-        await writeDocumentRecovery(record, source)
-        if(current()) this.documentRecoveryCheckpoint = record
+        const active = this.activeDocumentRecovery
+        const documentKey = this.documentSettingsId ? "source:" + this.documentSettingsId : active.documentKey
+        const saved = await writeDocumentRecovery({id: active.id, title: this.fileName || "Untitled document", updatedAt, documentKey}, source)
+        if(current()) {
+          this.documentRecoveryCheckpoint = saved?.record ?? null
+          if(saved) active.documentKey = saved.record.documentKey
+          if(saved?.replacedIds.length) {
+            const removed = new Set(saved.replacedIds)
+            this.documentRecoveryListRevision++
+            this.recoveredDocuments = this.recoveredDocuments.filter(record => !removed.has(record.id))
+            this.documentRecoveryNoticeOpen &&= this.recoveredDocuments.length > 0
+          }
+        }
       }
       if(current()) {
         this.documentRecoveryUnchanged = revision === this.documentChangeSequence
@@ -3992,6 +4003,7 @@ export class DomEditor extends LitElement {
           this.clearDocumentCollaboration()
           await this.reloadDocument(source, false, null, undefined, {recovery: claim, discardRecovery})
           if(!this.isConnected) return
+          claim.documentKey = latest.documentKey
           this.documentRecoveryCheckpoint = latest
           this.documentRecoveryUnchanged = true
           this.fileHandle = null
@@ -5042,6 +5054,10 @@ export class DomEditor extends LitElement {
         .finally(() => this.focusEditor())
       return
     }
+    if(label === "local-package-add" || label === "local-package-add-batch") {
+      void this.addLocalPackage(label === "local-package-add-batch")
+      return
+    }
     if(this.localPackageDraft && label?.startsWith("local-package") && label !== `local-package-select:${this.selectedLocalPackageName}`) {
       event.preventDefault()
       const action = /^(local-package-(?:remove|refresh|select)):(.+)$/.exec(label)
@@ -5118,10 +5134,6 @@ export class DomEditor extends LitElement {
     }
     if(label === "show-developer-console") {
       void this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: !this.consoleOpen}}))
-      return
-    }
-    if(label === "local-package-add") {
-      void this.addLocalPackage()
       return
     }
     if(label?.startsWith("local-package-refresh:")) {
@@ -5921,6 +5933,7 @@ export class DomEditor extends LitElement {
   }
 
   private async refreshDeveloperPackage(id: string) {
+    if(this.localPackagesLoading) return
     this.localPackagesLoading = true
     const selected = this.selectedLocalPackageRecord?.id === id
     try {
@@ -5959,6 +5972,7 @@ export class DomEditor extends LitElement {
 
   private handleGitPackageLoad = async (event: Event) => {
     if(this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
+    if(this.localPackagesLoading) return
     const source = (event as CustomEvent<GitPackageSource>).detail
     this.localPackagesLoading = true
     this.localPackageError = ""
@@ -5967,7 +5981,60 @@ export class DomEditor extends LitElement {
     finally {this.localPackagesLoading = false}
   }
 
-  private async addLocalPackage() {
+  private async installDeveloperPackages(packages: {pkg: WebWriterPackage, previousName?: string}[]) {
+    if(!packages.length) return
+    const client = this.backendClient
+    const documentId = this.backendDocumentId
+    const nextPackages = new Map(this.installedPackages.map(pkg => [pkg.name, pkg]))
+    for(const {pkg, previousName} of packages) {
+      if(previousName) nextPackages.delete(previousName)
+      nextPackages.delete(pkg.name)
+      nextPackages.set(pkg.name, pkg)
+    }
+    await this.reloadEditor([...nextPackages.values()])
+    if(client && documentId && packages.some(({previousName}) => previousName)) {
+      await this.autosaveCloudAfterBundleReload({client, id: documentId})
+    }
+  }
+
+  private async loadLocalPackageBatch(parent: FileSystemDirectoryHandle) {
+    const directories: FileSystemDirectoryHandle[] = []
+    const issues: string[] = []
+    for await (const entry of parent.values()) {
+      if(entry.kind !== "directory" || entry.name === "node_modules") continue
+      const directory = entry as FileSystemDirectoryHandle
+      try {
+        await directory.getFileHandle("package.json")
+        directories.push(directory)
+      }
+      catch(error) {
+        if(isRecord(error) && (error.name === "NotFoundError" || error.name === "TypeMismatchError")) continue
+        issues.push(`${directory.name}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    if(!directories.length && !issues.length) {
+      this.localPackageError = `No package folders found directly inside '${parent.name}'. Choose a folder containing subfolders with package.json files.`
+      return
+    }
+
+    const installs: {pkg: WebWriterPackage, previousName?: string}[] = []
+    for(const directory of directories.sort((a, b) => a.name.localeCompare(b.name))) {
+      this.localPackageError = ""
+      try {
+        await this.localPackageManager.load(directory, async (pkg, previousName) => {installs.push({pkg, previousName})})
+        if(this.localPackageError) issues.push(this.localPackageError)
+      }
+      catch(error) {
+        issues.push(`${directory.name}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    try {await this.installDeveloperPackages(installs)}
+    catch(error) {issues.push(error instanceof Error ? error.message : String(error))}
+    this.localPackageError = issues.join("\n")
+  }
+
+  private async addLocalPackage(batch = false) {
+    if(this.localPackagesLoading) return
     const picker = (window as FilePickerWindow).showDirectoryPicker
     if(!picker) {
       this.localPackageError = "This browser cannot open local package folders. Use a secure Chromium-based browser with the File System Access API."
@@ -5979,8 +6046,11 @@ export class DomEditor extends LitElement {
     try {
       // The picker is deliberately the first awaited operation: browsers
       // require it to run within the Load button's user activation.
-      const directory = await picker.call(window, {id: "webwriter-develop-package", mode: "readwrite"})
-      await this.localPackageManager.load(directory)
+      const id = batch ? "webwriter-develop-package-parent" : "webwriter-develop-package"
+      const directory = await picker.call(window, {id, mode: "readwrite"})
+      if(this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
+      if(batch) await this.loadLocalPackageBatch(directory)
+      else await this.localPackageManager.load(directory)
     }
     catch(error) {
       if(!isAbortError(error)) this.localPackageError = error instanceof Error ? error.message : String(error)
@@ -7768,6 +7838,7 @@ export class DomEditor extends LitElement {
         Array.from(container.childNodes).forEach((child, index) => {
           if(child.nodeType !== Node.ELEMENT_NODE) return
           const childElement = child as ReadableElement
+          if(isDataBlock(childElement)) return
           const slideRole = slideLayoutRole(childElement)
           if(slideRole === "navigation" || (childElement.localName === "div" && hasClass(childElement, "ww-canvas-starting-view") && !childElement.hasAttribute("is") && childElement.parentElement === body)) return
           if((["source", "caption", "figcaption"].includes(childElement.localName) || childElement.localName === "summary" && childElement.parentElement?.localName === "details")
@@ -8458,8 +8529,13 @@ export class DomEditor extends LitElement {
     }
     if(isSelectionChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
+      // Package assets in the isolated editor use its service worker. The
+      // surrounding UI must load local icons from the application origin.
+      const hostIcon = <T extends {iconUrl?: string}>(item: T): T => this.editorOpaque && item.iconUrl
+        ? {...item, iconUrl: frameLocalPackageURL(item.iconUrl, editorFrameOrigin(), window.location.origin)}
+        : item
       const path = event.data.detail.path.map(item => ({
-        ...item,
+        ...hostIcon(item),
         path: [...item.path],
         ...(item.sections ? {sections: item.sections.map(section => ({
           ...section,
@@ -8526,14 +8602,16 @@ export class DomEditor extends LitElement {
         ...(event.data.detail.graphic.viewport ? {viewport: {...event.data.detail.graphic.viewport}} : {}),
       } : null
       this.elementAttributes = event.data.detail.element ? {
-        ...event.data.detail.element,
+        ...hostIcon(event.data.detail.element),
         path: event.data.detail.element.path ? [...event.data.detail.element.path] : null,
         attributes: {...event.data.detail.element.attributes},
       } : null
       this.selectedElementTypes = structuredClone(event.data.detail.selectedElementTypes ?? [])
+        .map(group => ({...group, element: hostIcon(group.element)}))
       const previousWidget = this.widgetOptions
       this.widgetOptions = event.data.detail.widget ? structuredClone(event.data.detail.widget) : null
-      this.widgetConversion = event.data.detail.widgetConversion ? structuredClone(event.data.detail.widgetConversion) : null
+      const conversion = event.data.detail.widgetConversion ? structuredClone(event.data.detail.widgetConversion) : null
+      this.widgetConversion = conversion ? {...conversion, targets: conversion.targets.map(hostIcon)} : null
       if(previousWidget?.localName !== this.widgetOptions?.localName
         || JSON.stringify(previousWidget?.path) !== JSON.stringify(this.widgetOptions?.path)) this.selectWidgetElementPackage()
       if(this.stylesVisible()) this.queueElementStyleRefresh()
@@ -9268,7 +9346,8 @@ export class DomEditor extends LitElement {
         ${this.previewActive && !this.previewFramePending ? html`
           <iframe
             class="preview-frame"
-            allow="fullscreen; clipboard-write"
+            allow="clipboard-write"
+            allowfullscreen
             title=${this.replayActive ? "Session replay" : this.liveSessionActive ? "Live document preview" : "Document preview"}
             sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
             referrerpolicy="no-referrer"
@@ -9280,6 +9359,7 @@ export class DomEditor extends LitElement {
         ${this.frameStarted ? keyed(this.frameRevision, html`<iframe
           class=${`editor-frame${documentLoading || this.documentFramePending ? " loading" : ""}${this.documentRootHovered ? " root-hovered" : ""}${this.documentRootSelected ? " root-selected" : ""}`}
           allow="camera; microphone; display-capture"
+          allowfullscreen
           title="DOM editor"
           sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
           referrerpolicy="no-referrer"

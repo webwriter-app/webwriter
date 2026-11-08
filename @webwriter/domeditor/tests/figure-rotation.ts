@@ -11,6 +11,7 @@ if(standalone) {
   document.head.append(style)
 }
 const figure = document.createElement("figure")
+if(standalone) figure.id = "rotated-diagram"
 figure.style.cssText = "width:420px;max-width:100%;margin:60px auto"
 const image = document.createElement("img")
 image.alt = "Rotated diagram"

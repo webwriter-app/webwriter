@@ -17,7 +17,7 @@ import {
   type AppSettings,
   type AppCommand,
 } from "../app-settings"
-import {documentLanguages} from "../document-languages"
+import {documentLanguageName, orderedLanguageOptions} from "../language-suggestions"
 import {appIconUrl, ribbonIcon} from "../ribbon-icons"
 import {documentLayoutLabel, documentLayoutModes} from "./layout-preview"
 import {cloudServiceURL, EDUMIX_URL, cloudServiceExpired, type CloudService} from "../cloud-services"
@@ -25,24 +25,6 @@ import {connectCloudService} from "../backend-client"
 import {normalizeProofreadingDictionary} from "../proofreading"
 import componentLicenses from "virtual:component-licenses"
 import {editorInteractionStyles} from "./editing-controls.styles"
-
-const languageLabel = (code: string, fallback: string) => {
-  try {
-    const english = new Intl.DisplayNames(["en"], {type: "language"}).of(code) ?? fallback
-    const native = new Intl.DisplayNames([code], {type: "language"}).of(code) ?? ""
-    return native && native.toLocaleLowerCase() !== english.toLocaleLowerCase()
-      ? `${english} (${native})`
-      : `${english} (${english})`
-  }
-  catch {
-    return fallback
-  }
-}
-
-const languageOptions = documentLanguages.map(language => ({
-  value: language.code,
-  label: languageLabel(language.code, language.name),
-}))
 
 export type SettingsTab = "Editor" | "Cloud" | "Commands"
 
@@ -795,6 +777,8 @@ export class SettingsPanel extends LitElement {
   render() {
     const sections = ["Document", "Editor", "Text", "Insert"] as const
     const elementSections = ["Table", "Graphic"] as const
+    const language = this.settings.language
+    const languageOptions = orderedLanguageOptions()
     return html`
       <div class="settings-panel">
         ${this.message || this.error ? html`
@@ -804,9 +788,12 @@ export class SettingsPanel extends LitElement {
         ` : ""}
         <section id="settings-editor" role="tabpanel" aria-label="Editor" class="settings-tab-panel" ?hidden=${this.tab !== "Editor"}>
         <section class="setting-card" aria-label="Language">
-          <select aria-label="Document language" .value=${this.settings.language} @change=${this.changeLanguage}>
+          <select aria-label="Document language" .value=${language} @change=${this.changeLanguage}>
+            ${language && !languageOptions.some(option => option.value === language)
+              ? html`<option value=${language} selected disabled>${documentLanguageName(language)} (current)</option>` : ""}
             ${languageOptions.map(option => html`
-              <option value=${option.value} ?selected=${option.value === this.settings.language}>${option.label}</option>
+              ${option.dividerBefore ? html`<hr>` : ""}
+              <option value=${option.value} ?selected=${option.value === language}>${option.label}</option>
             `)}
           </select>
           <p class="setting-description">Language for new documents and widgets. The editor interface is currently available in English.</p>

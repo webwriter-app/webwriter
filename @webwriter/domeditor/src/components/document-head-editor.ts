@@ -15,11 +15,8 @@ import {
 import {EditorCombobox, type ComboboxOption} from "./editor-combobox"
 import {ccLicenseIcons} from "./cc-license-icons"
 import {editorInteractionStyles} from "./editing-controls.styles"
-import {documentLanguages} from "../document-languages"
+import {documentLanguageName, orderedLanguageOptions} from "../language-suggestions"
 import {documentThemes} from "../document-themes"
-
-type LanguageOption = {label: string, value: string, sortLabel: string}
-
 
 const commonElementPresets = new Set([
   "title",
@@ -40,68 +37,7 @@ const primaryAttributesByPreset: Record<string, ReadonlySet<string>> = {
   theme: new Set(["data-ww-theme"]),
 }
 
-const canonicalLanguage = (value: string) => {
-  try {
-    return Intl.getCanonicalLocales(value)[0] ?? ""
-  }
-  catch {
-    return ""
-  }
-}
-
-const englishLanguageNames = new Intl.DisplayNames(["en"], {type: "language", fallback: "none"})
-
-const languageName = (code: string, fallback = code) => {
-  const english = englishLanguageNames.of(code) ?? fallback
-  let native = ""
-  try {
-    native = new Intl.DisplayNames([code], {type: "language", fallback: "none"}).of(code) ?? ""
-  }
-  catch {
-    // The English name remains useful when this browser has no locale data
-    // for the language itself.
-  }
-  const comparable = (value: string) => value.toLocaleLowerCase("en").replaceAll(/[^\p{L}\p{N}]+/gu, "")
-  return native && comparable(native) !== comparable(english) ? `${english} (${native})` : english
-}
-
-const englishVariants = [
-  {value: "en-US", label: "English (US)"},
-  {value: "en-GB", label: "English (UK)"},
-  {value: "en-AU", label: "English (Australia)"},
-  {value: "en-CA", label: "English (Canada)"},
-  {value: "en-IN", label: "English (India)"},
-]
-
-let cachedDocumentLanguages: LanguageOption[] | undefined
 let themePickerInstanceCount = 0
-
-/** Nationally official languages and supported English variants, ordered by English display name. */
-export function documentLanguageOptions() {
-  if(cachedDocumentLanguages) return cachedDocumentLanguages
-  cachedDocumentLanguages = [
-    ...documentLanguages.map(({code: value, name}) => ({
-      value, label: languageName(value, name), sortLabel: englishLanguageNames.of(value) ?? name,
-    })),
-    ...englishVariants.map(option => ({...option, sortLabel: option.label})),
-  ].sort((a, b) => a.sortLabel.localeCompare(b.sortLabel, "en", {sensitivity: "base"}) || a.value.localeCompare(b.value))
-  return cachedDocumentLanguages
-}
-
-/** Browser-preferred languages followed by the alphabetical list. */
-export function orderedLanguageOptions(
-  preferred: readonly string[] = globalThis.navigator?.languages ?? [],
-) {
-  const alphabetical = documentLanguageOptions()
-  const preferredLanguages = new Set(preferred.map(value => canonicalLanguage(value).split("-")[0]))
-  const promoted = [...preferredLanguages].flatMap(language =>
-    alphabetical.filter(option => option.value.split("-")[0] === language))
-  const promotedSet = new Set(promoted.map(option => option.value))
-  return {
-    promoted,
-    alphabetical: alphabetical.filter(option => !promotedSet.has(option.value)),
-  }
-}
 
 /** Metadata presentation of the shared editor combobox. */
 export class DocumentHeadCombobox extends EditorCombobox {
@@ -850,20 +786,6 @@ export class DocumentHeadEditor extends LitElement {
   }
 
   private renderCommon() {
-    const languages = orderedLanguageOptions()
-    const languageOptions: ComboboxOption[] = [
-      ...languages.promoted.map(option => ({
-        value: option.value,
-        label: option.label,
-        description: option.value,
-      })),
-      ...languages.alphabetical.map((option, index) => ({
-        value: option.value,
-        label: option.label,
-        description: option.value,
-        dividerBefore: index === 0 && languages.promoted.length > 0,
-      })),
-    ]
     const licenseOptions: ComboboxOption[] = creativeCommonsLicenses.map(license => ({
       value: license.url,
       label: license.code,
@@ -893,10 +815,12 @@ export class DocumentHeadEditor extends LitElement {
             ${this.fieldActions("Language", this.state.language, undefined, "language")}</span>
           <span class="field-control">
             <document-head-combobox
+              language-picker
               label="Language"
               placeholder="Enter a language"
               .value=${this.state.language}
-              .options=${languageOptions}
+              .options=${orderedLanguageOptions()}
+              .formatValue=${documentLanguageName}
               @combobox-change=${(event: Event) => this.handleComboboxChange("language", event)}
             ></document-head-combobox>
           </span>

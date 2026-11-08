@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, beforeEach, describe, expect, it} from "vitest"
+import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {SelectionFeature} from "./features/selection"
 import {ManipulationFeature} from "./features/manipulation"
 import {$} from "./utility"
@@ -316,17 +316,20 @@ describe("distribution reader runtime", () => {
   })
 
   it("uses saved widget editing declarations and leaves denied widget hosts in reading mode", async () => {
-    const {context} = setup('<reader-widget id="editable-widget"></reader-widget><reader-widget id="locked-widget"></reader-widget>', ["edit"], [emptyDistributionConfig("locked-widget")], [{tagName: "reader-widget", editingConfig: {content: "p*"}}])
+    const {context} = setup('<reader-widget id="editable-widget"></reader-widget><reader-widget id="locked-widget"></reader-widget><reader-widget id="authored-lock" contenteditable="false"></reader-widget>', ["edit"], [emptyDistributionConfig("locked-widget")], [{tagName: "reader-widget", editingConfig: {content: "p*"}}])
     const widget = document.querySelector("#editable-widget")!, locked = document.querySelector("#locked-widget")!
     await waitForReady(context, widget)
     expect(context.editor!.features.widget.isWidget(widget)).toBe(true)
-    expect(widget.classList.contains("◆widget-editable")).toBe(true)
     expect(widget.getAttribute("contenteditable")).toBe("")
     expect(locked.hasAttribute("contenteditable")).toBe(false)
-    expect(context.editor!.toHTML(true, false)).not.toContain("contenteditable")
+    locked.setAttribute("contenteditable", "")
+    await vi.waitFor(() => expect(locked.hasAttribute("contenteditable")).toBe(false))
+    const source = context.editor!.toHTML(true, false)
+    expect(source).not.toContain('contenteditable=""')
+    expect(source).toContain('id="authored-lock" contenteditable="false"')
     context.destroy()
     expect(widget.hasAttribute("contenteditable")).toBe(false)
-    expect(widget.classList.contains("◆widget-editable")).toBe(false)
+    expect(document.querySelector("#authored-lock")?.getAttribute("contenteditable")).toBe("false")
   })
 
   it.each(["canvas", "slides", "board"] as const)("uses the shared %s affordances and hides unavailable insertion and style controls", async layout => {

@@ -1,3 +1,4 @@
+import {hasPresentationState} from "../src/presentation-state.js"
 import type {DOMEditor} from "../src/domeditor"
 import {graphicShapeDragType} from "../src/graphic"
 import {replayHostDrag} from "../src/editor-bridge"
@@ -28,7 +29,7 @@ export async function checkGraphicKeyboardDrag() {
     const retain=() => {
       assert(editor.features.selection.captureSelectedElement===graphic,"shape drag released or changed capture")
       assert(selection.anchorNode===anchor && selection.anchorOffset===offset,"shape hover changed native selection")
-      assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"),"shape drag displayed document insertion chrome")
+      assert(!hasPresentationState(doc.body, "drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"),"shape drag displayed document insertion chrome")
     }
     for(const zoom of [100,150,75]) {
       editor.features.graphic.actions.navigateGraphic({type:"navigateGraphic",operation:"set-zoom",zoom})

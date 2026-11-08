@@ -1,3 +1,4 @@
+import {hasPresentationState} from "../src/presentation-state.js"
 import type {DOMEditor} from "../src/domeditor"
 import {DomEditorToolbox} from "../src/components/toolbox"
 import type {RibbonDrawer} from "../src/components/ribbon-drawer"
@@ -99,14 +100,14 @@ export async function checkListEditing() {
       if(position === "inside") {
         const textRange = doc.createRange()
         textRange.setStart(text, 0); textRange.collapse(true)
-        assert(item.classList.contains("◆list-empty-caret"), "inside empty item did not use the shadow caret")
+        assert(hasPresentationState(item, "list-empty-caret"), "inside empty item did not use the shadow caret")
         assert(Boolean(caret) && Math.abs(caret!.getBoundingClientRect().left - textRange.getBoundingClientRect().left) < 2,
           "inside empty item caret is not aligned with the preceding item's text")
         selection.collapse(text, 0)
         editor.features.list.refreshSelectionPresentation()
-        assert(!item.classList.contains("◆list-empty-caret"), "empty item caret marker was not cleaned up")
+        assert(!hasPresentationState(item, "list-empty-caret"), "empty item caret marker was not cleaned up")
       }
-      else assert(!item.classList.contains("◆list-empty-caret"), "outside item unnecessarily replaced its native caret")
+      else assert(!hasPresentationState(item, "list-empty-caret"), "outside item unnecessarily replaced its native caret")
     }
     const enterCases = [
       {name: "direct li keydown", html: "<ul><li>OneTwo</li></ul>", kind: "keydown"},
@@ -264,7 +265,7 @@ export async function checkListEditing() {
     assert(ordered.style.listStyleType === "lower-alpha", "dragging changed the ordered list marker style")
     assert(!editor.toHTML(true).includes("◆"), "list item dragging leaked editor markers")
     assert(editor.features.manipulation.draggedElement === null, "list item drag remained active after drop")
-    assert(!doc.body.classList.contains("◆drop-selection-active"), "list item drop selection marker remained after drop")
+    assert(!hasPresentationState(doc.body, "drop-selection-active"), "list item drop selection marker remained after drop")
 
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"

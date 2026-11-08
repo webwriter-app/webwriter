@@ -189,10 +189,11 @@ describe("widget options bridge validation", () => {
       groups: [widgetOptionGroupState("general", {label: "General", collapsible: true, collapsed: true, advanced: false}, "en")],
       options: [{...state.options[0], choices: [{value: "a", label: "Alpha", description: "First option"}]}],
       actions: [{
-        ...state.actions[0], group: "general", icon: "refresh", intent: "default" as const,
+        ...widgetActionState("reset", {group: "general", buttonGroup: "edit"}, "en"), icon: "refresh", intent: "default" as const,
         confirm: "Proceed?", hidden: false, disabled: true, disabledReason: "Busy",
       }],
     }
+    expect(normalized.actions[0].buttonGroup).toBe("edit")
     expect(isWidgetOptionsState(normalized)).toBe(true)
   })
 
@@ -225,6 +226,7 @@ describe("widget options bridge validation", () => {
 
   it.each([
     ["action group", {group: false}],
+    ["action button group", {buttonGroup: false}],
     ["action icon", {icon: 3}],
     ["action intent", {intent: "warning"}],
     ["action confirm", {confirm: {en: 5}}],

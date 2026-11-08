@@ -1,3 +1,4 @@
+import {clearPresentationState, hasPresentationState, presentationElementSelector, setPresentationState} from "./presentation-state.js"
 export const mediaTypes = ["picture", "img", "audio", "video", "iframe", "embed", "object"] as const
 
 export type MediaType = typeof mediaTypes[number]
@@ -377,8 +378,16 @@ export function imageMapHotspotBounds(area: HTMLAreaElement, image: HTMLImageEle
   return {left, right, top, bottom, width: right - left, height: bottom - top}
 }
 
+/** Shared appearance for hotspot popovers; legacy theme selectors remain for older exports. */
+export const imageMapPopoverAppearance = {
+  popup: "anchor-name:--ww-popup-bubble;box-sizing:border-box;inline-size:max-content;max-inline-size:calc(100vw - 1rem);max-block-size:calc(100% - 0.5rem);padding:0.75rem 1rem;border:1px solid #94a3b8;border-radius:0.6rem;background:white;color:#1f2937;box-shadow:0 0.2rem 0.75rem rgb(0 0 0 / 15%);overflow:auto;overflow-wrap:anywhere;",
+  open: "display:flex;flex-direction:column;align-items:flex-start;",
+  arrow: "content:'';position:fixed;position-anchor:--ww-popup-bubble;width:0.7rem;height:0.7rem;background:inherit;border-top:inherit;border-left:inherit;transform:rotate(45deg);",
+}
+
 /** Positioning is presentation state in an adopted sheet, never authored inline styles. */
-export function createImageMapPopoverController(doc: Document, boundsFor = imageMapHotspotBounds) {
+export function createImageMapPopoverController(doc: Document, boundsFor = imageMapHotspotBounds, appearance = imageMapPopoverAppearance,
+  presentation = {elementSelector: presentationElementSelector, has: hasPresentationState, set: setPresentationState, clear: clearPresentationState}) {
   const view = doc.defaultView!
   let sheet: CSSStyleSheet | null = null
   let observer: ResizeObserver | null = null
@@ -386,8 +395,7 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
   const styled = new Set<HTMLElement>()
   const clearStyle = (target: HTMLElement) => {
     if(styled.delete(target)) {
-      target.classList.remove("◆hotspot-popup")
-      if(!target.getAttribute("class")) target.removeAttribute("class")
+      presentation.clear(target, "hotspot-popup")
     }
   }
   const apply = () => {
@@ -408,10 +416,10 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
     const vw = viewport?.width ?? view.innerWidth, vh = viewport?.height ?? view.innerHeight
     const padding = 8, gap = 8
     const rootStyle = view.getComputedStyle(doc.documentElement)
-    const selector = `[id="${view.CSS.escape(target.id)}"][popover]`
-    // Appearance comes from the shared document popup rules.
+    const selector = `:where(${presentation.elementSelector(target, true) ?? ":not(*)"}):nth-child(n)[popover]`
     const base = `position:fixed!important;position-area:none!important;inset:auto!important;margin:0!important;`
-    opened.set(target, {area, image, rule: `${selector}{${base}left:0!important;top:0!important}`})
+    const appearanceRules = `${selector}{${appearance.popup}}${selector}:popover-open{${appearance.open}}${selector} > p:first-child{margin-block-start:0}${selector} > p:last-child{margin-block-end:0}`
+    opened.set(target, {area, image, rule: `@layer webwriter-theme {${appearanceRules}}${selector}{${base}left:0!important;top:0!important}`})
     apply()
     const box = target.getBoundingClientRect()
     let left = bounds.left, top = bounds.bottom + gap
@@ -422,7 +430,9 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
     // Fixed insets start inside the root's leading scrollbar gutter.
     const gutter = doc.documentElement.clientWidth && rootStyle.scrollbarGutter?.includes("both-edges")
       ? Math.max(0, view.innerWidth - doc.documentElement.clientWidth) : 0
-    opened.get(target)!.rule = `${selector}{${base}left:${left - gutter}px!important;top:${top}px!important}${above ? `${selector}::before{top:calc(anchor(bottom) - 0.4rem);transform:rotate(225deg)}` : ""}`
+    const arrowRight = bounds.left > left + box.width / 2
+    const arrow = `${selector}::before{${appearance.arrow}${arrowRight ? "left:auto;right:calc(anchor(right) + 1.25rem);" : "left:calc(anchor(left) + 1.25rem);"}top:${above ? "calc(anchor(bottom) - 0.4rem)" : "calc(anchor(top) - 0.4rem)"};${above ? "transform:rotate(225deg);" : ""}}`
+    opened.get(target)!.rule = `@layer webwriter-theme {${appearanceRules}${arrow}}${selector}{${base}left:${left - gutter}px!important;top:${top}px!important}`
     apply()
     return true
   }
@@ -430,8 +440,8 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
     const id = area.getAttribute("popovertarget") ?? area.getAttribute("interestfor")
     const target = id ? doc.getElementById(id) : null
     if(!(target instanceof view.HTMLElement) || !target.hasAttribute("popover")) return false
-    if(!target.classList.contains("◆hotspot-popup")) {
-      target.classList.add("◆hotspot-popup")
+    if(!presentation.has(target, "hotspot-popup")) {
+      presentation.set(target, "hotspot-popup")
       styled.add(target)
     }
     try {

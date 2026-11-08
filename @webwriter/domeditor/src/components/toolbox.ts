@@ -1079,6 +1079,9 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   protected renderWidgetOptionLabel(option: WidgetOptionState, dispatch: (name: string, value: WidgetOptionValue) => void, fieldScope: string) {
+    if(option.type === "select" && option.multiple && option.control !== "tree") {
+      return super.renderWidgetOptionLabel(option, dispatch, fieldScope)
+    }
     return html`<span class="develop-field-label">${this.renderFieldLabel(option.label,
       option.value !== null && option.value !== "" && (!Array.isArray(option.value) || option.value.length > 0),
       () => { if(!option.disabled && !option.readOnly) dispatch(option.name, null) }, `widget-${fieldScope}${option.name}`,

@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {clearPresentationState, hasPresentationState, setPresentationState, trackPresentationStyles} from "../presentation-state.js"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
@@ -44,7 +45,7 @@ afterEach(() => {
   document.head.replaceChildren(...Array.from(initialHead.childNodes, node => node.cloneNode(true)))
   document.body.replaceChildren()
   restoreAttributes(document.body, initialBodyAttributes)
-  document.documentElement.classList.remove("◆canvas-active")
+  clearPresentationState(document.documentElement, "canvas-active")
 })
 
 describe("canvas document layout", () => {
@@ -324,7 +325,7 @@ describe("canvas document layout", () => {
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect($.isElementSelection).toBe(false)
     expect($.isGapSelection).toBe(false)
-    expect(paragraph.classList.contains("◆empty-selected")).toBe(true)
+    expect(hasPresentationState(paragraph, "empty-selected")).toBe(true)
     for(const marker of ["◆node-selection-active", "◆gap-caret-visible", "◆element-selected"]) {
       expect(document.body.classList.contains(marker)).toBe(false)
     }
@@ -340,8 +341,8 @@ describe("canvas document layout", () => {
     await settle()
 
     expect($.selectedElement).toBe(document.body)
-    expect(document.body.classList.contains("◆element-selected")).toBe(true)
-    expect(document.body.classList.contains("◆node-selection-active")).toBe(true)
+    expect(hasPresentationState(document.body, "element-selected")).toBe(true)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(true)
     const post = vi.spyOn(window, "postMessage").mockImplementation(() => {})
     editor.postSelectionPath()
     expect(post.mock.calls.at(-1)![0].detail).toMatchObject({
@@ -433,11 +434,13 @@ describe("canvas document layout", () => {
     // Native-browser coverage checks the low-specificity item reset; Happy
     // DOM incorrectly lets the inherited BODY cursor override :where().
     expect(getComputedStyle(document.querySelector("div")!).cursor).toBe("crosshair")
-    document.body.classList.add("◆canvas-hand")
-    expect(getComputedStyle(document.body).cursor).toBe("grab")
-    expect(getComputedStyle(document.querySelector("p")!).cursor).toBe("grab")
-    document.body.classList.add("◆canvas-panning")
-    expect(getComputedStyle(document.body).cursor).toBe("grabbing")
+    const cursorRules = (cursor: string) => document.adoptedStyleSheets.flatMap(sheet =>
+      Array.from(sheet.cssRules).flatMap(rule => "cssRules" in rule ? Array.from((rule as CSSGroupingRule).cssRules) : [rule])
+    ).find(rule => rule instanceof CSSStyleRule && rule.style.cursor === cursor) as CSSStyleRule
+    setPresentationState(document.body, "canvas-hand")
+    expect(cursorRules("grab").selectorText).toContain("body:where(body):nth-child(n) *")
+    setPresentationState(document.body, "canvas-panning")
+    expect(cursorRules("grabbing").selectorText).toContain("body:where(body):nth-child(n) *")
     editor.features.canvas.convert("document")
     expect(getComputedStyle(document.body).cursor).not.toBe("default")
   })
@@ -448,19 +451,21 @@ describe("canvas document layout", () => {
     const style = document.createElement("style")
     style.textContent = editorStyleString
     document.head.append(style)
+    const untrack = trackPresentationStyles(document, style.sheet!)
     const paragraph = document.querySelector("p")!
     document.body.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
     document.body.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
-    expect(document.body.classList.contains("◆empty-selected")).toBe(true)
+    expect(hasPresentationState(document.body, "empty-selected")).toBe(true)
     expect(editor.features.selection.emptyDocumentCaret).not.toBeNull()
     expect(getComputedStyle(document.body).caretColor).toBe("transparent")
     expect(getComputedStyle(paragraph).caretColor).toBe("transparent")
 
     $.move(paragraph.firstChild!, 2)
     editor.features.selection.processSelection()
-    expect(document.body.classList.contains("◆empty-selected")).toBe(false)
+    expect(hasPresentationState(document.body, "empty-selected")).toBe(false)
     expect(getComputedStyle(paragraph).caretColor).not.toBe("transparent")
+    untrack()
   })
 
   it("does not use metadata elements as a text-block fallback at an inline gap", () => {
@@ -667,7 +672,7 @@ describe("canvas document layout", () => {
     const parsed = new DOMParser().parseFromString(html, "text/html")
     expect(parsed.body.outerHTML).not.toContain("◆canvas")
     expect(parsed.body.outerHTML).not.toContain("canvas-controls")
-    expect(parsed.documentElement.classList.contains("◆canvas-active")).toBe(false)
+    expect(hasPresentationState(parsed.documentElement, "canvas-active")).toBe(false)
     expect(parsed.querySelector("#webwriter-canvas-viewer")).not.toBeNull()
   })
 
@@ -678,7 +683,7 @@ describe("canvas document layout", () => {
       type: "setDocumentLayout", mode: "canvas", expectedMode: "document",
     })
     expect(editor.appendix.querySelector('[part="canvas-controls"]')).not.toBeNull()
-    expect(document.documentElement.classList.contains("◆canvas-active")).toBe(true)
+    expect(hasPresentationState(document.documentElement, "canvas-active")).toBe(true)
     expect(document.head.querySelector(`style`)).not.toBeNull()
 
     const canvasSheet = (editor.features.canvas as any).stylesheet as CSSStyleSheet
@@ -686,7 +691,7 @@ describe("canvas document layout", () => {
 
     expect(document.body.classList.contains(canvasClass)).toBe(true)
     expect(editor.appendix.querySelector('[part="canvas-controls"]')).toBeNull()
-    expect(document.documentElement.classList.contains("◆canvas-active")).toBe(false)
+    expect(hasPresentationState(document.documentElement, "canvas-active")).toBe(false)
     expect(editor.appendix.adoptedStyleSheets).not.toContain(canvasSheet)
     expect(Array.from(document.head.querySelectorAll("style")).some(style => style.textContent === canvasStyles)).toBe(true)
   })
@@ -845,7 +850,7 @@ describe("canvas document layout", () => {
     document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 17, clientX: 400, clientY: 300}))
     expect(slot.style.transform).toBe(cancelled)
     expect(dots.style.backgroundPosition).toBe(`${x + 150}px ${y + 80}px`)
-    expect(document.body.classList.contains("◆canvas-panning")).toBe(false)
+    expect(hasPresentationState(document.body, "canvas-panning")).toBe(false)
   })
 
   it("pans over inactive media and widget controls without scrolling the page or the widget", async () => {
@@ -903,7 +908,7 @@ describe("canvas document layout", () => {
     expect(document.body.children).toHaveLength(1)
     space("keyup")
     expect(surface.hidden).toBe(true)
-    expect(document.body.classList.contains("◆canvas-panning")).toBe(false)
+    expect(hasPresentationState(document.body, "canvas-panning")).toBe(false)
   })
 
   it("updates camera overlays once per pan frame without reposting the selection path", async () => {
@@ -937,7 +942,7 @@ describe("canvas document layout", () => {
     editor.features.selection.selectElement(image)
     editor.features.selection.captureElement(image)
     expect(editor.features.selection.captureSelectedElement).toBe(image)
-    expect(image.classList.contains("◆element-capture-selected")).toBe(true)
+    expect(hasPresentationState(image, "element-capture-selected")).toBe(true)
     expect(editor.features.selection.selectionCaret).not.toBeNull()
 
     const selectCoords = vi.spyOn($, "selectCoords")
@@ -951,7 +956,7 @@ describe("canvas document layout", () => {
     expect(document.getSelection()?.isCollapsed).toBe(true)
     expect(document.getSelection()?.anchorNode).toBe(document.body)
     expect(document.getSelection()?.anchorOffset).toBe(0)
-    expect(image.classList.contains("◆element-capture-selected")).toBe(false)
+    expect(hasPresentationState(image, "element-capture-selected")).toBe(false)
   })
 
   it("removes a focused empty canvas paragraph when a blank canvas click clears selection", () => {

@@ -10,14 +10,19 @@ afterEach(() => {
 
 describe("app settings language", () => {
   it.each([
-    {preferences: ["de-DE", "fr-CA"], fallback: "en-US", expected: "de"},
-    {preferences: ["xx-ZZ", "fr-CA", "de-DE"], fallback: "en-US", expected: "fr"},
+    {preferences: ["de-DE", "fr-CA"], fallback: "en-US", expected: "de-DE"},
+    {preferences: ["xx-ZZ", "fr-CA", "de-DE"], fallback: "en-US", expected: "fr-CA"},
     {preferences: ["ja-JP", "en-US"], fallback: "en-US", expected: "ja"},
-    {preferences: ["PT_br"], fallback: "en-US", expected: "pt"},
+    {preferences: ["PT_br"], fallback: "en-US", expected: "pt-BR"},
+    {preferences: ["zh-TW"], fallback: "en-US", expected: "zh-Hant"},
+    {preferences: ["sr-Latn-RS"], fallback: "en-US", expected: "sr-Latn"},
+    {preferences: ["sr-ME"], fallback: "en-US", expected: "cnr"},
+    {preferences: ["tl"], fallback: "en-US", expected: "tl"},
+    {preferences: ["fr"], fallback: "en-US", expected: "fr-FR"},
     {preferences: [], fallback: "nl-NL", expected: "nl"},
     {preferences: undefined, fallback: "it-IT", expected: "it"},
-    {preferences: ["xx-ZZ"], fallback: "xx", expected: "en"},
-    {preferences: [], fallback: "", expected: "en"},
+    {preferences: ["xx-ZZ"], fallback: "xx", expected: "en-US"},
+    {preferences: [], fallback: "", expected: "en-US"},
   ])("detects $expected from browser preferences $preferences", ({preferences, fallback, expected}) => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(preferences as readonly string[])
     vi.spyOn(navigator, "language", "get").mockReturnValue(fallback)
@@ -28,13 +33,13 @@ describe("app settings language", () => {
 
   it("falls back to English when navigator is unavailable", () => {
     vi.stubGlobal("navigator", undefined)
-    expect(defaultAppSettings(false).language).toBe("en")
+    expect(defaultAppSettings(false).language).toBe("en-US")
   })
 
   it.each([undefined, "", null, 42])("detects the language when saved settings contain %s", language => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["de-DE"])
     localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({language, shortcutsVersion: 2}))
-    expect(loadAppSettings().language).toBe("de")
+    expect(loadAppSettings().language).toBe("de-DE")
   })
 
   it.each(["en", "fr", "en-GB"])("keeps the saved %s override when browser preferences change", language => {
@@ -47,9 +52,9 @@ describe("app settings language", () => {
   it("detects the language when stored settings cannot be read", () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["de-DE"])
     localStorage.setItem(APP_SETTINGS_STORAGE_KEY, "{")
-    expect(loadAppSettings().language).toBe("de")
+    expect(loadAppSettings().language).toBe("de-DE")
     vi.stubGlobal("localStorage", {getItem: () => { throw new Error("Storage unavailable") }})
-    expect(loadAppSettings().language).toBe("de")
+    expect(loadAppSettings().language).toBe("de-DE")
   })
 })
 

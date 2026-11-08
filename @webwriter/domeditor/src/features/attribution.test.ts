@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {hasPresentationState} from "../presentation-state.js"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import type {Window as TestWindow} from "happy-dom"
@@ -224,7 +225,7 @@ describe("element attribution editing", () => {
     checkFocus(input("contact"))
     expect(picker.shadowRoot!.querySelector(".listbox")).toBeNull()
     expect(element.getAttribute(attributionAttributes.name)).toBe("Ada")
-    expect(document.body.classList.contains("◆node-selection-active")).toBe(true)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(true)
   })
 
   it("offers only current CC licenses with separate, wrapping component definitions", async () => {
@@ -526,15 +527,15 @@ describe("element attribution editing", () => {
     document.dispatchEvent(new Event("selectionchange"))
     notes()[0].click()
     expect(popup().hidden).toBe(false)
-    expect(document.body.classList.contains("◆node-selection-active")).toBe(true)
-    expect(element.classList.contains("◆element-capture-selected")).toBe(captured)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(true)
+    expect(hasPresentationState(element, "element-capture-selected")).toBe(captured)
     for(const key of ["name", "year", "contact"]) {
       const field = input(key)
       field.focus()
       field.setSelectionRange(field.value.length, field.value.length)
       expect(document.body.shadowRoot!.activeElement).toBe(field)
       expect(getComputedStyle(field).caretColor).toBe("auto")
-      expect(document.body.classList.contains("◆node-selection-active")).toBe(true)
+      expect(hasPresentationState(document.body, "node-selection-active")).toBe(true)
     }
     expect(element.getAttribute(attributionAttributes.name)).toBe("Ada")
   })
@@ -1356,10 +1357,8 @@ describe("canvas attribution labels", () => {
       element.setAttribute(attributionAttributes.name, "Updated author")
       reader!.refresh()
       expect(label.textContent).toBe("Updated author")
-      const marker = Array.from(element.classList).find(name => name.startsWith("◆attribution-"))!
-      element.classList.remove(marker)
-      reader!.refresh()
-      expect(element.classList.contains(marker)).toBe(true)
+      expect(notes()[0]).toBe(label)
+      expect(element.className).not.toContain("◆attribution-")
       expect(cloneWithoutEditorMarkers(element, true).outerHTML).not.toContain("◆")
     }
     finally { document.body.classList.remove("ww-canvas") }

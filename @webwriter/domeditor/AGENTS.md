@@ -40,16 +40,22 @@ Do not introduce a dependency until the platform and installed dependencies have
 
 ### Keep editing artifacts out of the authored DOM
 
-The authored light DOM must contain document content, not editor UI.
+Keep the authored light DOM for document content.
 
 - Put menus, toolbars, overlays, handles, carets, measurement elements, and other editor-owned elements in the body’s shadow root—the **shadow appendix**.
 - Access it through `DOMEditor.appendix` or `DOMEditor.addAppendix`.
 - Keep the appendix’s default `<slot>` so authored body content remains rendered.
-- The only editor artifacts permitted in the authored DOM are temporary marker classes whose names begin with `◆`, and `contenteditable=""` on installed widgets while they carry the `◆widget-editable` marker (the widget runtime contract, see `WidgetFeature`). That attribute is excluded from collaboration, history and serialization like the marker.
-- Do not add editor-only wrapper elements, text nodes, `data-*` attributes, or inline styles to authored content.
-- Every marker must begin with `◆`, must not carry document meaning, and must be removed when its state ends, including cancellation, failure, and destruction.
-- Marker classes must remain excluded from collaboration and serialization.
-- Do not copy an existing light-DOM editing artifact as precedent. When touching one, migrate it to the shadow appendix when that is safely within scope.
+- Keep temporary state such as selection, hover, and drag state in memory. Reuse `src/presentation-state.js` to style authored elements and use parts for appendix controls. Use `:state(ww-…)` in constructed stylesheets registered with `trackPresentationStyles`.
+- Keep editor-only classes, attributes, wrappers, text nodes, and inline styles out of authored content. Treat legacy `◆` classes as compatibility input and exclude them from collaboration, history, and saved HTML.
+- Installed widgets may receive runtime `contenteditable=""` through `WidgetFeature`. Exclude that runtime value from collaboration, history, and serialization. Preserve explicit authored values such as `contenteditable="false"`.
+- Keep frame bootstrap and package resources separate from document content through `src/editor-artifacts.ts`. Preserve authored defaults when temporarily changing native state, such as opening a disclosure for editing.
+- Move any existing light-DOM editor UI you touch into the shadow appendix when that is safely within scope.
+
+### Preserve authored element IDs
+
+- Use `src/authored-identities.ts` for persistent IDs on eligible captioned figures, native dialogs and popovers, and SVG editing targets. Preserve existing unique IDs and keep widget internals opaque.
+- Assign missing IDs during authoring and import. Resolve collisions on paste before inserting the fragment and update supported references within that fragment.
+- Treat assigned IDs as document attributes. Carry them through undo, collaboration, live sessions, and export. Use temporary presentation state for highlighting and other editing affordances.
 
 ### Support multi-source editing
 
@@ -74,13 +80,14 @@ Therefore:
 
 ## Project structure
 
-- `src/domeditor.ts`: editor orchestration, serialization, bridge communication, and the shadow appendix.
+- `src/domeditor-core.ts` handles editor orchestration, serialization, bridge communication, and the shadow appendix. `src/domeditor.ts` adds authoring features.
 - `src/domdoc.ts`: DOM ↔ Yjs reconciliation, collaboration, relative selections, and undo.
 - `src/features/`: focused editing capabilities. New document-editing behavior normally belongs in an existing feature.
 - `src/components/`: Lit-based editor UI and shadow-DOM components.
 - `src/utility.ts`: shared DOM and selection primitives.
 - `src/editor-bridge.ts`: messages and events crossing the editor boundary.
-- `src/editor.css`: styles for document markers and editor presentation.
+- `src/editor.css` and `src/presentation-state.js` provide editor styles and transient presentation state keyed by DOM element.
+- `src/authored-identities.ts` assigns persistent element IDs and handles collisions when importing content.
 
 Keep responsibilities in these existing layers. Do not create a new abstraction until the current ones cannot reasonably accommodate the behavior.
 
@@ -91,7 +98,7 @@ Keep responsibilities in these existing layers. Do not create a new abstraction 
 - Register externally invoked commands through the existing feature `actions` pattern.
 - Use the existing selection utilities before writing another Selection or Range abstraction.
 - Let normal DOM observation synchronize ordinary edits. Use explicit synchronization or captured changes only when their semantics are required.
-- Pair setup with teardown for listeners, observers, markers, styles, and appendix elements.
+- Pair setup with teardown for listeners, observers, presentation state, styles, and appendix elements. Cover cancellation, failure, and destruction.
 - Preserve the local TypeScript style and avoid unrelated formatting or refactoring.
 
 ## Testing
@@ -106,7 +113,9 @@ Tests should cover the DOM shapes the command claims to support, including irreg
 - disconnected or concurrently replaced selection endpoints;
 - remote collaboration changes;
 - undo and redo;
-- cleanup of `◆` markers;
+- cleanup of presentation state, including transitions between selection modes;
+- assignment and preservation of authored IDs through paste, import, collaboration, and live sessions;
+- filtering of legacy `◆` classes;
 - exclusion of editing artifacts from shared and serialized HTML.
 
 Run only focused tests covering the affected behavior by default, during development and before handoff:

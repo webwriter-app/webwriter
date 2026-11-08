@@ -60,15 +60,44 @@ describe("shared Style combobox", () => {
     await combo.updateComplete
     const changes = vi.fn()
     combo.addEventListener("combobox-change", changes)
-    combo.shadowRoot!.querySelector<HTMLInputElement>("input")!.focus()
+    const input = combo.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    input.focus()
+    await combo.updateComplete
+    expect(combo.hasAttribute("popup-open")).toBe(false)
+    expect(combo.shadowRoot!.querySelector(".selection-tag-label")?.textContent).toBe("custom")
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "l", bubbles: true}))
     await combo.updateComplete
     const options = combo.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="option"]')
-    options[1].click()
+    expect(options[1].hasAttribute("data-active")).toBe(true)
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
     await combo.updateComplete
     expect(changes.mock.calls.at(-1)?.[0].detail.values).toEqual(["custom", "1", "2"])
     expect(combo.hasAttribute("popup-open")).toBe(true)
     options[0].click()
     expect(changes.mock.calls.at(-1)?.[0].detail.values).toEqual(["custom", "2"])
+  })
+
+  it("shows only the tags that fit alongside the overflow count", async () => {
+    const combo = await mount(false)
+    combo.multiple = true
+    combo.values = ["1", "2", "custom"]
+    await combo.updateComplete
+    const strip = combo.shadowRoot!.querySelector<HTMLElement>(".selection-tags")!
+    strip.style.columnGap = "2px"
+    let width = 106
+    vi.spyOn(strip, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 0, width, 20))
+    for(const tag of strip.querySelectorAll<HTMLElement>(".selection-tag")) {
+      vi.spyOn(tag, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, tag.matches(".selection-tag-count") ? 20 : 40, 20))
+    }
+    const visible = () => [...strip.querySelectorAll(".selection-tag:not([hidden])")].map(tag => tag.textContent!.trim())
+    combo.requestUpdate()
+    await expect(combo.updateComplete).resolves.toBe(true)
+    expect(visible()).toEqual(["Small", "Large", "+1"])
+
+    width = 124
+    combo.requestUpdate()
+    await expect(combo.updateComplete).resolves.toBe(true)
+    expect(visible()).toEqual(["Small", "Large", "custom"])
   })
 
   it("closes and resets on Escape, and disables both input and toggle", async () => {

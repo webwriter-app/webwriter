@@ -132,10 +132,10 @@ const demoPackage: WebWriterPackage = {
   }],
 }
 
-const localPackageDirectory = (withBundle: boolean | {current: boolean} = true) => {
+const localPackageDirectory = (withBundle: boolean | {current: boolean} = true, packageName = "@local/demo") => {
   const bundleAvailable = () => typeof withBundle === "boolean" ? withBundle : withBundle.current
   const manifest = JSON.stringify({
-    name: "@local/demo",
+    name: packageName,
     version: "0.1.0",
     keywords: ["webwriter-widget"],
     exports: {
@@ -1641,9 +1641,10 @@ describe("DomEditor iframe setup", () => {
       <html lang="fr"><head><title>Keep title</title>
         <script class="◆ ◆editor-only">bootstrap</script>
         <meta data-webwriter-editor-only=""></head><body>
-        <!-- retain body comment --><x-widget data-custom="keep" class="authored ◆selected ◆widget-editable" contenteditable="">
+        <!-- retain body comment --><webwriter-demo data-custom="keep" class="authored ◆selected" contenteditable="">
           <template><!-- retain template comment --><x-child data-template="keep"></x-child></template>
-        </x-widget></body></html>`, "text/html")
+        </webwriter-demo></body></html>`, "text/html")
+    host.installedPackages = [{...demoPackage, scripts: [], styles: []}]
     host.editorDocument = source
     host.editorWindow = iframe.contentWindow
     host.editorOpaque = false
@@ -1689,7 +1690,7 @@ describe("DomEditor iframe setup", () => {
     expect(payload.html).toContain('data-custom="keep"')
     expect(payload.html).toContain('data-template="keep"')
     const bootstrapped = new DOMParser().parseFromString(payload.html, "text/html")
-    expect(bootstrapped.body.querySelector("x-widget")?.getAttribute("class")).toBe("authored")
+    expect(bootstrapped.body.querySelector("webwriter-demo")?.getAttribute("class")).toBe("authored")
     expect(bootstrapped.querySelector('meta[data-webwriter-editor-only]')).toBeNull()
     expect(bootstrapped.querySelector('script:not([src])')?.textContent).not.toContain("bootstrap")
     expect(bootstrapped.body.querySelector("[contenteditable]")).toBeNull()
@@ -1905,7 +1906,7 @@ describe("DomEditor iframe setup", () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["de-DE", "en-US"])
     if(language) localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({language, shortcutsVersion: 2}))
     const {editor, iframe} = await mountEditor()
-    const expected = language ?? "de"
+    const expected = language ?? "de-DE"
     expect(iframe.contentDocument!.documentElement.lang).toBe(expected)
     expect((editor as any).settings.language).toBe(expected)
 
@@ -2453,11 +2454,13 @@ describe("DomEditor iframe setup", () => {
     expect(reload).toHaveBeenCalledTimes(3)
   })
 
-  it("sandboxes the editor iframe while preserving its trusted same-origin bridge", async () => {
+  it("sandboxes the editor iframe while allowing fullscreen and preserving its trusted same-origin bridge", async () => {
     const {editor, iframe} = await mountEditor()
     const srcdoc = (editor as unknown as {readonly editorSrcdoc: string}).editorSrcdoc
 
     expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox")
+    expect(iframe.hasAttribute("allowfullscreen")).toBe(true)
+    expect(iframe.getAttribute("allow")).toBe("camera; microphone; display-capture")
     expect(srcdoc).toMatch(/script-src 'nonce-[^']+' 'strict-dynamic'/)
     expect(srcdoc).toMatch(/style-src 'none'/)
     expect(srcdoc).toMatch(/style-src-elem 'nonce-[^']+'/)
@@ -2546,7 +2549,7 @@ describe("DomEditor iframe setup", () => {
     }), window.location.origin))
     const registryAdapter = new DOMParser().parseFromString(srcdoc, "text/html").querySelector<HTMLScriptElement>("#webwriter-scoped-registry")
     expect(registryAdapter?.textContent).toBeTruthy()
-    expect(registryAdapter?.classList.contains("◆editor-only")).toBe(true)
+    expect(registryAdapter?.hasAttribute("class")).toBe(false)
     expect(registryAdapter?.getAttribute("nonce")).toBeTruthy()
     expect(srcdoc.indexOf("webwriter-scoped-registry")).toBeLessThan(srcdoc.indexOf("editor-entry"))
     expect(srcdoc).not.toContain("Demo Widget")
@@ -3132,6 +3135,60 @@ describe("Develop local packages", () => {
     await console.updateComplete
     expect(console.localPackages).toEqual(packages)
     expect(console.shadowRoot!.querySelector('.local-packages-drawer')).not.toBeNull()
+  })
+
+  it("adds sibling local packages through the console and reloads once despite a folder failure", async () => {
+    const alpha = Object.assign(localPackageDirectory(true, "@local/alpha"), {name: "alpha"})
+    const broken = Object.assign(localPackageDirectory(), {name: "broken"})
+    const demo = localPackageDirectory()
+    const unrelated = {kind: "directory", name: "notes", getFileHandle: vi.fn().mockRejectedValue(new DOMException("", "NotFoundError"))}
+    const dependency = {kind: "directory", name: "node_modules", getFileHandle: vi.fn()}
+    const parent = {
+      name: "packages",
+      async *values() {yield* [demo, unrelated, broken, {kind: "file", name: "package.json"}, dependency, alpha]},
+    }
+    const picker = vi.fn().mockResolvedValue(parent)
+    vi.stubGlobal("showDirectoryPicker", picker)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    const register = vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockImplementation(async (_id, directory) => {
+      if(directory === broken) throw new Error("Folder registration failed")
+    })
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const reload = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    host.consoleOpen = true
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    console.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "local-package-add-batch"}, bubbles: true, composed: true,
+    }))
+
+    expect(picker).toHaveBeenCalledExactlyOnceWith({id: "webwriter-develop-package-parent", mode: "readwrite"})
+    expect(host.localPackagesLoading).toBe(true)
+    await vi.waitFor(() => expect(host.localPackagesLoading).toBe(false))
+    expect(register.mock.calls.map(([, directory]) => directory)).toEqual([alpha, broken, demo])
+    expect(dependency.getFileHandle).not.toHaveBeenCalled()
+    expect(host.localPackages.map((pkg: WebWriterPackage) => pkg.name)).toEqual(["@local/alpha", "@local/demo"])
+    expect(reload).toHaveBeenCalledExactlyOnceWith(host.localPackages)
+    expect(host.localPackageError).toBe("broken: Folder registration failed")
+  })
+
+  it("reports when a parent folder has no packages and ignores picker cancellation", async () => {
+    const picker = vi.fn()
+      .mockResolvedValueOnce({name: "empty", values: async function* () {}})
+      .mockRejectedValueOnce(new DOMException("", "AbortError"))
+    vi.stubGlobal("showDirectoryPicker", picker)
+    const {editor} = await mountEditor()
+    const host = editor as any
+
+    await host.addLocalPackage(true)
+    expect(host.localPackageError).toContain("No package folders found directly inside 'empty'")
+    expect(host.localPackages).toEqual([])
+    expect(host.localPackagesLoading).toBe(false)
+
+    await host.addLocalPackage(true)
+    expect(host.localPackageError).toBe("")
+    expect(host.localPackagesLoading).toBe(false)
   })
 
   it("selects a local package without inserting it", async() => {
@@ -3942,7 +3999,12 @@ describe("DomEditor file actions", () => {
   it("checkpoints authored changes once and removes the draft when the document becomes empty", async () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
-    const write = vi.spyOn(documentRecoveryStorage, "writeDocumentRecovery").mockResolvedValue()
+    host.documentSettingsId = "local:document"
+    const previous = {id: "previous-draft", documentKey: "source:local:document", title: "Previous draft", updatedAt: 1}
+    host.recoveredDocuments = [previous]
+    host.documentRecoveryNoticeOpen = true
+    const write = vi.spyOn(documentRecoveryStorage, "writeDocumentRecovery")
+      .mockImplementation(async record => ({record, replacedIds: [previous.id]}))
     const remove = vi.spyOn(documentRecoveryStorage, "deleteDocumentRecovery").mockResolvedValue()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue("<html><body><p>Draft</p></body></html>")
     await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
@@ -3954,7 +4016,9 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect(host.fileDirty).toBe(true))
     await host.checkpointDocument()
     const id = host.documentRecoveryCheckpoint.id
-    expect(write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({id}), "<html><body><p>Draft</p></body></html>")
+    expect(write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({id, documentKey: previous.documentKey}), "<html><body><p>Draft</p></body></html>")
+    expect(host.recoveredDocuments).toEqual([])
+    expect(host.documentRecoveryNoticeOpen).toBe(false)
     expect(host.documentRecoveryUnchanged).toBe(true)
     await host.checkpointDocument()
     expect(write).toHaveBeenCalledOnce()
@@ -7065,6 +7129,45 @@ describe("DomEditor.execute()", () => {
     expect(toolbox.activeTool).toBeNull()
   })
 
+  it("loads isolated local widget icons from the host in the breadcrumb and toolbox", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const host = editor as any
+    const frameOrigin = new URL(host.frameShellURL("editor", 0)).origin
+    const iconPath = `${LOCAL_PACKAGE_ROUTE_PREFIX}local-demo/assets/icon.svg?revision=3`
+    const frameIcon = frameOrigin + iconPath
+    const hostIcon = location.origin + iconPath
+    const remoteIcon = `https://cdn.example${iconPath}`
+    host.editorOpaque = true
+    vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    const presentation = {name: "Local Demo", icon: "Packages", iconUrl: frameIcon}
+    const identity = {localName: "local-demo", namespaceURI: "http://www.w3.org/1999/xhtml"}
+    const element = {...identity, ...presentation, path: [0], attributes: {}}
+    const group = {
+      element, count: 1, styleProperties: [], configuredWidgetOptions: [],
+      style: {target: identity, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}},
+    }
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow, origin: frameOrigin,
+      data: {type: selectionChangeEvent, detail: {
+        path: [{path: [], name: "Document"}, {path: [0], ...presentation}], element, nodeSelected: true,
+        selectedElementTypes: [group], widgetConversion: {sourceId: "local-demo", targets: [
+          {tag: "local-other", ...presentation}, {tag: "remote-demo", ...presentation, iconUrl: remoteIcon},
+        ]},
+      }},
+    }))
+    await editor.updateComplete
+    await toolbox.updateComplete
+    const breadcrumb = editor.shadowRoot!.querySelector("dom-editor-breadcrumb")!
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('[data-specialized="local-demo"]')!
+    await drawer.updateComplete
+    expect(breadcrumb.shadowRoot!.querySelector(".item-icon img")?.getAttribute("src")).toBe(hostIcon)
+    expect(drawer.shadowRoot!.querySelector(".pane-icon img")?.getAttribute("src")).toBe(hostIcon)
+    expect(toolbox.elementAttributes?.iconUrl).toBe(hostIcon)
+    expect(toolbox.widgetConversion?.targets.map(target => target.iconUrl)).toEqual([hostIcon, remoteIcon])
+    expect(element.iconUrl).toBe(frameIcon)
+  })
+
   it("binds multi-selection drawers and routes their changes by type through the bridge", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
@@ -7812,9 +7915,11 @@ describe("DomEditor.execute()", () => {
     expect(source.getElementById("webwriter-document-viewer")!.textContent).toBe("untrusted()")
     ;(editor as any).previewActive = true
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")!.getAttribute("allow")).toBe("fullscreen; clipboard-write")
-    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")!.getAttribute("sandbox")).toContain("allow-modals")
-    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")!.getAttribute("sandbox")).toContain("allow-popups allow-popups-to-escape-sandbox")
+    const previewFrame = editor.shadowRoot!.querySelector("iframe.preview-frame")!
+    expect(previewFrame.hasAttribute("allowfullscreen")).toBe(true)
+    expect(previewFrame.getAttribute("allow")).toBe("clipboard-write")
+    expect(previewFrame.getAttribute("sandbox")).toContain("allow-modals")
+    expect(previewFrame.getAttribute("sandbox")).toContain("allow-popups allow-popups-to-escape-sandbox")
   })
 
   it("saves from the document pane only through an authenticated preview message", async () => {
@@ -10012,6 +10117,42 @@ describe("DomEditor.execute()", () => {
     const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
     expect(tree.children.map(child => child.name)).toEqual(["Image", "Video"])
     expect(tree.children.map(child => child.children)).toEqual([[], []])
+  })
+
+  it.each([false, true])("hides data blocks from the breadcrumb outline (isolated frame: %s)", async isolated => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const host = editor as any
+    host.editorOpaque = isolated
+    vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    const live = iframe.contentDocument!
+    live.body.innerHTML = '<test-widget><script type="application/json" slot="data">{"choice":""}</script></test-widget><test-widget><script type="application/xml"><state/></script><!--keep--><p>Visible child</p></test-widget>'
+    const publish = async () => {
+      if(isolated) window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: frameUpdate(host, live)}))
+      else await new Promise(resolve => setTimeout(resolve, 0))
+      await editor.updateComplete
+    }
+    await publish()
+    window.dispatchEvent(new MessageEvent("message", {
+      source: editorWindow,
+      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}, {path: [0], name: "Widget"}]}},
+    }))
+    await editor.updateComplete
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+
+    expect(breadcrumb.tree!.children.map(item => item.children)).toEqual([
+      [], [expect.objectContaining({name: "Paragraph", path: [1, 2]})],
+    ])
+    expect(breadcrumb.shadowRoot!.querySelector('[aria-label="Show Widget tree"]')).toBeNull()
+    const block = live.body.querySelector("script[slot=data]")!
+    expect(block.textContent).toBe('{"choice":""}')
+
+    block.type = "text/javascript"
+    await publish()
+    expect(breadcrumb.tree!.children[0].children.map(item => item.path)).toEqual([[0, 0]])
+    block.type = "application/json"
+    await publish()
+    expect(breadcrumb.tree!.children[0].children).toEqual([])
   })
 
   it("opens the outline from a breadcrumb separator and preserves the full path", async () => {

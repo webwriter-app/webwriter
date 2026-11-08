@@ -46,7 +46,7 @@ Change the completion loop to distinguish inspection, proposal preparation, succ
 
 Keep one pending proposal at a time, with multiple operations inside it. Repeated calls for the same proposal ID must be idempotent; a retry must not duplicate an insertion or silently replace the pending proposal. Finish AI busy state when queueing completes, while retaining the current review controls and pending-review input restriction.
 
-Store proposal status separately from the in-flight model request. Accept/reject/undo update that status and the review history without another AI request. Include compact status records in subsequent model context, and record acceptance only when the editor reports `applied`. Cancellation, iframe replacement, destruction, and preview failures must settle outstanding work and clean up locks, markers, and appendix UI. Account for a review click arriving while preview creation is completing.
+Store proposal status separately from the in-flight model request. Accept/reject/undo update that status and the review history without another AI request. Include compact status records in subsequent model context, and record acceptance only when the editor reports `applied`. Cancellation, iframe replacement, destruction, and preview failures must settle outstanding work, release locks, clear presentation state, and remove review UI from the appendix. Account for a review click arriving while preview creation is completing.
 
 ## 2. Give the assistant a compact, live tool surface
 
@@ -86,7 +86,7 @@ Resolve resources and validate the complete operation batch before previewing. E
 
 Sanitize newly supplied content while preserving unaffected live nodes, attributes, comments, namespaces, and widget instances. Use context-aware fragment parsing for ranges and table/list structures. Remove stale unsupported-element unwrapping from the AI path where the editor supports the element, and avoid schema correction that changes unrelated valid structure. Return structured diagnostics for unsupported additions instead of silently transforming the requested result into something different.
 
-Use the current collaboration preview/merge semantics and captured-change undo. A proposal is temporary review state, not a normalized document model. Keep all review UI in the shadow appendix, retain its default slot, and remove temporary `◆` markers on every lifecycle path. Verify node identity through acceptance and rejection as well as preview creation.
+Use the current collaboration preview/merge semantics and captured-change undo. Keep proposal presentation state in memory and review UI in the shadow appendix. Retain the appendix's default slot and clear review state on every lifecycle path. Verify node identity through acceptance and rejection as well as preview creation.
 
 Document-level CSS/head mutations require explicit preview/undo coverage before exposure; do not advertise head writes as supported merely because head reads exist. Initially use supported authored declaration changes on exact targets for styling proposals.
 
@@ -122,6 +122,6 @@ Acceptance cases:
 - Vague editing requests use reasonable defaults. Unsupported-widget requests produce useful supported content without invented tags or clarification questions.
 - Selection movement, detached/replaced endpoints, remote edits, and irregular valid DOM do not cause wrong-target edits or lost surrounding content. Unchanged widget instances, comments, attributes, and namespaces survive.
 - Generated ordinary content is flat. Layouts contain only necessary grouping; lists, tables, and widget contracts retain required nesting; existing wrappers remain intact.
-- Previews stay private until acceptance; rejection restores the current shared document, acceptance preserves queued remote edits, and undo/redo obey existing semantics. Markers/UI are excluded from shared and serialized HTML.
+- Previews stay private until acceptance. Rejection restores the current shared document, acceptance preserves queued remote edits, and undo and redo obey existing semantics. Shared and serialized HTML contain the authored changes.
 
-Run focused Vitest files during implementation, then `npx vitest run` and `npm run typecheck`. Use `npm run test:native-browser`, the existing loopback-only browser harness, for actual widget registration, focus/selection, rendered layout, and review interactions. Its AI regression check covers contextual table insertion, widget instance preservation through preview and acceptance, rendered styles, rejection, selective undo, and marker exclusion.
+Run focused Vitest files during implementation, then `npx vitest run` and `npm run typecheck`. Use `npm run test:native-browser`, the existing loopback-only browser harness, for actual widget registration, focus and selection, rendered layout, and review interactions. Its AI regression check covers contextual table insertion, widget instance preservation through preview and acceptance, rendered styles, rejection, selective undo, and exclusion of review artifacts.

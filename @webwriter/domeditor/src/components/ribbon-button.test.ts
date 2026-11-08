@@ -2,10 +2,38 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {RibbonButton} from "./ribbon-button"
 import type {RibbonMenu} from "./ribbon-menu"
+import {hasAnchorTarget} from "../anchor-positioning.test-utils"
 
 afterEach(() => {
   document.body.replaceChildren()
   vi.restoreAllMocks()
+})
+
+it("shows a disabled reason on focus and clears the tooltip when the action becomes available", async () => {
+  const button = new RibbonButton()
+  Object.assign(button, {disabled: true, disabledReason: "Add a state first"})
+  document.body.append(button)
+  await button.updateComplete
+  const main = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+  main.focus()
+  await button.updateComplete
+  expect(button.shadowRoot!.activeElement).toBe(main)
+  expect(button.hasAttribute("details-open")).toBe(true)
+
+  const escape = new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true})
+  main.dispatchEvent(escape)
+  await button.updateComplete
+  expect(escape.defaultPrevented).toBe(true)
+  expect(button.hasAttribute("details-open")).toBe(false)
+
+  main.click()
+  await button.updateComplete
+  expect(button.hasAttribute("details-open")).toBe(true)
+  button.disabled = false
+  await button.updateComplete
+  expect(button.hasAttribute("details-open")).toBe(false)
+  expect(button.shadowRoot!.querySelector('[role="tooltip"]')).toBeNull()
+  expect(main.hasAttribute("aria-describedby")).toBe(false)
 })
 
 describe("ribbon button dropdown positioning", () => {
@@ -38,7 +66,7 @@ describe("ribbon button dropdown positioning", () => {
 
     expect(menu.style.left).toBe("")
     expect(menu.style.top).toBe("")
-    expect(row.className).toContain("◆anchor-target-")
+    expect(hasAnchorTarget(row)).toBe(true)
     expect(menu.style.getPropertyValue("--ribbon-menu-join-left")).toBe("1px")
     expect(menu.style.getPropertyValue("--ribbon-menu-join-width")).toBe("88px")
     button.closeSubmenu()

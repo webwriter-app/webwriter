@@ -1,7 +1,9 @@
 import {LitElement, css, html, nothing, type CSSResultGroup} from "lit"
 import {live} from "lit/directives/live.js"
+import {ref} from "lit/directives/ref.js"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
+import {ribbonIcon} from "../ribbon-icons"
 
 export type ComboboxOption = {
   value: string
@@ -23,6 +25,7 @@ export class EditorCombobox extends LitElement {
     label: {type: String},
     placeholder: {type: String},
     options: {attribute: false},
+    formatValue: {attribute: false},
     showValue: {type: Boolean, attribute: "show-value", reflect: true},
     editable: {type: Boolean},
     multiple: {type: Boolean, reflect: true},
@@ -76,6 +79,64 @@ export class EditorCombobox extends LitElement {
       border-color: #3977c7;
       outline: 1px solid #3977c7;
     }
+
+    :host([multiple]) .control {
+      padding-inline-end: 1.3rem;
+    }
+    :host([multiple][disabled]) .control {opacity: .55;}
+
+    .selection-tags {
+      position: relative;
+      display: flex;
+      flex: 1;
+      gap: .15rem;
+      min-width: 0;
+      margin-inline: .2rem;
+      overflow: hidden;
+    }
+    :host([multiple]) input {position: absolute; inset: 0; padding-inline-end: 1.3rem; cursor: pointer;}
+    .control:has(.selection-tags) input {opacity: 0;}
+    .selection-tag {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      box-sizing: border-box;
+      max-width: 100%;
+      min-width: 0;
+      padding-inline: .25rem .1rem;
+      gap: .1rem;
+      border: 1px solid #c8d2df;
+      border-radius: .25rem;
+      color: #2f3742;
+      background: #e8eef5;
+      font-size: var(--metadata-combobox-font-size, .62rem);
+      line-height: 1rem;
+    }
+    .selection-tag:first-child {flex-shrink: 1;}
+    .selection-tag[hidden] {position: absolute; visibility: hidden;}
+    .selection-tag-count {padding-inline: .25rem; font-variant-numeric: tabular-nums;}
+    .selection-tag-label {overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
+    .selection-tags {cursor: pointer;}
+    :host([disabled]) .selection-tags, :host([multiple][disabled]) input {cursor: default;}
+    .selection-remove {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      width: 1rem;
+      height: 1rem;
+      padding: 0;
+      border: 0;
+      border-radius: .2rem;
+      color: #526b86;
+      background: transparent;
+      cursor: pointer;
+    }
+    .selection-remove:enabled:hover {background: #d9e6f4; color: #2f3742;}
+    .selection-remove:focus-visible {outline: 1px solid #3977c7; outline-offset: -1px;}
+    .selection-remove:disabled {cursor: default;}
+    .selection-remove svg, .selection-check svg {display: block; width: .75rem; height: .75rem;}
 
     input {
       box-sizing: border-box;
@@ -199,6 +260,12 @@ export class EditorCombobox extends LitElement {
     .option:has(.option-icons) .option-code {grid-column: 1; grid-row: 1;}
     .option:has(.option-icons) .option-name,
     .option:has(.option-icons) .option-description {grid-column: 1 / -1;}
+    .option:has(.selection-check) {grid-template-columns: minmax(0, 1fr) auto;}
+    .option:has(.option-icons):has(.selection-check) {grid-template-columns: minmax(0, 1fr) auto auto;}
+    .selection-check {grid-column: 2; grid-row: 1; margin-inline-start: auto; color: #3977c7;}
+    .option:has(.option-icons) .selection-check {grid-column: 3;}
+    .option[aria-selected="false"] .selection-check {visibility: hidden;}
+    :host([multiple]) .option[data-active] {outline: 1px solid #8eb6df; outline-offset: -1px;}
     .option-icons {grid-column: 2; grid-row: 1; display: flex; gap: 0.2rem; align-items: center;}
     .option-icons img {display: block; width: 1rem; height: 1rem;}
 
@@ -208,6 +275,13 @@ export class EditorCombobox extends LitElement {
       white-space: nowrap;
       font-size: 0.68rem;
       line-height: 0.95rem;
+    }
+
+    :host([language-picker]) .listbox {min-width: min(7rem, calc(100vw - 1rem));}
+    :host([language-picker]) .option > .option-name {
+      flex-shrink: 0;
+      overflow: visible;
+      text-overflow: clip;
     }
 
     .option-description {
@@ -223,6 +297,7 @@ export class EditorCombobox extends LitElement {
   label = "Choose"
   placeholder = ""
   options: readonly ComboboxOption[] = []
+  formatValue?: (value: string) => string
   showValue = false
   editable = true
   multiple = false
@@ -231,8 +306,21 @@ export class EditorCombobox extends LitElement {
   protected open = false
   private draft = ""
   private editing = false
+  private typeahead = ""
+  private lastTypeahead = 0
+  private tagStrip?: Element
+  private tagResizeObserver?: ResizeObserver
   protected activeIndex = -1
   private readonly listboxId = `document-head-suggestions-${++comboboxInstanceCount}`
+
+  private readonly observeTagStrip = (strip?: Element) => {
+    this.tagResizeObserver?.disconnect()
+    this.tagStrip = strip
+    if(strip) {
+      this.tagResizeObserver ??= new ResizeObserver(() => this.fitSelectionTags())
+      this.tagResizeObserver.observe(strip)
+    }
+  }
 
   private readonly documentPointerDown = (event: PointerEvent) => {
     if(!event.composedPath().includes(this)) this.outsidePointerDown(event)
@@ -259,12 +347,12 @@ export class EditorCombobox extends LitElement {
 
   protected willUpdate(changed: Map<string, unknown>) {
     if(changed.has("disabled") && this.disabled) this.close(true)
-    if((changed.has("value") || changed.has("showValue") || changed.has("options") || changed.has("values")) && !this.editing) this.draft = this.displayedValue()
+    if((changed.has("value") || changed.has("showValue") || changed.has("options") || changed.has("formatValue") || changed.has("multiple")) && !this.editing) this.draft = this.displayedValue()
   }
 
   protected displayedValue() {
-    if(this.multiple) return this.values.map(value => this.options.find(option => option.value === value)?.label ?? value).join(", ")
-    return this.showValue ? this.value : this.selectedOption()?.label ?? this.value
+    if(this.multiple) return ""
+    return this.showValue ? this.value : this.selectedOption()?.label ?? this.formatValue?.(this.value) ?? this.value
   }
 
   protected renderToggleIcon(): unknown {
@@ -278,9 +366,51 @@ export class EditorCombobox extends LitElement {
   protected blurInput(_event: FocusEvent) {}
 
   protected updated(changed: Map<string, unknown>) {
+    this.fitSelectionTags()
     if(changed.has("open")) this.dispatchEvent(new CustomEvent("combobox-toggle", {
       detail: {open: this.open}, bubbles: true, composed: true,
     }))
+  }
+
+  private fitSelectionTags() {
+    const strip = this.tagStrip
+    if(!strip) return
+    const tags = Array.from(strip.querySelectorAll<HTMLElement>(".selection-tag:not(.selection-tag-count)"))
+    const counter = strip.querySelector<HTMLElement>(".selection-tag-count")!
+    const width = strip.getBoundingClientRect().width
+    let visible = Math.min(1, tags.length)
+    if(width && tags.length > 1) {
+      const gap = parseFloat(getComputedStyle(strip).columnGap) || 0
+      const widths = tags.map(tag => {
+        const label = tag.querySelector<HTMLElement>(".selection-tag-label")!
+        // Include the clipped text when a long first tag is already sharing space with the count.
+        return tag.getBoundingClientRect().width + Math.max(0, label.scrollWidth - label.clientWidth)
+      })
+      const total = widths.reduce((sum, tagWidth) => sum + tagWidth, 0) + gap * (tags.length - 1)
+      if(total <= width) visible = tags.length
+      else {
+        let used = widths[0] + gap
+        let counterWidth = counter.getBoundingClientRect().width
+        while(visible < tags.length - 1) {
+          const count = `+${tags.length - visible - 1}`
+          // The counter uses tabular digits, so its width only changes at a digit boundary.
+          if(count.length !== counter.textContent?.length) {
+            counter.textContent = count
+            counterWidth = counter.getBoundingClientRect().width
+          }
+          const next = used + widths[visible] + gap
+          if(next + counterWidth > width) break
+          used = next
+          visible++
+        }
+      }
+    }
+    // Apply measured layout directly to the rendered tags without requesting another render.
+    tags.forEach((tag, index) => { tag.hidden = index >= visible })
+    const hiddenCount = tags.length - visible
+    counter.hidden = hiddenCount === 0
+    const count = `+${hiddenCount}`
+    if(counter.textContent !== count) counter.textContent = count
   }
 
   protected selectedOption() {
@@ -289,9 +419,8 @@ export class EditorCombobox extends LitElement {
 
   protected filteredOptions() {
     if(!this.editable || this.multiple) return this.options
-    const selected = this.selectedOption()
     const query = this.draft.trim().toLocaleLowerCase("en")
-    if(!query || query === selected?.label.toLocaleLowerCase("en") || query === this.value.toLocaleLowerCase("en")) {
+    if(!query || query === this.displayedValue().toLocaleLowerCase("en") || query === this.value.toLocaleLowerCase("en")) {
       return this.options
     }
     return this.options.filter(option => [option.label, option.value, option.description ?? "", option.detail ?? ""]
@@ -301,6 +430,7 @@ export class EditorCombobox extends LitElement {
   close(reset = false) {
     this.open = false
     this.activeIndex = -1
+    this.typeahead = ""
     if(reset) {
       this.editing = false
       this.draft = this.displayedValue()
@@ -310,18 +440,31 @@ export class EditorCombobox extends LitElement {
 
   protected async setOpen(open: boolean) {
     if(this.disabled) return
+    if(this.multiple) {
+      if(!open) { this.close(); return }
+      if(!this.open) {
+        const selected = this.options.findIndex(option => !option.disabled && this.values.includes(option.value))
+        this.activeIndex = selected < 0 ? this.options.findIndex(option => !option.disabled) : selected
+      }
+    }
     this.open = open
     if(!this.open) return
     await this.updateComplete
     if(!this.open || !this.isConnected) return
     this.renderRoot.querySelector<HTMLElement>(".listbox")?.showPopover?.()
+    if(this.multiple) void this.scrollToActiveOption()
+  }
+
+  private async scrollToActiveOption() {
+    await this.updateComplete
+    this.renderRoot.querySelector<HTMLElement>(".option[data-active]")?.scrollIntoView?.({block: "nearest"})
   }
 
   protected emit(value: string) {
     if(this.disabled) return
     this.value = value
     this.editing = false
-    this.draft = this.showValue ? value : this.selectedOption()?.label ?? value
+    this.draft = this.displayedValue()
     this.close()
     this.dispatchEvent(new CustomEvent<{value: string}>("combobox-change", {
       detail: {value},
@@ -333,14 +476,21 @@ export class EditorCombobox extends LitElement {
   protected select(option: ComboboxOption, _event?: Event) {
     if(this.disabled || option.disabled) return
     if(this.multiple) {
-      this.values = this.values.includes(option.value) ? this.values.filter(value => value !== option.value) : [...this.values, option.value]
-      this.draft = this.displayedValue()
-      this.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: this.values.join(", "), values: [...this.values]}, bubbles: true, composed: true}))
-      this.requestUpdate()
+      this.changeValues(this.values.includes(option.value)
+        ? this.values.filter(value => value !== option.value) : [...this.values, option.value])
       return
     }
     this.renderRoot.querySelector<HTMLInputElement>("input")?.focus()
     this.emit(option.value)
+  }
+
+  private changeValues(values: string[]) {
+    if(this.disabled) return
+    this.renderRoot.querySelector<HTMLInputElement>("input")?.focus({preventScroll: true})
+    this.values = values
+    this.dispatchEvent(new CustomEvent("combobox-change", {
+      detail: {value: values.join(", "), values: [...values]}, bubbles: true, composed: true,
+    }))
   }
 
   protected commitDraft(event?: Event) {
@@ -350,19 +500,38 @@ export class EditorCombobox extends LitElement {
     const exact = this.options.find(option => option.value.toLocaleLowerCase("en") === draft.toLocaleLowerCase("en")
       || option.label.toLocaleLowerCase("en") === draft.toLocaleLowerCase("en"))
     if(exact?.disabled) { this.close(true); return }
-    const value = exact?.value ?? draft
+    const value = exact?.value ?? (draft === this.displayedValue() ? this.value : draft)
     if(value !== this.value) this.emit(value)
     else this.close(true)
   }
 
   protected handleFocus() {
-    if(this.disabled) return
-    this.editing = this.editable && !this.multiple
+    if(this.disabled || this.multiple) return
+    this.editing = this.editable
     this.draft ||= this.displayedValue()
     void this.setOpen(true)
   }
 
-  protected handleInputClick() { void this.setOpen(true) }
+  protected handleInputClick() {
+    if(this.multiple) this.handleToggleClick()
+    else void this.setOpen(true)
+  }
+
+  private handleToggleClick() {
+    if(this.multiple) this.renderRoot.querySelector<HTMLInputElement>("input")?.focus({preventScroll: true})
+    void this.setOpen(!this.open)
+  }
+
+  private handleControlFocusOut(event: FocusEvent) {
+    if(this.multiple && !(event.relatedTarget instanceof Node && this.renderRoot.contains(event.relatedTarget))) this.close()
+  }
+
+  private handleControlKeydown(event: KeyboardEvent) {
+    if(this.multiple && this.open && event.key === "Escape") {
+      event.stopPropagation()
+      this.documentKeydown(event)
+    }
+  }
 
   protected handleInput(event: InputEvent) {
     if(this.disabled || !this.editable || this.multiple) return
@@ -377,19 +546,31 @@ export class EditorCombobox extends LitElement {
   protected handleKeydown(event: KeyboardEvent) {
     if(this.disabled) return
     const options = this.filteredOptions()
-    if(event.key === "ArrowDown" || event.key === "ArrowUp") {
+    const boundary = this.multiple && (event.key === "Home" || event.key === "End")
+    if(event.key === "ArrowDown" || event.key === "ArrowUp" || boundary) {
       event.preventDefault()
-      if(!this.open) void this.setOpen(true)
+      if(!this.open) {
+        void this.setOpen(true)
+        if(this.multiple && !boundary) return
+      }
       const offset = event.key === "ArrowDown" ? 1 : -1
       const indices = options.flatMap((option, index) => option.disabled ? [] : [index])
       const current = indices.indexOf(this.activeIndex)
-      this.activeIndex = indices.length ? indices[current < 0
+      this.activeIndex = boundary ? (event.key === "Home" ? indices[0] : indices.at(-1)) ?? -1
+        : indices.length ? indices[current < 0
         ? offset > 0 ? 0 : indices.length - 1
         : (current + offset + indices.length) % indices.length] : -1
       this.requestUpdate()
+      if(this.multiple) void this.scrollToActiveOption()
       return
     }
-    if(event.key === " " && !this.editable) {
+    if(this.multiple && (event.key === "Enter" || event.key === " " && !this.typeaheadActive(event))) {
+      event.preventDefault()
+      if(!this.open) void this.setOpen(true)
+      else if(options[this.activeIndex]) this.select(options[this.activeIndex])
+      return
+    }
+    if(event.key === " " && !this.editable && !this.multiple) {
       event.preventDefault()
       void this.setOpen(!this.open)
       return
@@ -405,7 +586,25 @@ export class EditorCombobox extends LitElement {
       event.preventDefault()
       this.cancelInput()
       event.stopPropagation()
+      return
     }
+    if(this.multiple && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing) {
+      event.preventDefault()
+      const key = event.key.toLocaleLowerCase()
+      this.typeahead = this.typeaheadActive(event) ? this.typeahead + key : key
+      this.lastTypeahead = event.timeStamp
+      if(!this.open) void this.setOpen(true)
+      const match = options.findIndex(option => !option.disabled && option.label.toLocaleLowerCase().startsWith(this.typeahead))
+      if(match >= 0) {
+        this.activeIndex = match
+        this.requestUpdate()
+        void this.scrollToActiveOption()
+      }
+    }
+  }
+
+  private typeaheadActive(event: KeyboardEvent) {
+    return Boolean(this.typeahead && event.timeStamp - this.lastTypeahead < 750)
   }
 
   protected optionGroups(options: readonly ComboboxOption[]) {
@@ -448,6 +647,7 @@ export class EditorCombobox extends LitElement {
         class="option"
         type="button"
         role="option"
+        tabindex=${this.multiple ? "-1" : nothing}
         ?disabled=${option.disabled}
         title=${option.description ? `${option.label} — ${option.description}` : option.label}
         style=${this.optionStyle(option, index)}
@@ -463,15 +663,37 @@ export class EditorCombobox extends LitElement {
           : option.description ? html`<span class="option-name">${option.description}</span>` : nothing}
         ${option.detail ? html`<span class="option-description">${option.detail}</span>` : nothing}
         ${option.icons?.length ? html`<span class="option-icons" aria-hidden="true">${option.icons.map(icon => html`<img src=${icon.src} alt="" data-icon=${icon.name}>`)}</span>` : nothing}
+        ${this.multiple ? html`<span class="selection-check" aria-hidden="true">${ribbonIcon("Accept")}</span>` : nothing}
       </button>
     `)}`
+  }
+
+  private renderSelectionTags() {
+    return html`
+      <span class="selection-tags" ${ref(this.observeTagStrip)} @click=${this.handleToggleClick}>
+        ${this.values.map(value => {
+          const label = this.options.find(option => option.value === value)?.label ?? value
+          return html`<span class="selection-tag">
+            <span class="selection-tag-label" title=${label}>${label}</span>
+            <button class="selection-remove" type="button" aria-label=${`Remove ${label}`} title=${`Remove ${label}`}
+              ?disabled=${this.disabled} @click=${(event: MouseEvent) => {
+                event.stopPropagation()
+                this.changeValues(this.values.filter(selected => selected !== value))
+              }}
+            >${ribbonIcon("Reject")}</button>
+          </span>`
+        })}
+        <span class="selection-tag selection-tag-count" hidden aria-hidden="true"></span>
+      </span>
+    `
   }
 
   render() {
     const options = this.open ? this.filteredOptions() : []
     const groups = this.optionGroups(options)
     return html`
-      <span class="control" style=${`anchor-name: --${this.listboxId}`}>
+      <span class="control" style=${`anchor-name: --${this.listboxId}`}
+        @focusout=${this.handleControlFocusOut} @keydown=${this.handleControlKeydown}>
         <input
           role="combobox"
           aria-label=${this.label}
@@ -484,7 +706,7 @@ export class EditorCombobox extends LitElement {
           inputmode=${this.showValue ? "decimal" : nothing}
           data-ribbon-input-persistent
           placeholder=${this.placeholder}
-          .value=${live(this.draft)}
+          .value=${live(this.multiple && this.values.length ? `${this.values.length} selected` : this.draft)}
           ?disabled=${this.disabled}
           .readOnly=${!this.editable || this.multiple}
           @click=${this.handleInputClick}
@@ -494,6 +716,7 @@ export class EditorCombobox extends LitElement {
           @change=${(event: Event) => { this.commitDraft(event); event.stopPropagation() }}
           @keydown=${this.handleKeydown}
         />
+        ${this.multiple && this.values.length ? this.renderSelectionTags() : nothing}
         <button
           class="toggle dropdown-chevron"
           type="button"
@@ -503,7 +726,7 @@ export class EditorCombobox extends LitElement {
           aria-expanded=${this.open}
           aria-controls=${this.listboxId}
           @mousedown=${(event: MouseEvent) => event.preventDefault()}
-          @click=${() => this.setOpen(!this.open)}
+          @click=${this.handleToggleClick}
         >${this.renderToggleIcon()}</button>
         ${this.renderSuffix()}
       </span>
@@ -522,7 +745,7 @@ export class EditorCombobox extends LitElement {
               ${group ? this.renderGroupHeading(group) : nothing}
               ${this.renderGroupOptions(group, entries)}
             </div>
-          `) : html`<span class="option-name">Press Enter to use “${this.draft.trim()}”.</span>`}
+          `) : this.multiple ? this.renderEmptyOptions("") : html`<span class="option-name">Press Enter to use “${this.draft.trim()}”.</span>`}
         </div>
       ` : nothing}
     `

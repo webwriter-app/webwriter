@@ -1,3 +1,4 @@
+import {markEditorOnlyNode} from "../editor-artifacts"
 import {escapeHTMLAttribute} from "../serialization-primitives"
 import {scopedCustomElementRegistryScript} from "../scoped-custom-element-registry-script"
 import { EditorFeature } from "."
@@ -121,7 +122,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
   }
 
   /** Adds runtime resources required by the detached authored document. */
-  appendSerializedAssets(root: Document) {
+  appendSerializedAssets(root: import("../serialization-primitives").HTMLDocumentParts) {
     this.editor.appendSerializedAssets(root, this.widgetPackages, this.dependencyPlan?.map)
   }
 
@@ -153,9 +154,11 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
     const plan: PackageDependencyPlan = {entries, map: message.importMap ?? null}
     globalThis.DOMEDITOR_PACKAGE_ITEMS = packageInsertionItems(packages, true)
     const widgetDefinitions = packageWidgetSchemaDefinitions(packages)
-    this.editor.schema = new Schema()
-    this.editor.schema.extendWidgets(widgetDefinitions)
-    this.editor.features.widget.refresh()
+    const previousSchema = this.editor.schema
+    const schema = new Schema()
+    schema.extendWidgets(widgetDefinitions)
+    this.editor.schema = schema
+    this.editor.features.widget.refresh(previousSchema)
     // Old cached metadata can still infer CSS that a wildcard export never
     // published. Only that inferred CSS is optional; explicit assets must load.
     const inferredStyles = new Set(packages.flatMap(pkg => Object.entries(pkg.manifest?.exports ?? {}).flatMap(([exportName, target]) => {
@@ -173,7 +176,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
       link.rel = "stylesheet"
       link.href = href
       link.nonce = this.editor.trustedScriptNonce
-      link.classList.add("◆", "◆editor-only")
+      markEditorOnlyNode(link)
       return link
     })
     const scripts = [...new Set(packages.flatMap(pkg => pkg.scripts))].map(src => {
@@ -183,7 +186,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
       // Package bundles are an explicit trusted-code boundary. The editor
       // frame's nonce admits these resources while blocking authored scripts.
       script.nonce = this.editor.trustedScriptNonce
-      script.classList.add("◆", "◆editor-only")
+      markEditorOnlyNode(script)
       return script
     })
     this.widgetPackages = packages
@@ -221,7 +224,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
     const sizingStyle = document.createElement("style")
     sizingStyle.id = "webwriter-widget-sizing"
     sizingStyle.nonce = this.editor.trustedScriptNonce
-    sizingStyle.classList.add("◆", "◆editor-only")
+    markEditorOnlyNode(sizingStyle)
     sizingStyle.textContent = documentWidgetStyleSource(widgetDefinitions)
     if(sizingStyle.textContent) document.head.append(sizingStyle)
     this.editor.features.insertion.menu.requestUpdate()

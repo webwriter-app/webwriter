@@ -38,4 +38,4 @@ render() {
 Import `html` from `lit`. Expose simple author settings through [options and actions](../reference/options-actions.md), which WebWriter displays in the Widget drawer.
 <!-- /library -->
 
-Keep widget controls in shadow DOM. Leave editor-owned `contenteditable` and `◆` marker classes to the editor. Test both modes using **Preview**, and save and reopen the document to check the resulting state.
+Keep widget controls in shadow DOM and use the runtime editability signal described above. WebWriter tracks its own selection and hover state in memory. Test both modes using **Preview**, and save and reopen the document to check the resulting state.

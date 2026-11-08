@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {clearPresentationState, setPresentationState} from "../presentation-state.js"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {parseCommentMarker} from "./comment"
@@ -24,10 +25,10 @@ it("does not publish comment selection state for editor marker changes", async (
   const flush = () => new Promise(resolve => setTimeout(resolve, 20))
   await flush()
   const post = vi.spyOn(editor, "postSelectionPath")
-  paragraph.classList.add("◆", "◆text-selected")
+  setPresentationState(paragraph, "text-selected")
   await flush()
   expect(post).not.toHaveBeenCalled()
-  paragraph.classList.remove("◆text-selected")
+  clearPresentationState(paragraph, "text-selected")
   await flush()
   expect(post).not.toHaveBeenCalled()
   paragraph.style.display = "none"

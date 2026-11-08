@@ -6,6 +6,7 @@ import {EditorDocumentReplica, isEditorDocumentUpdate, publishEditorDocument, ty
 import {DomEditor} from "./components/dom-editor"
 import {DOMEditor} from "./domeditor"
 import {readableNodePath} from "./dom-readers"
+import {widgetLookupForTags} from "./editor-artifacts"
 
 const cleanup: (() => void)[] = []
 afterEach(() => { cleanup.splice(0).reverse().forEach(dispose => dispose()); vi.restoreAllMocks() })
@@ -13,7 +14,9 @@ afterEach(() => { cleanup.splice(0).reverse().forEach(dispose => dispose()); vi.
 function fixture(html: string) {
   const owner = document.implementation.createHTMLDocument("")
   owner.body.innerHTML = html
-  const shared = new SharedDOMDoc(undefined, undefined, ["contenteditable", "spellcheck"], ["◆"], {root: owner.body})
+  const shared = new SharedDOMDoc(undefined, undefined, ["spellcheck"], ["◆"], {
+    root: owner.body, isWidget: widgetLookupForTags(["custom-widget"]),
+  })
   cleanup.push(() => shared.destroy())
   const messages: EditorDocumentUpdate[] = []
   let replica: EditorDocumentReplica | null = null
@@ -73,11 +76,14 @@ describe("receive-only editor document synchronization", () => {
     expect(view.getAttribute("style")).toContain("25px")
     const count = setup.messages.length
     paragraph.classList.add("◆selected")
-    setup.owner.querySelector("custom-widget")!.classList.add("◆widget-editable")
-    setup.owner.querySelector("custom-widget")!.setAttribute("contenteditable", "")
+    const widget = setup.owner.querySelector("custom-widget")!
+    widget.setAttribute("contenteditable", "")
     setup.publisher.flush()
     expect(setup.messages).toHaveLength(count)
     expect(setup.replica.authoredSignature()).not.toContain("◆")
+    widget.setAttribute("contenteditable", "false")
+    setup.publisher.flush()
+    expect(setup.replica.body!.children[1].getAttribute("contenteditable")).toBe("false")
   })
 
   it("forwards remote edits and undo/redo, then releases subscriptions on destruction", () => {

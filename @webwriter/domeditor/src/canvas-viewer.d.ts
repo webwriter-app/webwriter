@@ -24,7 +24,7 @@ export function isCanvasStartingView(element: Element): element is HTMLDivElemen
 export function createCanvasPanSurface(): HTMLDivElement
 /** The JavaScript module is also embedded verbatim in exports. */
 export class CanvasViewer {
-  constructor(slot: HTMLSlotElement, background: HTMLElement, controls: HTMLElement, panSurface?: HTMLElement | null, onChange?: () => void, loadSnapdom?: LoadSnapdom)
+  constructor(slot: HTMLSlotElement, background: HTMLElement, controls: HTMLElement, panSurface?: HTMLElement | null, onChange?: () => void, loadSnapdom?: LoadSnapdom, isAuthoredMutation?: (record: MutationRecord) => boolean)
   readonly zoom: number
   readonly active: boolean
   items(): (HTMLElement | SVGSVGElement)[]

@@ -187,17 +187,22 @@ it("offers wrap, nowrap, and balance with a distinct balance icon", async () => 
   expect(change).toEqual({property: "text-wrap", mutation: {value: "balance", priority: ""}})
 })
 
-it("keeps text wrap icons at regular size in dense advanced controls", async () => {
+it("uses the same button height across dense paragraph choices while keeping regular text wrap icons", async () => {
   const definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
   const editor = await mount(definitions, state(), "compact")
-  editor.propertyNames = ["text-wrap", "hyphens"]
+  editor.propertyNames = ["text-align-last", "text-wrap", "hyphens"]
   editor.setAttribute("dense-choices", "")
   await editor.updateComplete
 
+  const alignmentButton = editor.shadowRoot!.querySelector<HTMLButtonElement>('[data-property="text-align-last"] .specialized-choice-group button')!
   const wrapIcon = editor.shadowRoot!.querySelector<SVGElement>('[data-property="text-wrap"] svg')!
-  const wrapButton = wrapIcon.closest("button")!
   const hyphenIcon = editor.shadowRoot!.querySelector<SVGElement>('[data-property="hyphens"] svg')!
-  expect(getComputedStyle(wrapButton).height).toBe("24px")
+  const alignmentStyle = getComputedStyle(alignmentButton)
+  for(const icon of [wrapIcon, hyphenIcon]) {
+    const buttonStyle = getComputedStyle(icon.closest("button")!)
+    expect(buttonStyle.height).toBe(alignmentStyle.height)
+    expect(buttonStyle.minHeight).toBe(alignmentStyle.minHeight)
+  }
   expect(getComputedStyle(wrapIcon).width).toBe("16px")
   expect(getComputedStyle(wrapIcon).height).toBe("16px")
   expect(getComputedStyle(hyphenIcon).width).toBe("12px")

@@ -112,9 +112,9 @@ describe("Developer console packages", () => {
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: `local-package-refresh:${git.name}`}}))
     const refresh = items[1].querySelector<HTMLButtonElement>(".local-package-refresh")!
     const remove = items[1].querySelector<HTMLButtonElement>(".local-package-remove")!
-    expect(getComputedStyle(refresh).bottom).toBe("2.4px")
-    expect(getComputedStyle(remove).top).toBe("2.4px")
-    expect(getComputedStyle(remove).right).toBe("3.2px")
+    expect(getComputedStyle(refresh).top).toBe("50%")
+    expect(getComputedStyle(remove).bottom).toBe("50%")
+    expect(getComputedStyle(refresh).width).toBe(getComputedStyle(remove).width)
     remove.click()
     expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {label: `local-package-remove:${git.name}`}}))
     expect(toolbox.selectedLocalPackageName).toBe(git.name)
@@ -139,6 +139,7 @@ describe("Developer console packages", () => {
     await toolbox.updateComplete
     const load = toolbox.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Add package"]')!
     expect(load.submenu).toEqual(expect.arrayContaining([expect.objectContaining({label: "Add from Git repository", action: "git-package-add"})]))
+    expect(load.submenu).toEqual(expect.arrayContaining([expect.objectContaining({label: "Add from parent folder", action: "local-package-add-batch", icon: "Open"})]))
     const dialog = toolbox.shadowRoot!.querySelector<HTMLDialogElement>(".git-package-dialog")!
     const show = vi.spyOn(dialog, "showModal").mockImplementation(() => {dialog.open = true})
     load.dispatchEvent(new CustomEvent("ribbon-button-click", {detail: {label: "git-package-add"}, bubbles: true, composed: true}))
@@ -313,6 +314,8 @@ describe("Developer console packages", () => {
     expect(getComputedStyle(drawer.querySelector<HTMLElement>(".local-package-actions")!).boxSizing).toBe("border-box")
     expect(getComputedStyle(list).overflow).toBe("auto")
     expect(items.map(item => item.querySelector(".local-package-name")!.textContent)).toEqual(["@local/alpha", "@local/beta"])
+    expect(items.map(item => item.textContent)).toEqual(["@local/alpha 0.0.0-local", "@local/beta 0.0.0-local"])
+    expect(items.map(item => item.title)).toEqual(items.map(item => item.textContent))
     expect(items.map(item => item.getAttribute("aria-pressed"))).toEqual(["true", "false"])
     expect(drawer.querySelector<RibbonButton>('ribbon-button[label="Add package"]')).not.toBeNull()
     expect(drawer.querySelectorAll(".local-package-actions > ribbon-button")).toHaveLength(1)
@@ -338,6 +341,7 @@ describe("Developer console packages", () => {
 
     expect(load.submenu).toEqual([
       {label: "Add from local folder", action: "local-package-add", icon: "Open"},
+      {label: "Add from parent folder", action: "local-package-add-batch", icon: "Open"},
       {label: "Add from Git repository", action: "git-package-add", icon: "Git"},
       {label: "Create new package", action: "local-package-new", icon: "PackagePlus"},
     ])
@@ -366,10 +370,9 @@ describe("Developer console packages", () => {
 
     const metadata = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"]')!
     await (metadata as HTMLElement & {updateComplete: Promise<unknown>}).updateComplete
-    expect((metadata as HTMLElement & {hidePaneLabel: boolean}).hidePaneLabel).toBe(false)
+    expect((metadata as HTMLElement & {hidePaneLabel: boolean}).hidePaneLabel).toBe(true)
     const metadataLabel = metadata.shadowRoot!.querySelector<HTMLElement>(".pane-label")!
-    expect(getComputedStyle(metadataLabel).display).not.toBe("none")
-    expect(metadataLabel.textContent).toContain("Metadata")
+    expect(getComputedStyle(metadataLabel).display).toBe("none")
     const metadataChange = vi.fn()
     toolbox.addEventListener("local-package-metadata-change", metadataChange)
     expect(Array.from(metadata.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input[name], textarea[name]"), field => field.name)).toEqual([

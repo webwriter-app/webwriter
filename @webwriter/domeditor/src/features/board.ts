@@ -1,3 +1,4 @@
+import {clearPresentationState, presentationStateElements, setPresentationState} from "../presentation-state.js"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, atomicEditingContainer, clearEditorMarkerClasses, createAnchorPositioner, createStylesheet, isAppendixInteraction, isCaretAtBoundary, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker, setPart} from "../utility"
 import {getDocumentRoot} from "../document-template"
@@ -367,13 +368,13 @@ export class BoardFeature extends EditorFeature {
       event.dataTransfer.setData(this.dragType, this.drag.token)
       event.dataTransfer.effectAllowed = "move"
       event.dataTransfer.setDragImage?.(source, 12, 12)
-      source.classList.add("◆board-dragging")
+      setPresentationState(source, "board-dragging")
     }
     catch { this.endDrag(); event.preventDefault() }
   }
   private endDrag() {
-    if(this.drag) removeEditorMarker(this.drag.source, "◆board-dragging")
-    for(const source of document.body.querySelectorAll(".◆board-dragging")) removeEditorMarker(source, "◆board-dragging")
+    if(this.drag) clearPresentationState(this.drag.source, "board-dragging")
+    for(const source of presentationStateElements(document.body, "board-dragging")) clearPresentationState(source, "board-dragging")
     this.drag = null
     this.pressedHandle = false
     if(this.dropIndicator) this.dropIndicator.hidden = true
@@ -542,7 +543,7 @@ export class BoardFeature extends EditorFeature {
     const owner = explicit ?? selection?.anchorNode ?? null
     const column = this.active ? this.containingColumn(owner) : null
     const card = this.active ? this.containingCard(owner) : null
-    const hovered = this.active ? document.querySelector(".◆element-hovered") : null
+    const hovered = this.active ? (presentationStateElements(document, "element-hovered")[0] ?? null) : null
     const hoverTarget = isBoardColumn(hovered) || isBoardCard(hovered) ? hovered : null
     const targets = (this.active && (this.drag || this.pressedHandle)
       ? Array.from(this.transformOverlays.keys()).filter(target => target.isConnected && (isBoardColumn(target) || isBoardCard(target)))
@@ -751,10 +752,6 @@ export class BoardFeature extends EditorFeature {
     for(const overlay of this.transformOverlays.values()) overlay.remove()
     this.transformOverlays.clear()
     if(!this.editor.options.reader) this.editor.features.attribution.refresh()
-    // Cloned board nodes can retain a marker after their anchor binding ends.
-    for(const element of document.body.querySelectorAll<HTMLElement>(".ww-board-column, .ww-board-card")) {
-      for(const name of Array.from(element.classList)) if(name.startsWith("◆anchor-target-")) element.classList.remove(name)
-      if(!Array.from(element.classList).some(name => name.startsWith("◆"))) element.classList.remove("◆")
-    }
+
   }
 }

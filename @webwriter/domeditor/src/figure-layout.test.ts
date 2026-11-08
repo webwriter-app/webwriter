@@ -6,6 +6,7 @@ import {cloneWithoutEditorMarkers} from "./utility"
 let layout: ReturnType<typeof createFigureLayout> | undefined
 beforeEach(() => {
   document.body.innerHTML = '<figure class="authored"><!--keep--><custom-diagram style="width: 360px; height: 100px; rotate: 30deg; transform-origin: 0px 0px"><unfamiliar-element></unfamiliar-element></custom-diagram><figcaption><em>Caption</em></figcaption></figure>'
+  document.querySelector("figure")!.id = "flow-figure"
   Object.defineProperty(document.querySelector("figure"), "clientWidth", {configurable: true, value: 420})
 })
 afterEach(() => { layout?.destroy(); layout = undefined; vi.restoreAllMocks() })
@@ -55,40 +56,42 @@ it("supports captions before content, negative rotation, and refreshed live geom
   expect(figure.className).toBe("authored")
 })
 
-it("measures all figures before adding layout markers", () => {
+it("measures all figures without changing authored classes", () => {
   const first = document.querySelector<HTMLElement>("figure")!
   const second = first.cloneNode(true) as HTMLElement
+  second.id = "flow-figure-2"
   first.after(second)
   Object.defineProperty(second, "clientWidth", {configurable: true, value: 420})
-  const markerCounts: number[] = []
+  const classSnapshots: string[] = []
   for(const content of document.querySelectorAll("custom-diagram")) {
     Object.defineProperty(content, "offsetWidth", {configurable: true, get() {
-      markerCounts.push(document.querySelectorAll('[class*="◆figure-flow-"]').length)
+      classSnapshots.push(first.className + second.className)
       return 360
     }})
   }
   layout = createFigureLayout(document)
-  expect(markerCounts).toEqual([0, 0])
-  expect(document.querySelectorAll('[class*="◆figure-flow-"]')).toHaveLength(2)
+  expect(classSnapshots).toEqual(["authoredauthored", "authoredauthored"])
+  expect(layout.isActive(first)).toBe(true)
+  expect(layout.isActive(second)).toBe(true)
 })
 
 it("refreshes one figure without measuring or replacing unrelated figure rules", async () => {
   const first = document.querySelector<HTMLElement>("figure")!
   const second = first.cloneNode(true) as HTMLElement
+  second.id = "flow-figure-2"
   first.after(second)
   Object.defineProperty(second, "clientWidth", {configurable: true, value: 420})
   layout = createFigureLayout(document)
   const content = second.querySelector<HTMLElement>("custom-diagram")!
   const measure = vi.spyOn(content, "offsetWidth", "get")
   const sheet = document.adoptedStyleSheets.at(-1)!
-  const marker = Array.from(second.classList).find(name => name.startsWith("◆figure-flow-"))!
-  const untouched = Array.from(sheet.cssRules).filter(rule => rule.cssText.includes(marker))
+  const untouched = Array.from(sheet.cssRules).filter(rule => rule.cssText.includes("flow-figure-2"))
   const before = css()
   first.querySelector<HTMLElement>("custom-diagram")!.style.setProperty("rotate", "65deg")
   layout.refresh(first)
   expect(css()).not.toBe(before)
   expect(measure).not.toHaveBeenCalled()
-  const retained = Array.from(sheet.cssRules).filter(rule => rule.cssText.includes(marker))
+  const retained = Array.from(sheet.cssRules).filter(rule => rule.cssText.includes("flow-figure-2"))
   expect(retained).toHaveLength(untouched.length)
   retained.forEach((rule, index) => expect(rule).toBe(untouched[index]))
   await new Promise(resolve => setTimeout(resolve, 30))
@@ -99,6 +102,7 @@ it("refreshes one figure without measuring or replacing unrelated figure rules",
 it.each(["other figure", "stylesheet", "structure"])("retains broad invalidation for pending %s changes", change => {
   const first = document.querySelector<HTMLElement>("figure")!
   const second = first.cloneNode(true) as HTMLElement
+  second.id = "flow-figure-2"
   first.after(second)
   Object.defineProperty(second, "clientWidth", {configurable: true, value: 420})
   layout = createFigureLayout(document)
@@ -124,22 +128,44 @@ it.each(["other figure", "stylesheet", "structure"])("retains broad invalidation
 it("cleans disconnected figures and does not impose a shape on multi-content figures or widget internals", () => {
   const figure = document.querySelector<HTMLElement>("figure")!
   layout = createFigureLayout(document)
-  expect(figure.className).toContain("◆figure-flow-")
+  expect(layout.isActive(figure)).toBe(true)
   const replacement = figure.cloneNode(true) as HTMLElement
   replacement.className = "replacement"
   figure.replaceWith(replacement)
   Object.defineProperty(replacement, "clientWidth", {configurable: true, value: 420})
   layout.refresh()
   expect(figure.className).toBe("authored")
-  expect(replacement.className).toContain("◆figure-flow-")
+  expect(layout.isActive(replacement)).toBe(true)
   replacement.append(document.createElement("aside"))
   layout.refresh()
   expect(replacement.className).toBe("replacement")
+  expect(layout.isActive(replacement)).toBe(false)
   replacement.lastElementChild!.remove()
   const widget = document.createElement("atomic-widget")
   replacement.before(widget); widget.append(replacement)
   layout.refresh()
   expect(css()).toBe("")
+})
+
+it("drops flow safely when its ID becomes missing or duplicated", () => {
+  const figure = document.querySelector<HTMLElement>("figure")!
+  layout = createFigureLayout(document)
+  expect(layout.isActive(figure)).toBe(true)
+  figure.removeAttribute("id")
+  layout.refresh()
+  expect(layout.isActive(figure)).toBe(false)
+  figure.id = "shared"
+  const duplicate = figure.cloneNode(true) as HTMLElement
+  duplicate.id = "shared"
+  Object.defineProperty(duplicate, "clientWidth", {configurable: true, value: 420})
+  figure.after(duplicate)
+  layout.refresh()
+  expect(layout.isActive(figure)).toBe(false)
+  expect(layout.isActive(duplicate)).toBe(false)
+  duplicate.id = "unique"
+  layout.refresh()
+  expect(layout.isActive(figure)).toBe(true)
+  expect(layout.isActive(duplicate)).toBe(true)
 })
 
 it("removes its stylesheet and pending observers on destruction", async () => {

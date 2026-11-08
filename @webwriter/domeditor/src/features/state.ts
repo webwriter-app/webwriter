@@ -1,3 +1,4 @@
+import {batchPresentationStates, clearPresentationState, presentationStateElements, setPresentationState, setPresentationStates} from "../presentation-state.js"
 import {EditorFeature} from "."
 import {aiEditReviewEvent, type AIEditReviewAction} from "../editor-bridge"
 import type {DOMChangePreview} from "../domdoc"
@@ -397,20 +398,20 @@ export class StateFeature extends EditorFeature {
     const range = this.htmlEditRange
     if(!range) throw new Error("HTML selection editing has not started")
     this.pendingHTMLTargets(range).forEach(target => {
-      target.classList.add("◆", "◆html-source-pending")
+      setPresentationState(target, "html-source-pending")
       this.htmlEditTargets.add(target)
     })
-    document.documentElement.classList.add("◆html-source-review-active")
+    setPresentationState(document.documentElement, "html-source-review-active")
     this.editor.lockEditing(this.htmlEditLock)
     this.htmlEditPending = true
   }
 
   private clearHTMLSelectionPending() {
     this.htmlEditTargets.forEach(target => {
-      removeEditorMarker(target, "◆html-source-pending")
+      clearPresentationState(target, "html-source-pending")
     })
     this.htmlEditTargets.clear()
-    document.documentElement.classList.remove("◆html-source-review-active")
+    clearPresentationState(document.documentElement, "html-source-review-active")
     this.editor.unlockEditing(this.htmlEditLock)
     this.htmlEditPending = false
   }
@@ -522,19 +523,19 @@ export class StateFeature extends EditorFeature {
   }
 
   private markAIEdit(editId: string, nodes: Node[], fallbackTarget?: Element | null) {
-    const marker = `◆ai-edit-${++this.aiEditSequence}`
+    const marker = `ai-edit-${++this.aiEditSequence}`
     const targets = nodes.flatMap(node => node instanceof Element
       ? [node]
       : node.parentElement ? [node.parentElement] : [])
     if(!targets.length && fallbackTarget) targets.push(fallbackTarget)
     if(!targets.length) targets.push(document.body)
-    new Set(targets).forEach(target => target.classList.add(marker, "◆ai-preview-change"))
+    batchPresentationStates(document, () => new Set(targets).forEach(target => setPresentationStates(target, marker, "ai-preview-change")))
     this.aiEditMarkers.set(editId, marker)
   }
 
   private targetsForAIEdit(editId: string) {
     const marker = this.aiEditMarkers.get(editId)
-    return marker ? Array.from(document.getElementsByClassName(marker)) as HTMLElement[] : []
+    return marker ? presentationStateElements<HTMLElement>(document, marker) : []
   }
 
   private targetPath(target: Element) {
@@ -560,12 +561,12 @@ export class StateFeature extends EditorFeature {
     for(const [target, pulse] of this.aiPulseTimers) {
       if(pulse.editId !== editId) continue
       clearTimeout(pulse.timer)
-      target.classList.remove("◆ai-preview-pulse")
+      clearPresentationState(target, "ai-preview-pulse")
       this.aiPulseTimers.delete(target)
     }
     this.targetsForAIEdit(editId).forEach(target => {
-      target.classList.remove("◆ai-preview-change", "◆ai-preview-pulse")
-      if(!keepTarget && marker) target.classList.remove(marker)
+      clearPresentationState(target, "ai-preview-change", "ai-preview-pulse")
+      if(!keepTarget && marker) clearPresentationState(target, marker)
     })
     if(!keepTarget) this.aiEditMarkers.delete(editId)
   }
@@ -584,7 +585,7 @@ export class StateFeature extends EditorFeature {
 
   private lockForAIReview(editId: string, summary: string) {
     this.activeAIEditId = editId
-    document.documentElement.classList.add("◆ai-review-active")
+    setPresentationState(document.documentElement, "ai-review-active")
     this.editor.lockEditing(this)
 
     this.reviewToolbar?.remove()
@@ -620,7 +621,7 @@ export class StateFeature extends EditorFeature {
     this.activeAIEditId = null
     this.reviewToolbar?.remove()
     this.reviewToolbar = null
-    document.documentElement.classList.remove("◆ai-review-active")
+    clearPresentationState(document.documentElement, "ai-review-active")
     this.editor.unlockEditing(this)
   }
 
@@ -657,7 +658,7 @@ export class StateFeature extends EditorFeature {
     const target = this.targetsForAIEdit(editId)[0]
     if(!target) return {status: "unavailable", message: "The changed content is no longer in the document"}
     target.scrollIntoView?.({block: "center", behavior: uiMotionDisabled(target) ? "instant" : "smooth"})
-    target.classList.add("◆ai-preview-pulse")
+    setPresentationState(target, "ai-preview-pulse")
     // Restart the existing CSS animation without forcing layout.
     for(const animation of target.getAnimations?.() ?? []) {
       if((animation as CSSAnimation).animationName !== "◆ai-preview-pulse") continue
@@ -666,7 +667,7 @@ export class StateFeature extends EditorFeature {
     }
     clearTimeout(this.aiPulseTimers.get(target)?.timer)
     const timer = setTimeout(() => {
-      target.classList.remove("◆ai-preview-pulse")
+      clearPresentationState(target, "ai-preview-pulse")
       this.aiPulseTimers.delete(target)
     }, 1200)
     this.aiPulseTimers.set(target, {editId, timer})
@@ -787,7 +788,7 @@ export class StateFeature extends EditorFeature {
             const target = this.targetAtPath(path)
             return target ? [target] : []
           })
-          new Set(targets.length ? targets : [document.body]).forEach(target => target.classList.add(marker))
+          new Set(targets.length ? targets : [document.body]).forEach(target => setPresentationState(target, marker))
         }
         const result = this.aiEditResults.get(editId)
         return {status: accepted ? "applied" : "unavailable", ...result}
@@ -833,7 +834,7 @@ export class StateFeature extends EditorFeature {
     this.activeAIEditId = null
     this.reviewToolbar?.remove()
     this.reviewToolbar = null
-    document.documentElement.classList.remove("◆ai-review-active")
+    clearPresentationState(document.documentElement, "ai-review-active")
     this.clearHTMLSelectionPending()
     this.htmlEditRange = null
     this.htmlEditSnapshot = null

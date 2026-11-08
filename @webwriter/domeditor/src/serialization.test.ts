@@ -47,6 +47,19 @@ it("keeps encoding metadata before the adapter and installs it before widget mod
   expect(root.documentElement.outerHTML.indexOf('charset="utf-8"')).toBeLessThan(1024)
 })
 
+it("matches relative widget assets against the source URL for a disconnected export", () => {
+  const source = new DOMParser().parseFromString('<head><script type="module" src="../widget.js"></script></head><body><demo-widget></demo-widget></body>', "text/html")
+  const documentElement = source.documentElement.cloneNode(true) as HTMLElement
+  const head = documentElement.querySelector("head")!
+  const body = documentElement.querySelector("body")!
+  const pkg = {scripts: ["https://example.test/widget.js"], styles: [], members: [{kind: "widget", tagName: "demo-widget"}]} as unknown as WebWriterPackage
+
+  appendSerializedAssets({documentElement, head, body, baseURI: "https://example.test/docs/edit.html"}, [pkg])
+
+  expect(Array.from(head.querySelectorAll("script[src]"), script => script.getAttribute("src"))).toEqual(["../widget.js"])
+  expect(documentElement.isConnected).toBe(false)
+})
+
 it("serializes default sizing for installed nested widgets without affecting other layouts", () => {
   const root = new DOMParser().parseFromString('<body><main><section><demo-widget><demo-widget></demo-widget></demo-widget></section></main></body>', "text/html")
   const pkg = {scripts: [], styles: [], members: [{kind: "widget", tagName: "demo-widget"}]} as unknown as WebWriterPackage

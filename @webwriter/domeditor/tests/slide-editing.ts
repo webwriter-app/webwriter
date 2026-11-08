@@ -1,3 +1,4 @@
+import {hasPresentationState, presentationStateElements} from "../src/presentation-state.js"
 import type {DOMEditor} from "../src/domeditor"
 
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -31,7 +32,7 @@ export async function checkSlideEditing(host?: DOMEditor) {
       await settle()
       assert(selection.isCollapsed && selection.anchorNode === slide, "background click did not clear the selection")
       assert(!editor.features.selection.captureSelectedElement && !editor.features.transformation.target, "background click retained capture or resize handles")
-      assert(!doc.querySelector(".◆element-selected, .◆text-selected, .◆gap-before-selected, .◆gap-after-selected"), "background click retained visible selection markers")
+      assert(!(presentationStateElements(doc, "element-selected", "text-selected", "gap-before-selected", "gap-after-selected")[0] ?? null), "background click retained visible selection markers")
       assert(view.getComputedStyle(slide).caretColor === "rgba(0, 0, 0, 0)"
         && view.getComputedStyle(paragraphs[0]).caretColor === "rgba(0, 0, 0, 0)", "background click left a native caret visible")
       if(grey) {
@@ -52,7 +53,7 @@ export async function checkSlideEditing(host?: DOMEditor) {
         assert(selection.anchorNode === text && selection.focusNode === text
           && selection.anchorOffset === (backward ? 8 : 2) && selection.focusOffset === (backward ? 2 : 8), "slide focus reset the text range")
         assert(editor.features.transformation.target === paragraph, "text selection lost its item frame")
-        assert(!slide.classList.contains("◆element-selected"), "text selection selected the slide")
+        assert(!hasPresentationState(slide, "element-selected"), "text selection selected the slide")
         assert(view.getComputedStyle(paragraph).caretColor !== "rgba(0, 0, 0, 0)", "text editing retained background caret suppression")
         await clearOnBackground(backward)
       }
@@ -64,7 +65,7 @@ export async function checkSlideEditing(host?: DOMEditor) {
     assert(editor.features.selection.captureSelectedElement === picture, "slide focus reset media capture")
     await clearOnBackground(true)
     editor.features.selection.actions.hoverNode({type: "hoverNode", path: [0, 0]})
-    assert(!slide.classList.contains("◆element-hovered"), "outline hover highlighted the slide")
+    assert(!hasPresentationState(slide, "element-hovered"), "outline hover highlighted the slide")
     const blank = slide.getBoundingClientRect()
     doc.body.dispatchEvent(new view.MouseEvent("dblclick", {bubbles: true, cancelable: true,
       button: 0, clientX: blank.right - 100, clientY: blank.bottom - 100}))
@@ -74,7 +75,7 @@ export async function checkSlideEditing(host?: DOMEditor) {
     assert(editor.features.transformation.target === added, "new slide text box lost its frame")
     editor.features.selection.actions.selectNode({type: "selectNode", path: [0, 0]})
     await settle()
-    assert(slide.classList.contains("◆element-selected"), "breadcrumb could not select the slide")
+    assert(hasPresentationState(slide, "element-selected"), "breadcrumb could not select the slide")
     await clearOnBackground(true)
     // Grey margins start the same marquee as the slide and canvas backgrounds.
     // Enclose two items, with unrelated content deliberately outside the box.
@@ -96,9 +97,9 @@ export async function checkSlideEditing(host?: DOMEditor) {
       assert(editor.appendix.querySelectorAll('[part~="box-selection-preview"]').length === 2, "grey-to-slide drag did not preview the enclosed items")
       doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, cancelable: true, pointerId: 4, button: 0, ...end}))
       await settle()
-      assert(Array.from(paragraphs).every(paragraph => paragraph.classList.contains("◆element-selected"))
-        && doc.querySelectorAll(".◆element-selected").length === 2, "grey-to-slide drag did not select exactly the enclosed items")
-      assert(!slide.classList.contains("◆element-selected"), "marquee selected the slide itself")
+      assert(Array.from(paragraphs).every(paragraph => hasPresentationState(paragraph, "element-selected"))
+        && presentationStateElements(doc, "element-selected").length === 2, "grey-to-slide drag did not select exactly the enclosed items")
+      assert(!hasPresentationState(slide, "element-selected"), "marquee selected the slide itself")
       assert(!editor.appendix.querySelector('[part="selection-box"], [part~="box-selection-preview"]'), "marquee artifacts survived release")
       await clearOnBackground(true)
     }

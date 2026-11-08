@@ -5,6 +5,7 @@ import "@testing-library/jest-dom/vitest"
 
 import {DOMEditor} from "../domeditor"
 import {$} from "../utility"
+import {hasPresentationState, presentationStateElements} from "../presentation-state.js"
 import {buildTableMap} from "../table"
 import {markStateChangeEvent, selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
 import * as Y from "yjs"
@@ -48,7 +49,7 @@ describe("table grid", () => {
       cells()[1].dispatchEvent(new PointerEvent("pointermove", {buttons: 1, pointerId: 12,
         clientX: 150, clientY: 20, bubbles: true, cancelable: true}))
       expect(editor.features.table.hasCellSelection).toBe(false)
-      expect(content).toHaveClass("◆popup-visible")
+      expect(hasPresentationState(content, "popup-visible")).toBe(true)
       expect(content.contains($.anchor)).toBe(true)
       document.dispatchEvent(new PointerEvent("pointerup", {pointerId: 12, bubbles: true}))
     }
@@ -417,9 +418,9 @@ describe("table cell selection", () => {
 
       expect(pointerdown.defaultPrevented).toBe(true)
       expect(editor.features.table.selectedCells).toEqual([cells()[0]])
-      expect(table).not.toHaveClass("◆element-selected")
-      expect(document.body).toHaveClass("◆table-cell-selection")
-      expect(document.body).not.toHaveClass("◆table-column-edge")
+      expect(hasPresentationState(table, "element-selected")).toBe(false)
+      expect(hasPresentationState(document.body, "table-cell-selection")).toBe(true)
+      expect(hasPresentationState(document.body, "table-column-edge")).toBe(false)
 
       table.dispatchEvent(new PointerEvent("pointermove", {
         ...modifier, buttons: 1, clientX: 51, clientY: 15, bubbles: true, cancelable: true,
@@ -431,10 +432,10 @@ describe("table cell selection", () => {
       }))
       table.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
 
-      expect(table).not.toHaveClass("◆element-selected")
+      expect(hasPresentationState(table, "element-selected")).toBe(false)
       expect(editor.features.table.selectedCells).toEqual([cells()[0]])
-      expect(document.querySelectorAll(".◆table-cell-selected")).toHaveLength(1)
-      expect(document.body).toHaveClass("◆table-cell-selection")
+      expect(presentationStateElements(document, "table-cell-selected")).toHaveLength(1)
+      expect(hasPresentationState(document.body, "table-cell-selection")).toBe(true)
       expect(editor.features.selection.isInDragSelection).toBe(false)
     })
 
@@ -447,16 +448,16 @@ describe("table cell selection", () => {
       })
       const before = editor.toHTML(true)
       first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
-      expect(document.body).toHaveClass("◆table-column-edge")
+      expect(hasPresentationState(document.body, "table-column-edge")).toBe(true)
 
       first.dispatchEvent(new PointerEvent("pointerdown", {
         ...modifier, clientX: 100, clientY: 15, bubbles: true, cancelable: true,
       }))
-      expect(document.body).not.toHaveClass("◆table-column-edge")
+      expect(hasPresentationState(document.body, "table-column-edge")).toBe(false)
       table.dispatchEvent(new PointerEvent("pointermove", {
         ...modifier, buttons: 1, clientX: 130, clientY: 15, bubbles: true, cancelable: true,
       }))
-      expect(document.body).not.toHaveClass("◆table-column-resize")
+      expect(hasPresentationState(document.body, "table-column-resize")).toBe(false)
       table.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
 
       expect(editor.features.table.selectedCells).toEqual([first])
@@ -490,9 +491,9 @@ describe("table cell selection", () => {
       editor.features.table.selectCells(cells()[0], cells()[3])
       cells()[0].dispatchEvent(new PointerEvent("pointerdown", {...modifier, clientX: x, clientY: y, bubbles: true, cancelable: true}))
       expect($.selectedElement).toBe(table)
-      expect(table).toHaveClass("◆element-selected")
+      expect(hasPresentationState(table, "element-selected")).toBe(true)
       expect(editor.features.table.hasCellSelection).toBe(false)
-      expect(document.querySelector(".◆table-cell-selected")).toBeNull()
+      expect((presentationStateElements(document, "table-cell-selected")[0] ?? null)).toBeNull()
     })
 
     it("selects a merged cell through its control and keeps selection artifacts out of HTML", () => {
@@ -511,7 +512,7 @@ describe("table cell selection", () => {
       expect(editor.toHTML(true)).toBe(before)
       expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
       editor.features.table.clearCellSelection()
-      expect(document.querySelector(".◆table-cell-selected")).toBeNull()
+      expect((presentationStateElements(document, "table-cell-selected")[0] ?? null)).toBeNull()
     })
 
     it("releases capture and focused shadow controls inside a cell", () => {
@@ -527,7 +528,7 @@ describe("table cell selection", () => {
       }))
       expect(editor.features.table.selectedCells).toEqual([cell])
       expect(editor.features.selection.isCaptureSelection).toBe(false)
-      expect(widget).not.toHaveClass("◆element-capture-selected")
+      expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
       expect(widget.shadowRoot!.activeElement).not.toBe(button)
     })
 
@@ -553,7 +554,7 @@ describe("table cell selection", () => {
       expect(editor.features.table.selectedCells).toEqual([nested.querySelector("td")])
       nested.dispatchEvent(new PointerEvent("pointerdown", {...modifier, clientX: 11, clientY: 25, bubbles: true, cancelable: true}))
       expect($.selectedElement).toBe(nested)
-      expect(outer).not.toHaveClass("◆element-selected")
+      expect(hasPresentationState(outer, "element-selected")).toBe(false)
     })
 
     it.each(["top", "bottom"])("selects the outer grid border beside a %s caption", side => {
@@ -600,7 +601,7 @@ describe("table cell selection", () => {
     editor.features.table.selectCells(merged, end)
 
     expect(editor.features.table.selectedCells).toHaveLength(5)
-    expect(document.querySelectorAll(".◆table-cell-selected")).toHaveLength(5)
+    expect(presentationStateElements(document, "table-cell-selected")).toHaveLength(5)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
@@ -615,9 +616,9 @@ describe("table cell selection", () => {
     editor.features.selection.processSelection()
     editor.features.table.selectCells(cells()[0], cells()[1])
 
-    expect(document.body).toHaveClass("◆table-cell-selection")
-    expect(document.body).not.toHaveClass("◆node-selection-active")
-    expect(document.querySelector(".◆text-selected, .◆element-selected, .◆gap-before-selected, .◆gap-after-selected")).toBeNull()
+    expect(hasPresentationState(document.body, "table-cell-selection")).toBe(true)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(false)
+    expect((presentationStateElements(document, "text-selected", "element-selected", "gap-before-selected", "gap-after-selected")[0] ?? null)).toBeNull()
     expect(editor.features.selection.selectionCaret?.getAttribute("part")).toContain("selection-caret-hidden")
     expect(editor.features.selection.selectionCaret).toHaveAttribute("visibility", "hidden")
   })
@@ -722,7 +723,7 @@ describe("table cell selection", () => {
 
     first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
     expect(editor.features.table.selectedCells).toEqual([first])
-    expect(Array.from(document.querySelectorAll(".◆table-cell-selected"))).toEqual([first])
+    expect(Array.from(presentationStateElements(document, "table-cell-selected"))).toEqual([first])
 
     second.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
     expect(editor.features.table.selectedCells).toEqual(expanded)
@@ -759,8 +760,8 @@ describe("table cell selection", () => {
     restoreCaretPosition()
 
     expect(first.contains($.anchor)).toBe(true)
-    expect(table).not.toHaveClass("◆gap-after-selected")
-    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+    expect(hasPresentationState(table, "gap-after-selected")).toBe(false)
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
   })
 
   it("extends a cell drag to the nearest table edge after the pointer leaves the table", () => {
@@ -1331,7 +1332,7 @@ describe("table cell selection", () => {
       editor.addAppendix(appendix)
       appendix.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true}))
       appendix.remove()
-      expect(document.body).not.toHaveClass("◆table-column-resize")
+      expect(hasPresentationState(document.body, "table-column-resize")).toBe(false)
     }
     finally {
       document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
@@ -1410,7 +1411,7 @@ describe("table cell selection", () => {
       }
       else document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
       const after = editor.toHTML(true)
-      expect(document.body).not.toHaveClass("◆table-column-resize")
+      expect(hasPresentationState(document.body, "table-column-resize")).toBe(false)
       table.setAttribute("data-after", "later")
       editor.doc.syncFromDOM()
       editor.doc.undo()
@@ -1597,7 +1598,7 @@ describe("table gap controls", () => {
       expect(transform.d).toBeCloseTo(a)
       expect(parseFloat(button.style.getPropertyValue("--gap-length"))).toBeCloseTo(index < 3 ? 88 : 208)
     })
-    expect(table.outerHTML.replace(/ class="◆anchor-target-\d+"/, "")).toBe(authored)
+    expect(table.outerHTML).toBe(authored)
     expect(editor.toHTML(true)).not.toContain("◆")
     expect(editor.toHTML(true)).not.toContain("table-gaps")
     expect(editor.doc.body.toString()).not.toContain("table-gaps")

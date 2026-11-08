@@ -7,6 +7,8 @@ import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import editorStyleString from "../editor.css?raw"
 import {$} from "../utility"
+import {hasPresentationState} from "../presentation-state.js"
+import {hasAnchorTarget} from "../anchor-positioning.test-utils"
 import {Schema} from "../schema"
 import {createImageMapPopoverController, imageMapHotspotBounds, platformEmbedURL} from "../media"
 import {previewFrameHTML} from "../frame-document"
@@ -517,12 +519,12 @@ describe("media editing", () => {
     const aspectRules = Array.from(sheet.cssRules).filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && !!rule.style.getPropertyValue("aspect-ratio"))
     const [image, video, emptyImage, emptyVideo] = document.body.querySelectorAll("picture, video")
     for(const actual of [image, video]) {
-      expect(actual).not.toHaveClass("◆media-empty")
+      expect(hasPresentationState(actual, "media-empty")).toBe(false)
       expect(aspectRules.filter(rule => actual.matches(rule.selectorText))).toHaveLength(0)
     }
     for(const placeholder of [emptyImage, emptyVideo]) {
-      expect(placeholder).toHaveClass("◆media-empty")
-      expect(aspectRules.some(rule => placeholder.matches(rule.selectorText) && rule.style.getPropertyValue("aspect-ratio") === "16 / 9")).toBe(true)
+      expect(hasPresentationState(placeholder, "media-empty")).toBe(true)
+      expect(aspectRules.some(rule => rule.selectorText.includes(":state(ww-media-empty)") && rule.style.getPropertyValue("aspect-ratio") === "16 / 9")).toBe(true)
     }
   })
 
@@ -840,14 +842,14 @@ describe("media editing", () => {
         target.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
         expect($.selectedElement).toBe(target)
         expect(editor.features.selection.captureSelectedElement).toBe(target)
-        expect(target).toHaveClass("◆element-selected")
-        expect(target).toHaveClass("◆element-capture-selected")
+        expect(hasPresentationState(target, "element-selected")).toBe(true)
+        expect(hasPresentationState(target, "element-capture-selected")).toBe(true)
 
         placeholder.root.querySelector(selector)!.dispatchEvent(new PointerEvent("pointerdown", {
           bubbles: true, composed: true, cancelable: true, button: 0,
         }))
         expect(editor.features.selection.captureSelectedElement).toBe(target)
-        expect(target).toHaveClass("◆element-capture-selected")
+        expect(hasPresentationState(target, "element-capture-selected")).toBe(true)
       }
     },
   )
@@ -916,7 +918,7 @@ describe("media editing", () => {
       expect(editor.toHTML(true)).toBe(authored)
     }
     selection.selectElement(document.querySelector("p")!)
-    expect(media).not.toHaveClass("◆element-capture-selected", "◆element-selected")
+    expect(hasPresentationState(media, "element-capture-selected") || hasPresentationState(media, "element-selected")).toBe(false)
   })
 
   it("promotes clicks and interior selections to the outer media node", () => {
@@ -965,7 +967,7 @@ describe("media editing", () => {
 
     const placeholderController = editor.features.media.placeholder
     const placeholder = placeholderController.element
-    expect(audio).toHaveClass("◆media-empty")
+    expect(hasPresentationState(audio, "media-empty")).toBe(true)
     expect(placeholder.getRootNode()).toBe(editor.appendix)
     expect(placeholder).toHaveAttribute("data-open")
     expect(placeholder).toHaveAttribute("data-media", "audio")
@@ -1134,14 +1136,14 @@ describe("media editing", () => {
     const video = document.querySelector("video")!
 
     audio.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
-    expect(audio).toHaveClass("◆media-empty", "◆element-selected")
-    expect(video).toHaveClass("◆media-empty")
-    expect(video).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(audio, "media-empty") && hasPresentationState(audio, "element-selected")).toBe(true)
+    expect(hasPresentationState(video, "media-empty")).toBe(true)
+    expect(hasPresentationState(video, "element-selected")).toBe(false)
     expect(editor.features.media.placeholder.target).toBe(audio)
 
     video.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
-    expect(audio).not.toHaveClass("◆element-selected")
-    expect(video).toHaveClass("◆media-empty", "◆element-selected")
+    expect(hasPresentationState(audio, "element-selected")).toBe(false)
+    expect(hasPresentationState(video, "media-empty") && hasPresentationState(video, "element-selected")).toBe(true)
     expect(editor.features.media.placeholder.target).toBe(video)
     expect(editor.features.media.placeholder.element).toHaveAttribute("data-media", "video")
   })
@@ -1165,7 +1167,7 @@ describe("media editing", () => {
     expect(placeholders.every(placeholder => !placeholder.hidden)).toBe(true)
     editor.doc.syncFromDOM()
     const html = editor.toHTML(true)
-    expect(html).toContain('<!--keep--><g transform="translate(10 20)"><image x="5" y="7" width="100" height="60"></image><title>Image group</title></g>')
+    expect(html).toMatch(/<!--keep--><g transform="translate\(10 20\)" id="ww-[^"]+"><image x="5" y="7" width="100" height="60" id="ww-[^"]+"><\/image><title>Image group<\/title><\/g>/)
     expect(html).not.toMatch(/◆|placeholder|Add an image/)
     expect(editor.doc.body.toString()).not.toMatch(/◆|placeholder|Add an image/)
   })
@@ -1202,7 +1204,7 @@ describe("media editing", () => {
     const svg = image.parentElement!
     document.querySelector("media-widget")!.append(svg)
     await vi.waitFor(() => expect(count()).toBe(0))
-    expect(image).not.toHaveClass("◆media-empty")
+    expect(hasPresentationState(image, "media-empty")).toBe(false)
     document.body.prepend(svg)
     await vi.waitFor(() => expect(count()).toBe(1))
     image.remove()
@@ -1211,7 +1213,7 @@ describe("media editing", () => {
     await vi.waitFor(() => expect(count()).toBe(1))
     editor.features.media.disable()
     expect(count()).toBe(0)
-    expect(image).not.toHaveClass("◆media-empty")
+    expect(hasPresentationState(image, "media-empty")).toBe(false)
   })
 
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
@@ -1432,7 +1434,7 @@ describe("media editing", () => {
         await Promise.resolve()
 
         expect(editor.features.selection.captureSelectedElement).toBe(target)
-        expect(target).toHaveClass("◆element-selected", "◆element-capture-selected")
+        expect(hasPresentationState(target, "element-selected") && hasPresentationState(target, "element-capture-selected")).toBe(true)
         expect(placeholder.root.activeElement).toBe(control)
         expect(placeholder.element).toHaveAttribute("data-open")
         expect(editor.toHTML(true)).toBe(html)
@@ -1481,7 +1483,7 @@ describe("media editing", () => {
 
     expect(placeholder.root.activeElement).toBe(input)
     expect(editor.features.selection.captureSelectedElement).toBe(video)
-    expect(video).toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(video, "element-capture-selected")).toBe(true)
     expect(selectElement).not.toHaveBeenCalled()
     expect(getSelection()!.rangeCount).toBe(0)
     expect(editor.features.media.getState()?.type).toBe("video")
@@ -1512,7 +1514,7 @@ describe("media editing", () => {
     expect(placeholder.root.activeElement).toBe(input)
     expect(placeholder.target).toBe(video)
     expect(placeholder.element).toHaveAttribute("data-open")
-    expect(video).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(hasPresentationState(video, "element-selected") && hasPresentationState(video, "element-capture-selected")).toBe(true)
   })
 
   it("keeps the empty-media affordance open when the file picker returns without a file", async () => {
@@ -1535,7 +1537,7 @@ describe("media editing", () => {
     expect(placeholder.root.activeElement).toBe(fileButton)
     expect(placeholder.target).toBe(audio)
     expect(placeholder.element).toHaveAttribute("data-open")
-    expect(audio).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(hasPresentationState(audio, "element-selected") && hasPresentationState(audio, "element-capture-selected")).toBe(true)
   })
 
   it("keeps uploaded files as object URLs and embeds them only on saving", async () => {
@@ -1732,6 +1734,7 @@ describe("media editing", () => {
     audio.setAttribute("autoplay", "")
     svg.append(audio)
     document.body.append(svg)
+    editor.doc.flushDOMChanges()
     const html = svg.outerHTML
     await new Promise(resolve => setTimeout(resolve, 0))
     editor.features.media.disable()
@@ -2407,21 +2410,21 @@ describe("media editing", () => {
     const popup = paragraph.parentElement!
     paragraph.innerHTML = html
     editor.features.media["refresh"]()
-    expect(popup).toHaveClass("◆hotspot-popup")
+    expect(hasPresentationState(popup, "hotspot-popup")).toBe(true)
     expect(paragraph.textContent).toBe("")
-    expect(paragraph).toHaveClass("◆hotspot-placeholder")
+    expect(hasPresentationState(paragraph, "hotspot-placeholder")).toBe(true)
     expect(editor.toHTML(true)).not.toMatch(/Hotspot content|Popover content|◆hotspot-placeholder/)
     editor.doc.syncFromDOM()
     expect(editor.doc.body.toString()).not.toContain("◆hotspot-placeholder")
     paragraph.textContent = "My content"
     editor.features.media["refresh"]()
-    expect(paragraph).not.toHaveClass("◆hotspot-placeholder")
+    expect(hasPresentationState(paragraph, "hotspot-placeholder")).toBe(false)
     paragraph.innerHTML = "<br>"
     editor.features.media["refresh"]()
-    expect(paragraph).toHaveClass("◆hotspot-placeholder")
+    expect(hasPresentationState(paragraph, "hotspot-placeholder")).toBe(true)
     editor.features.media.disable()
-    expect(paragraph).not.toHaveClass("◆hotspot-placeholder")
-    expect(popup).not.toHaveClass("◆hotspot-popup")
+    expect(hasPresentationState(paragraph, "hotspot-placeholder")).toBe(false)
+    expect(hasPresentationState(popup, "hotspot-popup")).toBe(false)
   })
 
   it.each(["border", "background"] as const)("saves hotspot %s visibility, preserves classes, and supports undo and redo", async part => {
@@ -2523,7 +2526,7 @@ describe("media editing", () => {
   })
 
   it("positions popovers below hotspots with shared popup styling and cleans up presentation styles", () => {
-    document.body.innerHTML = '<img src="plan.png" width="100" height="100" usemap="#plan"><map name="plan"><area shape="rect" coords="60,20,80,40" popovertarget="details"></map><div id="details" popover="auto"><p>Content</p></div>'
+    document.body.innerHTML = '<img src="plan.png" width="100" height="100" usemap="#plan"><map name="plan"><area shape="rect" coords="60,20,80,40" popovertarget="details"></map><div id="details" popover="auto"><p>Content</p></div><div id="other" popover="auto">Other</div>'
     const image = document.querySelector<HTMLImageElement>("img")!, area = document.querySelector("area")!, content = document.querySelector<HTMLElement>("#details")!
     let imageLeft = 10, imageTop = 10
     vi.spyOn(image, "getBoundingClientRect").mockImplementation(() => new DOMRect(imageLeft, imageTop, 100, 100))
@@ -2539,20 +2542,20 @@ describe("media editing", () => {
     expect(imageMapHotspotBounds(area, image)).toMatchObject({left:70, right:90, top:30, bottom:50})
     expect(controller.open(area, image)).toBe(true)
     const sheet = document.adoptedStyleSheets.at(-1)!
-    const style = () => (sheet.cssRules[0] as CSSStyleRule).style
+    const positionRule = () => Array.from(sheet.cssRules).find(rule => rule instanceof CSSStyleRule) as CSSStyleRule
+    const style = () => positionRule().style
     expect(style().left).toBe("70px")
     expect(style().top).toBe("58px")
-    expect(style().borderRadius).toBe("")
-    expect(style().padding).toBe("")
-    expect(content).toHaveClass("◆hotspot-popup")
+    expect(positionRule().selectorText).toContain("#details")
+    expect(Array.from(sheet.cssRules, rule => rule.cssText).join("\n")).not.toContain("#other")
+    expect(hasPresentationState(content, "hotspot-popup")).toBe(true)
     imageLeft = window.innerWidth - 100
     controller.refresh()
     expect(parseFloat(style().left)).toBe(window.innerWidth - 8 - 120)
     imageTop = window.innerHeight - 100
     controller.refresh()
     expect(parseFloat(style().top)).toBe(imageTop + 20 - 8 - 80)
-    expect((sheet.cssRules[1] as CSSStyleRule).style.transform).toBe("rotate(225deg)")
-    expect(editor.toHTML(true)).not.toContain("◆hotspot-popup")
+    expect(editor.toHTML(true)).not.toContain("hotspot-popup")
     expect(controller.open(area, image, true)).toBe(true)
     expect(opened).toBe(false)
     expect(content.outerHTML).toBe(authored)
@@ -2714,8 +2717,8 @@ describe("media editing", () => {
     vi.spyOn(blankFrame, "getBoundingClientRect").mockReturnValue(rect)
 
     await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(2))
-    expect(contentFrame).not.toHaveClass("◆media-empty")
-    expect(blankFrame).toHaveClass("◆media-empty")
+    expect(hasPresentationState(contentFrame, "media-empty")).toBe(false)
+    expect(hasPresentationState(blankFrame, "media-empty")).toBe(true)
 
     $.selectElement(blankFrame)
     editor.features.selection.processSelection()
@@ -2745,8 +2748,8 @@ describe("media editing", () => {
       expect(down.defaultPrevented).toBe(true)
       expect($.selectedElement).toBe(frame)
       expect(editor.features.selection.captureSelectedElement).toBe(frame)
-      expect(frame).toHaveClass("◆element-selected", "◆media-empty")
-      expect(frame).toHaveClass("◆element-capture-selected")
+      expect(hasPresentationState(frame, "element-selected") && hasPresentationState(frame, "media-empty")).toBe(true)
+      expect(hasPresentationState(frame, "element-capture-selected")).toBe(true)
       const placeholder = editor.features.media.placeholder
       expect(placeholder.target).toBe(frame)
       expect(placeholder.element).toHaveAttribute("data-open")
@@ -2777,8 +2780,8 @@ describe("media editing", () => {
     const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
     expect(shield.hidden).toBe(true)
     expect(getComputedStyle(shield).display).toBe("none")
-    expect(document.querySelector("iframe[hidden]")?.classList.contains("◆media-empty")).toBe(false)
-    expect(document.querySelector("audio")?.classList.contains("◆media-empty")).toBe(false)
+    expect(hasPresentationState(document.querySelector("iframe[hidden]"), "media-empty")).toBe(false)
+    expect(hasPresentationState(document.querySelector("audio"), "media-empty")).toBe(false)
   })
 
   it.each(["", 'src="data:video/mp4;base64,"'])("removes hidden disclosure media shields and restores them on expansion: %s", async source => {
@@ -2874,7 +2877,7 @@ describe("media editing", () => {
     reads.forEach(read => expect(read).toHaveBeenCalledTimes(anchors ? 0 : 1))
     const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
     expect(shield.style.left).toBe(anchors ? "" : "80px")
-    if(anchors) expect(videos[0].className).toMatch(/◆anchor-target-/)
+    if(anchors) expect(hasAnchorTarget(videos[0])).toBe(true)
 
     // A direct or remote authored change still updates membership.
     videos[0].hidden = true

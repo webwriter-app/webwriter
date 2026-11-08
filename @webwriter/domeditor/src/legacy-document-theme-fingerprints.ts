@@ -1,9 +1,11 @@
 // SHA-256 fingerprints (first 16 bytes) of stock theme CSS from 161b22fa
-// through a106bc0c (before Full width), plus the bundled layout examples.
+// through a106bc0c (before Full width), the bundled layout examples,
+// and the themes before widget minimum widths were preserved.
 // Hash the complete stylesheet text after normalizing HTML line endings so
 // an authored edit anywhere in a theme prevents replacement.
 export const legacyDocumentThemeFingerprints = {
   base: [
+    "c902dd2e31ce65ddd81c38743881cf0f",
     "71d10b244b9c5e0be958a0297591f9f0",
     "7f966217467b7dd61290d415f7fe55ee",
     "6854204904ca3f26e520c981350a7c7b",
@@ -37,6 +39,7 @@ export const legacyDocumentThemeFingerprints = {
     "d3558c5d0607d3402a7b32fcc8c00f37",
   ],
   water: [
+    "f4e39cd22fe2cc8e378b411a02fb8ffe",
     "63884e18992ba64304395a1b21322e75",
     "4e4e290a81e558ef0fcf66da32e04b75",
     "4ffd51874a147c5c2e39073a8419e441",
@@ -58,6 +61,7 @@ export const legacyDocumentThemeFingerprints = {
     "c1e63c0e89676c1926acc1b0cc0fb69c",
   ],
   simple: [
+    "3dbff23dc8aadc7b3d9b926c56c6ff7f",
     "82f53a717ca5a2665134fd0bba5e5d5b",
     "51715134d41efabe10cd36dbf30bb67e",
     "5ce462af3a8a1f3ee04a5066ca53de95",
@@ -79,6 +83,7 @@ export const legacyDocumentThemeFingerprints = {
     "b76713cb8ff488e09884ddb66a653e7a",
   ],
   sakura: [
+    "74c9e991e0d12c8d5954b65be75553ed",
     "92963c7146d9a15a42f7f71379e4fd0e",
     "7ec4e3cd87907a88f691d85341d5dd1a",
     "66bf069c96477c1a18ba664dcd631d56",
@@ -100,6 +105,7 @@ export const legacyDocumentThemeFingerprints = {
     "38f5b6433c89de7189e14545773aaa9f",
   ],
   pico: [
+    "68eb6012d22ea91c2b58867ccbe7b47d",
     "04af5cf91d82dadc2ccc67f674ecc118",
     "82441ee4708a5b3bab817b4736046b8b",
     "da5ac045f92320710238ed247d27c337",
@@ -121,6 +127,7 @@ export const legacyDocumentThemeFingerprints = {
     "17f38e4640c6d9c3dc710ffd74611987",
   ],
   holiday: [
+    "e8e4ac3fee35e71c78378204577f740e",
     "a7a0aecae094be8fd2298bbbae727d0f",
     "a16f8b249c83faa5e2935600c4fda481",
     "bd7ae8c07eacb6bd5db8bc970f7a34f7",

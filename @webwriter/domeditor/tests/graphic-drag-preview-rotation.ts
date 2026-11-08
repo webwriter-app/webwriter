@@ -1,3 +1,4 @@
+import {presentationStateElements} from "../src/presentation-state.js"
 import type {DOMEditor} from "../src/domeditor"
 
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -76,7 +77,7 @@ export async function checkGraphicDragPreviewRotation() {
           for(const key of ["x", "y", "width", "height"] as const) {
             assert(Math.abs(committed[key] - bounds[key]) < .1, `${mode}/${aspect}/${zoom}: shape jumped on release (${key})`)
           }
-          assert(!editor.appendix.querySelector(".◆graphic-preview") && !doc.querySelector(".◆graphic-preview-source"), `${mode}: preview artifacts survived release`)
+          assert(!editor.appendix.querySelector(".◆graphic-preview") && !(presentationStateElements(doc, "graphic-preview-source")[0] ?? null), `${mode}: preview artifacts survived release`)
           assert(!editor.toHTML(true).includes("◆") && !editor.doc.body.toString().includes("◆"), `${mode}: preview artifacts entered saved or shared HTML`)
         }
       }

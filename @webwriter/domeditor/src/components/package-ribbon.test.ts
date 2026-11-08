@@ -7,6 +7,7 @@ import {RibbonButton} from "./ribbon-button"
 import {RibbonMenu} from "./ribbon-menu"
 import {RibbonDrawer} from "./ribbon-drawer"
 import {ribbonElementInsertionAction, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
+import {hasAnchorTarget} from "../anchor-positioning.test-utils"
 
 const packageFixture = (name = "demo"): WebWriterPackage => ({
   name: `@webwriter/${name}`,
@@ -1129,7 +1130,7 @@ describe("package ribbon controls", () => {
 
     const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
     expect(details.getAttribute("part")).toMatch(/anchor-control-/)
-    expect(button.className).toMatch(/◆anchor-target-/)
+    expect(hasAnchorTarget(button)).toBe(true)
     expect(details.textContent).toContain("By Ada, Grace")
     expect(details.textContent).toContain("Primary education")
     expect(details.textContent).toContain("Natural sciences, mathematics and statistics")
@@ -1138,7 +1139,7 @@ describe("package ribbon controls", () => {
     expect(details.textContent).not.toContain("webwriter-widget")
     expect(details.querySelector(".icon-tabler-backpack")).not.toBeNull()
     expect(details.querySelector(".icon-tabler-flask")).not.toBeNull()
-    expect(RibbonButton.styles.toString()).not.toContain("background: #f2f2f2")
+    expect(getComputedStyle(details).backgroundColor).toBe("#fff")
   })
 
   it("delays widget details and cancels pending tooltips while moving between packages", async () => {
@@ -1273,7 +1274,7 @@ describe("package ribbon controls", () => {
 
     const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
     expect(details.getAttribute("part")).toMatch(/anchor-control-/)
-    expect(button.className).toMatch(/◆anchor-target-/)
+    expect(hasAnchorTarget(button)).toBe(true)
   })
 
   it("configures package details to fit narrow viewports", async () => {

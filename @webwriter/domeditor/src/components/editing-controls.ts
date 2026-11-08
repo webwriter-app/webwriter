@@ -1191,8 +1191,9 @@ export abstract class EditingControls extends LitElement {
             ${displayPackages.map((pkg, index) => html`<li>
               <button type="button" class="local-package-item"
                 aria-pressed=${this.localPackageSelectionName === pkg.name}
+                title=${`${pkg.name} ${pkg.version}`}
                 @click=${() => this.selectLocalPackageByName(pkg.name)}
-              ><span class="local-package-name">${pkg.name}</span><span class="local-package-version">${pkg.version}</span></button>
+              ><span class="local-package-name">${pkg.name}</span> <span class="local-package-version">${pkg.version}</span></button>
               <span class="local-package-icon-stack">
                 <span class="local-package-icon" aria-hidden="true">${pkg.iconUrl ? html`<img src=${pkg.iconUrl} alt="" />` : ribbonIcon("Packages")}</span>
                 <span class="local-package-source" tabindex="0" role="img" aria-label=${`${pkg.developerSource?.kind === "git" ? "Git" : "Folder"} source of ${pkg.name}`}
@@ -1222,7 +1223,8 @@ export abstract class EditingControls extends LitElement {
           <ribbon-button
             label="Add package"
             action="local-package-add"
-            .submenu=${[{label: "Add from local folder", action: "local-package-add", icon: "Open"}, {label: "Add from Git repository", action: "git-package-add", icon: "Git"}, {label: "Create new package", action: "local-package-new", icon: "PackagePlus"}]}
+            ?disabled=${this.localPackagesLoading}
+            .submenu=${[{label: "Add from local folder", action: "local-package-add", icon: "Open"}, {label: "Add from parent folder", action: "local-package-add-batch", icon: "Open"}, {label: "Add from Git repository", action: "git-package-add", icon: "Git"}, {label: "Create new package", action: "local-package-new", icon: "PackagePlus"}]}
             @ribbon-button-click=${this.handlePackageLoadMenu}
             icon="Plus"
             variant="toolbar"
@@ -2656,7 +2658,7 @@ export abstract class EditingControls extends LitElement {
           @change=${(event: Event) => toggle(values, (event.currentTarget as HTMLInputElement).checked)} />${label}</label>`
       }
       const renderNodes = (nodes: WidgetOptionTreeNode[]): TemplateResult => html`<ul>${nodes.map(node => html`<li>
-        ${node.children ? html`<details .open=${true}><summary>${checkbox(node.children, node.label, node.label)}</summary>
+        ${node.children ? html`<details><summary>${checkbox(node.children, node.label, node.label)}</summary>
           ${renderNodes(node.children)}</details>` : html`<label title=${node.description ?? ""}>
           <input type="checkbox" data-value=${node.value} .checked=${selected.has(node.value!)} ?disabled=${locked}
             @change=${(event: Event) => toggle([node.value!], (event.currentTarget as HTMLInputElement).checked)} />${node.label}</label>`}
@@ -2782,8 +2784,9 @@ export abstract class EditingControls extends LitElement {
   protected renderWidgetAction(action: WidgetActionState, selectionType?: ElementSelectionType) {
     if(action.hidden) return nothing
     return html`<div class="widget-action-item">
-      <ribbon-button class="widget-action" variant="toolbar" .label=${action.label} .icon=${action.icon ?? ""}
-        title=${action.disabledReason ?? action.description ?? action.label}
+      <ribbon-button class="widget-action" variant="widget-action" .label=${action.label} .icon=${action.icon ?? ""}
+        title=${action.disabled && action.disabledReason ? nothing : action.description ?? action.label}
+        .disabledReason=${action.disabledReason ?? ""}
         data-intent=${action.intent ?? nothing} .disabled=${Boolean(action.disabled || action.busy)} .loading=${Boolean(action.busy)}
         @ribbon-button-click=${(event: Event) => {
           event.stopPropagation()
@@ -2793,9 +2796,23 @@ export abstract class EditingControls extends LitElement {
             ...(action.confirm ? {confirmed: true} : {}), ...(selectionType ? {selectionType} : {})}, bubbles: true, composed: true}))
         }}></ribbon-button>
       ${action.description ? html`<span class="develop-field-help">${action.description}</span>` : nothing}
-      ${action.disabledReason && action.disabled ? html`<span class="develop-field-help">${action.disabledReason}</span>` : nothing}
       ${action.error ? html`<span class="widget-action-error" role="alert">${action.error}</span>` : nothing}
     </div>`
+  }
+
+  protected renderWidgetActions(actions: WidgetActionState[], selectionType?: ElementSelectionType) {
+    if(!actions.length) return nothing
+    const rows: WidgetActionState[][] = []
+    for(const action of actions) {
+      const row = rows.at(-1)
+      if(action.buttonGroup && row?.[0].buttonGroup === action.buttonGroup) row.push(action)
+      else rows.push([action])
+    }
+    return html`<div class="widget-actions">${rows.map(row => row.length === 1
+      ? this.renderWidgetAction(row[0], selectionType)
+      : html`<div class="choice-group widget-action-group" role="group">
+        ${row.map(action => this.renderWidgetAction(action, selectionType))}
+      </div>`)}</div>`
   }
 
   protected renderWidgetSharing() {
@@ -2844,9 +2861,7 @@ export abstract class EditingControls extends LitElement {
     const fields = (group?: string) => html`
       ${visibleOptions.filter(option => (option.group || undefined) === group)
         .map(option => this.renderWidgetOptionField(option, dispatch, `${state.path.join("-")}-`))}
-      ${actions.some(action => (action.group || undefined) === group) ? html`<div class="widget-actions">
-        ${actions.filter(action => (action.group || undefined) === group).map(action => this.renderWidgetAction(action, selectionType))}
-      </div>` : nothing}`
+      ${this.renderWidgetActions(actions.filter(action => (action.group || undefined) === group), selectionType)}`
     const groups = [...state.groups ?? []]
     for(const item of [...visibleOptions, ...actions]) {
       if(item.group && !groups.some(group => group.name === item.group)) groups.push({name: item.group, label: item.group})

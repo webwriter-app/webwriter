@@ -6,9 +6,11 @@ import * as Y from "yjs"
 import { DOMEditor } from "../domeditor"
 import { SelectionFeature } from "./selection"
 import { $ } from "../utility"
+import {hasPresentationState, presentationStateElements, setPresentationState, setPresentationStates} from "../presentation-state.js"
 import { replayHostPointer, selectionChangeEvent } from "../editor-bridge"
 import {elementAttributeState} from "../element-attributes"
 import {sharedDOMBody} from "../domdoc"
+import {hasAnchorTarget} from "../anchor-positioning.test-utils"
 
 let editor: DOMEditor
 let feature: SelectionFeature
@@ -66,7 +68,7 @@ describe("inline popup selection", () => {
     for(const select of [() => feature.selectElement(toggle), () => feature.captureElement(toggle)]) {
       select()
       expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-anchored")
-      expect(toggle.className).toMatch(/◆anchor-target-\d+/)
+      expect(hasAnchorTarget(toggle)).toBe(true)
       expect(toggle.style.getPropertyValue("anchor-name")).toBe("--note")
       expect(editor.features.transformation.target).toBeNull()
       expect(editor.toHTML(true)).not.toContain("◆anchor-target-")
@@ -83,7 +85,7 @@ describe("inline popup selection", () => {
     expect(event.defaultPrevented).toBe(true)
     expect($.anchor).toBe(text)
     expect($.anchorOffset).toBe(0)
-    expect(content).toHaveClass("◆popup-visible")
+    expect(hasPresentationState(content, "popup-visible")).toBe(true)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
@@ -106,7 +108,7 @@ describe("inline popup selection", () => {
     expect(event.defaultPrevented).toBe(true)
     expect($.anchor).toBe(toggle.querySelector("b")!.firstChild)
     expect($.anchorOffset).toBe(0)
-    expect(content).toHaveClass("◆popup-visible")
+    expect(hasPresentationState(content, "popup-visible")).toBe(true)
   })
 
   it.each(["before", "between", "after"] as const)("shows a structural %s gap inside popup content", placement => {
@@ -119,8 +121,8 @@ describe("inline popup selection", () => {
     expect($.anchor).toBe(content)
     expect($.isGapSelection).toBe(true)
     expect(feature.selectionCaret?.getAttribute("part")).toContain("gap-caret")
-    expect(content).toHaveClass("◆popup-visible")
-    expect(placement === "after" ? second : first).toHaveClass(`◆gap-${placement === "before" ? "before" : "after"}-selected`)
+    expect(hasPresentationState(content, "popup-visible")).toBe(true)
+    expect(hasPresentationState(placement === "after" ? second : first, `gap-${placement === "before" ? "before" : "after"}-selected`)).toBe(true)
   })
 
   it("returns from the top popup content gap to the toggle with Arrow Up", () => {
@@ -137,7 +139,7 @@ describe("inline popup selection", () => {
     expect(up.defaultPrevented).toBe(true)
     expect($.anchor).toBe(toggle.firstChild)
     expect($.anchorOffset).toBe(3)
-    expect(content).toHaveClass("◆popup-visible")
+    expect(hasPresentationState(content, "popup-visible")).toBe(true)
   })
 
   it.each(["caret", "node"] as const)("moves Arrow Down from the last popup content %s to its trailing gap", from => {
@@ -153,8 +155,8 @@ describe("inline popup selection", () => {
     expect($.anchor).toBe(content)
     expect($.anchorOffset).toBe(Array.from(content.childNodes).indexOf(last) + 1)
     expect($.isGapSelection).toBe(true)
-    expect(last).toHaveClass("◆gap-after-selected")
-    expect(content).toHaveClass("◆popup-visible")
+    expect(hasPresentationState(last, "gap-after-selected")).toBe(true)
+    expect(hasPresentationState(content, "popup-visible")).toBe(true)
   })
 
   it("restores the toggle text offset after entering and leaving popup content", () => {
@@ -169,7 +171,7 @@ describe("inline popup selection", () => {
     expect(up.defaultPrevented).toBe(true)
     expect($.anchor).toBe(toggleText)
     expect($.anchorOffset).toBe(4)
-    expect(content).toHaveClass("◆popup-visible")
+    expect(hasPresentationState(content, "popup-visible")).toBe(true)
   })
 
   it("node-selects an atomic first dialog element on Arrow Down", () => {
@@ -229,7 +231,7 @@ describe("inline popup selection", () => {
       expect($.isTextSelection).toBe(true)
       expect($.anchor).toBe(toggle.querySelector("b")!.firstChild)
       expect($.anchorOffset).toBe(offset ? 6 : 0)
-      expect(toggle).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+      expect(hasPresentationState(toggle, "gap-before-selected") || hasPresentationState(toggle, "gap-after-selected")).toBe(false)
     }
     $.move(wrapper, 2)
     feature.processSelection()
@@ -282,7 +284,7 @@ describe("inline popup selection", () => {
     press()
     expect($.anchor).toBe(text)
     expect($.anchorOffset).toBe(edge)
-    expect(wrapper).toHaveClass(side === "after" ? "◆popup-caret-outside-right" : "◆popup-caret-outside-left")
+    expect(hasPresentationState(wrapper, side === "after" ? "popup-caret-outside-right" : "popup-caret-outside-left")).toBe(true)
     press()
     expect($.anchor).toBe(toggle.querySelector("b")!.firstChild)
     expect($.anchorOffset).toBe(innerOffset)
@@ -321,7 +323,7 @@ describe("inline popup selection", () => {
     expect($.anchor).toBe(document.body)
     expect($.anchorOffset).toBe(offset)
     expect($.isGapSelection).toBe(true)
-    expect(paragraph).toHaveClass(`◆gap-${placement}-selected`)
+    expect(hasPresentationState(paragraph, `gap-${placement}-selected`)).toBe(true)
   })
 
   it("renders and cleans the four popup boundary carets in the shadow appendix", () => {
@@ -342,9 +344,9 @@ describe("inline popup selection", () => {
       $.move(node, offset)
       feature.processSelection()
       expect($.isGapSelection).toBe(false)
-      expect(wrapper).toHaveClass(marker)
+      expect(hasPresentationState(wrapper, marker.slice(1))).toBe(true)
       expect((toggle as HTMLElement).style.getPropertyValue("anchor-name")).toBe("--popup-note")
-      expect(document.body).toHaveClass("◆popup-boundary-caret")
+      expect(hasPresentationState(document.body, "popup-boundary-caret")).toBe(true)
       expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-text")
       expect(feature.selectionCaret?.style.getPropertyValue("--popup-caret-height")).toBe("19px")
       expect(feature.selectionCaret?.style.getPropertyValue("--popup-caret-top")).toBe("calc(anchor(top) + 3px)")
@@ -353,7 +355,7 @@ describe("inline popup selection", () => {
     }
     $.move(after, 2)
     feature.processSelection()
-    expect(document.body).not.toHaveClass("◆popup-boundary-caret")
+    expect(hasPresentationState(document.body, "popup-boundary-caret")).toBe(false)
     expect(wrapper.className).not.toContain("◆popup-caret")
     expect(feature.selectionCaret?.getAttribute("visibility")).toBe("hidden")
     expect(feature.selectionCaret?.style.color).toBe("")
@@ -424,13 +426,13 @@ describe("inline popup selection", () => {
     const double = new MouseEvent("dblclick", {button: 0, detail: 2, bubbles: true, cancelable: true})
     text.parentElement!.dispatchEvent(double)
     expect(document.getSelection()!.toString()).toBe("text")
-    expect(content).toHaveClass("◆popup-visible")
+    expect(hasPresentationState(content, "popup-visible")).toBe(true)
 
     $.move(text, 3)
     const triple = new MouseEvent("click", {button: 0, detail: 3, bubbles: true, cancelable: true})
     text.parentElement!.dispatchEvent(triple)
     expect(document.getSelection()!.toString()).toBe("Popup text")
-    expect(content).toHaveClass("◆popup-visible")
+    expect(hasPresentationState(content, "popup-visible")).toBe(true)
   })
 
   it("selects a popup word on the second scoped pointer click", () => {
@@ -448,7 +450,7 @@ describe("inline popup selection", () => {
           pointerType: "mouse", clientX: 20, clientY: 20, bubbles: true}))
       }
       expect(document.getSelection()!.toString()).toBe("text")
-      expect(content).toHaveClass("◆popup-visible")
+      expect(hasPresentationState(content, "popup-visible")).toBe(true)
     }
     finally {
       if(caret) Object.defineProperty(document, "caretPositionFromPoint", caret)
@@ -465,11 +467,11 @@ describe("inline popup selection", () => {
     $.move(text, 9)
     content.querySelector("p")!.dispatchEvent(new MouseEvent("dblclick", {button: 0, detail: 2, bubbles: true}))
     expect(document.getSelection()!.toString()).toBe("words")
-    expect(content).toHaveClass("◆popup-visible")
+    expect(hasPresentationState(content, "popup-visible")).toBe(true)
     $.move(text, 2)
     content.querySelector("p")!.dispatchEvent(new MouseEvent("click", {button: 0, detail: 3, bubbles: true}))
     expect(document.getSelection()!.toString()).toBe("Bubble words")
-    expect(content).toHaveClass("◆popup-visible")
+    expect(hasPresentationState(content, "popup-visible")).toBe(true)
   })
 
   it("classifies the popup content and wrapper as selectable nodes", () => {
@@ -561,8 +563,8 @@ describe("gap clicks inside widget pages", () => {
     expect($.anchorOffset).toBe(placement === "before" ? 1 : 2)
     expect($.isGapSelection).toBe(true)
     expect(feature.isCaptureSelection).toBe(false)
-    expect(document.body).toHaveClass("◆gap-caret-visible")
-    expect(placement === "after" ? graphic : before).toHaveClass("◆gap-after-selected")
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(true)
+    expect(hasPresentationState(placement === "after" ? graphic : before, "gap-after-selected")).toBe(true)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
@@ -604,7 +606,7 @@ describe("gap clicks inside widget pages", () => {
     expect(event.defaultPrevented).toBe(true)
     expect($.anchor).toBe(page)
     expect($.anchorOffset).toBe(placement === "before" ? 0 : 1)
-    expect(graphic).toHaveClass(`◆gap-${placement}-selected`)
+    expect(hasPresentationState(graphic, `gap-${placement}-selected`)).toBe(true)
     expect(feature.isCaptureSelection).toBe(false)
   })
 
@@ -615,7 +617,7 @@ describe("gap clicks inside widget pages", () => {
     button.dispatchEvent(event)
     expect(event.defaultPrevented).toBe(false)
     expect(feature.captureSelectedWidget).toBe(organizer)
-    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
   })
 
   it("keeps retargeted closed-shadow controls private even beside a graphic", () => {
@@ -624,7 +626,7 @@ describe("gap clicks inside widget pages", () => {
     organizer.dispatchEvent(event)
     expect(event.defaultPrevented).toBe(false)
     expect(feature.captureSelectedWidget).toBe(organizer)
-    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
   })
 })
 
@@ -648,8 +650,8 @@ describe("contentful widget top-bar capture", () => {
 
     expect(feature.isCaptureSelection).toBe(false)
     expect(document.getSelection()!.anchorNode).toBe(hint)
-    expect(hint).toHaveClass("◆empty-selected")
-    expect(widget).not.toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(hint, "empty-selected")).toBe(true)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
   })
 
   it.each([
@@ -676,9 +678,9 @@ describe("contentful widget top-bar capture", () => {
     editor.postSelectionPath()
 
     expect(feature.captureSelectedWidget).toBe(widget)
-    expect(widget).toHaveClass("◆element-capture-selected")
-    expect(document.body).toHaveClass("◆node-selection-active")
-    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(true)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(true)
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
     expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-capture")
     const message = post.mock.calls.at(-1)![0] as {detail: {capture?: boolean, gap?: unknown}}
     expect(message.detail.capture).toBe(true)
@@ -689,7 +691,7 @@ describe("contentful widget top-bar capture", () => {
     document.dispatchEvent(new Event("selectionchange"))
     feature.processSelection(false, {scrollIntoView: false})
     expect(feature.isCaptureSelection).toBe(false)
-    expect(widget).not.toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
   })
 })
 
@@ -717,8 +719,8 @@ describe("legacy widget options", () => {
     $.move(host.querySelector("p")!.firstChild!, 3)
     feature.processSelection(false, {scrollIntoView: false})
     expect(feature.isCaptureSelection).toBe(false)
-    expect(host).not.toHaveClass("◆element-capture-selected")
-    expect(host).toHaveClass("◆widget-options")
+    expect(hasPresentationState(host, "element-capture-selected")).toBe(false)
+    expect(hasPresentationState(host, "widget-options")).toBe(true)
     expect(panel.getRootNode()).toBe(root)
     expect(show).toHaveBeenCalledOnce()
     expect(hide).not.toHaveBeenCalled()
@@ -734,7 +736,7 @@ describe("legacy widget options", () => {
     feature.processSelection(false, {scrollIntoView: false})
     expect(hide).toHaveBeenCalledOnce()
     expect(panel.hasAttribute("popover")).toBe(false)
-    expect(host).not.toHaveClass("◆widget-options")
+    expect(hasPresentationState(host, "widget-options")).toBe(false)
   })
 
   it("shows only the nearest nested widget's panel and restores its attributes on disable", () => {
@@ -746,15 +748,15 @@ describe("legacy widget options", () => {
     feature.captureElement(outer.host)
     $.move(inner.host.querySelector("p")!.firstChild!, 2)
     feature.processSelection(false, {scrollIntoView: false})
-    expect(outer.host).not.toHaveClass("◆widget-options")
+    expect(hasPresentationState(outer.host, "widget-options")).toBe(false)
     expect(outer.hide).toHaveBeenCalledOnce()
-    expect(inner.host).toHaveClass("◆widget-options")
-    expect(document.querySelectorAll(".◆widget-options")).toHaveLength(1)
+    expect(hasPresentationState(inner.host, "widget-options")).toBe(true)
+    expect(presentationStateElements(document, "widget-options")).toHaveLength(1)
 
     feature.disable()
     expect(inner.panel.getAttribute("popover")).toBe("auto")
     expect(inner.hide).toHaveBeenCalledOnce()
-    expect(inner.host).not.toHaveClass("◆widget-options")
+    expect(hasPresentationState(inner.host, "widget-options")).toBe(false)
   })
 
   it("cleans up a concurrently removed options owner", async () => {
@@ -766,7 +768,7 @@ describe("legacy widget options", () => {
     await new Promise(resolve => setTimeout(resolve))
     expect(hide).toHaveBeenCalledOnce()
     expect(panel.hasAttribute("popover")).toBe(false)
-    expect(host).not.toHaveClass("◆widget-options")
+    expect(hasPresentationState(host, "widget-options")).toBe(false)
   })
 
   it("cleans up when a widget replaces its panel while the popover is opening", () => {
@@ -776,7 +778,7 @@ describe("legacy widget options", () => {
     editor.features.widget.refresh()
     feature.captureElement(host)
     expect(panel.hasAttribute("popover")).toBe(false)
-    expect(host).not.toHaveClass("◆widget-options")
+    expect(hasPresentationState(host, "widget-options")).toBe(false)
   })
 })
 
@@ -800,7 +802,7 @@ describe("selection preservation across authored DOM shapes", () => {
     expect(update.detail).not.toHaveProperty("capture")
     expect(feature.captureSelectedElement).toBeNull()
     expect(editor.features.graphic.getState()).toBeUndefined()
-    expect(graphic).not.toHaveClass("◆element-capture-selected", "◆graphic-grid-visible")
+    expect(hasPresentationState(graphic, "element-capture-selected") || hasPresentationState(graphic, "graphic-grid-visible")).toBe(false)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
@@ -903,7 +905,7 @@ describe("selection preservation across authored DOM shapes", () => {
     document.body.replaceChildren(target, document.createComment("keep"), paragraph)
     const authored = editor.toHTML(true)
     feature.selectElement(target)
-    expect(target).toHaveClass("◆element-selected")
+    expect(hasPresentationState(target, "element-selected")).toBe(true)
     expect(editor.toHTML(true)).toBe(authored)
     target.remove()
     feature.disable()
@@ -946,7 +948,7 @@ describe("Alt+Shift+ArrowUp element selection", () => {
       selection.setBaseAndExtent(text, anchor, text, focus)
       expect(press().defaultPrevented).toBe(true)
       expect($.selectedElement).toBe(paragraph)
-      expect(paragraph).toHaveClass("◆element-selected")
+      expect(hasPresentationState(paragraph, "element-selected")).toBe(true)
       expect(Array.from(paragraph.childNodes)).toEqual(nodes)
       expect(editor.toHTML(true)).toBe(authored)
       editor.doc.syncFromDOM()
@@ -954,7 +956,7 @@ describe("Alt+Shift+ArrowUp element selection", () => {
     }
     $.move(text, 1)
     feature.processSelection(false, {scrollIntoView: false})
-    expect(paragraph).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(paragraph, "element-selected")).toBe(false)
   })
 
   it("uses the current common container across sibling text nodes and after replacement", () => {
@@ -969,7 +971,7 @@ describe("Alt+Shift+ArrowUp element selection", () => {
     $.move(replacement.firstChild!, 2)
     expect(press().defaultPrevented).toBe(true)
     expect($.selectedElement).toBe(replacement)
-    expect(item).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(item, "element-selected")).toBe(false)
   })
 
   it("selects an atomic widget host and leaves its shadow keyboard events alone", () => {
@@ -1053,7 +1055,7 @@ describe("figure node selection", () => {
         expect($.anchor).toBe(document.body)
         expect($.anchorOffset).toBe(0)
         expect($.isEmptyDocumentSelection).toBe(true)
-        expect(figure).not.toHaveClass("◆element-selected")
+        expect(hasPresentationState(figure, "element-selected")).toBe(false)
         expect(feature.emptyDocumentCaret).not.toBeNull()
         expect(editor.toHTML(true)).not.toContain("◆")
       }
@@ -1069,14 +1071,14 @@ describe("figure node selection", () => {
     const figure = document.querySelector("figure")!
     feature.actions.selectNode({type: "selectNode", path: [0, 0]})
     expect($.selectedElement).toBe(figure)
-    expect(figure.classList.contains("◆element-selected")).toBe(true)
-    expect(document.querySelector("picture")!.classList.contains("◆element-selected")).toBe(false)
+    expect(hasPresentationState(figure, "element-selected")).toBe(true)
+    expect(hasPresentationState(document.querySelector("picture")!, "element-selected")).toBe(false)
     feature.actions.hoverNode({type: "hoverNode", path: [0, 0]})
-    expect(figure.classList.contains("◆element-hovered")).toBe(true)
+    expect(hasPresentationState(figure, "element-hovered")).toBe(true)
     feature.actions.selectNode({type: "selectNode", path: [0, 1]})
     expect($.selectedElement).toBeUndefined()
     expect($.anchor).toBe(document.querySelector("figcaption"))
-    expect(figure.classList.contains("◆element-selected")).toBe(false)
+    expect(hasPresentationState(figure, "element-selected")).toBe(false)
   })
 })
 
@@ -1104,7 +1106,7 @@ describe("captioned element gap selection", () => {
       document.dispatchEvent(event)
       expect(event.defaultPrevented).toBe(true)
       expect($.isGapSelection).toBe(true)
-      expect(target.classList.contains(`◆gap-${placement}-selected`)).toBe(true)
+      expect(hasPresentationState(target, `gap-${placement}-selected`)).toBe(true)
     }
   })
 })
@@ -1219,7 +1221,7 @@ describe("document hover outlines around native floats", () => {
     const initial = scans()
     for(let i = 0; i < 5; i++) expect(feature.floatExclusions(target)).toHaveLength(0)
     expect(scans()).toBe(initial)
-    target.classList.add("◆element-hovered")
+    setPresentationState(target, "element-hovered")
     feature.floatExclusions(target)
     expect(scans()).toBe(initial)
     float.style.float = "left"
@@ -1575,7 +1577,7 @@ it("redirects leading summary gaps and native boundary carets into summary", () 
     expect($.anchor).toBe(summary)
     expect($.anchorOffset).toBe(0)
     expect($.isGapSelection).toBe(false)
-    expect(summary).not.toHaveClass("◆gap-before-selected")
+    expect(hasPresentationState(summary, "gap-before-selected")).toBe(false)
   }
   $.selectGap(details, "before")
   expect($.isGapSelection).toBe(true)
@@ -1594,7 +1596,7 @@ it.each([
 
   expect(event.defaultPrevented).toBe(true)
   expect($.selectedElement).toBe(details)
-  expect(details).toHaveClass("◆element-selected", "◆atomic-range-selected")
+  expect(hasPresentationState(details, "element-selected") && hasPresentationState(details, "atomic-range-selected")).toBe(true)
   expect(editor.appendix.querySelectorAll('[part~="atomic-selection-overlay"]')).toHaveLength(1)
   target.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, button: 0, metaKey: true, ctrlKey: true}))
   expect($.selectedElement).toBe(details)
@@ -1609,10 +1611,10 @@ it.each([false, true])("keeps graphic selection visible during passive geometry 
   else feature.selectElement(graphic)
   const caret = feature.selectionCaret!
   const refresh = vi.spyOn(editor.features.graphic, "refresh").mockImplementation(() => {
-    expect(graphic).toHaveClass("◆element-selected")
-    expect(document.body).toHaveClass("◆node-selection-active")
+    expect(hasPresentationState(graphic, "element-selected")).toBe(true)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(true)
     expect(caret).not.toHaveAttribute("visibility", "hidden")
-    expect(caret).toHaveClass(captured ? "◆selection-caret-capture" : "◆selection-caret-node")
+    expect(caret?.getAttribute("part")).toContain(captured ? "selection-caret-capture" : "selection-caret-node")
   })
   try {
     for(let i = 0; i < 3; i++) {
@@ -1623,8 +1625,8 @@ it.each([false, true])("keeps graphic selection visible during passive geometry 
   finally { refresh.mockRestore() }
   $.selectRange(document.body, document.body.childNodes.length)
   feature.selectElement(el("p", "next"))
-  expect(graphic).not.toHaveClass("◆element-selected")
-  expect(graphic).not.toHaveClass("◆element-capture-selected")
+  expect(hasPresentationState(graphic, "element-selected")).toBe(false)
+  expect(hasPresentationState(graphic, "element-capture-selected")).toBe(false)
 })
 
 describe.each(["Backward", "Forward"] as const)("captured element deletion (%s)", direction => {
@@ -1799,13 +1801,13 @@ describe("capture outline selection", () => {
       feature.captureElement(content)
       const caret = feature.selectionCaret!
       expect(feature.captureSelectedElement).toBe(content)
-      expect(content).toHaveClass("◆element-capture-selected")
-      expect(caret).toHaveClass("◆selection-caret-capture")
+      expect(hasPresentationState(content, "element-capture-selected")).toBe(true)
+      expect(caret?.getAttribute("part")).toContain("selection-caret-capture")
       expect(caret.style.left).toBe("")
       expect(caret.style.top).toBe("")
       expect(caret.style.width).toBe("")
       expect(caret.style.height).toBe("")
-      expect(figure.className).toContain("◆anchor-target-")
+      expect(hasAnchorTarget(figure)).toBe(true)
       expect(editor.features.transformation.target).toBe(content)
       expect(editor.features.transformation.overlay.style.height).toBe("")
 
@@ -1814,20 +1816,20 @@ describe("capture outline selection", () => {
       editor.features.transformation.updateInfo()
       expect(caret.style.top).toBe("")
       expect(caret.style.height).toBe("")
-      expect(figure.className).toContain("◆anchor-target-")
+      expect(hasAnchorTarget(figure)).toBe(true)
       expect(feature.captureSelectedElement).toBe(content)
 
       document.body.append(content)
       editor.features.transformation.updateInfo()
       expect(caret.style.top).toBe("")
       expect(caret.style.height).toBe("")
-      expect(content.className).toContain("◆anchor-target-")
+      expect(hasAnchorTarget(content)).toBe(true)
       figure.prepend(content)
       figure.append(caption)
       expect(editor.toHTML(true)).toBe(authored)
       expect(editor.toHTML(true)).not.toContain("selection-caret")
       feature.selectElement(el("p", "Next"))
-      expect(content).not.toHaveClass("◆element-capture-selected", "◆element-selected")
+      expect(hasPresentationState(content, "element-capture-selected") || hasPresentationState(content, "element-selected")).toBe(false)
     }
     finally { vi.restoreAllMocks() }
   })
@@ -1846,7 +1848,7 @@ describe("capture outline selection", () => {
     expect(event.defaultPrevented).toBe(true)
     expect($.selectedElement).toBe(widget)
     expect(feature.isCaptureSelection).toBe(false)
-    expect(widget).not.toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
     expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-node")
     expect(feature.isInDragSelection).toBe(false)
     expect(document.body.querySelector(".◆capture-edge")).toBeNull()
@@ -1948,7 +1950,7 @@ describe("canvas and slide box selection", () => {
       feature.processSelection()
       expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(count)
       expect(selectElements).not.toHaveBeenCalled()
-      expect(item).not.toHaveClass("◆element-selected")
+      expect(hasPresentationState(item, "element-selected")).toBe(false)
       const current = document.getSelection()!.getRangeAt(0)
       expect(current.startContainer).toBe(before.startContainer)
       expect(current.startOffset).toBe(before.startOffset)
@@ -1957,7 +1959,7 @@ describe("canvas and slide box selection", () => {
     }
     pointer("pointerup", 80, 80, root)
     expect(selectElements).toHaveBeenCalledExactlyOnceWith([item])
-    expect(item).toHaveClass("◆element-selected")
+    expect(hasPresentationState(item, "element-selected")).toBe(true)
     expect(editor.features.transformation.target).toBe(item)
     expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(0)
     selectElements.mockRestore()
@@ -2063,7 +2065,7 @@ describe("canvas and slide box selection", () => {
 
     // Touching the extreme rotated corners still counts as full coverage.
     feature.beginBoxSelection(new PointerEvent("pointerdown", {button: 0, pointerId: 1, clientX: 150 - extent, clientY: 150 - extent}))
-    expect(item).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(item, "element-selected")).toBe(false)
     expect(editor.features.transformation.target).toBeNull()
     pointer("pointermove", 150 + extent, 150 + extent, root)
     expect(selected()).toEqual([item])
@@ -2097,10 +2099,10 @@ describe("canvas and slide box selection", () => {
     expect(editor.appendix.querySelector('[part="selection-box"]')).toBeTruthy()
     expect(ranges()).toHaveLength(0)
     expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(2)
-    expect(first).not.toHaveClass("◆element-selected")
-    expect(widget).not.toHaveClass("◆element-selected")
-    expect(partial).not.toHaveClass("◆element-selected")
-    expect(outside).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(first, "element-selected")).toBe(false)
+    expect(hasPresentationState(widget, "element-selected")).toBe(false)
+    expect(hasPresentationState(partial, "element-selected")).toBe(false)
+    expect(hasPresentationState(outside, "element-selected")).toBe(false)
 
     pointer("pointerup", 10, 10, document.body)
     expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
@@ -2134,9 +2136,9 @@ describe("canvas and slide box selection", () => {
 
     expect(ranges()).toHaveLength(0)
     expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(2)
-    expect(inside).not.toHaveClass("◆element-selected")
-    expect(added).not.toHaveClass("◆element-selected")
-    expect(directions).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(inside, "element-selected")).toBe(false)
+    expect(hasPresentationState(added, "element-selected")).toBe(false)
+    expect(hasPresentationState(directions, "element-selected")).toBe(false)
     expect(editor.appendix.querySelector('[part="selection-box"]')).toBe(overlay)
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
     expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
@@ -2176,16 +2178,16 @@ describe("canvas and slide box selection", () => {
     expect(document.getSelection()!.rangeCount).toBe(1)
     expect($.ranges).toHaveLength(2)
     expect($.selectedElements).toEqual([first, last])
-    expect(first).toHaveClass("◆element-selected")
-    expect(last).toHaveClass("◆element-selected")
-    expect(outside).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(first, "element-selected")).toBe(true)
+    expect(hasPresentationState(last, "element-selected")).toBe(true)
+    expect(hasPresentationState(outside, "element-selected")).toBe(false)
     expect(editor.appendix.querySelectorAll('[part~="multi-selection-overlay"]')).toHaveLength(2)
 
     feature.selectElement(first)
     expect($.ranges).toHaveLength(1)
     expect($.selectedElement).toBe(first)
-    expect(first).toHaveClass("◆element-selected")
-    expect(last).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(first, "element-selected")).toBe(true)
+    expect(hasPresentationState(last, "element-selected")).toBe(false)
     expect(editor.appendix.querySelectorAll('[part~="multi-selection-overlay"]')).toHaveLength(0)
   })
 })
@@ -2227,8 +2229,8 @@ describe("contentful widgets", () => {
       }))
 
       expect($.selectedElement).toBe(paragraph)
-      expect(paragraph).toHaveClass("◆element-selected")
-      expect(widget).not.toHaveClass("◆element-selected", "◆element-capture-selected")
+      expect(hasPresentationState(paragraph, "element-selected")).toBe(true)
+      expect(hasPresentationState(widget, "element-selected") || hasPresentationState(widget, "element-capture-selected")).toBe(false)
       expect(feature.isCaptureSelection).toBe(false)
     }
   })
@@ -2271,7 +2273,7 @@ describe("contentful widgets", () => {
     expect($.anchorOffset).toBe(backward ? 4 : 1)
     expect($.focusOffset).toBe(backward ? 1 : 4)
     expect(feature.isCaptureSelection).toBe(false)
-    expect(widget).not.toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected") || hasPresentationState(widget, "element-capture-selected")).toBe(false)
     caret.mockRestore()
   })
 
@@ -2290,7 +2292,7 @@ describe("contentful widgets", () => {
     title.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, pointerId: 13, clientX: 20, clientY: 5}))
     expect($.anchor).toBe(text)
     expect($.focus).toBe(title.firstChild)
-    expect(widget).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(widget, "element-selected")).toBe(false)
     expect(document.body).not.toHaveClass("◆selection-dragging")
     expect(editor.toHTML(true)).not.toContain("◆")
   })
@@ -2302,8 +2304,8 @@ describe("contentful widgets", () => {
     for(let i = 0; i < 3; i++) {
       target.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, ctrlKey: true}))
       expect($.selectedElement).toBe(widget)
-      expect(widget).toHaveClass("◆element-selected")
-      expect(widget).not.toHaveClass("◆element-capture-selected")
+      expect(hasPresentationState(widget, "element-selected")).toBe(true)
+      expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
       expect(feature.isCaptureSelection).toBe(false)
     }
   })
@@ -2325,10 +2327,10 @@ describe("contentful widgets", () => {
     expect(input.defaultPrevented).toBe(false)
     expect(paragraph.innerHTML).toBe("<b>hello</b> world")
     expect(feature.captureSelectedWidget).toBe(widget)
-    expect(widget).toHaveClass("◆element-capture-selected")
-    expect(paragraph).not.toHaveClass("◆element-selected")
-    expect(document.body).toHaveClass("◆node-selection-active")
-    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(true)
+    expect(hasPresentationState(paragraph, "element-selected")).toBe(false)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(true)
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
   })
 
   it.each(["open", "closed"] as const)("replaces a gap with capture while a %s nested shadow input is focused", async mode => {
@@ -2341,17 +2343,17 @@ describe("contentful widgets", () => {
     input.value = "2000"
     $.selectGap(widget, "before")
     feature.processSelection()
-    expect(document.body).toHaveClass("◆gap-caret-visible")
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(true)
     const authored = editor.toHTML(true)
     const selection = document.getSelection()!
     const anchor = selection.anchorNode, offset = selection.anchorOffset
     input.focus()
     input.setSelectionRange(1, 3)
     document.dispatchEvent(new Event("selectionchange"))
-    expect(document.body).not.toHaveClass("◆gap-caret-visible")
-    expect(document.body).toHaveClass("◆node-selection-active")
-    expect(widget).toHaveClass("◆element-capture-selected")
-    expect(widget).not.toHaveClass("◆gap-before-selected")
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(true)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(true)
+    expect(hasPresentationState(widget, "gap-before-selected")).toBe(false)
     expect(input.selectionStart).toBe(1)
     expect(input.selectionEnd).toBe(3)
     expect(selection.anchorNode).toBe(anchor)
@@ -2361,8 +2363,8 @@ describe("contentful widgets", () => {
     $.move(paragraph.querySelector("b")!.firstChild!, 2)
     await Promise.resolve()
     document.dispatchEvent(new Event("selectionchange"))
-    expect(paragraph).toHaveClass("◆text-selected")
-    expect(widget).not.toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(paragraph, "text-selected")).toBe(true)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
   })
 
   it.each([false, true])("keeps focused light-DOM selections and styling on the inner paragraph (slotted: %s)", slotted => {
@@ -2371,7 +2373,7 @@ describe("contentful widgets", () => {
     widget.focus()
     $.selectRange(paragraph.firstChild!.firstChild!, 1)
     document.dispatchEvent(new Event("selectionchange"))
-    expect(paragraph).toHaveClass("◆text-selected")
+    expect(hasPresentationState(paragraph, "text-selected")).toBe(true)
     editor.features.manipulation.setStyle({color: "red"})
     expect(feature.isCaptureSelection).toBe(false)
     expect(paragraph).toHaveStyle({color: "red"})
@@ -2417,13 +2419,13 @@ describe("contentful widgets", () => {
     const opaque = document.createElement("opaque-widget")
     document.body.append(opaque)
     feature.captureElement(opaque)
-    expect(opaque).toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(opaque, "element-capture-selected")).toBe(true)
     const control = document.createElement("input")
     widget.attachShadow({mode: "open"}).append(control)
     control.focus()
     expect(feature.captureSelectedWidget).toBe(widget)
-    expect(opaque).not.toHaveClass("◆element-capture-selected")
-    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(opaque, "element-capture-selected")).toBe(false)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(true)
   })
 
   it.each(["open", "closed"] as const)("does not reveal the outer selection while a %s shadow control is active", async mode => {
@@ -2474,7 +2476,7 @@ describe("contentful widgets", () => {
     const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
     control.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true}))
     expect(scrollIntoView).not.toHaveBeenCalled()
-    expect(opaque).not.toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(opaque, "element-capture-selected")).toBe(false)
   })
 
   it("modifier-selects a contentful widget from its shadow DOM without scrolling", () => {
@@ -2484,7 +2486,7 @@ describe("contentful widgets", () => {
     const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
     control.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, ctrlKey: true, cancelable: true}))
     expect($.selectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected")
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
     expect(scrollIntoView).not.toHaveBeenCalled()
   })
 
@@ -2496,9 +2498,9 @@ describe("contentful widgets", () => {
     expect(editor.toHTML(true)).toContain("<!--keep-->")
     feature.disable()
     expect(widget.querySelector('[class*="selected"]')).toBeNull()
-    expect(document.body).not.toHaveClass("◆gap-caret-visible", "◆node-selection-active")
+    expect(hasPresentationState(document.body, "gap-caret-visible") || hasPresentationState(document.body, "node-selection-active")).toBe(false)
     // Widget editing remains enabled independently of selection presentation.
-    expect(widget.querySelector("timeline-item")).toHaveClass("◆widget-editable")
+    expect(widget.querySelector("timeline-item")?.getAttribute("contenteditable")).toBe("")
   })
 })
 
@@ -2513,7 +2515,7 @@ describe("processSelection()", () => {
     const item = document.querySelector("#item")!
     $.selectElement(item)
     feature.processSelection()
-    expect(item).toHaveClass("◆element-selected")
+    expect(hasPresentationState(item, "element-selected")).toBe(true)
     expect(atomicOverlays()).toHaveLength(0)
     expect(editor.appendix.querySelector('[part~="selection-caret-node"]')).not.toBeNull()
   })
@@ -2548,10 +2550,10 @@ describe("processSelection()", () => {
     feature.processSelection(true)
 
     expect(document.getSelection()!.isCollapsed).toBe(false)
-    expect(atomic.localName === "figure" ? atomic.querySelector("img") : atomic).toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(atomic.localName === "figure" ? atomic.querySelector("img") : atomic, "atomic-range-selected")).toBe(true)
     expect(atomicOverlays()).toHaveLength(1)
-    expect(paragraph).not.toHaveClass("◆empty-selected")
-    expect(document.body).not.toHaveClass("◆node-selection-active")
+    expect(hasPresentationState(paragraph, "empty-selected")).toBe(false)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(false)
     expect(editor.features.transformation.target).toBeNull()
     expect(editor.toHTML(true)).not.toContain("◆")
   })
@@ -2591,7 +2593,7 @@ describe("processSelection()", () => {
     const details = document.querySelector("details")!
     feature.selectElement(details)
 
-    expect(details).toHaveClass("◆element-selected", "◆atomic-range-selected")
+    expect(hasPresentationState(details, "element-selected") && hasPresentationState(details, "atomic-range-selected")).toBe(true)
     expect(atomicOverlays()).toHaveLength(1)
     expect(atomicOverlays()[0].getRootNode()).toBe(editor.appendix)
     expect(editor.toHTML(true)).not.toContain("◆")
@@ -2608,8 +2610,8 @@ describe("processSelection()", () => {
     document.getSelection()!.setBaseAndExtent(before, before.textContent!.length, after, 0)
     feature.processSelection()
 
-    expect(details).toHaveClass("◆atomic-range-selected")
-    expect(details.querySelector(".◆atomic-range-selected")).toBeNull()
+    expect(hasPresentationState(details, "atomic-range-selected")).toBe(true)
+    expect((presentationStateElements(details, "atomic-range-selected")[0] ?? null)).toBeNull()
     expect(atomicOverlays()).toHaveLength(1)
   })
 
@@ -2619,7 +2621,7 @@ describe("processSelection()", () => {
     $.selectRange(text, 1, text, 4)
     feature.processSelection()
 
-    expect(document.querySelector("details")).not.toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(document.querySelector("details"), "atomic-range-selected")).toBe(false)
     expect(atomicOverlays()).toHaveLength(0)
     expect(document.getSelection()!.toString()).toBe("bcd")
   })
@@ -2656,7 +2658,7 @@ describe("processSelection()", () => {
         expect(selection.focusNode).toBe(backward ? text : parent)
         expect(selection.focusOffset).toBe(backward ? 0 : index)
         expect(selection.toString().trim()).toBe("Hello world!")
-        expect(media).not.toHaveClass("◆element-selected", "◆element-capture-selected", "◆atomic-range-selected")
+        expect(hasPresentationState(media, "element-selected") || hasPresentationState(media, "element-capture-selected") || hasPresentationState(media, "atomic-range-selected")).toBe(false)
         expect(atomicOverlays()).toHaveLength(0)
         expect(feature.captureSelectedElement).toBeNull()
         expect(editor.toHTML(true)).toBe(authored)
@@ -2664,10 +2666,10 @@ describe("processSelection()", () => {
       // Crossing the whole node still selects the image, and collapsing clears it.
       selection.setBaseAndExtent(text, 0, parent, index + 1)
       feature.processSelection()
-      expect(media).toHaveClass("◆atomic-range-selected")
+      expect(hasPresentationState(media, "atomic-range-selected")).toBe(true)
       $.move(text, 0)
       feature.processSelection()
-      expect(media).not.toHaveClass("◆atomic-range-selected")
+      expect(hasPresentationState(media, "atomic-range-selected")).toBe(false)
       expect(atomicOverlays()).toHaveLength(0)
     }
   })
@@ -2680,14 +2682,14 @@ describe("processSelection()", () => {
     document.getSelection()!.setBaseAndExtent(backward ? after : before, 2, backward ? before : after, 2)
     feature.processSelection()
 
-    expect(table).toHaveClass("◆atomic-range-selected")
-    expect(table.querySelector(".◆atomic-range-selected")).toBeNull()
+    expect(hasPresentationState(table, "atomic-range-selected")).toBe(true)
+    expect((presentationStateElements(table, "atomic-range-selected")[0] ?? null)).toBeNull()
     expect(atomicOverlays()).toHaveLength(1)
     expect(editor.toHTML(true)).not.toContain("◆atomic-range-selected")
 
     $.move(before, 0)
     feature.processSelection()
-    expect(table).not.toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(table, "atomic-range-selected")).toBe(false)
     expect(atomicOverlays()).toHaveLength(0)
   })
 
@@ -2698,8 +2700,8 @@ describe("processSelection()", () => {
     $.selectRange(cell.firstChild!, 2, cell.lastChild!, 2)
     feature.processSelection()
 
-    expect(table).not.toHaveClass("◆atomic-range-selected")
-    expect(cell.querySelector("img")).toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(table, "atomic-range-selected")).toBe(false)
+    expect(hasPresentationState(cell.querySelector("img"), "atomic-range-selected")).toBe(true)
     expect(atomicOverlays()).toHaveLength(1)
 
     $.selectRange(cell.firstChild!, 0, cell.firstChild!, 2)
@@ -2753,53 +2755,53 @@ describe("processSelection()", () => {
   })
 
   const appliedKinds = () => [
-    Boolean(document.querySelector(".◆text-selected")),
-    Boolean(document.querySelector(".◆element-selected, .◆element-capture-selected")),
-    Boolean(document.querySelector(".◆gap-before-selected, .◆gap-after-selected")),
-    Boolean(document.querySelector(".◆empty-selected")),
-    Boolean(document.querySelector(".◆virtual-list-anchor, .◆virtual-list-selected")),
+    Boolean((presentationStateElements(document, "text-selected")[0] ?? null)),
+    Boolean((presentationStateElements(document, "element-selected", "element-capture-selected")[0] ?? null)),
+    Boolean((presentationStateElements(document, "gap-before-selected", "gap-after-selected")[0] ?? null)),
+    Boolean((presentationStateElements(document, "empty-selected")[0] ?? null)),
+    Boolean((presentationStateElements(document, "virtual-list-anchor", "virtual-list-selected")[0] ?? null)),
   ].filter(Boolean).length
 
   it("enforces one selection kind after an external selectionchange", async () => {
     document.body.innerHTML = "<p>text</p><interactive-widget></interactive-widget>"
     const paragraph = document.querySelector("p")!
     const widget = document.querySelector("interactive-widget")!
-    paragraph.classList.add("◆", "◆element-selected", "◆gap-after-selected", "◆empty-selected", "◆virtual-list-anchor")
-    widget.classList.add("◆", "◆element-capture-selected", "◆virtual-list-selected")
+    $.selectGap(paragraph, "after")
+    feature.processSelection()
 
     document.getSelection()!.setBaseAndExtent(paragraph.firstChild!, 1, paragraph.firstChild!, 3)
     document.dispatchEvent(new Event("selectionchange"))
     await Promise.resolve()
 
     expect(appliedKinds()).toBe(1)
-    expect(paragraph).toHaveClass("◆text-selected")
-    expect(document.body).not.toHaveClass("◆node-selection-active")
-    expect(document.querySelector(".◆element-selected, .◆element-capture-selected, .◆gap-before-selected, .◆gap-after-selected, .◆empty-selected, .◆virtual-list-anchor, .◆virtual-list-selected")).toBeNull()
+    expect(hasPresentationState(paragraph, "text-selected")).toBe(true)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(false)
+    expect((presentationStateElements(document, "element-selected", "element-capture-selected", "gap-before-selected", "gap-after-selected", "empty-selected", "virtual-list-anchor", "virtual-list-selected")[0] ?? null)).toBeNull()
 
     document.getSelection()!.getRangeAt(0).selectNode(widget)
     document.dispatchEvent(new Event("selectionchange"))
     await Promise.resolve()
 
     expect(appliedKinds()).toBe(1)
-    expect(widget).toHaveClass("◆element-selected")
-    expect(document.body).toHaveClass("◆node-selection-active")
-    expect(document.querySelector(".◆text-selected, .◆gap-before-selected, .◆gap-after-selected, .◆empty-selected, .◆virtual-list-anchor, .◆virtual-list-selected")).toBeNull()
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(true)
+    expect((presentationStateElements(document, "text-selected", "gap-before-selected", "gap-after-selected", "empty-selected", "virtual-list-anchor", "virtual-list-selected")[0] ?? null)).toBeNull()
 
     document.getSelection()!.setBaseAndExtent(paragraph.firstChild!, 0, paragraph.firstChild!, 2)
     document.dispatchEvent(new Event("selectionchange"))
     await Promise.resolve()
 
     expect(appliedKinds()).toBe(1)
-    expect(paragraph).toHaveClass("◆text-selected")
-    expect(document.body).not.toHaveClass("◆node-selection-active")
+    expect(hasPresentationState(paragraph, "text-selected")).toBe(true)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(false)
   })
 
   it("marks a selected element", () => {
     const p = el("p", "hello")
     $.selectElement(p)
     feature.processSelection()
-    expect(p.classList.contains("◆element-selected")).toBe(true)
-    expect(document.body).toHaveClass("◆node-selection-active")
+    expect(hasPresentationState(p, "element-selected")).toBe(true)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(true)
     expect(feature.selectionCaret).toBeInstanceOf(HTMLElement)
     expect(feature.selectionCaret?.getRootNode()).toBe(document.body.shadowRoot)
     expect(feature.selectionCaret).toHaveAttribute("aria-hidden", "true")
@@ -2810,8 +2812,8 @@ describe("processSelection()", () => {
     const element = el(tag)
     $.selectElement(element)
     feature.processSelection()
-    expect(element).toHaveClass("◆element-selected")
-    expect(element).not.toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(element, "element-selected")).toBe(true)
+    expect(hasPresentationState(element, "element-capture-selected")).toBe(false)
   })
   it("skips element markers during drag selection", () => {
     const p = el("p", "hello")
@@ -2821,8 +2823,8 @@ describe("processSelection()", () => {
     feature.isInDragSelection = true
     feature.processSelection()
     editor.postSelectionPath()
-    expect(p).not.toHaveClass("◆element-selected")
-    expect(document.body).not.toHaveClass("◆node-selection-active")
+    expect(hasPresentationState(p, "element-selected")).toBe(false)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(false)
     expect(editor.features.transformation.target).toBeNull()
     expect(post).not.toHaveBeenCalled()
     feature.isInDragSelection = false
@@ -2836,13 +2838,13 @@ describe("processSelection()", () => {
     const p = el("p", "hello")
     $.selectRange(p.firstChild!, 0, p.firstChild!, 3)
     feature.processSelection()
-    expect(p.classList.contains("◆text-selected")).toBe(true)
+    expect(hasPresentationState(p, "text-selected")).toBe(true)
   })
   it("marks the container of a caret in text", () => {
     const p = el("p", "hello")
     $.move(p.firstChild!, 2)
     feature.processSelection()
-    expect(p.classList.contains("◆text-selected")).toBe(true)
+    expect(hasPresentationState(p, "text-selected")).toBe(true)
   })
   it("treats an exactly selected mark as text in its containing block", () => {
     document.body.innerHTML = "<p><b>hello</b></p>"
@@ -2851,14 +2853,14 @@ describe("processSelection()", () => {
     $.selectElement(bold)
     feature.processSelection()
     expect($.isElementSelection).toBe(false)
-    expect(p).toHaveClass("◆text-selected")
-    expect(bold).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(p, "text-selected")).toBe(true)
+    expect(hasPresentationState(bold, "element-selected")).toBe(false)
   })
   it("marks an empty element containing the caret", () => {
     const p = el("p")
     $.move(p, 0)
     feature.processSelection()
-    expect(p.classList.contains("◆empty-selected")).toBe(true)
+    expect(hasPresentationState(p, "empty-selected")).toBe(true)
   })
   it("repaints an empty list placeholder during a canonical selection refresh", () => {
     editor.features.list.toggleList("ul")
@@ -2868,7 +2870,7 @@ describe("processSelection()", () => {
     feature.processSelection()
 
     expect(editor.features.list.isVirtualSelection).toBe(true)
-    expect(list).toHaveClass("◆virtual-list-anchor", "◆virtual-list-selected")
+    expect(hasPresentationState(list, "virtual-list-anchor") && hasPresentationState(list, "virtual-list-selected")).toBe(true)
     expect(marker.getAttribute("part")).not.toContain("virtual-list-item-hidden")
     expect(appliedKinds()).toBe(1)
   })
@@ -2876,10 +2878,10 @@ describe("processSelection()", () => {
     const p1 = el("p", "a"); el("p", "b")
     $.selectGap(p1)
     feature.processSelection()
-    expect(p1.classList.contains("◆gap-after-selected")).toBe(true)
+    expect(hasPresentationState(p1, "gap-after-selected")).toBe(true)
     expect(feature.gapCaret).not.toBeNull()
     expect(feature.gapCaret).toBe(feature.selectionCaret)
-    expect(feature.gapCaret!.classList.contains("◆gap-after-selected")).toBe(true)
+    expect(feature.gapCaret!.matches('[part~="gap-caret-gap-after-selected"]')).toBe(true)
     expect(feature.gapCaret!.getAttribute("part")).toContain("selection-caret-gap")
     expect(feature.gapCaret!.getAttribute("part")).toContain("gap-caret")
     expect(feature.gapCaret!.hasAttribute("visibility")).toBe(false)
@@ -2899,12 +2901,12 @@ describe("processSelection()", () => {
     $.selectGap(paragraph, "before")
     feature.processSelection()
     expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-block-offset")).toBe("0px")
-    expect(paragraph).not.toHaveClass("◆gap-after-selected")
+    expect(hasPresentationState(paragraph, "gap-after-selected")).toBe(false)
 
     $.move(paragraph)
     feature.processSelection()
     expect(feature.selectionCaret!.style.getPropertyValue("--gap-caret-block-offset")).toBe("")
-    expect(paragraph).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+    expect(hasPresentationState(paragraph, "gap-before-selected") || hasPresentationState(paragraph, "gap-after-selected")).toBe(false)
   })
   it("keeps resized block and widget gaps in the live content column", async () => {
     document.body.style.cssText = "--ww-float-width: 100px; --ww-prose-max: 720px; padding: 0 20px; border: 2px solid"
@@ -2953,7 +2955,7 @@ describe("processSelection()", () => {
     paragraph.remove()
     window.dispatchEvent(new Event("resize"))
     editor.destroy()
-    expect(paragraph).not.toHaveClass("◆gap-after-selected")
+    expect(hasPresentationState(paragraph, "gap-after-selected")).toBe(false)
     expect(editor.appendix.querySelector(".◆selection-caret")).toBeNull()
   })
   it("skips positioned siblings when presenting a gap", () => {
@@ -2963,9 +2965,9 @@ describe("processSelection()", () => {
     $.selectGap(after, "before")
     feature.processSelection()
 
-    expect(before).toHaveClass("◆gap-after-selected")
-    expect(document.querySelector("interactive-widget")).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
-    expect(document.querySelector("hr")).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+    expect(hasPresentationState(before, "gap-after-selected")).toBe(true)
+    expect(hasPresentationState(document.querySelector("interactive-widget"), "gap-before-selected") || hasPresentationState(document.querySelector("interactive-widget"), "gap-after-selected")).toBe(false)
+    expect(hasPresentationState(document.querySelector("hr"), "gap-before-selected") || hasPresentationState(document.querySelector("hr"), "gap-after-selected")).toBe(false)
   })
   it("keeps relative and sticky atomic siblings in keyboard navigation", () => {
     for(const position of ["relative", "sticky"]) {
@@ -2990,7 +2992,7 @@ describe("processSelection()", () => {
 
     expect(event.defaultPrevented).toBe(true)
     expect($.selectedElement).toBe(widgets[1])
-    expect(document.querySelector("hr")).not.toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(document.querySelector("hr"), "atomic-range-selected")).toBe(false)
   })
   it("marks positioned subtrees as flow-excluded without marking their atomic contents", () => {
     document.body.innerHTML = '<p>before</p><interactive-widget style="position: absolute"></interactive-widget><hr style="position: fixed"><p>after</p>'
@@ -3000,19 +3002,19 @@ describe("processSelection()", () => {
     $.selectRange(paragraphs[0].firstChild!, 0, paragraphs[1].firstChild!, 1)
     feature.processSelection()
 
-    expect(widget).toHaveClass("◆flow-excluded")
-    expect(divider).toHaveClass("◆flow-excluded")
-    expect(widget).not.toHaveClass("◆atomic-range-selected")
-    expect(divider).not.toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(widget, "flow-excluded")).toBe(true)
+    expect(hasPresentationState(divider, "flow-excluded")).toBe(true)
+    expect(hasPresentationState(widget, "atomic-range-selected")).toBe(false)
+    expect(hasPresentationState(divider, "atomic-range-selected")).toBe(false)
     expect(editor.toHTML(true)).not.toContain("◆flow-excluded")
 
     $.move(paragraphs[0].firstChild!, 0)
     feature.processSelection()
-    expect(widget).not.toHaveClass("◆flow-excluded")
-    expect(divider).not.toHaveClass("◆flow-excluded")
+    expect(hasPresentationState(widget, "flow-excluded")).toBe(false)
+    expect(hasPresentationState(divider, "flow-excluded")).toBe(false)
     editor.destroy()
-    expect(widget).not.toHaveClass("◆flow-excluded")
-    expect(divider).not.toHaveClass("◆flow-excluded")
+    expect(hasPresentationState(widget, "flow-excluded")).toBe(false)
+    expect(hasPresentationState(divider, "flow-excluded")).toBe(false)
   })
   it("keeps explicit positioned element selection available", () => {
     const widget = el("interactive-widget")
@@ -3021,8 +3023,8 @@ describe("processSelection()", () => {
     feature.processSelection()
 
     expect($.selectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected")
-    expect(widget).not.toHaveClass("◆flow-excluded")
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
+    expect(hasPresentationState(widget, "flow-excluded")).toBe(false)
   })
   it("reuses one shadow caret for node and gap selections", () => {
     const p1 = el("p", "a"); el("p", "b")
@@ -3064,8 +3066,8 @@ describe("processSelection()", () => {
     feature.showDropCaret("before")
     feature.clearDropCaret()
 
-    expect(p).toHaveClass("◆gap-after-selected")
-    expect(caret).toHaveClass("◆selection-caret-gap", "◆gap-after-selected")
+    expect(hasPresentationState(p, "gap-after-selected")).toBe(true)
+    expect(caret?.matches('[part~="selection-caret-gap"][part~="gap-caret-gap-after-selected"]')).toBe(true)
     expect(caret?.getAttribute("part")).toContain("selection-caret-gap")
     expect(caret?.getAttribute("part")).toContain("gap-caret")
     expect(caret?.getAttribute("part")).not.toContain("selection-caret-hidden")
@@ -3075,14 +3077,14 @@ describe("processSelection()", () => {
     const p1 = el("p", "a"); el("p", "b")
     $.selectGap(p1, "before")
     feature.processSelection()
-    expect(p1.classList.contains("◆gap-before-selected")).toBe(true)
+    expect(hasPresentationState(p1, "gap-before-selected")).toBe(true)
   })
   it("marks the first body element when whitespace precedes the gap", () => {
     document.body.innerHTML = "\n<p>a</p>"
     const p = document.body.firstElementChild!
     $.selectDocumentStart()
     feature.processSelection()
-    expect(p.classList.contains("◆gap-before-selected")).toBe(true)
+    expect(hasPresentationState(p, "gap-before-selected")).toBe(true)
     expect(feature.gapCaret!.getAttribute("visibility")).not.toBe("hidden")
   })
   it("keeps a gap anchored across formatting whitespace after selection refreshes", async () => {
@@ -3095,19 +3097,19 @@ describe("processSelection()", () => {
 
     expect($.anchor).toBe(document.body)
     expect($.anchorOffset).toBe(2)
-    expect(first).toHaveClass("◆gap-after-selected")
-    expect(document.body).toHaveClass("◆gap-caret-visible")
+    expect(hasPresentationState(first, "gap-after-selected")).toBe(true)
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(true)
     expect(feature.gapCaret).not.toHaveAttribute("visibility")
   })
   it("clears previous markers when the selection changes", () => {
     const p1 = el("p", "a"); const p2 = el("p", "b")
     $.selectRange(p1.firstChild!, 0, p1.firstChild!, 1)
     feature.processSelection()
-    expect(p1.classList.contains("◆text-selected")).toBe(true)
+    expect(hasPresentationState(p1, "text-selected")).toBe(true)
     $.selectElement(p2)
     feature.processSelection()
     expect(p1.hasAttribute("class")).toBe(false)
-    expect(p2.classList.contains("◆element-selected")).toBe(true)
+    expect(hasPresentationState(p2, "element-selected")).toBe(true)
   })
   it("retains an unchanged text marker while moving and editing the caret", () => {
     document.body.innerHTML = '<section><!--keep--><p class="authored">Before <em>text</em> after</p></section>'
@@ -3125,15 +3127,15 @@ describe("processSelection()", () => {
     feature.processSelection()
     expect(observer.takeRecords().filter(record => record.attributeName === "class")).toEqual([])
     observer.disconnect()
-    expect(owner).toHaveClass("◆text-selected")
+    expect(hasPresentationState(owner, "text-selected")).toBe(true)
     expect(paragraph).toHaveClass("authored")
     const replaced = document.createElement("p")
     replaced.textContent = "Concurrent replacement"
     paragraph.replaceWith(replaced)
     $.move(replaced.firstChild!, 2)
     feature.processSelection()
-    expect(owner).not.toHaveClass("◆text-selected", "◆")
-    expect(replaced).toHaveClass("◆text-selected")
+    expect(hasPresentationState(owner, "text-selected")).toBe(false)
+    expect(hasPresentationState(replaced, "text-selected")).toBe(true)
     feature.disable()
     expect(replaced.hasAttribute("class")).toBe(false)
     expect(editor.toHTML()).not.toContain("◆text-selected")
@@ -3145,14 +3147,13 @@ describe("processSelection()", () => {
     $.move(target.firstChild!, 1)
     feature.processSelection()
     const queries = vi.spyOn(document, "querySelectorAll")
-    other.classList.add("◆", "◆text-selected")
     const inserted = document.createElement("div")
     inserted.innerHTML = '<p class="◆ ◆element-selected">Inserted marker</p>'
     document.body.append(inserted)
     feature.processSelection()
-    expect(other).not.toHaveClass("◆text-selected", "◆")
-    expect(inserted.firstElementChild).not.toHaveClass("◆element-selected", "◆")
-    expect(target).toHaveClass("◆text-selected")
+    expect(hasPresentationState(other, "text-selected")).toBe(false)
+    expect(hasPresentationState(inserted.firstElementChild, "element-selected")).toBe(false)
+    expect(hasPresentationState(target, "text-selected")).toBe(true)
     expect(queries.mock.calls.filter(([selector]) => selector.includes("◆gap-before-selected"))).toHaveLength(0)
     expect(editor.toHTML(true)).not.toContain("◆")
     queries.mockRestore()
@@ -3164,10 +3165,9 @@ describe("processSelection()", () => {
     feature.processSelection()
     target.remove()
     const foreign = el("p", "Foreign")
-    foreign.classList.add("◆", "◆text-selected")
     feature.disable()
-    expect(target).not.toHaveClass("◆text-selected", "◆")
-    expect(foreign).not.toHaveClass("◆text-selected", "◆")
+    expect(hasPresentationState(target, "text-selected")).toBe(false)
+    expect(hasPresentationState(foreign, "text-selected")).toBe(false)
     feature.enable()
   })
   it("hides the gap caret when leaving a gap selection", () => {
@@ -3176,7 +3176,7 @@ describe("processSelection()", () => {
     feature.processSelection()
     $.move(p1.firstChild!, 0)
     feature.processSelection()
-    expect(feature.selectionCaret).not.toHaveClass("◆selection-caret-gap")
+    expect(feature.selectionCaret?.getAttribute("part")).not.toContain("selection-caret-gap")
     expect(feature.selectionCaret?.getAttribute("part") ?? "selection-caret-hidden").toContain("selection-caret-hidden")
   })
   it("shows and clears an outline preview for a breadcrumb path", () => {
@@ -3184,7 +3184,7 @@ describe("processSelection()", () => {
 
     feature.actions.hoverNode({type: "hoverNode", path: [0]})
 
-    expect(p).toHaveClass("◆element-hovered")
+    expect(hasPresentationState(p, "element-hovered")).toBe(true)
     expect(feature.hoverCaret).toBeInstanceOf(HTMLElement)
     expect(feature.hoverCaret?.getRootNode()).toBe(document.body.shadowRoot)
     expect(feature.hoverCaret?.getAttribute("part")).toContain("hover-caret")
@@ -3193,7 +3193,7 @@ describe("processSelection()", () => {
 
     feature.actions.hoverNode({type: "hoverNode", path: null})
 
-    expect(p).not.toHaveClass("◆element-hovered")
+    expect(hasPresentationState(p, "element-hovered")).toBe(false)
     expect(editor.appendix.querySelectorAll(".◆hover-caret")).toHaveLength(1)
     expect(feature.hoverCaret).toHaveAttribute("part", "hover-caret")
   })
@@ -3203,12 +3203,12 @@ describe("processSelection()", () => {
 
     feature.actions.hoverStyleTarget({type: "hoverStyleTarget", hovered: true})
 
-    expect(p).toHaveClass("◆style-target-hovered")
-    expect(p).not.toHaveClass("◆element-hovered")
+    expect(hasPresentationState(p, "style-target-hovered")).toBe(true)
+    expect(hasPresentationState(p, "element-hovered")).toBe(false)
 
     feature.actions.hoverStyleTarget({type: "hoverStyleTarget", hovered: false})
 
-    expect(p).not.toHaveClass("◆style-target-hovered")
+    expect(hasPresentationState(p, "style-target-hovered")).toBe(false)
   })
   it("previews the body as the style target without a selection", () => {
     initialParagraph?.remove()
@@ -3217,11 +3217,11 @@ describe("processSelection()", () => {
 
     feature.actions.hoverStyleTarget({type: "hoverStyleTarget", hovered: true})
 
-    expect(document.body).toHaveClass("◆style-target-hovered")
+    expect(hasPresentationState(document.body, "style-target-hovered")).toBe(true)
 
     feature.actions.hoverStyleTarget({type: "hoverStyleTarget", hovered: false})
 
-    expect(document.body).not.toHaveClass("◆style-target-hovered")
+    expect(hasPresentationState(document.body, "style-target-hovered")).toBe(false)
   })
   it("promotes a table descendant hover preview to the table", () => {
     document.body.innerHTML = "<table><tbody><tr><td><p>Cell</p></td></tr></tbody></table>"
@@ -3230,8 +3230,8 @@ describe("processSelection()", () => {
 
     feature.actions.hoverNode({type: "hoverNode", path: [0, 0, 0, 0, 0]})
 
-    expect(table).toHaveClass("◆element-hovered")
-    expect(paragraph).not.toHaveClass("◆element-hovered")
+    expect(hasPresentationState(table, "element-hovered")).toBe(true)
+    expect(hasPresentationState(paragraph, "element-hovered")).toBe(false)
   })
   it("keeps an active empty-cell text position separate from the table hover", () => {
     document.body.innerHTML = "<table><tbody><tr><td></td></tr></tbody></table>"
@@ -3242,18 +3242,18 @@ describe("processSelection()", () => {
 
     feature.actions.hoverNode({type: "hoverNode", path: [0, 0, 0, 0]})
 
-    expect(cell).toHaveClass("◆empty-selected")
-    expect(cell).not.toHaveClass("◆element-hovered")
-    expect(table).toHaveClass("◆element-hovered")
+    expect(hasPresentationState(cell, "empty-selected")).toBe(true)
+    expect(hasPresentationState(cell, "element-hovered")).toBe(false)
+    expect(hasPresentationState(table, "element-hovered")).toBe(true)
   })
   it("clears a document hover without leaving a body marker", () => {
     feature.actions.hoverNode({type: "hoverNode", path: []})
-    expect(document.body).toHaveClass("◆element-hovered")
+    expect(hasPresentationState(document.body, "element-hovered")).toBe(true)
     expect(feature.hoverCaret?.getRootNode()).toBe(document.body.shadowRoot)
 
     feature.actions.hoverNode({type: "hoverNode", path: null})
 
-    expect(document.body).not.toHaveClass("◆element-hovered")
+    expect(hasPresentationState(document.body, "element-hovered")).toBe(false)
   })
   it("adds the dotted hover outline to an already selected element", () => {
     const p = el("p", "hello")
@@ -3262,19 +3262,19 @@ describe("processSelection()", () => {
 
     feature.actions.hoverNode({type: "hoverNode", path: [0]})
 
-    expect(p).toHaveClass("◆element-selected")
-    expect(p).toHaveClass("◆element-hovered")
+    expect(hasPresentationState(p, "element-selected")).toBe(true)
+    expect(hasPresentationState(p, "element-hovered")).toBe(true)
   })
   it("keeps a breadcrumb hover preview when its element becomes selected", () => {
     const p = el("p", "hello")
     feature.actions.hoverNode({type: "hoverNode", path: [0]})
-    expect(p).toHaveClass("◆element-hovered")
+    expect(hasPresentationState(p, "element-hovered")).toBe(true)
 
     $.selectElement(p)
     feature.processSelection()
 
-    expect(p).toHaveClass("◆element-selected")
-    expect(p).toHaveClass("◆element-hovered")
+    expect(hasPresentationState(p, "element-selected")).toBe(true)
+    expect(hasPresentationState(p, "element-hovered")).toBe(true)
   })
 
   it("selects an element from a BODY-relative breadcrumb path", () => {
@@ -3301,7 +3301,7 @@ describe("processSelection()", () => {
     feature.actions.selectNode({type: "selectNode", path: []})
 
     expect($.selectedElement).toBe(document.body)
-    expect(document.body).toHaveClass("◆element-selected")
+    expect(hasPresentationState(document.body, "element-selected")).toBe(true)
     expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-node")
   })
   it("addresses document-level attributes on the HTML element", () => {
@@ -3343,7 +3343,7 @@ describe("processSelection()", () => {
     feature.processSelection()
 
     expect($.anchor).toBe(template)
-    expect(template).toHaveClass("◆empty-selected")
+    expect(hasPresentationState(template, "empty-selected")).toBe(true)
     expect(feature.emptyDocumentCaret).toBeInTheDocument()
   })
   it("does not reinterpret a list template as an empty authored list", () => {
@@ -3353,7 +3353,7 @@ describe("processSelection()", () => {
     $.selectDocumentStart()
     feature.processSelection()
 
-    expect(template).toHaveClass("◆empty-selected")
+    expect(hasPresentationState(template, "empty-selected")).toBe(true)
     expect(editor.features.list.isVirtualSelection).toBe(false)
     expect(feature.emptyDocumentCaret).toBeInTheDocument()
   })
@@ -3983,10 +3983,10 @@ describe("disable()", () => {
     const paragraph = el("p", "selected")
     $.selectElement(paragraph)
     feature.processSelection()
-    expect(paragraph).toHaveClass("◆element-selected")
+    expect(hasPresentationState(paragraph, "element-selected")).toBe(true)
 
     feature.disable()
-    expect(paragraph).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(paragraph, "element-selected")).toBe(false)
     expect(paragraph).not.toHaveClass("◆")
     feature.enable()
   })
@@ -4021,9 +4021,9 @@ describe("enable()", () => {
   it("marks the schema-provided empty paragraph selection", () => {
     const fresh = new SelectionFeature(editor)
     fresh.enable()
-    expect(document.body.firstElementChild).toHaveClass("◆empty-selected")
+    expect(hasPresentationState(document.body.firstElementChild, "empty-selected")).toBe(true)
     expect($.anchor).toBe(document.body.firstElementChild)
-    expect(document.body).not.toHaveClass("◆empty-selected")
+    expect(hasPresentationState(document.body, "empty-selected")).toBe(false)
     fresh.disable()
   })
 })
@@ -4036,7 +4036,7 @@ describe("document listeners", () => {
     const p = el("p", "hello")
     $.move(p.firstChild!, 2)
     await new Promise(resolve => setTimeout(resolve))
-    expect(p.classList.contains("◆text-selected")).toBe(true)
+    expect(hasPresentationState(p, "text-selected")).toBe(true)
   })
 
   it("restores the default paragraph when a shared change removes the final node", async () => {
@@ -4197,7 +4197,7 @@ describe("document listeners", () => {
   it("edits, renames, and removes attributes without losing selection markers", () => {
     document.body.innerHTML = '<blockquote cite="source.html" class="authored"></blockquote>'
     const quote = document.querySelector("blockquote")!
-    quote.classList.add("◆", "◆element-selected")
+    setPresentationState(quote, "element-selected")
     const target = elementAttributeState(quote, [0])
 
     editor.features.manipulation.actions.setElementAttribute({...target, type: "setElementAttribute", name: "open", value: ""})
@@ -4213,12 +4213,13 @@ describe("document listeners", () => {
     expect(quote).toHaveAttribute("open", "")
     expect(quote).not.toHaveAttribute("cite")
     expect(quote).toHaveAttribute("data-cite", "source.html")
-    expect(quote).toHaveClass("changed", "◆", "◆element-selected")
+    expect(quote).toHaveClass("changed")
+    expect(hasPresentationState(quote, "element-selected")).toBe(true)
     expect(quote).not.toHaveClass("◆injected")
 
     editor.features.manipulation.actions.setElementAttribute({...target, type: "setElementAttribute", name: "class", value: null})
     expect(quote).not.toHaveClass("changed")
-    expect(quote).toHaveClass("◆", "◆element-selected")
+    expect(hasPresentationState(quote, "element-selected")).toBe(true)
   })
 
   it.each(["replacement", "insertion"])("rejects stale same-tag attribute targets after %s", change => {
@@ -4283,7 +4284,7 @@ describe("document listeners", () => {
   it("keeps case-only HTML attribute renames through collaboration history", () => {
     document.body.innerHTML = '<p data-note="original" class="authored"></p>'
     const paragraph = document.querySelector("p")!
-    paragraph.classList.add("◆element-selected")
+    setPresentationState(paragraph, "element-selected")
     const target = elementAttributeState(paragraph, [0])
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
@@ -4294,7 +4295,7 @@ describe("document listeners", () => {
       ...target, type: "setElementAttribute", name: "CLASS", previousName: "class", value: "changed",
     })
     expect(paragraph.getAttribute("data-note")).toBe("updated")
-    expect(paragraph.classList.contains("◆element-selected")).toBe(true)
+    expect(hasPresentationState(paragraph, "element-selected")).toBe(true)
     editor.doc.syncFromDOM()
     editor.doc.undo()
     expect(document.querySelector("p")!.getAttribute("data-note")).toBe("original")
@@ -4425,7 +4426,7 @@ describe("document listeners", () => {
     feature.actions.selectSection({type: "selectSection", path: [0]})
 
     expect(feature.selectedSectionElement).toBe(document.querySelector("section"))
-    expect(document.querySelector("section")).toHaveClass("◆element-selected")
+    expect(hasPresentationState(document.querySelector("section"), "element-selected")).toBe(true)
     expect($.anchor).toBe(paragraph.firstChild)
 
     document.dispatchEvent(new Event("selectionchange"))
@@ -4433,8 +4434,8 @@ describe("document listeners", () => {
     $.move(paragraph.firstChild!, 3)
     document.dispatchEvent(new Event("selectionchange"))
     expect(feature.selectedSectionElement).toBeNull()
-    expect(document.querySelector("section")).not.toHaveClass("◆element-selected")
-    expect(paragraph).toHaveClass("◆text-selected")
+    expect(hasPresentationState(document.querySelector("section"), "element-selected")).toBe(false)
+    expect(hasPresentationState(paragraph, "text-selected")).toBe(true)
   })
   it("posts a gap position through the bridge", () => {
     document.body.innerHTML = "<p>a</p><p>b</p>"
@@ -4475,16 +4476,16 @@ describe("document listeners", () => {
   })
   it("tracks modifier keys on the body", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", {ctrlKey: true, altKey: true, shiftKey: true}))
-    expect(document.body.classList.contains("◆key-mod-down")).toBe(true)
-    expect(document.body.classList.contains("◆key-alt-down")).toBe(true)
-    expect(document.body.classList.contains("◆key-shift-down")).toBe(true)
+    expect(hasPresentationState(document.body, "key-mod-down")).toBe(true)
+    expect(document.body.className).toBe("")
     expect(getComputedStyle(document.documentElement).cursor).toBe("pointer")
     expect(getComputedStyle(document.body).cursor).toBe("pointer")
   })
   it("removes the key markers on keyup", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", {ctrlKey: true, altKey: true, shiftKey: true}))
     document.dispatchEvent(new KeyboardEvent("keyup", {}))
-    expect(document.body.hasAttribute("class")).toBe(false)
+    expect(hasPresentationState(document.body, "key-mod-down")).toBe(false)
+    expect(document.body.className).toBe("")
   })
   it.each(["blur", "focus", "hidden", "disable"])("clears modifier cursors on %s without a keyup", end => {
     document.dispatchEvent(new KeyboardEvent("keydown", {ctrlKey: true, metaKey: true, altKey: true, shiftKey: true}))
@@ -4497,7 +4498,7 @@ describe("document listeners", () => {
     else window.dispatchEvent(new Event(end))
 
     for(const element of [document.documentElement, document.body]) {
-      expect(element).not.toHaveClass("◆key-mod-down")
+      expect(hasPresentationState(element, "key-mod-down")).toBe(false)
       expect(element).not.toHaveClass("◆key-alt-down")
       expect(element).not.toHaveClass("◆key-shift-down")
       expect(getComputedStyle(element).cursor).not.toBe("pointer")
@@ -4509,12 +4510,12 @@ describe("document listeners", () => {
     window.dispatchEvent(new Event("blur"))
     window.dispatchEvent(new Event("focus"))
     paragraph.dispatchEvent(new MouseEvent(type, {bubbles: true, button: 2, ctrlKey: true, metaKey: true, altKey: true, shiftKey: true}))
-    expect(document.body).toHaveClass("◆key-mod-down", "◆key-alt-down", "◆key-shift-down")
+    expect(hasPresentationState(document.body, "key-mod-down")).toBe(true)
 
     // The release may also have happened outside the document without a blur.
     paragraph.dispatchEvent(new MouseEvent(type, {bubbles: true, button: 2}))
     for(const element of [document.documentElement, document.body]) {
-      expect(element).not.toHaveClass("◆key-mod-down")
+      expect(hasPresentationState(element, "key-mod-down")).toBe(false)
       expect(element).not.toHaveClass("◆key-alt-down")
       expect(element).not.toHaveClass("◆key-shift-down")
     }
@@ -4525,7 +4526,7 @@ describe("document listeners", () => {
     p.dispatchEvent(event)
     expect(event.defaultPrevented).toBe(true)
     expect($.selectedElement).toBe(p)
-    expect(p.classList.contains("◆element-selected")).toBe(true)
+    expect(hasPresentationState(p, "element-selected")).toBe(true)
   })
   it.each(["figure", "img", "figcaption", "figcaption span"])("modifier-click on %s selects the containing figure", selector => {
     document.body.innerHTML = '<figure><img><figcaption><span>Caption</span></figcaption></figure><p>Other</p>'
@@ -4537,8 +4538,8 @@ describe("document listeners", () => {
       expect(event.defaultPrevented).toBe(true)
     }
     expect($.selectedElement).toBe(figure)
-    expect(figure).toHaveClass("◆element-selected")
-    expect(document.querySelector("figcaption")).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(figure, "element-selected")).toBe(true)
+    expect(hasPresentationState(document.querySelector("figcaption"), "element-selected")).toBe(false)
   })
   it.each(["body", "html", "span", "section"])("does not select the document on modifier-click of %s", tag => {
     document.body.innerHTML = '<p>hello</p><span>inline</span><section>section text</section>'
@@ -4553,7 +4554,7 @@ describe("document listeners", () => {
     }
 
     expect($.selectedElement).toBe(paragraph)
-    expect(document.body).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(document.body, "element-selected")).toBe(false)
     feature.actions.selectNode({type: "selectNode", path: []})
     expect($.selectedElement).toBe(document.body)
   })
@@ -4574,14 +4575,14 @@ describe("document listeners", () => {
       }
       expect($.selectedElement).toBe(paragraph)
       expect(feature.isCaptureSelection).toBe(false)
-      expect(template).not.toHaveClass("◆element-selected", "◆element-capture-selected")
+      expect(hasPresentationState(template, "element-selected") || hasPresentationState(template, "element-capture-selected")).toBe(false)
     }
 
     paragraph.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, metaKey: true, ctrlKey: true}))
     expect($.selectedElement).toBe(paragraph)
     feature.actions.selectNode({type: "selectNode", path: [0]})
     expect($.selectedElement).toBe(template)
-    expect(template).toHaveClass("◆element-selected")
+    expect(hasPresentationState(template, "element-selected")).toBe(true)
   })
   it("prevents the default modifier-click action", () => {
     const link = document.createElement("a")
@@ -4599,21 +4600,21 @@ describe("document listeners", () => {
     const p = document.querySelector("p")!
     document.querySelector("b")!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
     expect($.selectedElement).toBe(p)
-    expect(p).toHaveClass("◆element-selected")
+    expect(hasPresentationState(p, "element-selected")).toBe(true)
   })
   it("selects the containing block rather than a clicked phrase on modifier pointerdown", () => {
     document.body.innerHTML = "<p><span>hello</span></p>"
     const p = document.querySelector("p")!
     document.querySelector("span")!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
     expect($.selectedElement).toBe(p)
-    expect(p).toHaveClass("◆element-selected")
+    expect(hasPresentationState(p, "element-selected")).toBe(true)
   })
   it.each(["br", "wbr"])("does not node-select <%s> itself on modifier pointerdown", tag => {
     document.body.innerHTML = `<p>a<${tag}>b</p>`
     const p = document.querySelector("p")!
     document.querySelector(tag)!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
     expect($.selectedElement).toBe(p)
-    expect(p).toHaveClass("◆element-selected")
+    expect(hasPresentationState(p, "element-selected")).toBe(true)
   })
   it.each(["open", "closed", "light-button", "light-control"] as const)("keeps modifier interactions with a %s widget selected as a node", kind => {
     const widget = document.createElement("interactive-widget")
@@ -4634,8 +4635,8 @@ describe("document listeners", () => {
         expect(event.defaultPrevented).toBe(true)
       }
       expect($.selectedElement).toBe(widget)
-      expect(widget).toHaveClass("◆element-selected")
-      expect(widget).not.toHaveClass("◆element-capture-selected")
+      expect(hasPresentationState(widget, "element-selected")).toBe(true)
+      expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
     }
     expect(received).not.toHaveBeenCalled()
   })
@@ -4659,8 +4660,8 @@ describe("document listeners", () => {
     expect(received).not.toHaveBeenCalled()
     expect($.selectedElement).toBe(widget)
     expect(feature.isCaptureSelection).toBe(false)
-    expect(widget).toHaveClass("◆element-selected")
-    expect(widget).not.toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
   })
   it.each(["audio", "video", "iframe", "input", "button", "select", "textarea", "svg"])("intercepts modifier activation of a capture-selected <%s> before target handlers", tag => {
     const target = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", tag) : document.createElement(tag)
@@ -4681,8 +4682,8 @@ describe("document listeners", () => {
         }
         expect($.selectedElement).toBe(target)
         expect(feature.isCaptureSelection).toBe(false)
-        expect(target).toHaveClass("◆element-selected")
-        expect(target).not.toHaveClass("◆element-capture-selected")
+        expect(hasPresentationState(target, "element-selected")).toBe(true)
+        expect(hasPresentationState(target, "element-capture-selected")).toBe(false)
       }
       finally { platform.mockRestore() }
     }
@@ -4735,7 +4736,7 @@ describe("document listeners", () => {
     expect(feature.captureSelectedWidget).toBe(widget)
     expect(document.getSelection()?.isCollapsed).toBe(true)
     expect(document.getSelection()?.toString()).toBe("")
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected") && hasPresentationState(widget, "element-capture-selected")).toBe(true)
     expect(feature.isInDragSelection).toBe(false)
     expect(event.defaultPrevented).toBe(false)
     expect(onPointerDown).toHaveBeenCalledOnce()
@@ -4779,7 +4780,7 @@ describe("document listeners", () => {
       expect(received).toHaveBeenCalledOnce()
       expect(event.defaultPrevented).toBe(false)
       expect(feature.captureSelectedWidget).toBeNull()
-      expect(widget).not.toHaveClass("◆element-capture-selected")
+      expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
     }
     expect(editor.toHTML(true)).toContain('<!--keep--><button>Child control</button>')
   })
@@ -4797,8 +4798,8 @@ describe("document listeners", () => {
     expect(feature.isInDragSelection).toBe(false)
     button.focus()
     expect(feature.captureSelectedWidget).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected")
-    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(true)
     expect(feature.isCaptureSelection).toBe(true)
     expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-capture")
     expect(feature.selectionCaret?.getAttribute("part")).not.toContain("selection-caret-node")
@@ -4807,7 +4808,7 @@ describe("document listeners", () => {
     const keydown = new KeyboardEvent("keydown", {key: "a", bubbles: true, composed: true, cancelable: true})
     button.dispatchEvent(keydown)
     expect(keydown.defaultPrevented).toBe(false)
-    expect(widget).toHaveClass("◆element-selected")
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
     expect(widget.shadowRoot?.activeElement).toBe(button)
   })
   it("lets scroll events reach only a capture-selected widget", () => {
@@ -4824,7 +4825,7 @@ describe("document listeners", () => {
     scroller.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
     scroller.dispatchEvent(new Event("scroll", {bubbles: true, composed: true}))
 
-    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(true)
     expect(onScroll).toHaveBeenCalledOnce()
   })
   it("routes wheel input to the document until the widget is capture-selected", () => {
@@ -4847,7 +4848,7 @@ describe("document listeners", () => {
     const widgetWheel = new WheelEvent("wheel", {deltaY: 100, bubbles: true, composed: true, cancelable: true})
     map.dispatchEvent(widgetWheel)
 
-    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(true)
     expect(onWheel).toHaveBeenCalledOnce()
     expect(widgetWheel.defaultPrevented).toBe(true)
     expect(scrollBy).toHaveBeenCalledOnce()
@@ -4862,7 +4863,7 @@ describe("document listeners", () => {
     button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
 
     expect(feature.captureSelectedWidget).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected") && hasPresentationState(widget, "element-capture-selected")).toBe(true)
   })
   it("keeps capture when a widget control projects the native selection to the gap above it", () => {
     const widget = document.createElement("interactive-widget")
@@ -4876,8 +4877,8 @@ describe("document listeners", () => {
 
     expect(feature.isCaptureSelection).toBe(true)
     expect(feature.captureSelectedWidget).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-    expect(widget).not.toHaveClass("◆gap-before-selected")
+    expect(hasPresentationState(widget, "element-selected") && hasPresentationState(widget, "element-capture-selected")).toBe(true)
+    expect(hasPresentationState(widget, "gap-before-selected")).toBe(false)
     expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-capture")
     expect(feature.selectionCaret?.getAttribute("part")).not.toContain("selection-caret-gap")
   })
@@ -4894,13 +4895,13 @@ describe("document listeners", () => {
     await Promise.resolve()
     expect(feature.captureSelectedWidget).toBeNull()
     expect($.selectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected")
-    expect(widget).not.toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
 
     document.getSelection()!.setBaseAndExtent(paragraph.firstChild!, 1, paragraph.firstChild!, 4)
     document.dispatchEvent(new Event("selectionchange"))
     expect(document.getSelection()!.toString()).toBe("uts")
-    expect(paragraph).toHaveClass("◆text-selected")
+    expect(hasPresentationState(paragraph, "text-selected")).toBe(true)
     expect(editor.doc.domSelection).toMatchObject({anchorNode: paragraph.firstChild, anchorOffset: 1, focusNode: paragraph.firstChild, focusOffset: 4})
   })
   it("preserves a selection set by the widget's direct blur handler", async () => {
@@ -4929,7 +4930,7 @@ describe("document listeners", () => {
     second.focus()
     await Promise.resolve()
     expect(feature.captureSelectedWidget).toBe(widget)
-    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(true)
   })
   it("posts capture without a gap when a widget control projects the native selection above it", () => {
     const widget = document.createElement("interactive-widget")
@@ -4964,8 +4965,8 @@ describe("document listeners", () => {
 
     expect(feature.isCaptureSelection).toBe(false)
     expect($.selectedElement).toBe(paragraph)
-    expect(paragraph).toHaveClass("◆element-selected")
-    expect(widget).not.toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(paragraph, "element-selected")).toBe(true)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
   })
   it("downgrades capture to node selection when the widget breadcrumb is selected", () => {
     const widget = document.createElement("interactive-widget")
@@ -4976,18 +4977,18 @@ describe("document listeners", () => {
     button.focus()
     // Releasing a widget control can project its native caret above the host.
     button.addEventListener("blur", () => document.getSelection()!.setPosition(document.body, 0))
-    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(true)
 
     feature.actions.selectNode({type: "selectNode", path: [0]})
 
     expect($.selectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected")
-    expect(widget).not.toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
     expect(feature.isCaptureSelection).toBe(false)
     feature.passiveListeners.selectionchange!(new Event("selectionchange"))
     expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-node")
     expect(feature.selectionCaret?.getAttribute("part")).not.toContain("selection-caret-gap")
-    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
   })
   it("preserves a nested appendix control's own selection during presentation refreshes", () => {
     const paragraph = el("p", "Authored text")
@@ -5035,7 +5036,7 @@ describe("document listeners", () => {
     expect(event.defaultPrevented).toBe(false)
     expect(document.getSelection()?.anchorNode).toBe(text)
     expect(document.getSelection()?.anchorOffset).toBe(2)
-    expect(widget).toHaveClass("◆element-selected")
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
   })
   it("keeps a focused widget selected when its shadow caret projects to an outer gap", () => {
     const widget = document.createElement("editable-widget")
@@ -5051,8 +5052,8 @@ describe("document listeners", () => {
 
     feature.processSelection()
 
-    expect(widget).toHaveClass("◆element-selected")
-    expect(widget).not.toHaveClass("◆gap-before-selected")
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
+    expect(hasPresentationState(widget, "gap-before-selected")).toBe(false)
   })
   it("keeps an editor range out of a widget's shadow text", async () => {
     const before = el("p", "before")
@@ -5093,11 +5094,11 @@ describe("document listeners", () => {
     expect(constructed).not.toHaveBeenCalled()
     expect($.anchor).toBe(backward ? after : before)
     expect($.focus).toBe(backward ? before : after)
-    expect(widget).toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(widget, "atomic-range-selected")).toBe(true)
 
     $.move(before, 0)
     feature.processSelection()
-    expect(widget).not.toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(widget, "atomic-range-selected")).toBe(false)
   })
   it("does not construct widget copies while checking an arrow boundary", () => {
     const constructed = vi.fn()
@@ -5153,7 +5154,7 @@ describe("document listeners", () => {
 
     expect(event.defaultPrevented).toBe(true)
     expect($.selectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected")
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
   })
   it.each([
     ["ArrowRight", "before", -1],
@@ -5167,7 +5168,7 @@ describe("document listeners", () => {
     const text = paragraph.firstChild as Text
     $.move(text, textOffset)
     feature.processSelection()
-    expect(paragraph).toHaveClass("◆text-selected")
+    expect(hasPresentationState(paragraph, "text-selected")).toBe(true)
     const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
 
     document.dispatchEvent(event)
@@ -5175,8 +5176,8 @@ describe("document listeners", () => {
     expect(event.defaultPrevented).toBe(true)
     expect($.selectedElement).toBe(widget)
     expect($.isTextSelection).toBe(false)
-    expect(document.querySelectorAll(".◆text-selected")).toHaveLength(0)
-    expect(document.querySelectorAll(".◆element-selected")).toHaveLength(1)
+    expect(presentationStateElements(document, "text-selected")).toHaveLength(0)
+    expect(presentationStateElements(document, "element-selected")).toHaveLength(1)
   })
   it("keeps canonical SVG capture ranges when the browser reports no direction", () => {
     document.body.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0H100V100Z"/></svg>'
@@ -5189,7 +5190,7 @@ describe("document listeners", () => {
       for(let refresh = 0; refresh < 3; refresh++) {
         document.dispatchEvent(new Event("selectionchange"))
         expect(feature.captureSelectedElement).toBe(graphic)
-        expect(graphic).toHaveClass("◆element-capture-selected")
+        expect(hasPresentationState(graphic, "element-capture-selected")).toBe(true)
       }
       expect(setRange).not.toHaveBeenCalled()
       expect(selection.anchorNode).toBe(document.body)
@@ -5222,9 +5223,9 @@ describe("document listeners", () => {
 
       expect(setBaseAndExtent).toHaveBeenCalledWith(document.body, index, document.body, index + 1)
       expect($.selectedElement).toBe(widget)
-      expect(paragraph).not.toHaveClass("◆text-selected")
-      expect(widget).toHaveClass("◆element-selected")
-      expect(document.body).toHaveClass("◆node-selection-active")
+      expect(hasPresentationState(paragraph, "text-selected")).toBe(false)
+      expect(hasPresentationState(widget, "element-selected")).toBe(true)
+      expect(hasPresentationState(document.body, "node-selection-active")).toBe(true)
     }
     finally {
       setBaseAndExtent.mockRestore()
@@ -5295,7 +5296,7 @@ describe("document listeners", () => {
       expect($.focusOffset).toBe(backward ? 0 : 1)
       expect($.isBackwards).toBe(backward)
       expect($.selectedElement).toBe(element)
-      expect(element).toHaveClass("◆atomic-range-selected")
+      expect(hasPresentationState(element, "atomic-range-selected")).toBe(true)
       const overlays = editor.appendix.querySelectorAll('[part~="atomic-selection-overlay"]')
       expect(overlays).toHaveLength(1)
       expect(overlays[0].getRootNode()).toBe(editor.appendix)
@@ -5304,7 +5305,7 @@ describe("document listeners", () => {
       expect(press(reverse).defaultPrevented).toBe(true)
       expect($.isEmpty).toBe(true)
       expect($.anchorOffset).toBe(anchor)
-      expect(element).not.toHaveClass("◆atomic-range-selected", "◆element-selected")
+      expect(hasPresentationState(element, "atomic-range-selected") || hasPresentationState(element, "element-selected")).toBe(false)
       expect(editor.appendix.querySelector('[part~="atomic-selection-overlay"]')).toBeNull()
     }
   })
@@ -5325,14 +5326,14 @@ describe("document listeners", () => {
     }
 
     press(direction)
-    expect(backward ? video : widget).toHaveClass("◆atomic-range-selected")
-    expect(backward ? widget : video).not.toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(backward ? video : widget, "atomic-range-selected")).toBe(true)
+    expect(hasPresentationState(backward ? widget : video, "atomic-range-selected")).toBe(false)
     press(direction)
-    expect(widget).toHaveClass("◆atomic-range-selected")
-    expect(video).toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(widget, "atomic-range-selected")).toBe(true)
+    expect(hasPresentationState(video, "atomic-range-selected")).toBe(true)
     press(reverse)
-    expect(backward ? video : widget).toHaveClass("◆atomic-range-selected")
-    expect(backward ? widget : video).not.toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(backward ? video : widget, "atomic-range-selected")).toBe(true)
+    expect(hasPresentationState(backward ? widget : video, "atomic-range-selected")).toBe(false)
     expect(document.body.innerHTML).toContain("<!--keep-->")
   })
   it("preserves the backward anchor when focusing synchronously refreshes selection", () => {
@@ -5364,7 +5365,7 @@ describe("document listeners", () => {
     expect($.anchorOffset).toBe(offset)
     expect($.focus).toBe(video.parentNode)
     expect($.focusOffset).toBe(backward ? 0 : 1)
-    expect(video).toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(video, "atomic-range-selected")).toBe(true)
   })
   it.each([false, true])("extends through nested inline and section wrappers (backward: %s)", backward => {
     document.body.innerHTML = '<section><p><b>before</b><span><!--keep--><img src="data:,"></span><i>after</i></p></section>'
@@ -5379,7 +5380,7 @@ describe("document listeners", () => {
     expect($.anchorOffset).toBe(2)
     expect($.focus).toBe(image.parentNode)
     expect($.focusOffset).toBe(backward ? 1 : 2)
-    expect(image).toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(image, "atomic-range-selected")).toBe(true)
   })
   it("reads replaced leaves from the live DOM and cleans disconnected selection markers", () => {
     document.body.innerHTML = '<interactive-widget></interactive-widget><img src="data:,">'
@@ -5388,15 +5389,15 @@ describe("document listeners", () => {
     $.move(document.body, 2)
     const press = () => document.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowLeft", shiftKey: true, bubbles: true, cancelable: true}))
     press()
-    expect(image).toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(image, "atomic-range-selected")).toBe(true)
     const replacement = document.createElement("video")
     widget.replaceWith(replacement)
     press()
-    expect(replacement).toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(replacement, "atomic-range-selected")).toBe(true)
     expect($.anchorOffset).toBe(2)
     image.remove()
     feature.processSelection()
-    expect(image).not.toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(image, "atomic-range-selected")).toBe(false)
     expect($.anchorOffset).toBe(1)
     expect($.focusOffset).toBe(0)
     expect($.isBackwards).toBe(true)
@@ -5433,7 +5434,7 @@ describe("document listeners", () => {
     expect(event.defaultPrevented).toBe(false)
     expect(feature.isCaptureSelection).toBe(true)
     expect(feature.captureSelectedWidget).toBe(widget)
-    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(true)
   })
   it("shows the gap before the first body element on ArrowUp", () => {
     const p = el("p", "hello")
@@ -5443,7 +5444,7 @@ describe("document listeners", () => {
     expect(event.defaultPrevented).toBe(true)
     expect($.anchor).toBe(document.body)
     expect($.anchorOffset).toBe(0)
-    expect(p.classList.contains("◆gap-before-selected")).toBe(true)
+    expect(hasPresentationState(p, "gap-before-selected")).toBe(true)
   })
   it("moves up from the trailing body gap into the adjacent paragraph", () => {
     document.body.innerHTML = "<p>one one</p><!--keep--><p><span>two</span></p>"
@@ -5467,7 +5468,7 @@ describe("document listeners", () => {
     feature.processSelection()
     expect($.anchor).toBe(document.body)
     expect($.anchorOffset).toBe(0)
-    expect(p.classList.contains("◆gap-before-selected")).toBe(true)
+    expect(hasPresentationState(p, "gap-before-selected")).toBe(true)
   })
   it("clamps a selection after the body to its end", () => {
     el("p", "hello")
@@ -5482,7 +5483,7 @@ describe("document listeners", () => {
     feature.processSelection()
     expect($.isEmpty).toBe(false)
     expect($.isGapSelection).toBe(false)
-    expect(p.classList.contains("◆gap-before-selected")).toBe(false)
+    expect(hasPresentationState(p, "gap-before-selected")).toBe(false)
   })
   it("selects the whole body on Ctrl+A", () => {
     const p = el("p", "hello")
@@ -5512,7 +5513,7 @@ describe("document listeners", () => {
     expect($.includesNode(float)).toBe(true)
     expect($.includesNode(widget)).toBe(true)
     expect($.excludedFlowElements).toEqual([])
-    expect(document.querySelector(".◆flow-excluded")).toBeNull()
+    expect((presentationStateElements(document, "flow-excluded")[0] ?? null)).toBeNull()
     expect($.copy().textContent).toBe("beforefloatingnestedafter")
     vi.restoreAllMocks()
   })
@@ -5535,7 +5536,7 @@ describe("explicit section selection lifecycle", () => {
     const slide = document.querySelector("section")!
     expect(feature.selectSectionElement(slide)).toBe(false)
     expect(feature.selectedSectionElement).toBeNull()
-    expect(slide).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(slide, "element-selected")).toBe(false)
   })
 
   it("keeps selection on replacement sections and only clears the expected owner", () => {
@@ -5554,17 +5555,17 @@ describe("explicit section selection lifecycle", () => {
     expect(feature.selectedSectionElement).toBe(replacement)
     feature.clearSelectedSection(replacement)
     expect(feature.selectedSectionElement).toBeNull()
-    expect(replacement).not.toHaveClass("◆element-selected")
+    expect(hasPresentationState(replacement, "element-selected")).toBe(false)
   })
 
   it("hovers a section through its path and clears the preview for a null path", () => {
     document.body.innerHTML = "<section><p>hello</p></section>"
     const section = document.querySelector("section")!
     feature.actions.hoverSection({type: "hoverSection", path: [0]})
-    expect(section).toHaveClass("◆element-hovered")
+    expect(hasPresentationState(section, "element-hovered")).toBe(true)
     expect(editor.toHTML(true)).not.toContain("◆element-hovered")
     feature.actions.hoverSection({type: "hoverSection", path: null})
-    expect(section).not.toHaveClass("◆element-hovered")
+    expect(hasPresentationState(section, "element-hovered")).toBe(false)
     expect(feature.hoverCaret?.getAttribute("part")).not.toContain("hover-caret-transformed")
     expect(feature.hoverCaret?.style.transform).toBe("")
   })
@@ -5583,8 +5584,8 @@ it("toggles an item in a freeform multi-selection on modifier-click", () => {
     bubbles: true, cancelable: true, button: 0, ctrlKey: true, metaKey: true,
   }))
   expect($.selectedElements).toEqual([second])
-  expect(first).not.toHaveClass("◆element-selected")
-  expect(second).toHaveClass("◆element-selected")
+  expect(hasPresentationState(first, "element-selected")).toBe(false)
+  expect(hasPresentationState(second, "element-selected")).toBe(true)
   expect(editor.toHTML(true)).not.toContain("◆element-selected")
 })
 
@@ -5621,7 +5622,7 @@ describe("divider selection", () => {
 
     expect(event.defaultPrevented).toBe(true)
     expect($.selectedElement).toBe(divider)
-    expect(divider).toHaveClass("◆element-selected")
+    expect(hasPresentationState(divider, "element-selected")).toBe(true)
     expect(feature.selectionCaret?.getRootNode()).toBe(editor.appendix)
     expect(editor.toHTML(true)).toContain('<hr title="break">')
     expect(editor.toHTML(true)).not.toContain("◆")
@@ -5654,8 +5655,8 @@ describe("divider selection", () => {
       expect($.isGapSelection).toBe(true)
       expect($.anchor).toBe(parent)
       expect($.anchorOffset).toBe(index + (placement === "after" ? 1 : 0))
-      expect(divider).toHaveClass(`◆gap-${placement}-selected`)
-      expect(divider).not.toHaveClass("◆element-selected")
+      expect(hasPresentationState(divider, `gap-${placement}-selected`)).toBe(true)
+      expect(hasPresentationState(divider, "element-selected")).toBe(false)
     }
   })
 
@@ -5749,7 +5750,7 @@ describe("selection invariants", () => {
       value: (_x: number, y: number) => y < 60 || y > 120 ? [paragraph] : [y < 88 ? first : second, content, paragraph]})
     $.move(start, 2)
     editor.features.dialog.refresh()
-    expect(content).toHaveClass("◆popup-visible")
+    expect(hasPresentationState(content, "popup-visible")).toBe(true)
     const startY = direction === "before" ? 100 : 75
     const insideY = direction === "before" ? 75 : 100
     const outsideY = direction === "before" ? 25 : 150
@@ -5768,12 +5769,12 @@ describe("selection invariants", () => {
       expect($.anchor).toBe(start)
       expect(content.contains($.focus)).toBe(true)
       editor.features.dialog.refresh()
-      expect(content).toHaveClass("◆popup-visible")
+      expect(hasPresentationState(content, "popup-visible")).toBe(true)
     }
     pointer(document.body, "pointerup", 70, outsideY)
     editor.features.dialog.refresh()
     expect(content.contains($.focus)).toBe(true)
-    expect(content).toHaveClass("◆popup-visible")
+    expect(hasPresentationState(content, "popup-visible")).toBe(true)
   })
 
   it.each([["before", 18, 0], ["after", 46, 1]] as const)("clicks the paragraph gap %s an external popup", (placement, y, offset) => {
@@ -5791,7 +5792,7 @@ describe("selection invariants", () => {
     expect($.anchor).toBe(document.body)
     expect($.anchorOffset).toBe(offset)
     expect($.isGapSelection).toBe(true)
-    expect(paragraph).toHaveClass(`◆gap-${placement}-selected`)
+    expect(hasPresentationState(paragraph, `gap-${placement}-selected`)).toBe(true)
     if(placement === "after") {
       pointer(content, "pointerdown", 110, 60)
       pointer(content, "pointerup", 110, 60)
@@ -5816,8 +5817,8 @@ describe("selection invariants", () => {
     expect($.anchor).toBe(document.body)
     expect($.anchorOffset).toBe(1)
     expect($.isGapSelection).toBe(true)
-    expect(paragraph).toHaveClass("◆gap-after-selected")
-    expect(content).not.toHaveClass("◆popup-visible")
+    expect(hasPresentationState(paragraph, "gap-after-selected")).toBe(true)
+    expect(hasPresentationState(content, "popup-visible")).toBe(false)
   })
 
   it.each([["direct", "ltr"], ["nested", "ltr"], ["direct", "rtl"]] as const)("clicks before and after a popup-only paragraph (%s, %s)", (structure, direction) => {
@@ -5842,9 +5843,9 @@ describe("selection invariants", () => {
       expect($.isTextSelection).toBe(true)
       expect($.isGapSelection).toBe(false)
       const left = x < 140
-      expect(toggle.closest(".ww-popup")).toHaveClass(`◆popup-caret-outside-${left ? "left" : "right"}`)
+      expect(hasPresentationState(toggle.closest(".ww-popup"), `popup-caret-outside-${left ? "left" : "right"}`)).toBe(true)
       editor.features.dialog.refresh()
-      expect(content).not.toHaveClass("◆popup-visible")
+      expect(hasPresentationState(content, "popup-visible")).toBe(false)
     }
     $.selectElement(toggle)
     editor.features.dialog.refresh()
@@ -5916,10 +5917,10 @@ describe("selection invariants", () => {
     expect($.anchor).toBe(paragraph)
     expect($.focus).toBe(document.body)
     expect($.focusOffset).toBe(2)
-    expect(image).toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(image, "atomic-range-selected")).toBe(true)
     expect(editor.appendix.querySelectorAll('[part~="atomic-selection-overlay"]')).toHaveLength(1)
-    expect(paragraph).not.toHaveClass("◆empty-selected")
-    expect(document.body).not.toHaveClass("◆node-selection-active")
+    expect(hasPresentationState(paragraph, "empty-selected")).toBe(false)
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(false)
     pointer(document.body, "pointerup", 20, 125)
     expect(feature.isInDragSelection).toBe(false)
   })
@@ -5946,13 +5947,13 @@ describe("selection invariants", () => {
       expect($.anchor).toBe(paragraph)
       expect($.focus).toBe(document.body)
       expect($.focusOffset).toBe(mediaOffset)
-      expect(media).toHaveClass("◆atomic-range-selected")
+      expect(hasPresentationState(media, "atomic-range-selected")).toBe(true)
       expect(editor.appendix.querySelectorAll('[part~="atomic-selection-overlay"]')).toHaveLength(1)
       expect(editor.features.transformation.target).toBeNull()
     }
     pointer(document.body, "pointermove", 20, startY)
     expect($.focus).toBe(paragraph)
-    expect(media).not.toHaveClass("◆atomic-range-selected")
+    expect(hasPresentationState(media, "atomic-range-selected")).toBe(false)
     expect(editor.appendix.querySelector('[part~="atomic-selection-overlay"]')).toBeNull()
     pointer(document.body, "pointerup", 20, startY)
   })
@@ -5986,7 +5987,7 @@ describe("selection invariants", () => {
       relay("pointerup")
       expect($.anchor).toBe(text)
       expect($.anchorOffset).toBe(2)
-      expect(document.body).toHaveClass("◆touch-caret-visible")
+      expect(hasPresentationState(document.body, "touch-caret-visible")).toBe(true)
       relay("pointerdown")
       relay("pointermove", 40)
       expect($.anchorOffset).toBe(2)
@@ -6030,18 +6031,18 @@ describe("selection invariants", () => {
         touch(paragraph, "pointerdown", 30 + tap * 10)
         touch(paragraph, "pointerup", 30 + tap * 10)
         document.dispatchEvent(new Event("selectionchange"))
-        expect(feature.selectionCaret).toHaveClass("◆selection-caret-text")
+        expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-text")
         expect(feature.selectionCaret!.getAttribute("part")).not.toContain("selection-caret-hidden")
-        expect(document.body).toHaveClass("◆touch-caret-visible")
+        expect(hasPresentationState(document.body, "touch-caret-visible")).toBe(true)
       }
       pointer(paragraph, "pointerdown", 20, 30)
       pointer(paragraph, "pointerup", 20, 30)
-      expect(document.body).not.toHaveClass("◆touch-caret-visible")
+      expect(hasPresentationState(document.body, "touch-caret-visible")).toBe(false)
       expect(feature.selectionCaret!.getAttribute("part")).toContain("selection-caret-hidden")
       touch(paragraph, "pointerdown")
       touch(paragraph, "pointerup")
       feature.disable()
-      expect(document.body).not.toHaveClass("◆touch-caret-visible")
+      expect(hasPresentationState(document.body, "touch-caret-visible")).toBe(false)
       expect(feature.selectionCaret).toBeNull()
     })
 
@@ -6056,8 +6057,8 @@ describe("selection invariants", () => {
       expect($.anchor).toBe(before)
       expect($.focus).toBe(after)
       expect(document.getSelection()!.toString()).toBe("llowo")
-      expect(document.body).toHaveClass("◆selection-dragging")
-      expect(document.body).not.toHaveClass("◆touch-caret-visible")
+      expect(feature.isInDragSelection).toBe(true)
+      expect(hasPresentationState(document.body, "touch-caret-visible")).toBe(false)
       touch(paragraph, ending, 80)
       expect(feature.isInDragSelection).toBe(false)
       expect(document.body).not.toHaveClass("◆selection-dragging")
@@ -6212,8 +6213,8 @@ describe("selection invariants", () => {
         expect($.isGapSelection).toBe(true)
         expect($.anchor).toBe(parent)
         expect($.anchorOffset).toBe(index + (placement === "after" ? 1 : 0))
-        expect(list).toHaveClass(`◆gap-${placement}-selected`)
-        expect(item).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+        expect(hasPresentationState(list, `gap-${placement}-selected`)).toBe(true)
+        expect(hasPresentationState(item, "gap-before-selected") || hasPresentationState(item, "gap-after-selected")).toBe(false)
       }
     }
   }, 30_000)
@@ -6248,7 +6249,7 @@ describe("selection invariants", () => {
     expect($.isGapSelection).toBe(true)
     expect($.anchor).toBe(parent)
     expect($.anchorOffset).toBe(index + (placement === "after" ? 1 : 0))
-    expect(divider).toHaveClass(`◆gap-${placement}-selected`)
+    expect(hasPresentationState(divider, `gap-${placement}-selected`)).toBe(true)
   })
 
   it("restores a visible caret when an active frame has no native range", () => {
@@ -6267,7 +6268,7 @@ describe("selection invariants", () => {
     expect($.anchor).toBe(last)
     expect($.focusOffset).toBe(1)
     expect(feature.selectionCaret?.getAttribute("part") ?? "selection-caret-hidden").toContain("selection-caret-hidden")
-    expect(document.body).not.toHaveClass("◆node-selection-active", "◆gap-caret-visible")
+    expect(hasPresentationState(document.body, "node-selection-active") || hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
   })
 
   it("extends a text drag both ways and restores the exact text point", () => {
@@ -6293,30 +6294,30 @@ describe("selection invariants", () => {
     paragraph.replaceWith(section)
     section.append(paragraph)
     pointer(paragraph, "pointerdown", 20, 25)
-    expect(paragraph).toHaveClass("◆pointer-hovered")
-    expect(section).toHaveClass("◆pointer-hovered")
+    expect(hasPresentationState(paragraph, "pointer-hovered")).toBe(true)
+    expect(hasPresentationState(section, "pointer-hovered")).toBe(true)
     expect(editor.toHTML(true)).not.toContain("◆pointer-hovered")
     const widget = document.querySelector("second-widget")!
     vi.spyOn(document, "elementFromPoint").mockReturnValue(widget)
     pointer(document.body, "pointermove", 21, 25)
-    expect(widget).toHaveClass("◆pointer-hovered")
-    expect(paragraph).not.toHaveClass("◆pointer-hovered")
-    expect(section).not.toHaveClass("◆pointer-hovered")
+    expect(hasPresentationState(widget, "pointer-hovered")).toBe(true)
+    expect(hasPresentationState(paragraph, "pointer-hovered")).toBe(false)
+    expect(hasPresentationState(section, "pointer-hovered")).toBe(false)
     // Cleanup also reaches elements removed by another editing source.
     widget.remove()
     pointer(document.body, ending, 21, 25)
-    expect(widget).not.toHaveClass("◆pointer-hovered")
-    expect(document.querySelector(".◆pointer-hovered")).toBeNull()
+    expect(hasPresentationState(widget, "pointer-hovered")).toBe(false)
+    expect((presentationStateElements(document, "pointer-hovered")[0] ?? null)).toBeNull()
   })
 
   it.each(["blur", "disable"])("clears captured hover on %s", ending => {
     const paragraph = textDocument()
     hitTest()
     pointer(paragraph, "pointerdown", 20, 25)
-    expect(paragraph).toHaveClass("◆pointer-hovered")
+    expect(hasPresentationState(paragraph, "pointer-hovered")).toBe(true)
     if(ending === "blur") window.dispatchEvent(new Event("blur"))
     else feature.disable()
-    expect(paragraph).not.toHaveClass("◆pointer-hovered")
+    expect(hasPresentationState(paragraph, "pointer-hovered")).toBe(false)
   })
 
   it.each(["left", "right"] as const)("keeps the %s float cutout while extending a captured text selection", async side => {
@@ -6349,16 +6350,16 @@ describe("selection invariants", () => {
 
     hit.mockReturnValue(mark)
     document.body.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 17, buttons: 1, clientX: 30, clientY: 25}))
-    expect(mark).toHaveClass("◆pointer-hovered")
+    expect(hasPresentationState(mark, "pointer-hovered")).toBe(true)
     expect(caret.getAttribute("part")).toContain("hover-caret-floats")
     hit.mockReturnValue(next)
     document.body.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 17, buttons: 1, clientX: 30, clientY: 100}))
-    expect(next).toHaveClass("◆pointer-hovered")
+    expect(hasPresentationState(next, "pointer-hovered")).toBe(true)
     expect(caret.getAttribute("part")).not.toContain("hover-caret-floats")
     expect(caret.querySelector('[part~="hover-float-outline"]')).toBeNull()
 
     document.body.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 17}))
-    expect(document.body.querySelector(".◆pointer-hovered")).toBeNull()
+    expect((presentationStateElements(document.body, "pointer-hovered")[0] ?? null)).toBeNull()
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
@@ -6378,8 +6379,8 @@ describe("selection invariants", () => {
     document.body.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 18, buttons: 1, clientX: 21, clientY: 25}))
     if(ending === "disable") feature.disable()
     else document.body.dispatchEvent(new PointerEvent(ending, {bubbles: true, pointerId: 18}))
-    expect(paragraph).not.toHaveClass("◆pointer-hovered")
-    expect(document.querySelector(".◆pointer-hovered")).toBeNull()
+    expect(hasPresentationState(paragraph, "pointer-hovered")).toBe(false)
+    expect((presentationStateElements(document, "pointer-hovered")[0] ?? null)).toBeNull()
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
@@ -6420,7 +6421,7 @@ describe("selection invariants", () => {
     expect(down.defaultPrevented).toBe(false)
     expect(mouse.defaultPrevented).toBe(false)
     expect(start.defaultPrevented).toBe(false)
-    expect(document.body).not.toHaveClass("◆selection-dragging", "◆gap-caret-visible", "◆node-selection-active")
+    expect(hasPresentationState(document.body, "gap-caret-visible") || hasPresentationState(document.body, "node-selection-active")).toBe(false)
     pointer(paragraph, "pointermove", 40, 25)
     const dragStart = new Event("selectstart", {bubbles: true, cancelable: true})
     paragraph.dispatchEvent(dragStart)
@@ -6496,7 +6497,7 @@ describe("selection invariants", () => {
       expect($.anchor).toBe(anchor); expect($.anchorOffset).toBe(anchorOffset)
       expect($.focus).toBe(focus); expect($.focusOffset).toBe(focusOffset)
       expect(document.body).not.toHaveClass("◆selection-dragging")
-      expect(document.querySelector(".◆pointer-hovered")).toBeNull()
+      expect((presentationStateElements(document, "pointer-hovered")[0] ?? null)).toBeNull()
       expect(editor.toHTML(true)).toBe(authored)
     }
   })
@@ -6581,7 +6582,7 @@ describe("selection invariants", () => {
     expect($.anchor).toBe(details)
     expect($.anchorOffset).toBe(1)
     expect($.isGapSelection).toBe(true)
-    expect(summary).toHaveClass("◆gap-after-selected")
+    expect(hasPresentationState(summary, "gap-after-selected")).toBe(true)
     expect(editor.schema.findValidTypesToInsert()).toContain("p")
     details.dispatchEvent(new KeyboardEvent("keydown", {key: "x", bubbles: true, cancelable: true}))
     expect(details.children).toHaveLength(3)
@@ -6609,10 +6610,10 @@ describe("selection invariants", () => {
     expect($.detailsGap).toEqual({element: details, placement: "after"})
     expect(details.open).toBe(false)
     expect($.selectedElement).toBeUndefined()
-    expect(details).toHaveClass("◆gap-after-selected")
+    expect(hasPresentationState(details, "gap-after-selected")).toBe(true)
     expect(editor.toHTML(true)).toBe(authored)
     feature.disable()
-    expect(details).not.toHaveClass("◆gap-after-selected")
+    expect(hasPresentationState(details, "gap-after-selected")).toBe(false)
   })
 
   it("keeps the corrected empty paragraph position when clicking the details indentation", () => {
@@ -6628,7 +6629,7 @@ describe("selection invariants", () => {
     pointer(details, "pointerup", 30, 170)
     expect($.anchor).toBe(paragraph)
     expect($.anchorOffset).toBe(0)
-    expect(paragraph).toHaveClass("◆empty-selected")
+    expect(hasPresentationState(paragraph, "empty-selected")).toBe(true)
   })
 
   it("does not restore a prevented gap click after pointer cancellation", () => {
@@ -6685,7 +6686,7 @@ describe("selection invariants", () => {
     pointer(paragraph, "pointermove", 0, 10)
     expect($.isGapSelection).toBe(true)
     expect($.anchorOffset).toBe(0)
-    expect(paragraph).toHaveClass("◆gap-before-selected")
+    expect(hasPresentationState(paragraph, "gap-before-selected")).toBe(true)
   })
 
   it("extends a text selection into a gap instead of ignoring the pointer", () => {
@@ -6803,7 +6804,7 @@ describe("block and contentful widget gaps", () => {
     feature.processSelection()
     expect($.anchor).toBe(paragraph)
     expect($.isGapSelection).toBe(false)
-    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
@@ -6857,7 +6858,7 @@ describe("block and contentful widget gaps", () => {
       expect(press(key).defaultPrevented).toBe(true)
       expect($.anchor).toBe(element.parentNode)
       expect($.isGapSelection).toBe(true)
-      expect(element).toHaveClass(`◆gap-${placement}-selected`)
+      expect(hasPresentationState(element, `gap-${placement}-selected`)).toBe(true)
       expect(feature.selectionCaret?.getAttribute("part")).toContain("gap-caret")
     }
     expect(editor.toHTML(true)).not.toContain("◆")
@@ -6877,7 +6878,7 @@ describe("block and contentful widget gaps", () => {
       $.selectRange(point!.node, point!.offset)
       feature.processSelection()
       expect($.isGapSelection).toBe(true)
-      expect(table).toHaveClass(`◆gap-${placement}-selected`)
+      expect(hasPresentationState(table, `gap-${placement}-selected`)).toBe(true)
     }
     finally {
       if(caret) Object.defineProperty(document, "caretPositionFromPoint", caret)
@@ -6924,7 +6925,7 @@ describe("block and contentful widget gaps", () => {
       expect(point).toMatchObject({node: document.body, offset: 3, overrideNative: true})
       $.selectRange(point!.node, point!.offset)
       feature.processSelection()
-      expect(table).toHaveClass("◆gap-after-selected")
+      expect(hasPresentationState(table, "gap-after-selected")).toBe(true)
       expect($.isGapSelection).toBe(true)
     }
     finally {
@@ -6943,7 +6944,7 @@ describe("block and contentful widget gaps", () => {
     $.selectGap(block, "before")
     feature.processSelection()
     expect($.isGapSelection).toBe(true)
-    expect(block).toHaveClass("◆gap-before-selected")
+    expect(hasPresentationState(block, "gap-before-selected")).toBe(true)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
@@ -6975,12 +6976,12 @@ describe("list gap selection", () => {
       $.move(text, backward ? 0 : -1)
       expect(press(key).defaultPrevented).toBe(true)
       expect($.listGap).toEqual({element: list, placement: backward ? "before" : "after"})
-      expect(list).toHaveClass(`◆gap-${backward ? "before" : "after"}-selected`)
+      expect(hasPresentationState(list, `gap-${backward ? "before" : "after"}-selected`)).toBe(true)
       expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-gap")
       expect(press(backward ? "ArrowRight" : "ArrowLeft").defaultPrevented).toBe(true)
       expect($.anchor).toBe(text)
       expect($.anchorOffset).toBe(backward ? 0 : 4)
-      expect(list).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+      expect(hasPresentationState(list, "gap-before-selected") || hasPresentationState(list, "gap-after-selected")).toBe(false)
     }
     expect(editor.toHTML(true)).not.toContain("◆")
   })
@@ -7001,7 +7002,7 @@ describe("list gap selection", () => {
       $.selectGap(list, placement)
       feature.processSelection()
       expect($.isGapSelection).toBe(true)
-      expect(list).toHaveClass(`◆gap-${placement}-selected`)
+      expect(hasPresentationState(list, `gap-${placement}-selected`)).toBe(true)
     }
   })
 
@@ -7041,7 +7042,7 @@ describe("list gap selection", () => {
     list.replaceWith(document.createElement("p"))
     expect(() => press("ArrowRight")).not.toThrow()
     feature.processSelection()
-    expect(list).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+    expect(hasPresentationState(list, "gap-before-selected") || hasPresentationState(list, "gap-after-selected")).toBe(false)
   })
 
   it("leaves a widget at a list edge atomic while navigating to the outer gap", () => {
@@ -7060,10 +7061,10 @@ describe("list gap selection", () => {
     const list = mount("ul")
     $.selectGap(list, "after")
     feature.processSelection()
-    expect(list).toHaveClass("◆gap-after-selected")
+    expect(hasPresentationState(list, "gap-after-selected")).toBe(true)
     list.replaceWith(document.createElement("p"))
     feature.processSelection()
-    expect(list).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+    expect(hasPresentationState(list, "gap-before-selected") || hasPresentationState(list, "gap-after-selected")).toBe(false)
     expect($.listGap).toBeNull()
     expect(editor.toHTML(true)).not.toContain("◆")
   })
@@ -7109,7 +7110,7 @@ describe("disclosure gap navigation", () => {
     $.move(text, backward ? 0 : -1)
     expect(press(key).defaultPrevented).toBe(true)
     expect($.detailsGap).toEqual({element: details, placement: backward ? "before" : "after"})
-    expect(details).toHaveClass(backward ? "◆gap-before-selected" : "◆gap-after-selected")
+    expect(hasPresentationState(details, backward ? "gap-before-selected" : "gap-after-selected")).toBe(true)
     expect(details.open).toBe(false)
     expect(editor.toHTML(true)).not.toContain("◆")
     expect(editor.appendix.querySelector('[part~="gap-caret"]')).not.toBeNull()
@@ -7146,7 +7147,7 @@ describe("disclosure gap navigation", () => {
       $.selectGap(details, placement)
       feature.processSelection()
       expect($.isGapSelection).toBe(true)
-      expect(details).toHaveClass(`◆gap-${placement}-selected`)
+      expect(hasPresentationState(details, `gap-${placement}-selected`)).toBe(true)
     }
   })
 
@@ -7190,7 +7191,7 @@ describe("disclosure gap navigation", () => {
     $.move(paragraph)
     feature.processSelection()
     expect($.isGapSelection).toBe(false)
-    expect(paragraph).toHaveClass("◆empty-selected")
+    expect(hasPresentationState(paragraph, "empty-selected")).toBe(true)
   })
 
   it("only exits a multiline summary vertically from its first or last line", () => {
@@ -7231,7 +7232,7 @@ describe("disclosure gap navigation", () => {
 
 
 describe("caption numbering editing preview", () => {
-  const preview = (caption: Element) => caption.classList.contains("◆caption-placeholder")
+  const preview = (caption: Element) => hasPresentationState(caption, "caption-placeholder")
 
   it.each(["caret", "range", "content element", "figure element"])("previews an empty caption for a %s selection in the figure", selection => {
     document.body.innerHTML = '<figure><p>Content</p><figcaption></figcaption></figure><p>Other</p>'
@@ -7245,15 +7246,15 @@ describe("caption numbering editing preview", () => {
     else $.selectElement(selection === "figure element" ? figure : content)
     feature.processSelection(undefined, {scrollIntoView: false})
     expect(preview(caption)).toBe(true)
-    expect(caption).not.toHaveClass("◆caption-editing")
+    expect(hasPresentationState(caption, "caption-editing")).toBe(false)
     expect(editor.toHTML(true)).not.toContain("◆")
     $.move(caption, 0)
     feature.processSelection(undefined, {scrollIntoView: false})
-    expect(caption).toHaveClass("◆caption-editing")
+    expect(hasPresentationState(caption, "caption-editing")).toBe(true)
     $.move(document.body.lastElementChild!.firstChild!, 1)
     feature.processSelection(undefined, {scrollIntoView: false})
     expect(preview(caption)).toBe(false)
-    expect(caption).not.toHaveClass("◆caption-editing")
+    expect(hasPresentationState(caption, "caption-editing")).toBe(false)
   })
 
   it.each(["figcaption", "caption"])("does not grey a populated %s while editing nested text", tag => {
@@ -7289,20 +7290,20 @@ it.each(["", "<br>", "<p><b><br></b></p>", " "])("limits the caption placeholder
   const caption = document.querySelector("figcaption")!
   $.move(caption.querySelector("b") ?? caption, 0)
   feature.processSelection(undefined, {scrollIntoView: false})
-  expect(caption).toHaveClass("◆caption-placeholder")
+  expect(hasPresentationState(caption, "caption-placeholder")).toBe(true)
   expect(editor.toHTML(true)).not.toContain("◆")
   caption.textContent = "Typed caption"
   $.move(caption.firstChild!, 2)
   feature.processSelection(undefined, {scrollIntoView: false})
-  expect(caption).not.toHaveClass("◆caption-placeholder")
+  expect(hasPresentationState(caption, "caption-placeholder")).toBe(false)
   caption.replaceChildren(document.createElement("br"))
   $.move(caption, 0)
   feature.processSelection(undefined, {scrollIntoView: false})
-  expect(caption).toHaveClass("◆caption-placeholder")
-  expect(feature.selectionCaret?.classList.contains("◆selection-caret-gap") ?? false).toBe(false)
+  expect(hasPresentationState(caption, "caption-placeholder")).toBe(true)
+  expect(feature.selectionCaret?.matches('[part~="selection-caret-gap"]') ?? false).toBe(false)
   $.move(document.body.lastElementChild!.firstChild!, 1)
   feature.processSelection(undefined, {scrollIntoView: false})
-  expect(caption).not.toHaveClass("◆caption-placeholder")
+  expect(hasPresentationState(caption, "caption-placeholder")).toBe(false)
 })
 
 it("does not consider a caption containing a widget or image empty", () => {
@@ -7311,7 +7312,7 @@ it("does not consider a caption containing a widget or image empty", () => {
     const caption = document.querySelector("figcaption")!
     $.move(caption, 0)
     feature.processSelection(undefined, {scrollIntoView: false})
-    expect(caption).not.toHaveClass("◆caption-placeholder")
+    expect(hasPresentationState(caption, "caption-placeholder")).toBe(false)
   }
 })
 

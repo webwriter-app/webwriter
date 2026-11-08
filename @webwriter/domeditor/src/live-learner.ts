@@ -3,6 +3,8 @@ import {editorHostOrigin} from "./frame-origins"
 import {openFrameLinksInNewTabs} from "./frame-links"
 import {LivePreview} from "./live-preview"
 import type {LiveSession} from "./live-session"
+import {widgetLookupForTags} from "./editor-artifacts"
+import {packageWidgetSchemaDefinitions} from "./packages"
 
 function showSessionEnded(root: Document) {
   const appendix = root.body.shadowRoot ?? root.body.attachShadow({mode: "open"})
@@ -61,7 +63,9 @@ function showSessionEnded(root: Document) {
 export function connectLiveLearner(session: LiveSession, root: Document = document, options: {rendered?: boolean} = {}) {
   const view = root.defaultView
   if(!view) throw new Error("A learner document needs a browser window")
-  const preview = new LivePreview()
+  const entry = root.getElementById("webwriter-live-learner")
+  let isWidget = widgetLookupForTags((entry?.getAttribute("data-widget-tags") ?? "").split(" "))
+  const preview = new LivePreview(element => isWidget(element))
   let rendered = Boolean(options.rendered)
   let disconnectLinks: (() => void) | undefined
   let removeSessionEnded: (() => void) | undefined
@@ -85,11 +89,13 @@ export function connectLiveLearner(session: LiveSession, root: Document = docume
     }
     if(rendered || !session.baseHTML) return
     const source = new DOMParser().parseFromString(session.baseHTML, "text/html")
+    const dependencies = session.previewDependencies ?? {packages: [], importMap: null}
+    isWidget = widgetLookupForTags(packageWidgetSchemaDefinitions(dependencies.packages).map(widget => widget.tagName))
     const html = previewFrameHTML(source, {
       bridgeNonce: "", entryURL: "", standalone: true,
       hostOrigin: editorHostOrigin(view.location), frameOrigin: view.location.origin,
       executeScripts: import.meta.env.MODE !== "test",
-      ...session.previewDependencies ?? {packages: [], importMap: null},
+      ...dependencies,
     })
     const prepared = new DOMParser().parseFromString(html, "text/html")
     if(!prepared.head.querySelector('meta[name="viewport"]')) {

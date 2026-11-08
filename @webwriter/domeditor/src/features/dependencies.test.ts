@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
+import {isEditorOnlyNode} from "../editor-artifacts"
 import {loadWidgetsMessage} from "../editor-bridge"
 import {packageCdnUrl, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import {DependencyFeature} from "./dependencies"
@@ -40,7 +41,7 @@ const demoPackage: WebWriterPackage = {
 }
 
 afterEach(() => {
-  document.head.querySelectorAll(".◆editor-only, script[src], link[rel='stylesheet']").forEach(element => element.remove())
+  Array.from(document.head.children).filter(element => isEditorOnlyNode(element) || element.matches("script[src], link[rel='stylesheet']")).forEach(element => element.remove())
   document.body.replaceChildren()
   globalThis.DOMEDITOR_PACKAGE_ITEMS = []
   vi.restoreAllMocks()
@@ -66,7 +67,7 @@ describe("DependencyFeature", () => {
     await request(demoPackage)
     const liveStyle = document.querySelector<HTMLStyleElement>("#webwriter-widget-sizing")!
     expect(liveStyle.nonce).toBe(editor.trustedScriptNonce)
-    expect(liveStyle.classList.contains("◆editor-only")).toBe(true)
+    expect(isEditorOnlyNode(liveStyle)).toBe(true)
     expect(liveStyle.textContent).toContain("webwriter-demo")
     const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
     const savedStyle = saved.querySelector<HTMLStyleElement>("#webwriter-widget-sizing")!
@@ -489,7 +490,7 @@ describe("DependencyFeature", () => {
     it("collects test-update events until the run ends", async () => {
       const editor = new DOMEditor()
       const {result, frame, post} = start(editor)
-      expect(frame.srcdoc).toMatch(/<script id="webwriter-scoped-registry" class="◆ ◆editor-only" nonce="[^"]+">/)
+      expect(frame.srcdoc).toMatch(/<script id="webwriter-scoped-registry" nonce="[^"]+">/)
       expect(frame.srcdoc.indexOf("webwriter-scoped-registry")).toBeLessThan(frame.srcdoc.indexOf('src="https://cdn.test/tests/basics.js"'))
       expect(frame.srcdoc).toContain('src="https://cdn.test/tests/basics.js"')
       post({type: "beforeAll"})

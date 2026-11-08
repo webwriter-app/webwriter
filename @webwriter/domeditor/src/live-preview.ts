@@ -1,7 +1,7 @@
 import {serializeDoctype} from "./serialization"
 import {nodeAtPath, pathFromNode} from "./utility"
 import {stripActiveContent} from "./active-content"
-import {clearEditorArtifacts} from "./editor-artifacts"
+import {clearEditorArtifacts, copyEditorArtifactState, editorWidgetLookup, registerFrameArtifacts, type WidgetLookup} from "./editor-artifacts"
 import type {LiveSession, LiveSessionRegion as SessionRegion, LiveSessionWidgetState} from "./live-session"
 import type {LiveWidgetAggregateInput, WidgetDataSnapshot} from "./widget-aggregate"
 import {WidgetAggregateViews} from "./widget-aggregate-view"
@@ -74,6 +74,8 @@ export class LivePreview {
   private data = new WeakMap<Element, {signature: string; snapshot: WidgetDataSnapshot}>()
   private aggregateViews?: WidgetAggregateViews
   private recorder?: IncrementalPreviewRecorder
+
+  constructor(private readonly isWidget?: WidgetLookup) {}
 
   showAggregates(previewDocument: Document, inputs: LiveWidgetAggregateInput[]) {
     this.aggregateViews ??= new WidgetAggregateViews(previewDocument)
@@ -164,15 +166,18 @@ export class LivePreview {
       if(path && !this.widgetPaths.has(widget)) this.widgetPaths.set(widget, path)
       const data = this.captureWidgetData(widget)
       const snapshot = widget.cloneNode(true) as Element
-      clearEditorArtifacts(snapshot)
+      copyEditorArtifactState(widget, snapshot)
+      clearEditorArtifacts(snapshot, [], editorWidgetLookup(previewDocument) ?? this.isWidget)
       return path ? [{...(widget.id ? {id: widget.id} : {}), path, html: snapshot.outerHTML,
         ...(data ? {data} : {state: this.captureWidgetPublicState(widget)})}] : []
     })
   }
 
   private previewHTML(previewDocument: Document) {
+    registerFrameArtifacts(previewDocument)
     const source = previewDocument.cloneNode(true) as Document
-    clearEditorArtifacts(source)
+    copyEditorArtifactState(previewDocument, source)
+    clearEditorArtifacts(source, [], editorWidgetLookup(previewDocument) ?? this.isWidget)
     return `${serializeDoctype(source.doctype)}${source.documentElement.outerHTML}`
   }
 

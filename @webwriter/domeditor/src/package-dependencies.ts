@@ -1,3 +1,4 @@
+import {markEditorOnlyNode} from "./editor-artifacts"
 import type {IImportMap} from "@jspm/import-map"
 import type {WebWriterPackage, WebWriterPackageRegistry} from "./packages"
 import {canonicalNpmUrl, fetchWithin, JSDELIVR_DATA_ENDPOINT, JSDELIVR_NPM_ENDPOINT, NPM_FILE_MIRRORS, NPM_FILE_TIMEOUT_MS, NPM_REGISTRY_ENDPOINT} from "./npm-files"
@@ -230,7 +231,7 @@ export function packageImportMapScript(root: Document, map: IImportMap, editorOn
   const script = root.createElement("script")
   script.id = packageImportMapId
   script.type = "importmap"
-  if(editorOnly) script.classList.add("◆", "◆editor-only")
+  if(editorOnly) markEditorOnlyNode(script)
   script.textContent = JSON.stringify(map).replaceAll("<", "\\u003c")
   return script
 }

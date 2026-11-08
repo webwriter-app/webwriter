@@ -1,3 +1,4 @@
+import {hasPresentationState, presentationStateElements} from "../presentation-state.js"
 import {readCaptionEnumeration} from "../caption-enumeration"
 import {attributionAttributes} from "../attribution.js"
 import {documentThemeProperties} from "../document-theme-options"
@@ -91,7 +92,7 @@ describe("caption insertion content", () => {
       caption.dispatchEvent(transferEvent("drop", data, {ctrlKey: copy}))
       expect(editor.toHTML(true)).toBe(original)
       expect(source.parentElement).toBe(document.body)
-      expect(document.body).not.toHaveClass("◆drop-selection-active")
+      expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
       expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     }
   })
@@ -244,15 +245,15 @@ describe("saved snippet capture", () => {
     const paragraph = document.querySelector("p")!, text = paragraph.querySelector("b")!.firstChild!
     $.selectRange(text, 1, text, 3)
     editor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: true})
-    expect(document.querySelector(".◆snippet-hovered")).toBe(paragraph)
+    expect((presentationStateElements(document, "snippet-hovered")[0] ?? null)).toBe(paragraph)
     expect(editor.features.manipulation.actions.getSnippet({type: "getSnippet"})?.html).not.toContain("◆")
     expect($.anchor).toBe(text)
     expect($.anchorOffset).toBe(1)
     editor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: false})
-    expect(document.querySelector(".◆snippet-hovered, .◆element-hovered")).toBeNull()
+    expect((presentationStateElements(document, "snippet-hovered", "element-hovered")[0] ?? null)).toBeNull()
     editor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: true})
     editor.features.selection.disable()
-    expect(document.querySelector(".◆snippet-hovered, .◆element-hovered")).toBeNull()
+    expect((presentationStateElements(document, "snippet-hovered", "element-hovered")[0] ?? null)).toBeNull()
   })
 
   it("cleans a snippet preview when its target was removed before hover exit", () => {
@@ -262,8 +263,8 @@ describe("saved snippet capture", () => {
     editor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: true})
     paragraph.remove()
     editor.features.manipulation.actions.hoverSnippet({type: "hoverSnippet", hovered: false})
-    expect(paragraph.classList.contains("◆snippet-hovered")).toBe(false)
-    expect(paragraph.classList.contains("◆element-hovered")).toBe(false)
+    expect(hasPresentationState(paragraph, "snippet-hovered")).toBe(false)
+    expect(hasPresentationState(paragraph, "element-hovered")).toBe(false)
   })
   it("saves an entire text container from a partial inline text selection without editing it", () => {
     document.body.innerHTML = '<p id="keep">Before <b class="◆text-selected">selected</b> after<!--keep--></p>'
@@ -876,7 +877,7 @@ describe("insertable element placement and previews", () => {
     $.selectGap(content.firstElementChild!)
     expect($.isGapSelection).toBe(true)
     editor.features.selection.processSelection()
-    expect(content.firstElementChild).toHaveClass("◆gap-after-selected")
+    expect(hasPresentationState(content.firstElementChild, "gap-after-selected")).toBe(true)
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
     expect(Array.from(content.children).map(element => element.localName)).toEqual(["p", "p"])
     expect(Array.from(content.children).map(element => element.textContent)).toEqual(["Last", ""])
@@ -1144,7 +1145,7 @@ describe("insertable element placement and previews", () => {
     const neighborHTML = neighbor.outerHTML
     $.move(paragraph.querySelector("b")!.firstChild!, 1)
     hover()
-    expect(document.body).toHaveClass("◆insertion-gap-preview")
+    expect(hasPresentationState(document.body, "insertion-gap-preview")).toBe(true)
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     expect(editor.toHTML(true)).not.toContain("preview")
     insert(`<${tag}></${tag}>`)
@@ -1154,7 +1155,7 @@ describe("insertable element placement and previews", () => {
     expect(paragraph.textContent).toBe("abc")
     expect(inserted.nextElementSibling?.textContent).toBe("d")
     expect(cloneWithoutEditorMarkers(neighbor, true).outerHTML).toBe(neighborHTML)
-    expect(document.body).not.toHaveClass("◆insertion-gap-preview")
+    expect(hasPresentationState(document.body, "insertion-gap-preview")).toBe(false)
   })
 
   it.each(["", " ", "<br>", "<b><em></em></b>"])("replaces an empty paragraph on command insertion: %s", html => {
@@ -1297,14 +1298,14 @@ describe("insertable element placement and previews", () => {
     $.move(section, 2)
     editor.features.selection.processSelection()
     hover()
-    expect(document.body).toHaveClass("◆insertion-gap-preview")
+    expect(hasPresentationState(document.body, "insertion-gap-preview")).toBe(true)
     expect(editor.features.selection.gapCaret).not.toBeNull()
     expect(editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview")).toBeNull()
     insert('<aside title="Inserted">Content</aside>')
     const inserted = section.querySelector("aside")!
     expect(Array.from(section.childNodes)).toEqual([before, comment, inserted, after])
     expect(inserted.style.float).toBe("")
-    expect(document.body).not.toHaveClass("◆insertion-gap-preview")
+    expect(hasPresentationState(document.body, "insertion-gap-preview")).toBe(false)
   })
 
   it.each(["left", "right"] as const)("keeps a %s float's lane, manual size, and document position when replacing it", side => {
@@ -1431,13 +1432,13 @@ describe("insertable element placement and previews", () => {
     expect(editor.appendix.querySelector("#◆insertion-preview")).not.toBeNull()
     $.move(document.body, 1)
     document.dispatchEvent(new Event("selectionchange"))
-    expect(document.body).toHaveClass("◆insertion-gap-preview")
+    expect(hasPresentationState(document.body, "insertion-gap-preview")).toBe(true)
     expect(editor.appendix.querySelector("#◆insertion-preview")).toBeNull()
     hover(false)
-    expect(document.body).not.toHaveClass("◆insertion-gap-preview")
+    expect(hasPresentationState(document.body, "insertion-gap-preview")).toBe(false)
     hover()
     editor.features.manipulation.disable()
-    expect(document.body).not.toHaveClass("◆insertion-gap-preview")
+    expect(hasPresentationState(document.body, "insertion-gap-preview")).toBe(false)
     expect(editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview")).toBeNull()
   })
 
@@ -1450,7 +1451,7 @@ describe("insertable element placement and previews", () => {
     $.move(document.body, 1)
     await vi.waitFor(() => expect(editor.appendix.querySelector("#◆insertion-preview")).toBeNull())
     hover(false)
-    expect(document.body).not.toHaveClass("◆insertion-gap-preview")
+    expect(hasPresentationState(document.body, "insertion-gap-preview")).toBe(false)
   })
 })
 
@@ -2556,7 +2557,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     const widget = document.querySelector("webwriter-demo")!
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected") && hasPresentationState(widget, "element-capture-selected")).toBe(true)
     expect(Array.from(document.body.children, element => element.localName)).toEqual(["webwriter-demo"])
     expectNoFloat(widget as HTMLElement)
   })
@@ -2607,7 +2608,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     const widget = document.querySelector("webwriter-demo")!
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected") && hasPresentationState(widget, "element-capture-selected")).toBe(true)
     expect(editor.features.selection.isCaptureSelection).toBe(true)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
@@ -2649,7 +2650,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected") && hasPresentationState(widget, "element-capture-selected")).toBe(true)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
   it.each(["open", "closed"] as const)("inserts a widget without selecting its %s shadow content", mode => {
@@ -2668,7 +2669,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(selection.anchorNode).toBe(widget.parentNode)
     expect(selection.toString()).toBe("")
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected") && hasPresentationState(widget, "element-capture-selected")).toBe(true)
     expect(editor.toHTML(true)).toBe(`<section><p>before</p><webwriter-demo id="${widget.id}"></webwriter-demo><!--keep--><p>after</p></section>`)
 
     const editable = shadow.querySelector<HTMLElement>("div")!
@@ -2691,7 +2692,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     const widget = document.querySelector("webwriter-demo")!
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected") && hasPresentationState(widget, "element-capture-selected")).toBe(true)
     expectNoFloat(document.querySelector("webwriter-demo") as HTMLElement)
   })
   it.each([0, 6, 12])("places an atomic widget beside a paragraph at text offset %i", offset => {
@@ -3091,7 +3092,7 @@ describe("figures", () => {
       expect(source.isConnected).toBe(false)
     }
     expect(target.textContent).toBe("DesMove metination")
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
@@ -3538,7 +3539,7 @@ describe("delete()", () => {
       expect($.selectedElement).toBe(widget)
       expect(editor.features.selection.isCaptureSelection).toBe(false)
       expect(editor.toHTML(true)).toBe(before)
-      expect(widget).toHaveClass("◆element-selected")
+      expect(hasPresentationState(widget, "element-selected")).toBe(true)
       document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
       expect(widget.isConnected).toBe(false)
       expect(paragraph.textContent).toBe("text")
@@ -3571,7 +3572,7 @@ describe("delete()", () => {
       $.selectGap(replacement, direction === "backward" ? "after" : "before")
       editor.features.manipulation.delete(direction)
       expect($.selectedElement).toBe(replacement)
-      expect(widget).not.toHaveClass("◆element-selected")
+      expect(hasPresentationState(widget, "element-selected")).toBe(false)
     })
   })
 
@@ -6205,7 +6206,7 @@ describe("unified content transfer", () => {
     const read = vi.spyOn(data, "getData").mockReturnValue("")
     paragraph.dispatchEvent(transferEvent("dragover", data, {clientX: 400, clientY: 200}))
     expect(data.dropEffect).toBe("none")
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     expect(editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview")).toBeNull()
     paragraph.dispatchEvent(transferEvent("drop", data, {clientX: 400, clientY: 200}))
     read.mockRestore()
@@ -6269,7 +6270,7 @@ describe("unified content transfer", () => {
     outside.dispatchEvent(transferEvent("dragover", data, {clientX: 1100, clientY: 700}))
     expect(data.dropEffect).toBe("none")
     expect(editor.features.selection.captureSelectedElement).toBe(captured)
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     expect(editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview")).toBeNull()
     expect(cloneWithoutEditorMarkers(graphic, true).innerHTML).toBe(original)
     read.mockRestore()
@@ -6324,7 +6325,7 @@ describe("unified content transfer", () => {
     expect(graphic.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
     expect(graphic.children).toHaveLength(1)
     expect(editor.features.selection.captureSelectedElement).toBe(graphic)
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     expect(editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview")).toBeNull()
     expect(post.mock.calls.some(([message]) => (message as {type?:string}).type === "editor-ribbon-drop")).toBe(false)
     expect(editor.toHTML(true)).not.toContain("◆")
@@ -6359,8 +6360,8 @@ describe("unified content transfer", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
-    const before = cloneWithoutEditorMarkers(graphic, true).innerHTML
     editor.doc.syncFromDOM()
+    const before = cloneWithoutEditorMarkers(graphic, true).innerHTML
     const position: RibbonDropPosition = {anchor:Y.relativePositionToJSON(editor.doc.relativePositionFromDOMPoint(graphic,0)!),layout:"graphic",x:250,y:160}
     const post = vi.spyOn(editor, "postHostMessage")
     const overData = new DataTransfer()
@@ -6430,14 +6431,14 @@ describe("unified content transfer", () => {
     const data = shapeData()
     slot.dispatchEvent(transferEvent("dragover", data, {clientX: 125, clientY: 50}))
     expect(data.dropEffect).toBe("none")
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     expect(editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview")).toBeNull()
     const event = transferEvent(eventType, data, {clientX: 125, clientY: 50})
     slot.dispatchEvent(event)
     if(eventType === "drop") expect(event.defaultPrevented).toBe(true)
     expect(document.querySelector("svg")).toBeNull()
     expect(paragraph).toHaveTextContent("keep")
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     expect(editor.toHTML(true)).not.toContain("◆")
   })
@@ -6468,11 +6469,11 @@ describe("unified content transfer", () => {
     const read = vi.spyOn(data, "getData").mockReturnValue("")
     document.body.dispatchEvent(transferEvent("dragover", data, {clientX: 150, clientY: 20}))
     read.mockRestore()
-    expect(document.body).toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
     document.body.dispatchEvent(transferEvent("drop", data, {clientX: 150, clientY: 20}))
     expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "h2", "p", "p"])
     expect(Array.from(document.body.children).map(child => child.textContent)).toEqual(["bef", "", "ore", "after"])
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
   })
 
   it("replays host-relayed ribbon drags that the browser withholds from the cross-site frame", () => {
@@ -6489,13 +6490,13 @@ describe("unified content transfer", () => {
       vi.spyOn($, "pointFromCoords").mockReturnValue({node: first.firstChild!, offset: 3})
       const data = {[elementDragType]: "h2", [`${elementDragType}-h2`]: "h2", "text/html": "<h2></h2>"}
       expect(replayHostDrag({event: "dragover", x: 150, y: 20, data})).toBe(true)
-      expect(document.body).toHaveClass("◆drop-selection-active")
+      expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
       expect(replayHostDrag({event: "dragleave", x: 0, y: 0, data})).toBe(false)
-      expect(document.body).not.toHaveClass("◆drop-selection-active")
+      expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
       replayHostDrag({event: "dragover", x: 150, y: 20, data})
       expect(replayHostDrag({event: "drop", x: 150, y: 20, data})).toBe(true)
       expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "h2", "p", "p"])
-      expect(document.body).not.toHaveClass("◆drop-selection-active")
+      expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
       expect(replayHostDrag({event: "drop", x: Number.NaN, y: 20, data})).toBe(false)
       expect(replayHostDrag({event: "click" as "drop", x: 150, y: 20, data})).toBe(false)
       expect(document.body.children).toHaveLength(4)
@@ -6527,7 +6528,7 @@ describe("unified content transfer", () => {
     const over = transferEvent("dragover", data, {clientX: 50, clientY: 25})
     surface.dispatchEvent(over)
     expect(over.defaultPrevented).toBe(true)
-    expect(document.body).toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
     // Float hover keeps the selection stable and only updates the appendix.
     expect(surface.isConnected).toBe(true)
     selected.dispatchEvent(transferEvent("drop", data, {clientX: 50, clientY: 25}))
@@ -6589,7 +6590,7 @@ describe("unified content transfer", () => {
     expect(over.defaultPrevented).toBe(true)
     surface.dispatchEvent(transferEvent("drop", data))
     expect(target.querySelectorAll("h1")).toHaveLength(1)
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     surface.remove()
     Reflect.deleteProperty(document, "elementsFromPoint")
   })
@@ -6615,7 +6616,7 @@ describe("unified content transfer", () => {
     try {
       const data = ribbonData("h2")
       document.body.dispatchEvent(transferEvent("dragover", data, {clientX: 200, clientY: 300}))
-      expect(document.body).toHaveClass("◆drop-selection-active")
+      expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
       expect($.selectedElement).toBe(image)
       expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).not.toBeNull()
       document.body.dispatchEvent(transferEvent("drop", data, {clientX: 200, clientY: 300}))
@@ -6644,11 +6645,11 @@ describe("unified content transfer", () => {
     surface.dispatchEvent(over)
     expect(over.defaultPrevented).toBe(true)
     expect(data.dropEffect).toBe("copy")
-    expect(document.body).toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
     hidden.mockRestore()
     surface.dispatchEvent(transferEvent("drop", data))
     expect(document.querySelectorAll("h1")).toHaveLength(1)
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
   })
 
   it.each(["document", "canvas", "slides"] as const)("repeated native drags use the widget insertion channel in %s", mode => {
@@ -6743,7 +6744,7 @@ describe("unified content transfer", () => {
       expect(editor.features.selection.captureSelectedElement).toBe(target.querySelectorAll("x-demo-widget")[index])
     }
     expect(post.mock.calls.some(([message]) => (message as {type?: string}).type === "editor-ribbon-drop")).toBe(false)
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
@@ -6756,7 +6757,7 @@ describe("unified content transfer", () => {
     data.setData(ribbonInsertionDragType, "user-snippet:saved")
     const protectedData = vi.spyOn(data, "getData").mockReturnValue("")
     document.body.dispatchEvent(transferEvent("dragover", data))
-    expect(document.body).toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
     expect($.anchor).toBe(text)
     expect($.anchorOffset).toBe(1)
     expect(editor.appendix.querySelector('[part~="drop-range-caret"]')).not.toBeNull()
@@ -6765,7 +6766,7 @@ describe("unified content transfer", () => {
     $.move(document.querySelectorAll("p")[1].firstChild!, 0)
     expect(await editor.features.manipulation.actions.insertRibbonDrop({type: "insertRibbonDrop", html: '<em>inserted</em>', position: message.position})).toBe(true)
     expect(document.querySelector("p")!.innerHTML).toBe('before <em>inserted</em>after')
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
   })
 
   it.each(["canvas", "slides"] as const)("centers a saved snippet in %s and preserves nested content and explicit width", async mode => {
@@ -7014,7 +7015,7 @@ describe("unified content transfer", () => {
       expect(Array.from(source.childNodes)).toEqual(children)
     }
     mover.dispatchEvent(transferEvent("dragend", data))
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     expect(editor.toHTML(true)).not.toMatch(/◆|transform-overlay|node-drag-surface/)
   })
@@ -7323,7 +7324,7 @@ describe("unified content transfer", () => {
       expect(preview.getAttribute("part")).toContain(`float-drop-preview-${side}`)
       expect(parseFloat(preview.style.left)).toBeCloseTo(side === "left" ? 100 : 160)
       expect(parseFloat(preview.style.width)).toBeCloseTo(40)
-      expect(editor.features.selection.selectionCaret?.getAttribute("part") ?? "selection-caret-hidden").toContain("selection-caret-hidden")
+      expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
       document.body.dispatchEvent(transferEvent("dragover", data, {clientX: x, clientY: 15, ctrlKey: copy}))
       expect(editor.appendix.querySelector("#◆float-drop-preview")).toBe(preview)
       document.body.dispatchEvent(transferEvent("drop", data, {clientX: x, clientY: 15, ctrlKey: copy}))
@@ -7336,7 +7337,7 @@ describe("unified content transfer", () => {
       expect(placed.style.width).toBe("40px")
       expect(placed === source).toBe(!copy)
       expect(paragraph.textContent).toBe("target")
-      expect(document.body).not.toHaveClass("◆drop-selection-active")
+      expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
       expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     }
   })
@@ -7488,7 +7489,7 @@ describe("unified content transfer", () => {
     surface.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
 
     expect(editor.features.selection.captureSelectedWidget).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(hasPresentationState(widget, "element-selected") && hasPresentationState(widget, "element-capture-selected")).toBe(true)
     expect(editor.appendix.querySelector('[part~="node-drag-surface"]')).toBeNull()
     expect(editor.features.selection.isInDragSelection).toBe(false)
   })
@@ -7994,7 +7995,7 @@ describe("unified content transfer", () => {
     }
 
     expect(source.getAttribute("style")).toBe(originalStyle)
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     if(ending === "disconnected") expect(document.body.firstElementChild!.localName).toBe("hr")
     else expect(document.body.firstElementChild).toBe(source)
   })
@@ -8142,7 +8143,7 @@ describe("unified content transfer", () => {
       editor.doc.redo()
       expect(editor.toHTML(true)).toBe(changed)
     }
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     expect(editor.toHTML(true)).not.toContain("◆")
     expect(editor.features.manipulation.draggedElement).toBeNull()
   })
@@ -8159,7 +8160,7 @@ describe("unified content transfer", () => {
     expect($.anchor).toBe(text)
     expect($.anchorOffset).toBe(4)
     expect($.focusOffset).toBe(1)
-    expect(document.body).toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
     const caret = editor.appendix.querySelector<HTMLElement>('[part~="drop-range-caret"]')!
     expect(caret.style.left).toBe("20px")
     expect(caret.style.top).toBe("30px")
@@ -8175,7 +8176,7 @@ describe("unified content transfer", () => {
     expect(editor.toHTML(true)).not.toContain("◆drop-selection-active")
     document.body.dispatchEvent(transferEvent("drop", data))
     expectBodyToBe('<p>first</p><p>inserted</p><p>last</p>')
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     expect(caret.isConnected).toBe(false)
   })
 
@@ -8199,7 +8200,7 @@ describe("unified content transfer", () => {
       expect(target.children).toHaveLength(0)
       expect($.range.collapsed).toBe(true)
       expect(target.contains($.anchor)).toBe(true)
-      expect(document.body).not.toHaveClass("◆drop-selection-active")
+      expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
       editor.doc.syncFromDOM()
       const changed = editor.toHTML(true)
       expect(changed).not.toContain("◆")
@@ -8271,7 +8272,7 @@ describe("unified content transfer", () => {
     expect(source.isConnected).toBe(false)
     expect(Array.from(document.body.children)).toEqual([target])
     expect(target.textContent).toBe("tasourcerget")
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
   })
 
   it("keeps the native drag source connected and hit-testable until drop", () => {
@@ -8342,7 +8343,7 @@ describe("unified content transfer", () => {
       document.body.dispatchEvent(transferEvent("dragleave", data, {relatedTarget: null, clientX: -1}))
       surface.dispatchEvent(transferEvent("dragend", data))
     }
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     expectBodyToBe('<p>source</p><p>target</p>')
     if(ending !== "disable") expect($.selectedElement).toBe(source)
     editor.features.manipulation.enable()
@@ -8357,7 +8358,7 @@ describe("unified content transfer", () => {
     const caret = editor.appendix.querySelector('[part~="drop-range-caret"]')!
     expect(caret).not.toBeNull()
     editor.features.manipulation.disable()
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
     expect(caret.isConnected).toBe(false)
     editor.features.manipulation.enable()
   })
@@ -8856,7 +8857,7 @@ it("wraps a capture-selected widget in details", () => {
   expect(document.querySelector("details > capture-widget")).toBe(widget)
   expect(widget.getAttribute("title")).toBe("keep")
   expect(editor.features.selection.captureSelectedElement).toBeNull()
-  expect(widget.classList.contains("◆element-selected")).toBe(false)
+  expect(hasPresentationState(widget, "element-selected")).toBe(false)
 })
 
 it.each(["h1", "h2", "h3", "h4", "h5", "h6"])("disallows %s within a section nested in a list item", tag => {

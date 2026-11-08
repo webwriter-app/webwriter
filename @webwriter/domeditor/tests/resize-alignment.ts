@@ -74,6 +74,56 @@ export async function checkResizeAlignment(nativeRootEditor: DOMEditor) {
         laneHolder?.remove()
       }
     }
+    frame.style.width = "900px"
+    for(const placement of ["center", "far-right"] as const) {
+      const widget = doc.createElement("test-automaton")
+      widget.attachShadow({mode: "open"}).innerHTML = '<style>:host { display: block; box-sizing: border-box; min-width: 300px; height: 500px; min-height: 360px }</style>'
+      widget.style.width = "400px"
+      doc.body.append(widget)
+      editor.features.manipulation.setFloat(widget, placement === "far-right" ? "far-right" : "none", placement === "center" ? "center" : undefined)
+      editor.features.selection.captureElement(widget)
+      await layout()
+      assert(view.getComputedStyle(widget).minWidth === "300px", `${placement}: the theme overrides the widget's shadow host minimum`)
+      const transform = editor.features.transformation
+      const handle = transform.overlay.querySelector<HTMLElement>(".◆transform-overlay-scale:not([hidden])")!
+      const box = widget.getBoundingClientRect(), right = placement === "far-right"
+      const startX = right ? box.left : box.right
+      handle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once:true})
+      handle.dispatchEvent(new view.MouseEvent("mousedown", {button:0, clientX:startX, clientY:box.bottom}))
+      transform.handleScaleDrag(new view.MouseEvent("mousemove", {clientX:startX + (right ? 250 : -250), clientY:box.bottom, altKey:true}))
+      transform.handleScaleEnd()
+      await layout()
+      assert(widget.getBoundingClientRect().width === 300 && widget.style.maxWidth === "300px", `${placement}: the widget did not stop at 300px`)
+      transform.clearTransform()
+      widget.remove()
+    }
+
+    const container = doc.createElement("div")
+    container.style.width = "400px"
+    const image = container.appendChild(doc.createElement("img"))
+    image.src = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="skyblue"/></svg>')
+    image.style.cssText = "display:block;width:200px;height:100px;min-width:calc(25% + 20px)"
+    doc.body.append(container)
+    await image.decode()
+    editor.features.selection.captureElement(image)
+    await layout()
+    const transform = editor.features.transformation
+    const imageHandle = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    const before = image.getBoundingClientRect()
+    imageHandle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once:true})
+    imageHandle.dispatchEvent(new view.MouseEvent("mousedown", {button:0, clientX:before.right, clientY:before.bottom}))
+    transform.handleScaleDrag(new view.MouseEvent("mousemove", {clientX:before.right - 150, clientY:before.bottom - 75, shiftKey:true, altKey:true}))
+    transform.handleScaleEnd()
+    await layout()
+    const after = image.getBoundingClientRect()
+    assert(after.width === 120 && after.height === 60 && after.left === before.left, "percentage minimum did not stop proportional resizing at the fixed edge")
+    assert(image.style.maxWidth === "120px" && image.style.maxHeight === "60px", "resize stored dimensions below the used minimum")
+    const resizedHandle = imageHandle.getBoundingClientRect()
+    assert(Math.abs(resizedHandle.right - after.right) < 12 && Math.abs(resizedHandle.bottom - after.bottom) < 12,
+      "resize handle did not follow the clamped image")
+    transform.clearTransform()
+    container.remove()
+
     const graphic = doc.createElementNS("http://www.w3.org/2000/svg", "svg")
     graphic.setAttribute("width", "359")
     graphic.setAttribute("height", "202")

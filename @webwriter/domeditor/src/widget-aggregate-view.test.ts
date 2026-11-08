@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it} from "vitest"
 import {WidgetAggregateViews} from "./widget-aggregate-view"
+import {hasAnchorTarget} from "./anchor-positioning.test-utils"
 import type {LiveWidgetAggregateInput, WidgetAggregateContext, WidgetDataSnapshot} from "./widget-aggregate"
 import {clearEditorMarkerClasses} from "./editor-artifacts"
 
@@ -230,7 +231,7 @@ describe("live widget aggregate views", () => {
     const current = widget.cloneNode(true) as Element
     clearEditorMarkerClasses(current)
     expect(current.outerHTML).toBe(authored)
-    expect(widget.className).toContain("◆anchor-target-")
+    expect(hasAnchorTarget(widget)).toBe(true)
     expect(panel.getAttribute("part")).toContain("anchor-control-")
 
     const serializedAgain = widget.cloneNode(true) as Element
@@ -251,13 +252,13 @@ describe("live widget aggregate views", () => {
     const inputs = [input("aggregate", people)]
     views.update(inputs, () => first)
     const oldPanel = document.body.shadowRoot!.querySelector(".◆live-aggregates")!.shadowRoot!.querySelector("section")
-    expect(first.className).toContain("◆anchor-target-")
+    expect(hasAnchorTarget(first)).toBe(true)
 
     views.update(inputs, () => second)
     const newPanel = document.body.shadowRoot!.querySelector(".◆live-aggregates")!.shadowRoot!.querySelector("section")
     expect(newPanel).not.toBe(oldPanel)
     expect(first.className).toBe("")
-    expect(second.className).toContain("◆anchor-target-")
+    expect(hasAnchorTarget(second)).toBe(true)
 
     views.destroy()
     expect(first.className).toBe("")

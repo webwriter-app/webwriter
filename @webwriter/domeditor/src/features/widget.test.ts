@@ -390,6 +390,7 @@ describe("WidgetFeature", () => {
     editor.features.widget.refresh()
     const widget = document.querySelector("demo-widget")!
     expect(widget.getAttribute("contenteditable")).toBe("")
+    expect(widget.hasAttribute("class")).toBe(false)
     expect(document.querySelector("unknown-element")!.hasAttribute("contenteditable")).toBe(false)
 
     const inserted = document.createElement("demo-widget")
@@ -409,10 +410,12 @@ describe("WidgetFeature", () => {
   })
 
   it("removes the attribute when the editor is disabled", () => {
-    document.body.innerHTML = "<demo-widget></demo-widget>"
+    document.body.innerHTML = '<demo-widget></demo-widget><demo-widget contenteditable="false"></demo-widget><unknown-widget contenteditable=""></unknown-widget>'
     editor.features.widget.refresh()
     editor.features.widget.disable()
     expect(document.querySelector("demo-widget")!.hasAttribute("contenteditable")).toBe(false)
+    expect(document.querySelector("demo-widget + demo-widget")!.getAttribute("contenteditable")).toBe("false")
+    expect(document.querySelector("unknown-widget")!.getAttribute("contenteditable")).toBe("")
     editor.features.widget.enable()
     expect(document.querySelector("demo-widget")!.getAttribute("contenteditable")).toBe("")
   })
@@ -862,12 +865,24 @@ describe("widget data containers", () => {
 })
 
 describe("widget contract edge cases", () => {
-  it("syncs an authored contenteditable value written onto a marked widget", () => {
+  it("syncs an authored widget lock and removes it when the runtime value is restored", async () => {
     document.body.innerHTML = "<demo-widget></demo-widget>"
     editor.features.widget.refresh()
-    document.querySelector("demo-widget")!.setAttribute("contenteditable", "false")
+    const widget = document.querySelector("demo-widget")!
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    widget.setAttribute("contenteditable", "false")
     expect(sharedHTML()).toContain('contenteditable="false"')
-    expect(editor.toHTML(true)).toBe(`<demo-widget id="${document.querySelector("demo-widget")!.id}" contenteditable="false"></demo-widget>`)
+    expect(editor.toHTML(true)).toBe(`<demo-widget id="${widget.id}" contenteditable="false"></demo-widget>`)
+    editor.doc.undo()
+    await vi.waitFor(() => expect(widget.getAttribute("contenteditable")).toBe(""))
+    editor.doc.redo()
+    expect(widget.getAttribute("contenteditable")).toBe("false")
+    widget.removeAttribute("contenteditable")
+    await vi.waitFor(() => {
+      expect(widget.getAttribute("contenteditable")).toBe("")
+      expect(editor.doc.body.toString()).not.toContain("contenteditable")
+    })
   })
 
   it("keeps separate undo steps after overlapping groups end out of order", async () => {

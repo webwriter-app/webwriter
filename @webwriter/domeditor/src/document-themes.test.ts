@@ -33,7 +33,7 @@ describe("document themes", () => {
   it("defaults iframes to 16:9 with low-priority CSS in editing and exports", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain(":where(iframe:not([is])) {\n    aspect-ratio: 16 / 9;\n  }")
-      expect(editingDocumentThemeSource(theme)).toBe(theme.source)
+      expect(editingDocumentThemeSource(theme)).toBe(theme.source.replaceAll(".◆hotspot-popup", ":state(ww-hotspot-popup)"))
     }
   })
 
@@ -55,7 +55,7 @@ describe("document themes", () => {
       expect(theme.source).toContain("color-scheme: only light;")
       expect(theme.source).not.toMatch(/prefers-color-scheme|data-theme=(?:light|dark)|holiday-css-dark|--dark-/)
       expect(theme.source).not.toMatch(/color-scheme:\s*(?:dark|light\s+dark)/)
-      expect(editingDocumentThemeSource(theme)).toBe(theme.source)
+      expect(editingDocumentThemeSource(theme)).toBe(theme.source.replaceAll(".◆hotspot-popup", ":state(ww-hotspot-popup)"))
     }
   })
 
@@ -85,7 +85,7 @@ describe("document themes", () => {
       const source = editingDocumentThemeSource(theme)
       expect(source).toMatch(/body:not\(\[class~="ww-canvas"\]\):not\(\[class~="ww-slides"\]\)\s*\{[^}]*padding-block-end: max\(68px, var\(--ww-page-gutter, 1rem\)\);/)
       expect(source).toMatch(/@media print\s*\{\s*body:not\(\[class~="ww-canvas"\]\):not\(\[class~="ww-slides"\]\)\s*\{\s*padding-block-end: 0;/)
-      expect(source).toBe(theme.source)
+      expect(source).toBe(theme.source.replaceAll(".◆hotspot-popup", ":state(ww-hotspot-popup)"))
     }
   })
   it("includes adaptive side-lane geometry in every saved and editing theme", () => {
@@ -104,12 +104,12 @@ describe("document themes", () => {
       expect(theme.source).toContain("--ww-right-lane: calc(var(--ww-right-column-width) + var(--ww-float-gap));")
       expect(theme.source).toContain(":has(:is(.ww-float-left, .ww-float-right,")
       expect(theme.source).toContain("inline-size: var(--ww-float-size, var(--ww-float-width)) !important;")
-      expect(theme.source).toContain(":is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover]) {\n      inline-size: 100%;\n      min-inline-size: 0;\n      margin-inline: auto;")
-      expect(theme.source).toContain(":where(:is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover]))")
+      expect(theme.source).toContain(":is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover], .◆hotspot-popup[popover]) {\n      inline-size: 100%;\n      margin-inline: auto;")
+      expect(theme.source).toContain(":where(:is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover], .◆hotspot-popup[popover]))")
       expect(theme.source).toContain("max-inline-size: max(var(--ww-float-width), var(--ww-float-size, 0px));")
       expect(theme.source).toContain("clear: left;")
       expect(theme.source).toContain("clear: right;")
-      expect(editingDocumentThemeSource(theme)).toBe(theme.source)
+      expect(editingDocumentThemeSource(theme)).toBe(theme.source.replaceAll(".◆hotspot-popup", ":state(ww-hotspot-popup)"))
       expect(theme.source).toMatch(/p:not\(\[is\]\)\s*\{\s*display: flow-root;\s*min-inline-size: min\(300px, 100%\);/)
       expect(theme.source).toContain("@container (width < 720px)")
       expect(theme.source).toContain("float: none !important;")
@@ -130,7 +130,7 @@ describe("document themes", () => {
   it("shares table picture sizing with editing and standalone documents", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain(":where(td, th) picture {\n    display: inline-block;\n    width: 100%;\n    height: auto;\n  }")
-      expect(editingDocumentThemeSource(theme)).toBe(theme.source)
+      expect(editingDocumentThemeSource(theme)).toBe(theme.source.replaceAll(".◆hotspot-popup", ":state(ww-hotspot-popup)"))
     }
   })
   it("keeps editor-owned legacy options placement out of saved document themes", () => {
@@ -226,8 +226,8 @@ describe("document themes", () => {
   it("positions and bounds popup bubbles in every bundled theme", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toMatch(/\.ww-popup > button\[popovertarget\]\s*\{[^}]*margin-block-end:\s*0;/)
-      expect(theme.source).toMatch(/\.ww-popup-content\[popover\]\)\s*\{[^}]*margin:\s*0\.15rem 0 0;/)
-      expect(theme.source).toMatch(/\.ww-popup-content\[popover\]\)\s*\{[^}]*position-area:\s*bottom span-right;/)
+      expect(theme.source).toMatch(/\.ww-popup-content\[popover\], \.◆hotspot-popup\[popover\]\)\s*\{[^}]*margin:\s*0\.15rem 0 0;/)
+      expect(theme.source).toMatch(/\.ww-popup-content\[popover\], \.◆hotspot-popup\[popover\]\)\s*\{[^}]*position-area:\s*bottom span-right;/)
       expect(theme.source).toContain("position-try-order: most-height;")
       expect(theme.source).toContain("@position-try --ww-popup-fit-left")
       expect(theme.source).toContain("max-block-size: calc(100% - 0.5rem);")
@@ -274,7 +274,7 @@ describe("document themes", () => {
     const water = documentTheme("water")!
 
     expect(defaultDocumentTheme.value).toBe("base")
-    expect(editingDocumentThemeSource(defaultDocumentTheme)).toBe(defaultDocumentTheme.source)
+    expect(editingDocumentThemeSource(defaultDocumentTheme)).toBe(defaultDocumentTheme.source.replaceAll(".◆hotspot-popup", ":state(ww-hotspot-popup)"))
     expect(editingDocumentThemeSource(water)).toMatch(/^@layer webwriter-theme \{/)
   })
 })

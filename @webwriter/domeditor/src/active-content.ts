@@ -1,4 +1,5 @@
 import {isUnsafeElementAttributeName, isUnsafeElementAttributeValue} from "./element-attributes"
+import type {ReadableElement} from "./dom-readers"
 
 /** MIME type essences browsers execute as classic scripts. */
 const javaScriptMimeTypes = new Set([
@@ -15,14 +16,18 @@ export function isDataBlockType(type: string) {
   return /^[^\s/]+\/[^\s/]+$/.test(essence) && !javaScriptMimeTypes.has(essence)
 }
 
+export function isDataBlock(element: ReadableElement) {
+  return element.localName === "script" && element.namespaceURI === "http://www.w3.org/1999/xhtml"
+    && !element.hasAttribute("src") && isDataBlockType(element.getAttribute("type") ?? "")
+}
+
 /** A widget's data container: an inert `<script>` data block that is a
  * direct child of a custom element. It is widget state, not executable
  * content, so the editor keeps it. */
 export function isWidgetDataContainer(node: Node | null): node is HTMLScriptElement {
-  if(!(node instanceof Element) || node.localName !== "script" || node.namespaceURI !== "http://www.w3.org/1999/xhtml") return false
+  if(!(node instanceof Element) || !isDataBlock(node)) return false
   const parent = node.parentElement
   return !!parent && (parent.localName.includes("-") || parent.hasAttribute("is"))
-    && node.hasAttribute("type") && isDataBlockType(node.getAttribute("type")!) && !node.hasAttribute("src")
 }
 
 const unsafeElementSelector = "script, style, iframe, object, embed, base, meta[http-equiv='refresh'], link[rel='import'], link[rel~='stylesheet']"
@@ -30,7 +35,7 @@ const unsafeElementSelector = "script, style, iframe, object, embed, base, meta[
 /** External websites need their real origin for fetch and storage. Local HTML
  * and WebWriter's own origins must remain opaque. An authored sandbox can
  * restrict the default further, but cannot grant additional capabilities. */
-export function applyIframeSandboxPolicy(root: ParentNode, protectedOrigins: readonly string[] = [], pendingSource?: string | null) {
+export function applyIframeSandboxPolicy(root: ParentNode, protectedOrigins: readonly string[] = [], pendingSource?: string | null, baseURL?: string) {
   const origins = new Set([location.origin, ...protectedOrigins]
     .flatMap(value => {
       try { return value ? [new URL(value).origin] : [] }
@@ -46,7 +51,8 @@ export function applyIframeSandboxPolicy(root: ParentNode, protectedOrigins: rea
       if(!source && !frame.hasAttribute("srcdoc")) continue
       let external = false
       try {
-        const url = new URL(source ?? "", frame.ownerDocument.baseURI)
+        const frameBaseURL = frame.ownerDocument === root.ownerDocument ? baseURL : undefined
+        const url = new URL(source ?? "", frameBaseURL ?? frame.ownerDocument.baseURI)
         external = !frame.hasAttribute("srcdoc") && url.protocol === "https:"
           && !url.username && !url.password && !origins.has(url.origin)
       }

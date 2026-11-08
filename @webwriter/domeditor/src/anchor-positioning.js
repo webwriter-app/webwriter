@@ -1,40 +1,64 @@
 /** Bind editor UI to live elements without putting UI or positioning styles in
  * authored content. Names and ::part rules share the nearest common tree. */
+import {clearPresentationState, hasPresentationState, presentationElementSelector, setPresentationState} from "./presentation-state.js"
 const defaultAnchorCSS = "left:anchor(left) !important;top:anchor(top);width:anchor-size(width);height:anchor-size(height);position-visibility:anchors-visible;"
 
 export function createAnchorPositioner(doc = document) {
   const key = Symbol.for("webwriter.anchor-positioning")
   const state = doc[key] ??= {sequence: 0, bindings: new Set(), sheets: new Map(), offsets: new Map(), queued: false}
   state.offsets ??= new Map()
+  state.observers ??= new Map()
   const owned = new Map()
   const view = doc.defaultView
-  const escape = value => value // Only generated identifiers, including the valid ◆ prefix.
   const rootOf = node => node.getRootNode()
   const roots = node => {
     const result = []
     for(let root = rootOf(node); root; root = root.host ? rootOf(root.host) : null) result.push(root)
     return result
   }
+  const watch = (root, binding) => {
+    let record = state.observers.get(root)
+    if(!record) {
+      const bindings = new Set()
+      const observer = new view.MutationObserver(records => {
+        if(!records.some(record => record.type === "attributes" || [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1))) return
+        for(const binding of bindings) {
+          if(!binding.control.isConnected || !binding.target.isConnected
+            || binding.controlSelector() !== binding.lastControlSelector || binding.targetSelector() !== binding.lastTargetSelector) {
+            state.schedule()
+            break
+          }
+        }
+      })
+      observer.observe(root, {childList: true, subtree: true, attributes: true, attributeFilter: ["id"]})
+      record = {observer, bindings}
+      state.observers.set(root, record)
+    }
+    record.bindings.add(binding)
+    return () => {
+      record.bindings.delete(binding)
+      if(!record.bindings.size) {
+        record.observer.disconnect()
+        state.observers.delete(root)
+      }
+    }
+  }
   const removeToken = (element, attribute, token, separator = /\s+/) => {
     const tokens = (element.getAttribute(attribute) ?? "").split(separator).map(value => value.trim()).filter(value => value && value !== token)
     if(tokens.length) element.setAttribute(attribute, tokens.join(attribute === "exportparts" ? ", " : " "))
     else element.removeAttribute(attribute)
   }
-  const expose = (element, scope, marker, cleanup, ensure) => {
+  const expose = (element, scope, stateName, cleanup, ensure) => {
     if(rootOf(element) === scope) {
-      const repair = () => { if(!element.classList.contains(marker)) element.classList.add(marker) }
+      const repair = () => { if(!hasPresentationState(element, stateName)) setPresentationState(element, stateName) }
       repair(); ensure.push(repair)
-      cleanup.push(() => {
-        // DOM clients may clone a marked node before its editing state ends.
-        for(const candidate of new Set([element, ...scope.querySelectorAll(`.${escape(marker)}`)])) {
-          candidate.classList.remove(marker)
-          if(!Array.from(candidate.classList).some(name => name !== "◆" && name.startsWith("◆"))) candidate.classList.remove("◆")
-          if(!candidate.classList.length) candidate.removeAttribute("class")
-        }
-      })
-      return `.${escape(marker)}`
+      cleanup.push(() => clearPresentationState(element, stateName))
+      return () => {
+        const selector = presentationElementSelector(element, true, scope)
+        return selector ? `:where(${selector}):nth-child(n)` : ":not(*)"
+      }
     }
-    const part = marker.slice(1)
+    const part = stateName
     const repair = () => {
       const parts = (element.getAttribute("part") ?? "").split(/\s+/).filter(Boolean)
       if(!parts.includes(part)) element.setAttribute("part", [...parts, part].join(" "))
@@ -52,7 +76,7 @@ export function createAnchorPositioner(doc = document) {
       cleanup.push(() => removeToken(host, "exportparts", part, /,/))
       root = rootOf(host)
     }
-    return `*::part(${part})`
+    return () => `*::part(${part})`
   }
   if(!state.refresh) {
     state.refresh = () => {
@@ -84,6 +108,8 @@ export function createAnchorPositioner(doc = document) {
           ] : []
           for(const binding of bindings) {
             binding.ensure.forEach(repair => repair())
+            binding.lastControlSelector = binding.controlSelector()
+            binding.lastTargetSelector = binding.targetSelector()
             let target = targets.get(binding.target)
             if(!target) { target = new Map(); targets.set(binding.target, target) }
             const names = target.get(binding.pseudo) ?? []
@@ -91,12 +117,12 @@ export function createAnchorPositioner(doc = document) {
             const css = binding.defaultCSS && gecko
               ? "left:calc(anchor(left) - __ww_offset__px) !important;top:anchor(top);width:anchor-size(width);height:anchor-size(height);position-visibility:anchors-visible;"
               : binding.css
-            rules.push(`${binding.controlSelector} {position:fixed;position-anchor:${binding.name} !important;${css}}`)
+            rules.push(`${binding.lastControlSelector} {position:fixed;position-anchor:${binding.name} !important;${css}}`)
           }
           for(const [element, pseudos] of targets) for(const [pseudo, bindings] of pseudos) {
             const existing = view.getComputedStyle(element, pseudo || null).getPropertyValue("anchor-name")
             const names = [existing && existing !== "none" ? existing : "", ...bindings.map(binding => binding.name)].filter(Boolean)
-            rules.push(`${bindings[0].targetSelector}${pseudo} {anchor-name:${names.join(",")} !important}`)
+            rules.push(`${bindings[0].lastTargetSelector}${pseudo} {anchor-name:${names.join(",")} !important}`)
           }
           const template = rules.join("\n")
           templates.set(scope, template)
@@ -154,15 +180,19 @@ export function createAnchorPositioner(doc = document) {
       const controlRoots = roots(control), scope = roots(target).find(root => controlRoots.includes(root))
       if(!scope || !("adoptedStyleSheets" in scope)) return
       const index = state.sequence++, cleanup = [], ensure = []
+      const targetState = `anchor-target-${index}`, controlState = `anchor-control-${index}`
       const binding = {control, target, css, defaultCSS: css === defaultAnchorCSS, pseudo, scope, ensure, targetRoot: rootOf(target), controlRoot: rootOf(control), name: `--ww-ui-anchor-${index}`,
-        targetSelector: expose(target, scope, `◆anchor-target-${index}`, cleanup, ensure),
-        controlSelector: expose(control, scope, `◆anchor-control-${index}`, cleanup, ensure),
+        targetSelector: expose(target, scope, targetState, cleanup, ensure),
+        controlSelector: expose(control, scope, controlState, cleanup, ensure),
         release() {
           if(!state.bindings.delete(binding)) return
           owned.delete(control)
           cleanup.reverse().forEach(dispose => dispose())
           state.schedule()
         },
+      }
+      for(const root of new Set([rootOf(target), rootOf(control)])) {
+        cleanup.push(watch(root, binding))
       }
       owned.set(control, binding); state.bindings.add(binding)
       state.schedule()

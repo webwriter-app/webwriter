@@ -1,3 +1,4 @@
+import {hasPresentationState} from "../src/presentation-state.js"
 import type {DOMEditor} from "../src/domeditor"
 import {defaultDocumentTheme} from "../src/document-themes"
 import {DomEditor} from "../src/components/dom-editor"
@@ -38,7 +39,7 @@ export async function checkHotspotPopups(append: (element: HTMLElement) => void)
     })
     drawers[0].shadowRoot!.querySelector<HTMLButtonElement>(".pane-label-button")!.click()
     await layout()
-    assert(first.classList.contains("◆element-selected") && !second.classList.contains("◆element-selected"), "the first popup cannot be selected independently")
+    assert(hasPresentationState(first, "element-selected") && !hasPresentationState(second, "element-selected"), "the first popup cannot be selected independently")
     assert(first.matches(":popover-open"), "selecting a closed hotspot popup did not open it")
     for(const width of [800, 360]) {
       frame.style.width = `${width}px`

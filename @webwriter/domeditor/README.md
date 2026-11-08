@@ -127,6 +127,10 @@ The support totals and remaining gaps are recorded in
 [`src/html-element-capabilities.test.ts`](src/html-element-capabilities.test.ts).
 Those checks require complete coverage and keep the manifest aligned with built-in insertion and intentional-limitation policies.
 
+The live HTML DOM is the document state. The editor renders temporary controls in the body's shadow appendix and tracks selection, hover, and other presentation state in memory. Compatibility cleanup still filters legacy `◆` classes from shared and saved content.
+
+Eligible captioned figures, native dialogs and popovers, and editable SVG targets use persistent HTML IDs. The editor assigns missing IDs during authoring and import, and remaps colliding IDs and supported references when content is pasted. These IDs travel with the document through collaboration, live sessions, and export.
+
 ## Offline HTML
 
 Offline export embeds media, stylesheets, imported CSS and its assets, and standalone scripts. For widget scripts, it loads `esbuild-wasm` on demand and bundles the required widget modules and their mapped dependencies in a worker, leaving out unused modules of packages that declare `"sideEffects": false` (or files outside their `sideEffects` patterns). Original package entry URLs are restored when an offline document is reopened for editing. Authored module dependency graphs, imports that cannot be resolved statically, embedded iframe documents, and arbitrary network requests made by widgets remain outside this export path and produce an error when detected.

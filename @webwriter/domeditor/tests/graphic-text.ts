@@ -1,3 +1,4 @@
+import {hasPresentationState, presentationStateElements} from "../src/presentation-state.js"
 import type {DOMEditor} from "../src/domeditor"
 import {markStateChangeEvent, selectionChangeEvent} from "../src/editor-bridge"
 
@@ -50,7 +51,7 @@ export async function checkGraphicText() {
       assert(updates - editingUpdates < 4, `${activation}: label editing continuously republishes selection state`)
       proxy.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
       assert(!editor.appendix.querySelector(".◆graphic-label-input"), "Escape left the label proxy attached")
-      assert(!graphic.querySelector(".◆graphic-text-editing"), "Escape left a text editing marker")
+      assert(!(presentationStateElements(graphic, "graphic-text-editing")[0] ?? null), "Escape left a text editing marker")
     }
     shape.dispatchEvent(new view.MouseEvent("dblclick", {bubbles: true, button: 0}))
     await settle()
@@ -86,7 +87,7 @@ export async function checkGraphicText() {
       assert(editor.features.graphic.selectedShape===selected,`${surface}: clicking the shape controls lost shape selection`)
       assert(!editor.features.graphic.textEditingRange && !editor.features.graphic.isTextInputFocused,`${surface}: shape selection retained text selection`)
       assert(!editor.appendix.querySelector('.◆graphic-label-input, [part="graphic-text-caret"]'),`${surface}: shape selection left a label caret`)
-      assert(!text.classList.contains("◆graphic-text-editing"),`${surface}: shape selection left its text editing marker`)
+      assert(!hasPresentationState(text, "graphic-text-editing"),`${surface}: shape selection left its text editing marker`)
       doc.dispatchEvent(new view.PointerEvent("pointercancel",{bubbles:true,pointerId:8}))
       assert(editor.features.selection.captureSelectedElement===graphic,`${surface}: shape selection lost graphic capture`)
       assert(text.textContent==="Typed again",`${surface}: selecting the shape modified its label`)

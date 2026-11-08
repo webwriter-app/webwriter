@@ -1,3 +1,4 @@
+import {clearPresentationState, setPresentationState} from "../presentation-state.js"
 import {EditorFeature} from "."
 import {getDocumentTemplate} from "../document-template"
 import {$, removeEditorMarker} from "../utility"
@@ -7,7 +8,7 @@ import {$, removeEditorMarker} from "../utility"
  * for presentation and provides the command for returning to the default
  * BODY root. */
 export class TemplateFeature extends EditorFeature {
-  readonly #marker = "◆template-active"
+  readonly #state = "template-active"
   #markedBody: HTMLElement | null = null
   readonly #observer = new MutationObserver(() => this.refresh())
 
@@ -58,14 +59,14 @@ export class TemplateFeature extends EditorFeature {
 
   private clearMarker(body: HTMLElement | null) {
     if(!body) return
-    removeEditorMarker(body, this.#marker)
+    clearPresentationState(body, this.#state)
   }
 
   private refresh() {
     const body = document.body
     if(this.#markedBody && this.#markedBody !== body) this.clearMarker(this.#markedBody)
     const active = Boolean(getDocumentTemplate(body))
-    if(active) body.classList.add("◆", this.#marker)
+    if(active) setPresentationState(body, this.#state)
     else this.clearMarker(body)
     this.#markedBody = active ? body : null
   }

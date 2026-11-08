@@ -7,6 +7,7 @@ import {effectiveDistribution, hydrateDistributionInstructions, readDistribution
 import {distributionFragment, distributionSnapshot} from "./distribution-snapshot"
 import {validateDistributionChange} from "./distribution-validation.js"
 import type {DistributionConfig, DistributionPermission} from "./distribution.js"
+import {widgetLookupForTags} from "./editor-artifacts"
 
 export type DistributionReaderContext = {
   root: Document
@@ -28,11 +29,13 @@ export function mountDistributionReader(root: Document, options: Pick<DOMEditorO
   if(!configs.length || root.designMode === "on") return null
   const view = root.defaultView
   if(!view || !root.body || root.body.shadowRoot?.querySelector(".◆distribution-reader")) return null
+  const isWidget = widgetLookupForTags((options.widgets ?? []).map(widget => widget.tagName))
+  const snapshot = (node: Node) => distributionSnapshot(node, isWidget)
   const appendix = root.body.shadowRoot ?? root.body.attachShadow({mode: "open"})
   if(!Array.from(appendix.children).some(element => element.matches("slot:not([name])"))) appendix.prepend(root.createElement("slot"))
   const initialDefaults = new Map(configs.map(config => {
     const target = root.getElementById(config.target)
-    return [config.target, target ? distributionSnapshot(target === root.documentElement ? root.body : target) : null]
+    return [config.target, target ? snapshot(target === root.documentElement ? root.body : target) : null]
   }))
   const dock = root.createElement("section")
   dock.className = "◆distribution-reader"
@@ -62,7 +65,7 @@ export function mountDistributionReader(root: Document, options: Pick<DOMEditorO
   const mirrors = new Map<string, {mirror: SharedDOMDoc, root: HTMLElement, close: () => void}>()
   let baseMirror: SharedDOMDoc | undefined
   let selected: Element | null = null, editor: DOMEditor | null = null, destroyed = false, ready = false
-  let accepted = distributionSnapshot(root.documentElement)!
+  let accepted = snapshot(root.documentElement)!
   const listen = (target: EventTarget, type: string, listener: EventListener) => {
     target.addEventListener(type, listener)
     cleanup.push(() => target.removeEventListener(type, listener))
@@ -90,14 +93,14 @@ export function mountDistributionReader(root: Document, options: Pick<DOMEditorO
     position()
   }
   const validate = () => {
-    const next = distributionSnapshot(root.documentElement)!
+    const next = snapshot(root.documentElement)!
     return validateDistributionChange(accepted, next, configs, html => distributionFragment(html, root))
   }
   // Register validation first so invalid mutations are restored before scope mirrors observe them.
   const observer = new view.MutationObserver(() => {
     if(!ready || destroyed) return
     if(!validate()) { restore(); status.textContent = "This change is not permitted. The accepted document was restored."; return }
-    accepted = distributionSnapshot(root.documentElement)!
+    accepted = snapshot(root.documentElement)!
     position()
   })
   observer.observe(root.documentElement, {subtree: true, attributes: true, characterData: true, childList: true})
@@ -124,7 +127,7 @@ export function mountDistributionReader(root: Document, options: Pick<DOMEditorO
       finally {
         binding.mirror.startObserve()
         end()
-        accepted = distributionSnapshot(root.documentElement)!
+        accepted = snapshot(root.documentElement)!
         observer.takeRecords()
         position()
       }
@@ -173,7 +176,7 @@ export function mountDistributionReader(root: Document, options: Pick<DOMEditorO
   cleanup.push(() => storage.destroy())
   const initialize = async () => {
     if(!configs.some(config => config.target === root.documentElement.id)) baseMirror = new SharedDOMDoc(undefined, undefined, [], ["◆"], {
-      root: root.body, scopeBoundary: element => configs.some(config => config.target === element.id),
+      root: root.body, isWidget, scopeBoundary: element => configs.some(config => config.target === element.id),
     })
     for(const config of [...configs].sort((a, b) => {
       const first = root.getElementById(a.target), second = root.getElementById(b.target)
@@ -194,7 +197,7 @@ export function mountDistributionReader(root: Document, options: Pick<DOMEditorO
       const connection = storage.connect(key, () => {})
       await connection.ready
       if(destroyed) return
-      const mirror = new SharedDOMDoc(undefined, undefined, [], ["◆"], {root: scopeRoot, ydoc: connection.doc,
+      const mirror = new SharedDOMDoc(undefined, undefined, [], ["◆"], {root: scopeRoot, ydoc: connection.doc, isWidget,
         scopeBoundary: element => configs.some(child => child.target === element.id),
       })
       let channel: BroadcastChannel | undefined
@@ -214,7 +217,7 @@ export function mountDistributionReader(root: Document, options: Pick<DOMEditorO
       }
       mirrors.set(config.target, {mirror, root: scopeRoot, close: () => { unsubscribe(); connection.doc.off("update", relay); channel?.close() }})
     }
-    accepted = distributionSnapshot(root.documentElement)!
+    accepted = snapshot(root.documentElement)!
     ready = true
     // DOMEditor itself is shared with authoring; only its capability provider differs.
     // No host ribbon, toolbox, bridge initialization or settings enter this path.
@@ -223,7 +226,7 @@ export function mountDistributionReader(root: Document, options: Pick<DOMEditorO
       // Generic authoring add controls do not carry an approved insertion recipe.
       // Reader insertion continues through the exact items in its palette.
       : permission !== "insert" && context.allows(permission, element)}})
-    accepted = distributionSnapshot(root.documentElement)!
+    accepted = snapshot(root.documentElement)!
     observer.takeRecords(); position()
     view.dispatchEvent(new Event("webwriter-distribution-ready"))
   }

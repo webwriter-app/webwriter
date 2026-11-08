@@ -45,10 +45,11 @@ describe("host distribution validator", () => {
 
   it("allows document edits after editor-only preview artifacts are stripped", () => {
     const policy = config("box", ["edit"])
-    const before = page('<div class="◆editor-only">preview chrome</div><demo-box id="box" class="◆ ◆widget-editable" contenteditable=""><p>before</p></demo-box>', [policy])
-    const after = page('<div class="◆editor-only">different preview chrome</div><demo-box id="box" class="◆ ◆widget-editable" contenteditable=""><p>after</p></demo-box>', [policy])
+    const before = page('<div class="◆editor-only">preview chrome</div><demo-box id="box" contenteditable="false"><p>before</p></demo-box>', [policy])
+    const after = page('<div class="◆editor-only">different preview chrome</div><demo-box id="box" class="◆selected" contenteditable="false"><p>after</p></demo-box>', [policy])
     const validator = createDistributionValidator(before)
     expect(validator.validate(before, after)).toBe(true)
+    expect(validator.validate(before, after.replace('contenteditable="false"', 'contenteditable=""'))).toBe(false)
   })
 
   it("allows exact configured widget templates and rejects forged lookalikes", () => {

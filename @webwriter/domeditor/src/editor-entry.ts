@@ -1,3 +1,4 @@
+import {registerFrameArtifacts} from "./editor-artifacts"
 import { DOMEditor } from "./domeditor"
 import {openFrameLinksInNewTabs} from "./frame-links"
 import {publishEditorDocument} from "./editor-document-sync"
@@ -57,7 +58,12 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   if(settings.username !== undefined) setUsername(settings.username)
   setMotion(settings.disableAnimations === true)
   const documentSync = publishEditorDocument(editor.doc, settings.documentReplicaId ?? nonce, message => window.parent.postMessage({...message, documentReplicaId: settings.documentReplicaId, bridgeNonce: nonce}, origin))
-  window.addEventListener("unload", () => documentSync.destroy(), {once: true})
+  const stopDocumentSync = (event: PageTransitionEvent) => {
+    if(event.persisted) return
+    window.removeEventListener("pagehide", stopDocumentSync)
+    documentSync.destroy()
+  }
+  window.addEventListener("pagehide", stopDocumentSync)
   // Run before feature capture listeners can claim canvas/slide gestures.
   window.addEventListener("pointerdown", event => {
     const target = event.target as Node | null
@@ -186,6 +192,7 @@ window.addEventListener("message", initialize)
 const bridge = document.querySelector<HTMLMetaElement>('meta[name="webwriter-editor-bridge"]')
 const bridgeNonce = bridge?.getAttribute("data-nonce")
 const hostOrigin = bridge?.getAttribute("data-host-origin")
+if(bridgeNonce) registerFrameArtifacts(document, bridgeNonce)
 if(window.parent !== window && bridgeNonce && hostOrigin) {
   window.parent.postMessage({type: "webwriter-editor-frame-ready", bridgeNonce}, hostOrigin)
 }

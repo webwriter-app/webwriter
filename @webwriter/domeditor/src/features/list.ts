@@ -1,3 +1,4 @@
+import {clearPresentationState, presentationStateElements, setPresentationState} from "../presentation-state.js"
 import {DocumentListenerMap, EditorFeature} from "."
 import type {ElementSelectionType, ListSelectionState, ListType} from "../editor-bridge"
 import {$, atomicEditingContainer, cloneWithoutEditorMarkers, editingFlowRoot, fixedClientX, getContainer, isAtomicEditingElement, isCaretAtBoundary, isElement, isText, modifierKeyDown, removeEditorMarker, setPart, createAnchorPositioner} from "../utility"
@@ -20,9 +21,9 @@ type ListPoint = {
  * first item in BODY's shadow root. Once materialized, every editing position
  * is represented by a real LI/DT/DD. */
 export class ListFeature extends EditorFeature {
-  private readonly markerClass = "◆virtual-list-anchor"
-  private readonly selectedListClass = "◆virtual-list-selected"
-  private readonly emptyItemCaretClass = "◆list-empty-caret"
+  private readonly anchorState = "virtual-list-anchor"
+  private readonly selectedListState = "virtual-list-selected"
+  private readonly emptyItemCaretState = "list-empty-caret"
   private anchorPositioner: ReturnType<typeof createAnchorPositioner> | null = null
   private virtualUsesCoordinates = false
 
@@ -224,8 +225,8 @@ export class ListFeature extends EditorFeature {
   private clearVirtualMarker() {
     const marker = this.editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")
     if(marker) this.anchorPositioner?.release(marker)
-    document.querySelectorAll(`.${this.markerClass}, .${this.selectedListClass}, .${this.emptyItemCaretClass}`).forEach(element => {
-      removeEditorMarker(element, this.markerClass, this.selectedListClass, this.emptyItemCaretClass)
+    presentationStateElements(document, this.anchorState, this.selectedListState, this.emptyItemCaretState).forEach(element => {
+      clearPresentationState(element, this.anchorState, this.selectedListState, this.emptyItemCaretState)
     })
     if(marker) {
       setPart(marker, "virtual-list-item-hidden")
@@ -411,8 +412,8 @@ export class ListFeature extends EditorFeature {
     const {list} = point
     const previous = this.itemsBefore(point).at(-1)
     const anchor = previous ?? list
-    anchor.classList.add("◆", this.markerClass)
-    list.classList.add("◆", this.selectedListClass)
+    setPresentationState(anchor, this.anchorState)
+    setPresentationState(list, this.selectedListState)
 
     const marker = this.marker
     const nextType = this.itemTypeAt(point)
@@ -493,7 +494,7 @@ export class ListFeature extends EditorFeature {
     setPart(marker, "virtual-list-item-hidden", false)
     setPart(marker, "virtual-list-item-caret-only", true)
     setPart(marker.querySelector(".◆virtual-list-caret")!, "virtual-list-caret-hidden", false)
-    item.classList.add("◆", this.emptyItemCaretClass)
+    setPresentationState(item, this.emptyItemCaretState)
     this.updateCoordinateListeners(true)
   }
 

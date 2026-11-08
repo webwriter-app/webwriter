@@ -11,6 +11,7 @@ import {authoredClassValue, isAppendixInteraction, isEditorOwnedAttribute, isFor
 import {userInitials} from "../user-identity"
 import {hydrateWidgetGroupings} from "../widget-grouping-dom"
 import {safeCssColor} from "../css-color"
+import {isAuthoredContentEditableMutation, isEditorOnlyNode, isInsideEditorOnlyNode} from "../editor-artifacts"
 
 type StoredCheckpoint = {
   id: string
@@ -39,9 +40,7 @@ const unsavedVersionId = "unsaved"
 
 const emptyChanges = (): VersionHistoryChanges => ({added: 0, removed: 0, modified: 0})
 const unknownAuthor: VersionHistoryUser = {clientId: -1, name: "Unknown author", initials: "?", color: safeCssColor(undefined)}
-const isEditorOnlyNode = (node: Node) => Boolean(
-  (node instanceof Element ? node : node.parentElement)?.closest(".◆editor-only, [data-webwriter-editor-only]"),
-)
+const isEditorOnlyHistoryNode = (node: Node) => isInsideEditorOnlyNode(node instanceof Element ? node : node.parentElement)
 
 /** Collaborative document checkpoints, previews, comments, undo, and redo. */
 export class HistoryFeature extends EditorFeature {
@@ -513,9 +512,7 @@ export class HistoryFeature extends EditorFeature {
     this.#replaceAttributes(document.documentElement, restored.documentElement)
     this.#replaceAttributes(document.body, restored.body)
     document.body.replaceChildren(...Array.from(restored.body.childNodes, node => document.importNode(node, true)))
-    const editorHeadNodes = Array.from(document.head.childNodes).filter(node =>
-      node instanceof Element && node.matches(".◆editor-only, [data-webwriter-editor-only]"),
-    )
+    const editorHeadNodes = Array.from(document.head.childNodes).filter(isEditorOnlyNode)
     document.head.replaceChildren(...editorHeadNodes)
     document.head.append(...Array.from(restored.head.childNodes, node => document.importNode(node, true)))
     hydrateWidgetGroupings(document)
@@ -605,11 +602,11 @@ export class HistoryFeature extends EditorFeature {
       this.#previewObserver!.disconnect()
       try {
         for(const record of records.reverse()) {
-          if(isEditorOnlyNode(record.target)) continue
+          if(isEditorOnlyHistoryNode(record.target)) continue
           if(record.type === "attributes") {
             const target = record.target as Element
             const name = record.attributeName!
-            if(this.editor.ignoreAttrs.includes(name) || isEditorOwnedAttribute(target, name)) continue
+            if(this.editor.ignoreAttrs.includes(name) || isAuthoredContentEditableMutation(record, this.editor.features.widget.isWidget) === false) continue
             if(name === "class") {
               const markers = Array.from(target.classList).filter(value => value.startsWith("◆"))
               const authored = authoredClassValue(record.oldValue).split(" ").filter(Boolean)
@@ -627,11 +624,11 @@ export class HistoryFeature extends EditorFeature {
           else if(record.type === "characterData") record.target.nodeValue = record.oldValue
           else {
             for(const node of record.addedNodes) {
-              if(!isEditorOnlyNode(node) && node.parentNode === record.target) record.target.removeChild(node)
+              if(!isEditorOnlyHistoryNode(node) && node.parentNode === record.target) record.target.removeChild(node)
             }
             const next = record.nextSibling?.parentNode === record.target ? record.nextSibling : null
             for(const node of record.removedNodes) {
-              if(!isEditorOnlyNode(node)) record.target.insertBefore(node, next)
+              if(!isEditorOnlyHistoryNode(node)) record.target.insertBefore(node, next)
             }
           }
         }
@@ -774,7 +771,7 @@ export class HistoryFeature extends EditorFeature {
       if(node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.TEXT_NODE && node.nodeType !== Node.COMMENT_NODE) {
         return false
       }
-      return !isEditorOnlyNode(node)
+      return !isEditorOnlyHistoryNode(node)
     })
   }
 
@@ -782,7 +779,7 @@ export class HistoryFeature extends EditorFeature {
     return Array.from(element.attributes)
       .flatMap(attribute => {
         if(this.editor.ignoreAttrs.some(name => name.toLowerCase() === attribute.name.toLowerCase())
-          || isEditorOwnedAttribute(element, attribute.name)) return []
+          || attribute.namespaceURI === null && isEditorOwnedAttribute(element, attribute.name, this.editor.features.widget.isWidget)) return []
         if(attribute.name.toLowerCase() !== "class") return [[attribute.name, attribute.value] as const]
         const className = authoredClassValue(attribute.value)
         return className ? [[attribute.name, className] as const] : []

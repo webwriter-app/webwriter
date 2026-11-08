@@ -541,11 +541,12 @@ export const editingControlStyles = css`
     .widget-option-value output, .widget-option-unit { flex: 0 0 auto; }
     .widget-option-field > .develop-field-help { grid-column: 1 / -1; }
     .widget-option-tree { min-width: 0; overflow-wrap: anywhere; }
-    .widget-option-tree ul { list-style: none; padding: 0 0 0 0.8rem; margin: 0.25rem 0 0; }
+    .widget-option-tree ul { list-style: none; padding: 0; padding-inline-start: 0.8rem; margin: 0.25rem 0 0; }
     .widget-option-tree li { margin: 0.25rem 0; }
     .widget-option-tree label { display: inline-flex; align-items: flex-start; gap: 0.3rem; max-width: 100%; }
     .widget-option-tree input { flex: 0 0 auto; margin: .05rem 0 0; }
-    .widget-option-tree summary {cursor: pointer; padding-inline-start: .8rem; list-style-position: outside;}
+    .widget-option-tree :is(summary, li > label) { box-sizing: border-box; padding-inline-start: 0.8rem; }
+    .widget-option-tree summary {cursor: pointer; list-style-position: outside;}
     .widget-option-tree summary > label {vertical-align: top;}
     .widget-option-unit { color: #526b86; font-size: 0.65rem; }
     .widget-option-radios { display: grid; gap: 0.3rem; }
@@ -555,8 +556,16 @@ export const editingControlStyles = css`
     .widget-action-item { display: grid; gap: 0.2rem; min-width: 0; }
     .widget-action-error { color: #b0342c; font-size: 0.65rem; overflow-wrap: anywhere; }
     .widget-action[data-intent="danger"] {--ribbon-control-color: #a72c25;}
-    .widget-actions {display: flex; flex-wrap: wrap; gap: .3rem;}
-    .widget-action {min-width: 0;}
+    .widget-actions {display: grid; gap: .3rem; min-width: 0;}
+    .choice-group.widget-action-group {
+      display: flex;
+      flex-wrap: wrap;
+      background: #c5ccd5;
+      --widget-action-border-width: 0;
+      --widget-action-border-radius: 0;
+    }
+    .widget-action-group > .widget-action-item {flex: 1 1 5rem; background: #f7f7f7;}
+    .widget-action-group > .widget-action-item > :is(.develop-field-help, .widget-action-error) {padding: 0 .3rem .2rem;}
 
     .develop-field document-head-combobox {
       --metadata-combobox-height: 1.75rem;

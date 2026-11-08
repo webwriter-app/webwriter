@@ -7,6 +7,8 @@ import {$, closestAlignment, fixedClientX, atomicEditingContainer, isAppendixInt
 import {isEmptyMedia} from "../media"
 import {stripActiveContent} from "../active-content"
 import {isAuthoredMutation} from "../editor-artifacts"
+import {batchPresentationStates, clearPresentationState, hasPresentationState, presentationStateElements, presentationStateSelector, setPresentationState, trackPresentationStyles} from "../presentation-state.js"
+import {remapPastedAuthoredIds} from "../authored-identities"
 import {elementDragType, ribbonInsertionDragType} from "../insertion"
 import {getDocumentRoot} from "../document-template"
 import {
@@ -953,6 +955,7 @@ export class GraphicFeature extends EditorFeature {
   #drawGraphic: SVGSVGElement | null = null
   #drawPaint: GraphicShapePaint = {...defaultGraphicShapePaint}
   #drawCursorStylesheet: CSSStyleSheet | null = null
+  #untrackDrawCursor?: () => void
   #labelEditor: LabelEditor | null = null
   #overlay: HTMLElement | null = null
   #handleOffsets = new WeakMap<Element, Point>()
@@ -1070,6 +1073,7 @@ export class GraphicFeature extends EditorFeature {
           stripActiveContent(root)
           clearEditorMarkerClasses(root)
           const graphic = document.importNode(root, true) as unknown as SVGSVGElement
+          remapPastedAuthoredIds(graphic, document, target ?? undefined)
           this.editor.doc.stopCapturing()
           if(target) {
             this.#cancelInteraction()
@@ -1461,6 +1465,7 @@ export class GraphicFeature extends EditorFeature {
     const last = previous?.key === key && previous.shapes.length === shapes.length
       && previous.shapes.every(shape => shape.parentNode === graphic) ? previous.shapes : null
     const previousBounds = last ? shapeBounds(last[0]) : null
+    remapPastedAuthoredIds(fragment, document)
     this.editor.doc.stopCapturing()
     for(const shape of shapes) {
       clearEditorMarkerClasses(shape)
@@ -1542,7 +1547,7 @@ export class GraphicFeature extends EditorFeature {
     event.preventDefault()
     event.stopImmediatePropagation()
     data.dropEffect = "none"
-    if(document.body.classList.contains("◆drop-selection-active")) this.editor.features.manipulation.endNodeDrag()
+    if(hasPresentationState(document.body, "drop-selection-active")) this.editor.features.manipulation.endNodeDrag()
     return true
   }
 
@@ -1955,7 +1960,7 @@ export class GraphicFeature extends EditorFeature {
     event.preventDefault()
     event.stopImmediatePropagation()
     this.#spaceDown = true
-    document.body.classList.add("◆", "◆graphic-pan-ready")
+    setPresentationState(document.body, "graphic-pan-ready")
     return true
   }
 
@@ -1964,14 +1969,14 @@ export class GraphicFeature extends EditorFeature {
     event.preventDefault()
     event.stopImmediatePropagation()
     this.#spaceDown = false
-    removeEditorMarker(document.body, "◆graphic-pan-ready")
+    clearPresentationState(document.body, "graphic-pan-ready")
   }
 
   #handleWindowBlur = () => {
     this.#insertionPointer = null
     this.#clearShapePreview()
     this.#spaceDown = false
-    removeEditorMarker(document.body, "◆graphic-pan-ready")
+    clearPresentationState(document.body, "graphic-pan-ready")
     this.#cancelPan()
     this.#cancelStroke()
     this.#cancelPath()
@@ -2268,7 +2273,7 @@ export class GraphicFeature extends EditorFeature {
     const range = document.createRange()
     range.selectNodeContents(text)
     this.#labelEditor = {element, shape, caret, range, text, backwards: false}
-    text.classList.add("◆graphic-text-editing")
+    setPresentationState(text, "graphic-text-editing")
     element.addEventListener("beforeinput", event => this.#labelInput(event))
     element.addEventListener("compositionend", event => {
       if(event.data) this.editor.features.mark.handleSVGTextInput(new InputEvent("beforeinput", {
@@ -2500,7 +2505,7 @@ export class GraphicFeature extends EditorFeature {
     if(editor.pointerId !== undefined && editor.text.hasPointerCapture?.(editor.pointerId)) editor.text.releasePointerCapture(editor.pointerId)
     editor.element.remove()
     editor.caret.remove()
-    removeEditorMarker(editor.text, "◆graphic-text-editing")
+    clearPresentationState(editor.text, "graphic-text-editing")
     this.editor.doc.stopCapturing()
     if(refresh) {
       const graphic = graphicContainerForNode(editor.shape)
@@ -2840,7 +2845,7 @@ export class GraphicFeature extends EditorFeature {
       pointerId: event.pointerId,
       captureTarget: captureTarget ?? null,
     }
-    document.body.classList.add("◆", "◆graphic-panning")
+    setPresentationState(document.body, "graphic-panning")
     this.#capturePointer(captureTarget, event.pointerId)
   }
 
@@ -2868,7 +2873,7 @@ export class GraphicFeature extends EditorFeature {
     event.stopImmediatePropagation()
     this.#releasePointer(pan.captureTarget, pan.pointerId)
     this.#pan = null
-    removeEditorMarker(document.body, "◆graphic-panning")
+    clearPresentationState(document.body, "graphic-panning")
     this.#refresh()
     this.editor.postSelectionPath()
   }
@@ -2880,7 +2885,7 @@ export class GraphicFeature extends EditorFeature {
     event?.stopImmediatePropagation()
     this.#releasePointer(pan.captureTarget, pan.pointerId)
     this.#pan = null
-    removeEditorMarker(document.body, "◆graphic-panning")
+    clearPresentationState(document.body, "graphic-panning")
     this.#refresh()
   }
 
@@ -2965,14 +2970,14 @@ export class GraphicFeature extends EditorFeature {
     this.#cancelPath()
     this.#drawObserver?.disconnect()
     this.#drawObserver = null
-    if(this.#drawGraphic) removeEditorMarker(this.#drawGraphic, "◆graphic-drawing")
+    if(this.#drawGraphic) clearPresentationState(this.#drawGraphic, "graphic-drawing")
     // Direct DOM replacements may have cloned a temporary marker as well.
-    document.querySelectorAll(".◆graphic-drawing").forEach(element => removeEditorMarker(element, "◆graphic-drawing"))
+    presentationStateElements(document, "graphic-drawing").forEach(element => clearPresentationState(element, "graphic-drawing"))
     this.#drawGraphic = graphic
     this.#updateDrawCursor()
     if(!graphic) return
-    graphic.classList.add("◆", "◆graphic-drawing")
-    document.body.classList.add("◆", "◆graphic-drawing")
+    setPresentationState(graphic, "graphic-drawing")
+    setPresentationState(document.body, "graphic-drawing")
     this.#drawObserver = new MutationObserver(() => {
       if(this.#drawGraphic === graphic && (this.#capturedGraphic() !== graphic || !this.#canInsertText(graphic))) {
         this.#cancelStroke()
@@ -2985,6 +2990,8 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #updateDrawCursor() {
+    this.#untrackDrawCursor?.()
+    this.#untrackDrawCursor = undefined
     if(!this.#drawGraphic) {
       if(this.#drawCursorStylesheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.#drawCursorStylesheet)
       this.#drawCursorStylesheet = null
@@ -3006,8 +3013,9 @@ export class GraphicFeature extends EditorFeature {
     dot.setAttribute("fill", this.#drawPaint.stroke ?? defaultGraphicShapePaint.stroke)
     this.#setParameter(dot, "opacity", this.#drawPaint.opacity ?? defaultGraphicShapePaint.opacity)
     const source = `<svg xmlns="${SVG_NAMESPACE}" width="${center * 2}" height="${center * 2}">${dot.outerHTML}</svg>`
-    const selector = "body:not(.◆graphic-pan-ready):not(.◆graphic-panning) svg.◆graphic-drawing"
+    const selector = "body:not(:state(ww-graphic-pan-ready)):not(:state(ww-graphic-panning)) svg:state(ww-graphic-drawing)"
     this.#drawCursorStylesheet.replaceSync(`${selector}, ${selector} * { cursor: url("data:image/svg+xml,${encodeURIComponent(source)}") ${center} ${center}, crosshair !important; }`)
+    this.#untrackDrawCursor = trackPresentationStyles(document, this.#drawCursorStylesheet)
   }
 
   #createDrawingPreview(graphic: SVGSVGElement) {
@@ -3434,7 +3442,7 @@ export class GraphicFeature extends EditorFeature {
     this.editor.addAppendix(previewRoot)
     interaction.previewRoot = previewRoot
     interaction.preview = preview
-    document.body.classList.add("◆", "◆graphic-manipulating")
+    setPresentationState(document.body, "graphic-manipulating")
   }
 
   #updateConnectorPreview(interaction: ConnectorDrawInteraction) {
@@ -3456,7 +3464,7 @@ export class GraphicFeature extends EditorFeature {
   #cleanupConnector(interaction: ConnectorDrawInteraction) {
     this.#releasePointer(interaction.captureTarget, interaction.pointerId)
     interaction.previewRoot?.remove()
-    removeEditorMarker(document.body, "◆graphic-manipulating")
+    clearPresentationState(document.body, "graphic-manipulating")
     this.#setPortTarget(null)
   }
 
@@ -3523,24 +3531,26 @@ export class GraphicFeature extends EditorFeature {
       previewRoot.append(definitions)
     }
     this.#positionPreviewRoot(previewRoot, graphic)
-    interaction.attachedConnectors.forEach(item => {
-      const preview = item.source.cloneNode(true) as SVGGraphicsElement
-      this.#removeMarkerClasses(preview, true)
-      item.preview = preview
-      previewRoot.append(preview)
-      item.source.classList.add("◆", "◆graphic-preview-source")
-    })
-    interaction.items.forEach(item => {
-      const preview = item.source.cloneNode(true) as SVGGraphicsElement
-      this.#removeMarkerClasses(preview, true)
-      copyGraphicTextLayoutCache(item.source,preview)
-      item.preview = preview
-      previewRoot.append(preview)
-      item.source.classList.add("◆", "◆graphic-preview-source")
+    batchPresentationStates(document, () => {
+      interaction.attachedConnectors.forEach(item => {
+        const preview = item.source.cloneNode(true) as SVGGraphicsElement
+        this.#removeMarkerClasses(preview, true)
+        item.preview = preview
+        previewRoot.append(preview)
+        setPresentationState(item.source, "graphic-preview-source")
+      })
+      interaction.items.forEach(item => {
+        const preview = item.source.cloneNode(true) as SVGGraphicsElement
+        this.#removeMarkerClasses(preview, true)
+        copyGraphicTextLayoutCache(item.source,preview)
+        item.preview = preview
+        previewRoot.append(preview)
+        setPresentationState(item.source, "graphic-preview-source")
+      })
     })
     this.editor.addAppendix(previewRoot)
     interaction.previewRoot = previewRoot
-    document.body.classList.add("◆", "◆graphic-manipulating")
+    setPresentationState(document.body, "graphic-manipulating")
   }
 
   #scheduleInteractionFrame() {
@@ -3674,14 +3684,14 @@ export class GraphicFeature extends EditorFeature {
     this.#overlay?.querySelector(".◆graphic-ellipse-guide")?.setAttribute("display", "none")
     this.#releasePointer(interaction.captureTarget, interaction.pointerId)
     interaction.previewRoot?.remove()
-    interaction.items.forEach(item => removeEditorMarker(item.source, "◆graphic-preview-source"))
-    interaction.attachedConnectors.forEach(item => removeEditorMarker(item.source, "◆graphic-preview-source"))
+    interaction.items.forEach(item => clearPresentationState(item.source, "graphic-preview-source"))
+    interaction.attachedConnectors.forEach(item => clearPresentationState(item.source, "graphic-preview-source"))
     // Direct DOM replacements can copy temporary classes from the source.
-    document.querySelectorAll(".◆graphic-preview-source").forEach(element => removeEditorMarker(element, "◆graphic-preview-source"))
-    document.querySelectorAll(".◆graphic-shape-selected").forEach(element => {
-      if(!this.selectedShapes.includes(element as SVGGraphicsElement)) removeEditorMarker(element, "◆graphic-shape-selected")
+    presentationStateElements(document, "graphic-preview-source").forEach(element => clearPresentationState(element, "graphic-preview-source"))
+    presentationStateElements(document, "graphic-shape-selected").forEach(element => {
+      if(!this.selectedShapes.includes(element as SVGGraphicsElement)) clearPresentationState(element, "graphic-shape-selected")
     })
-    removeEditorMarker(document.body, "◆graphic-manipulating")
+    clearPresentationState(document.body, "graphic-manipulating")
     this.#setGuides({})
     this.#setPortTarget(null)
   }
@@ -4296,12 +4306,12 @@ export class GraphicFeature extends EditorFeature {
     if(changed) {
       this.#viewportState.set(graphic, next)
       this.#navigatedGraphics.add(graphic)
-      graphic.classList.add("◆", "◆graphic-viewport-active")
+      setPresentationState(graphic, "graphic-viewport-active")
     }
     else {
       this.#viewportState.delete(graphic)
       this.#navigatedGraphics.delete(graphic)
-      removeEditorMarker(graphic, "◆graphic-viewport-active")
+      clearPresentationState(graphic, "graphic-viewport-active")
     }
   }
 
@@ -4394,8 +4404,8 @@ export class GraphicFeature extends EditorFeature {
     this.#navigatedGraphics.clear()
     this.#viewportState = new WeakMap()
     this.#spaceDown = false
-    removeEditorMarker(document.body, "◆graphic-pan-ready")
-    removeEditorMarker(document.body, "◆graphic-panning")
+    clearPresentationState(document.body, "graphic-pan-ready")
+    clearPresentationState(document.body, "graphic-panning")
   }
 
   #screenMatrix(graphic: SVGSVGElement): Matrix {
@@ -4521,11 +4531,11 @@ export class GraphicFeature extends EditorFeature {
     }
     else if(operation === "toggle-lock") {
       if(this.#isLocked(shape)) {
-        removeEditorMarker(shape, "◆graphic-shape-locked")
+        clearPresentationState(shape, "graphic-shape-locked")
         this.#lockedShapes.delete(shape)
       }
       else {
-        shape.classList.add("◆", "◆graphic-shape-locked")
+        setPresentationState(shape, "graphic-shape-locked")
         this.#lockedShapes.add(shape)
         if(this.#selectedShapes.has(shape)) {
           const remaining = this.selectedShapes.filter(selected => selected !== shape)
@@ -4598,7 +4608,7 @@ export class GraphicFeature extends EditorFeature {
     if(this.#isLocked(shape) || shape.getAttribute("visibility") === "hidden") return
     const current = this.selectedShapes
     if(this.#selectedShapes.has(shape)) {
-      removeEditorMarker(shape, "◆graphic-shape-selected")
+      clearPresentationState(shape, "graphic-shape-selected")
       this.#selectedShapes.delete(shape)
       if(this.#primaryShape === shape) this.#primaryShape = this.selectedShapes.at(-1) ?? null
       return
@@ -4609,7 +4619,7 @@ export class GraphicFeature extends EditorFeature {
     }
     this.#selectedShapes.add(shape)
     this.#primaryShape = shape
-    shape.classList.add("◆", "◆graphic-shape-selected")
+    setPresentationState(shape, "graphic-shape-selected")
   }
 
   #setShapeSelection(shapes: SVGGraphicsElement[], primary = shapes.at(-1) ?? null) {
@@ -4617,9 +4627,9 @@ export class GraphicFeature extends EditorFeature {
       && !this.#isLocked(shape)
       && shape.getAttribute("visibility") !== "hidden"))
     this.#selectedShapes.forEach(shape => {
-      if(!next.has(shape)) removeEditorMarker(shape, "◆graphic-shape-selected")
+      if(!next.has(shape)) clearPresentationState(shape, "graphic-shape-selected")
     })
-    next.forEach(shape => shape.classList.add("◆", "◆graphic-shape-selected"))
+    next.forEach(shape => setPresentationState(shape, "graphic-shape-selected"))
     if(this.#activePathPoint && !next.has(this.#activePathPoint.shape)) this.#activePathPoint = null
     this.#selectedShapes = next
     this.#primaryShape = primary && next.has(primary) ? primary : next.values().next().value ?? null
@@ -4638,8 +4648,8 @@ export class GraphicFeature extends EditorFeature {
       this.#cleanupInteraction(this.#interaction)
       this.#interaction = null
     }
-    document.querySelectorAll(".◆graphic-shape-selected").forEach(element => {
-      removeEditorMarker(element, "◆graphic-shape-selected")
+    presentationStateElements(document, "graphic-shape-selected").forEach(element => {
+      clearPresentationState(element, "graphic-shape-selected")
     })
     this.#selectedShapes.clear()
     this.#primaryShape = null
@@ -4647,22 +4657,22 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #isLocked(shape: Element) {
-    return shape.classList.contains("◆graphic-shape-locked")
+    return hasPresentationState(shape, "graphic-shape-locked")
   }
 
   #pruneLocks() {
     this.#lockedShapes.forEach(shape => {
       if(!shape.isConnected) {
-        removeEditorMarker(shape, "◆graphic-shape-locked")
+        clearPresentationState(shape, "graphic-shape-locked")
         this.#lockedShapes.delete(shape)
       }
     })
   }
 
   #clearLocks() {
-    this.#lockedShapes.forEach(shape => removeEditorMarker(shape, "◆graphic-shape-locked"))
-    document.querySelectorAll(".◆graphic-shape-locked").forEach(shape => {
-      removeEditorMarker(shape, "◆graphic-shape-locked")
+    this.#lockedShapes.forEach(shape => clearPresentationState(shape, "graphic-shape-locked"))
+    presentationStateElements(document, "graphic-shape-locked").forEach(shape => {
+      clearPresentationState(shape, "graphic-shape-locked")
     })
     this.#lockedShapes.clear()
   }
@@ -5178,10 +5188,10 @@ export class GraphicFeature extends EditorFeature {
       this.#presentationResizeObserver = new ResizeObserver(this.#scheduleRefresh)
       this.#presentationResizeObserver.observe(captured)
     }
-    captured.classList.add("◆", "◆graphic-overflow-visible")
+    setPresentationState(captured, "graphic-overflow-visible")
     this.#updateOverflowPresentation(captured)
-    if(this.#options.grid) captured.classList.add("◆", "◆graphic-grid-visible")
-    else removeEditorMarker(captured, "◆graphic-grid-visible")
+    if(this.#options.grid) setPresentationState(captured, "graphic-grid-visible")
+    else clearPresentationState(captured, "graphic-grid-visible")
   }
 
   #viewportMatrix(root: SVGSVGElement, width: number, height: number): Matrix {
@@ -5260,7 +5270,7 @@ export class GraphicFeature extends EditorFeature {
       if(root === graphic) graphicFilter = filter
       else root.style.setProperty("filter", filter, "important")
     }
-    const rule = `svg.◆graphic-overflow-visible { overflow: visible !important; filter: ${graphicFilter} !important; } svg.◆graphic-preview { overflow: visible !important; }`
+    const rule = `${presentationStateSelector(document, "graphic-overflow-visible")} { overflow: visible !important; filter: ${graphicFilter} !important; } svg.◆graphic-preview { overflow: visible !important; }`
     if(this.#overflowRule !== rule) {
       sheet.replaceSync(rule)
       this.#overflowRule = rule
@@ -5279,8 +5289,11 @@ export class GraphicFeature extends EditorFeature {
     }
     this.#overflowStylesheet = null
     this.#overflowRule = ""
-    if(this.#presentedGraphic) removeEditorMarker(this.#presentedGraphic, "◆graphic-grid-visible", "◆graphic-overflow-visible")
-    document.querySelectorAll(".◆graphic-overflow-visible").forEach(element => removeEditorMarker(element, "◆graphic-overflow-visible"))
+    if(this.#presentedGraphic) {
+      clearPresentationState(this.#presentedGraphic, "graphic-grid-visible")
+      clearPresentationState(this.#presentedGraphic, "graphic-overflow-visible")
+    }
+    presentationStateElements(document, "graphic-overflow-visible").forEach(element => clearPresentationState(element, "graphic-overflow-visible"))
     this.#presentedGraphic = null
   }
 
@@ -5313,7 +5326,7 @@ export class GraphicFeature extends EditorFeature {
       }
       shape.parentNode.insertBefore(group, shape)
       group.append(shape)
-      removeEditorMarker(shape, "◆graphic-shape-selected")
+      clearPresentationState(shape, "graphic-shape-selected")
       root = group
     }
     let text = shapeText(root)

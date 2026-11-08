@@ -2,6 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
+import {hasAnchorTarget} from "../anchor-positioning.test-utils"
 import editorStyleString from "../editor.css?raw"
 import {createProofreader, type ProofreadingIssue} from "../proofreading"
 import {createLocalProofreader} from "../proofreading-worker"
@@ -421,7 +422,7 @@ describe("proofreading feature", () => {
     const popup = editor.appendix.querySelector<HTMLElement>(".◆proofreading-popup")!
     expect(popup.style.left).toBe("")
     expect(popup.style.top).toBe("")
-    expect(image.className).toContain("◆anchor-target-")
+    expect(hasAnchorTarget(image)).toBe(true)
     const learnMore = popup.querySelector<HTMLAnchorElement>('a[href="https://dequeuniversity.com/rules/axe/4.10/image-alt"]')!
     expect(learnMore).not.toBeNull()
     expect(learnMore.getAttribute("role")).toBe("menuitem")

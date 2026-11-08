@@ -1,6 +1,6 @@
 import {hydrateWidgetGroupings, prepareWidgetGroupingsForSerialization, restoreWidgetGroupingClones} from "./widget-grouping-dom"
 import {SharedDOMDoc, type EditingMutation} from "./domdoc"
-import {isAuthoredMutation, restoreAuthoredDetailsState, temporaryDetailsClosedMarker, temporaryDetailsOpenMarker} from "./editor-artifacts"
+import {isAuthoredMutation, isHTMLDetailsElement, restoreAuthoredDetailsState, setEditorWidgetLookup} from "./editor-artifacts"
 import {collectFeatureActions} from "./features"
 import {editorFeatureNames, type EditorFeatures, type EditorExtensionFactory} from "./editor-features"
 import { HistoryFeature } from "./features/history"
@@ -26,8 +26,9 @@ import { HeadFeature } from "./features/head"
 import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
 import {floatSideFromStyles} from "./element-styles"
+import {clearEditorPresentation, clearPresentationState, hasPresentationState, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, atomicEditingContainer, clearEditorArtifacts, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
+import { $, adoptStylesheet, atomicEditingContainer, clearEditorArtifacts, cloneInert, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
 import {
   editorFrameControlMessage,
@@ -59,9 +60,9 @@ import type {EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
 import listMarkerStyleString from "./document-list-markers.css?raw"
 import * as Y from "yjs"
-import {offlinePackageStyleAttribute, originalPackageEntriesAttribute, originalURLAttribute, serializeDoctype} from "./serialization-primitives"
-import {WEBWRITER_GENERATOR, type DocumentHeadState} from "./document-head"
-import {defaultDocumentTheme, upgradeBundledDocumentThemes} from "./document-themes"
+import {offlinePackageStyleAttribute, originalPackageEntriesAttribute, originalURLAttribute, serializeDoctype, type HTMLDocumentParts} from "./serialization-primitives"
+import type {DocumentHeadState} from "./document-head"
+import {upgradeBundledDocumentThemes} from "./document-themes"
 import {getSectionOption, isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
 import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
@@ -71,6 +72,7 @@ import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
 import {runtimeDocumentBaseURL} from "./document-base-url"
 
 const editorStylesheet = createStylesheet(editorStyleString + "\n" + listMarkerStyleString)
+trackPresentationStyles(document, editorStylesheet)
 const appendixStylesheet = createStylesheet(`
   :where(:host > :not(slot)) {
     user-select: none;
@@ -85,10 +87,6 @@ const appendixStylesheet = createStylesheet(`
 
   @keyframes blink {
     50% { opacity: 0; }
-  }
-
-  :host(.◆editing-locked) > :not(slot):not(.◆ai-review-toolbar) {
-    display: none !important;
   }
 
   .◆ai-review-toolbar {
@@ -157,6 +155,9 @@ const appendixStylesheet = createStylesheet(`
   }
 
 `)
+const lockedAppendixStylesheet = createStylesheet(`
+  :host > :not(slot):not(.◆ai-review-toolbar) { display: none !important; }
+`)
 
 /** DOMEditor
  * Core (transactions, schema, communication)
@@ -177,7 +178,7 @@ export type DOMEditorOptions = {
   }
   bundleOfflineModules?: typeof import("./offline-module-bundler").bundleOfflineModules
   loadCanvasSnapdom?: LoadSnapdom
-  appendSerializedAssets?: (root: Document, packages: import("./packages").WebWriterPackage[], importMap?: import("@jspm/import-map").IImportMap | null) => void
+  appendSerializedAssets?: (root: HTMLDocumentParts, packages: import("./packages").WebWriterPackage[], importMap?: import("@jspm/import-map").IImportMap | null) => void
   widgetData?: import("./widget-data").WidgetDataOptions
   syncUrl?: string
   initialState?: EditorStateSnapshot
@@ -295,7 +296,8 @@ export class DOMEditor {
       if(!keepEditingMode) document.designMode = "off"
       document.body.inert = false
       slot.inert = !keepEditingMode
-      document.body.classList.add("◆", "◆editing-locked")
+      setPresentationState(document.body, "editing-locked")
+      adoptStylesheet(this.appendix, lockedAppendixStylesheet)
       if(document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
         document.activeElement.blur()
       }
@@ -314,7 +316,9 @@ export class DOMEditor {
     this.defaultAppendixSlot.inert = state.slotInert
     document.body.inert = state.bodyInert
     document.designMode = state.designMode
-    removeEditorMarker(document.body, "◆editing-locked")
+    clearPresentationState(document.body, "editing-locked")
+    const appendix = this.appendix
+    appendix.adoptedStyleSheets = appendix.adoptedStyleSheets.filter(sheet => sheet !== lockedAppendixStylesheet)
   }
 
 
@@ -430,6 +434,7 @@ export class DOMEditor {
     this.#documentSession = null
     if(!session || documentEditorSessions.get(document) !== session) return
     documentEditorSessions.delete(document)
+    setEditorWidgetLookup(document)
     document.body.inert = session.state.inert
     document.designMode = session.state.designMode
     if(!session.hadEditorStylesheet) {
@@ -511,6 +516,7 @@ export class DOMEditor {
     }
     try {
       this.registerDocumentSession()
+      setEditorWidgetLookup(document, this.features.widget.isWidget)
     }
     catch(error) {
       initialYDoc?.destroy()
@@ -542,6 +548,7 @@ export class DOMEditor {
         this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses, {
           connectionParams: Object.fromEntries([...syncUrl.searchParams].filter(([key]) => key !== "session")),
           documentPermalinks: !options.reader,
+          ensureAuthoredIds: !options.reader,
           beforeSyncFromDOM,
           canRemoveMinimumContentRepair: (element, repairs) => this.features.widget.canRemoveMinimumContentRepair(element, repairs),
           widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
@@ -552,6 +559,7 @@ export class DOMEditor {
       else {
         this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses, {
           documentPermalinks: !options.reader,
+          ensureAuthoredIds: !options.reader,
           beforeSyncFromDOM,
           canRemoveMinimumContentRepair: (element, repairs) => this.features.widget.canRemoveMinimumContentRepair(element, repairs),
           widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
@@ -589,7 +597,7 @@ export class DOMEditor {
   }
 
   /** Assets are supplied by the authoring host; saved readers do not import it. */
-  appendSerializedAssets(root: Document, packages: import("./packages").WebWriterPackage[], importMap?: import("@jspm/import-map").IImportMap | null) {
+  appendSerializedAssets(root: HTMLDocumentParts, packages: import("./packages").WebWriterPackage[], importMap?: import("@jspm/import-map").IImportMap | null) {
     this.options.appendSerializedAssets?.(root, packages, importMap)
   }
 
@@ -743,10 +751,12 @@ export class DOMEditor {
     }
     for(const owner of Array.from(this.#editingLocks)) attempt(() => this.unlockEditing(owner))
     Object.values(this.features).forEach(feature => attempt(() => feature.disable()))
+    if(this.#documentSession) attempt(() => clearEditorPresentation(document))
     if(this.doc) attempt(() => {
       this.doc.syncFromDOM()
-      this.doc.root.querySelectorAll(`details.${temporaryDetailsOpenMarker}, details.${temporaryDetailsClosedMarker}`)
-        .forEach(restoreAuthoredDetailsState)
+      this.doc.root.querySelectorAll("details").forEach(element => {
+        if(isHTMLDetailsElement(element)) restoreAuthoredDetailsState(element)
+      })
     })
     this.mediaBlobs.forEach((_, url) => attempt(() => URL.revokeObjectURL(url)))
     this.mediaBlobs.clear()
@@ -1015,8 +1025,8 @@ export class DOMEditor {
     for(const currentElement of elements) {
       if(slideLayoutRole(currentElement)) continue
       const popupRole = popupElementRole(currentElement)
-      if(popupRole === "content" && currentElement.classList.contains("◆popup-visible")
-        || popupRole === "popup" && Array.from(currentElement.children).some(child => child.classList.contains("◆popup-visible"))) continue
+      if(popupRole === "content" && hasPresentationState(currentElement, "popup-visible")
+        || popupRole === "popup" && Array.from(currentElement.children).some(child => hasPresentationState(child, "popup-visible"))) continue
       const style = getComputedStyle(currentElement)
       const position = style.position
       if(position !== "absolute" && position !== "fixed" && position !== "relative" && position !== "sticky") continue
@@ -1335,20 +1345,27 @@ export class DOMEditor {
   private cleanDocumentClone(data: "defaults" | "current" = "defaults") {
     // A save immediately after a direct/native edit must include its derived
     // fragment IDs, even before the MutationObserver delivers that batch.
-    this.doc.syncFromDOM()
+    this.doc.flushDOMChanges()
     if(data === "current") this.doc.widgetData.sync()
-    const root = document.cloneNode(true) as Document
-    restoreWidgetGroupingClones(document, root)
-    this.doc.widgetData.writeDefaults(root, data === "current")
-    this.normalizeSerializedPopups(root)
-    this.clearEditingArtifacts(root)
-    applyIframeSandboxPolicy(root, [this.#bridgeOrigin])
-    return root
+    // Keep the imported tree disconnected. Chromium checks styles against the
+    // frame's CSP if the copy is attached, even to a document without a window.
+    const source = document.documentElement
+    const copy = cloneInert(source, true)
+    const children = Array.from(source.children)
+    const head = copy.children[children.indexOf(document.head)] as HTMLHeadElement
+    const body = copy.children[children.indexOf(document.body)] as HTMLElement
+    const {baseURI} = document
+    restoreWidgetGroupingClones(source, copy)
+    this.doc.widgetData.writeDefaults(copy, data === "current")
+    this.normalizeSerializedPopups(copy)
+    this.clearEditingArtifacts(copy)
+    applyIframeSandboxPolicy(copy, [this.#bridgeOrigin], undefined, baseURI)
+    return {documentElement: copy, head, body, baseURI, doctype: serializeDoctype(document.doctype)}
   }
 
   /** Older built-in Popups kept a flow dialog inside an inline span. Move only
    * those generated pairs in the detached clone so HTML parsing preserves them. */
-  private normalizeSerializedPopups(root: Document | DocumentFragment) {
+  private normalizeSerializedPopups(root: ParentNode) {
     for(const wrapper of root.querySelectorAll("span.ww-popup")) {
       const toggles = Array.from(wrapper.children).filter(child => child.localName === "button" && child.hasAttribute("popovertarget"))
       if(toggles.length !== 1) continue
@@ -1381,9 +1398,9 @@ export class DOMEditor {
       upgradeBundledDocumentThemes(root)
       if(runtimeAssets) this.features.dependency.appendSerializedAssets(root)
     }
-    const serialize = prepareWidgetGroupingsForSerialization(root)
+    const serialize = prepareWidgetGroupingsForSerialization(root.documentElement)
     if(innerBody) return serialize(root.body.innerHTML)
-    return serialize(`${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`)
+    return serialize(`${root.doctype}${root.documentElement.outerHTML}`)
   }
 
   /** Serializes the authored document. Offline mode embeds declared resources
@@ -1392,32 +1409,27 @@ export class DOMEditor {
     const root = this.cleanDocumentClone(data)
     upgradeBundledDocumentThemes(root)
     this.features.dependency.appendSerializedAssets(root)
-    await this.inlineBlobSources(root)
+    const {documentElement} = root
+    await this.inlineBlobSources(documentElement)
     if(offline) {
-      await this.bundleOfflinePackageModules(root)
-      await this.inlineExternalResources(root)
+      await this.bundleOfflinePackageModules(documentElement)
+      await this.inlineExternalResources(documentElement)
     }
-    const serialize = prepareWidgetGroupingsForSerialization(root)
-    return serialize(`${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`)
+    const serialize = prepareWidgetGroupingsForSerialization(documentElement)
+    return serialize(`${root.doctype}${documentElement.outerHTML}`)
   }
 
   async serializeRecoveryHTML() {
     const root = this.cleanDocumentClone()
-    if((!root.body.textContent?.trim() || documentLayoutMode(root.body) === "slides")) {
-      const blank = root.cloneNode(true) as Document
-      if(normalizePristineDocumentLayout(blank) && !blank.body.attributes.length
-        && !Array.from(blank.head.childNodes).some(node => {
-          if(node.nodeType === Node.TEXT_NODE) return Boolean(node.textContent?.trim())
-          if(!(node instanceof Element)) return true
-          return !(node.matches('meta[name="generator"]') && node.getAttribute("content") === WEBWRITER_GENERATOR
-            || node.matches("style[data-ww-theme]") && node.getAttribute("data-ww-theme") === defaultDocumentTheme.value
-              && node.textContent === defaultDocumentTheme.source)
-        })) return null
-    }
+    // Document metadata and body attributes alone do not warrant a checkpoint.
+    if((!root.body.textContent?.trim() || documentLayoutMode(root.body) === "slides")
+      && normalizePristineDocumentLayout({head: root.head.cloneNode(true) as HTMLHeadElement,
+        body: root.body.cloneNode(true) as HTMLElement})) return null
     // The editor restores its own runtime. Keep only the authored document,
     // embedding object URLs before their originating frame can disappear.
-    await this.inlineBlobSources(root)
-    return prepareWidgetGroupingsForSerialization(root)(`${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`)
+    const {documentElement} = root
+    await this.inlineBlobSources(documentElement)
+    return prepareWidgetGroupingsForSerialization(documentElement)(`${root.doctype}${documentElement.outerHTML}`)
   }
 
   /** Embed transient media for saving or replacing the editor realm. */
@@ -1459,34 +1471,35 @@ export class DOMEditor {
     }
   }
 
-  private async bundleOfflinePackageModules(root: Document) {
+  private async bundleOfflinePackageModules(root: HTMLElement) {
     const plan = this.features.dependency.packageDependencyPlan
     if(!plan?.map || !plan.entries.length) return
     const base = runtimeDocumentBaseURL()
     const entries = new Set(plan.entries.map(url => new URL(url, base).href))
-    const scripts = Array.from(root.querySelectorAll<HTMLScriptElement>('script[type="module"][src]'))
-      .filter(script => entries.has(new URL(script.src, base).href))
+    const scripts = Array.from(root.querySelectorAll<HTMLScriptElement>('script[type="module"][src]'),
+      script => ({script, url: new URL(script.getAttribute("src")!, base).href})).filter(({url}) => entries.has(url))
     if(!scripts.length) return
     const bundleOfflineModules = this.options.bundleOfflineModules
     if(!bundleOfflineModules) throw new Error("Offline export is unavailable in this editing session")
-    const {js, css} = await bundleOfflineModules(scripts.map(script => new URL(script.src, base).href), plan.map, base)
+    const urls = scripts.map(({url}) => url)
+    const {js, css} = await bundleOfflineModules(urls, plan.map, base)
     if(parseModule(js)[0].length) throw new Error("Offline package bundle contains unresolved module imports")
-    const first = scripts[0]
-    const bundle = root.createElement("script")
+    const first = scripts[0].script
+    const bundle = root.ownerDocument.createElement("script")
     bundle.type = "module"
     bundle.src = await this.blobDataURL(new Blob([js], {type: "text/javascript"}))
-    bundle.setAttribute(originalPackageEntriesAttribute, JSON.stringify(scripts.map(script => script.src)))
+    bundle.setAttribute(originalPackageEntriesAttribute, JSON.stringify(urls))
     first.replaceWith(bundle)
-    scripts.slice(1).forEach(script => script.remove())
+    scripts.slice(1).forEach(({script}) => script.remove())
     if(css) {
-      const style = root.createElement("style")
+      const style = root.ownerDocument.createElement("style")
       style.setAttribute(offlinePackageStyleAttribute, "")
       style.textContent = css
       bundle.before(style)
     }
   }
 
-  private async inlineExternalResources(root: Document | DocumentFragment) {
+  private async inlineExternalResources(root: HTMLElement | DocumentFragment) {
     const jobs: Promise<void>[] = []
     const resources: Array<[string, string]> = [
       ["img[src], audio[src], video[src], source[src], track[src], input[type='image'][src]", "src"],
@@ -1527,6 +1540,7 @@ export class DOMEditor {
     root.querySelectorAll<HTMLLinkElement>("link[rel~='stylesheet'][href]").forEach(link => {
       jobs.push(this.inlineStylesheet(link))
     })
+    if(root.nodeType === Node.ELEMENT_NODE) jobs.push(this.inlineStyleAttribute(root as HTMLElement))
     root.querySelectorAll<HTMLElement>("[style]").forEach(element => {
       jobs.push(this.inlineStyleAttribute(element))
     })
@@ -1783,8 +1797,8 @@ export class DOMEditor {
     ev.clipboardData.setData("text/plain", text)
   }
 
-  clearEditingArtifacts(node: Document | DocumentFragment = document) {
-    clearEditorArtifacts(node, this.ignoreAttrs)
+  clearEditingArtifacts(node: Node = document) {
+    clearEditorArtifacts(node, this.ignoreAttrs, this.features.widget.isWidget)
   }
 
   /** Sanitizes detached authored HTML and repairs it with the active schema

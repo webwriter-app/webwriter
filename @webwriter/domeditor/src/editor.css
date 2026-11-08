@@ -6,13 +6,13 @@ body {
 
 /* The reader clips at the slide boundary; only editing exposes the margins. */
 @media screen {
-  body.ww-slides:not(.◆editing-locked) > .ww-slides-viewport > section.ww-slide:not([is]) {
+  body.ww-slides:not(:state(ww-editing-locked)) > .ww-slides-viewport > section.ww-slide:not([is]) {
     overflow: visible;
   }
 }
 
 /* Local scroll state also highlights the current bubble without native scroll-target support. */
-body.ww-slides > nav.ww-slides-navigation > a.◆slide-current {
+body.ww-slides > nav.ww-slides-navigation > a:state(ww-slide-current) {
   background: #dbeafe;
 }
 
@@ -33,7 +33,7 @@ html:has(> body:is(.ww-canvas, .ww-slides, .ww-board)) {
   background: transparent;
 }
 
-html.◆ai-review-active {
+html:state(ww-ai-review-active) {
   pointer-events: auto;
 }
 
@@ -48,12 +48,11 @@ body {
 
 /* Legacy widget-owned controls stay in their original shadow/context tree.
  * The selected part is a manual popover, outside authored layout and clipping. */
-.◆widget-editable::part(options),
 [contenteditable]::part(options) {
   display: none !important;
 }
 
-.◆widget-options::part(options) {
+:state(ww-widget-options)::part(options) {
   display: block !important;
   position: fixed !important;
   inset: 1rem 1rem auto auto !important;
@@ -75,7 +74,7 @@ body {
 }
 
 @media (width < 1000px) {
-  .◆widget-options::part(options) {
+  :state(ww-widget-options)::part(options) {
     inset: auto 1rem 1rem auto !important;
     inline-size: min(32rem, calc(100vw - 2rem)) !important;
     max-block-size: 40dvh !important;
@@ -86,14 +85,14 @@ body {
  * The base theme caps direct children at the prose measure; authored document
  * styles can opt out without a separate editor sizing rule. */
 
-html.◆key-mod-down,
-html.◆key-mod-down *,
-html.◆key-mod-down *::before,
-html.◆key-mod-down *::after {
+html:state(ww-key-mod-down),
+html:state(ww-key-mod-down) *,
+html:state(ww-key-mod-down) *::before,
+html:state(ww-key-mod-down) *::after {
   cursor: pointer !important;
 }
 
-body > :last-child:not(:where(.◆gap-after-selected)) {
+body > :last-child:not(:where(:state(ww-gap-after-selected))) {
   margin-block-end: 0;
 }
 
@@ -171,27 +170,27 @@ body > :last-child:not(:where(.◆gap-after-selected)) {
   user-select: none;
 }
 
-:is(picture:where(:not(html.◆canvas-active *, :is(td, th) *)), audio, video) {
+:is(picture:where(:not(html:state(ww-canvas-active) *, :is(td, th) *)), audio, video) {
   display: block;
   width: 100%;
 }
 
-:is(picture:where(:not(html.◆canvas-active *, :is(td, th) *)), video) {
+:is(picture:where(:not(html:state(ww-canvas-active) *, :is(td, th) *)), video) {
   height: auto;
 }
 
-:is(picture, img, video).◆media-empty {
+:is(picture, img, video):state(ww-media-empty) {
   aspect-ratio: 16 / 9;
 }
 
-:is(picture, img, video, iframe, embed, object).◆media-empty,
+:is(picture, img, video, iframe, embed, object):state(ww-media-empty),
 body::part(graphic-image-placeholder) {
   box-sizing: border-box;
   border: 1px dashed #6b7280;
   background: #1f2937;
 }
 
-:is(picture, img, video, iframe, embed, object).◆media-empty {
+:is(picture, img, video, iframe, embed, object):state(ww-media-empty) {
   display: block;
   width: 100%;
   color: transparent;
@@ -226,7 +225,7 @@ svg:not(svg *) {
   -webkit-user-select: none;
 }
 
-picture.◆media-empty {
+picture:state(ww-media-empty) {
   position: relative;
 }
 
@@ -250,7 +249,7 @@ body::part(graphic-image-placeholder)[hidden] {
   display: none;
 }
 
-picture.◆media-empty > img:not([src]):not([srcset]) {
+picture:state(ww-media-empty) > img:not([src]):not([srcset]) {
   display: none;
 }
 
@@ -321,29 +320,29 @@ body
         none,
         semantics
       )
-  ):not(table *):is(:hover, .◆pointer-hovered) {
+  ):not(table *):is(:hover, :state(ww-pointer-hovered)) {
   anchor-name: --hover-anchor;
 }
 
 /* A table is the editor's selectable element; its structural descendants and
  * cell contents must therefore share one hover outline around the table. */
-body table:is(:hover, .◆pointer-hovered) {
+body table:is(:hover, :state(ww-pointer-hovered)) {
   anchor-name: --hover-anchor;
 }
 
 /* Empty caption carets follow the generated prefix, at the text origin. */
-:is(figcaption, caption).◆caption-editing {
+:is(figcaption, caption):state(ww-caption-editing) {
   caret-color: transparent;
 }
 
-:is(figcaption, caption).◆caption-placeholder::before {
+:is(figcaption, caption):state(ww-caption-placeholder)::before {
   color: #888;
   visibility: visible;
   display: inline-block;
   white-space: pre;
 }
 
-:is(figcaption, caption).◆caption-editing::before {
+:is(figcaption, caption):state(ww-caption-editing)::before {
   border-inline-end: 1px solid currentColor;
   margin-inline-end: -1px;
   animation: var(--ww-ui-animation, caption-caret-blink 1s step-end infinite);
@@ -360,7 +359,7 @@ body {
 
 /* Media capture keeps the native controls available without tinting the
  * media or its enclosing figure through the document's node range. */
-body:has(:is(picture, img, audio, video, iframe, embed, object).◆element-capture-selected) {
+body:has(:is(picture, img, audio, video, iframe, embed, object):state(ww-element-capture-selected)) {
   --editor-selection-background: transparent;
 }
 
@@ -371,15 +370,15 @@ body:has(:is(picture, img, audio, video, iframe, embed, object).◆element-captu
 /* Theme buttons disable native text selection, and their blue fill hides the
  * editor's blue range tint. Keep popup toggle text selectable and give its
  * selected characters a distinct color in the editing view. */
-:where(body.◆popup-editing .ww-popup > button[popovertarget]),
-:where(body.◆popup-editing .ww-popup > button[popovertarget] *) {
+:where(body:state(ww-popup-editing) .ww-popup > button[popovertarget]),
+:where(body:state(ww-popup-editing) .ww-popup > button[popovertarget] *) {
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
 }
 
-:where(body.◆popup-editing .ww-popup > button[popovertarget])::selection,
-:where(body.◆popup-editing .ww-popup > button[popovertarget] *)::selection {
+:where(body:state(ww-popup-editing) .ww-popup > button[popovertarget])::selection,
+:where(body:state(ww-popup-editing) .ww-popup > button[popovertarget] *)::selection {
   background-color: #fbbf24;
   color: #1f2937;
 }
@@ -447,116 +446,116 @@ body::part(insertion-preview) {
 
 /* Replaced elements can also receive native selection paint. Avoid applying
  * the translucent selection color twice beneath their appendix overlay. */
-.◆atomic-range-selected::selection,
-.◆atomic-range-selected *::selection {
+:state(ww-atomic-range-selected)::selection,
+:state(ww-atomic-range-selected) *::selection {
   background: transparent;
 }
 
 /* Chromium paints a text caret at a backward range's paragraph endpoint even
  * when the range already contains an atomic element. Its range overlay is the
  * visible selection in that case. */
-body:has(.◆atomic-range-selected),
-body:has(.◆atomic-range-selected) * {
+body:has(:state(ww-atomic-range-selected)),
+body:has(:state(ww-atomic-range-selected)) * {
   caret-color: transparent !important;
 }
 
-.◆element-selected {
+:state(ww-element-selected) {
   anchor-name: --selection-anchor;
 }
 
-body.◆element-selected {
+body:state(ww-element-selected) {
   anchor-name: --body-anchor, --selection-anchor;
 }
 
-.◆element-selected * {
+:state(ww-element-selected) * {
   caret-color: transparent !important;
 }
 
 /* A DOM Selection around a node still paints its focus-edge text caret in
  * Chromium. Suppress that background caret everywhere in the editable
  * document while the editor's node-selection overlay is active. */
-body.◆node-selection-active,
-body.◆node-selection-active * {
+body:state(ww-node-selection-active),
+body:state(ww-node-selection-active) * {
   caret-color: transparent !important;
 }
 
 /* Capture keeps the widget's native focus and selection, so do not pass the
  * node-selection caret suppression through its host into the shadow tree. */
-body.◆node-selection-active .◆element-capture-selected,
-body.◆node-selection-active math.◆element-capture-selected * {
+body:state(ww-node-selection-active) :state(ww-element-capture-selected),
+body:state(ww-node-selection-active) math:state(ww-element-capture-selected) * {
   caret-color: auto !important;
 }
 
 /* A cell rectangle is a top-level editor selection. Its marker highlight is
  * authoritative, so neither a native text caret nor range highlight should
  * remain visible behind it. */
-body.◆table-cell-selection,
-body.◆table-cell-selection * {
+body:state(ww-table-cell-selection),
+body:state(ww-table-cell-selection) * {
   caret-color: transparent !important;
 }
 
-body.◆table-cell-selection::selection,
-body.◆table-cell-selection *::selection {
+body:state(ww-table-cell-selection)::selection,
+body:state(ww-table-cell-selection) *::selection {
   background: transparent;
 }
 
 /* Read-only document states keep the authored DOM visible while suppressing
  * the browser's native caret and selection paint. Shadow-appendix editing UI
  * is hidden by the appendix stylesheet installed by DOMEditor. */
-body.◆editing-locked,
-body.◆editing-locked * {
+body:state(ww-editing-locked),
+body:state(ww-editing-locked) * {
   caret-color: transparent !important;
 }
 
-body.◆editing-locked::selection,
-body.◆editing-locked *::selection {
+body:state(ww-editing-locked)::selection,
+body:state(ww-editing-locked) *::selection {
   background: transparent !important;
 }
 
 /* Hide the document range behind an ordinary node selection. A capture-
  * selected widget keeps its native shadow-tree selection highlight. */
-.◆element-selected:not(.◆element-capture-selected)::selection,
-.◆element-selected:not(.◆element-capture-selected) *::selection {
+:state(ww-element-selected):not(:state(ww-element-capture-selected))::selection,
+:state(ww-element-selected):not(:state(ww-element-capture-selected)) *::selection {
   background: transparent;
 }
 
 /* A rectangular table selection is DOM-derived but cannot be represented by
- * one native Range when rowspan/colspan cells are involved. Only removable
- * marker classes touch authored cells; all structural edits remain native. */
-td.◆table-cell-selected,
-th.◆table-cell-selected {
+ * one native Range when rowspan/colspan cells are involved. Its highlight
+ * is presentation state and structural edits remain native. */
+td:state(ww-table-cell-selected),
+th:state(ww-table-cell-selected) {
   box-shadow: inset 0 0 0 2px var(--sl-color-primary-400);
   background-image: linear-gradient(rgb(56 189 248 / 6%), rgb(56 189 248 / 6%));
 }
 
-body.◆table-column-edge,
-body.◆table-column-edge *,
-body.◆table-column-resize,
-body.◆table-column-resize * {
+body:state(ww-table-column-edge),
+body:state(ww-table-column-edge) *,
+body:state(ww-table-column-resize),
+body:state(ww-table-column-resize) * {
   cursor: col-resize !important;
 }
 
-.◆element-hovered {
+:state(ww-element-hovered) {
   anchor-name: --hover-anchor;
 }
 
-.◆style-target-hovered {
+:state(ww-style-target-hovered) {
   anchor-name: --hover-anchor;
 }
 
 /* Hover and selection visuals live in BODY's shadow tree; authored elements
  * only carry anchor and editor-state classes. */
-.◆element-selected,
-.◆element-selected:hover {
+:state(ww-element-selected),
+:state(ww-element-selected):hover {
   outline: none;
   outline-offset: 0;
 }
 
-body.◆element-hovered {
+body:state(ww-element-hovered) {
   anchor-name: --body-anchor, --hover-anchor;
 }
 
-body.◆style-target-hovered {
+body:state(ww-style-target-hovered) {
   anchor-name: --body-anchor, --hover-anchor;
 }
 
@@ -577,20 +576,20 @@ body::part(hover-caret) {
 }
 
 body::part(hover-caret-transformed),
-body:not(.ww-slides):has(> *:is(:hover, .◆pointer-hovered))::part(hover-caret),
-body:has(.◆element-hovered)::part(hover-caret),
-body.◆element-hovered::part(hover-caret),
-body:has(.◆style-target-hovered)::part(hover-caret),
-body.◆style-target-hovered::part(hover-caret) {
+body:not(.ww-slides):has(> *:is(:hover, :state(ww-pointer-hovered)))::part(hover-caret),
+body:has(:state(ww-element-hovered))::part(hover-caret),
+body:state(ww-element-hovered)::part(hover-caret),
+body:has(:state(ww-style-target-hovered))::part(hover-caret),
+body:state(ww-style-target-hovered)::part(hover-caret) {
   display: block;
 }
 
-body:has(.◆element-hovered)::part(hover-caret) {
+body:has(:state(ww-element-hovered))::part(hover-caret) {
   outline: 2px dotted var(--sl-color-primary-400);
 }
 
 body::part(hover-caret-floats),
-body:has(.◆element-hovered)::part(hover-caret-floats) {
+body:has(:state(ww-element-hovered))::part(hover-caret-floats) {
   outline: none;
 }
 
@@ -608,7 +607,7 @@ body::part(selection-float-outline) {
   stroke-dasharray: 1 3;
 }
 
-body:has(.◆element-hovered)::part(hover-float-outline) {
+body:has(:state(ww-element-hovered))::part(hover-float-outline) {
   stroke: var(--sl-color-primary-400);
   stroke-width: 2px;
 }
@@ -629,15 +628,15 @@ body::part(hover-caret-board) {
   display: none !important;
 }
 
-body:has(.◆element-capture-selected:is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered))::part(hover-caret) {
+body:has(:state(ww-element-capture-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered), :state(ww-style-target-hovered)))::part(hover-caret) {
   display: none;
 }
 
-body:has(:is(summary, figcaption):is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered))::part(hover-caret) {
+body:has(:is(summary, figcaption):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered), :state(ww-style-target-hovered)))::part(hover-caret) {
   display: none;
 }
 
-body.◆element-hovered::part(hover-caret) {
+body:state(ww-element-hovered)::part(hover-caret) {
   position-anchor: auto;
   inset: 0;
   width: auto;
@@ -646,12 +645,12 @@ body.◆element-hovered::part(hover-caret) {
   background: transparent;
 }
 
-body.◆template-active:has(> [role~="document"].◆element-hovered:only-child)::part(hover-caret) {
+body:state(ww-template-active):has(> [role~="document"]:state(ww-element-hovered):only-child)::part(hover-caret) {
   outline: none;
   background: transparent;
 }
 
-body:has(.◆snippet-hovered.◆element-hovered)::part(hover-caret) {
+body:has(:state(ww-snippet-hovered):state(ww-element-hovered))::part(hover-caret) {
   display: block;
 }
 
@@ -697,7 +696,7 @@ body::part(selection-capture-edge) {
   pointer-events: auto;
 }
 
-body:has(.◆element-capture-selected)::part(selection-capture-edge) {
+body:has(:state(ww-element-capture-selected))::part(selection-capture-edge) {
   display: block;
 }
 
@@ -729,7 +728,7 @@ body::part(selection-capture-edge-right) {
   width: 8px;
 }
 
-body.◆element-selected::part(selection-caret-node) {
+body:state(ww-element-selected)::part(selection-caret-node) {
   position-anchor: auto;
   inset: 0;
   width: auto;
@@ -739,15 +738,15 @@ body.◆element-selected::part(selection-caret-node) {
 }
 
 /* The outer editor frame indicates selection of the document root. */
-body.◆template-active:has(> [role~="document"].◆element-selected:only-child)::part(selection-caret-node) {
+body:state(ww-template-active):has(> [role~="document"]:state(ww-element-selected):only-child)::part(selection-caret-node) {
   outline: none;
   outline-offset: 0;
   background: transparent;
 }
 
-body.◆element-selected::part(hover-caret) { background: transparent; }
+body:state(ww-element-selected)::part(hover-caret) { background: transparent; }
 
-body.◆key-mod-down, body.◆key-mod-down * {
+body:state(ww-key-mod-down), body:state(ww-key-mod-down) * {
   cursor: pointer;
 }
 
@@ -855,7 +854,7 @@ body::part(virtual-list-item-image-marker virtual-list-item-inside)::before {
 
 /* The real LI paints its marker; the shadow copy only measures its inline
  * advance so the editor caret can follow it without changing authored DOM. */
-li.◆list-empty-caret:empty { caret-color: transparent; }
+li:state(ww-list-empty-caret):empty { caret-color: transparent; }
 body::part(virtual-list-item-caret-only)::marker { color: transparent; }
 body::part(virtual-list-item-caret-only)::before { visibility: hidden; }
 
@@ -917,7 +916,7 @@ body::part(virtual-list-caret-inside)::after {
   background: CanvasText;
 }
 
-.◆virtual-list-selected {
+:state(ww-virtual-list-selected) {
   caret-color: transparent;
 }
 
@@ -969,11 +968,11 @@ svg {
   aspect-ratio: 16 / 9;
 }
 
-svg.◆element-capture-selected {
+svg:state(ww-element-capture-selected) {
   cursor: crosshair;
 }
 
-svg.◆element-capture-selected :is(rect, ellipse, circle, line, polyline, polygon, path) {
+svg:state(ww-element-capture-selected) :is(rect, ellipse, circle, line, polyline, polygon, path) {
   cursor: move;
 }
 
@@ -1044,7 +1043,7 @@ svg[viewBox]:empty {
   box-shadow: 0 1px 3px rgb(15 23 42 / 8%);
 }
 
-svg.◆graphic-grid-visible {
+svg:state(ww-graphic-grid-visible) {
   background-color: #fff;
   background-image:
     linear-gradient(to right, rgb(100 116 139 / 12%) 1px, transparent 1px),
@@ -1053,36 +1052,35 @@ svg.◆graphic-grid-visible {
   background-repeat: repeat;
 }
 
-.◆graphic-shape-locked {
+:state(ww-graphic-shape-locked) {
   pointer-events: none !important;
 }
 
-body.◆graphic-pan-ready svg.◆element-capture-selected {
+body:state(ww-graphic-pan-ready) svg:state(ww-element-capture-selected) {
   cursor: grab;
 }
 
-body.◆graphic-panning,
-body.◆graphic-panning * {
+body:state(ww-graphic-panning),
+body:state(ww-graphic-panning) * {
   cursor: grabbing !important;
   user-select: none !important;
 }
 
-.◆graphic-preview-source {
+:state(ww-graphic-preview-source) {
   visibility: hidden !important;
 }
 
-svg.◆graphic-drawing {
+svg:state(ww-graphic-drawing) {
   touch-action: none;
   user-select: none;
   cursor: crosshair;
 }
 
-body.◆graphic-drawing::part(transform-overlay) {
+body:state(ww-graphic-drawing)::part(transform-overlay) {
   display: none;
 }
 
-/* SVG direct-manipulation chrome is entirely inside BODY's shadow appendix.
- * The selected authored shape carries only removable ◆ marker classes. */
+/* SVG direct-manipulation chrome is entirely inside BODY's shadow appendix. */
 body::part(graphic-overlay) {
   position: fixed;
   inset: 0;
@@ -1267,8 +1265,8 @@ body::part(graphic-affordance-vertex) { cursor: move; }
 
 
 
-body.◆graphic-manipulating,
-body.◆graphic-manipulating * {
+body:state(ww-graphic-manipulating),
+body:state(ww-graphic-manipulating) * {
   user-select: none !important;
 }
 
@@ -1283,7 +1281,7 @@ body.◆graphic-manipulating * {
   content: "";
 }
 
-body.◆gap-caret-visible {
+body:state(ww-gap-caret-visible) {
   caret-color: transparent !important;
 
   & ::selection {
@@ -1291,53 +1289,53 @@ body.◆gap-caret-visible {
   }
 }
 
-body:has(.◆transform-target):has(:is(.◆drop-caret-before, .◆drop-caret-after)) {
-  .◆transform-target {
+body:has(:state(ww-transform-target)):has(:is(:state(ww-drop-caret-before), :state(ww-drop-caret-after))) {
+  :state(ww-transform-target) {
     opacity: 0.1 !important;
   }
 }
 
-.◆gap-before-selected, .◆gap-after-selected, .◆drop-caret-before, .◆drop-caret-after {
+:state(ww-gap-before-selected), :state(ww-gap-after-selected), :state(ww-drop-caret-before), :state(ww-drop-caret-after) {
   anchor-name: --gap-anchor;
 }
 
 /* Preview the base theme's inter-block spacing before a gap becomes a real
  * sibling. Keep its layer and specificity so authored margins still win. */
 @layer webwriter-theme {
-  :is(body, body > main, body > article, body > section) > :where(.◆gap-after-selected):last-child {
+  :is(body, body > main, body > article, body > section) > :where(:state(ww-gap-after-selected)):last-child {
     margin-block-end: var(--ww-block-spacing);
   }
 }
 
-.◆transform-containing-block {
+:state(ww-transform-containing-block) {
   anchor-name: --transform-containing-block;
   outline: 1px dashed var(--sl-color-primary-300);
 }
 
-.◆transform-containing-block-no-outline {
+:state(ww-transform-containing-block-no-outline) {
   outline: none !important;
 }
-body.◆transform-scaling-ew, body.◆transform-scaling-ew * {
+body:state(ww-transform-scaling-ew), body:state(ww-transform-scaling-ew) * {
   cursor: ew-resize !important;
 }
 
-body.◆transform-scaling-ns, body.◆transform-scaling-ns * {
+body:state(ww-transform-scaling-ns), body:state(ww-transform-scaling-ns) * {
   cursor: ns-resize !important;
 }
 
-body.◆transform-scaling-nesw, body.◆transform-scaling-nesw * {
+body:state(ww-transform-scaling-nesw), body:state(ww-transform-scaling-nesw) * {
   cursor: nesw-resize !important;
 }
 
-body.◆transform-scaling-nwse, body.◆transform-scaling-nwse * {
+body:state(ww-transform-scaling-nwse), body:state(ww-transform-scaling-nwse) * {
   cursor: nwse-resize !important;
 }
 
-body.◆transform-moving, body.◆transform-moving * {
+body:state(ww-transform-moving), body:state(ww-transform-moving) * {
   cursor: move !important;
 }
 
-body.◆transform-rotating, body.◆transform-rotating * {
+body:state(ww-transform-rotating), body:state(ww-transform-rotating) * {
   cursor: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-rotate"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M19.95 11a8 8 0 1 0 -.5 4m.5 5v-5h-5" /></svg>'), auto !important;
 }
 
@@ -1413,19 +1411,19 @@ details:empty {
 }
 
 /* Keep popover content in the editing flow; preview uses the native popover. */
-body.◆popup-editing:not(.◆editing-locked) [popover].◆popup-visible:not(:popover-open) {
+body:state(ww-popup-editing):not(:state(ww-editing-locked)) [popover]:state(ww-popup-visible):not(:popover-open) {
   display: block !important;
   position: static !important;
   inset: auto !important;
 }
 
-body.◆popup-editing:not(.◆editing-locked) .ww-popup > [popover].◆popup-visible:not(:popover-open) {
+body:state(ww-popup-editing):not(:state(ww-editing-locked)) .ww-popup > [popover]:state(ww-popup-visible):not(:popover-open) {
   position: absolute !important;
   inset: auto auto auto 0 !important;
   z-index: 10;
 }
 
-body.◆popup-editing:not(.◆editing-locked) :is(.ww-popup-content, .◆hotspot-popup)[popover].◆popup-visible:not(:popover-open) {
+body:state(ww-popup-editing):not(:state(ww-editing-locked)) :is(.ww-popup-content, :state(ww-hotspot-popup))[popover]:state(ww-popup-visible):not(:popover-open) {
   display: flex !important;
   flex-direction: column;
   align-items: flex-start;
@@ -1434,12 +1432,12 @@ body.◆popup-editing:not(.◆editing-locked) :is(.ww-popup-content, .◆hotspot
   z-index: 10;
 }
 
-body.◆popup-editing .ww-popup:has(> [popover].◆popup-visible) { position: relative; }
+body:state(ww-popup-editing) .ww-popup:has(> [popover]:state(ww-popup-visible)) { position: relative; }
 
 /* A closed authored dialog remains closed in the saved document. Its active
  * editing marker exposes the live element in ordinary flow without invoking
  * modal/top-layer behavior or adding a helper wrapper to authored content. */
-dialog.◆dialog-editing {
+dialog:state(ww-dialog-editing) {
   display: block !important;
   position: static !important;
   inset: auto !important;
@@ -1455,7 +1453,7 @@ dialog.◆dialog-editing {
   backdrop-filter: none !important;
 }
 
-dialog.◆dialog-editing::backdrop {
+dialog:state(ww-dialog-editing)::backdrop {
   display: none !important;
 }
 
@@ -1467,7 +1465,7 @@ summary::after {
   cursor: pointer;
 }
 
-.◆hotspot-placeholder:is(:empty, :has(> br:only-child))::before {
+:state(ww-hotspot-placeholder):is(:empty, :has(> br:only-child))::before {
   content: "Hotspot content";
   visibility: visible;
   display: inline-block;
@@ -1493,11 +1491,11 @@ summary:is(:empty, :has(> br:only-child))::before {
 /* Chromium may paint the native caret on the marker side of an empty
  * SUMMARY. This caret participates at the inline content origin—the exact
  * position occupied by real summary text after the disclosure marker. */
-summary:is(:empty, :has(> br:only-child)).◆empty-selected {
+summary:is(:empty, :has(> br:only-child)):state(ww-empty-selected) {
   caret-color: transparent;
 }
 
-summary:is(:empty, :has(> br:only-child)).◆empty-selected::before {
+summary:is(:empty, :has(> br:only-child)):state(ww-empty-selected)::before {
   border-inline-start-color: currentColor;
   animation: var(--ww-ui-animation, summary-caret-blink 1s step-end infinite);
 }
@@ -1562,71 +1560,71 @@ body.ww-board:empty::before {
   display: none;
 }
 
-.◆empty-selected {
+:state(ww-empty-selected) {
   anchor-name: --empty-selected;
 }
 
 /* Preserve every active editor anchor when the same element also supplies
  * the shared hover overlay's anchor. */
-.◆element-selected:is(:hover, .◆pointer-hovered, .◆element-hovered):not(table *) {
+:state(ww-element-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered)):not(table *) {
   anchor-name: --selection-anchor, --hover-anchor;
 }
 
-.◆element-selected.◆style-target-hovered:not(table *) {
+:state(ww-element-selected):state(ww-style-target-hovered):not(table *) {
   anchor-name: --selection-anchor, --hover-anchor;
 }
 
-body.◆element-selected:is(:hover, .◆pointer-hovered, .◆element-hovered) {
+body:state(ww-element-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered)) {
   anchor-name: --body-anchor, --selection-anchor, --hover-anchor;
 }
 
-body.◆element-selected.◆style-target-hovered {
+body:state(ww-element-selected):state(ww-style-target-hovered) {
   anchor-name: --body-anchor, --selection-anchor, --hover-anchor;
 }
 
-:is(.◆gap-before-selected, .◆gap-after-selected, .◆drop-caret-before, .◆drop-caret-after):is(:hover, .◆pointer-hovered, .◆element-hovered):not(table *) {
+:is(:state(ww-gap-before-selected), :state(ww-gap-after-selected), :state(ww-drop-caret-before), :state(ww-drop-caret-after)):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered)):not(table *) {
   anchor-name: --gap-anchor, --hover-anchor;
 }
 
-:is(.◆gap-before-selected, .◆gap-after-selected, .◆drop-caret-before, .◆drop-caret-after).◆style-target-hovered:not(table *) {
+:is(:state(ww-gap-before-selected), :state(ww-gap-after-selected), :state(ww-drop-caret-before), :state(ww-drop-caret-after)):state(ww-style-target-hovered):not(table *) {
   anchor-name: --gap-anchor, --hover-anchor;
 }
 
-.◆transform-containing-block:is(:hover, .◆pointer-hovered, .◆element-hovered):not(table *) {
+:state(ww-transform-containing-block):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered)):not(table *) {
   anchor-name: --transform-containing-block, --hover-anchor;
 }
 
-.◆transform-containing-block.◆style-target-hovered:not(table *) {
+:state(ww-transform-containing-block):state(ww-style-target-hovered):not(table *) {
   anchor-name: --transform-containing-block, --hover-anchor;
 }
 
-.◆empty-selected:is(:hover, .◆pointer-hovered, .◆element-hovered):not(table *) {
+:state(ww-empty-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered)):not(table *) {
   anchor-name: --empty-selected, --hover-anchor;
 }
 
-.◆empty-selected.◆style-target-hovered:not(table *) {
+:state(ww-empty-selected):state(ww-style-target-hovered):not(table *) {
   anchor-name: --empty-selected, --hover-anchor;
 }
 
-body.◆empty-selected:is(:hover, .◆pointer-hovered, .◆element-hovered) {
+body:state(ww-empty-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered)) {
   anchor-name: --body-anchor, --empty-selected, --hover-anchor;
 }
 
-body.◆empty-selected.◆style-target-hovered {
+body:state(ww-empty-selected):state(ww-style-target-hovered) {
   anchor-name: --body-anchor, --empty-selected, --hover-anchor;
 }
 
 /* Keep the speech-bubble pointer anchored while editor hover and selection
  * overlays also use the popup content as their anchor. */
-body :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover]):is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered) {
+body :is(.ww-popup > [popover], .ww-popup-content[popover], :state(ww-hotspot-popup)[popover]):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered), :state(ww-style-target-hovered)) {
   anchor-name: --ww-popup-bubble, --hover-anchor;
 }
 
-body :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover]).◆element-selected {
+body :is(.ww-popup > [popover], .ww-popup-content[popover], :state(ww-hotspot-popup)[popover]):state(ww-element-selected) {
   anchor-name: --ww-popup-bubble, --selection-anchor;
 }
 
-body :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover]).◆element-selected:is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered) {
+body :is(.ww-popup > [popover], .ww-popup-content[popover], :state(ww-hotspot-popup)[popover]):state(ww-element-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered), :state(ww-style-target-hovered)) {
   anchor-name: --ww-popup-bubble, --selection-anchor, --hover-anchor;
 }
 
@@ -1649,18 +1647,18 @@ body::part(empty-document-caret) {
 
 /* A body or slide boundary can paint a native caret inside a positioned child.
  * Use the appendix caret for document flow and no caret for freeform layouts. */
-body.◆empty-selected,
-body.◆empty-selected *,
-body.ww-slides > .ww-slides-viewport > section.ww-slide.◆empty-selected:not([is]),
-body.ww-slides > .ww-slides-viewport > section.ww-slide.◆empty-selected:not([is]) * {
+body:state(ww-empty-selected),
+body:state(ww-empty-selected) *,
+body.ww-slides > .ww-slides-viewport > section.ww-slide:state(ww-empty-selected):not([is]),
+body.ww-slides > .ww-slides-viewport > section.ww-slide:state(ww-empty-selected):not([is]) * {
   caret-color: transparent !important;
 }
 
-html:not(.◆canvas-active) body.◆empty-selected::part(empty-document-caret) {
+html:not(:state(ww-canvas-active)) body:state(ww-empty-selected)::part(empty-document-caret) {
   display: block;
 }
 
-body:has(> [role~="document"].◆empty-selected)::part(empty-document-caret) {
+body:has(> [role~="document"]:state(ww-empty-selected))::part(empty-document-caret) {
   display: block;
 }
 
@@ -1669,7 +1667,7 @@ body:has(> [role~="document"].◆empty-selected)::part(empty-document-caret) {
 }
 
 menu:empty {
-  &.◆empty-selected {
+  &:state(ww-empty-selected) {
     &::before {
       content: "";
       display: list-item;
@@ -1679,7 +1677,7 @@ menu:empty {
   }
 }
 
-body:has(.◆transform-target):has(:is(.◆drop-caret-before, .◆drop-caret-after))::part(transform-overlay) {
+body:has(:state(ww-transform-target)):has(:is(:state(ww-drop-caret-before), :state(ww-drop-caret-after)))::part(transform-overlay) {
   opacity: 0.1 !important;
 }
 
@@ -1752,8 +1750,8 @@ body::part(gap-caret)::after {
     animation: var(--ww-ui-animation, blink 1s step-end 0s infinite);
 }
 
-body.◆drop-selection-active,
-body.◆drop-selection-active * {
+body:state(ww-drop-selection-active),
+body:state(ww-drop-selection-active) * {
   caret-color: transparent !important;
 }
 
@@ -1763,12 +1761,12 @@ body::part(selection-caret-text) {
   background: currentColor;
 }
 
-body.◆touch-caret-visible,
-body.◆touch-caret-visible * {
+body:state(ww-touch-caret-visible),
+body:state(ww-touch-caret-visible) * {
   caret-color: transparent !important;
 }
 
-body.◆touch-caret-visible::part(selection-caret-text) {
+body:state(ww-touch-caret-visible)::part(selection-caret-text) {
   animation: var(--ww-ui-animation, blink 1s step-end infinite);
 }
 
@@ -1787,22 +1785,22 @@ body::part(drop-range-gap)::after {
   animation: none;
 }
 
-body.◆drop-selection-active::part(selection-caret-text),
-body.◆drop-selection-active::part(selection-caret-gap),
-body.◆drop-selection-active::part(selection-caret-node),
-body.◆drop-selection-active::part(selection-caret-capture),
-body.◆drop-selection-active::part(empty-document-caret) {
+body:state(ww-drop-selection-active)::part(selection-caret-text),
+body:state(ww-drop-selection-active)::part(selection-caret-gap),
+body:state(ww-drop-selection-active)::part(selection-caret-node),
+body:state(ww-drop-selection-active)::part(selection-caret-capture),
+body:state(ww-drop-selection-active)::part(empty-document-caret) {
   visibility: hidden;
 }
 
-body.◆insertion-gap-preview::part(selection-caret-gap),
-body.◆insertion-gap-preview::part(selection-caret-text),
-body.◆insertion-gap-preview::part(empty-document-caret) {
+body:state(ww-insertion-gap-preview)::part(selection-caret-gap),
+body:state(ww-insertion-gap-preview)::part(selection-caret-text),
+body:state(ww-insertion-gap-preview)::part(empty-document-caret) {
   color: #c8d2df;
   animation: none;
 }
 
-body.◆insertion-gap-preview::part(selection-caret-gap)::after {
+body:state(ww-insertion-gap-preview)::part(selection-caret-gap)::after {
   animation: none;
 }
 /* Match the slightly heavier stroke used by remote text and element carets
@@ -1984,12 +1982,12 @@ body::part(transform-overlay-board-selected) {
   outline: 2px dotted var(--ww-transform-color);
   outline-offset: 2px;
 }
-body.ww-board:has(:is(.ww-board-column, .ww-board-card).◆element-selected)::part(selection-caret-node),
-body.ww-board:has(:is(.ww-board-column, .ww-board-card).◆element-selected)::part(selection-caret-capture) {
+body.ww-board:has(:is(.ww-board-column, .ww-board-card):state(ww-element-selected))::part(selection-caret-node),
+body.ww-board:has(:is(.ww-board-column, .ww-board-card):state(ww-element-selected))::part(selection-caret-capture) {
   outline-color: transparent;
 }
-body:is(.ww-canvas, .ww-slides):has(.◆transform-target.◆element-selected)::part(selection-caret-node),
-body:is(.ww-canvas, .ww-slides):has(.◆transform-target.◆element-selected)::part(selection-caret-capture) {
+body:is(.ww-canvas, .ww-slides):has(:state(ww-transform-target):state(ww-element-selected))::part(selection-caret-node),
+body:is(.ww-canvas, .ww-slides):has(:state(ww-transform-target):state(ww-element-selected))::part(selection-caret-capture) {
   outline-color: transparent;
 }
 body::part(transform-overlay-anchor) {
@@ -2125,9 +2123,9 @@ body {
   --ww-crop-cursor-up-left: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke-linecap%3D%22square%22%20stroke-linejoin%3D%22miter%22%3E%3Cpath%20d%3D%22M7.5%2020.5V7.5H20.5%22%20stroke%3D%22white%22%20stroke-width%3D%225%22%2F%3E%3Cpath%20d%3D%22M7.5%2020.5V7.5H20.5%22%20stroke%3D%22black%22%20stroke-width%3D%223%22%2F%3E%3C%2Fsvg%3E") 8 8, nwse-resize;
   --ww-crop-cursor-down-right: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke-linecap%3D%22square%22%20stroke-linejoin%3D%22miter%22%3E%3Cpath%20d%3D%22M3.5%2016.5H16.5V3.5%22%20stroke%3D%22white%22%20stroke-width%3D%225%22%2F%3E%3Cpath%20d%3D%22M3.5%2016.5H16.5V3.5%22%20stroke%3D%22black%22%20stroke-width%3D%223%22%2F%3E%3C%2Fsvg%3E") 17 17, nwse-resize;
 }
-body.◆transform-cropping-up-left, body.◆transform-cropping-up-left *, body.◆transform-cropping-up-left::part(transform-overlay-crop) { cursor: var(--ww-crop-cursor-up-left) !important; }
-body.◆transform-cropping-down-right, body.◆transform-cropping-down-right *, body.◆transform-cropping-down-right::part(transform-overlay-crop) { cursor: var(--ww-crop-cursor-down-right) !important; }
-body:is(.◆transform-cropping-up-left, .◆transform-cropping-down-right) {
+body:state(ww-transform-cropping-up-left), body:state(ww-transform-cropping-up-left) *, body:state(ww-transform-cropping-up-left)::part(transform-overlay-crop) { cursor: var(--ww-crop-cursor-up-left) !important; }
+body:state(ww-transform-cropping-down-right), body:state(ww-transform-cropping-down-right) *, body:state(ww-transform-cropping-down-right)::part(transform-overlay-crop) { cursor: var(--ww-crop-cursor-down-right) !important; }
+body:is(:state(ww-transform-cropping-up-left), :state(ww-transform-cropping-down-right)) {
   --editor-selection-background: transparent;
 }
 body::part(transform-overlay-crop-mask) {
@@ -2490,10 +2488,10 @@ body::part(transform-overlay-mover) {
   cursor: grab;
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9l3 3l-3 3M15 12h6M6 9l-3 3l3 3M3 12h6M9 18l3 3l3 -3M12 15v6M15 6l-3 -3l-3 3M12 3v6"/></svg>');
 }
-body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-mover),
-body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-caption),
-body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-delete),
-body:has(.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-attribution) {
+body:has(:state(ww-transform-target):state(ww-element-selected):not(:state(ww-element-capture-selected)))::part(transform-overlay-mover),
+body:has(:state(ww-transform-target):state(ww-element-selected):not(:state(ww-element-capture-selected)))::part(transform-overlay-caption),
+body:has(:state(ww-transform-target):state(ww-element-selected):not(:state(ww-element-capture-selected)))::part(transform-overlay-delete),
+body:has(:state(ww-element-selected):not(:state(ww-element-capture-selected)))::part(transform-overlay-attribution) {
   border-style: dotted;
 }
 body::part(transform-overlay-board-control) {
@@ -2611,16 +2609,7 @@ body::part(transform-overlay-freeform transform-overlay-at-top) {
 /* AI edits are staged in a private Yjs branch and remain a visually distinct,
  * read-only proposal until the user accepts or rejects them. All marker
  * classes are editor-only and excluded from serialization. */
-.◆measure-static-position {
-  position: static !important;
-  inset: auto !important;
-  translate: none !important;
-  rotate: none !important;
-  scale: none !important;
-  transform: none !important;
-}
-
-.◆ai-preview-change {
+:state(ww-ai-preview-change) {
   outline: 3px solid #7c3aed !important;
   outline-offset: 3px;
   background-image: linear-gradient(rgb(124 58 237 / 8%), rgb(124 58 237 / 8%));
@@ -2628,13 +2617,13 @@ body::part(transform-overlay-freeform transform-overlay-at-top) {
 
 /* Source edits stay outside the authored DOM until explicitly applied. The
  * current replacement target remains visible but read-only while pending. */
-.◆html-source-pending {
+:state(ww-html-source-pending) {
   outline: 3px solid #0f766e !important;
   outline-offset: 3px;
   background-image: linear-gradient(rgb(13 148 136 / 10%), rgb(13 148 136 / 10%));
 }
 
-.◆ai-preview-pulse {
+:state(ww-ai-preview-pulse) {
   animation: var(--ww-ui-animation, ◆ai-preview-pulse 1.2s ease-out);
 }
 
@@ -2645,8 +2634,8 @@ body::part(transform-overlay-freeform transform-overlay-at-top) {
 
 /* A native range remains contiguous, but independent positioned flows do not
    participate in the surrounding flow's selection presentation. */
-.◆flow-excluded::selection,
-.◆flow-excluded *::selection {
+:state(ww-flow-excluded)::selection,
+:state(ww-flow-excluded) *::selection {
   background: transparent;
   color: inherit;
   text-shadow: none;
@@ -2684,11 +2673,11 @@ math, math * {
 /* Native MathML edge carets can resolve into the surrounding paragraph.
  * Suppress that paint while the appendix owns the caret, including capture's
  * higher-specificity rule that normally restores a block's native caret. */
-body.◆node-selection-active math.◆element-capture-selected.◆math-structural-caret,
-body.◆node-selection-active math.◆element-capture-selected.◆math-structural-caret *,
-body.◆math-structural-caret,
-body.◆math-structural-caret *,
-.◆math-structural-caret, .◆math-structural-caret * {
+body:state(ww-node-selection-active) math:state(ww-element-capture-selected):state(ww-math-structural-caret),
+body:state(ww-node-selection-active) math:state(ww-element-capture-selected):state(ww-math-structural-caret) *,
+body:state(ww-math-structural-caret),
+body:state(ww-math-structural-caret) *,
+:state(ww-math-structural-caret), :state(ww-math-structural-caret) * {
   caret-color: transparent !important;
 }
 
@@ -2704,26 +2693,26 @@ math[display="block"] {
   padding-inline: 0;
 }
 
-.◆math-editing:not(.◆atomic-range-selected) {
+:state(ww-math-editing):not(:state(ww-atomic-range-selected)) {
   background-color: #eeeeee;
 }
 
-.◆math-hovered {
+:state(ww-math-hovered) {
   color: var(--sl-color-primary-400);
 }
 
 /* Native carets can resolve both sides of MATH to the same token edge.
  * The shared text caret distinguishes its inner and outer DOM positions. */
-:is(.◆math-caret-inside-left, .◆math-caret-inside-right, .◆math-caret-outside-left, .◆math-caret-outside-right) {
+:is(:state(ww-math-caret-inside-left), :state(ww-math-caret-inside-right), :state(ww-math-caret-outside-left), :state(ww-math-caret-outside-right)) {
   anchor-name: --math-caret-anchor;
 }
 
-body.◆math-boundary-caret,
-body.◆math-boundary-caret * {
+body:state(ww-math-boundary-caret),
+body:state(ww-math-boundary-caret) * {
   caret-color: transparent !important;
 }
 
-body.◆math-boundary-caret::part(selection-caret-text) {
+body:state(ww-math-boundary-caret)::part(selection-caret-text) {
   position-anchor: --math-caret-anchor;
   top: var(--math-caret-top, calc(anchor(center) - 0.5em));
   height: var(--math-caret-height, 1em);
@@ -2731,42 +2720,42 @@ body.◆math-boundary-caret::part(selection-caret-text) {
   animation: var(--ww-ui-animation, blink 1s step-end infinite);
 }
 
-body:has(.◆math-caret-inside-left)::part(selection-caret-text) {
+body:has(:state(ww-math-caret-inside-left))::part(selection-caret-text) {
   left: calc(anchor(left) + 2px);
 }
-body:has(.◆math-caret-inside-right)::part(selection-caret-text) {
+body:has(:state(ww-math-caret-inside-right))::part(selection-caret-text) {
   left: calc(anchor(right) - 3px);
 }
-body:has(.◆math-caret-outside-left)::part(selection-caret-text) {
+body:has(:state(ww-math-caret-outside-left))::part(selection-caret-text) {
   left: calc(anchor(left) - 2px);
 }
-body:has(.◆math-caret-outside-right)::part(selection-caret-text) {
+body:has(:state(ww-math-caret-outside-right))::part(selection-caret-text) {
   left: calc(anchor(right) + 1px);
 }
 
 /* Popup boundaries need a visible caret independent of the button's native caret. */
-:is(.◆popup-caret-inside-left, .◆popup-caret-inside-right, .◆popup-caret-outside-left, .◆popup-caret-outside-right) {
+:is(:state(ww-popup-caret-inside-left), :state(ww-popup-caret-inside-right), :state(ww-popup-caret-outside-left), :state(ww-popup-caret-outside-right)) {
   anchor-name: --popup-caret-anchor;
 }
-body.◆popup-boundary-caret,
-body.◆popup-boundary-caret * { caret-color: transparent !important; }
-body.◆popup-boundary-caret::part(selection-caret-text) {
+body:state(ww-popup-boundary-caret),
+body:state(ww-popup-boundary-caret) * { caret-color: transparent !important; }
+body:state(ww-popup-boundary-caret)::part(selection-caret-text) {
   position-anchor: --popup-caret-anchor;
   top: var(--popup-caret-top, anchor(top));
   height: var(--popup-caret-height, 1em);
   width: 1px;
   animation: var(--ww-ui-animation, blink 1s step-end infinite);
 }
-body:has(.◆popup-caret-inside-left)::part(selection-caret-text) { left: calc(anchor(left) + 2px); }
-body:has(.◆popup-caret-inside-right)::part(selection-caret-text) { left: calc(anchor(right) - 3px); }
-body:has(.◆popup-caret-outside-left)::part(selection-caret-text) { left: calc(anchor(left) - 2px); }
-body:has(.◆popup-caret-outside-right)::part(selection-caret-text) { left: calc(anchor(right) + 1px); }
+body:has(:state(ww-popup-caret-inside-left))::part(selection-caret-text) { left: calc(anchor(left) + 2px); }
+body:has(:state(ww-popup-caret-inside-right))::part(selection-caret-text) { left: calc(anchor(right) - 3px); }
+body:has(:state(ww-popup-caret-outside-left))::part(selection-caret-text) { left: calc(anchor(left) - 2px); }
+body:has(:state(ww-popup-caret-outside-right))::part(selection-caret-text) { left: calc(anchor(right) + 1px); }
 
 /* Empty arguments reserve hit targets; guides and measured carets live in
  * the appendix. Keep unfinished radicals' space even when focus moves away,
  * so their native baseline does not jump with the editing markers. */
 math :is(mroot, msqrt) > mrow:empty,
-.◆math-slot, .◆math-editing:empty {
+:state(ww-math-slot), :state(ww-math-editing):empty {
   display: inline-block;
   min-width: 0.7em;
   min-height: 1em;
@@ -2778,11 +2767,11 @@ math mrow:has(> mo:first-child):has(> mo:last-child) > mrow:empty,
 math mrow:has(> mo:first-child):has(> mo:last-child) > mfrac > mrow:empty {
   min-height: 1ex;
 }
-.◆math-editing[display="block"]:empty {
+:state(ww-math-editing)[display="block"]:empty {
   display: block math;
 }
 
-math[display="block"].◆math-empty {
+math[display="block"]:state(ww-math-empty) {
   display: block math;
   box-sizing: border-box;
   min-height: 2lh;
@@ -2809,7 +2798,7 @@ body::part(math-placeholder-icon) {
 
 /* Large operators can pull a lower script into their italic overhang. Keep
  * the empty hit target clear of the operator until it contains actual text. */
-math msubsup:has(> mo:first-child) > .◆math-slot:nth-child(2) {
+math msubsup:has(> mo:first-child) > :state(ww-math-slot):nth-child(2) {
   padding-inline-start: 1em;
   min-width: 1.7em;
 }
@@ -2828,7 +2817,7 @@ svg text::selection, svg text *::selection {
   background: transparent !important;
 }
 
-.◆graphic-text-editing, .◆graphic-text-editing * {
+:state(ww-graphic-text-editing), :state(ww-graphic-text-editing) * {
   pointer-events: auto !important;
   user-select: text !important;
   -webkit-user-select: text !important;
@@ -2836,7 +2825,7 @@ svg text::selection, svg text *::selection {
 }
 
 /* Empty native SVG images retain a surface for selecting their source controls. */
-svg image.◆media-empty {
+svg image:state(ww-media-empty) {
   pointer-events: all;
 }
 
@@ -2849,6 +2838,6 @@ body.ww-board > section.ww-board-column:not([is]) > *,
 body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > * {
   cursor: auto;
 }
-body.ww-board .◆board-dragging {
+body.ww-board :state(ww-board-dragging) {
   opacity: .45;
 }

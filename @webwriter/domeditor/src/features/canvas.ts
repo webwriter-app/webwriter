@@ -1,4 +1,6 @@
+import {clearPresentationState, hasPresentationState, setPresentationState} from "../presentation-state.js"
 import {CanvasViewer, canvasControlsStyles, canvasIcons, canvasStartingView, createCanvasPanSurface, groupCanvasZoomPresets, isCanvasStartingView, updateCanvasZoomControls, type CanvasStartingViewBounds} from "../canvas-viewer.js"
+import {isAuthoredMutation} from "../editor-artifacts"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearInlinePlacement, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
@@ -35,6 +37,7 @@ export class CanvasFeature extends EditorFeature {
       this.refresh()
     })
   }
+  private readonly onResize = () => { if(this.active) this.schedule() }
   private readonly release = () => { this.spaceHand = false; this.syncHandMode(); this.stopPan(); this.viewer?.stopWheelPan(); this.schedule() }
 
   get active() { return documentLayoutMode() === "canvas" }
@@ -420,9 +423,9 @@ export class CanvasFeature extends EditorFeature {
   private syncHandMode() {
     const hand = this.active && (this.hand || this.spaceHand)
     if(hand) {
-      if(!document.body.classList.contains("◆canvas-hand")) document.body.classList.add("◆canvas-hand")
+      if(!hasPresentationState(document.body, "canvas-hand")) setPresentationState(document.body, "canvas-hand")
     }
-    else if(document.body.classList.contains("◆canvas-hand")) removeEditorMarker(document.body, "◆canvas-hand")
+    else if(hasPresentationState(document.body, "canvas-hand")) clearPresentationState(document.body, "canvas-hand")
     this.viewer?.updatePanSurface()
   }
 
@@ -552,7 +555,7 @@ export class CanvasFeature extends EditorFeature {
     if(this.background) this.background.hidden = !this.active
     if(this.active && !this.slot) {
       this.slot = this.editor.appendix.querySelector<HTMLSlotElement>("slot:not([name])")!
-      this.viewer = new CanvasViewer(this.slot, this.background!, this.controls!, this.panSurface, this.cameraChanged, this.editor.options.loadCanvasSnapdom)
+      this.viewer = new CanvasViewer(this.slot, this.background!, this.controls!, this.panSurface, this.cameraChanged, this.editor.options.loadCanvasSnapdom, isAuthoredMutation)
       if(!this.viewer.startView()) this.viewer.applyCamera()
       this.viewer.mountMinimap(this.controlButtons!.parentElement!, {
         add: () => this.saveStartingView(),
@@ -638,7 +641,7 @@ export class CanvasFeature extends EditorFeature {
     this.observer = new MutationObserver(this.schedule)
     this.observer.observe(document.documentElement, {subtree: true, childList: true, attributes: true, characterData: true})
     window.addEventListener("blur", this.release)
-    window.addEventListener("resize", this.schedule)
+    window.addEventListener("resize", this.onResize)
     this.refresh()
   }
 
@@ -652,7 +655,7 @@ export class CanvasFeature extends EditorFeature {
     if(this.cameraFrame !== null) cancelAnimationFrame(this.cameraFrame)
     this.cameraFrame = null; this.cameraZoom = 1
     window.removeEventListener("blur", this.release)
-    window.removeEventListener("resize", this.schedule)
+    window.removeEventListener("resize", this.onResize)
     this.restoreSlot()
     this.background?.remove(); this.background = null
     this.panSurface?.remove(); this.panSurface = null

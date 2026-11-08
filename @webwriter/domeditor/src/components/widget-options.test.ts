@@ -107,6 +107,41 @@ describe("rich widget options drawer", () => {
     expect(drawer.querySelectorAll(".widget-action")).toHaveLength(2)
   })
 
+  it("joins adjacent visible widget actions and shows icons only when requested", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.widgetOptions = widgetState([], [
+      {name: "complete", label: "Complete DFA with sink", group: "editing", disabled: true, disabledReason: "Add a state first"},
+      {name: "dfa", label: "Switch to DFA", group: "editing", buttonGroup: "type", hidden: true},
+      {name: "nfa", label: "Switch to NFA", group: "editing", buttonGroup: "type"},
+      {name: "pda", label: "Switch to PDA", group: "editing", buttonGroup: "type", icon: "Settings"},
+      {name: "reset", label: "Reset", group: "editing"},
+      {name: "separate", label: "Separate", group: "editing", buttonGroup: "type"},
+      {name: "other", label: "Other", group: "advanced", buttonGroup: "type"},
+    ])
+    await toolbox.updateComplete
+    const drawer = drawerFor(toolbox)
+    await settleChildren(drawer)
+    const buttons = Array.from(drawer.querySelectorAll<RibbonButton>(".widget-action"))
+    expect(buttons.map(button => button.label)).toEqual(["Complete DFA with sink", "Switch to NFA", "Switch to PDA", "Reset", "Separate", "Other"])
+    expect(buttons[0].shadowRoot!.querySelector(".button-icon")).toBeNull()
+    expect(buttons[2].shadowRoot!.querySelector(".button-icon svg")).not.toBeNull()
+    expect(drawer.querySelectorAll(".widget-action-group")).toHaveLength(1)
+    const group = drawer.querySelector('.widget-action-group[role="group"]')!
+    expect(Array.from(group.querySelectorAll(".widget-action"))).toEqual(buttons.slice(1, 3))
+    expect(drawer.textContent).not.toContain("Add a state first")
+    const complete = buttons[0].shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    const reason = buttons[0].shadowRoot!.querySelector('[role="tooltip"]')!
+    expect(complete.getAttribute("aria-disabled")).toBe("true")
+    expect(complete.getAttribute("aria-describedby")).toBe(reason.id)
+    expect(reason.textContent).toBe("Add a state first")
+
+    const changes = vi.fn()
+    toolbox.addEventListener("widget-action", changes)
+    complete.click()
+    buttons[1].shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    expect(changes.mock.calls.map(([event]) => event.detail)).toEqual([{name: "nfa"}])
+  })
+
   it("confirms metadata actions and emits no event when confirmation is declined", async () => {
     const confirm = vi.fn()
     vi.stubGlobal("confirm", confirm)
@@ -225,6 +260,8 @@ describe("rich widget options drawer", () => {
     const changes = vi.fn()
     toolbox.addEventListener("widget-option-change", changes)
     const tree = drawer.querySelector(".widget-option-tree")!
+    const branches = Array.from(tree.querySelectorAll("details"))
+    expect(branches.map(details => details.open)).toEqual([false, false])
     const branch = tree.querySelector<HTMLInputElement>('input[data-tree-group="Group"]')!
     expect(branch.indeterminate).toBe(true)
     expect(tree.querySelector<HTMLInputElement>('input[data-value="a"]')?.checked).toBe(true)
@@ -236,6 +273,12 @@ describe("rich widget options drawer", () => {
     selectAll.checked = false
     selectAll.dispatchEvent(new Event("change", {bubbles: true}))
     expect(changes.mock.calls.at(-1)?.[0].detail).toEqual({name: "tree", value: ["unknown"]})
+
+    branches[0].open = true
+    const state = toolbox.widgetOptions!
+    toolbox.widgetOptions = {...state, options: [{...state.options[0], value: ["unknown"]}]}
+    await toolbox.updateComplete
+    expect(Array.from(tree.querySelectorAll("details"), details => details.open)).toEqual([true, false])
   })
 
   it("shows missing references without silently changing the stored value", async () => {
@@ -289,6 +332,63 @@ describe("rich widget options drawer", () => {
     size.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "99"}, bubbles: true, composed: true}))
     expect(changes).toHaveBeenCalledTimes(1)
     expect(changes.mock.calls[0][0].detail).toEqual({name: "many", value: ["a", "b"]})
+  })
+
+  it("shows removable tags and keeps the multiselect open while changing choices", async () => {
+    const toolbox = await mountToolbox()
+    const choices = [
+      {value: "a", label: "Alpha"},
+      {value: "b", label: "Beta"},
+      {value: "c", label: "Gamma"},
+      {value: "d", label: "Delta"},
+      {value: "e", label: "Epsilon", disabled: true},
+    ]
+    toolbox.widgetOptions = widgetState([
+      {name: "many", label: "Many", type: "select", value: ["a", "b", "c", "d"], multiple: true, choices},
+      {name: "locked", label: "Locked", type: "select", value: ["a"], multiple: true, choices, readOnly: true},
+    ])
+    await toolbox.updateComplete
+    const drawer = drawerFor(toolbox)
+    await settleChildren(drawer)
+    const [combo, locked] = drawer.querySelectorAll("style-combobox")
+    const root = combo.shadowRoot!
+    const input = root.querySelector("input")!
+    const labels = () => [...root.querySelectorAll(".selection-tag-label")].map(tag => tag.textContent!.trim())
+    const press = (key: string) => input.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, composed: true}))
+    const changes = vi.fn()
+    toolbox.addEventListener("widget-option-change", changes)
+
+    expect(labels()).toEqual(["Alpha", "Beta", "Gamma", "Delta"])
+    expect(drawer.querySelector('.field-clear[aria-label="Clear Many"]')).toBeNull()
+    expect(locked.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Remove Alpha"]')!.disabled).toBe(true)
+    root.querySelector<HTMLButtonElement>('[aria-label="Remove Alpha"]')!.click()
+    await combo.updateComplete
+    expect(labels()).toEqual(["Beta", "Gamma", "Delta"])
+    expect(input.getAttribute("aria-expanded")).toBe("false")
+
+    press("Enter")
+    await combo.updateComplete
+    expect(root.querySelector(".option[data-active]")?.textContent).toContain("Beta")
+    press("End")
+    await combo.updateComplete
+    expect(root.querySelector(".option[data-active]")?.textContent).toContain("Delta")
+    press(" ")
+    await combo.updateComplete
+    expect(labels()).toEqual(["Beta", "Gamma"])
+    expect(root.querySelector(".option[data-active]")?.getAttribute("aria-selected")).toBe("false")
+    const alpha = [...root.querySelectorAll<HTMLButtonElement>(".option")].find(option => option.textContent!.includes("Alpha"))!
+    alpha.click()
+    await combo.updateComplete
+    expect(alpha.getAttribute("aria-selected")).toBe("true")
+    expect(input.getAttribute("aria-expanded")).toBe("true")
+    press("Escape")
+    await combo.updateComplete
+    expect(root.querySelector('[role="listbox"]')).toBeNull()
+    expect(changes.mock.calls.map(([event]) => event.detail)).toEqual([
+      {name: "many", value: ["b", "c", "d"]},
+      {name: "many", value: ["b", "c"]},
+      {name: "many", value: ["b", "c", "a"]},
+    ])
   })
 
   it("routes color picks only through widget-option-change", async () => {

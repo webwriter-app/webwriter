@@ -3,6 +3,7 @@ import {afterEach, beforeEach, describe, expect, it} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import {DOMEditor} from "../domeditor"
 import {$} from "../utility"
+import {hasPresentationState} from "../presentation-state.js"
 import * as Y from "yjs"
 import {sharedDOMBody} from "../domdoc"
 
@@ -203,21 +204,21 @@ describe("declarative dialog editing", () => {
     const popup = document.querySelector("[popover]")!
     $.move(popup.querySelector("p")!.firstChild!, 1)
     editor.features.dialog.refresh()
-    expect(popup).toHaveClass("◆popup-visible")
+    expect(hasPresentationState(popup, "popup-visible")).toBe(true)
     const click = new MouseEvent("click", {bubbles: true, cancelable: true})
     button.dispatchEvent(click)
     expect(click.defaultPrevented).toBe(true)
-    expect(document.body).toHaveClass("◆popup-editing")
+    expect(hasPresentationState(document.body, "popup-editing")).toBe(true)
     expect(editor.toHTML(true)).not.toContain("◆")
     $.move(document.querySelector("body > p")!.firstChild!, 1)
     editor.features.dialog.refresh()
-    expect(popup).not.toHaveClass("◆popup-visible")
+    expect(hasPresentationState(popup, "popup-visible")).toBe(false)
     $.selectElement(button)
     editor.features.dialog.refresh()
-    expect(popup).toHaveClass("◆popup-visible")
+    expect(hasPresentationState(popup, "popup-visible")).toBe(true)
     editor.features.dialog.disable()
-    expect(popup).not.toHaveClass("◆popup-visible")
-    expect(document.body).not.toHaveClass("◆popup-editing")
+    expect(hasPresentationState(popup, "popup-visible")).toBe(false)
+    expect(hasPresentationState(document.body, "popup-editing")).toBe(false)
     const afterDisable = new MouseEvent("click", {bubbles: true, cancelable: true})
     button.dispatchEvent(afterDisable)
     expect(afterDisable.defaultPrevented).toBe(false)
@@ -231,7 +232,7 @@ describe("declarative dialog editing", () => {
     popup.parentElement!.remove()
     $.move(document.querySelector("p")!.firstChild!, 1)
     editor.features.dialog.refresh()
-    expect(popup).not.toHaveClass("◆popup-visible")
+    expect(hasPresentationState(popup, "popup-visible")).toBe(false)
   })
   it("does not register dialog insertion", () => {
     expect(editor.features.dialog.actions).not.toHaveProperty("insertDialog")
@@ -254,7 +255,7 @@ describe("declarative dialog editing", () => {
 
     editor.features.dialog.refresh()
 
-    expect(dialog).toHaveClass("◆dialog-editing")
+    expect(hasPresentationState(dialog, "dialog-editing")).toBe(true)
     expect(dialog).not.toHaveAttribute("open")
     expect(document.body.querySelector(".◆editor-only")).toBeNull()
     expect(editor.toHTML(true)).toBe('<dialog id="notice"><p>Notice</p></dialog><p>After</p>')
@@ -270,7 +271,7 @@ describe("declarative dialog editing", () => {
     $.move(paragraph.firstChild!, 1)
     document.dispatchEvent(new Event("selectionchange"))
     await Promise.resolve()
-    expect(dialog).not.toHaveClass("◆dialog-editing")
+    expect(hasPresentationState(dialog, "dialog-editing")).toBe(false)
     expect(dialog).not.toHaveAttribute("class")
 
     $.selectElement(dialog)

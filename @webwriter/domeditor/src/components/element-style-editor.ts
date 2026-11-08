@@ -257,7 +257,6 @@ export class ElementStyleEditor extends LitElement {
     :host([dense-choices]) .specialized-choice-group button {padding-inline: 0;}
     :host([dense-choices]) .specialized-choice-group svg {width: .75rem; height: .75rem;}
     :host([dense-choices]) :is([data-property="caption-side"], [data-property="empty-cells"]) .specialized-choice-group svg {width: 1rem; height: 1rem;}
-    :host([dense-choices]) [data-property="text-wrap"] .specialized-choice-group button {height: 1.5rem; min-height: 0; padding-block: 0;}
     :host([dense-choices]) [data-property="text-wrap"] .specialized-choice-group svg {width: 1rem; height: 1rem;}
     .marker-control {width: 100%;}
     .marker-control [hidden] {display: none !important;}

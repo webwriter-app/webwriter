@@ -21,7 +21,7 @@ const previewOptions = (changes: Partial<PreviewFrameOptions> = {}): PreviewFram
 })
 const parse = (source: string) => new DOMParser().parseFromString(source, "text/html")
 
-it("upgrades a stock legacy theme in preview and preserves custom styles", () => {
+it("upgrades a stock legacy theme in editing and preview while preserving custom styles", () => {
   const legacyCSS = parse(legacyLayoutExample).head.querySelector('style[data-ww-theme="base"]')!.textContent!
   expect(legacyCSS).not.toContain(".ww-full-width")
   const authoredCSS = "table { background: rgb(4, 5, 6); }"
@@ -30,13 +30,16 @@ it("upgrades a stock legacy theme in preview and preserves custom styles", () =>
     <style id="customized" data-ww-theme="base">${customizedCSS}</style><style id="authored">${authoredCSS}</style></head>
     <body><table class="ww-full-width"><tr><td>Cell</td></tr></table></body>`)
   const options = previewOptions({executeScripts: false})
+  const editing = parse(editorFrameHTML(source.documentElement.outerHTML, editorOptions({executeScripts: false})))
   const preview = parse(previewFrameHTML(parse(previewFrameHTML(source, options)), options))
 
-  expect(preview.querySelector("#legacy")?.textContent).toBe(defaultDocumentTheme.source)
-  expect(preview.querySelector("#legacy")?.getAttribute("media")).toBe("screen")
-  expect(preview.querySelector("#customized")?.textContent).toBe(customizedCSS)
-  expect(preview.querySelector("#authored")?.textContent).toBe(authoredCSS)
-  expect(preview.querySelector("table")?.className).toBe("ww-full-width")
+  for(const root of [editing, preview]) {
+    expect(root.querySelector("#legacy")?.textContent).toBe(defaultDocumentTheme.source)
+    expect(root.querySelector("#legacy")?.getAttribute("media")).toBe("screen")
+    expect(root.querySelector("#customized")?.textContent).toBe(customizedCSS)
+    expect(root.querySelector("#authored")?.textContent).toBe(authoredCSS)
+    expect(root.querySelector("table")?.className).toBe("ww-full-width")
+  }
 })
 
 describe("local live preview bundles", () => {
@@ -60,6 +63,22 @@ describe("local live preview bundles", () => {
     const policy = parse(source).head.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
     expect(policy).toContain("style-src-elem 'nonce-font-test' https://fonts.bunny.net data:;")
   })
+
+  it("uses the existing nonce only for exact bundled theme CSS at startup", () => {
+    const theme = documentTheme("water")!
+    const source = `<head><style id="bundled" data-ww-theme="water">${theme.source}</style>
+      <style id="customized" data-ww-theme="water">${theme.source}\np {color: red}</style></head>`
+    const root = parse(editorFrameHTML(source, editorOptions()))
+
+    const bundled = root.getElementById("bundled")!
+    expect(bundled.getAttribute("nonce")).toBe(editorOptions().bridgeNonce)
+    expect(bundled.nextElementSibling?.getAttribute("nonce")).toBe(editorOptions().bridgeNonce)
+    expect(bundled.nextElementSibling?.matches("script[nonce]")).toBe(true)
+    expect(root.getElementById("customized")!.hasAttribute("nonce")).toBe(false)
+    expect(root.head.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content"))
+      .toContain("style-src-elem 'nonce-host-bridge-nonce' https://fonts.bunny.net data:;")
+  })
+
   afterEach(() => vi.restoreAllMocks())
   const script = `${hostOrigin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/widget.js?revision=2`
   const style = `${hostOrigin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/widget.css?revision=2`
@@ -154,12 +173,16 @@ describe("isolated frame documents", () => {
   it("defers authored module URLs until before the trusted editor initializes", () => {
     const source = '<html><head><script type="module" class="authored" src="https://cdn.example/widget.js"></script><script src="./classic.js"></script></head><body><script type="module" src="./body.js"></script><template><script type="module" src="./inert.js"></script></template></body></html>'
     const root = parse(editorFrameHTML(source, editorOptions()))
-    const pending = [...root.querySelectorAll<HTMLScriptElement>("script.◆pending-module")]
+    const pending = [
+      root.head.querySelector<HTMLScriptElement>('script[type="module"].authored'),
+      root.body.querySelector<HTMLScriptElement>('script[type="module"]'),
+    ].filter((script): script is HTMLScriptElement => script !== null)
     expect(pending).toHaveLength(2)
     expect(pending.every(script => !script.hasAttribute("src"))).toBe(true)
-    const restore = root.head.querySelector<HTMLScriptElement>('script.◆editor-only[type="module"]:not([src])')!
+    expect(root.querySelector(".◆pending-module")).toBeNull()
+    const restore = root.head.querySelector<HTMLScriptElement>('script[nonce][type="module"]:not([src])')!
     expect(restore.getAttribute("nonce")).toBe("host-bridge-nonce")
-    expect(restore.textContent).toContain('[["https://cdn.example/widget.js","authored"],["./body.js",null]]')
+    expect(restore.textContent).toContain('[[0,"https://cdn.example/widget.js"],[5,"./body.js"]]')
     expect(restore.compareDocumentPosition(root.head.querySelector('script[src*="editor-entry"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
     expect(root.querySelector('script[src="./classic.js"]')).not.toBeNull()
     expect(root.querySelector("template")!.content.querySelector('script[src="./inert.js"]')).not.toBeNull()
@@ -271,16 +294,21 @@ describe("isolated frame documents", () => {
   })
 
   it("cleans a preview copy and installs only the trusted runtime with a separate script nonce", () => {
-    const source = parse('<html><head><script>authored()</script><style>.authored {color: red}</style></head><body><p class="authored ◆selected" contenteditable="">text</p><demo-widget class="◆widget-editable" contenteditable=""></demo-widget><aside class="◆editor-only">UI</aside><template><i data-webwriter-editor-only>UI</i><b class="◆caret authored">nested</b></template></body></html>')
-    const root = parse(previewFrameHTML(source, previewOptions()))
+    const pkg: WebWriterPackage = {name: "fixture", version: "1", label: "Fixture", authors: [], keywords: [], links: {},
+      scripts: [], styles: [], members: [{id: "widget", packageName: "fixture", packageVersion: "1", exportName: "./widget",
+        kind: "widget", label: "Widget", insertable: true, tagName: "demo-widget"}]}
+    const source = parse('<html><head><script>authored()</script><style>.authored {color: red}</style></head><body><p class="authored ◆selected" contenteditable="">text</p><demo-widget contenteditable=""></demo-widget><demo-widget id="locked" contenteditable="false"></demo-widget><aside class="◆editor-only">UI</aside><template><i data-webwriter-editor-only>UI</i><b class="◆caret authored">nested</b></template></body></html>')
+    const root = parse(previewFrameHTML(source, previewOptions({packages: [pkg]})))
     expect(root.querySelector("aside")).toBeNull()
     expect(root.querySelector("p")?.outerHTML).toBe('<p class="authored" contenteditable="">text</p>')
     expect(root.querySelector("demo-widget")?.hasAttribute("contenteditable")).toBe(false)
+    expect(root.querySelector("#locked")?.getAttribute("contenteditable")).toBe("false")
     expect(root.querySelector("template")?.innerHTML).toBe('<b class="authored">nested</b>')
     expect(root.querySelector("style")?.textContent).toBe(".authored {color: red}")
     expect(Array.from(root.querySelectorAll("script")).some(script => script.textContent === "authored()")).toBe(false)
     const bridge = root.querySelector('meta[name="webwriter-preview-bridge"]')!
     expect(bridge.getAttribute("data-nonce")).toBe("host-bridge-nonce")
+    expect(bridge.getAttribute("data-widget-tags")).toBe("demo-widget")
     const scripts = Array.from(root.querySelectorAll("script"))
     expect(scripts.some(script => script.getAttribute("src") === previewOptions().entryURL)).toBe(true)
     const nonce = scripts[0].getAttribute("nonce")!

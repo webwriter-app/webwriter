@@ -1,30 +1,24 @@
 # Make layouts responsive
 
-A widget can receive less space than the browser window. Fit the width its parent allocates, and let its content determine its height.
+A widget can receive less space than the browser window. Design block widgets for widths from **300px to 2100px**.
+
+Set `min-height` to the space the widget needs to stay usable and `max-height` to limit how tall it can grow. Let the content determine the height within those bounds, and keep overflowing content reachable by scrolling.
 
 ![Widget columns reflow into a stack at narrow widths](../../images/widgets/responsiveness.svg)
 
-For a block widget, start with these host styles:
+For a block widget, start with these host styles and adjust the height limits to suit its content:
 
 ```css
 :host {
   display: block;
   box-sizing: border-box;
-  max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));
-  min-inline-size: 0;
-  margin-inline: auto;
-  container-type: inline-size;
-}
-
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .5rem;
+  min-width: 300px;
+  max-width: 2100px;
+  min-height: 12rem;
+  max-height: 36rem;
 }
 ```
 
 Use container queries for layouts that need columns at wider allocations. Apply the query to a descendant inside the shadow DOM. Use `minmax(0, 1fr)` for flexible grid columns and allow long text to wrap.
 
-Check narrow and wide parent containers, nested widgets, and browser zoom. Include 280 CSS px and a narrower allocation. Controls should remain readable without horizontal overflow.
-
-See [Responsiveness](../../responsiveness.md) for container queries, wider widgets, floats, and the test widths.
+Test at 300px, 2100px, and several widths in between. Check nested widgets and browser zoom too. Controls should remain readable without horizontal overflow, and content should stay reachable when the widget reaches its maximum height.

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
+import editorPage from "../editor/index.html?raw"
 
 const mocks = vi.hoisted(() => ({
   discoverHostBackend: vi.fn(),
@@ -65,5 +66,10 @@ describe("editor page startup", () => {
     const {startEditorPage} = await import("./editor-page")
     await startEditorPage()
     expect(document.querySelector("dom-editor")).not.toBeNull()
+  })
+
+  it("starts with an empty body in the editor HTML", () => {
+    const page = new DOMParser().parseFromString(editorPage, "text/html")
+    expect(page.body.childNodes).toHaveLength(0)
   })
 })

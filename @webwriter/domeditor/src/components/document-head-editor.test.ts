@@ -3,7 +3,7 @@ import {defaultCaptionEnumeration} from "../caption-enumeration"
 import {afterEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import {AppRibbon} from "./ribbon"
-import {DocumentHeadEditor, DocumentHeadCombobox, documentLanguageOptions, orderedLanguageOptions} from "./document-head-editor"
+import {DocumentHeadEditor, DocumentHeadCombobox} from "./document-head-editor"
 
 it("omits theme, generator and add-element affordances from compact document options", async () => {
   const editor = await mount("advanced", state({theme: "base", generator: WEBWRITER_GENERATOR,
@@ -91,32 +91,6 @@ describe("document head form", () => {
     expect(picker.shadowRoot!.querySelector(".listbox")).toBeNull()
   })
 
-  it("suggests nationally official languages and English variants and promotes browser languages", () => {
-    const options = documentLanguageOptions()
-    const ordered = orderedLanguageOptions(["de-DE", "fr", "eo", "en-US", "en-GB"])
-
-    expect(options).toHaveLength(124)
-    expect(options.find(option => option.value === "de")?.label).toBe("German (Deutsch)")
-    expect(options.find(option => option.value === "ar")).toBeDefined()
-    expect(options.find(option => option.value === "ceb")).toBeUndefined()
-    expect(options.filter(option => option.value.startsWith("en-")).map(({value, label}) => ({value, label}))).toEqual([
-      {value: "en-AU", label: "English (Australia)"},
-      {value: "en-CA", label: "English (Canada)"},
-      {value: "en-IN", label: "English (India)"},
-      {value: "en-GB", label: "English (UK)"},
-      {value: "en-US", label: "English (US)"},
-    ])
-    expect(ordered.promoted.map(option => option.value)).toEqual([
-      "de", "fr", "en", "en-AU", "en-CA", "en-IN", "en-GB", "en-US",
-    ])
-    expect(ordered.alphabetical.some(option => ordered.promoted.includes(option))).toBe(false)
-    expect(ordered.alphabetical.map(option => option.sortLabel)).toEqual(
-      [...ordered.alphabetical]
-        .sort((a, b) => a.sortLabel.localeCompare(b.sortLabel, "en", {sensitivity: "base"}) || a.value.localeCompare(b.value))
-        .map(option => option.sortLabel),
-    )
-  })
-
   it("uses editable language suggestions without offering authored themes", async () => {
     const editor = await mount("common", state({
       title: "Old",
@@ -133,7 +107,12 @@ describe("document head form", () => {
     const language = Array.from(editor.shadowRoot!.querySelectorAll("document-head-combobox"))
       .find(combobox => combobox.label === "Language")!
     await language.updateComplete
+    expect(language.options.map(option => option.value)).toContain("zh-Hant")
+    expect(language.options.map(option => option.value)).not.toContain("de")
     const languageInput = language.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    expect(languageInput.value).toBe("German")
+    languageInput.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(actions.some(action => action.type === "setDocumentHeadField" && action.field === "language")).toBe(false)
     languageInput.value = "x-klingon"
     languageInput.dispatchEvent(new InputEvent("input", {bubbles: true}))
     languageInput.dispatchEvent(new Event("change", {bubbles: true}))

@@ -188,6 +188,7 @@ describe.each(["canvas", "slides"] as const)("%s stacking placement", mode => {
     {direction: "back", expected: [1, 2, 0, 4, 5], writes: 1},
   ] as const)("moves $direction with $writes style mutations and preserves DOM order", ({direction, expected, writes}) => {
     const {root, items} = seed()
+    editor.doc.flushDOMChanges()
     const nodes = Array.from(root.childNodes), contents = items.map(item => item.innerHTML)
     $.selectElement(items[2])
     const observer = new MutationObserver(() => {})

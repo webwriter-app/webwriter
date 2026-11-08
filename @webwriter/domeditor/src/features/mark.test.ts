@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import {clearPresentationState, setPresentationState} from "../presentation-state.js"
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import type {XmlElement, XmlText} from "yjs"
@@ -176,11 +177,11 @@ describe("MarkFeature DOM state", () => {
     const flush = () => new Promise(resolve => setTimeout(resolve, 20))
     await flush()
     const post = vi.spyOn(editor, "postMarkState")
-    paragraph.classList.add("◆", "◆text-selected")
-    document.body.classList.add("◆", "◆graphic-pan-ready")
+    setPresentationState(paragraph, "text-selected")
+    setPresentationState(document.body, "graphic-pan-ready")
     await flush()
     expect(post).not.toHaveBeenCalled()
-    paragraph.classList.remove("◆text-selected")
+    clearPresentationState(paragraph, "text-selected")
     await flush()
     expect(post).not.toHaveBeenCalled()
     paragraph.classList.add("authored")

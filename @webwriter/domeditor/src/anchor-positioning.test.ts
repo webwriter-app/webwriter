@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {createAnchorPositioner} from "./anchor-positioning.js"
+import {presentationStateElements} from "./presentation-state.js"
 
 const sheets = () => [...document.adoptedStyleSheets]
 const source = (sheet: CSSStyleSheet) => Array.from(sheet.cssRules, rule => rule.cssText).join("\n")
+const anchorIndex = (css: string) => css.match(/--ww-ui-anchor-(\d+)/)?.[1]
 let positioners: ReturnType<typeof createAnchorPositioner>[] = []
 
 const positioner = () => {
@@ -94,12 +96,15 @@ describe("shared UI anchor positioning", () => {
     ui.bind(control, target, "left:anchor(right);top:anchor(bottom)")
     ui.refresh()
 
-    expect(control.className).toMatch(/^authored-control ◆anchor-control-/)
-    expect(target.className).toMatch(/^authored-target ◆anchor-target-/)
+    expect(control.className).toBe("authored-control")
+    expect(target.className).toBe("authored-target")
     expect(document.adoptedStyleSheets).toHaveLength(initialSheets.length + 1)
     const css = source(document.adoptedStyleSheets.at(-1)!)
     expect(css).toMatch(/position-anchor: ?--ww-ui-anchor-/)
     expect(css).toMatch(/anchor-name: ?--ww-ui-anchor-/)
+    const index = anchorIndex(css)!
+    expect(presentationStateElements(document, `anchor-control-${index}`)).toContain(control)
+    expect(presentationStateElements(document, `anchor-target-${index}`)).toContain(target)
 
     ui.release(control)
     ui.refresh()
@@ -124,8 +129,8 @@ describe("shared UI anchor positioning", () => {
     ui.refresh()
     expect(source(document.adoptedStyleSheets.at(-1)!)).toMatch(/position-anchor: ?--ww-ui-anchor-/)
     expect(first.className).toBe("")
-    expect(second.className).toMatch(/◆anchor-control-/)
-    expect(target.className).toMatch(/◆anchor-target-/)
+    expect(second.className).toBe("")
+    expect(target.className).toBe("")
   })
 
   it("replaces a control binding when its target changes", () => {
@@ -141,7 +146,32 @@ describe("shared UI anchor positioning", () => {
     expect(css).not.toContain("#one")
     expect(css).toMatch(/anchor-name: ?--ww-ui-anchor-\d+/)
     expect(one.className).toBe("")
-    expect(two.className).toContain("◆anchor-target-")
+    expect(two.className).toBe("")
+  })
+
+  it("refreshes structural and ID selectors after authored DOM changes", async () => {
+    document.body.innerHTML = '<button></button><div id="before"></div><p></p>'
+    const control = document.querySelector("button")!
+    const target = document.querySelector("div")!
+    const ui = positioner()
+    ui.bind(control, target)
+    ui.refresh()
+    const sheet = document.adoptedStyleSheets.at(-1)!
+    expect(source(sheet)).toContain("#before")
+
+    target.id = "after"
+    await Promise.resolve()
+    ui.refresh()
+    expect(source(sheet)).toContain("#after")
+    expect(source(sheet)).not.toContain("#before")
+
+    target.removeAttribute("id")
+    target.parentElement!.insertBefore(document.createElement("span"), target)
+    await Promise.resolve()
+    ui.refresh()
+    expect(source(sheet)).not.toContain("#after")
+    expect(source(sheet)).toContain(":nth-child(3)")
+    expect(target.className).toBe("")
   })
 
   it("rejects disconnected targets without mutating either node", () => {
@@ -180,7 +210,7 @@ describe("shared UI anchor positioning", () => {
     expect(document.adoptedStyleSheets).toEqual([])
   })
 
-  it("cleans cloned markers, bindings and styles on destroy", () => {
+  it("cleans bindings and styles on destroy without copying presentation state", () => {
     document.body.innerHTML = '<button></button><div></div>'
     const control = document.querySelector("button")!
     const target = document.querySelector("div")!
@@ -190,9 +220,9 @@ describe("shared UI anchor positioning", () => {
     const clone = target.cloneNode() as Element
     target.classList.add("◆")
     document.body.append(clone)
-    expect(clone.className).toContain("◆anchor-target-")
+    expect(clone.className).toBe("")
     ui.destroy()
-    expect(target.className).toBe("")
+    expect(target.className).toBe("◆")
     expect(clone.hasAttribute("class")).toBe(false)
     expect(control.hasAttribute("class")).toBe(false)
     expect(document.adoptedStyleSheets).toEqual([])
@@ -205,6 +235,6 @@ describe("shared UI anchor positioning", () => {
     const ui = positioner()
     ui.bind(control, target, "top:anchor(bottom)", "::after")
     ui.refresh()
-    expect(source(document.adoptedStyleSheets.at(-1)!)).toMatch(/anchor-target-\d+::after \{ anchor-name:/)
+    expect(source(document.adoptedStyleSheets.at(-1)!)).toMatch(/::after \{ anchor-name:/)
   })
 })

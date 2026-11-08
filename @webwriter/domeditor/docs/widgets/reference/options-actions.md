@@ -142,7 +142,17 @@ Visibility and availability describe the widget UI; they do not enforce learner 
 
 ## Action declaration
 
-Actions support `label` and `description` as `LocalizedText`. The default label is the title-cased method name. `group` assigns the action to an option group. `hidden` and `disabled` control its availability, and `disabledReason` can explain why a disabled action is unavailable. `icon` is an existing ribbon icon name. `intent` is `"default"` or `"danger"`. `confirm` supplies a `LocalizedText` prompt shown by the UI before execution. Optional `input` currently supports the file chooser described above.
+Actions support `label` and `description` as `LocalizedText`. The default label is the title-cased method name. `group` assigns the action to an option group. `hidden` and `disabled` control its availability. For a disabled action, `disabledReason` supplies the button's tooltip. To add an icon, set `icon` to an existing ribbon icon name. `intent` is `"default"` or `"danger"`. `confirm` supplies a `LocalizedText` prompt shown by the UI before execution. Optional `input` currently supports the file chooser described above.
+
+Give adjacent actions the same `buttonGroup` string to join their buttons in the inspector. Each option group lays out its buttons separately and skips hidden actions. A single visible action renders as a standalone button.
+
+```js
+static actions = {
+  completeDfaWithSink: {group: "editing"},
+  switchToNfa: {group: "editing", buttonGroup: "automaton-type", label: {_: "Switch to NFA"}},
+  switchToPda: {group: "editing", buttonGroup: "automaton-type", label: {_: "Switch to PDA"}},
+}
+```
 
 A method of the same name must exist. Confirmation is handled by the UI, and the runtime requires a confirmed invocation and rechecks that the action is currently available before running it. Its DOM changes form one undo step. A returned promise keeps the group open until it settles, for up to ten seconds; the timeout does not cancel the method. A second action on that widget is rejected while one is running. The runtime exposes busy state and errors for the UI to render. `LitElementWw` also declares `placeholder`, which the drawer does not currently use.
 

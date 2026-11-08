@@ -44,6 +44,6 @@ Render controls in the widget's shadow DOM. Use a `<slot>` to display authored c
 
 Changes can come from elsewhere at any time. Read the current attributes and children when an interaction occurs, and update the display when those values change. Clean up observers and external listeners when the widget disconnects.
 
-WebWriter marks installed widgets with `contenteditable` while editing. Use `this.isContentEditable` to distinguish editing from use. Temporary `◆` classes and editor-owned `contenteditable` are excluded from collaboration, history, and saved HTML.
+WebWriter gives installed widgets an empty runtime `contenteditable` attribute while editing and preserves any explicit authored value. Use `this.isContentEditable` to distinguish editing from use. The runtime attribute is excluded from collaboration, history, and saved HTML. The editor keeps its selection and hover state in memory.
 
 Next: [Quick start](introduction/quick-start.md).
