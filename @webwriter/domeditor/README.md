@@ -68,6 +68,46 @@ subdirectories in `examples/subjects/` and `src/assets/layouts/`. Example dialog
 downloads, and “Edit in WebWriter” use the selected language. Documentation
 content and the published widget catalog remain English.
 
+### Local packages behind HTTP Basic Auth
+
+If adding a local package fails with a `401` while registering the service worker,
+check the reverse proxy's authentication rules. The browser must be able to fetch
+`/local-package-service-worker.js` and every JavaScript module it imports from
+`/assets/` without an HTTP login challenge. A login at `/editor/` may not provide
+credentials for the root worker URL, and the editor frame registers its own worker
+on the separate frame origin.
+
+In Caddy, add this matcher next to the existing `basic_auth` directive. Insert
+`@webwriterRequiresAuth` immediately after `basic_auth`, before any hash algorithm
+or realm, and keep the existing credentials block. Apply the rule on each origin
+that registers the worker and uses Basic Auth.
+
+```caddyfile
+@webwriterRequiresAuth {
+    not {
+        method GET HEAD
+        path /local-package-service-worker.js /assets/npm-files-*.js /assets/local-package-worker-*.js /assets/local-package-storage-*.js
+    }
+}
+```
+
+The exception covers only `GET` and `HEAD` requests for the worker and its
+JavaScript chunks. The editor, APIs, and document routes still require Basic
+Auth. The wildcards match changing build hashes. Update the matcher if a future
+build adds or renames a worker dependency.
+
+Check the response on each origin with a GET request without credentials.
+
+```sh
+curl -sS -D - -o /dev/null -H 'Service-Worker: script' \
+  https://app.example/local-package-service-worker.js
+```
+
+Expect `200` with a JavaScript content type for the worker and each imported
+chunk. On the application origin, verify `/editor/` and `/api/session` return
+`401` without credentials. Then reload the editor and try adding the local
+package again.
+
 ## Widgets
 
 The **Widgets** navigation item opens `/gallery/`. It reads the current npm catalog of published `@webwriter/…` packages carrying the `webwriter-widget` keyword, following all search result pages. Each package gets one card; search includes its widget and snippet names. No package list is frozen into the build.
