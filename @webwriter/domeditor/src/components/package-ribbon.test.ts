@@ -93,6 +93,8 @@ describe("package ribbon controls", () => {
     const pkg = packageFixture("cached")
     pkg.keywords = ["widget-lang-de"]
     const locale = vi.spyOn(navigator, "language", "get").mockReturnValue("en")
+    const preferredLocales = vi.spyOn(navigator, "languages", "get").mockReturnValue(["en"])
+    ribbon.documentLanguage = "de-DE"
     ribbon.packages = [pkg]
     document.body.append(ribbon)
     try {
@@ -100,7 +102,7 @@ describe("package ribbon controls", () => {
       const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[variant="package"][label="Cached"]')!
       await button.updateComplete
       const details = button.details
-      expect(details!.keywords).toEqual([{label: "German", icon: "KeywordLanguage"}])
+      expect(details!.keywords![0]).toMatchObject({kind: "language", label: "German"})
       const updates = vi.spyOn(button as unknown as {performUpdate(): void}, "performUpdate")
       ribbon.canMark = !ribbon.canMark
       await ribbon.updateComplete
@@ -115,13 +117,20 @@ describe("package ribbon controls", () => {
       expect(button.details).not.toBe(details)
       expect(button.details!.authors).toEqual(["Ada", "Grace"])
       expect(button.details!.description).toBe("Changed metadata")
-      expect(button.details!.keywords!.map(keyword => keyword.label)).toEqual(["German", "Practice"])
+      expect(button.details!.keywords!.map(keyword => keyword.label)).toEqual(["Practice", "German"])
+      ribbon.documentLanguage = "es"
+      await ribbon.updateComplete
+      expect(button.details!.keywords![1]).toMatchObject({label: "", additionalLanguages: ["German"]})
+      preferredLocales.mockReturnValue(["en", "de"])
+      ribbon.requestUpdate()
+      await ribbon.updateComplete
+      expect(button.details!.keywords![1].label).toBe("German")
       locale.mockReturnValue("de")
       ribbon.requestUpdate()
       await ribbon.updateComplete
-      expect(button.details!.keywords![0].label).toBe("Deutsch")
+      expect(button.details!.keywords![1].label).toBe("Deutsch")
     }
-    finally { locale.mockRestore(); ribbon.remove() }
+    finally { locale.mockRestore(); preferredLocales.mockRestore(); ribbon.remove() }
   })
 
   it("announces hover and focus for element and package insertions only", async () => {
@@ -1106,12 +1115,17 @@ describe("package ribbon controls", () => {
     expect(availableButton.shadowRoot!.querySelector(".submenu-chevron")).toBeNull()
   })
 
-  it("opens compact package details to the left with friendly keyword metadata", async () => {
+  it("opens package details with categorized badges, legacy icons and all grouped metadata", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     const pkg = packageFixture("details")
     pkg.authors = ["Ada", "Grace"]
-    pkg.keywords = ["webwriter-widget", "widget-practical", "isced2011-1", "iscedf2013-05"]
+    ribbon.documentLanguage = "de"
+    pkg.keywords = [
+      "webwriter-widget", "widget-practical", "widget-lang-de-AT", "widget-lang-gd-GB", "widget-online-use",
+      "isced2011-1", "isced2011-2", "isced2011-3", "iscedf2013-05", "iscedf2013-0612",
+      "historical-map", "local-history", "teacher-made",
+    ]
     ribbon.packages = [pkg]
     ribbon.installedPackages = [pkg]
     document.body.append(ribbon)
@@ -1132,16 +1146,30 @@ describe("package ribbon controls", () => {
 
     const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
     expect(details.getAttribute("part")).toMatch(/anchor-control-/)
+    const detailsStyle = getComputedStyle(details)
+    expect(detailsStyle.backgroundColor).toBe("#fff")
+    expect(detailsStyle.border).toBe("1px solid #a8a8a8")
     expect(hasAnchorTarget(button)).toBe(true)
     expect(details.textContent).toContain("By Ada, Grace")
-    expect(details.textContent).toContain("Primary education")
-    expect(details.textContent).toContain("Natural sciences, mathematics and statistics")
+    expect(details.textContent).toContain("Primary school")
+    expect(details.textContent).toContain("Secondary ed.")
+    expect(details.textContent).toContain("Natural sciences")
     expect(details.textContent).not.toContain("License")
     expect(details.textContent).not.toContain("Contents")
     expect(details.textContent).not.toContain("webwriter-widget")
-    expect(details.querySelector(".icon-tabler-backpack")).not.toBeNull()
-    expect(details.querySelector(".icon-tabler-flask")).not.toBeNull()
-    expect(getComputedStyle(details).backgroundColor).toBe("#fff")
+    const badges = Array.from(details.querySelectorAll<HTMLElement>(".details-keyword"))
+    expect(badges.map(badge => badge.dataset.kind)).toEqual([
+      "type", "language", "field", "field", "online", "level", "level", "custom", "custom", "custom",
+    ])
+    expect(badges[1].textContent).toContain("German")
+    const languageCount = badges[1].querySelector("span[title]")
+    expect(languageCount?.textContent).toBe("+1")
+    expect(languageCount?.getAttribute("title")).toBe("Scottish Gaelic")
+    expect(badges[9].textContent?.trim()).toBe("teacher-made")
+    expect(badges[9].querySelector("svg")).toBeNull()
+    for(const icon of ["backpack", "microscope", "cpu", "help-square", "language", "wifi"]) {
+      expect(details.querySelector(`.icon-tabler-${icon}`)).not.toBeNull()
+    }
   })
 
   it("delays widget details and cancels pending tooltips while moving between packages", async () => {

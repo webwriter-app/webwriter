@@ -9318,6 +9318,7 @@ export class DomEditor extends LitElement {
           .collaborationStatus=${this.collaborationStatus}
           .collaborationError=${this.collaborationError}
           .packages=${this.packages}
+          .documentLanguage=${this.documentLanguage}
           .localPackages=${this.localPackages}
           .installedPackages=${this.installedPackages}
           .consoleOpen=${this.consoleOpen}

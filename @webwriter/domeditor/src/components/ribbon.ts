@@ -142,6 +142,7 @@ export class AppRibbon extends EditingControls {
     collaborationStatus: {type: String},
     collaborationError: {type: String},
     packages: {attribute: false},
+    documentLanguage: {attribute: false},
     editingSnippetId: {attribute: false},
     installedPackages: {attribute: false},
     consoleOpen: {type: Boolean, attribute: false},
@@ -1150,6 +1151,7 @@ export class AppRibbon extends EditingControls {
   collaborationError = ""
 
   packages: WebWriterPackage[] = []
+  documentLanguage = ""
   editingSnippetId: string | null = null
 
   installedPackages: WebWriterPackage[] = []
@@ -2290,9 +2292,10 @@ export class AppRibbon extends EditingControls {
 
   private packageDetails(pkg: WebWriterPackage): RibbonButtonDetails {
     const locale = navigator.language || "en"
+    const preferredLocales = [...(navigator.languages ?? []), this.documentLanguage]
     // Compare values rather than array identities: local package editing can
     // change metadata in place, and changing UI language must update labels.
-    const key = JSON.stringify([locale, pkg.label, pkg.name, pkg.version, pkg.description, pkg.authors, pkg.keywords])
+    const key = JSON.stringify([locale, preferredLocales, pkg.label, pkg.name, pkg.version, pkg.description, pkg.authors, pkg.keywords])
     const cached = this.packageDetailsCache.get(pkg)
     if(cached?.key === key) return cached.details
     const details = {
@@ -2300,7 +2303,7 @@ export class AppRibbon extends EditingControls {
       subheading: `${pkg.name}@${pkg.version}`,
       description: pkg.description,
       authors: pkg.authors,
-      keywords: packageKeywordPresentations(pkg.keywords, locale).slice(0, 8),
+      keywords: packageKeywordPresentations(pkg.keywords, locale, preferredLocales),
     }
     this.packageDetailsCache.set(pkg, {key, details})
     return details
