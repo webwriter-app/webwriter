@@ -1511,6 +1511,8 @@ export class EditingSelection {
    * when copying its items so their marker type survives outside that list. */
   private static cloneClipboardContents(range: Range) {
     const fragment = this.cloneFlowContents(range)
+    // A top-level instruction has lost its owning element in the range clone.
+    Array.from(fragment.childNodes).filter(isDistributionPI).forEach(node => node.remove())
     const list = range.commonAncestorContainer
     if(isElement(list) && !list.hasAttribute("is") && list.matches("ul, ol, dl, menu")
       && Array.from(fragment.children).some(child => child.matches("li, dt, dd"))) {

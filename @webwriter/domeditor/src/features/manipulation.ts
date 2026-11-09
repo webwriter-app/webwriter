@@ -1,5 +1,5 @@
 import {remapPastedAuthoredIds} from "../authored-identities"
-import {isDistributionPI} from "../distribution-dom"
+import {hasDistributionInstructions, isDistributionPI} from "../distribution-dom"
 import {clearPresentationState, hasPresentationState, setPresentationState} from "../presentation-state.js"
 import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
 import {documentThemeProperties, documentTypographyCSS, documentTypographyProperties, originalTypographyCSS} from "../document-theme-options"
@@ -3315,31 +3315,62 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   /** Inserts block nodes beside the current text block, retaining non-empty
-   * left and right halves. If the surrounding content model cannot accept
-   * that shape, their text is inserted instead of creating invalid DOM. */
-  private insertBlocks(nodes: ChildNode[]) {
-    const insertionBlock = getContainer($.range.startContainer)
+   * left and right halves. A paste can fall back to text only if it carries
+   * no element permissions. */
+  private insertBlocks(nodes: ChildNode[], paste = false) {
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
+    const schema = this.editor.schema
+    const keepsPermissions = paste && nodes.some(hasDistributionInstructions)
+    const replacesAtPoint = (block: Element) => isDocumentRoot(block) || isContentfulWidget(block, schema)
+      || isBoardCard(block) || this.editor.features.slides.active && isSlide(block)
+    const canInsertBeside = (block: Element, parent: Element) => {
+      const rule = schema.get(parent).content
+      // Unrestricted flow containers accept each incoming block independently.
+      if(rule && "group" in rule && rule.group === "flow" && rule.max === Infinity) return schema.isContentValid(parent, nodes)
+      const proposed = Array.from(parent.childNodes)
+      proposed.splice(proposed.indexOf(block) + 1, 0, ...nodes, this.cloneSplitContinuation(block) as ChildNode)
+      return schema.isContentValid(parent, proposed)
+    }
+    const containsWidget = nodes.some(node => Boolean(this.insertedWidget(node)))
+    if(keepsPermissions && !containsWidget) {
+      const ranges = $.flowRanges
+      const range = ranges[0] ?? $.range
+      const block = getContainer(range.commonAncestorContainer)
+      if(!replacesAtPoint(block) && (!block.parentElement || !canInsertBeside(block, block.parentElement))) {
+        // A flow container such as a list item can accept a block at the
+        // caret even when its parent only allows siblings of the same type.
+        const simulation = ranges.length <= 1 ? this.cloneRangeIn(block, range) : null
+        if(!simulation) return false
+        try {
+          simulation.range.deleteContents()
+          const offset = this.splitTextLikePoint(simulation.root, simulation.range)
+          const proposed = Array.from(simulation.root.childNodes)
+          proposed.splice(offset, 0, ...nodes)
+          if(!schema.isContentValid(block, proposed)) return false
+        }
+        catch { return false }
+        return this.withNormalization(() => {
+          $.delete()
+          const offset = this.splitTextLikePoint(block)
+          const content = document.createDocumentFragment()
+          content.append(...nodes)
+          block.insertBefore(content, block.childNodes[offset] ?? null)
+          this.moveAfterInsertedNode(nodes.at(-1)!)
+        })
+      }
+    }
     return this.withNormalization(() => {
       $.delete()
       const block = getContainer($.range.startContainer)
-      if(isDocumentRoot(block) || isContentfulWidget(block, this.editor.schema) || isBoardCard(block) || this.editor.features.slides.active && isSlide(block)) {
+      if(replacesAtPoint(block)) {
         $.replace(...nodes)
         this.moveAfterInsertedNode(nodes.at(-1)!)
         return
       }
       const parent = block.parentElement
       if(!parent) return
-      const blockIndex = Array.from(parent.childNodes).indexOf(block)
-      const proposed = Array.from(parent.childNodes)
-      proposed.splice(blockIndex + 1, 0, ...nodes, this.cloneSplitContinuation(block) as ChildNode)
-      const containsWidget = nodes.some(node => Boolean(this.insertedWidget(node)))
-      // Unrestricted flow containers accept each incoming block independently.
-      // Unfamiliar existing siblings must not flatten a paste into soft breaks.
-      const contentRule = this.editor.schema.get(parent).content
-      const validationNodes = contentRule && "group" in contentRule && contentRule.group === "flow" && contentRule.max === Infinity
-        ? nodes : proposed
-      if(!containsWidget && !this.editor.schema.isContentValid(parent, validationNodes)) {
+      if(!containsWidget && !canInsertBeside(block, parent)) {
+        if(keepsPermissions) return false
         const fallback = this.plainTextClipboardFragment(nodes.map(node => node.textContent ?? "").join("\n"))
         this.insertAtSelection(...Array.from(fallback.childNodes))
         return
@@ -3364,7 +3395,7 @@ export class ManipulationFeature extends EditorFeature {
     })
   }
 
-  /** A single heading joins an existing text container as inline content.
+  /** A single heading without local permissions can join an existing text container.
    * Gaps and whole-element replacements retain its authored heading level. */
   private insertPastedFragment(fragment: DocumentFragment) {
     this.editor.features.mark.allowAutomaticLinksAfterPaste()
@@ -3412,7 +3443,8 @@ export class ManipulationFeature extends EditorFeature {
       && !isAtomicEditingElement(container, this.editor.schema)) {
       const nodes = Array.from(fragment.childNodes).filter(node => node.nodeType !== Node.TEXT_NODE || node.textContent?.trim())
       const heading = nodes.length === 1 ? nodes[0] : null
-      if(isElement(heading) && /^h[1-6]$/.test(heading.localName) && !heading.hasAttribute("is")) {
+      if(isElement(heading) && /^h[1-6]$/.test(heading.localName) && !heading.hasAttribute("is")
+        && !Array.from(heading.childNodes).some(isDistributionPI)) {
         heading.replaceWith(...heading.childNodes)
       }
     }
@@ -3624,7 +3656,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       finally { end?.() }
     }
-    else this.insertBlocks(nodes)
+    else if(this.insertBlocks(nodes, paste) === false) return false
     if(widget) {
       this.editor.features.selection.captureElement(widget)
       this.editor.postSelectionPath(true)

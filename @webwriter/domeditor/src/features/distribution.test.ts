@@ -73,6 +73,43 @@ describe("DistributionFeature", () => {
     expect(feature().getState(child)).toMatchObject({local: null, effective: expect.objectContaining({permissions: ["edit", "move"]})})
   })
 
+  it.each([["p", "h2"], ["li", "p"]])("keeps the destination %s text separate from the pasted %s policy", (tag, pastedTag) => {
+    document.body.innerHTML = tag === "p" ? "<p>BeforeAfter</p>" : "<ul><li><i>BeforeAfter</i></li></ul>"
+    const target = document.querySelector(tag)!
+    document.getSelection()!.collapse((target.firstElementChild ?? target).firstChild!, 6)
+    const hidden = {...makeConfig(), view: false}
+    const nested = makeConfig(["move"])
+    const data = new DataTransfer()
+    data.setData("text/html", '<meta name="webwriter-clipboard" content="1">'
+      + `<${pastedTag}>Private <em>content<?${distributionTarget} ${encodeDistributionConfig(nested)}?></em>`
+      + `<?${distributionTarget} ${encodeDistributionConfig(hidden)}?></${pastedTag}>`)
+
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    const [before, pasted, after] = Array.from((tag === "p" ? document.body : target).children)
+    expect([before, pasted, after].map(element => element.textContent)).toEqual(["Before", "Private content", "After"])
+    expect(pasted.localName).toBe(pastedTag)
+    expect(feature().getState(pasted)?.local).toEqual(hidden)
+    expect(feature().getState(pasted.querySelector("em")!)?.local).toEqual(nested)
+    expect(feature().getState(before)?.local).toBeNull()
+    expect(feature().getState(after)?.local).toBeNull()
+    expect(feature().getState(target)?.local).toBeNull()
+  })
+
+  it("keeps selected list text when a private heading cannot be pasted intact", () => {
+    document.body.innerHTML = "<ul><li>Keep this</li></ul>"
+    const item = document.querySelector("li")!
+    document.getSelection()!.selectAllChildren(item)
+    const data = new DataTransfer()
+    data.setData("text/html", '<meta name="webwriter-clipboard" content="1">'
+      + `<h2>Private<?${distributionTarget} ${encodeDistributionConfig({...makeConfig(), view: false})}?></h2>`)
+
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    expect(item.innerHTML).toBe("Keep this")
+    expect(feature().getState(item)?.local).toBeNull()
+  })
+
   it("rejects stale identities after a same-path replacement", () => {
     document.body.innerHTML = "<div><x-card></x-card></div>"
     editor.doc.syncFromDOM()

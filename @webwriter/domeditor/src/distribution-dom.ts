@@ -43,6 +43,14 @@ function visitElements(root: Node, visit: (element: Element) => void) {
   for(const element of Array.from((root as ParentNode).children ?? [])) visitElements(element, visit)
 }
 
+export function hasDistributionInstructions(root: Node): boolean {
+  let found = false
+  visitElements(root, element => {
+    found ||= Array.from(content(element).childNodes).some(isDistributionPI)
+  })
+  return found
+}
+
 function collect(root: Node) {
   const records = new Map<Element, Instruction>()
   visitElements(root, element => {
