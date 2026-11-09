@@ -3,6 +3,7 @@ import { existsSync } from "node:fs"
 import {readFile} from "node:fs/promises"
 import { isAbsolute, normalize, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import {documentThemeSourcesId, loadDocumentThemeSources} from "./document-themes-plugin.mjs"
 
 const virtualId = "virtual:distribution-reader-sources"
 const resolvedVirtualId = `\0${virtualId}`
@@ -42,10 +43,17 @@ function watchInputs(pluginContext, result, projectRoot) {
   }
 }
 
-const readerBuildOptions = {
+const readerBuildOptions = addWatchFile => ({
+  charset: "utf8",
   define: {"import.meta.env.MODE": '"reader"', "import.meta.env.BASE_URL": '"./"'},
   tsconfigRaw: {compilerOptions: {experimentalDecorators: true, useDefineForClassFields: false}},
   plugins: [{name: "reader-raw-assets", setup(build) {
+    build.onResolve({filter: /^virtual:document-theme-sources$/}, () => ({
+      path: documentThemeSourcesId, namespace: "reader-theme-sources",
+    }))
+    build.onLoad({filter: /.*/, namespace: "reader-theme-sources"}, async () => ({
+      contents: await loadDocumentThemeSources(addWatchFile), loader: "js",
+    }))
     build.onResolve({filter: /^yjs$/}, args => {
       if(args.pluginData?.readerYjs) return
       return build.resolve("yjs", {resolveDir: fileURLToPath(new URL("../", import.meta.url)), kind: "import-statement", pluginData: {readerYjs: true}})
@@ -63,11 +71,11 @@ const readerBuildOptions = {
       return {contents: source, loader: "text"}
     })
   }}],
-}
+})
 
-async function bundleEntry(entry, projectRoot, globalName) {
+async function bundleEntry(entry, projectRoot, globalName, addWatchFile) {
   const result = await build({
-    ...readerBuildOptions,
+    ...readerBuildOptions(addWatchFile),
     absWorkingDir: projectRoot,
     entryPoints: [entry],
     bundle: true,
@@ -82,9 +90,9 @@ async function bundleEntry(entry, projectRoot, globalName) {
   return result
 }
 
-async function bundleAction(name, exportName, actionEntry, projectRoot) {
+async function bundleAction(name, exportName, actionEntry, projectRoot, addWatchFile) {
   const result = await build({
-    ...readerBuildOptions,
+    ...readerBuildOptions(addWatchFile),
     absWorkingDir: projectRoot,
     stdin: {
       contents: `export { ${exportName} as install } from ${JSON.stringify(actionEntry)}`,
@@ -117,13 +125,14 @@ export function distributionReaderPlugin() {
     async load(source) {
       if (source !== resolvedVirtualId) return
 
-      const coreResult = await bundleEntry(coreEntry, projectRoot, "distributionReader")
+      const addWatchFile = file => this.addWatchFile(file)
+      const coreResult = await bundleEntry(coreEntry, projectRoot, "distributionReader", addWatchFile)
       watchInputs(this, coreResult, projectRoot)
       const core = coreResult.outputFiles[0].text
       const sources = { core }
 
       for (const [name, exportName] of Object.entries(actions)) {
-        const result = await bundleAction(name, exportName, actionEntry, projectRoot)
+        const result = await bundleAction(name, exportName, actionEntry, projectRoot, addWatchFile)
         watchInputs(this, result, projectRoot)
         sources[name] = result.outputFiles[0].text
       }

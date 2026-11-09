@@ -18,6 +18,7 @@ export type RibbonMenuButton = string | {
   italic?: boolean
   selected?: boolean
   action?: string
+  dragAction?: string
   dragHTML?: string
   iconAction?: string
   iconActionLabel?: string
@@ -38,6 +39,7 @@ export type RibbonMenuButton = string | {
   disabled?: boolean
   warning?: string
   removeAction?: string
+  removeLabel?: string
   editingLabel?: boolean
 }
 
@@ -176,6 +178,32 @@ export class RibbonMenu extends LitElement {
     .item-row > .item.label-confirm {
       flex: 0 0 1.5rem;
       width: 1.5rem;
+    }
+
+    .item-row.has-package-removal {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 1.5rem;
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+    }
+
+    .has-package-removal > .item:not(.remove) {
+      grid-row: 1 / -1;
+    }
+
+    .has-package-removal > .remove {
+      display: grid;
+      grid-area: 1 / 2;
+      place-items: center;
+      padding: 0;
+    }
+
+    .has-package-removal > .remove svg {
+      width: 0.75rem;
+      height: 0.75rem;
+    }
+
+    .has-package-removal > .submenu-toggle {
+      grid-area: 2 / 2;
     }
 
     .item.label-editor {
@@ -625,7 +653,7 @@ export class RibbonMenu extends LitElement {
   }
 
   private packageInsertionAction(button: RibbonMenuButton) {
-    const action = this.buttonAction(button)
+    const action = (typeof button === "string" ? undefined : button.dragAction) ?? this.buttonAction(button)
     return ribbonInsertionAction(action) || ribbonElementInsertionAction(action) ? action : null
   }
 
@@ -913,11 +941,12 @@ export class RibbonMenu extends LitElement {
               const submenu = this.buttonSubmenu(button)
               const item = typeof button === "string" ? {label: button} : button
               const hasSubmenu = submenu.length > 0 || Boolean(item.submenuGroups || item.submenuHeader)
+              const hasPackageRemoval = !item.editingLabel && item.removeAction?.startsWith("package-toggle:")
               const isOpen = this.openSubmenu === this.buttonAction(button)
               const anchorName = `--ribbon-submenu-${groupIndex}-${buttonIndex}`
               return html`
                 <div class="item-container">
-                  <div class=${`item-row${item.selected ? " selected" : ""}${item.iconAction ? " has-icon-action" : ""}`} style=${hasSubmenu ? `anchor-name: ${anchorName}` : ""}>
+                  <div class=${`item-row${item.selected ? " selected" : ""}${item.iconAction ? " has-icon-action" : ""}${hasPackageRemoval ? " has-package-removal" : ""}`} style=${hasSubmenu ? `anchor-name: ${anchorName}` : ""}>
                     ${item.iconAction ? html`
                       <button
                         class="icon-action-trigger"
@@ -981,7 +1010,7 @@ export class RibbonMenu extends LitElement {
                       @pointerdown=${(event: Event) => event.preventDefault()}
                       @mousedown=${(event: Event) => event.preventDefault()}
                       @click=${(event: Event) => this.handleLabelConfirm(button, event)}
-                    >${ribbonIcon("Accept")}</button>` : item.removeAction ? html`<button class="item remove" role="menuitem" tabindex="-1" aria-label=${`Remove ${label}`} ?disabled=${item.disabled} @click=${() => this.handleClick({label, action: item.removeAction})}>${ribbonIcon("Reject")}</button>` : nothing}
+                    >${ribbonIcon("Accept")}</button>` : item.removeAction ? html`<button class="item remove" role="menuitem" tabindex="-1" aria-label=${item.removeLabel ?? `Remove ${label}`} ?disabled=${item.disabled} @click=${() => this.handleClick({label, action: item.removeAction})}>${ribbonIcon("Reject")}</button>` : nothing}
                     ${hasSubmenu ? html`
                       <button
                         class="submenu-toggle"

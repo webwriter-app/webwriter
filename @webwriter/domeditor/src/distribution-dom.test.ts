@@ -1,12 +1,10 @@
 // @vitest-environment happy-dom
 import {beforeEach, describe, expect, it} from "vitest"
-import {decodeDistributionConfig, distributionTarget, encodeDistributionConfig, emptyDistributionConfig} from "./distribution.js"
-import type {DistributionPermission} from "./distribution.js"
-import {effectiveDistribution, ensureDistributionTarget, getDistributionSelection, hydrateDistributionInstructions, readDistributionConfigs, writeDistributionConfig} from "./distribution-dom"
+import {distributionTarget, emptyDistributionConfig, encodeDistributionConfig} from "./distribution.js"
+import {effectiveDistribution, filterLiveSessionDocument, getDistributionSelection, hydrateDistributionInstructions, localDistributionInstruction, readDistributionConfigs, writeDistributionConfig} from "./distribution-dom"
 
-function config(target: string, permissions: DistributionPermission[] = ["edit"]) {
-  return {version: 1 as const, target, scope: "individual" as const, permissions, add: [], items: []}
-}
+const config = {...emptyDistributionConfig(), permissions: ["edit" as const]}
+const carrier = (policy = config) => `?${distributionTarget} ${encodeDistributionConfig(policy)}?`
 
 describe("distribution DOM instructions", () => {
   beforeEach(() => {
@@ -14,115 +12,81 @@ describe("distribution DOM instructions", () => {
     document.body.replaceChildren()
   })
 
-  it("reads encoded head instructions and rejects malformed or duplicate instructions", () => {
-    const root = document
-    const target = root.createElement("div")
-    target.id = "target"
-    root.body.append(target)
-    root.head.append(root.createProcessingInstruction(distributionTarget, encodeDistributionConfig(config("target"))))
-    expect(readDistributionConfigs(root)).toEqual([config("target")])
+  it("appends and removes a local policy without assigning or changing element IDs", () => {
+    document.body.innerHTML = '<section><p id="same">First</p><p id="same">Second</p></section>'
+    const section = document.querySelector("section")!
+    const [first, second] = section.children
+    writeDistributionConfig(section, config)
+    writeDistributionConfig(first, emptyDistributionConfig())
+    expect(section.id).toBe("")
+    expect(section.lastChild?.nodeType).toBe(7)
+    expect(readDistributionConfigs(document)).toEqual(new Map([[section, config], [first, emptyDistributionConfig()]]))
+    expect(effectiveDistribution(second)).toEqual({config, element: section})
 
-    root.head.append(root.createProcessingInstruction(distributionTarget, "bad"))
-    expect(() => readDistributionConfigs(root)).toThrow("Invalid distribution instruction")
+    first.id = "changed"
+    expect(effectiveDistribution(first)).toEqual({config: emptyDistributionConfig(), element: first})
+    writeDistributionConfig(first, null)
+    expect(getDistributionSelection(first)).toEqual({local: null, effective: config})
+    expect(document.head.childNodes).toHaveLength(0)
   })
 
-  it("hydrates only recognized validated carriers, including nested templates", () => {
-    const root = document.createElement("div")
-    const ordinary = document.createComment("ordinary comment")
-    const outer = document.createElement("template")
-    const inner = document.createElement("template")
-    const encoded = encodeDistributionConfig(config("from-template"))
-    const carrier = document.createComment(`?${distributionTarget} ${encoded}?`)
-    inner.content.append(carrier)
-    outer.content.append(inner)
-    root.append(ordinary, outer)
+  it("uses BODY for document-wide settings", () => {
+    writeDistributionConfig(document.documentElement, config)
+    expect(readDistributionConfigs(document)).toEqual(new Map([[document.body, config]]))
+    expect(document.body.lastChild?.nodeType).toBe(7)
+  })
 
+  it.each(["hr", "img", "input"])("rejects writing permissions on void %s", name => {
+    const target = document.body.appendChild(document.createElement(name))
+    expect(() => writeDistributionConfig(target, config)).toThrow("void")
+    expect(target.childNodes).toHaveLength(0)
+    expect(target.id).toBe("")
+  })
+
+  it("hydrates independent policies inside nested templates and puts them last", () => {
+    const root = document.createElement("div")
+    root.innerHTML = `<!--ordinary--><template><template><!--${carrier()}--><b>keep</b></template></template>`
+    const inner = (root.querySelector("template") as HTMLTemplateElement).content.querySelector("template")!
     hydrateDistributionInstructions(root)
-
-    const instruction = inner.content.firstChild as ProcessingInstruction
-    expect(instruction.target).toBe(distributionTarget)
-    expect(decodeDistributionConfig(instruction.data)).toEqual(config("from-template"))
-    expect(ordinary.data).toBe("ordinary comment")
+    expect(inner.content.lastChild?.nodeType).toBe(7)
+    expect(localDistributionInstruction(inner)?.config).toEqual(config)
+    expect(root.firstChild?.nodeValue).toBe("ordinary")
   })
 
-  it("fails closed on malformed carriers and duplicate targets", () => {
-    const malformed = document.createComment(`?${distributionTarget} %?`)
-    const root = document.createElement("div")
-    root.append(malformed)
+  it("hydrates a trailing instruction parsed as raw text without changing authored fallback text", () => {
+    const frame = document.createElement("iframe")
+    frame.textContent = `fallback<${carrier()}>`
+    hydrateDistributionInstructions(frame)
+    expect(frame.textContent).toBe("fallback")
+    expect(frame.lastChild?.nodeType).toBe(7)
+    expect(localDistributionInstruction(frame)?.config).toEqual(config)
+  })
+
+  it("rejects malformed and duplicate instructions without partially hydrating", () => {
+    const root = document.createElement("section")
+    const first = root.appendChild(document.createElement("p"))
+    const second = root.appendChild(document.createElement("p"))
+    first.append(document.createComment(carrier()))
+    const malformed = second.appendChild(document.createComment(`?${distributionTarget} %?`))
     expect(() => hydrateDistributionInstructions(root)).toThrow("Invalid distribution instruction")
-    expect(malformed.parentNode).toBe(root)
-
-    const duplicateRoot = document.createElement("div")
-    const encoded = encodeDistributionConfig(config("same"))
-    duplicateRoot.append(document.createComment(`?${distributionTarget} ${encoded}?`), document.createComment(`?${distributionTarget} ${encoded}?`))
-    expect(() => hydrateDistributionInstructions(duplicateRoot)).toThrow("Duplicate distribution instruction")
+    expect(first.firstChild?.nodeType).toBe(8)
+    malformed.data = carrier()
+    second.append(document.createComment(carrier()))
+    expect(() => hydrateDistributionInstructions(root)).toThrow("Duplicate distribution instruction")
   })
 
-  it("writes instructions to head for void elements and removes only that target", () => {
-    const root = document
-    const image = root.createElement("img")
-    root.body.append(image)
-    const first = config("", ["edit"])
-    const secondTarget = root.createElement("div")
-    secondTarget.id = "other"
-    root.body.append(secondTarget)
-    writeDistributionConfig(secondTarget, config("other", ["move"]))
+  it("removes hidden subtrees without requiring IDs and preserves visible policies", () => {
+    const hidden = {...config, view: false, add: ["element:p"], items: [{id: "element:p", label: "Private recipe", html: "<p>secret</p>"}]}
+    const source = new DOMParser().parseFromString(`<main><!--keep--><section><x-widget>secret<!--${carrier()}--></x-widget><!--${carrier(hidden)}--></section>
+      <template><span>inert secret<!--${carrier(hidden)}--></span><b>keep</b></template><svg><g><!--${carrier()}--></g></svg></main>`, "text/html")
+    expect(getDistributionSelection(source.querySelector("x-widget")!)).toMatchObject({local: config, hiddenByAncestor: true})
 
-    writeDistributionConfig(image, first)
-    expect(image.id).toMatch(/^ww/)
-    expect(readDistributionConfigs(root)).toEqual([config("other", ["move"]), config(image.id, ["edit"])])
-    writeDistributionConfig(image, null)
-    expect(readDistributionConfigs(root)).toEqual([config("other", ["move"])])
-  })
-
-  it("validates explicit targets and allocates only when requested", () => {
-    const root = document
-    const element = root.createElement("x-widget")
-    root.body.append(element)
-    expect(element.id).toBe("")
-    expect(ensureDistributionTarget(element)).toMatch(/^ww/)
-    expect(() => writeDistributionConfig(element, config("different"))).toThrow("does not match")
-    expect(readDistributionConfigs(root)).toEqual([])
-  })
-
-  it("returns the nearest whole config, including an empty child override", () => {
-    const root = document
-    const parent = root.createElement("section")
-    const child = root.createElement("button")
-    parent.id = "parent"
-    child.id = "child"
-    parent.append(child)
-    root.body.append(parent)
-    writeDistributionConfig(parent, config("parent", ["edit", "move"]))
-    writeDistributionConfig(child, emptyDistributionConfig("child"))
-
-    expect(effectiveDistribution(child)).toEqual({config: emptyDistributionConfig("child"), element: child})
-    writeDistributionConfig(child, null)
-    expect(effectiveDistribution(child)).toEqual({config: config("parent", ["edit", "move"]), element: parent})
-    expect(getDistributionSelection(child)).toMatchObject({target: "child", local: null, effective: config("parent", ["edit", "move"]), inheritedFrom: "parent"})
-  })
-
-  it("reports duplicate referenced ids and does not mutate during selection reads", () => {
-    const root = document
-    const first = root.createElement("span")
-    const duplicate = root.createElement("strong")
-    first.id = duplicate.id = "duplicate"
-    root.body.append(first, duplicate)
-    root.head.append(root.createProcessingInstruction(distributionTarget, encodeDistributionConfig(config("duplicate"))))
-
-    expect(() => effectiveDistribution(first)).toThrow("Duplicate DOM id")
-    expect(getDistributionSelection(first).error).toContain("Duplicate DOM id")
-    expect(first.id).toBe("duplicate")
-  })
-
-  it("keeps unrelated comments and rejects duplicate local instructions", () => {
-    const root = document
-    const target = root.createElement("hr")
-    target.id = "target"
-    root.body.append(target)
-    const unrelated = root.createComment("keep")
-    root.head.append(unrelated, root.createProcessingInstruction(distributionTarget, encodeDistributionConfig(config("target"))), root.createProcessingInstruction(distributionTarget, encodeDistributionConfig(config("target"))))
-    expect(() => readDistributionConfigs(root)).toThrow("Duplicate distribution instruction")
-    expect(unrelated.parentNode).toBe(root.head)
+    const copy = source.cloneNode(true) as Document
+    expect(filterLiveSessionDocument(copy)).toBe(true)
+    expect(copy.body.innerHTML).not.toMatch(/secret|private|x-widget/)
+    expect(copy.body.innerHTML).toContain("<!--keep-->")
+    expect(copy.querySelector("template")?.innerHTML).toBe("<b>keep</b>")
+    expect(readDistributionConfigs(copy)).toEqual(new Map([[copy.querySelector("g"), config]]))
+    expect(source.querySelector("x-widget")?.textContent).toBe("secret")
   })
 })

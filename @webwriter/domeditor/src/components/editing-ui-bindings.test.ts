@@ -38,6 +38,7 @@ const properties = (): EditingUIProperties => ({
   media: null,
   dialog: null,
   popupActive: false,
+  attachmentActive: false,
   graphic: null,
   math: null,
   layout: null,

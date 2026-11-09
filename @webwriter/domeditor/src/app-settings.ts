@@ -69,6 +69,7 @@ export const appCommands: readonly AppCommand[] = [
     action: `mark-detail:${option.name}`,
   })),
   {id: "text.popup", section: "Text", label: "Popup", description: "Toggle a popup on the selected text", icon: "Popup", action: "toggle-popup", defaultShortcut: alternate("Y")},
+  {id: "text.attachment", section: "Text", label: "Attachment", description: "Add or remove an attachment mark", icon: "Attachment", action: "mark:attachment", defaultShortcut: alternate("E")},
   {id: "text.clear", section: "Text", label: "Clear formatting", description: "Remove text formatting", icon: "Clear", action: "removeMarks", defaultShortcut: alternate("Backspace")},
   {id: "text.increase", section: "Text", label: "Increase font size", description: "Increase the selected text size", icon: "IncreaseFontSize", action: "increaseFontSize", defaultShortcut: primary("Shift+>")},
   {id: "text.decrease", section: "Text", label: "Decrease font size", description: "Decrease the selected text size", icon: "DecreaseFontSize", action: "decreaseFontSize", defaultShortcut: primary("Shift+<")},

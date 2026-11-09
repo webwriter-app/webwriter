@@ -3,7 +3,9 @@ import {afterEach, beforeEach, describe, expect, it} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {decodeDistributionConfig, distributionTarget, encodeDistributionConfig, validateDistributionConfig} from "../distribution.js"
 import type {DistributionConfig} from "../distribution.js"
-import {pathFromNode} from "../utility"
+import {$, pathFromNode} from "../utility"
+import {hasAnchorTarget} from "../anchor-positioning.test-utils"
+import {elementAttributeTargetId} from "../element-attributes"
 
 let editor: DOMEditor
 const originalHead = document.head.cloneNode(true)
@@ -14,9 +16,10 @@ const setConfig = (element: Element, config: DistributionConfig | null) => {
   const state = feature().getState(element)!
   return feature().actions.setDistributionConfig({type: "setDistributionConfig", path: state.path, identity: state.identity, config})
 }
-const makeConfig = (target: string, permissions: DistributionConfig["permissions"] = ["edit"]): DistributionConfig => ({
-  version: 1, target, scope: "individual", permissions, add: [], items: [],
+const makeConfig = (permissions: DistributionConfig["permissions"] = ["edit"]): DistributionConfig => ({
+  version: 1, scope: "individual", permissions, add: [], items: [],
 })
+const privateMarkers = () => editor.appendix.querySelectorAll('[part~="distribution-private-marker"]')
 
 beforeEach(() => {
   document.body.replaceChildren()
@@ -31,7 +34,7 @@ afterEach(() => {
 })
 
 describe("DistributionFeature", () => {
-  it("uses the current feature path and identity, then changes only the target id and head instruction", async () => {
+  it("uses the current selection identity and appends an instruction without assigning an ID", async () => {
     document.body.innerHTML = '<section data-keep="yes"><p><!--keep--><em>Authored</em></p><br></section>'
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
@@ -41,18 +44,20 @@ describe("DistributionFeature", () => {
     expect(state.path).toEqual(pathFromNode(document.body, target))
     expect(state.identity).toMatch(/^element-/)
 
-    expect(setConfig(target, makeConfig("pending-target"))).toBe(true)
+    expect(setConfig(target, makeConfig())).toBe(true)
 
     const afterState = feature().getState(target)!
     expect(afterState.path).toEqual(state.path)
     expect(afterState.identity).toBe(state.identity)
-    expect(target.id).toMatch(/^ww/)
-    expect(document.body.innerHTML).toBe(beforeMarkup.replace("<em>", `<em id="${target.id}">`))
-    expect(Array.from(document.head.childNodes).filter(node => node.nodeType === 7)).toHaveLength(1)
-    const instruction = Array.from(document.head.childNodes).find(node => node.nodeType === 7) as ProcessingInstruction
+    expect(target.id).toBe("")
+    expect(document.body.innerHTML.replace(/<!--\?ww-distribute [^>]+\?-->|<\?ww-distribute [^>]+>/, "")).toBe(beforeMarkup)
+    expect(Array.from(document.head.childNodes).filter(node => node.nodeType === 7)).toHaveLength(0)
+    const instruction = target.lastChild as ProcessingInstruction
     expect(instruction.target).toBe(distributionTarget)
-    expect(decodeDistributionConfig(instruction.data)?.target).toBe(target.id)
+    expect(decodeDistributionConfig(instruction.data)).toEqual(makeConfig())
+    target.append(document.createTextNode(" More"))
     await settle()
+    expect(target.lastChild).toBe(instruction)
   })
 
   it("inherits the nearest whole config and removes a local config to resume inheritance", () => {
@@ -60,12 +65,49 @@ describe("DistributionFeature", () => {
     editor.doc.syncFromDOM()
     const parent = document.querySelector("section")!
     const child = document.querySelector("button")!
-    setConfig(parent, makeConfig("pending-parent", ["edit", "move"]))
-    setConfig(child, makeConfig("pending-child", []))
+    setConfig(parent, makeConfig(["edit", "move"]))
+    setConfig(child, makeConfig([]))
 
-    expect(feature().getState(child)).toMatchObject({local: expect.objectContaining({permissions: []}), effective: expect.objectContaining({permissions: []}), inheritedFrom: null})
+    expect(feature().getState(child)).toMatchObject({local: expect.objectContaining({permissions: []}), effective: expect.objectContaining({permissions: []})})
     expect(setConfig(child, null)).toBe(true)
-    expect(feature().getState(child)).toMatchObject({local: null, effective: expect.objectContaining({permissions: ["edit", "move"]}), inheritedFrom: parent.id})
+    expect(feature().getState(child)).toMatchObject({local: null, effective: expect.objectContaining({permissions: ["edit", "move"]})})
+  })
+
+  it.each([["p", "h2"], ["li", "p"]])("keeps the destination %s text separate from the pasted %s policy", (tag, pastedTag) => {
+    document.body.innerHTML = tag === "p" ? "<p>BeforeAfter</p>" : "<ul><li><i>BeforeAfter</i></li></ul>"
+    const target = document.querySelector(tag)!
+    document.getSelection()!.collapse((target.firstElementChild ?? target).firstChild!, 6)
+    const hidden = {...makeConfig(), view: false}
+    const nested = makeConfig(["move"])
+    const data = new DataTransfer()
+    data.setData("text/html", '<meta name="webwriter-clipboard" content="1">'
+      + `<${pastedTag}>Private <em>content<?${distributionTarget} ${encodeDistributionConfig(nested)}?></em>`
+      + `<?${distributionTarget} ${encodeDistributionConfig(hidden)}?></${pastedTag}>`)
+
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    const [before, pasted, after] = Array.from((tag === "p" ? document.body : target).children)
+    expect([before, pasted, after].map(element => element.textContent)).toEqual(["Before", "Private content", "After"])
+    expect(pasted.localName).toBe(pastedTag)
+    expect(feature().getState(pasted)?.local).toEqual(hidden)
+    expect(feature().getState(pasted.querySelector("em")!)?.local).toEqual(nested)
+    expect(feature().getState(before)?.local).toBeNull()
+    expect(feature().getState(after)?.local).toBeNull()
+    expect(feature().getState(target)?.local).toBeNull()
+  })
+
+  it("keeps selected list text when a private heading cannot be pasted intact", () => {
+    document.body.innerHTML = "<ul><li>Keep this</li></ul>"
+    const item = document.querySelector("li")!
+    document.getSelection()!.selectAllChildren(item)
+    const data = new DataTransfer()
+    data.setData("text/html", '<meta name="webwriter-clipboard" content="1">'
+      + `<h2>Private<?${distributionTarget} ${encodeDistributionConfig({...makeConfig(), view: false})}?></h2>`)
+
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    expect(item.innerHTML).toBe("Keep this")
+    expect(feature().getState(item)?.local).toBeNull()
   })
 
   it("rejects stale identities after a same-path replacement", () => {
@@ -78,32 +120,107 @@ describe("DistributionFeature", () => {
     expect(feature().getState(replacement)!.path).toEqual(state.path)
     expect(feature().getState(replacement)!.identity).not.toBe(state.identity)
 
-    expect(feature().actions.setDistributionConfig({type: "setDistributionConfig", path: state.path, identity: state.identity, config: makeConfig("pending-target")})).toBe(false)
+    expect(feature().actions.setDistributionConfig({type: "setDistributionConfig", path: state.path, identity: state.identity, config: makeConfig()})).toBe(false)
     expect(replacement.id).toBe("")
     expect(Array.from(document.head.childNodes).some(node => node.nodeType === 7 && (node as ProcessingInstruction).target === distributionTarget)).toBe(false)
   })
 
-  it("undoes and redoes the generated ID and PI as one edit", async () => {
-    document.body.innerHTML = "<img alt='unchanged'>"
+  it("rejects a void element even when an action is invoked directly", () => {
+    document.body.innerHTML = "<hr>"
+    const divider = document.querySelector("hr")!
+    expect(feature().getState(divider)).toBeNull()
+    expect(feature().actions.setDistributionConfig({type: "setDistributionConfig", path: [0],
+      identity: elementAttributeTargetId(divider), config: makeConfig()})).toBe(false)
+    expect(divider.childNodes).toHaveLength(0)
+    expect(divider.id).toBe("")
+  })
+
+  it("undoes and redoes an inline visibility policy and its marker", async () => {
+    document.body.innerHTML = "<p>Private</p>"
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
-    const image = document.querySelector("img")!
-    expect(setConfig(image, makeConfig("pending-target"))).toBe(true)
-    const generatedId = image.id
-    expect(generatedId).toMatch(/^ww/)
-    expect(document.head.querySelector("ww-distribute")).toBeNull()
+    const paragraph = document.querySelector("p")!
+    expect(setConfig(paragraph, {...makeConfig(), view: false})).toBe(true)
     expect(editor.doc.canUndo).toBe(true)
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    expect(editor.toHTML(false, false)).not.toContain("distribution-private-marker")
 
     editor.doc.undo()
     await settle()
-    expect(image.id).toBe("")
-    expect(Array.from(document.head.childNodes).some(node => node.nodeType === 7 && (node as ProcessingInstruction).target === distributionTarget)).toBe(false)
+    expect(paragraph.childNodes).toHaveLength(1)
     expect(editor.doc.canRedo).toBe(true)
+    expect(privateMarkers()).toHaveLength(0)
 
     editor.doc.redo()
     await settle()
-    expect(image.id).toBe(generatedId)
-    expect(feature().getState(image)?.local?.target).toBe(generatedId)
+    expect(paragraph.id).toBe("")
+    expect(paragraph.lastChild?.nodeType).toBe(7)
+    expect(feature().getState(paragraph)?.local).toMatchObject({view: false})
+    expect(privateMarkers()).toHaveLength(1)
+  })
+
+  it("keeps both parts of a private paragraph private when Enter splits it", async () => {
+    document.body.innerHTML = "<p>Private answer</p>"
+    const paragraph = document.querySelector("p")!
+    expect(setConfig(paragraph, {...makeConfig(), view: false})).toBe(true)
+    document.getSelection()!.collapse(paragraph.firstChild!, 7)
+    editor.features.manipulation.insert()
+    await settle()
+    const paragraphs = Array.from(document.body.querySelectorAll("p"))
+    expect(paragraphs.map(element => element.textContent)).toEqual(["Private", " answer"])
+    expect(paragraphs.every(element => feature().getState(element)?.local?.view === false)).toBe(true)
+    expect(paragraphs.every(element => element.lastChild?.nodeType === 7)).toBe(true)
+  })
+
+  it("keeps document permissions when deleting all body content", async () => {
+    document.body.innerHTML = "<p>Delete this</p>"
+    expect(setConfig(document.documentElement, makeConfig())).toBe(true)
+    const policy = document.body.lastChild
+    const selection = document.getSelection()!
+    selection.selectAllChildren(document.body)
+    $.delete()
+    await settle()
+    expect(document.body.textContent).not.toContain("Delete this")
+    expect(document.body.lastChild).toBe(policy)
+    expect(feature().getState(document.documentElement)?.local).toEqual(makeConfig())
+  })
+
+  it("marks only the outermost private regions and follows direct DOM policy changes", async () => {
+    document.body.innerHTML = '<section id="outer"><p id="inner">Private note</p></section><p>Public note</p>'
+    const outer = document.getElementById("outer")!
+    const inner = document.getElementById("inner")!
+    const markup = document.body.innerHTML
+    const privateConfig = {...makeConfig(), view: false}
+    expect(setConfig(outer, privateConfig)).toBe(true)
+    expect(setConfig(inner, {...makeConfig(), view: false})).toBe(true)
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    expect(hasAnchorTarget(outer)).toBe(true)
+    expect(hasAnchorTarget(inner)).toBe(false)
+    expect(document.body.innerHTML.replace(/<!--\?ww-distribute [^>]+\?-->|<\?ww-distribute [^>]+>/g, "")).toBe(markup)
+
+    const policy = outer.lastChild as ProcessingInstruction
+    policy.data = encodeDistributionConfig(makeConfig())
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    expect(hasAnchorTarget(outer)).toBe(false)
+    expect(hasAnchorTarget(inner)).toBe(true)
+
+    const replacement = document.createElement("p")
+    replacement.id = inner.id
+    replacement.append(...Array.from(inner.childNodes))
+    inner.replaceWith(replacement)
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    expect(hasAnchorTarget(inner)).toBe(false)
+    expect(hasAnchorTarget(replacement)).toBe(true)
+
+    const appendix = editor.appendix
+    feature().disable()
+    expect(appendix.querySelector('[part~="distribution-private-markers"]')).toBeNull()
+    expect(hasAnchorTarget(replacement)).toBe(false)
+    expect(document.body.innerHTML.replace(/<!--\?ww-distribute [^>]+\?-->|<\?ww-distribute [^>]+>/g, "")).toBe(markup)
   })
 
   it("validates malformed configs and executable palette templates without document side effects", () => {
@@ -113,14 +230,14 @@ describe("DistributionFeature", () => {
     const beforeBody = document.body.innerHTML
     const beforeHead = document.head.innerHTML
     const state = feature().getState(target)!
-    const invalid = {...makeConfig("pending-target"), permissions: ["invalid"]} as unknown as DistributionConfig
+    const invalid = {...makeConfig(), permissions: ["invalid"]} as unknown as DistributionConfig
     expect(() => feature().actions.setDistributionConfig({type: "setDistributionConfig", path: state.path, identity: state.identity, config: invalid})).toThrow()
     expect(target.id).toBe("")
     expect(document.body.innerHTML).toBe(beforeBody)
     expect(document.head.innerHTML).toBe(beforeHead)
 
     const executable = validateDistributionConfig({
-      ...makeConfig("pending-target"), add: ["element:x-card"],
+      ...makeConfig(), add: ["element:x-card"],
       items: [{id: "element:x-card", label: "Card", html: "<x-card><script>alert(1)</script></x-card>"}],
     })
     expect(() => feature().actions.setDistributionConfig({type: "setDistributionConfig", path: state.path, identity: state.identity, config: executable})).toThrow("executable content")
@@ -138,18 +255,17 @@ describe("DistributionFeature", () => {
     expect(ids.has("list-style:ul:disc")).toBe(true)
     expect(ids.has("list-style:ol:decimal")).toBe(true)
     expect(new Set(items.map(item => item.id)).size).toBe(items.length)
-    const config = validateDistributionConfig({version: 1, target: "target", scope: "all", permissions: [], add: items.map(item => item.id), items})
+    const config = validateDistributionConfig({version: 1, scope: "all", permissions: [], add: items.map(item => item.id), items})
     expect(config.items).toEqual(items)
     expect(items.find(item => item.id.startsWith("insert-graphic-shape:"))?.html).toContain("svg")
     expect(items.find(item => item.id.startsWith("insert-math:"))?.html).not.toBe("")
   })
 
-  it("round trips head PIs through export, HTML parsing, and editor import", async () => {
+  it("round trips inline PIs through export, HTML parsing, and editor import", async () => {
     document.body.innerHTML = '<p data-preserve="yes">Content</p>'
     editor.doc.syncFromDOM()
     const paragraph = document.querySelector("p")!
-    setConfig(paragraph, makeConfig("pending-target", ["edit", "style"]))
-    const id = paragraph.id
+    setConfig(paragraph, makeConfig(["edit", "style"]))
     const exported = await editor.serializeHTML()
     expect(exported).toContain(`<?${distributionTarget} `)
 
@@ -161,10 +277,10 @@ describe("DistributionFeature", () => {
     editor = new DOMEditor()
 
     const loaded = document.querySelector("p")!
-    expect(loaded.id).toBe(id)
+    expect(loaded.id).toBe("")
     const state = feature().getState(loaded)!
-    expect(state.local).toEqual(makeConfig(id, ["edit", "style"]))
+    expect(state.local).toEqual(makeConfig(["edit", "style"]))
     expect(document.head.querySelector("ww-distribute")).toBeNull()
-    expect(Array.from(document.head.childNodes).some(node => node.nodeType === 7 && (node as ProcessingInstruction).target === distributionTarget)).toBe(true)
+    expect((loaded.lastChild as ProcessingInstruction).target).toBe(distributionTarget)
   })
 })

@@ -23,6 +23,7 @@ export class RibbonButton extends LitElement {
   static properties = {
     label: {type: String},
     action: {type: String},
+    dragAction: {attribute: false},
     dragHTML: {attribute: false},
     iconAction: {type: String, attribute: "icon-action"},
     iconActionLabel: {type: String, attribute: "icon-action-label"},
@@ -945,7 +946,10 @@ export class RibbonButton extends LitElement {
       justify-content: flex-start;
       gap: 0.4rem;
       height: 100%;
-      padding: 0.15rem 1.35rem 0.15rem 0.4rem;
+      min-height: 0;
+      padding-block: calc(0.15rem - 1px);
+      padding-left: 0.4rem;
+      padding-right: 1.35rem;
       text-align: left;
     }
 
@@ -953,19 +957,12 @@ export class RibbonButton extends LitElement {
       flex: 0 0 1rem;
     }
 
-    :host([variant="package"]) .submenu-toggle:not(.submenu-trigger):not(.corner-trigger) {
-      top: 50%;
-      transform: translateY(-50%);
-    }
-
     :host([variant="package"]) .button-row.has-submenu .main-button,
     :host([variant="package"]) .button-row.has-corner .main-button {
       padding-right: 0.4rem;
     }
 
-    :host([variant="package"]) .submenu-trigger,
-    :host([variant="package"]) .corner-trigger,
-    :host([variant="package"]) .submenu-placeholder {
+    :host([variant="package"]) .submenu-trigger {
       position: static;
       flex: 0 0 auto;
       align-self: stretch;
@@ -973,19 +970,36 @@ export class RibbonButton extends LitElement {
       height: 100%;
       min-height: 100%;
       aspect-ratio: 1 / 1;
+      padding-block: calc(0.25rem - 1px);
       transform: none;
     }
 
-    :host([variant="package"]) .corner-trigger {
-      width: 1.2rem;
-      aspect-ratio: auto;
-      padding-inline: 0;
+    :host([variant="package"]) .button-row.has-corner {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 1.2rem;
+      grid-template-rows: repeat(2, minmax(0, 1fr));
     }
 
-    :host([variant="package"]) .submenu-placeholder {
-      box-sizing: border-box;
-      visibility: hidden;
-      pointer-events: none;
+    :host([variant="package"]) .has-corner .main-button {
+      grid-row: 1 / -1;
+    }
+
+    :host([variant="package"]) .has-corner :is(.corner-trigger, .submenu-trigger) {
+      position: static;
+      grid-column: 2;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      aspect-ratio: auto;
+      padding: 0;
+    }
+
+    :host([variant="package"]) .has-corner .corner-trigger { grid-row: 1; }
+    :host([variant="package"]) .has-corner .submenu-trigger { grid-row: 2; }
+
+    :host([variant="package"]) .corner-icon {
+      width: 0.75rem;
+      height: 0.75rem;
     }
 
     :host([variant="package"]) .has-icon-action .icon-action-trigger,
@@ -1085,6 +1099,7 @@ export class RibbonButton extends LitElement {
 
   label = "Placeholder"
   action = ""
+  dragAction: string | undefined
   dragHTML: string | undefined
   iconAction = ""
   iconActionLabel = ""
@@ -1455,13 +1470,14 @@ export class RibbonButton extends LitElement {
   render() {
     const hasDropdown = this.hasDropdown
     const showSubmenuTrigger = (hasDropdown || this.openDrawer) && (!this.dropdownOnClick || Boolean(this.iconAction))
-    const dragAction = this.action || this.label
-    const conversion = isWidgetConversionAction(dragAction)
+    const action = this.action || this.label
+    const dragAction = this.dragAction ?? action
+    const conversion = isWidgetConversionAction(action)
     const dragTag = !conversion && (this.variant === "insertion" || dragAction === "Formula") ? ribbonElementTag(this.label, dragAction) : null
     const dragPackageInsertion = this.variant === "package" && ribbonInsertionAction(dragAction)
     const shapeGallery = this.submenu.some(item => typeof item !== "string" && item.category)
     const disabledTooltip = this.disabledTooltip
-    const title = dragAction.startsWith("widget-conversion:") ? `Convert to ${this.label}`
+    const title = action.startsWith("widget-conversion:") ? `Convert to ${this.label}`
       : `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
       <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}${this.iconAction ? " has-icon-action" : ""}`} @mouseenter=${this.scheduleDetailsShow} @mouseleave=${this.leaveDetails}>
@@ -1537,7 +1553,7 @@ export class RibbonButton extends LitElement {
           >
             <span class="submenu-chevron" aria-hidden="true"></span>
           </button>
-        ` : this.variant === "package" && this.corner === "close" ? html`<span class="submenu-toggle submenu-placeholder" aria-hidden="true"><span class="submenu-chevron"></span></span>` : ""}
+        ` : ""}
         ${this.notification ? html`
           <span
             class=${`button-notification${this.notificationVisible ? " visible" : ""}`}

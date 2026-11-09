@@ -1,5 +1,7 @@
-import {describe, expect, it} from "vitest"
-import {packageFileSideEffects, resolveOfflineModule} from "./offline-module-bundler"
+import {describe, expect, it, vi} from "vitest"
+import {bundleOfflineModules, packageFileSideEffects, resolveOfflineModule} from "./offline-module-bundler"
+
+vi.mock("esbuild-wasm", async () => ({initialize: vi.fn().mockResolvedValue(undefined), build: (await import("esbuild")).build}))
 
 const base = "https://editor.example/document.html"
 const map = {
@@ -24,6 +26,39 @@ describe("offline import-map resolution", () => {
   it("resolves relative URLs against each importing module and rejects unknown bare names", () => {
     expect(resolveOfflineModule("./helper.js", "https://cdn.example/widget-old/main.js", map, base)).toBe("https://cdn.example/widget-old/helper.js")
     expect(() => resolveOfflineModule("missing", "https://cdn.example/widget-old/main.js", map, base)).toThrow("cannot resolve module")
+  })
+})
+
+describe("offline import selection", () => {
+  it("bundles only selected dynamic imports from the declared importer", async () => {
+    const root = "https://cdn.example/widget/"
+    const files: Record<string, string> = {
+      "/widget/main.js": `import {load} from "./registry.js"; register(load, () => import("./regular.js"));`,
+      "/widget/registry.js": `import value from "./shared.js";
+        export const load = {one: () => import("./one.js"), two: () => import("./two.js"), shared: () => value};`,
+      "/widget/one.js": `import value from "./shared.js"; export default value + 1;`,
+      "/widget/regular.js": `export default 4;`,
+      "/widget/shared.js": `export default 2;`,
+    }
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async input => {
+      const source = files[new URL(String(input)).pathname]
+      return source === undefined ? new Response(null, {status: 404}) : new Response(source)
+    })
+    try {
+      const {js} = await bundleOfflineModules([`${root}main.js`], {}, base, new Map([
+        [`${root}registry.js`, new Set(["./one.js"])],
+      ]))
+      const register = vi.fn()
+      new Function("register", js)(register)
+      const [load, regular] = register.mock.calls[0]
+      expect(load.shared()).toBe(2)
+      await expect(load.one()).resolves.toMatchObject({default: 3})
+      await expect(load.two()).rejects.toMatchObject({name: "OfflineImportError"})
+      await expect(regular()).resolves.toMatchObject({default: 4})
+      expect(fetcher).not.toHaveBeenCalledWith(`${root}two.js`)
+      expect(fetcher.mock.calls.filter(([url]) => url === `${root}shared.js`)).toHaveLength(1)
+    }
+    finally { fetcher.mockRestore() }
   })
 })
 

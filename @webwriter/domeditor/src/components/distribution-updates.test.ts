@@ -7,11 +7,11 @@ import type {DistributionSelection} from "../features/distribution"
 import {ribbonInsertionDragType} from "./insertion-menu"
 
 const state = (): DistributionSelection => {
-  const config = emptyDistributionConfig("document")
-  return {target: "document", path: null, identity: "element-document", local: config, effective: config, inheritedFrom: null}
+  const config = emptyDistributionConfig()
+  return {path: null, identity: "element-document", local: config, effective: config}
 }
 const change = (config: DistributionConfig) => new CustomEvent("distribution-config-change", {
-  detail: {target: "document", general: true, config},
+  detail: {target: "element-document", general: true, config},
 })
 const tick = async () => { await Promise.resolve(); await Promise.resolve() }
 
@@ -29,7 +29,7 @@ describe("distribution updates", () => {
   })
 
   const drop = (detail: Record<string, unknown>) => new CustomEvent("distribution-insert-drop", {
-    detail: {target: "document", general: true, ...detail},
+    detail: {target: "element-document", general: true, ...detail},
   })
   const dropHost = () => {
     const host = new DomEditor() as any
@@ -68,13 +68,13 @@ describe("distribution updates", () => {
 
   it("creates a complete local policy from inherited settings when dropping onto selection permissions", async () => {
     const {host, execute} = dropHost()
-    const inherited = {...state().local!, target: "outer", scope: "group", groupSize: 4, permissions: ["edit"]}
-    host.distributionSelection = {...state(), target: "child", identity: "element-child", path: [0], local: null, effective: inherited, inheritedFrom: "outer"}
+    const inherited = {...state().local!, scope: "group", groupSize: 4, permissions: ["edit"]}
+    host.distributionSelection = {...state(), identity: "element-child", path: [0], local: null, effective: inherited}
     const item = {id: "element:p", label: "Paragraph", html: "<p></p>"}
     host.distributionItems = [item]
-    await host.handleDistributionInsertDrop(drop({target: "child", general: false, action: item.id}))
+    await host.handleDistributionInsertDrop(drop({target: "element-child", general: false, action: item.id}))
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({type: "setDistributionConfig", identity: "element-child", path: [0],
-      config: expect.objectContaining({target: "child", scope: "group", groupSize: 4, permissions: ["edit", "insert"], add: [item.id], items: [item]})}))
+      config: expect.objectContaining({scope: "group", groupSize: 4, permissions: ["edit", "insert"], add: [item.id], items: [item]})}))
   })
 
   it("saves dragged editor content as a personal snippet and reuses it on another drop", async () => {

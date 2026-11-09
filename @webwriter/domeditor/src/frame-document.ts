@@ -11,6 +11,7 @@ import proofreadingWorkerURL from "./proofreading-worker.ts?worker&url"
 import {editorFrameOrigin} from "./frame-origins"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "./local-package-worker"
 import {ensureAuthoredElementIds} from "./authored-identities"
+import {prepareWidgetGroupingsForSerialization} from "./widget-grouping-dom"
 
 type FrameDocumentOptions = {
   bridgeNonce: string
@@ -285,5 +286,6 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
   // "off" state; explicitly clearing it also documents that invariant for
   // DOM implementations that retain a cloned property.
   source.designMode = "off"
-  return `${serializeDoctype(source.doctype)}${source.documentElement.outerHTML}`
+  const serialize = prepareWidgetGroupingsForSerialization(source.documentElement)
+  return serialize(`${serializeDoctype(source.doctype)}${source.documentElement.outerHTML}`)
 }

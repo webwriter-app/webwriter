@@ -139,10 +139,14 @@ export class TransformationFeature extends EditorFeature {
   readonly #refreshViewportControls = () => {
     this.#movementPeers = null
     if(this.#floatAnchorLine?.style.display === "") this.refreshGeometry()
-    else if(this.#coalescesGeometry || this.#group.length || this.#groupContext) this.#scheduleFrame()
-    // The anchored frame follows scrolling natively. Its upright control stems
-    // still switch sides together when their top row crosses the viewport edge.
-    if(this.#anchored && this.target) setPart(this.overlay, "transform-overlay-at-top", this.target.getBoundingClientRect().top < 42)
+    else if(!this.#anchored || this.#coalescesGeometry || this.#group.length || this.#groupContext) this.#scheduleFrame()
+    const target = this.#anchored ? this.target : null
+    if(!target) return
+    const rect = target.getBoundingClientRect()
+    // The CSS anchor follows scrolling, but a sticky float can enter its box
+    // without a resize or mutation. Switch to the measured contour on overlap.
+    if(this.editor.features.selection.floatExclusions(target, rect).length) this.updateInfo(rect)
+    else setPart(this.overlay, "transform-overlay-at-top", rect.top < 42)
   }
   #frame: number | null = null
   #geometryFrameDirty = false

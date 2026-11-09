@@ -5,6 +5,9 @@ import {restoreOriginalResourceURLs} from "./serialization"
 import {bundleOfflineModules} from "./offline-module-bundler"
 import {bunnyFontStylesheet} from "./fonts"
 import {fontCSSDataURL, embeddedFontRules} from "./local-fonts"
+import type {WebWriterPackage} from "./packages"
+import {writeDistributionConfig} from "./distribution-dom"
+import type {DistributionConfig} from "./distribution.js"
 
 vi.mock("./offline-module-bundler", () => ({bundleOfflineModules: vi.fn()}))
 
@@ -90,6 +93,41 @@ describe("offline HTML resources", () => {
     expect(Array.from(exported.querySelectorAll<HTMLScriptElement>('script[type="module"]:not(#webwriter-document-viewer)')).map(script => script.src)).toEqual([
       "https://cdn.example/a.js", "https://cdn.example/b.js",
     ])
+  })
+
+  it("collects offline import rules from saved widgets and reader templates", async () => {
+    const entry = "https://cdn.example/pkg/widgets/test-offline-imports.js"
+    const tagName = "test-offline-imports"
+    const select = vi.fn((element: Element) => [{
+      importer: "../loaders.js", keep: [`./${element.getAttribute("type")}.js`],
+    }])
+    customElements.define(tagName, class extends HTMLElement {static offlineImports = select})
+    document.head.insertAdjacentHTML("beforeend", `<script type="module" src="${entry}"></script>`)
+    document.body.innerHTML = `<${tagName} type="first"></${tagName}>
+      <template><template><${tagName} type="second"></${tagName}></template></template>`
+    const item = {id: `element:${tagName}`, label: "Insertable", html: `<${tagName} type="third"></${tagName}>`}
+    writeDistributionConfig(document.body, {
+      version: 1, scope: "individual", permissions: ["insert"], add: [item.id], items: [item],
+    } as DistributionConfig)
+    activeEditor = new DOMEditor()
+    const dependency = activeEditor.features.dependency
+    ;(dependency as unknown as {dependencyPlan: unknown}).dependencyPlan = {entries: [entry], map: {}}
+    vi.spyOn(dependency, "installedPackages", "get").mockReturnValue([{
+      members: [{kind: "widget", tagName, scriptUrl: entry}],
+    } as WebWriterPackage])
+    vi.mocked(bundleOfflineModules).mockResolvedValue({js: "", css: undefined})
+
+    try {
+      await activeEditor.serializeHTML()
+      expect(select).not.toHaveBeenCalled()
+      await activeEditor.serializeHTML(true)
+      expect(select.mock.calls).toHaveLength(3)
+      expect(select.mock.calls.every(([element]) => !element.isConnected)).toBe(true)
+      expect(vi.mocked(bundleOfflineModules).mock.lastCall?.[3]).toEqual(new Map([
+        ["https://cdn.example/pkg/loaders.js", new Set(["./first.js", "./second.js", "./third.js"])],
+      ]))
+    }
+    finally { writeDistributionConfig(document.body, null) }
   })
 
   it("embeds SVG raster images, preserves fragments and restores namespaced URLs", async () => {

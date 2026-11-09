@@ -10,7 +10,7 @@ const setup = (permissions: ("edit" | "move" | "delete" | "duplicate" | "style" 
   const target = root.createElement("div")
   target.id = "distribution-target"
   root.body.append(target)
-  writeDistributionConfig(target, {...emptyDistributionConfig(target.id), permissions, add, items})
+  writeDistributionConfig(target, {...emptyDistributionConfig(), permissions, add, items})
   return root
 }
 
@@ -49,7 +49,7 @@ describe("distribution export", () => {
     const dormant = root.createElement("div")
     dormant.id = "dormant-target"
     root.body.append(dormant)
-    writeDistributionConfig(dormant, {...emptyDistributionConfig(dormant.id), add: [unused.id], items: [unused]})
+    writeDistributionConfig(dormant, {...emptyDistributionConfig(), add: [unused.id], items: [unused]})
     appendSerializedAssets(root, [resources])
     expect(root.querySelector('script[src="/chosen.js"]')).not.toBeNull()
     expect(root.querySelector('link[href="/chosen.css"]')).not.toBeNull()
@@ -78,7 +78,7 @@ describe("distribution export", () => {
     resources.members[0].editingConfig = {content: "p*", inline: false}
     appendSerializedAssets(root, [resources])
     const script = root.querySelector("#webwriter-distribution-reader")!.textContent!
-    expect(script).toContain('widgets: [{"tagName":"x-authored","editingConfig":{"content":"p*","inline":false}}]')
+    expect(script).toContain('widgets:[{"tagName":"x-authored","editingConfig":{"content":"p*","inline":false}}]')
   })
 
   it("uses one shared canvas viewer when reader editing is enabled", () => {

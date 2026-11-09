@@ -21,13 +21,14 @@ import {
   type StyleMarkName,
   type StyleMarkValues,
 } from "../marks"
-import {$, authoredClassValue, cloneWithoutEditorMarkers, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, isParagraphContent, textOffsetIn, textPointAtOffset} from "../utility"
+import {$, authoredClassValue, cloneRangeContents, cloneWithoutEditorMarkers, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, isParagraphContent, textOffsetIn, textPointAtOffset} from "../utility"
 import {SVG_NAMESPACE} from "../graphic"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {popupContentAncestor, popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
 import {isSectionElement} from "../sections"
 import {collectReferences, parseReference} from "../document-viewer.js"
-import {isLinkEdit, normalizeLinkHref, type LinkEdit, type LinkSelectionState} from "../links"
+import {attachmentWarningBytes, isLinkEdit, normalizeLinkHref, type AttachmentSelectionState, type AttachmentSource, type LinkEdit, type LinkSelectionState} from "../links"
+import {attachmentConfirmationEvent} from "../editor-bridge"
 import {fontStylesheetFamily, fontFamilies, fontWithFallback, syncFontResources} from "../fonts"
 import {mergeEmbeddedFonts} from "../local-fonts"
 import ianaTLDList from "../iana-tlds.txt?raw"
@@ -80,6 +81,10 @@ type StoredSelection = {
   focusNode: Node
   focusOffset: number
 }
+
+const attachmentInteractive = "a, button, input, select, textarea, label, audio[controls], video[controls], [tabindex], [contenteditable='false']"
+const attachmentDraftAttribute = "data-ww-attachment"
+const attachmentMark = `a[href][download], a[${attachmentDraftAttribute}]`
 
 const svgStyleNames = ["font-weight", "font-style", "text-decoration-line", "font-family", "font-size", "fill", "background-color"]
 
@@ -432,6 +437,8 @@ export class MarkFeature extends EditorFeature {
   private storedPopup = false
   private storedSelection: StoredSelection | null = null
   private linkNodeIDs = new WeakMap<Node, string>()
+  private attachmentRequest: {token: string, identity: string, href: string | null, draft: boolean} | null = null
+  private attachmentConfirmation: {id: string, resolve: (confirmed: boolean) => void} | null = null
   private editingLink = false
   private automaticLinkBlock: Element | null = null
   private automaticLinkTypingBlock: Element | null = null
@@ -602,6 +609,13 @@ export class MarkFeature extends EditorFeature {
     insertPopup: ({}: {type: "insertPopup"}) => this.insertPopup(),
     togglePopup: ({}: {type: "togglePopup"}) => this.togglePopup(),
     editLink: (edit: LinkEdit & {type: "editLink"}) => this.editLink(edit),
+    toggleAttachment: ({}: {type: "toggleAttachment"}) => this.toggleAttachment(),
+    attach: (action: AttachmentSource & {type: "attach", identity: string}) => this.attach(action.identity, action),
+    resolveAttachmentConfirmation: ({id, confirmed}: {type: "resolveAttachmentConfirmation", id: string, confirmed: boolean}) => {
+      if(this.attachmentConfirmation?.id !== id) return
+      this.attachmentConfirmation.resolve(confirmed === true)
+      this.attachmentConfirmation = null
+    },
     addMark: ({mark}: {type: "addMark", mark: MarkName}) => this.addMark(mark),
     removeMark: ({mark}: {type: "removeMark", mark: MarkName}) => this.removeMark(mark),
     toggleMark: ({mark}: {type: "toggleMark", mark: MarkName}) => this.toggleMark(mark),
@@ -673,7 +687,7 @@ export class MarkFeature extends EditorFeature {
     try {
       observer.observe(document.body, {
         attributes: true, attributeOldValue: true,
-        attributeFilter: ["style", "class", "id", "title", "aria-label", "is", ...markAttributeNames, ...svgStyleNames],
+        attributeFilter: ["style", "class", "id", "title", "aria-label", "is", attachmentDraftAttribute, ...markAttributeNames, ...svgStyleNames],
         childList: true,
         characterData: true, characterDataOldValue: true,
         subtree: true,
@@ -697,6 +711,9 @@ export class MarkFeature extends EditorFeature {
     this.automaticLinkTypingBlock = null
     this.composing = false
     this.stateRefreshQueued = false
+    this.attachmentRequest = null
+    this.attachmentConfirmation?.resolve(false)
+    this.attachmentConfirmation = null
     this.clearStoredMarks()
     super.disable()
   }
@@ -844,17 +861,14 @@ export class MarkFeature extends EditorFeature {
       if(range.compareBoundaryPoints(Range.START_TO_START, linkRange) < 0
         || range.compareBoundaryPoints(Range.END_TO_END, linkRange) > 0) return null
     }
-    const nodeID = (node: Node) => {
-      let id = this.linkNodeIDs.get(node)
-      if(!id) { id = crypto.randomUUID(); this.linkNodeIDs.set(node, id) }
-      return id
-    }
     const attributes = {...(this.getAttributeState().a ?? {})}
     const href = attributes.href ?? ""
+    if(anchors.some(anchor => anchor instanceof HTMLAnchorElement && anchor.matches(attachmentMark))
+      || attributes.download !== undefined && /^data:/i.test(href)) return null
     const text = range.toString()
-    const identity = JSON.stringify([nodeID(range.startContainer), range.startOffset,
-      nodeID(range.endContainer), range.endOffset, text, attributes,
-      anchors.map(anchor => [nodeID(anchor), Array.from(anchor.attributes).flatMap(attribute => {
+    const identity = JSON.stringify([this.linkNodeID(range.startContainer), range.startOffset,
+      this.linkNodeID(range.endContainer), range.endOffset, text, attributes,
+      anchors.map(anchor => [this.linkNodeID(anchor), Array.from(anchor.attributes).flatMap(attribute => {
         const value = attribute.name === "class" ? authoredClassValue(attribute.value) : attribute.value
         return attribute.name === "class" && !value ? [] : [[attribute.name, value]]
       })])])
@@ -878,6 +892,305 @@ export class MarkFeature extends EditorFeature {
       .map(reference => ({href: reference.href, label: reference.data.title, data: JSON.stringify(reference.data)}))
     return {active: true, identity, href, attributes, text,
       targets: Array.from(targets, ([href, label]) => ({href, label})), references, referenceAllowed: !svg}
+  }
+
+  private linkNodeID(node: Node) {
+    let id = this.linkNodeIDs.get(node)
+    if(!id) { id = crypto.randomUUID(); this.linkNodeIDs.set(node, id) }
+    return id
+  }
+
+  private attachmentTarget(allowDraft = true) {
+    if(this.editor.isEditingLocked || this.editor.features.math.activeMath || !this.isMarkAllowed("a")) return null
+    if(!allowDraft) {
+      const selection = document.getSelection()
+      if(!selection?.rangeCount) return null
+      const {startContainer, startOffset, collapsed} = selection.getRangeAt(0)
+      const element = startContainer instanceof Element ? startContainer : startContainer.parentElement
+      const first = collapsed ? null : startContainer.childNodes[startOffset]
+      if(!element?.closest(attachmentMark) && !(first instanceof HTMLAnchorElement && first.matches(attachmentMark))) return null
+    }
+    const caret = this.getCaret()
+    const selection = caret ? null : this.getSelection()
+    const context = caret ?? selection
+    if(!context || context.block.namespaceURI !== "http://www.w3.org/1999/xhtml") return null
+    const {range, block} = context
+    const anchors = selection ? this.markElementsForSelection(selection, "a")
+      : [this.markElementAt(range.startContainer, block, "a")].filter(anchor => anchor !== null)
+    const anchor = anchors[0]
+    const existing = anchor instanceof HTMLAnchorElement && anchor.matches(attachmentMark)
+    if(!existing && !allowDraft) return null
+    if(anchors.some(other => other !== anchor)) return null
+    if(anchor && !range.collapsed) {
+      const boundary = range.cloneRange()
+      boundary.selectNode(anchor)
+      if(range.compareBoundaryPoints(Range.START_TO_START, boundary) < 0
+        || range.compareBoundaryPoints(Range.END_TO_END, boundary) > 0) return null
+    }
+    if(!anchor) {
+      const points = [range.startContainer, range.endContainer]
+        .map(node => node instanceof Element ? node : node.parentElement)
+      if(selection?.split || points.some(point => point?.closest(attachmentInteractive))
+        || cloneRangeContents(range).querySelector(attachmentInteractive)) return null
+    }
+    const identity = JSON.stringify([this.linkNodeID(range.startContainer), range.startOffset,
+      this.linkNodeID(range.endContainer), range.endOffset, range.toString(),
+      anchor && [this.linkNodeID(anchor), existing, anchor.getAttribute("download"), anchor.getAttribute("data-reference")]])
+    return {context, anchor, identity, href: anchor?.getAttribute("href") ?? null, existing}
+  }
+
+  private attachmentMedia() {
+    return Array.from(document.body.querySelectorAll("img, audio, video")).flatMap(media => {
+      const container = atomicEditingContainer(media, this.editor.schema)
+      if(!(media instanceof HTMLImageElement || media instanceof HTMLMediaElement)
+        || media.hasAttribute("is")
+        || container && container !== media && !(container.matches("picture:not([is])") && media.parentElement === container)
+        || media instanceof HTMLMediaElement && media.srcObject) return []
+      const source = media.currentSrc || media.getAttribute("src")
+      if(!source) return []
+      let url: URL
+      try { url = new URL(source, media.baseURI) } catch { return [] }
+      if(!["http:", "https:", "data:", "blob:"].includes(url.protocol) || url.username || url.password) return []
+      const fallback = media instanceof HTMLImageElement ? "image" : media.localName
+      let name = this.editor.mediaSourceFilename(url.href)
+      if(url.protocol === "http:" || url.protocol === "https:") {
+        const basename = url.pathname.split("/").pop()
+        if(basename) {
+          try { name = decodeURIComponent(basename) } catch { name = basename }
+        }
+      }
+      const label = media.getAttribute("aria-label")?.trim() || media.getAttribute("alt")?.trim()
+        || media.closest("figure")?.querySelector(":scope > figcaption")?.textContent?.trim() || name || fallback
+      return [{id: this.linkNodeID(media), label, name, fallback, url}]
+    })
+  }
+
+  private attachmentState(target: NonNullable<ReturnType<MarkFeature["attachmentTarget"]>>): AttachmentSelectionState {
+    const {identity, href, existing} = target
+    const current = this.attachmentRequest
+    if(current?.identity !== identity || current.href !== href || current.draft !== !existing) {
+      this.attachmentRequest = {token: crypto.randomUUID(), identity, href, draft: !existing}
+    }
+    return {identity: this.attachmentRequest!.token, media: this.attachmentMedia().map(({id, label}) => ({id, label}))}
+  }
+
+  getAttachmentState(): AttachmentSelectionState | null {
+    const request = this.attachmentRequest
+    const target = this.attachmentTarget(request?.draft === true)
+    if(target && (target.existing || request?.draft && request.identity === target.identity && request.href === target.href)) {
+      return this.attachmentState(target)
+    }
+    this.attachmentRequest = null
+    return null
+  }
+
+  toggleAttachment(): AttachmentSelectionState | "removed" | null {
+    const target = this.attachmentTarget()
+    if(!target) return null
+    const {anchor, context} = target
+    const {range, selection} = context
+    if(target.existing && anchor && (range.collapsed || this.coversAttachment(range, anchor))) {
+      this.removeAttachment(anchor, selection)
+      return "removed"
+    }
+    const pending = this.attachmentRequest
+    if(pending?.draft && pending.identity === target.identity && pending.href === target.href) {
+      this.attachmentRequest = null
+      this.editor.postMarkState()
+      return "removed"
+    }
+    return this.activateAttachment(target)
+  }
+
+  private coversAttachment(range: Range, anchor: Element) {
+    const atEdge = (node: Node, offset: number, start: boolean) => {
+      // A selection of the anchor itself may use offsets in its parent.
+      if(!anchor.contains(node)) return true
+      if(node instanceof Text) {
+        if(offset !== (start ? 0 : node.length)) return false
+      }
+      else {
+        const children = Array.from(node.childNodes)
+        if((start ? children.slice(0, offset) : children.slice(offset)).some(hasContent)) return false
+      }
+      while(node !== anchor) {
+        for(let sibling = start ? node.previousSibling : node.nextSibling; sibling; sibling = start ? sibling.previousSibling : sibling.nextSibling) {
+          if(hasContent(sibling)) return false
+        }
+        node = node.parentNode!
+      }
+      return true
+    }
+    const hasContent = (node: Node) => node instanceof Element || node instanceof Text && node.length > 0
+    return atEdge(range.startContainer, range.startOffset, true) && atEdge(range.endContainer, range.endOffset, false)
+  }
+
+  private removeAttachment(anchor: Element, selection: Selection) {
+    this.attachmentRequest = null
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      // Turning off a draft placed on an existing link restores that link.
+      if(anchor.hasAttribute(attachmentDraftAttribute) && anchor.hasAttribute("href") && !anchor.hasAttribute("download")) {
+        anchor.removeAttribute(attachmentDraftAttribute)
+      }
+      else {
+        const parent = anchor.parentNode!
+        const index = Array.from(parent.childNodes).indexOf(anchor)
+        const children = Array.from(anchor.childNodes)
+        const attributes = Array.from(anchor.attributes).filter(attribute =>
+          attribute.name !== attachmentDraftAttribute && !isMarkAttributeName("a", attribute.name))
+        const span = attributes.length ? document.createElement("span") : null
+        const position = (node: Node, offset: number): [Node, number] => {
+          if(node === anchor) return span ? [span, offset] : [parent, index + offset]
+          if(!span && node === parent && offset > index) return [parent, offset + children.length - 1]
+          return [node, offset]
+        }
+        const start = position(selection.anchorNode!, selection.anchorOffset)
+        const finish = position(selection.focusNode!, selection.focusOffset)
+        if(span) {
+          for(const attribute of attributes) span.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+          span.append(...children)
+          anchor.replaceWith(span)
+        }
+        else anchor.replaceWith(...children)
+        selection.setBaseAndExtent(...start, ...finish)
+      }
+      this.editor.postMarkState()
+    }
+    finally { end() }
+  }
+
+  activateAttachment(target = this.attachmentTarget()): AttachmentSelectionState | null {
+    if(!target) return null
+    const {context, anchor} = target
+    if(!target.existing && (anchor || !context.range.collapsed)) {
+      const end = this.editor.doc.beginUndoGroup()
+      try {
+        const link = anchor ?? document.createElement("a")
+        link.setAttribute(attachmentDraftAttribute, "")
+        if(!anchor) this.wrapAttachmentSelection(context as MarkSelection, link)
+      }
+      finally { end() }
+    }
+    const current = this.attachmentTarget()
+    if(!current) return null
+    const state = this.attachmentState(current)
+    this.editor.postMarkState()
+    return state
+  }
+
+  private wrapAttachmentSelection(context: MarkSelection, link: Element) {
+    const {range} = context
+    const boundaries = new Map<string, Element>()
+    for(const point of [range.startContainer, range.endContainer]) {
+      let element = point instanceof Element ? point : point.parentElement
+      while(element && element !== range.commonAncestorContainer && element !== context.block) {
+        if(element.id) boundaries.set(element.id, element)
+        element = element.parentElement
+      }
+    }
+    const fragment = range.extractContents()
+    // Range clones partially selected ancestors. Keep their IDs on the originals.
+    for(const element of fragment.querySelectorAll("[id]")) {
+      if(boundaries.get(element.id)?.isConnected) element.removeAttribute("id")
+    }
+    link.append(fragment)
+    range.insertNode(link)
+    this.restoreSelection(context)
+  }
+
+  async attach(identity: string, source: AttachmentSource): Promise<boolean> {
+    const request = this.attachmentRequest
+    const validate = () => {
+      const target = this.attachmentTarget()
+      if(!this.isEnabled || !request || request.token !== identity || this.attachmentRequest !== request
+        || !target || target.identity !== request.identity || target.href !== request.href)
+        throw new Error("The selection changed. Open Attachment again.")
+      return target
+    }
+    validate()
+    let file: Blob
+    let filename: string
+    let href: string | undefined
+    if("file" in source && source.file instanceof File) {
+      file = source.file
+      filename = source.file.name
+    }
+    else if("mediaId" in source) {
+      const media = this.attachmentMedia().find(candidate => candidate.id === source.mediaId)
+      if(!media) throw new Error("The media source is no longer available.")
+      try {
+        const response = await fetch(media.url, {signal: AbortSignal.timeout(10_000)})
+        if(!response.ok) throw new Error()
+        if(/^https?:$/.test(media.url.protocol) && /^attachment(?:\s*;|\s*$)/i.test(response.headers.get("Content-Disposition") ?? "")) {
+          href = media.url.href
+          await response.body?.cancel()
+        }
+        file = href ? new Blob() : await response.blob()
+      }
+      catch(error) {
+        throw new Error("Could not read the media for download. If you have the file, attach it directly.")
+      }
+      const extension = file.type === "audio/mpeg" ? "mp3" : file.type.match(/^(?:image|audio|video)\/(?:x-)?([\da-z]+)/i)?.[1]
+      filename = media.name ?? (extension ? `${media.fallback}.${extension}` : media.fallback)
+    }
+    else throw new TypeError("Choose a file or media source.")
+    if(!href) {
+      if(!await this.confirmLargeAttachments([{name: filename, size: file.size}])) return false
+      href = await this.attachmentFileHref(file)
+    }
+    const {context, anchor} = validate()
+    this.attachmentRequest = null
+    const link = anchor ?? document.createElement("a")
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      link.setAttribute("href", href)
+      link.setAttribute("download", filename)
+      link.removeAttribute(attachmentDraftAttribute)
+      link.removeAttribute("target")
+      link.removeAttribute("data-reference")
+      link.removeAttribute("data-reference-locator")
+      if(!anchor) {
+        link.textContent = filename
+        context.range.insertNode(link)
+      }
+      this.clearStoredMarks()
+      $.move(link, link.childNodes.length)
+      this.editor.postMarkState()
+      return true
+    }
+    finally { end() }
+  }
+
+  private async confirmLargeAttachments(files: readonly {name: string, size: number}[]) {
+    const large = files.filter(file => file.size > attachmentWarningBytes).map(({name, size}) => ({name, size}))
+    if(!large.length) return true
+    if(this.attachmentConfirmation || this.editor.isEditingLocked) return false
+    const id = crypto.randomUUID()
+    return new Promise<boolean>(resolve => {
+      this.attachmentConfirmation = {id, resolve}
+      this.editor.postHostMessage({type: attachmentConfirmationEvent, id, files: large})
+    })
+  }
+
+  private attachmentFileHref(file: Blob) {
+    // Treat even HTML and SVG files as bytes in a download.
+    return this.editor.blobDataURL(file.slice(0, file.size, "application/octet-stream"))
+  }
+
+  async createAttachmentFragment(files: File[]) {
+    if(!await this.confirmLargeAttachments(files)) return null
+    const hrefs = await Promise.all(files.map(file => this.attachmentFileHref(file)))
+    const fragment = document.createDocumentFragment()
+    files.forEach((file, index) => {
+      const link = document.createElement("a")
+      link.href = hrefs[index]
+      link.download = file.name
+      link.textContent = file.name
+      if(index) fragment.append(" ")
+      fragment.append(link)
+    })
+    return fragment
   }
 
   /** Apply a complete keyboard edit against the current selection, atomically. */
@@ -1851,15 +2164,15 @@ export class MarkFeature extends EditorFeature {
     if(this.editor.features.selection.isCaptureSelection) return
     if(!event.defaultPrevented && !event.isComposing && event.inputType === "insertParagraph") this.finishAutomaticLinkBeforeBreak()
     this.clearStoredMarksIfSelectionChanged()
-    if(event.defaultPrevented
-      || this.storedMarks === null && this.storedStyles === null && this.storedAttributes === null && !this.storedPopup
-      || !["insertText", "insertReplacementText"].includes(event.inputType)
-      || !event.data) return
+    if(event.defaultPrevented || !["insertText", "insertReplacementText"].includes(event.inputType) || !event.data) return
+    const attachmentPending = this.attachmentRequest?.draft && !!this.getAttachmentState()
+    if(this.storedMarks === null && this.storedStyles === null && this.storedAttributes === null && !this.storedPopup && !attachmentPending) return
 
     const caret = this.getCaret()
     if(!caret) return
     const popupPending = this.storedPopup
     const desired = new Set(this.storedMarks ?? this.marksAt(caret.range.startContainer, caret.block))
+    if(attachmentPending) desired.add("a")
     const desiredStyles = {...(this.storedStyles ?? this.stylesAt(caret.range.startContainer, caret.block))}
     const desiredAttributes = this.cloneAttributeValues(
       this.storedAttributes ?? this.attributesAt(caret.range.startContainer, caret.block),
@@ -1867,7 +2180,13 @@ export class MarkFeature extends EditorFeature {
     event.preventDefault()
 
     const text = document.createTextNode(event.data)
-    caret.range.insertNode(text)
+    if(attachmentPending) {
+      const link = document.createElement("a")
+      link.setAttribute(attachmentDraftAttribute, "")
+      link.append(text)
+      caret.range.insertNode(link)
+    }
+    else caret.range.insertNode(text)
     caret.selection.setBaseAndExtent(text, 0, text, text.length)
 
     const unwanted = new Set(this.getState().marks.filter(mark => !desired.has(mark)))

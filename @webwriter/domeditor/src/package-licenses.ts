@@ -744,18 +744,18 @@ const licenses: readonly (readonly [string, string])[] = [
   ["ZPL-2.1", "Zope Public License 2.1"],
 ]
 
-const commonSoftwareLicenses = [
+export const commonSoftwareLicenses = [
   "MIT", "Apache-2.0", "BSD-3-Clause", "BSD-2-Clause", "ISC", "MPL-2.0",
   "LGPL-2.1-or-later", "LGPL-3.0-or-later", "GPL-2.0-or-later", "GPL-3.0-or-later",
   "AGPL-3.0-or-later", "Unlicense",
 ] as const
 
-const options = licenses.map(([value, description]) => ({value, label: value, description}))
+export const spdxLicenseOptions = licenses.map(([value, description]) => ({value, label: value, description}))
+  .sort((a, b) => a.label.localeCompare(b.label, "en", {sensitivity: "base"}))
 const common = new Set<string>(commonSoftwareLicenses)
 
 export const packageLicenseOptions = [
-  ...commonSoftwareLicenses.map(value => options.find(option => option.value === value)!),
-  ...options.filter(option => !common.has(option.value))
-    .sort((a, b) => a.label.localeCompare(b.label, "en", {sensitivity: "base"}))
+  ...commonSoftwareLicenses.map(value => spdxLicenseOptions.find(option => option.value === value)!),
+  ...spdxLicenseOptions.filter(option => !common.has(option.value))
     .map((option, index) => ({...option, dividerBefore: index === 0})),
 ]

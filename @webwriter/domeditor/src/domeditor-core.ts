@@ -41,6 +41,7 @@ import {
   proofreadingDictionaryAddEvent,
   type ProofreadingState,
   selectionChangeEvent,
+  attachmentConfirmationEvent,
   shapeKeyboardInputEvent,
   presenceChangeEvent,
   documentHeadStateChangeEvent,
@@ -725,6 +726,11 @@ export class DOMEditor {
     return url
   }
 
+  mediaSourceFilename(source: string) {
+    const blob = this.mediaBlobs.get(source)
+    return blob instanceof File ? blob.name : undefined
+  }
+
   mediaSourceSize(source: string) {
     const blob = this.mediaBlobs.get(source)
     if(blob) return blob.size
@@ -801,7 +807,8 @@ export class DOMEditor {
       return
     }
     // The frame host handles controls on the same window message target.
-    if(ev.data.type === selectionChangeEvent || ev.data.type === shapeKeyboardInputEvent || ev.data.type === editorFrameControlMessage || ev.data.type === proofreadingDictionaryAddEvent || ev.data.type === commentReviewRequestEvent) {
+    if(ev.data.type === selectionChangeEvent || ev.data.type === shapeKeyboardInputEvent || ev.data.type === editorFrameControlMessage
+      || ev.data.type === proofreadingDictionaryAddEvent || ev.data.type === commentReviewRequestEvent || ev.data.type === attachmentConfirmationEvent) {
       return
     }
 
@@ -1188,12 +1195,16 @@ export class DOMEditor {
       })
       return
     }
+    const attributes = this.features.mark.getAttributeState()
+    if(attributes.a?.download !== undefined && /^data:/i.test(attributes.a.href ?? "")) delete attributes.a.href
+    const attachment = this.features.mark.getAttachmentState()
     this.postBridgeEvent(markStateChangeEvent, {
       ...this.features.mark.getState(),
       canRemoveMarks: this.features.mark.canRemoveMarks,
       styles: this.features.mark.getStyleState(),
-      attributes: this.features.mark.getAttributeState(),
-      link: this.features.mark.getLinkState() ?? undefined,
+      attributes,
+      link: attachment ? undefined : this.features.mark.getLinkState() ?? undefined,
+      attachment: attachment ?? undefined,
       ruby: this.features.mark.getRubyState(),
     })
   }
@@ -1412,7 +1423,7 @@ export class DOMEditor {
     const {documentElement} = root
     await this.inlineBlobSources(documentElement)
     if(offline) {
-      await this.bundleOfflinePackageModules(documentElement)
+      await this.bundleOfflinePackageModules(root)
       await this.inlineExternalResources(documentElement)
     }
     const serialize = prepareWidgetGroupingsForSerialization(documentElement)
@@ -1471,28 +1482,38 @@ export class DOMEditor {
     }
   }
 
-  private async bundleOfflinePackageModules(root: HTMLElement) {
-    const plan = this.features.dependency.packageDependencyPlan
+  private async bundleOfflinePackageModules(root: HTMLDocumentParts) {
+    const {documentElement} = root
+    const dependency = this.features.dependency
+    const plan = dependency.packageDependencyPlan
     if(!plan?.map || !plan.entries.length) return
     const base = runtimeDocumentBaseURL()
     const entries = new Set(plan.entries.map(url => new URL(url, base).href))
-    const scripts = Array.from(root.querySelectorAll<HTMLScriptElement>('script[type="module"][src]'),
+    const scripts = Array.from(documentElement.querySelectorAll<HTMLScriptElement>('script[type="module"][src]'),
       script => ({script, url: new URL(script.getAttribute("src")!, base).href})).filter(({url}) => entries.has(url))
     if(!scripts.length) return
     const bundleOfflineModules = this.options.bundleOfflineModules
     if(!bundleOfflineModules) throw new Error("Offline export is unavailable in this editing session")
     const urls = scripts.map(({url}) => url)
-    const {js, css} = await bundleOfflineModules(urls, plan.map, base)
+    const bundled = new Set(urls)
+    const widgetEntries = new Map<string, string>()
+    for(const pkg of dependency.installedPackages) for(const member of pkg.members) {
+      if(member.kind !== "widget" || !member.tagName || !member.scriptUrl) continue
+      const url = new URL(member.scriptUrl, base).href
+      if(bundled.has(url)) widgetEntries.set(member.tagName, url)
+    }
+    const offlineImports = this.features.widget.offlineImports(root, widgetEntries)
+    const {js, css} = await bundleOfflineModules(urls, plan.map, base, offlineImports)
     if(parseModule(js)[0].length) throw new Error("Offline package bundle contains unresolved module imports")
     const first = scripts[0].script
-    const bundle = root.ownerDocument.createElement("script")
+    const bundle = documentElement.ownerDocument.createElement("script")
     bundle.type = "module"
     bundle.src = await this.blobDataURL(new Blob([js], {type: "text/javascript"}))
     bundle.setAttribute(originalPackageEntriesAttribute, JSON.stringify(urls))
     first.replaceWith(bundle)
     scripts.slice(1).forEach(({script}) => script.remove())
     if(css) {
-      const style = root.ownerDocument.createElement("style")
+      const style = documentElement.ownerDocument.createElement("style")
       style.setAttribute(offlinePackageStyleAttribute, "")
       style.textContent = css
       bundle.before(style)
@@ -1505,6 +1526,7 @@ export class DOMEditor {
       ["img[src], audio[src], video[src], source[src], track[src], input[type='image'][src]", "src"],
       ["video[poster]", "poster"],
       ["object[data]", "data"],
+      ["a[download][href^='http:' i], a[download][href^='https:' i]", "href"],
     ]
     // A downloaded HTML frame can still fetch its own scripts and resources.
     // Do not present that document as a self-contained offline export.
@@ -1563,7 +1585,7 @@ export class DOMEditor {
     return response
   }
 
-  private async blobDataURL(blob: Blob) {
+  async blobDataURL(blob: Blob) {
     const bytes = new Uint8Array(await blob.arrayBuffer())
     let binary = ""
     const chunkSize = 0x8000

@@ -59,6 +59,8 @@ vi.mock("../live-session-recovery", () => ({
 }))
 import {LocalPackageWorkerClient} from "../local-package-worker-client"
 import {LiveSession} from "../live-session"
+import {distributionTarget, emptyDistributionConfig, encodeDistributionConfig} from "../distribution.js"
+import {readDistributionConfigs} from "../distribution-dom"
 import {IncrementalPreviewRecorder} from "../live-session-incremental"
 import {createLiveSessionReplayFile, readLiveSessionReplayFile} from "../live-session-replay"
 import {LiveSessionReplayClient} from "../live-session-replay-client"
@@ -6455,10 +6457,13 @@ describe("DomEditor.execute()", () => {
     expect(insert).toHaveBeenCalledWith(demoPackage.members[0])
   })
 
-  it("installs without inserting while package search is active", async () => {
+  it("installs without inserting on the first click and inserts the matched snippet on the next click", async () => {
     vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
     const {editor} = await mountEditor()
-    const install = vi.spyOn(editor as any, "setPackageInstalled").mockResolvedValue(demoPackage)
+    const install = vi.spyOn(editor as any, "setPackageInstalled").mockImplementation(async () => {
+      ;(editor as any).installedPackages = [demoPackage]
+      return demoPackage
+    })
     const insert = vi.spyOn(editor as any, "insertPackageMember").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Packages"] ribbon-button[label="Demo"]')).not.toBeNull())
@@ -6466,17 +6471,22 @@ describe("DomEditor.execute()", () => {
     const search = drawer.querySelector("package-search")!
     await search.updateComplete
     const input = search.shadowRoot!.querySelector<HTMLInputElement>("input")!
-    input.value = "demo"
+    input.value = "snippet"
     input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
     await ribbon.updateComplete
-    const button = drawer.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    const button = drawer.querySelector<RibbonButton>('ribbon-button[label="Demo Snippet"]')!
     await button.updateComplete
     button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 
     await vi.waitFor(() => expect(install).toHaveBeenCalled())
     expect(install).toHaveBeenCalledWith(demoPackage, true)
     expect(insert).not.toHaveBeenCalled()
-    expect(button.shadowRoot!.querySelector(".corner-icon")).toBeNull()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await vi.waitFor(() => expect(insert).toHaveBeenCalledWith(demoPackage.members[1]))
+    expect(install).toHaveBeenCalledTimes(1)
   })
 
   it("cancels an installation by clicking its loading button before metadata resolves", async () => {
@@ -8776,6 +8786,40 @@ describe("DomEditor.execute()", () => {
       expect(source.body.innerHTML).toBe(authoredHTML)
       expect(host.installedPackages[0].scripts).toEqual([script])
       expect(host.previewDocumentHTML).toContain(script)
+    }
+    finally { learner.destroy(); host.disposeLiveSession() }
+  })
+
+  it("sends only visible subtrees to participants and keeps host widget paths aligned", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const authored = iframe.contentDocument!
+    authored.body.innerHTML = '<x-widget id="private"><p id="private-child">private answer</p></x-widget><x-widget></x-widget><p id="public">Visible</p>'
+    const visiblePolicy = {...emptyDistributionConfig(), permissions: ["edit" as const]}
+    for(const [id, policy] of [
+      ["private", {...emptyDistributionConfig(), view: false}], ["private-child", emptyDistributionConfig()], ["public", visiblePolicy],
+    ] as const) {
+      authored.getElementById(id)!.append(authored.createProcessingInstruction(distributionTarget, encodeDistributionConfig(policy)))
+    }
+
+    await host.enterPreview()
+    await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    const session = host.liveSession as LiveSession
+    const learner = new LiveSession({id: session.id, role: "learner", learner: {id: "ada", name: "Ada", color: "red"}})
+    try {
+      expect(learner.baseHTML?.includes("private answer")).toBe(false)
+      const shared = new DOMParser().parseFromString(learner.baseHTML!, "text/html")
+      expect([...shared.body.children].map(element => element.localName)).toEqual(["x-widget", "p"])
+      expect(readDistributionConfigs(shared)).toEqual(new Map([[shared.getElementById("public"), visiblePolicy]]))
+      expect(authored.getElementById("private")?.textContent).toBe("private answer")
+      expect(host.previewDocumentHTML).toContain("private answer")
+
+      const widget = {path: [0], html: "<x-widget>learner state</x-widget>"}
+      learner.publish({kind: "widget", widgets: [widget]})
+      await vi.waitFor(() => expect(host.widgetStateAtStep("[1]", "ada")).toEqual(widget))
+      expect(host.widgetStateAtStep("[0]", "ada")).toBeUndefined()
+      learner.publish({kind: "document", html: learner.baseHTML!.replace(">Visible<", ">Updated<")})
+      expect(session.steps.at(-1)?.html).toContain(">Updated<")
     }
     finally { learner.destroy(); host.disposeLiveSession() }
   })
@@ -11101,6 +11145,68 @@ describe("DomEditor.execute()", () => {
     expect(keyboard.closest("section")!.hasAttribute("hidden")).toBe(false)
     await vi.waitFor(() => expect(keyboard.shadowRoot!.activeElement).toBe(keyboard.shadowRoot!.querySelector('[aria-label="Web address"]')))
     expect(focusEditor).toHaveBeenCalled()
+  })
+
+  it("routes the Attachment control to the toggle command and returns focus after removal", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const focusEditor = vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async () => {
+      dispatchMarkState(editor, editorWindow, {canMark: true, marks: []})
+      return "removed"
+    })
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attachment: {identity: "inside", media: []}})
+    await editor.updateComplete
+    editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "mark:attachment"}, bubbles: true, composed: true,
+    }))
+    await vi.waitFor(() => expect(focusEditor).toHaveBeenCalled())
+    expect(execute).toHaveBeenCalledWith({type: "toggleAttachment"})
+    expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBeNull()
+  })
+
+  it("opens the attachment keyboard on selection and keeps its paperclip collapsed while the selection stays inside", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const focusEditor = vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    const selectAttachment = (identity: string) =>
+      dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attachment: {identity, media: []}})
+    selectAttachment("inside")
+    await editor.updateComplete
+    const keyboard = editor.shadowRoot!.querySelector<LinkKeyboard>("dom-editor-link-keyboard")!
+    await keyboard.updateComplete
+    const pane = keyboard.closest<HTMLElement>("section")!
+    const file = keyboard.shadowRoot!.querySelector<HTMLInputElement>("#attachment-file")!
+    expect(pane.hidden).toBe(false)
+    expect(file.matches(":focus")).toBe(false)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    expect(ribbon.shadowRoot!.querySelector(".mark-span")?.getAttribute("icon")).toBe("Attachment")
+
+    const close = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close attachment keyboard"]')!
+    const pointer = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true})
+    close.dispatchEvent(pointer)
+    expect(pointer.defaultPrevented).toBe(true)
+    close.click()
+    await editor.updateComplete
+    expect(pane.hidden).toBe(true)
+    selectAttachment("still-inside")
+    await editor.updateComplete
+    expect(pane.hidden).toBe(true)
+
+    const reopen = editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show attachment keyboard"]')!
+    expect(reopen.classList.contains("math-keyboard-open")).toBe(true)
+    expect(reopen.querySelector("svg.icon-tabler-paperclip")).not.toBeNull()
+    reopen.click()
+    await vi.waitFor(() => expect(keyboard.shadowRoot!.activeElement).toBe(file))
+    expect(pane.hidden).toBe(false)
+    expect(focusEditor).toHaveBeenCalled()
+
+    file.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true}))
+    await editor.updateComplete
+    expect(pane.hidden).toBe(true)
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: []})
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBeNull()
+    selectAttachment("reentered")
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector<HTMLElement>(".link-keyboard-area")?.hidden).toBe(false))
   })
 
   it.each(["Reference could not be saved", "Target view is unavailable"])(

@@ -34,6 +34,7 @@ import {
   type DocumentHeadElementState,
   type DocumentHeadState,
 } from "../document-head"
+import {commonSoftwareLicenses, spdxLicenseOptions} from "../package-licenses"
 
 const state = (values: Partial<DocumentHeadState> = {}): DocumentHeadState => ({
   ...emptyDocumentHeadState(),
@@ -184,7 +185,8 @@ describe("document head form", () => {
     picker.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
     await picker.updateComplete
     const choices = Array.from(picker.shadowRoot!.querySelectorAll<HTMLButtonElement>(".option"))
-    expect(choices).toHaveLength(creativeCommonsLicenses.length)
+    const ccChoices = choices.slice(0, creativeCommonsLicenses.length)
+    const softwareChoices = choices.slice(creativeCommonsLicenses.length, -1)
     expect(choices[0].querySelector(".option-code")?.textContent).toBe("CC0-1.0")
     expect(choices[0].querySelector(".option-name")?.textContent).toBe("Creative Commons Zero 1.0 Universal")
     expect(Array.from(choices[5].querySelectorAll(".option-icons img"), icon => icon.getAttribute("data-icon"))).toEqual(["CC", "BY", "NC", "SA"])
@@ -197,7 +199,12 @@ describe("document head form", () => {
       "Credit must be given to the creator. Only noncommercial use of the work is permitted. Adaptations must be shared under the same terms.",
       "Credit must be given to the creator. Only noncommercial use of the work is permitted. No derivatives or adaptations of the work are permitted.",
     ]
-    expect(choices.map(choice => choice.querySelector(".option-description")?.textContent)).toEqual(descriptions)
+    expect(ccChoices.map(choice => choice.querySelector(".option-description")?.textContent)).toEqual(descriptions)
+    expect(softwareChoices.map(choice => choice.querySelector(".option-code")?.textContent)).toEqual(commonSoftwareLicenses)
+    expect(softwareChoices[0].previousElementSibling).toHaveClass("divider")
+    expect(softwareChoices[0].querySelector(".option-name")).toHaveTextContent("MIT License")
+    expect(softwareChoices.every(choice => choice.querySelector(".option-description")?.textContent)).toBe(true)
+    expect(choices.at(-1)).toHaveTextContent("Show all...")
     expect(picker.shadowRoot!.textContent).not.toContain("Noncommercial means")
 
     choices[1].click()
@@ -216,6 +223,51 @@ describe("document head form", () => {
       field: "license",
       value: "https://example.test/license",
     })
+  })
+
+  it("expands the remaining SPDX licenses and searches by identifier or full name", async () => {
+    const editor = await mount("common")
+    const actions = vi.fn()
+    editor.addEventListener("document-head-action", actions)
+    const picker = Array.from(editor.shadowRoot!.querySelectorAll("document-head-combobox"))
+      .find(combobox => combobox.label === "License")!
+    await picker.updateComplete
+    const input = picker.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    const labels = () => Array.from(picker.shadowRoot!.querySelectorAll(".option-code"), option => option.textContent)
+    const enter = () => input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
+    const search = async (value: string) => {
+      input.value = value
+      input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+      await picker.updateComplete
+    }
+
+    input.focus()
+    await picker.updateComplete
+    picker.shadowRoot!.querySelector<HTMLButtonElement>(".option:last-child")!.click()
+    await picker.updateComplete
+    const featured = [...creativeCommonsLicenses.map(license => license.code), ...commonSoftwareLicenses]
+    const remaining = spdxLicenseOptions.map(option => option.label).filter(label => !featured.some(code => code === label))
+    expect(labels()).toEqual([...featured, ...remaining])
+    expect(Array.from(picker.shadowRoot!.querySelectorAll(".divider"), divider =>
+      divider.nextElementSibling?.querySelector(".option-code")?.textContent)).toEqual(["MIT", remaining[0]])
+    expect(actions).not.toHaveBeenCalled()
+
+    await search("mit")
+    expect(labels()[0]).toBe("MIT")
+    expect(labels()).toContain("MIT-CMU")
+    expect(labels()).not.toContain("0BSD")
+    expect(picker.shadowRoot!.querySelector(".divider")).toBeNull()
+    await search("  blue oak model license 1.0.0 ")
+    expect(labels()).toEqual(["BlueOak-1.0.0"])
+    enter()
+    await picker.updateComplete
+    expect(input.value).toBe("BlueOak-1.0.0")
+    expect(actions.mock.calls.at(-1)?.[0].detail).toEqual({
+      type: "setDocumentHeadField", field: "license", value: "https://spdx.org/licenses/BlueOak-1.0.0.html",
+    })
+    picker.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+    await picker.updateComplete
+    expect(labels()).toEqual([...featured, "Show all..."])
   })
 
   it("opens the language popup with a matching anchor and closes it on choice or Escape", async () => {

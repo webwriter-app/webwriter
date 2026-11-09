@@ -11,7 +11,7 @@ import {distributionGroupingRevision} from "./widget-grouping.js"
 
 const tick = async () => { await new Promise(resolve => setTimeout(resolve, 0)) }
 const cleanups: (() => void)[] = []
-const makeConfig = (target: string, scope: "individual" | "group" | "all") => ({...emptyDistributionConfig(target), scope})
+const makeConfig = (_target: string, scope: "individual" | "group" | "all") => ({...emptyDistributionConfig(), scope})
 
 function createBindings(markup = '<data-widget id="sharing-widget"><script type="application/json" slot="data">{"answer":0}</script></data-widget>') {
   const root = document.createElement("main")
@@ -88,7 +88,7 @@ describe("widget data distribution sharing", () => {
     const peer = createBindings()
     const errors: string[] = []
     peer.block.addEventListener("dataerror", event => errors.push((event as CustomEvent).detail.message))
-    document.head.append(document.createProcessingInstruction(distributionTarget, "bad"))
+    document.body.append(document.createProcessingInstruction(distributionTarget, "bad"))
     peer.bindings.sync()
     expect(peer.requests).toEqual([])
     expect(errors).toHaveLength(1)
@@ -107,9 +107,9 @@ describe("widget data distribution sharing", () => {
 
     expect(editor.features.widget.setSharing(widget, true)).toBe(true)
     expect(widget.hasAttribute("shared")).toBe(false)
-    expect(document.head.firstChild?.nodeType).toBe(7)
-    const instruction = document.head.firstChild as ProcessingInstruction
+    expect(widget.lastChild?.nodeType).toBe(7)
+    const instruction = widget.lastChild as ProcessingInstruction
     const config = JSON.parse(decodeURIComponent(instruction.data))
-    expect(config).toMatchObject({target: widget.id, scope: "all", permissions: ["edit"], add: ["element:div"], items: []})
+    expect(config).toMatchObject({scope: "all", permissions: ["edit"], add: ["element:div"], items: []})
   })
 })

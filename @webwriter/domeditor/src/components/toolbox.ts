@@ -224,7 +224,7 @@ export class DomEditorToolbox extends EditingControls {
     .float-button-group .float-move svg {width: .875rem; height: .875rem}
     .float-button-group:is([aria-label="Placement"], .placement-action-group) button {min-height: 1.55rem; padding: .15rem .2rem}
     .float-button-group[aria-label="Placement"] .float-move {padding-inline: .1rem}
-    .placement-action-group button:disabled {opacity: .4; cursor: default}
+    :is(.placement-action-group, .caption-button-group) button:disabled {opacity: .4; cursor: default}
     .float-button-group.placement-action-group button:hover:not(:disabled) {background: #edf3f9}
     .float-button-group.placement-action-group button:active:not(:disabled) {background: #e2edf8; color: #375d84}
     .grouping-button-group {display: grid; grid-template-columns: 1.6rem 1.6rem minmax(0, 1fr) 1.6rem}
@@ -1584,7 +1584,10 @@ export class DomEditorToolbox extends EditingControls {
       getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
     })
     const canPin = float === "far-left" || float === "far-right"
-    const captionPosition = this.captionPosition ?? (this.table?.hasCaption ? "above" : this.figure?.hasCaption ? "below" : "none")
+    const captionPosition = this.captionPosition ?? (this.documentLayout.mode === "board" || this.documentLayout.mode === "slides"
+      ? null : this.table?.hasCaption ? "above" : this.figure?.hasCaption ? "below" : "none")
+    const captionDisabled = captionPosition === null || this.historyState.preview !== null || this.htmlPending
+    const hasCaption = captionPosition === "above" || captionPosition === "below"
     const captionPlacement = captionPosition === "above" ? "above" : "below"
     const alignment = target?.alignment ?? "center"
     const placements: {side: FloatSide, alignment?: "left" | "center" | "right", label: string}[] = [
@@ -1678,19 +1681,19 @@ export class DomEditorToolbox extends EditingControls {
                 detail: {type: "setBoardGrouping", mode}, bubbles: true, composed: true,
               }))}>${ribbonIcon(icon)}</button>`)}
           </div>` : nothing}
-          ${!["hr", "h1", "h2", "h3", "h4", "h5", "h6"].includes(target?.localName ?? "") ? html`<span class="float-placement-label caption-label-row">${this.renderFieldLabel("Caption", captionPosition !== "none",
+          ${!["hr", "h1", "h2", "h3", "h4", "h5", "h6"].includes(target?.localName ?? "") ? html`<span class="float-placement-label caption-label-row">${this.renderFieldLabel("Caption", hasCaption,
             () => this.dispatchEvent(new CustomEvent("layout-action", {
               detail: {type: "setCaption", position: "none"}, bubbles: true, composed: true,
-            })), undefined, this.historyState.preview !== null || this.htmlPending)}
+            })), undefined, captionDisabled)}
             <label class="caption-top"><input type="checkbox" .checked=${captionPosition === "above"}
-              ?disabled=${captionPosition === "none" || this.historyState.preview !== null || this.htmlPending}
+              ?disabled=${!hasCaption || captionDisabled}
               @change=${(event: Event) => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "setCaption", position: (event.currentTarget as HTMLInputElement).checked ? "above" : "below"}, bubbles: true, composed: true,
               }))}>Top</label>
           </span>
-          <div class="float-button-group caption-button-group" role="group" aria-label="Caption">
+          <div class="float-button-group caption-button-group" role="group" aria-label="Caption" aria-disabled=${captionDisabled}>
             <button type="button" class="caption-none" aria-label="No caption" title="No caption" aria-pressed=${captionPosition === "none"}
-              ?disabled=${this.historyState.preview !== null || this.htmlPending}
+              ?disabled=${captionDisabled}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "setCaption", position: "none"}, bubbles: true, composed: true,
@@ -1698,8 +1701,8 @@ export class DomEditorToolbox extends EditingControls {
             ${(["left", "center", "right"] as const).map(alignment => html`<button type="button"
               class=${`caption-${captionPlacement}-${alignment}`}
               aria-label=${`Caption ${captionPlacement}, align ${alignment}`} title=${`Caption ${captionPlacement}, align ${alignment}`}
-              aria-pressed=${captionPosition !== "none" && (this.captionAlignment ?? "left") === alignment}
-              ?disabled=${this.historyState.preview !== null || this.htmlPending}
+              aria-pressed=${hasCaption && (this.captionAlignment ?? "left") === alignment}
+              ?disabled=${captionDisabled}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "setCaption", position: captionPlacement, alignment}, bubbles: true, composed: true,

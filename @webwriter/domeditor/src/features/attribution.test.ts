@@ -9,6 +9,7 @@ import {$, cloneWithoutEditorMarkers} from "../utility"
 import {attributionAttributes, mountAttributionReader, type AttributionController} from "../attribution.js"
 import {mountCanvasReader} from "../canvas-viewer.js"
 import {creativeCommonsLicenses} from "../document-head"
+import {commonSoftwareLicenses} from "../package-licenses"
 import type {AttributionLicensePicker} from "../components/attribution-license-picker"
 
 let editor: DOMEditor | undefined
@@ -228,17 +229,16 @@ describe("element attribution editing", () => {
     expect(hasPresentationState(document.body, "node-selection-active")).toBe(true)
   })
 
-  it("offers only current CC licenses with separate, wrapping component definitions", async () => {
+  it("offers rich Creative Commons and common software licenses", async () => {
     const element = start()
     bounds(element); select(element); button().click()
     const picker = licensePicker()
     await picker.updateComplete
-    expect(picker.editable).toBe(false)
-    expect(picker.shadowRoot!.querySelector("input")!.readOnly).toBe(true)
+    expect(picker.shadowRoot!.querySelector("input")!.readOnly).toBe(false)
     picker.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
     await picker.updateComplete
     const choices = Array.from(picker.shadowRoot!.querySelectorAll<HTMLButtonElement>(".option"))
-    const licenses = choices.slice(0, -1)
+    const licenses = choices.slice(0, creativeCommonsLicenses.length)
     expect(licenses.map(choice => choice.querySelector(".option-code")!.textContent)).toEqual(creativeCommonsLicenses.map(license => license.code))
     expect(licenses.map(choice => choice.querySelector(".option-name")!.textContent)).toEqual(creativeCommonsLicenses.map(license => license.name))
     expect(licenses.map(choice => choice.querySelector(".option-description")!.textContent)).toEqual(creativeCommonsLicenses.map(license => license.description))
@@ -246,9 +246,11 @@ describe("element attribution editing", () => {
       ["CC", "ZERO"], ["CC", "BY"], ["CC", "BY", "SA"], ["CC", "BY", "NC"],
       ["CC", "BY", "ND"], ["CC", "BY", "NC", "SA"], ["CC", "BY", "NC", "ND"],
     ])
-    expect(choices.at(-1)!.querySelector(".option-icons")).toBeNull()
     for(const choice of licenses) expect(choice.children[2].className).toBe("option-description")
-    expect(picker.options.some(option => option.value === "MIT")).toBe(false)
+    const softwareChoices = choices.slice(creativeCommonsLicenses.length, -2)
+    expect(softwareChoices.map(choice => choice.querySelector(".option-code")!.textContent)).toEqual(commonSoftwareLicenses)
+    expect(softwareChoices[0].previousElementSibling?.classList.contains("divider")).toBe(true)
+    expect(choices.at(-1)?.querySelector(".option-code")?.textContent).toBe("Show all...")
     expect(picker.shadowRoot!.textContent).not.toContain("Noncommercial means")
     licenses[3].click()
     expect(input("license").value).toBe("CC-BY-NC-4.0")
@@ -260,12 +262,39 @@ describe("element attribution editing", () => {
     expect(picker.value).toBe("CC-BY-NC-4.0")
     picker.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
     await picker.updateComplete
-    const remove = Array.from(picker.shadowRoot!.querySelectorAll<HTMLButtonElement>(".option")).at(-1)!
+    const remove = Array.from(picker.shadowRoot!.querySelectorAll<HTMLButtonElement>(".option")).at(-2)!
     expect(remove.textContent).toContain("No license")
     expect(remove.querySelector(".option-description")!.textContent).toBe("All rights reserved")
     remove.click(); submit()
     expect(element.hasAttribute(attributionAttributes.license)).toBe(false)
     expect(ui().querySelector("datalist")).toBeNull()
+  })
+
+  it("saves a license found by its SPDX name and discards an unmatched search", async () => {
+    const element = start()
+    bounds(element); select(element); button().click()
+    const picker = licensePicker()
+    await picker.updateComplete
+    const field = picker.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    const search = async (value: string) => {
+      field.value = value
+      field.dispatchEvent(new InputEvent("input", {bubbles: true}))
+      await picker.updateComplete
+    }
+    await search("Blue Oak Model License")
+    const match = picker.shadowRoot!.querySelector<HTMLButtonElement>(".option")!
+    expect(match.querySelector(".option-code")?.textContent).toBe("BlueOak-1.0.0")
+    match.click()
+    expect(input("license").value).toBe("BlueOak-1.0.0")
+    await picker.updateComplete
+
+    await search("no such spdx license")
+    expect(picker.shadowRoot!.querySelector(".listbox")?.textContent).toContain("No matches")
+    field.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, composed: true, cancelable: true}))
+    await picker.updateComplete
+    expect(field.value).toBe("BlueOak-1.0.0")
+    submit()
+    expect(element.getAttribute(attributionAttributes.license)).toBe("BlueOak-1.0.0")
   })
 
   it("dismisses the license choices before the form and preserves existing metadata on cancellation", async () => {

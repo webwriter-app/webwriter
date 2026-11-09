@@ -1,4 +1,6 @@
 import type {DOMEditor} from "../src/domeditor"
+import {localDistributionInstruction, writeDistributionConfig} from "../src/distribution-dom"
+import {emptyDistributionConfig} from "../src/distribution.js"
 
 export async function checkParagraphClipboard() {
   const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -54,6 +56,28 @@ export async function checkParagraphClipboard() {
     assert(editor.toHTML(true) === original, "nested paragraph paste did not undo")
     editor.doc.redo()
     assert(editor.toHTML(true) === changed, "nested paragraph paste did not redo")
+
+    doc.body.innerHTML = "<h2>Private <em>heading</em></h2>"
+    const heading = doc.querySelector("h2")!
+    const defaults = emptyDistributionConfig()
+    writeDistributionConfig(doc.body, {...defaults, permissions: ["delete"]})
+    writeDistributionConfig(heading, {...defaults, view: false, permissions: ["edit"]})
+    writeDistributionConfig(heading.querySelector("em")!, {...defaults, permissions: ["move"]})
+    selection.selectAllChildren(doc.body)
+    const configured = new view.DataTransfer()
+    doc.dispatchEvent(new view.ClipboardEvent("copy", {clipboardData: configured, bubbles: true, cancelable: true}))
+    doc.body.innerHTML = "<p>BeforeAfter</p>"
+    selection.collapse(doc.querySelector("p")!.firstChild, 6)
+    doc.dispatchEvent(new view.ClipboardEvent("paste", {clipboardData: configured, bubbles: true, cancelable: true}))
+    const [before, pasted, after] = Array.from(doc.body.children)
+    assert(before?.textContent === "Before" && pasted?.localName === "h2" && after?.textContent === "After",
+      "paste did not preserve the configured heading")
+    assert(localDistributionInstruction(pasted)?.config.view === false
+      && localDistributionInstruction(pasted)?.config.permissions.includes("edit"), "paste lost the heading permissions")
+    assert(localDistributionInstruction(pasted.querySelector("em")!)?.config.permissions.includes("move"),
+      "paste lost the nested permissions")
+    assert(!localDistributionInstruction(doc.body) && !localDistributionInstruction(before) && !localDistributionInstruction(after),
+      "copying document contents also transferred the source document's permissions")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 }

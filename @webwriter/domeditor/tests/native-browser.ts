@@ -1,6 +1,7 @@
 import {clearPresentationState, hasPresentationState, presentationStateElements, resolvePresentationSelector, setPresentationState} from "../src/presentation-state.js"
 import {captionEnumerationCSS, defaultCaptionEnumeration} from "../src/caption-enumeration"
 import {attributionAttributes} from "../src/attribution.js"
+import {commonSoftwareLicenses} from "../src/package-licenses"
 import {graphicShapeSections} from "../src/graphic"
 import listMarkerStyleSource from "../src/document-list-markers.css?raw"
 import editorStyleSource from "../src/editor.css?raw"
@@ -1169,16 +1170,18 @@ await check("Document toolbox combines metadata and layouts with primary and det
     assert(language.getBoundingClientRect().width > 80, "metadata Language field is clipped")
     const license = common.shadowRoot!.querySelector<import("../src/components/document-head-editor").DocumentHeadCombobox>('document-head-combobox[label="License"]')!
     await license.updateComplete
+    license.scrollIntoView({block: "center"})
     license.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
     await license.updateComplete
     await layoutFrame()
     const licenseDescriptions = Array.from(license.shadowRoot!.querySelectorAll<HTMLElement>(".option-description"))
-    assert(licenseDescriptions.length === 7, "license picker is missing definitions")
+    assert(licenseDescriptions.length === 7 + commonSoftwareLicenses.length, "license picker is missing definitions")
     const licensePopup = license.shadowRoot!.querySelector<HTMLElement>(".listbox")!.getBoundingClientRect()
     const licenseControl = license.getBoundingClientRect()
     assert(Math.abs(licensePopup.right - Math.max(licenseControl.right, licensePopup.width)) < 1,
       `license picker is detached from its field: ${JSON.stringify({popup: licensePopup.toJSON(), control: licenseControl.toJSON()})}`)
-    assert(licensePopup.left >= 0 && licensePopup.right <= innerWidth, "license picker overflows the viewport")
+    assert(licensePopup.left >= 0 && licensePopup.right <= innerWidth && licensePopup.top >= 0 && licensePopup.bottom <= innerHeight,
+      `license picker overflows the viewport: ${JSON.stringify({popup: licensePopup.toJSON(), control: licenseControl.toJSON(), viewport: [innerWidth, innerHeight]})}`)
     for(const description of licenseDescriptions) {
       assert(getComputedStyle(description).whiteSpace === "normal", "license definition cannot wrap")
       assert(getComputedStyle(description).fontStyle === "italic", "license definition is not italic")
@@ -10058,6 +10061,45 @@ await check("pinned floats keep their selection frame aligned while scrolling", 
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("sticky float overlap updates full-width selection borders while scrolling", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1200px;height:600px;border:0;max-width:none"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head><body><aside id="pin" class="ww-float-left ww-float-sticky" style="height:160px;background:gray">Pinned float</aside><p style="height:420px">Before</p><p id="wide" class="ww-full-width" style="height:220px">Selected full-width paragraph</p><p style="height:1400px">After</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "sticky overlap fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, pin = doc.querySelector<HTMLElement>("#pin")!, target = doc.querySelector<HTMLElement>("#wide")!
+    const overlaps = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+    editor.features.selection.selectElement(target)
+    await layoutFrame()
+    const caret = editor.features.selection.selectionCaret!
+    const maskPath = () => caret.querySelector('[part~="selection-float-outline"] mask path')?.getAttribute("d")
+    const initialPin = pin.getBoundingClientRect(), initialTarget = target.getBoundingClientRect()
+    assert(!overlaps(initialPin, initialTarget), "pinned float unexpectedly overlaps the selected paragraph before scrolling")
+    assert(!maskPath() && view.getComputedStyle(caret).outlineStyle === "dotted", "selection did not start with a rectangular border")
+
+    view.scrollTo(0, initialTarget.top - 45)
+    await layoutFrame()
+    await layoutFrame()
+    assert(view.getComputedStyle(pin).position === "sticky" && overlaps(pin.getBoundingClientRect(), target.getBoundingClientRect()),
+      "pinned float did not overlap the selected paragraph after scrolling")
+    const mask = maskPath()
+    assert(mask && view.getComputedStyle(caret).outlineStyle === "none", "selection border did not switch to the float contour")
+
+    view.scrollBy(0, 24)
+    await layoutFrame()
+    assert(maskPath() && maskPath() !== mask, "selection contour did not follow the changing overlap")
+
+    view.scrollTo(0, 0)
+    await layoutFrame()
+    await layoutFrame()
+    assert(!maskPath() && view.getComputedStyle(caret).outlineStyle === "dotted", "selection border did not return to its rectangle")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("pinned empty media stays in place and keeps its controls clickable", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1200px;height:600px;border:0;max-width:none"
@@ -12521,6 +12563,54 @@ await check("rotated figure captions flow upright and their transformation frame
     }
     finally { frame.remove() }
   }
+})
+
+await check("captioned graphics retain their resized width and selection outline", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1280px;height:650px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><html style="scrollbar-gutter:auto"><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script></body></html>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && !view.editorError && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `graphic caption fixture failed: ${view.editorError}`)
+    const editor = view.editor!, doc = frame.contentDocument!
+    const graphic = editor.features.graphic.createGraphic()
+    doc.body.append(graphic)
+    const selection = editor.features.selection
+    const manipulation = editor.features.manipulation
+    for(const width of ["", "1180px"]) {
+      Object.assign(graphic.style, {width, maxWidth: width, height: "260px"})
+      selection.captureElement(graphic)
+      await layoutFrame()
+      const original = graphic.getBoundingClientRect()
+      assert(manipulation.cycleCaption(), "adding a caption failed")
+      const figure = graphic.parentElement!
+      const caption = figure.querySelector("figcaption")!
+      assert(figure.localName === "figure" && caption, "graphic was not captioned")
+      caption.textContent = "Graphic caption"
+      for(const above of [false, true]) {
+        if(above) figure.prepend(caption)
+        await layoutFrame()
+        const box = graphic.getBoundingClientRect(), wrapper = figure.getBoundingClientRect()
+        const outline = selection.selectionCaret!.getBoundingClientRect()
+        assert(Math.abs(box.left - original.left) < 1 && Math.abs(box.width - original.width) < 1,
+          `caption shifted or resized the ${width || "responsive"} graphic`)
+        assert(Math.abs(wrapper.left - box.left) < 1 && Math.abs(wrapper.right - box.right) < 1
+          && Math.abs(outline.left - box.left) < 1 && Math.abs(outline.right - box.right) < 1,
+          `figure and capture outline do not span the ${width || "responsive"} graphic`)
+        assert(Math.abs(outline.top - wrapper.top) < 1 && Math.abs(outline.bottom - wrapper.bottom) < 1,
+          "capture outline does not include the caption")
+      }
+      assert(selection.captureSelectedElement === graphic, "captioning released the captured graphic")
+      caption.replaceChildren()
+      assert(manipulation.setCaption("none"), "removing the caption failed")
+      const unwrapped = graphic.getBoundingClientRect()
+      assert(graphic.parentElement === doc.body && Math.abs(unwrapped.left - original.left) < 1
+        && Math.abs(unwrapped.width - original.width) < 1, "unwrapping changed the graphic placement")
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
 await check("full width resizing clears the float column", async () => {

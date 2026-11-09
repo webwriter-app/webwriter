@@ -1,5 +1,9 @@
 const frameLinkListeners = new WeakMap<Window, () => void>()
 
+export function isNativeDownloadURL(url: URL, origin: string) {
+  return url.protocol === "data:" || ["blob:", "http:", "https:"].includes(url.protocol) && url.origin === origin
+}
+
 /** Keep links out of document frames, or only external pages out of the site. */
 export function openFrameLinksInNewTabs(win: Window & typeof globalThis, {externalPagesOnly = false} = {}) {
   const existing = frameLinkListeners.get(win)
@@ -27,6 +31,9 @@ export function openFrameLinksInNewTabs(win: Window & typeof globalThis, {extern
       link.setAttribute("rel", [...rel].join(" "))
       return
     }
+    if(!fragmentOnly && link instanceof win.HTMLAnchorElement && link.hasAttribute("download")
+      && isNativeDownloadURL(url, win.location.origin)
+      && !(url.hash && url.href.split("#")[0] === win.location.href.split("#")[0])) return
     event.preventDefault()
     if(fragmentOnly || href.includes("#") && url.href.split("#")[0] === win.location.href.split("#")[0]) {
       win.location.assign(url.href)

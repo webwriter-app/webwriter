@@ -2,7 +2,7 @@ import {clearPresentationState, setPresentationState} from "../presentation-stat
 import type {ElementSelectionType, WidgetConversionState} from "../editor-bridge"
 import {readWidgetGrouping, writeWidgetGrouping} from "../widget-grouping-dom"
 import type {WidgetGroupingRules, WidgetGroupingContext} from "../widget-grouping.js"
-import {effectiveDistribution, ensureDistributionTarget, writeDistributionConfig} from "../distribution-dom"
+import {effectiveDistribution, readDistributionConfigs, visitSerializableElements, writeDistributionConfig} from "../distribution-dom"
 import {emptyDistributionConfig, type DistributionConfig} from "../distribution.js"
 import {EditorFeature} from "."
 import {elementAttributeTargetId, isEditorOnlyElementAttribute, isUnsafeElementAttributeName, isUnsafeElementAttributeValue} from "../element-attributes"
@@ -13,6 +13,7 @@ import {captionedFigureContent} from "../figure-layout.js"
 import {getElementPresentation} from "../element-names"
 import {$, atomicEditingContainer, clearEditorArtifacts, cloneInert, getInertDocument, pathFromNode, removeEditorMarker} from "../utility"
 import type {Schema} from "../schema"
+import type {OfflineImportRule, OfflineImportSelection} from "../offline-module-bundler"
 import {
   isWidgetFileFormat,
   matchesWidgetFileFormat,
@@ -298,6 +299,41 @@ export class WidgetFeature extends EditorFeature {
         })
       : []
     return {tagName, defined: true, unreflected}
+  }
+
+  /** Collect optional import rules from the installed classes using the saved DOM. */
+  offlineImports(root: Pick<Document, "head" | "documentElement">, widgetEntries: ReadonlyMap<string, string>): OfflineImportSelection {
+    type OfflineWidget = CustomElementConstructor & {offlineImports?: (element: Element) => readonly OfflineImportRule[]}
+    const hooks = new Map<string, {entry: string, select: NonNullable<OfflineWidget["offlineImports"]>}>()
+    for(const [tag, entry] of widgetEntries) {
+      const widget = customElements.get(tag) as OfflineWidget | undefined
+      if(typeof widget?.offlineImports === "function") hooks.set(tag, {entry, select: widget.offlineImports.bind(widget)})
+    }
+    const selections = new Map<string, Set<string> | "*">()
+    if(!hooks.size) return selections
+    visitSerializableElements(root.documentElement, readDistributionConfigs(root).values(), element => {
+      if(element.namespaceURI !== htmlNamespace) return
+      const hook = hooks.get(element.localName)
+      if(!hook) return
+      const rules = hook.select(element)
+      const invalid = () => new TypeError(`Invalid offlineImports rule from ${element.localName}`)
+      if(!Array.isArray(rules)) throw invalid()
+      for(const rule of rules) {
+        if(typeof rule?.importer !== "string" || !rule.importer.trim() || rule.keep !== "*"
+          && (!Array.isArray(rule.keep) || rule.keep.some((path: unknown) => typeof path !== "string" || !path.trim()))) throw invalid()
+        const importer = new URL(rule.importer, hook.entry)
+        if(importer.protocol !== "https:" && importer.protocol !== "http:") throw invalid()
+        const previous = selections.get(importer.href)
+        if(previous === "*") continue
+        if(rule.keep === "*") selections.set(importer.href, "*")
+        else {
+          const keep = previous ?? new Set<string>()
+          for(const path of rule.keep) keep.add(path)
+          selections.set(importer.href, keep)
+        }
+      }
+    })
+    return selections
   }
 
   #locale() {
@@ -644,9 +680,8 @@ export class WidgetFeature extends EditorFeature {
     if(this.editor.isEditingLocked) return false
     const effective = effectiveDistribution(widget)?.config
     const scope = enabled ? (readWidgetGrouping(widget) ? "group" : "all") : "individual"
-    const current = effective ?? emptyDistributionConfig(widget.id || "pending")
-    const target = ensureDistributionTarget(widget)
-    const config: DistributionConfig = {...current, target, scope}
+    const current = effective ?? emptyDistributionConfig()
+    const config: DistributionConfig = {...current, scope}
     writeDistributionConfig(widget, config)
     widget.removeAttribute("shared")
     this.editor.doc.syncFromDOM()
@@ -662,8 +697,8 @@ export class WidgetFeature extends EditorFeature {
       const legacyShared = !effective && widget.hasAttribute("shared")
       let updated: DistributionConfig | undefined
       if((effective && effective.config.scope !== "individual") || legacyShared) {
-        const current = effective?.config ?? emptyDistributionConfig(widget.id || "pending")
-        updated = {...current, target: ensureDistributionTarget(widget), scope: grouping ? "group" : "all"}
+        const current = effective?.config ?? emptyDistributionConfig()
+        updated = {...current, scope: grouping ? "group" : "all"}
       }
       writeWidgetGrouping(widget, grouping)
       if(updated) {

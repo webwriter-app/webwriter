@@ -6,13 +6,16 @@ import {validateDistributionChange, type DistributionNode} from "./distribution-
 
 const htmlNamespace = "http://www.w3.org/1999/xhtml"
 
-function snapshot(node: Node): DistributionNode {
+type PolicyFixture = {target: string; config: DistributionConfig}
+function snapshot(node: Node, policies: Map<string, DistributionConfig> = new Map()): DistributionNode {
   if(node.nodeType === Node.ELEMENT_NODE) {
     const element = node as Element
     const attrs = Object.fromEntries(Array.from(element.attributes)
       .sort((a, b) => a.name.localeCompare(b.name)).map(attribute => [attribute.name, attribute.value]))
+    const id = element.id || element.localName
     return {name: element.localName, namespace: element.namespaceURI ?? undefined, attrs,
-      children: Array.from(element.childNodes, snapshot)}
+      ...(policies.has(id) ? {policy: policies.get(id)} : {}),
+      children: Array.from(element.childNodes, child => snapshot(child, policies))}
   }
   if(node.nodeType === Node.TEXT_NODE) return {name: "#text", value: node.nodeValue ?? ""}
   if(node.nodeType === Node.COMMENT_NODE) return {name: "#comment", value: node.nodeValue ?? ""}
@@ -30,16 +33,19 @@ function parseDocument(markup: string): Document {
 function parseFragment(html: string): DistributionNode[] {
   const template = document.createElement("template")
   template.innerHTML = html
-  return Array.from(template.content.childNodes, snapshot)
+  return Array.from(template.content.childNodes, node => snapshot(node))
 }
 
-function validate(beforeMarkup: string, afterMarkup: string, configs: DistributionConfig[] = []) {
-  return validateDistributionChange(snapshot(parseDocument(beforeMarkup).documentElement), snapshot(parseDocument(afterMarkup).documentElement), configs, parseFragment)
+function validate(beforeMarkup: string, afterMarkup: string, fixtures: PolicyFixture[] = []) {
+  const policies = new Map(fixtures.map(({target, config}) => [target, config]))
+  return validateDistributionChange(snapshot(parseDocument(beforeMarkup).documentElement, policies), snapshot(parseDocument(afterMarkup).documentElement, policies), parseFragment)
 }
 
-function rootConfig(permissions: DistributionConfig["permissions"] = [], add: string[] = [], items: DistributionConfig["items"] = []) {
-  return {...emptyDistributionConfig("root"), permissions, add, items}
+function rootConfig(permissions: DistributionConfig["permissions"] = [], add: string[] = [], items: DistributionConfig["items"] = []): PolicyFixture {
+  return {target: "body", config: {...emptyDistributionConfig(), permissions, add, items}}
 }
+
+const fixture = (target: string, config: DistributionConfig): PolicyFixture => ({target, config})
 
 const emptyRoot = '<html id="root"><head></head><body></body></html>'
 
@@ -54,7 +60,7 @@ describe("validateDistributionChange", () => {
   it("uses the nearest complete override, including an empty policy that denies inherited text", () => {
     const before = '<html id="root"><head></head><body><section id="restricted"><p>Before</p></section></body></html>'
     const after = '<html id="root"><head></head><body><section id="restricted"><p>After</p></section></body></html>'
-    const configs = [rootConfig(["edit"]), emptyDistributionConfig("restricted")]
+    const configs = [rootConfig(["edit"]), fixture("restricted", emptyDistributionConfig())]
     expect(validate(before, after, configs)).toBe(false)
   })
 
@@ -84,7 +90,7 @@ describe("validateDistributionChange", () => {
     const piAfter = parseDocument(before)
     piBefore.head.append(piBefore.createProcessingInstruction("ww-distribute", "before"))
     piAfter.head.append(piAfter.createProcessingInstruction("ww-distribute", "after"))
-    expect(validateDistributionChange(snapshot(piBefore.documentElement), snapshot(piAfter.documentElement), [rootConfig(["edit", "style"])], parseFragment)).toBe(false)
+    expect(validateDistributionChange(snapshot(piBefore.documentElement), snapshot(piAfter.documentElement), parseFragment)).toBe(false)
   })
 
   it("requires exact approved templates for widget insertion, even with an element wildcard", () => {
@@ -124,7 +130,7 @@ describe("validateDistributionChange", () => {
     const after = '<html id="root"><head></head><body><section id="outer"><div id="inner"><x-safe data-approved="yes"></x-safe></div></section></body></html>'
     const item = {id: "element:x-safe", label: "Safe", html: '<x-safe data-approved="yes"></x-safe>'}
     const parent = rootConfig(["insert"], [item.id], [item])
-    const child = {...emptyDistributionConfig("inner"), add: [item.id], items: [item]}
+    const child = fixture("inner", {...emptyDistributionConfig(), add: [item.id], items: [item]})
     expect(validate(before, after, [parent, child])).toBe(false)
   })
 
@@ -132,15 +138,15 @@ describe("validateDistributionChange", () => {
     const beforeDelete = '<html id="root"><head></head><body><section id="outer"><article id="protected"><p>Keep</p></article></section></body></html>'
     const afterDelete = '<html id="root"><head></head><body><section id="outer"></section></body></html>'
     expect(validate(beforeDelete, afterDelete, [
-      {...emptyDistributionConfig("outer"), permissions: ["delete"]},
-      emptyDistributionConfig("protected"),
+      fixture("outer", {...emptyDistributionConfig(), permissions: ["delete"]}),
+      fixture("protected", emptyDistributionConfig()),
     ])).toBe(false)
 
     const beforeMove = '<html id="root"><head></head><body><section id="source"><p id="moving">Move</p></section><section id="destination"></section></body></html>'
     const afterMove = '<html id="root"><head></head><body><section id="source"></section><section id="destination"><p id="moving">Move</p></section></body></html>'
     expect(validate(beforeMove, afterMove, [
-      {...emptyDistributionConfig("source"), permissions: ["move"]},
-      {...emptyDistributionConfig("destination"), permissions: ["move"]},
+      fixture("source", {...emptyDistributionConfig(), permissions: ["move"]}),
+      fixture("destination", {...emptyDistributionConfig(), permissions: ["move"]}),
     ])).toBe(false)
     expect(validate(beforeMove, afterMove, [rootConfig(["move"])] )).toBe(true)
   })
@@ -178,7 +184,7 @@ describe("validateDistributionChange", () => {
     const before = '<html id="root"><head></head><body><p id="fixed-a">A</p><p id="moving">Move</p><p id="fixed-b">B</p></body></html>'
     const after = '<html id="root"><head></head><body><p id="moving">Move</p><p id="fixed-a">A</p><p id="fixed-b">B</p></body></html>'
     const forbidden = '<html id="root"><head></head><body><p id="moving">Move</p><p id="fixed-b">B</p><p id="fixed-a">A</p></body></html>'
-    const configs = [emptyDistributionConfig("root"), {...emptyDistributionConfig("moving"), permissions: ["move"] as DistributionConfig["permissions"]}]
+    const configs = [fixture("body", emptyDistributionConfig()), fixture("moving", {...emptyDistributionConfig(), permissions: ["move"] as DistributionConfig["permissions"]})]
     expect(validate(before, after, configs)).toBe(true)
     expect(validate(before, forbidden, configs)).toBe(false)
   })

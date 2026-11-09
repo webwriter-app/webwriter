@@ -1,5 +1,8 @@
 import {themeAccentProperties} from "./css-color"
 
+// Let revert-layer restore each bundled theme's declarations when an option is unset.
+export {documentTypographyCSS, originalTypographyCSS} from "virtual:document-theme-sources"
+
 /** Document-wide overrides understood by the bundled layout styles. */
 export const documentThemeOptions = [
   {name: "--ww-font-family", label: "Font family", property: "font-family", placeholder: "Default"},
@@ -16,14 +19,6 @@ export const documentThemeProperties = ["background-color", ...documentThemeOpti
 export const documentThemeStorageKey = "webwriter-document-themes"
 export const documentTypographyProperties: readonly string[] = documentThemeOptions.slice(0, 4).map(option => option.name)
 
-// A separate layer permits revert-layer to restore each bundled theme's own
-// declarations when an option is unset. Authored unlayered styles still win.
-export const documentTypographyCSS = `@layer webwriter-theme-options {
-  :where(body, h1, h2, h3, h4, h5, h6) { font-family: var(--ww-font-family, revert-layer); }
-  :where(body) { font-size: var(--ww-font-size, revert-layer); }
-  :where(body, p, h1, h2, h3, h4, h5, h6, address, blockquote, dl, ol, ul, table) { color: var(--ww-text-color, revert-layer); }
-  :where(a:any-link) { color: var(--ww-link-color, revert-layer); }
-}`
 export type SavedDocumentTheme = {name: string, styles: Record<string, {value: string, priority: "" | "important"}>}
 
 /** Built-in choices remain separate from the user's browser-local themes. */

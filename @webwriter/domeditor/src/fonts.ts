@@ -86,7 +86,7 @@ export function syncFontResources(document: Document, resources: Map<string, str
   // Bunny also accepts catalog slugs such as open-sans in authored links.
   const isUsed = (family: string) => used.has(family) || used.has(family.replaceAll("-", " "))
   const readStyle = (style: CSSStyleDeclaration) => {
-    fontFamilies(style.fontFamily).forEach(family => used.add(family))
+    fontFamilies(style.getPropertyValue("font-family")).forEach(family => used.add(family))
     // A custom property can supply a family to var() in authored styles.
     for(const name of Array.from(style)) if(name.startsWith("--")) fontFamilies(style.getPropertyValue(name)).forEach(family => used.add(family))
   }

@@ -811,17 +811,15 @@ describe("toolbox", () => {
     const toolbox = await mountToolbox()
     const local: DistributionConfig = {
       version: 1,
-      target: "element-1",
       scope: "group",
       permissions: ["edit"],
       add: ["user-snippet:quote"],
       items: [{id: "user-snippet:quote", label: "Quote", html: "<blockquote></blockquote>"}],
     }
     const state: DistributionSelectionState = {
-      target: "element-1",
+      identity: "transient-selection-1",
       local,
       effective: local,
-      inheritedFrom: null,
     }
     const items: DistributionItem[] = [
       {id: "element:section", label: "Section", html: "<section></section>"},
@@ -1665,6 +1663,47 @@ it("defaults caption choices to below and switches their icons with the Top chec
   await toolbox.updateComplete
   expect(top.checked).toBe(false)
   expect(top.disabled).toBe(true)
+})
+
+it.each(["board", "slides"] as const)("disables all Caption controls outside editable %s content", async mode => {
+  const toolbox = await mountToolbox()
+  toolbox.selectTool("Edit")
+  toolbox.documentLayout = {mode, canConvert: true, zoom: 100}
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {localName: "table", namespaceURI: "http://www.w3.org/1999/xhtml"}}
+  toolbox.table = {active: true, cellSelection: false, rows: 1, columns: 1, selectedCells: 1,
+    canMerge: false, canSplit: false, hasCaption: true, hasHeader: false, hasFooter: false}
+  toolbox.captionPosition = "above"
+  const actions = vi.fn()
+  toolbox.addEventListener("layout-action", actions)
+  await toolbox.updateComplete
+
+  const controls = toolbox.shadowRoot!.querySelector(".float-action-controls")!
+  const group = controls.querySelector('[role="group"][aria-label="Caption"]')!
+  const buttons = [...group.querySelectorAll("button")]
+  const top = controls.querySelector<HTMLInputElement>(".caption-top input")!
+  const clear = controls.querySelector<HTMLButtonElement>('button[aria-label="Clear Caption"]')!
+  expect(buttons).toHaveLength(4)
+  expect([...buttons, top, clear].every(control => !control.disabled)).toBe(true)
+
+  toolbox.captionPosition = null
+  await toolbox.updateComplete
+  expect(group.getAttribute("aria-disabled")).toBe("true")
+  expect(group.querySelector('[aria-pressed="true"]')).toBeNull()
+  expect(top.checked).toBe(false)
+  expect(clear.style.visibility).toBe("hidden")
+  for(const control of [...buttons, top, clear]) {
+    expect(control.disabled).toBe(true)
+    control.click()
+  }
+  expect(actions).not.toHaveBeenCalled()
+
+  toolbox.table = null
+  toolbox.captionPosition = "none"
+  await toolbox.updateComplete
+  expect(group.getAttribute("aria-disabled")).toBe("false")
+  expect(buttons.every(button => !button.disabled)).toBe(true)
+  buttons[2].click()
+  expect(actions).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "setCaption", position: "below", alignment: "center"}}))
 })
 
 it("places Pin beside the Placement heading and enables it only for floats", async () => {

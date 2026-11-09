@@ -81,6 +81,23 @@ describe("frame links", () => {
     }
   })
 
+  it("leaves data and same-origin downloads to the browser while blocking data navigation", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null)
+    disconnect = openFrameLinksInNewTabs(window)
+    document.body.innerHTML = `
+      <a download="notes.txt" href="data:application/octet-stream;base64,SGk="><b>Attachment</b></a>
+      <a download href="/file.txt">Same origin</a>
+      <a href="data:text/html,hi">Navigation</a>
+      <a download href="javascript:alert(1)">Script</a>`
+    const targets = document.querySelectorAll("b, a:not(:has(b))")
+    for(const [index, target] of Array.from(targets).entries()) {
+      const event = new MouseEvent("click", {bubbles: true, cancelable: true})
+      target.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(index >= 2)
+    }
+    expect(open).not.toHaveBeenCalled()
+  })
+
   it("navigates fragments in the frame despite authored targets and a different base URL", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null)
     const assign = vi.spyOn(window.location, "assign").mockImplementation(() => {})

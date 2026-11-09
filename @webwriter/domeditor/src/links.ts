@@ -33,6 +33,22 @@ export type LinkEdit = {
   attributes: Record<string, string | null>
 }
 
+export type AttachmentSelectionState = {
+  identity: string
+  media: Array<{id: string, label: string}>
+}
+
+export type AttachmentSource = {file: File} | {mediaId: string}
+
+export const attachmentWarningBytes = 5_000_000
+
+export function isAttachmentSelectionState(value: unknown): value is AttachmentSelectionState {
+  if(!value || typeof value !== "object" || Array.isArray(value)) return false
+  const state = value as AttachmentSelectionState
+  return typeof state.identity === "string" && !!state.identity && Array.isArray(state.media)
+    && state.media.every(item => !!item && typeof item === "object" && typeof item.id === "string" && typeof item.label === "string")
+}
+
 export function isLinkSelectionState(value: unknown): value is LinkSelectionState {
   if(!value || typeof value !== "object" || Array.isArray(value)) return false
   const state = value as LinkSelectionState

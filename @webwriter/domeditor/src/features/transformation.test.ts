@@ -3,6 +3,7 @@ import {hasPresentationState, presentationStateElements} from "../presentation-s
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 
+import editorStyles from "../editor.css?raw"
 import {DOMEditor} from "../domeditor"
 import {$, cloneWithoutEditorMarkers} from "../utility"
 import {markStateChangeEvent, selectionChangeEvent} from "../editor-bridge"
@@ -99,6 +100,13 @@ function targetElement(tag = "p") {
   element.textContent = "target"
   return append(element)
 }
+
+it("defines the theme tokens the editor stylesheet uses without fallbacks", () => {
+  // Read the source because Happy DOM omits ::part rules from the CSSOM.
+  const tokens = new Set(Array.from(editorStyles.matchAll(/var\(\s*(--sl-[\w-]+)\s*\)/g), match => match[1]))
+  const rootStyles = getComputedStyle(document.documentElement)
+  expect([...tokens].filter(token => !rootStyles.getPropertyValue(token).trim())).toEqual([])
+})
 
 it.each(["button", "[popover]"])("keeps a selected popup %s free of transform controls", selector => {
   document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Open</button><span id="note" popover>Content</span></span></p>'
@@ -218,6 +226,34 @@ it("refreshes a pinned float's anchor on scroll and hides it when the float coll
   target.classList.add("ww-float-none")
   feature.updateInfo()
   expect(line.style.display).toBe("none")
+})
+
+it("switches an idle selection between anchored and masked outlines as a sticky float overlaps it", () => {
+  document.body.innerHTML = '<aside style="float:left;position:sticky">Pinned</aside><p>Selected</p>'
+  const pin = document.querySelector("aside")!
+  const target = document.querySelector("p")!
+  mockRect(target, {left: 0, top: 240, width: 400, height: 150})
+  vi.spyOn(pin, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 16, 100, 120))
+  selectNode(target)
+  flushAnimationFrame()
+
+  const caret = editor.features.selection.selectionCaret!
+  const mask = () => caret.querySelector('[part~="selection-float-outline"] mask path')
+  expect(caret).toHaveAttribute("part", expect.stringContaining("selection-caret-anchored"))
+  expect(mask()).toBeNull()
+
+  vi.mocked(target.getBoundingClientRect).mockReturnValue(new DOMRect(0, 40, 400, 150))
+  document.dispatchEvent(new Event("scroll"))
+  flushAnimationFrame()
+  expect(mask()).not.toBeNull()
+  expect(caret.style.top).toBe("40px")
+
+  vi.mocked(target.getBoundingClientRect).mockReturnValue(new DOMRect(0, 240, 400, 150))
+  document.dispatchEvent(new Event("scroll"))
+  flushAnimationFrame()
+  expect(mask()).toBeNull()
+  expect(caret).toHaveAttribute("part", expect.stringContaining("selection-caret-anchored"))
+  expect($.selectedElement).toBe(target)
 })
 
 it("finishes a stable text resize without reprocessing the unchanged node selection", () => {
@@ -3161,6 +3197,33 @@ describe("transform controls and geometry", () => {
       expect(feature.overlay.style.height).toBe("180px")
       expect(feature.overlay.style.transform).toBe("matrix(1.5, 0, 0, 1.5, 0, 0)")
     }
+  })
+
+  it("refreshes measured iframe frames and selection outlines after a non-bubbling scroll", () => {
+    document.body.innerHTML = '<section style="overflow: auto"><iframe title="Activity" style="width: 320px; height: 180px; zoom: 1.25"></iframe></section>'
+    const target = document.querySelector<HTMLIFrameElement>("iframe")!
+    let rect = new DOMRect(100, 120, 400, 225)
+    vi.spyOn(target, "getBoundingClientRect").mockImplementation(() => rect)
+    captureNode(target)
+
+    const caret = editor.features.selection.selectionCaret!
+    const overlay = feature.overlay
+    expect(overlay.style.left).toBe("100px")
+    expect(overlay.style.top).toBe("120px")
+    expect(caret.style.left).toBe(overlay.style.left)
+    expect(caret.style.top).toBe(overlay.style.top)
+    flushAnimationFrame()
+
+    rect = new DOMRect(60, 35, 400, 225)
+    // Scroll events do not bubble; the document capture listener must refresh
+    // measured geometry while the iframe remains selected and idle.
+    target.parentElement!.dispatchEvent(new Event("scroll"))
+    flushAnimationFrame()
+
+    expect(overlay.style.left).toBe("60px")
+    expect(overlay.style.top).toBe("35px")
+    expect(caret.style.left).toBe("60px")
+    expect(caret.style.top).toBe("35px")
   })
 
   it.each([30, -20])("resizes an iframe vertically by %s pixels, preserving its DOM and undo/redo", async dy => {

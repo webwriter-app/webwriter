@@ -58,6 +58,19 @@ describe("Bunny Fonts", () => {
     expect(widget.outerHTML).toBe("<test-widget></test-widget>")
   })
 
+  it("links a used font when a nested CSS rule's style lacks a fontFamily property", () => {
+    const style = document.createElement("style")
+    style.textContent = "@media screen { .popup { top: 0; } .custom { font-family: Alegreya, serif; } }"
+    document.head.append(style)
+    const rules = (style.sheet!.cssRules[0] as CSSGroupingRule).cssRules
+    // Emulate the descriptor block of a native @position-try rule.
+    Object.defineProperty((rules[0] as CSSStyleRule).style, "fontFamily", {value: undefined})
+
+    syncFontResources(document, new Map([["alegreya", href]]))
+
+    expect(document.head.querySelector("link")?.href).toBe(href)
+  })
+
   it("recognizes imported Bunny catalog slugs without dropping a used resource", () => {
     document.head.innerHTML = '<link rel="stylesheet" href="https://fonts.bunny.net/css?family=open-sans:400,700&display=swap">'
     document.body.innerHTML = '<p style="font-family: &quot;Open Sans&quot;, sans-serif">Text</p>'

@@ -1564,7 +1564,7 @@ export class ElementStyleEditor extends LitElement {
     }
     const computed = this.state.computed[definition.name]?.trim()
     const value = this.editableValue(definition.name) || (definition.name === "hyphens" ? computed || "manual"
-      : definition.name === "list-style-position" ? computed || "inside"
+      : definition.name === "list-style-position" ? computed || (this.state.target?.localName === "summary" ? "inside" : "outside")
       : !this.declaration(definition.name) && this.hasAttribute("dense-choices") ? definition.values![0] : computed)
     const rtl = this.state.computed.direction === "rtl"
     const current = ["text-align", "text-align-last"].includes(definition.name)

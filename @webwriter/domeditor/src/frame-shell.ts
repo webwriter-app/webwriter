@@ -1,6 +1,6 @@
 import {editorHostOrigin} from "./frame-origins"
 import {connectFrameLocalPackages} from "./frame-local-packages"
-import {openFrameLinksInNewTabs} from "./frame-links"
+import {isNativeDownloadURL, openFrameLinksInNewTabs} from "./frame-links"
 
 const parameters = new URL(location.href).searchParams
 const kind = parameters.get("kind")
@@ -8,8 +8,13 @@ const hostOrigin = kind === "package-test" ? location.origin : editorHostOrigin(
 const revision = parameters.get("revision")
 const nonce = new URLSearchParams(location.hash.slice(1)).get("nonce")
 const instanceId = crypto.randomUUID()
+type FrameNavigateEvent = Event & {
+  destination: {sameDocument: boolean, url: string}
+  userInitiated?: boolean
+  downloadRequest?: string | null
+}
 const navigation = (window as Window & {navigation?: {
-  addEventListener: (type: "navigate", listener: (event: Event & {destination: {sameDocument: boolean}}) => void) => void
+  addEventListener: (type: "navigate", listener: (event: FrameNavigateEvent) => void) => void
 }}).navigation
 
 const receiveDocument = (event: MessageEvent) => {
@@ -35,6 +40,8 @@ const receiveDocument = (event: MessageEvent) => {
     }
     else {
       navigation.addEventListener("navigate", navigationEvent => {
+        if(kind === "preview" && navigationEvent.userInitiated && typeof navigationEvent.downloadRequest === "string"
+          && isNativeDownloadURL(new URL(navigationEvent.destination.url), location.origin)) return
         if(!navigationEvent.destination.sameDocument) navigationEvent.preventDefault()
       })
     }

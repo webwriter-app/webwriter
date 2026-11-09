@@ -28,10 +28,11 @@ const click = (target: Element) => {
   target.dispatchEvent(event)
   return event
 }
-const config = (target: string, permissions: DistributionConfig["permissions"], add: string[] = [], items: DistributionConfig["items"] = []) => ({
-  ...emptyDistributionConfig(target), permissions, add, items,
+const config = (permissions: DistributionConfig["permissions"], add: string[] = [], items: DistributionConfig["items"] = []) => ({
+  ...emptyDistributionConfig(), permissions, add, items,
 })
-const setup = (markup: string, permissions: DistributionConfig["permissions"] = ["edit", "style", "delete", "insert"], extraConfigs: DistributionConfig[] = [], widgets: import("./schema").WidgetSchemaDefinition[] = [], layout?: "canvas" | "slides" | "board", item = {id: "element:span", label: "Approved span", html: '<span data-approved="yes">Approved</span>'}) => {
+const at = (target: string, policy: DistributionConfig) => ({target, policy})
+const setup = (markup: string, permissions: DistributionConfig["permissions"] = ["edit", "style", "delete", "insert"], extraConfigs: ReturnType<typeof at>[] = [], widgets: import("./schema").WidgetSchemaDefinition[] = [], layout?: "canvas" | "slides" | "board", item = {id: "element:span", label: "Approved span", html: '<span data-approved="yes">Approved</span>'}) => {
   rootId = `reader-${crypto.randomUUID()}`
   document.designMode = "off"
   document.head.replaceChildren()
@@ -42,10 +43,10 @@ const setup = (markup: string, permissions: DistributionConfig["permissions"] = 
   document.body.removeAttribute("style")
   document.body.innerHTML = markup
   if(layout) document.body.className = `ww-${layout}`
-  writeDistributionConfig(document.documentElement, config(rootId, permissions, [item.id], [item]))
-  for(const itemConfig of extraConfigs) {
-    const target = document.getElementById(itemConfig.target)!
-    writeDistributionConfig(target, itemConfig)
+  writeDistributionConfig(document.body, config(permissions, [item.id], [item]))
+  for(const {target: targetId, policy} of extraConfigs) {
+    const target = document.getElementById(targetId)!
+    writeDistributionConfig(target, policy)
   }
   context = mountDistributionReader(document, {widgets})
   expect(context).not.toBeNull()
@@ -148,7 +149,7 @@ describe("distribution reader runtime", () => {
     expect(paragraph.querySelector("span")?.outerHTML).toBe(item.html)
     expect(paragraph.firstChild?.nodeType).toBe(Node.TEXT_NODE)
     expect(paragraph.childNodes[1]?.nodeType).toBe(Node.COMMENT_NODE)
-    expect(context.editor!.toHTML(true, false)).toBe('<p id="container">Start<!--keep--><span data-approved="yes">Approved</span></p>')
+    expect(context.editor!.toHTML(true, false)).toContain('<p id="container">Start<!--keep--><span data-approved="yes">Approved</span></p>')
     expect(document.body.querySelector("[data-webwriter-editor-only], [contenteditable]")).toBeNull()
   })
 
@@ -198,10 +199,10 @@ describe("distribution reader runtime", () => {
   })
 
   it("refreshes insertion controls when selection enters a denying descendant override", async () => {
-    const restricted = {...emptyDistributionConfig("restricted"), add: ["element:span"], items: [
+    const restricted = {...emptyDistributionConfig(), add: ["element:span"], items: [
       {id: "element:span", label: "Approved span", html: '<span data-approved="yes">Approved</span>'},
     ]}
-    const {context} = setup('<p id="container">Start</p><section id="restricted"><p id="inside">Private</p></section>', ["edit", "insert"], [restricted])
+    const {context} = setup('<p id="container">Start</p><section id="restricted"><p id="inside">Private</p></section>', ["edit", "insert"], [at("restricted", restricted)])
     const container = document.querySelector<HTMLParagraphElement>("#container")!
     const inside = document.querySelector<HTMLParagraphElement>("#inside")!
     await waitForReady(context, container)
@@ -223,7 +224,7 @@ describe("distribution reader runtime", () => {
   })
 
   it("uses the same Enter and Delete paths as authoring, with full descendant overrides", async () => {
-    const {context} = setup('<section><p id="restricted">Private</p><p id="text">Before</p></section>', ["edit", "delete"], [emptyDistributionConfig("restricted")])
+    const {context} = setup('<section><p id="restricted">Private</p><p id="text">Before</p></section>', ["edit", "delete"], [at("restricted", emptyDistributionConfig())])
     const paragraph = document.querySelector<HTMLParagraphElement>("#text")!
     await waitForReady(context, paragraph)
     $.move(paragraph.firstChild!, 3)
@@ -276,6 +277,7 @@ describe("distribution reader runtime", () => {
     engine.features.selection.selectElement(widget)
     engine.features.transformation.overlay.querySelector<HTMLButtonElement>('[aria-label="Delete"]')!.click()
     const readerHTML = engine.toHTML(true, false)
+    const authoredHTML = readerHTML.replace(/<\?ww-distribute [^<]*\?>$/, "")
     await new Promise<void>(resolve => setTimeout(resolve, 0))
     expect(engine.toHTML(true, false)).toBe(readerHTML)
     expect(document.querySelector("#widget")).toBeNull()
@@ -286,17 +288,17 @@ describe("distribution reader runtime", () => {
     try {
       author.features.selection.selectElement(document.querySelector("#widget")!)
       author.features.transformation.overlay.querySelector<HTMLButtonElement>('[aria-label="Delete"]')!.click()
-      expect(author.toHTML(true, false)).toBe(readerHTML)
+      expect(author.toHTML(true, false)).toBe(authoredHTML)
       author.doc.undo()
       expect(document.querySelector("#widget")).not.toBeNull()
       author.doc.redo()
-      expect(author.toHTML(true, false)).toBe(readerHTML)
+      expect(author.toHTML(true, false)).toBe(authoredHTML)
     }
     finally { author.destroy() }
   })
 
   it("keeps move authorization attached to the live drag source after a drop preview changes selection", async () => {
-    const {context} = setup('<p id="static">Fixed</p><p id="moving">Move</p>', [], [{...emptyDistributionConfig("moving"), permissions: ["move"]}])
+    const {context} = setup('<p id="static">Fixed</p><p id="moving">Move</p>', [], [at("moving", {...emptyDistributionConfig(), permissions: ["move"]})])
     for(let attempt = 0; attempt < 50 && !context.editor; attempt++) await new Promise<void>(resolve => setTimeout(resolve, 0))
     const engine = context.editor!, source = document.querySelector("#moving")!
     engine.features.selection.selectElement(source)
@@ -316,7 +318,7 @@ describe("distribution reader runtime", () => {
   })
 
   it("uses saved widget editing declarations and leaves denied widget hosts in reading mode", async () => {
-    const {context} = setup('<reader-widget id="editable-widget"></reader-widget><reader-widget id="locked-widget"></reader-widget><reader-widget id="authored-lock" contenteditable="false"></reader-widget>', ["edit"], [emptyDistributionConfig("locked-widget")], [{tagName: "reader-widget", editingConfig: {content: "p*"}}])
+    const {context} = setup('<reader-widget id="editable-widget"></reader-widget><reader-widget id="locked-widget"></reader-widget><reader-widget id="authored-lock" contenteditable="false"></reader-widget>', ["edit"], [at("locked-widget", emptyDistributionConfig())], [{tagName: "reader-widget", editingConfig: {content: "p*"}}])
     const widget = document.querySelector("#editable-widget")!, locked = document.querySelector("#locked-widget")!
     await waitForReady(context, widget)
     expect(context.editor!.features.widget.isWidget(widget)).toBe(true)

@@ -15,10 +15,28 @@ A widget script defines the custom element named by its export, for example `./w
 | `static actions` / `actions` | [Action declarations](options-actions.md); methods have matching names. |
 | `static convertFrom` / `convertFrom`, `static convertTo` / `convertTo` | [DOM conversions and file import or export](../guides/conversions.md). |
 | `static aggregate` | [Aggregated View](aggregated-view.md) declaration for aggregate views. |
+| `static offlineImports(element)` | [Select optional dynamic imports](#offline-imports) for Offline HTML. |
 
 WebWriter gives installed widgets a persistent `id` if missing. It adds `contenteditable=""` while editing if the widget has no `contenteditable` attribute. The empty value on installed widgets is temporary and is excluded from saved and shared HTML. Explicit values such as `contenteditable="false"` are preserved.
 
 Shadow-DOM events are ignored by editor features unless `propagateEvents` opts in. Deliberate widget changes to authored DOM are still observed and synchronized.
+
+## Offline imports
+
+Implement this optional synchronous hook to limit the code that Offline HTML embeds. WebWriter passes each widget's detached authored element, including instances in HTML templates and insertable reader templates. Read attributes or child content from this copy and leave it intact. Include every choice a reader can reach offline.
+
+```js
+static offlineImports(element) {
+  const engine = element.getAttribute("engine") ?? "basic"
+  return [{importer: "./engine-loaders.js", keep: [`./engines/${engine}.js`]}]
+}
+```
+
+`importer` is the module containing the `import()` calls, given as a path relative to the widget entry module or an absolute HTTP(S) URL. Use a loader module owned by the widget or shared only with widgets that also declare their requirements for it. `keep` lists the specifiers exactly as they appear in that module's `import()` calls. An empty list keeps none of those calls' targets and `"*"` keeps all of them. WebWriter combines the lists for the same importer across all instances, with `"*"` taking precedence.
+
+WebWriter bundles selected imports and their dependencies normally. Calls excluded by the hook reject with an error named `OfflineImportError` in the standalone file. Static imports and dynamic imports from importers without rules follow the ordinary bundling behavior.
+
+See [Optimize the code bundle](../guides/optimize-code-bundle.md) for a loader example and offline verification steps.
 
 ## Conversions
 

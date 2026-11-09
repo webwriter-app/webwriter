@@ -1,7 +1,7 @@
 import {applyUpdate, encodeStateAsUpdate, encodeStateVector} from "yjs"
 import {SharedDOMDoc} from "./domdoc"
 import {DOMEditor, type DOMEditorOptions} from "./domeditor-core"
-import {$, getContainer, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction} from "./utility"
+import {$, getContainer, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, pathFromNode} from "./utility"
 import {WidgetDataStorage} from "./widget-data-storage"
 import {effectiveDistribution, hydrateDistributionInstructions, readDistributionConfigs} from "./distribution-dom"
 import {distributionFragment, distributionSnapshot} from "./distribution-snapshot"
@@ -26,17 +26,14 @@ export type DistributionReaderContext = {
 export function mountDistributionReader(root: Document, options: Pick<DOMEditorOptions, "widgets" | "loadCanvasSnapdom"> = {}): DistributionReaderContext | null {
   hydrateDistributionInstructions(root)
   const configs = readDistributionConfigs(root)
-  if(!configs.length || root.designMode === "on") return null
+  if(!configs.size || root.designMode === "on") return null
   const view = root.defaultView
   if(!view || !root.body || root.body.shadowRoot?.querySelector(".◆distribution-reader")) return null
   const isWidget = widgetLookupForTags((options.widgets ?? []).map(widget => widget.tagName))
   const snapshot = (node: Node) => distributionSnapshot(node, isWidget)
   const appendix = root.body.shadowRoot ?? root.body.attachShadow({mode: "open"})
   if(!Array.from(appendix.children).some(element => element.matches("slot:not([name])"))) appendix.prepend(root.createElement("slot"))
-  const initialDefaults = new Map(configs.map(config => {
-    const target = root.getElementById(config.target)
-    return [config.target, target ? snapshot(target === root.documentElement ? root.body : target) : null]
-  }))
+  const initialDefaults = new Map([...configs.keys()].map(target => [target, snapshot(target === root.documentElement ? root.body : target)]))
   const dock = root.createElement("section")
   dock.className = "◆distribution-reader"
   dock.setAttribute("aria-label", "Insert elements")
@@ -62,7 +59,7 @@ export function mountDistributionReader(root: Document, options: Pick<DOMEditorO
   dock.hidden = true
   appendix.append(style, dock)
   const cleanup: (() => void)[] = []
-  const mirrors = new Map<string, {mirror: SharedDOMDoc, root: HTMLElement, close: () => void}>()
+  const mirrors = new Map<Element, {mirror: SharedDOMDoc, root: HTMLElement, close: () => void}>()
   let baseMirror: SharedDOMDoc | undefined
   let selected: Element | null = null, editor: DOMEditor | null = null, destroyed = false, ready = false
   let accepted = snapshot(root.documentElement)!
@@ -72,8 +69,8 @@ export function mountDistributionReader(root: Document, options: Pick<DOMEditorO
   }
   const policy = (element: Element | null = selected) => element?.isConnected ? effectiveDistribution(element)?.config ?? null : null
   const owner = (element: Element | null = selected) => {
-    const config = policy(element)
-    return config ? mirrors.get(config.target) : undefined
+    const target = element?.isConnected ? effectiveDistribution(element)?.element : undefined
+    return target ? mirrors.get(target) : undefined
   }
   const position = () => {
     const previous = selected
@@ -93,8 +90,8 @@ export function mountDistributionReader(root: Document, options: Pick<DOMEditorO
     position()
   }
   const validate = () => {
-    const next = snapshot(root.documentElement)!
-    return validateDistributionChange(accepted, next, configs, html => distributionFragment(html, root))
+    try { return validateDistributionChange(accepted, snapshot(root.documentElement)!, html => distributionFragment(html, root)) }
+    catch { return false }
   }
   // Register validation first so invalid mutations are restored before scope mirrors observe them.
   const observer = new view.MutationObserver(() => {
@@ -175,30 +172,29 @@ export function mountDistributionReader(root: Document, options: Pick<DOMEditorO
   const storage = new WidgetDataStorage(view.indexedDB)
   cleanup.push(() => storage.destroy())
   const initialize = async () => {
-    if(!configs.some(config => config.target === root.documentElement.id)) baseMirror = new SharedDOMDoc(undefined, undefined, [], ["◆"], {
-      root: root.body, isWidget, scopeBoundary: element => configs.some(config => config.target === element.id),
+    if(!configs.has(root.documentElement) && !configs.has(root.body)) baseMirror = new SharedDOMDoc(undefined, undefined, [], ["◆"], {
+      root: root.body, isWidget, scopeBoundary: element => configs.has(element),
     })
-    for(const config of [...configs].sort((a, b) => {
-      const first = root.getElementById(a.target), second = root.getElementById(b.target)
-      return first && second ? first.contains(second) ? -1 : second.contains(first) ? 1 : 0 : 0
+    for(const [target, config] of [...configs].sort(([a], [b]) => {
+      return a.contains(b) ? -1 : b.contains(a) ? 1 : 0
     })) {
       if(destroyed) return
-      const target = root.getElementById(config.target)
-      if(!target) continue
       const scopeRoot = (target === root.documentElement ? root.body : target) as HTMLElement
       if(config.scope === "group") { status.textContent = "Group editing requires a connected session."; continue }
       const documentId = root.documentElement.id || root.URL
+      const scopeKey = pathFromNode(root.documentElement, target)
       const revisionInput = JSON.stringify({
-        config, defaults: initialDefaults.get(config.target),
+        config,
+        defaults: initialDefaults.get(target),
       })
       const revisionBytes = view.crypto.subtle ? await view.crypto.subtle.digest("SHA-256", new TextEncoder().encode(revisionInput)) : undefined
       const revision = revisionBytes ? Array.from(new Uint8Array(revisionBytes), byte => byte.toString(16).padStart(2, "0")).join("") : revisionInput
-      const key = `webwriter-distribution:${JSON.stringify([documentId, config.target, config.scope, revision])}`
+      const key = `webwriter-distribution:${JSON.stringify([documentId, scopeKey, config.scope, revision])}`
       const connection = storage.connect(key, () => {})
       await connection.ready
       if(destroyed) return
       const mirror = new SharedDOMDoc(undefined, undefined, [], ["◆"], {root: scopeRoot, ydoc: connection.doc, isWidget,
-        scopeBoundary: element => configs.some(child => child.target === element.id),
+        scopeBoundary: element => configs.has(element),
       })
       let channel: BroadcastChannel | undefined
       const unsubscribe = connection.observePersistence(state => {
@@ -215,7 +211,7 @@ export function mountDistributionReader(root: Document, options: Pick<DOMEditorO
         connection.doc.on("update", relay)
         channel.postMessage({kind: "sync", vector: encodeStateVector(connection.doc)})
       }
-      mirrors.set(config.target, {mirror, root: scopeRoot, close: () => { unsubscribe(); connection.doc.off("update", relay); channel?.close() }})
+      mirrors.set(target, {mirror, root: scopeRoot, close: () => { unsubscribe(); connection.doc.off("update", relay); channel?.close() }})
     }
     accepted = snapshot(root.documentElement)!
     ready = true

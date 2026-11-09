@@ -1620,6 +1620,202 @@ describe("link keyboard edits", () => {
 })
 
 
+describe("attachment marks", () => {
+  it("toggles off at a caret and preserves the exact text position and descendants", () => {
+    const paragraph = setContent('<p>Before <a href="data:application/octet-stream;base64,AA==" download="notes.txt">one <em>two</em><!--keep--></a> after</p>')
+    const emphasis = paragraph.querySelector("em")!
+    const text = emphasis.firstChild!
+    $.move(text, 1)
+    expect(feature.toggleAttachment()).toBe("removed")
+    expect(paragraph.innerHTML).toBe("Before one <em>two</em><!--keep--> after")
+    expect(paragraph.querySelector("em")).toBe(emphasis)
+    expect(document.getSelection()?.anchorNode).toBe(text)
+    expect(document.getSelection()?.anchorOffset).toBe(1)
+    expect(document.getSelection()?.isCollapsed).toBe(true)
+  })
+
+  it("toggles off a whole backwards text selection and keeps unrelated anchor attributes", () => {
+    const paragraph = setContent('<p>Before <a id="notes" data-note="keep" download href="/notes.txt"><!--start--><strong>one</strong> <em>two</em><!--end--></a> after</p>')
+    const start = paragraph.querySelector("strong")!.firstChild!
+    const end = paragraph.querySelector("em")!.firstChild!
+    $.selectRange(end, 3, start, 0)
+    expect(feature.toggleAttachment()).toBe("removed")
+    expect(paragraph.querySelector("a")).toBeNull()
+    expect(paragraph.querySelector("span#notes")?.outerHTML).toBe('<span id="notes" data-note="keep"><!--start--><strong>one</strong> <em>two</em><!--end--></span>')
+    expect(document.getSelection()?.anchorNode).toBe(end)
+    expect(document.getSelection()?.focusNode).toBe(start)
+    expect(document.getSelection()?.toString()).toBe("one two")
+  })
+
+  it("keeps a partially selected attachment and removes it when its whole element is selected", () => {
+    const paragraph = setContent('<p><a download href="/notes.txt"><img alt="Cover">Label</a> after</p>')
+    const anchor = paragraph.querySelector("a")!
+    const image = paragraph.querySelector("img")!
+    selectText(anchor.lastChild as Text)
+    expect(feature.toggleAttachment()).toEqual(expect.objectContaining({identity: expect.any(String)}))
+    expect(paragraph.querySelector("a")).toBe(anchor)
+    $.selectElement(anchor, false)
+    expect(feature.toggleAttachment()).toBe("removed")
+    expect(paragraph.querySelector("a")).toBeNull()
+    expect(paragraph.firstChild).toBe(image)
+    expect(document.getSelection()?.toString()).toBe("Label")
+  })
+
+  it("turns off a pending caret or draft and restores an underlying web link", () => {
+    const paragraph = setContent('<p>Before <a href="/web">Link</a> after</p>')
+    const link = paragraph.querySelector("a")!
+    $.move(paragraph.firstChild!, 3)
+    expect(feature.toggleAttachment()).toEqual(expect.objectContaining({identity: expect.any(String)}))
+    expect(feature.toggleAttachment()).toBe("removed")
+    expect(feature.getAttachmentState()).toBeNull()
+    selectText(link.firstChild as Text)
+    expect(feature.toggleAttachment()).toEqual(expect.objectContaining({identity: expect.any(String)}))
+    expect(link.hasAttribute("data-ww-attachment")).toBe(true)
+    expect(feature.toggleAttachment()).toBe("removed")
+    expect(paragraph.querySelector("a")).toBe(link)
+    expect(link.outerHTML).toBe('<a href="/web">Link</a>')
+  })
+
+  it("undoes and redoes attachment removal as one edit", () => {
+    const paragraph = setContent('<p><a download="notes.txt" href="/notes.txt">Notes</a></p>')
+    $.move(paragraph.querySelector("a")!.firstChild!, 1)
+    expect(feature.toggleAttachment()).toBe("removed")
+    expect(cleanHTML()).toBe("<p>Notes</p>")
+    editor.doc.undo()
+    expect(cleanHTML()).toBe('<p><a download="notes.txt" href="/notes.txt">Notes</a></p>')
+    editor.doc.redo()
+    expect(cleanHTML()).toBe("<p>Notes</p>")
+  })
+
+  it.each(["download href='data:application/octet-stream;base64,AA=='", "download href='/worksheet.pdf'", "data-ww-attachment"])(
+    "tracks the live selection inside an attachment with %s", attributes => {
+      const paragraph = setContent(`<p>Before <a ${attributes}>one <em>two</em></a> after</p>`)
+      const link = paragraph.querySelector("a")!
+      const emphasis = link.querySelector("em")!.firstChild!
+      $.move(emphasis, 1)
+      const state = feature.getAttachmentState()
+      expect(state?.identity).toBeTruthy()
+      expect(feature.getAttachmentState()).toEqual(state)
+      expect(feature.getLinkState()).toBeNull()
+      $.selectRange(link.firstChild!, 1, emphasis, 2)
+      expect(feature.getAttachmentState()?.identity).not.toBe(state!.identity)
+      $.selectElement(link, false)
+      expect(feature.getAttachmentState()).not.toBeNull()
+      $.selectRange(link.firstChild!, 0, paragraph.lastChild!, 2)
+      expect(feature.getAttachmentState()).toBeNull()
+      $.move(paragraph.firstChild!, 2)
+      expect(feature.getAttachmentState()).toBeNull()
+    },
+  )
+
+  it("marks the first text typed at a caret with a pending attachment", () => {
+    const paragraph = setContent("<p>Before after</p>")
+    $.move(paragraph.firstChild!, 7)
+    const state = feature.activateAttachment()
+    expect(feature.getAttachmentState()).toEqual(state)
+    expect(paragraph.querySelector("a")).toBeNull()
+    paragraph.dispatchEvent(new InputEvent("beforeinput", {
+      inputType: "insertText", data: "Notes", bubbles: true, cancelable: true,
+    }))
+    expect(paragraph.querySelector("a[data-ww-attachment]")?.textContent).toBe("Notes")
+    expect(feature.getAttachmentState()).not.toBeNull()
+  })
+
+  it("wraps selected phrasing content and exports its exact file bytes as a download", async () => {
+    const paragraph = setContent("<p>Before <em>these</em> files<!--keep--> after</p>")
+    const emphasis = paragraph.querySelector("em")!
+    $.selectRange(paragraph, 1, emphasis.nextSibling!, 6)
+    const state = feature.activateAttachment()!
+    const draft = paragraph.querySelector("a[data-ww-attachment]")!
+    expect(draft.innerHTML).toBe("<em>these</em> files")
+    expect(draft.hasAttribute("href")).toBe(false)
+    expect(document.getSelection()?.toString()).toBe("these files")
+    const file = new File([new Uint8Array([0, 255, 128])], "worksheet.bin")
+    expect(await feature.attach(state.identity, {file})).toBe(true)
+    const anchor = paragraph.querySelector("a")!
+    expect(anchor).toBe(draft)
+    expect(anchor.hasAttribute("data-ww-attachment")).toBe(false)
+    expect(anchor.querySelector("em")).toBe(emphasis)
+    expect(anchor.innerHTML).toBe("<em>these</em> files")
+    expect(anchor.download).toBe("worksheet.bin")
+    expect(anchor.getAttribute("href")).toBe("data:application/octet-stream;base64,AP+A")
+    expect(paragraph.innerHTML).toContain("<!--keep--> after")
+    expect(feature.getLinkState()).toBeNull()
+    const exported = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+    expect(exported.querySelector("a[download]")?.outerHTML).toBe(anchor.outerHTML)
+  })
+
+  it("inserts a filename at a caret and edits the resulting link in place", async () => {
+    const paragraph = setContent("<p>Before after</p>")
+    $.move(paragraph.firstChild!, 7)
+    await feature.attach(feature.activateAttachment()!.identity, {file: new File(["first"], "first.txt")})
+    const anchor = paragraph.querySelector("a")!
+    expect(paragraph.textContent).toBe("Before first.txtafter")
+    await feature.attach(feature.activateAttachment()!.identity, {file: new File(["second"], "second.txt")})
+    expect(paragraph.querySelector("a")).toBe(anchor)
+    expect(anchor.textContent).toBe("first.txt")
+    expect(anchor.download).toBe("second.txt")
+  })
+
+  it("uses the selected media resource and excludes media inside widgets", async () => {
+    const paragraph = setContent('<p>Download</p><picture><source srcset="/large.png"><img alt="Diagram" src="/fallback.png"></picture><widget-box><img src="/private.png"></widget-box>')
+    const image = document.querySelector("picture img")!
+    Object.defineProperty(image, "currentSrc", {value: "https://cdn.example/large.png"})
+    const fetch = vi.spyOn(window, "fetch").mockResolvedValue(new Response("image bytes"))
+    selectText(paragraph.firstChild as Text)
+    const state = feature.activateAttachment()!
+    expect(state.media).toEqual([{id: expect.any(String), label: "Diagram"}])
+    await feature.attach(state.identity, {mediaId: state.media[0].id})
+    expect(String(fetch.mock.calls[0][0])).toBe("https://cdn.example/large.png")
+    expect(paragraph.querySelector("a")?.download).toBe("large.png")
+    expect(paragraph.querySelector("a")?.getAttribute("href")).toBe("data:application/octet-stream;base64,aW1hZ2UgYnl0ZXM=")
+    expect(image.getAttribute("src")).toBe("/fallback.png")
+  })
+
+  it("keeps a media URL when its server serves it as a download", async () => {
+    const paragraph = setContent('<p>Download</p><video src="https://cdn.example/recording.mp4"></video>')
+    vi.spyOn(window, "fetch").mockResolvedValue(new Response(null, {headers: {"Content-Disposition": 'attachment; filename="recording.mp4"'}}))
+    selectText(paragraph.firstChild as Text)
+    const state = feature.activateAttachment()!
+    await feature.attach(state.identity, {mediaId: state.media[0].id})
+    expect(paragraph.querySelector("a")?.getAttribute("href")).toBe("https://cdn.example/recording.mp4")
+  })
+
+  it("waits for confirmation before embedding a large file and leaves the document alone on cancellation", async () => {
+    const paragraph = setContent("<p>Download</p>")
+    const post = vi.spyOn(editor, "postHostMessage")
+    const encode = vi.spyOn(editor, "blobDataURL").mockResolvedValue("data:application/octet-stream;base64,AA==")
+    selectText(paragraph.firstChild as Text)
+    const {identity} = feature.activateAttachment()!
+    const file = new File([new Uint8Array(5_000_001)], "large.bin")
+    const first = feature.attach(identity, {file})
+    const message = post.mock.calls.find(([event]) => "type" in event && event.type === "editor-attachment-confirmation")![0] as {id: string, files: object[]}
+    expect(message.files).toEqual([{name: "large.bin", size: 5_000_001}])
+    expect(encode).not.toHaveBeenCalled()
+    expect(paragraph.querySelector("a[download]")).toBeNull()
+    feature.actions.resolveAttachmentConfirmation({type: "resolveAttachmentConfirmation", id: message.id, confirmed: false})
+    await expect(first).resolves.toBe(false)
+    expect(paragraph.querySelector("a[download]")).toBeNull()
+
+    post.mockClear()
+    const second = feature.attach(identity, {file})
+    const accepted = post.mock.calls.find(([event]) => "type" in event && event.type === "editor-attachment-confirmation")![0] as {id: string}
+    feature.actions.resolveAttachmentConfirmation({type: "resolveAttachmentConfirmation", id: accepted.id, confirmed: true})
+    await expect(second).resolves.toBe(true)
+    expect(paragraph.querySelector("a")?.download).toBe("large.bin")
+  })
+
+  it("rechecks the live selection after reading a file", async () => {
+    const paragraph = setContent("<p>Download</p><p>Elsewhere</p>")
+    selectText(paragraph.firstChild as Text)
+    const {identity} = feature.activateAttachment()!
+    const pending = feature.attach(identity, {file: new File(["small"], "small.txt")})
+    selectText(paragraph.nextElementSibling!.firstChild as Text)
+    await expect(pending).rejects.toThrow(/selection changed/)
+    expect(document.body.querySelector("a[download]")).toBeNull()
+  })
+})
+
 describe("automatic links in the edited text block", () => {
   it("waits for whitespace while typing a URL across inline formatting", async () => {
     const block = setContent('<p><em>example</em><!--keep--><strong>.</strong></p>')

@@ -986,7 +986,7 @@ describe("development server", () => {
     const parent = new Y.XmlElement("section"), target = new Y.XmlElement("data-widget")
     parent.setAttribute("id", "group-container"); target.setAttribute("id", widget)
     body.insert(0, [parent]); parent.insert(0, [target])
-    const config = {...emptyDistributionConfig("group-container"), scope: "group", groupSize: 2}
+    const config = {...emptyDistributionConfig(), scope: "group", groupSize: 2}
     const instruction = value => {
       const node = new Y.XmlElement("domeditor-comment")
       node.setAttribute("__domeditor_node_kind", "processing-instruction")
@@ -994,7 +994,7 @@ describe("development server", () => {
       node.insert(0, [new Y.XmlText(encodeDistributionConfig(value))])
       return node
     }
-    head.insert(0, [instruction(config)])
+    parent.insert(parent.length, [instruction(config)])
     Y.applyUpdate(serverDocument, Y.encodeStateAsUpdate(localDocument))
     const resolve = groupingRevision => request("/api/widget-data/resolve", {
       method: "POST", headers: {"X-Test-User": "ada"},
@@ -1003,8 +1003,8 @@ describe("development server", () => {
     const first = await resolve(distributionGroupingRevision(config))
     expect(first.response.status).toBe(200)
     expect(widgetGroupsFormed.mock.calls.at(-1)[1].rules).toMatchObject({groupBy: "members", number: 2})
-    const override = {...config, target: widget, groupSize: 4}
-    head.insert(1, [instruction(override)])
+    const override = {...config, groupSize: 4}
+    target.insert(target.length, [instruction(override)])
     Y.applyUpdate(serverDocument, Y.encodeStateAsUpdate(localDocument))
     expect((await resolve(distributionGroupingRevision(config))).response.status).toBe(409)
     const second = await resolve(distributionGroupingRevision(override))
@@ -1283,6 +1283,25 @@ describe("development server", () => {
     await vi.waitFor(async () => expect((await fetch(`${baseUrl}/live/${query}`)).status).toBe(404))
   })
 
+  it("omits hidden elements and their policies from the HTTP live document", async () => {
+    const id = "live-http-hidden-elements"
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaa"
+    const hostKey = "hhhhhhhhhhhhhhhhhhhhhhhh"
+    const privatePolicy = {...emptyDistributionConfig(), view: false}
+    const nestedPolicy = emptyDistributionConfig()
+    const rootPolicy = emptyDistributionConfig()
+    const html = `<!doctype html><html><head></head><body><!--?${distributionTarget} ${encodeDistributionConfig(rootPolicy)}?--><section id="private"><p id="nested-private">Private answer<!--?${distributionTarget} ${encodeDistributionConfig(nestedPolicy)}?--></p><!--?${distributionTarget} ${encodeDistributionConfig(privatePolicy)}?--></section><p>Visible</p></body></html>`
+    const created = await fetch(`${baseUrl}/api/live-sessions/${id}`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token, hostKey, html}),
+    })
+    expect(created.status).toBe(201)
+    const shared = await fetch(`${baseUrl}/live/?liveSession=${id}&liveToken=${token}`)
+    expect(shared.status).toBe(200)
+    expect(await shared.text()).toBe(`<!DOCTYPE html><html><head></head><body><!--?${distributionTarget} ${encodeDistributionConfig(rootPolicy)}?--><p>Visible</p></body></html>`)
+  })
+
   it("accepts an HTTP live document above the WebSocket frame limit and still syncs learner activity", async () => {
     const id = "live-http-large-document"
     const token = "aaaaaaaaaaaaaaaaaaaaaaaa"
@@ -1454,9 +1473,9 @@ describe("development server", () => {
   it.each([false, true])("accepts legacy widget activity while enforcing explicit distribution policies: %s", async configured => {
     const token = "aaaaaaaaaaaaaaaaaaaaaaaa", hostKey = "hhhhhhhhhhhhhhhhhhhhhhhh"
     const id = `widget-policy-${configured}`
-    const policy = emptyDistributionConfig("root")
+    const policy = emptyDistributionConfig()
     const carrier = configured ? `<!--?${distributionTarget} ${encodeDistributionConfig(policy)}?-->` : ""
-    const html = `<html id="root"><head>${carrier}</head><body><test-widget answer="0"></test-widget></body></html>`
+    const html = `<html id="root"><head></head><body>${carrier}<test-widget answer="0"></test-widget></body></html>`
     expect((await request(`/api/live-sessions/${id}`, {method: "PUT", body: JSON.stringify({token, hostKey, html})})).response.status).toBe(201)
     const hostDoc = new Y.Doc(), learnerDoc = new Y.Doc()
     const serverUrl = baseUrl.replace(/^http/, "ws"), room = `live-session-${id}`

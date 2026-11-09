@@ -4,8 +4,9 @@ import {openFrameLinksInNewTabs} from "./frame-links"
 import {publishEditorDocument} from "./editor-document-sync"
 import {captureSnapshotTextNodeRuns, editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag, replayHostPointer} from "./editor-bridge"
 import {builtinShortcuts, commandForShortcutEvent, shortcutFromEvent} from "./app-settings"
-import {isAppendixInteraction, isTextFieldInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
+import {cloneInert, isAppendixInteraction, isTextFieldInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
 import {serializeDoctype} from "./serialization-primitives"
+import {prepareWidgetGroupingsForSerialization, restoreWidgetGroupingClones} from "./widget-grouping-dom"
 
 /** Whether a frame-level shortcut belongs to the editor document. */
 export function shouldCaptureFrameShortcut(event: KeyboardEvent, action?: string) {
@@ -45,7 +46,12 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     editor.doc.flushDOMChanges()
     window.parent.postMessage({...message, documentReplicaId: settings.documentReplicaId, bridgeNonce: nonce}, origin)
   }
-  const snapshot = () => `${serializeDoctype(document.doctype)}${document.documentElement.outerHTML}`
+  const snapshot = () => {
+    const root = cloneInert(document.documentElement, true)
+    restoreWidgetGroupingClones(document.documentElement, root)
+    const serialize = prepareWidgetGroupingsForSerialization(root)
+    return serialize(`${serializeDoctype(document.doctype)}${root.outerHTML}`)
+  }
   const setMotion = (disabled: boolean) => {
     if(motionSheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== motionSheet)
     motionSheet = null

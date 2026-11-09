@@ -1,16 +1,21 @@
 import {describe, expect, it} from "vitest"
-import {encodeDistributionConfig, emptyDistributionConfig, distributionTarget} from "../src/distribution.js"
+import {encodeDistributionConfig, emptyDistributionConfig} from "../src/distribution.js"
 import {createDistributionValidator} from "./distribution.mjs"
 
 const config = (target, permissions = [], add = [], items = []) => ({
-  ...emptyDistributionConfig(target), permissions, add, items,
+  target, policy: {...emptyDistributionConfig(), permissions, add, items},
 })
-const carrier = value => `<!--?${distributionTarget} ${encodeDistributionConfig(value)}?-->`
-const page = (body, policies = [], extraHead = "") =>
-  `<!doctype html><html><head>${policies.map(carrier).join("")}${extraHead}</head><body>${body}</body></html>`
+const carrier = value => `<!--?ww-distribute ${encodeDistributionConfig(value.policy ?? value)}?-->`
+const page = (body, policies = [], extraHead = "") => {
+  for(const value of policies) {
+    const match = new RegExp(`(<([a-z][\\w-]*)\\b[^>]*\\bid=[\"']${value.target}[\"'][^>]*>)([\\s\\S]*)(<\\/\\2>)`, "i")
+    body = body.replace(match, `$1$3${carrier(value)}$4`)
+  }
+  return `<!doctype html><html><head>${extraHead}</head><body>${body}</body></html>`
+}
 
 describe("host distribution validator", () => {
-  it("uses host PI authority and rejects reader changes to head policy", () => {
+  it("uses host inline policy authority and rejects learner policy changes", () => {
     const policy = config("box", ["edit"])
     const validator = createDistributionValidator(page('<demo-box id="box">before</demo-box>', [policy]))
     const after = page('<demo-box id="box">after</demo-box>', [policy])
@@ -61,7 +66,7 @@ describe("host distribution validator", () => {
   })
 
   it("rejects malformed or duplicate host policies and reports no-policy documents unconfigured", () => {
-    expect(() => createDistributionValidator(page("<p>unchanged</p>", [], `<!--?${distributionTarget} bad?-->`))).toThrow()
+    expect(() => createDistributionValidator(page(`<div><!--?ww-distribute bad?--></div>`))).toThrow()
     const duplicate = config("box", ["edit"])
     expect(() => createDistributionValidator(page('<demo-box id="box">text</demo-box>', [duplicate, duplicate]))).toThrow()
 

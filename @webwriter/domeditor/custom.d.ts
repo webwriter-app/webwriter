@@ -18,6 +18,21 @@ declare module '*?raw' {
   export default content;
 }
 
+declare module 'virtual:reader-runtime-sources' {
+  const sources: Record<"figure" | "print" | "document" | "attribution" | "canvas" | "imageMap" | "scopedRegistry", string>
+  export default sources
+}
+
+declare module 'virtual:document-theme-sources*' {
+  type ThemeName = keyof typeof import("./src/legacy-document-theme-fingerprints").legacyDocumentThemeFingerprints
+  const styles: Record<ThemeName, {source: string, disclosure: boolean, originalFingerprint: string}>
+  export const sharedCSS: string
+  export const disclosureCSS: string
+  export const documentTypographyCSS: string
+  export const originalTypographyCSS: string
+  export default styles
+}
+
 declare module '*?url' {
   const url: string;
   export default url;

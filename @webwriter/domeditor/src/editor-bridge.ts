@@ -1,7 +1,7 @@
 import {validateDistributionConfig} from "./distribution.js"
 import type {DistributionSelection} from "./features/distribution"
 import {isCaptionEnumeration} from "./caption-enumeration"
-import {isLinkSelectionState, type LinkSelectionState} from "./links"
+import {isAttachmentSelectionState, isLinkSelectionState, type AttachmentSelectionState, type LinkSelectionState} from "./links"
 import {
   canonicalMarkName,
   isMarkAttributeName,
@@ -45,6 +45,7 @@ export const editorFrameControlMessage = "editor-frame-control"
 export const aiEditReviewEvent = "dom-editor-ai-edit-review"
 export const shapeKeyboardInputEvent = "dom-editor-shape-keyboard-input"
 export const mathKeyboardTabEvent = "dom-editor-math-keyboard-tab"
+export const attachmentConfirmationEvent = "editor-attachment-confirmation"
 
 /** Text-node boundaries lost when a DOM snapshot is serialized as HTML. */
 export type SnapshotTextNodeRun = {
@@ -564,6 +565,7 @@ export type MarkStateChangeDetail = {
   /** True when a nonempty selection can have formatting removed. */
   canRemoveMarks?: boolean
   link?: LinkSelectionState
+  attachment?: AttachmentSelectionState
   popupActive?: boolean
   svgText?: boolean
   /** True while the live DOM selection is a markable text range or caret. */
@@ -1065,6 +1067,7 @@ export function isMarkStateChangeMessage(value: unknown): value is MarkStateChan
   })) return false
   return (message.detail!.ruby === undefined || isRubyState(message.detail!.ruby))
     && (message.detail!.link === undefined || isLinkSelectionState(message.detail!.link))
+    && (message.detail!.attachment === undefined || isAttachmentSelectionState(message.detail!.attachment))
 }
 
 export function isCommentStateChangeMessage(value: unknown): value is CommentStateChangeMessage {
@@ -1160,9 +1163,9 @@ export function isDocumentHeadStateChangeMessage(value: unknown): value is Docum
 }
 
 function isDistributionSelection(value: unknown): boolean {
-  if(!isRecord(value) || typeof value.target !== "string" || typeof value.identity !== "string"
+  if(!isRecord(value) || typeof value.identity !== "string"
     || !(value.path === null || Array.isArray(value.path) && value.path.every(isNonnegativeInteger))
-    || !(value.inheritedFrom === null || typeof value.inheritedFrom === "string")
+    || !(value.hiddenByAncestor === undefined || typeof value.hiddenByAncestor === "boolean")
     || !(value.error === undefined || typeof value.error === "string")) return false
   try {
     for(const config of [value.local, value.effective]) if(config !== null) validateDistributionConfig(config)

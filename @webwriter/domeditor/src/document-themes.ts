@@ -1,52 +1,45 @@
-import baseSource from "../../core/model/schemas/resource/themes/base.css?raw"
-import holidaySource from "../../core/model/schemas/resource/themes/holiday.css?raw"
-import picoSource from "../../core/model/schemas/resource/themes/pico.css?raw"
-import sakuraSource from "../../core/model/schemas/resource/themes/sakura.css?raw"
-import simpleSource from "../../core/model/schemas/resource/themes/simple.css?raw"
-import waterSource from "../../core/model/schemas/resource/themes/water.css?raw"
-import floatSource from "./document-floats.css?raw"
+import themeSources, {disclosureCSS, documentTypographyCSS, sharedCSS} from "virtual:document-theme-sources"
 import {toHexString} from "lib0/buffer"
 import {digest} from "lib0/hash/sha256"
 import type {WidgetSchemaDefinition} from "./schema"
-import {documentTypographyCSS} from "./document-theme-options"
 import {legacyDocumentThemeFingerprints} from "./legacy-document-theme-fingerprints"
 
-const layeredSource = (source: string) => `@layer webwriter-theme {\n${source.replace(/^@charset\s+[^;]+;\s*/i, "")}\n}`
-// Base and Pico share a trailing chevron. Keep it beside the first line
-// and reserve its space without changing the summary's inline text flow.
-const disclosureLayout = `@layer webwriter-theme {
-  details > summary {
-    position: relative;
-    min-block-size: 1lh;
-    padding-inline-end: calc(var(--ww-summary-chevron-inline-inset, 0px) + 1rem + var(--pico-spacing, var(--spacing, 1rem)) * 0.5);
+export type DocumentThemeName = keyof typeof legacyDocumentThemeFingerprints
+
+const sharedThemeCSS = sharedCSS + documentTypographyCSS
+const previousAttachmentCSS = `@layer webwriter-theme {
+  :where(a[href][download]) {
+    padding: 0.1em 0.3em;
+    border-radius: 0.25em;
+    background-color: color-mix(in srgb, currentColor 10%, transparent);
     overflow-wrap: anywhere;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
   }
-  details > summary[role="button"] {
-    --ww-summary-chevron-inline-inset: var(--pico-form-element-spacing-horizontal, var(--form-element-spacing-horizontal));
-    --ww-summary-chevron-block-inset: var(--pico-form-element-spacing-vertical, var(--form-element-spacing-vertical));
-  }
-  details > summary::after {
-    position: absolute;
-    inset-inline-end: var(--ww-summary-chevron-inline-inset, 0px);
-    inset-block-start: var(--ww-summary-chevron-block-inset, 0px);
-    margin-inline-start: 0;
+  :where(a[href][download])::before {
+    content: "";
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    margin-inline-end: 0.25em;
+    vertical-align: -0.15em;
+    background-color: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 7l-6.5 6.5a1.5 1.5 0 0 0 3 3l6.5 -6.5a3 3 0 0 0 -6 -6l-6.5 6.5a4.5 4.5 0 0 0 9 9l6.5 -6.5'/%3E%3C/svg%3E") center / contain no-repeat;
   }
 }`
-const listDefaults = `@layer webwriter-theme {
-  :where(ul, ol, menu) { list-style-position: inside; }
-  :is(ul, ol, menu) > li { list-style-position: inherit; }
+const attachmentCSS = previousAttachmentCSS.replaceAll("a[href][download]", "a[href][download], a[data-ww-attachment]") + `
+@layer webwriter-theme-options {
+  :where(a[data-ww-attachment]) { color: var(--ww-link-color, revert-layer); }
 }`
+export const documentThemes = (Object.keys(themeSources) as DocumentThemeName[]).map(value => {
+  const {source, disclosure} = themeSources[value]
+  return {
+    value,
+    label: value[0].toUpperCase() + value.slice(1),
+    source: source + (disclosure ? disclosureCSS : "") + sharedThemeCSS + attachmentCSS,
+  }
+})
 
-export const documentThemes = [
-  {value: "base", label: "Base", source: baseSource + "\n" + disclosureLayout + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
-  {value: "water", label: "Water", source: layeredSource(waterSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
-  {value: "simple", label: "Simple", source: layeredSource(simpleSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
-  {value: "sakura", label: "Sakura", source: layeredSource(sakuraSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
-  {value: "pico", label: "Pico", source: layeredSource(picoSource) + "\n" + disclosureLayout + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
-  {value: "holiday", label: "Holiday", source: layeredSource(holidaySource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
-] as const
-
-export type DocumentThemeName = typeof documentThemes[number]["value"]
 export type DocumentTheme = typeof documentThemes[number]
 
 export const defaultDocumentTheme = documentThemes[0]
@@ -69,7 +62,10 @@ export function upgradeBundledDocumentThemes(root: Pick<Document, "head">) {
     const source = style.textContent
     if(!theme || !source || source === theme.source) continue
     const fingerprint = toHexString(digest(themeEncoder.encode(source.replace(/\r\n?/g, "\n"))).subarray(0, 16))
-    if(legacyDocumentThemeFingerprints[theme.value].includes(fingerprint)) style.textContent = theme.source
+    const beforeAttachments = theme.source.slice(0, -attachmentCSS.length)
+    if(source === beforeAttachments || source === beforeAttachments + previousAttachmentCSS
+      || fingerprint === themeSources[theme.value].originalFingerprint
+      || legacyDocumentThemeFingerprints[theme.value].includes(fingerprint)) style.textContent = theme.source
     // The table picture migration replaces only the generated rule, keeping
     // any other CSS in the stylesheet.
     else if(source.includes(legacyTablePictureRule)) style.textContent = source.replace(legacyTablePictureRule, tablePictureRule)

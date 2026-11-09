@@ -22,7 +22,7 @@ export async function checkBoardMedia(inspect = false) {
     const image = `<img alt="Landscape" src="${source}">`
     const fixtures = [image, `<picture><source srcset="${source}">${image}</picture>`,
       `<video poster="${source}" controls></video>`, '<iframe title="Embedded page" srcdoc="<p>Embedded page</p>"></iframe>',
-      `<figure>${image}<figcaption>Caption stays readable</figcaption></figure>`,
+      image,
       `<p>Text stays readable</p><figure><picture>${image}</picture><figcaption>Nested picture caption</figcaption></figure>`,
       `${image}${image}`, `<figure><figcaption>Caption above</figcaption>${image}</figure>`,
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"><circle cx="400" cy="300" r="200"/></svg>',
@@ -36,6 +36,12 @@ export async function checkBoardMedia(inspect = false) {
       return card
     })
     editor.features.board.cards(column)[0].remove()
+    const captionCard = cards[4]
+    editor.features.selection.selectElement(captionCard.querySelector("img")!)
+    assert(editor.features.manipulation.actions.setCaption({type: "setCaption", position: "below"}), "board caption command failed")
+    const caption = captionCard.querySelector(":scope > figure > figcaption")
+    assert(caption && column.parentElement === doc.body, "captioning changed the board structure")
+    caption!.textContent = "Caption stays readable"
     await Promise.all(Array.from(doc.images, image => image.decode()))
     await layoutFrame()
     const originalHeights = cards.map(card => card.getBoundingClientRect().height)
