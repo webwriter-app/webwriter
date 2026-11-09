@@ -6455,10 +6455,13 @@ describe("DomEditor.execute()", () => {
     expect(insert).toHaveBeenCalledWith(demoPackage.members[0])
   })
 
-  it("installs without inserting while package search is active", async () => {
+  it("installs without inserting on the first click and inserts the matched snippet on the next click", async () => {
     vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
     const {editor} = await mountEditor()
-    const install = vi.spyOn(editor as any, "setPackageInstalled").mockResolvedValue(demoPackage)
+    const install = vi.spyOn(editor as any, "setPackageInstalled").mockImplementation(async () => {
+      ;(editor as any).installedPackages = [demoPackage]
+      return demoPackage
+    })
     const insert = vi.spyOn(editor as any, "insertPackageMember").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Packages"] ribbon-button[label="Demo"]')).not.toBeNull())
@@ -6466,17 +6469,22 @@ describe("DomEditor.execute()", () => {
     const search = drawer.querySelector("package-search")!
     await search.updateComplete
     const input = search.shadowRoot!.querySelector<HTMLInputElement>("input")!
-    input.value = "demo"
+    input.value = "snippet"
     input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
     await ribbon.updateComplete
-    const button = drawer.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    const button = drawer.querySelector<RibbonButton>('ribbon-button[label="Demo Snippet"]')!
     await button.updateComplete
     button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 
     await vi.waitFor(() => expect(install).toHaveBeenCalled())
     expect(install).toHaveBeenCalledWith(demoPackage, true)
     expect(insert).not.toHaveBeenCalled()
-    expect(button.shadowRoot!.querySelector(".corner-icon")).toBeNull()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await vi.waitFor(() => expect(insert).toHaveBeenCalledWith(demoPackage.members[1]))
+    expect(install).toHaveBeenCalledTimes(1)
   })
 
   it("cancels an installation by clicking its loading button before metadata resolves", async () => {

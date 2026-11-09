@@ -23,6 +23,7 @@ export class RibbonButton extends LitElement {
   static properties = {
     label: {type: String},
     action: {type: String},
+    dragAction: {attribute: false},
     dragHTML: {attribute: false},
     iconAction: {type: String, attribute: "icon-action"},
     iconActionLabel: {type: String, attribute: "icon-action-label"},
@@ -1085,6 +1086,7 @@ export class RibbonButton extends LitElement {
 
   label = "Placeholder"
   action = ""
+  dragAction: string | undefined
   dragHTML: string | undefined
   iconAction = ""
   iconActionLabel = ""
@@ -1455,13 +1457,14 @@ export class RibbonButton extends LitElement {
   render() {
     const hasDropdown = this.hasDropdown
     const showSubmenuTrigger = (hasDropdown || this.openDrawer) && (!this.dropdownOnClick || Boolean(this.iconAction))
-    const dragAction = this.action || this.label
-    const conversion = isWidgetConversionAction(dragAction)
+    const action = this.action || this.label
+    const dragAction = this.dragAction ?? action
+    const conversion = isWidgetConversionAction(action)
     const dragTag = !conversion && (this.variant === "insertion" || dragAction === "Formula") ? ribbonElementTag(this.label, dragAction) : null
     const dragPackageInsertion = this.variant === "package" && ribbonInsertionAction(dragAction)
     const shapeGallery = this.submenu.some(item => typeof item !== "string" && item.category)
     const disabledTooltip = this.disabledTooltip
-    const title = dragAction.startsWith("widget-conversion:") ? `Convert to ${this.label}`
+    const title = action.startsWith("widget-conversion:") ? `Convert to ${this.label}`
       : `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
       <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}${this.iconAction ? " has-icon-action" : ""}`} @mouseenter=${this.scheduleDetailsShow} @mouseleave=${this.leaveDetails}>

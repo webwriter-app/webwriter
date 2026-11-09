@@ -859,7 +859,7 @@ describe("package ribbon controls", () => {
     expect(getComputedStyle(buttons()[2].shadowRoot!.querySelector(".button-label-text")!).fontStyle).not.toBe("italic")
     ribbon.shadowRoot!.querySelector("package-search")!.dispatchEvent(new CustomEvent("package-search-change", {detail: {query: "git"}}))
     await ribbon.updateComplete
-    expect(buttons().map(button => button.label)).toEqual(["Git"])
+    expect(buttons().map(button => button.label)).toEqual(["git Widget"])
   })
 
   it("puts developer packages first with italic labels in the collapsed package menu", async () => {
@@ -1472,7 +1472,7 @@ describe("package ribbon controls", () => {
     input.value = "alpha"
     input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
     await ribbon.updateComplete
-    alpha = drawer.querySelector<RibbonButton>('ribbon-button[label="Alpha"]')!
+    alpha = drawer.querySelector<RibbonButton>('ribbon-button[label="alpha Widget"]')!
     await alpha.updateComplete
 
     expect(search.shadowRoot!.querySelector('button[aria-label="Clear package search"]')).not.toBeNull()
@@ -1483,6 +1483,75 @@ describe("package ribbon controls", () => {
     await ribbon.updateComplete
     expect(search.shadowRoot!.querySelector<HTMLInputElement>("input")!.value).toBe("")
     expect(drawer.hasAttribute("drawer-open")).toBe(true)
+  })
+
+  it.each([true, false])("promotes the best matching package member and ranks the remaining choices (expanded: %s)", async expanded => {
+    const ribbon = new AppRibbon()
+    const pkg = packageFixture("phet-simulation")
+    pkg.label = "PhET Simulation"
+    pkg.members[0].label = pkg.label
+    const snippets = ["Overdensity", "Liquid Density", "Density", "Dens"].map(label => {
+      const exportName = `./snippets/${label.toLowerCase().replaceAll(" ", "-")}.html`
+      return {...pkg.members[1], id: `${pkg.name}@${pkg.version}:${exportName}`, exportName, label, insertable: label !== "Dens"}
+    })
+    pkg.members.splice(1, 1, ...snippets)
+    ribbon.packages = [pkg, packageFixture("other")]
+    ribbon.expanded = expanded
+    ribbon.menuOpen = true
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    if(!expanded) {
+      await menu.updateComplete
+      menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
+      await menu.updateComplete
+    }
+    const packages = expanded ? undefined : menu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    const search = (expanded ? drawer : menu.shadowRoot!).querySelector("package-search")!
+    await search.updateComplete
+    const input = search.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    const searchFor = async (query: string) => {
+      input.value = query
+      input.dispatchEvent(new Event("input", {bubbles: true}))
+      await ribbon.updateComplete
+      await menu.updateComplete
+      await packages?.updateComplete
+    }
+    const controls = async (label: string) => {
+      if(packages) return packages.shadowRoot!
+      const button = drawer.querySelector<RibbonButton>(`ribbon-button[label="${label}"]`)!
+      await button.updateComplete
+      return button.shadowRoot!
+    }
+
+    await searchFor("  DeNs  ")
+    const available = await controls("Density")
+    const main = available.querySelector<HTMLButtonElement>('[title="Density"]')!
+    const action = `package-member:${snippets[2].id}`
+    expect(dragData(main).getData(ribbonInsertionDragType)).toBe(action)
+    expect(available.querySelector('[aria-label="Show more Density options"]')).toBeNull()
+    await searchFor("webwriter-widget")
+    const fallback = await controls(pkg.label)
+    expect(fallback.querySelector('[title="PhET Simulation"]')).not.toBeNull()
+    const commands = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", commands)
+
+    ribbon.installedPackages = [pkg]
+    await searchFor("phet dens")
+    const installed = await controls("Density")
+    expect(installed.querySelector('[aria-label="Remove PhET Simulation"]')).not.toBeNull()
+    installed.querySelector<HTMLButtonElement>('[aria-label="Show more Density options"]')!.click()
+    const button = drawer?.querySelector<RibbonButton>('ribbon-button[label="Density"]')
+    await button?.updateComplete
+    await packages?.updateComplete
+    const dropdown = installed.querySelector<RibbonMenu>("ribbon-menu")
+    await dropdown?.updateComplete
+    const items = (dropdown?.shadowRoot ?? installed.querySelector(".submenu")!).querySelectorAll(".item[data-action]")
+    expect(Array.from(items, item => item.getAttribute("title"))).toEqual(["Liquid Density", "Overdensity", "PhET Simulation"])
+    installed.querySelector<HTMLButtonElement>('[title="Density"]')!.click()
+    expect(commands.mock.lastCall?.[0].detail.label).toBe(action)
+    expect(pkg.members.map(member => member.label)).toEqual(["PhET Simulation", "Overdensity", "Liquid Density", "Density", "Dens"])
   })
 
   it("focuses package search when expanding the drawer", async () => {
@@ -1630,7 +1699,7 @@ it("keeps package search, refresh, removal and member insertion available in the
   search.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Refresh list"]')!.click()
   expect(requests.mock.calls[0][0].detail).toEqual({refresh: true})
   expect(search.query).toBe("demo")
-  packages.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show more Demo options"]')!.click()
+  packages.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show more demo Widget options"]')!.click()
   await packages.updateComplete
   expect(packages.shadowRoot!.querySelector(".submenu")?.textContent).toContain("demo Snippet")
   const commands = vi.fn()

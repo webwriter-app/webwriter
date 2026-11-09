@@ -70,6 +70,8 @@ export type LiveLearnerRibbonItem = {
   enabled: boolean
 }
 
+type PackageSearchResult = {pkg: WebWriterPackage, members: PackageMember[], match?: PackageMember}
+
 type AIChatMessage = {
   id: string
   role: "user" | "assistant" | "event"
@@ -2234,11 +2236,31 @@ export class AppRibbon extends EditingControls {
     return [...packages.values()].sort((a, b) => Number(this.isDeveloperPackage(b)) - Number(this.isDeveloperPackage(a)))
   }
 
-  private get filteredPackages() {
-    const words = this.packageSearchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean)
-    return this.availablePackages.filter(pkg => {
-      const haystack = [pkg.name, pkg.label, pkg.description, ...pkg.keywords].filter(Boolean).join(" ").toLowerCase()
-      return words.every(word => haystack.includes(word))
+  private get packageSearchResults(): PackageSearchResult[] {
+    const query = this.packageSearchQuery.trim().toLowerCase().replace(/\s+/g, " ")
+    const words = query.split(" ")
+    return this.availablePackages.flatMap((pkg): PackageSearchResult[] => {
+      const members = pkg.members.filter(member => member.insertable)
+      if(!query) return [{pkg, members}]
+      const packageText = [pkg.name, pkg.label, pkg.description, ...pkg.keywords].join(" ").toLowerCase()
+      const packageMatches = words.map(word => packageText.includes(word))
+      const ranked = members.map(member => {
+        const label = member.label.toLowerCase()
+        const labelWords = label.split(/[^\p{L}\p{N}]+/u)
+        const metadata = [member.exportName, member.tagName, member.description].join(" ").toLowerCase()
+        const scores = words.map(word => label.startsWith(word) ? 4
+          : labelWords.some(part => part.startsWith(word)) ? 3
+          : label.includes(word) ? 2
+          : metadata.includes(word) ? 1 : 0)
+        return {
+          member,
+          matches: scores.every((score, index) => score > 0 || packageMatches[index]),
+          score: scores.reduce<number>((total, score) => total + score, 0) + Number(label.startsWith(query)) + Number(label === query),
+        }
+      }).sort((a, b) => Number(b.matches) - Number(a.matches) || b.score - a.score)
+      const best = ranked[0]
+      if(!packageMatches.every(Boolean) && !best?.matches) return []
+      return [{pkg, members: ranked.map(result => result.member), match: best?.score ? best.member : undefined}]
     })
   }
 
@@ -2285,30 +2307,45 @@ export class AppRibbon extends EditingControls {
       && this.installedPackages.some(candidate => candidate.name === pkg.name)) return this.widgetConversionAction(member.tagName)
   }
 
-  private renderPackageButton(pkg: WebWriterPackage, slot = "") {
-    const members = pkg.members.filter(member => member.insertable)
+  private packageButton({pkg, members, match}: PackageSearchResult) {
     const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)
-    const management = this.packageManagementMode
     const busy = this.busyPackageNames.includes(pkg.name)
     const conversion = this.packageConversion(pkg, members[0])
+    const matchAction = match && packageMemberAction(match)
+    // Clicking an available package installs it. Dragging inserts the displayed member.
+    return {
+      installed, busy, conversion,
+      label: match?.label ?? pkg.label,
+      action: conversion ?? (installed && !busy && matchAction ? matchAction : packageAction(pkg)),
+      dragAction: conversion ? undefined : matchAction,
+      dragHTML: this.packageDragHTML(pkg, members[0]),
+      submenu: !installed || busy ? this.emptyPackageSubmenu : members.slice(1).map(member => ({
+        label: member.label,
+        action: this.packageConversion(pkg, member) ?? packageMemberAction(member),
+        dragHTML: this.packageDragHTML(pkg, member),
+        icon: "Packages",
+        iconUrl: pkg.iconUrl,
+      })),
+    }
+  }
+
+  private renderPackageButton(result: PackageSearchResult, slot = "") {
+    const {pkg, members} = result
+    const {installed, busy, conversion, label, action, dragAction, dragHTML, submenu} = this.packageButton(result)
+    const management = this.packageManagementMode
     return html`
       <ribbon-button
         slot=${slot}
         variant="package"
         ?developer-package=${this.isDeveloperPackage(pkg)}
         ?console-selected=${this.isConsoleSelectedPackage(pkg)}
-        label=${pkg.label}
+        label=${label}
         icon="Packages"
         icon-url=${pkg.iconUrl ?? ""}
-        .action=${conversion ?? packageAction(pkg)}
-        .dragHTML=${this.packageDragHTML(pkg, members[0])}
-        .submenu=${!installed || busy ? this.emptyPackageSubmenu : members.slice(1).map(member => ({
-          label: member.label,
-          action: this.packageConversion(pkg, member) ?? packageMemberAction(member),
-          dragHTML: this.packageDragHTML(pkg, member),
-          icon: "Packages",
-          iconUrl: pkg.iconUrl,
-        }))}
+        .action=${action}
+        .dragAction=${dragAction}
+        .dragHTML=${dragHTML}
+        .submenu=${submenu}
         .corner=${management && installed ? "close" : ""}
         .cornerLabel=${installed ? `Remove ${pkg.label}` : `Add ${pkg.label}`}
         .cornerAction=${management && installed ? packageToggleAction(pkg) : ""}
@@ -2372,11 +2409,11 @@ export class AppRibbon extends EditingControls {
   }
 
   private renderPackageDrawer() {
-    const displayPackages = this.filteredPackages
+    const displayPackages = this.packageSearchResults
     const visibleCount = Math.max(0, this.packageVisibleCount - 1)
     const visiblePackages = displayPackages.slice(0, visibleCount)
     const overflowPackages = displayPackages.slice(visibleCount)
-    const hasConversion = (pkg: WebWriterPackage) => pkg.members.some(member => member.insertable && this.packageConversion(pkg, member))
+    const hasConversion = ({pkg, members}: PackageSearchResult) => members.some(member => this.packageConversion(pkg, member))
     return html`
       <ribbon-drawer
         label="Packages"
@@ -2753,16 +2790,15 @@ export class AppRibbon extends EditingControls {
       submenu: this.userSnippetButtons,
       submenuGroups: this.userSnippetGroups,
     }]
-    packages.push(...this.filteredPackages.map((pkg): RibbonMenuButton => {
-      const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)
+    const results = this.packageSearchResults
+    packages.push(...results.map((result): RibbonMenuButton => {
+      const {pkg} = result
+      const {installed, label, action, dragAction, dragHTML, submenu} = this.packageButton(result)
       return {
-        label: pkg.label, italic: this.isDeveloperPackage(pkg), selected: this.isConsoleSelectedPackage(pkg), icon: "Packages", iconUrl: pkg.iconUrl,
-        action: this.packageConversion(pkg, pkg.members.find(member => member.insertable)) ?? packageAction(pkg),
-        dragHTML: this.packageDragHTML(pkg, pkg.members.find(member => member.insertable)),
+        label, italic: this.isDeveloperPackage(pkg), selected: this.isConsoleSelectedPackage(pkg), icon: "Packages", iconUrl: pkg.iconUrl,
+        action, dragAction, dragHTML, submenu,
         removeAction: installed ? packageToggleAction(pkg) : undefined,
-        submenu: !installed || this.busyPackageNames.includes(pkg.name) ? [] : pkg.members.filter(member => member.insertable).slice(1).map(member => ({
-          label: member.label, action: this.packageConversion(pkg, member) ?? packageMemberAction(member), dragHTML: this.packageDragHTML(pkg, member), icon: "Packages", iconUrl: pkg.iconUrl,
-        })),
+        removeLabel: `Remove ${pkg.label}`,
       }
     }))
     return [{label: "Editing", buttons: [
@@ -2770,7 +2806,7 @@ export class AppRibbon extends EditingControls {
       {label: "Insert", icon: "Paragraph", menuOnly: true, submenu: this.markElementConversions(insert)},
       ...this.widgetConversionGroups.map(({label, icon, buttons}) => ({label, icon, menuOnly: true, submenu: buttons})),
       {label: "Packages", icon: "Packages", menuOnly: true, submenuGroups: [{label: "Packages", buttons: packages,
-        content: !this.packagesLoading && !this.filteredPackages.length ? html`<span>No packages</span>` : undefined}],
+        content: !this.packagesLoading && !results.length ? html`<span>No packages</span>` : undefined}],
         submenuHeader: html`<package-search .query=${this.packageSearchQuery} .loading=${this.packagesLoading}
           .error=${this.packageError} @package-search-change=${this.handlePackageSearch}></package-search>`},
     ]}]
