@@ -1,7 +1,7 @@
 import {remapPastedAuthoredIds} from "../authored-identities"
 import {clearPresentationState, hasPresentationState, setPresentationState} from "../presentation-state.js"
 import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
-import {documentThemeProperties, documentTypographyCSS, documentTypographyProperties} from "../document-theme-options"
+import {documentThemeProperties, documentTypographyCSS, documentTypographyProperties, originalTypographyCSS} from "../document-theme-options"
 import {themeAccentProperties} from "../css-color"
 import {isTokenDimension, tokenize} from "@csstools/css-tokenizer"
 import {mediaElementSelector, isMediaType, isWebsiteType, mediaDefaultHTML} from "../media"
@@ -5358,7 +5358,7 @@ export class ManipulationFeature extends EditorFeature {
     if((element === document.documentElement || element === document.body || isDocumentRoot(element))
       && entries.some(entry => entry.value !== null && documentTypographyProperties.includes(entry.name))
       && !Array.from(document.head.querySelectorAll("style"))
-        .some(style => style.textContent?.includes(documentTypographyCSS))) {
+        .some(style => style.textContent?.includes(documentTypographyCSS) || style.textContent?.includes(originalTypographyCSS))) {
       // Older documents embed an earlier bundled theme. Keep their stylesheet
       // intact and make the new options work in standalone HTML as well.
       const style = document.createElement("style")

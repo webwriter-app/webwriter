@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it} from "vitest"
 import {parse} from "es-module-lexer"
+import figureLayoutSource from "./figure-layout.js?raw"
 import {DOMEditor} from "./domeditor"
 import {$} from "./utility"
 
@@ -56,7 +57,7 @@ describe("document reader export", () => {
     parsed.getElementById("webwriter-document-viewer")!.textContent = "untrusted()"
     editor.features.dependency.appendSerializedAssets(parsed)
     expect(parsed.querySelectorAll("#webwriter-document-viewer")).toHaveLength(1)
-    expect(parsed.getElementById("webwriter-document-viewer")!.textContent).toContain("mountDocumentReader(")
+    expect(parsed.getElementById("webwriter-document-viewer")!.textContent).toContain("documentReader.mount(")
     expect(parsed.getElementById("webwriter-document-viewer")!.textContent).not.toContain("untrusted()")
     parsed.body.className = "ww-canvas"
     editor.features.dependency.appendSerializedAssets(parsed)
@@ -65,7 +66,8 @@ describe("document reader export", () => {
     parsed.body.className = "ww-slides"
     editor.features.dependency.appendSerializedAssets(parsed)
     expect(parsed.querySelectorAll("script")).toHaveLength(1)
-    expect(parsed.querySelector("#webwriter-figure-layout")!.textContent).toContain("createFigureLayout(document)")
+    const figureRuntime = parsed.querySelector("#webwriter-figure-layout")!.textContent!
+    expect(figureRuntime.length).toBeLessThan(figureLayoutSource.length)
   })
 
   it("saves a direct edit with its matching slug before observer delivery", () => {
@@ -98,7 +100,7 @@ it("exports references with an offline formatter and preserves metadata through 
     expect(parsed.body.innerHTML).not.toContain("◆document-references")
     expect(parsed.body.innerHTML).toContain("After")
     // Execute the embedded module body without imports to verify offline formatting.
-    const bundle = script.slice(0, script.indexOf('/** Import-free'))
+    const bundle = script.slice(0, script.indexOf("var documentReader="))
     const format = new Function(bundle + '; return referenceFormatter.formatReferences')()
     expect(format([{href: "#source", data: {type: "book", title: "Offline"}, conflict: false}], "bibliography", "apa")).toContain("Offline")
   }

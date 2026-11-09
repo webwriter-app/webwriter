@@ -1,13 +1,5 @@
-import {createImageMapPopoverController, imageMapHotspotBounds, imageMapHotspotShape, imageMapPopoverAppearance, imageMapScale, mountImageMapReader} from "./media"
 import appIconSource from "../../../static/assets/app-icon-transparent.svg?raw"
-import canvasViewerSource from "./canvas-viewer.js?raw"
 import canvasSnapdomSource from "virtual:canvas-snapdom-source"
-import documentViewerSource from "./document-viewer.js?raw"
-import anchorPositioningSource from "./anchor-positioning.js?raw"
-import presentationStateSource from "./presentation-state.js?raw"
-import figureLayoutSource from "./figure-layout.js?raw"
-import layoutPrintSource from "./document-layout-print.js?raw"
-import attributionSource from "./attribution.js?raw"
 import {attributionAttributes} from "./attribution.js"
 import listMarkerStyleSource from "./document-list-markers.css?raw"
 import referenceFormatterSource from "virtual:reference-formatter-source"
@@ -17,6 +9,7 @@ import {getDocumentRoot} from "./document-template"
 import {creativeCommonsLicenses} from "./document-head"
 import {siteTranslations} from "./site-translations"
 import distributionReaderSources from "virtual:distribution-reader-sources"
+import readerRuntimeSources from "virtual:reader-runtime-sources"
 import {readDistributionConfigs, visitSerializableElements} from "./distribution-dom"
 import {packageWidgetSchemaDefinitions, type WebWriterPackage} from "./packages"
 import type {IImportMap} from "@jspm/import-map"
@@ -28,9 +21,6 @@ import {scopedCustomElementRegistryScript} from "./scoped-custom-element-registr
 export {scopedCustomElementRegistryScript} from "./scoped-custom-element-registry-script"
 
 const legacyScopedRegistryPolyfillURL = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
-const presentationRuntimeSource = presentationStateSource.replace(/^export /gm, "")
-const inlinePresentationRuntime = (source: string) => source.replace(/^import \{[^}]+\} from "\.\/presentation-state\.js"\n/m, "")
-const anchorRuntimeSource = `${presentationRuntimeSource}\n${inlinePresentationRuntime(anchorPositioningSource).replace(/^export /gm, "")}`
 
 const serializedReaderScriptIds = [
   "webwriter-figure-layout", "webwriter-attribution-reader", "webwriter-image-map-popovers",
@@ -101,14 +91,14 @@ export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWri
     const script = owner.createElement("script")
     script.id = "webwriter-figure-layout"
     script.type = "module"
-    script.textContent = `${figureLayoutSource}\ncreateFigureLayout(document)\n`.replace(/<\/script/gi, "<\\/script")
+    script.textContent = readerRuntimeSources.figure.replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
   if(body.querySelector(Object.values(attributionAttributes).map(name => `[${name}]`).join(","))) {
     const script = owner.createElement("script")
     script.id = "webwriter-attribution-reader"
     script.type = "module"
-    script.textContent = `${anchorRuntimeSource}\n${inlinePresentationRuntime(attributionSource)}\nmountAttributionReader(${JSON.stringify(creativeCommonsLicenses)}, createAnchorPositioner)\n`
+    script.textContent = `${readerRuntimeSources.attribution}attributionReader.mount(${JSON.stringify(creativeCommonsLicenses)});`
       .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
@@ -123,23 +113,7 @@ export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWri
     const script = owner.createElement("script")
     script.id = "webwriter-image-map-popovers"
     script.type = "module"
-    script.textContent = `${anchorRuntimeSource}
-(() => {
-  const imageMapScale = ${imageMapScale.toString()};
-  const imageMapHotspotBounds = ${imageMapHotspotBounds.toString()};
-  const imageMapHotspotShape = ${imageMapHotspotShape.toString()};
-  const imageMapPopoverAppearance = ${JSON.stringify(imageMapPopoverAppearance)};
-  const createImageMapPopoverController = ${createImageMapPopoverController.toString()};
-  const mountImageMapReader = ${mountImageMapReader.toString()};
-  const controller = createImageMapPopoverController(document, (area, image) => imageMapHotspotBounds(area, image, imageMapScale), imageMapPopoverAppearance, {
-    elementSelector: presentationElementSelector, has: hasPresentationState, set: setPresentationState, clear: clearPresentationState,
-  });
-  const reader = mountImageMapReader(document, controller, imageMapHotspotShape, createAnchorPositioner, imageMapScale);
-  const handle = controller.handleEvent;
-  document.addEventListener("click", handle);
-  document.addEventListener("pointerover", handle);
-  window.addEventListener("pagehide", () => { document.removeEventListener("click", handle); document.removeEventListener("pointerover", handle); reader.dispose(); }, {once:true});
-})();`.replace(/<\/script/gi, "<\\/script")
+    script.textContent = readerRuntimeSources.imageMap.replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
   documentElement.querySelectorAll(`script#${packageImportMapId}`).forEach(script => script.remove())
@@ -150,7 +124,7 @@ export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWri
     const script = owner.createElement("script")
     script.id = "webwriter-layout-print"
     script.type = "module"
-    script.textContent = `${layoutPrintSource}\ncreateLayoutPrint(document)\n`
+    script.textContent = readerRuntimeSources.print.replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
   if(getDocumentRoot(body) === body && layout === "document") {
@@ -160,7 +134,7 @@ export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWri
     const hasReferences = collectReferences(body).length > 0
     const locale = (documentElement.lang || "").toLowerCase().split(/[-_]/)[0]
     const translations = siteTranslations[locale] ?? {}
-    script.textContent = `${hasReferences ? referenceFormatterSource : ""}\n${anchorRuntimeSource}\n${documentViewerSource}\nmountDocumentReader(${JSON.stringify(creativeCommonsLicenses)}, ${JSON.stringify(`data:image/svg+xml,${encodeURIComponent(appIconSource)}`)}, ${hasReferences ? "referenceFormatter.formatReferences" : "null"}, ${JSON.stringify(translations)}, createAnchorPositioner)\n`
+    script.textContent = `${hasReferences ? referenceFormatterSource : ""}${readerRuntimeSources.document}documentReader.mount(${JSON.stringify(creativeCommonsLicenses)},${JSON.stringify(`data:image/svg+xml,${encodeURIComponent(appIconSource)}`)},${hasReferences ? "referenceFormatter.formatReferences" : "null"},${JSON.stringify(translations)});`
       .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
@@ -171,7 +145,7 @@ export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWri
     script.type = "module"
     // Evaluate the initial camera before the browser paints authored content.
     script.setAttribute("blocking", "render")
-    script.textContent = `${layoutPrintSource}\n${permissions.size ? "" : `${presentationRuntimeSource}\n${inlinePresentationRuntime(canvasViewerSource)}\n${canvasSnapdomSource}\nmountCanvasReader(loadCanvasSnapdom)\n`}createLayoutPrint(document)\n`
+    script.textContent = `${permissions.size ? "" : `${readerRuntimeSources.canvas}${canvasSnapdomSource}canvasReader.mount(loadCanvasSnapdom);`}${readerRuntimeSources.print}`
       .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
@@ -189,9 +163,12 @@ export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWri
     const script = owner.createElement("script")
     script.id = "webwriter-distribution-reader"
     script.type = "module"
-    const actions = permissions.has("insert") ? ["insert"] as const : []
     const widgets = packageWidgetSchemaDefinitions(packages).filter(widget => tags.has(widget.tagName))
-    script.textContent = `${distributionReaderSources.core}\n${canvas ? canvasSnapdomSource : ""}const distributionContext = distributionReader.mountDistributionReader(document, {widgets: ${JSON.stringify(widgets)}${canvas ? ", loadCanvasSnapdom" : ""}});\nif(distributionContext) {\n${actions.map(action => `${distributionReaderSources[action as keyof typeof distributionReaderSources]}\ndistributionAction.install(distributionContext);`).join("\n")}\n}`.replace(/<\/script/gi, "<\\/script")
+    const insert = permissions.has("insert")
+      ? `if(distributionContext){${distributionReaderSources.insert}distributionAction.install(distributionContext);}`
+      : ""
+    script.textContent = `${distributionReaderSources.core}${canvas ? canvasSnapdomSource : ""}const distributionContext=distributionReader.mountDistributionReader(document,{widgets:${JSON.stringify(widgets)}${canvas ? ",loadCanvasSnapdom" : ""}});${insert}`
+      .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
   const known = new Set<string>()

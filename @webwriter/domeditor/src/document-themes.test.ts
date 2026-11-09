@@ -1,12 +1,18 @@
+// @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
+import originalThemes from "virtual:document-theme-sources-original"
+import {documentTypographyCSS} from "./document-theme-options"
 
 import {
-  defaultDocumentTheme,
-  documentThemes,
-  documentTheme,
+  documentThemes as bundledThemes,
   editingDocumentThemeSource,
   documentWidgetStyleSource,
+  upgradeBundledDocumentThemes,
 } from "./document-themes"
+
+const documentThemes = bundledThemes.map(theme => ({...theme, source: originalThemes[theme.value].source}))
+const defaultDocumentTheme = documentThemes[0]
+const documentTheme = (name: string) => documentThemes.find(theme => theme.value === name)
 
 const ruleHeaders = (source: string) => Array.from(
   source.replaceAll(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{/g),
@@ -16,6 +22,30 @@ const ruleHeaders = (source: string) => Array.from(
 const layoutExamples = import.meta.glob("../examples/layouts/**/*.html", {query: "?raw", import: "default", eager: true}) as Record<string, string>
 
 describe("document themes", () => {
+  it("ships compact bundled CSS and upgrades only matching stock stylesheets", () => {
+    for(const theme of bundledThemes) {
+      const original = originalThemes[theme.value].source
+      const customized = original + "\np {color: red}"
+      const root = document.implementation.createHTMLDocument()
+      const stock = root.createElement("style")
+      const authored = root.createElement("style")
+      stock.setAttribute("data-ww-theme", theme.value)
+      authored.setAttribute("data-ww-theme", theme.value)
+      stock.textContent = original.replaceAll("\n", "\r\n")
+      authored.textContent = customized
+      root.head.append(stock, authored)
+
+      upgradeBundledDocumentThemes(root)
+
+      expect(stock.textContent).toBe(theme.source)
+      expect(authored.textContent).toBe(customized)
+      expect(theme.source.length).toBeLessThan(original.length * 0.9)
+      expect(theme.source).toContain(documentTypographyCSS)
+      expect(editingDocumentThemeSource(theme)).toContain(":state(ww-hotspot-popup)")
+    }
+    expect(bundledThemes[0].source).toContain("Pico CSS ✨ v2.1.1")
+  })
+
   it("bounds installed widget hosts in document layouts while retaining sizing overrides", () => {
     const source = documentWidgetStyleSource([
       {tagName: "demo-card"}, {tagName: "demo-card"},

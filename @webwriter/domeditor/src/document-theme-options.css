@@ -1,0 +1,6 @@
+@layer webwriter-theme-options {
+  :where(body, h1, h2, h3, h4, h5, h6) { font-family: var(--ww-font-family, revert-layer); }
+  :where(body) { font-size: var(--ww-font-size, revert-layer); }
+  :where(body, p, h1, h2, h3, h4, h5, h6, address, blockquote, dl, ol, ul, table) { color: var(--ww-text-color, revert-layer); }
+  :where(a:any-link) { color: var(--ww-link-color, revert-layer); }
+}
