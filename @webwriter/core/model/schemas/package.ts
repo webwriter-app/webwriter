@@ -119,6 +119,11 @@ export const Json: z.ZodType<Json> = z.lazy(() =>
   z.union([literalSchema, Json.array(), z.record(Json)])
 );
 
+type PackageOverrides = {[specifier: string]: string | PackageOverrides}
+const PackageOverrides: z.ZodType<PackageOverrides> = z.lazy(() =>
+  z.record(z.string().or(PackageOverrides))
+)
+
 type Funding = z.infer<typeof Funding>
 const Funding = z.object({
   type: z.string(),
@@ -348,7 +353,7 @@ export class Package {
     optionalDependencies: z.record(NpmName, z.string()).optional(),
     engines: z.record(z.string(), SemVerRange.schema).optional(),
     peerDependenciesMeta: z.record(NpmName, z.object({optional: z.boolean()})).optional(),
-    overrides: z.record(NpmName, z.string()).optional(),
+    overrides: PackageOverrides.optional(),
     os: NodePlatform.array().optional(),
     arch: NodeArch.array().optional(),
     private: z.boolean().optional(),
