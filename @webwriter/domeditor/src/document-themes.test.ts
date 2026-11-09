@@ -127,6 +127,11 @@ describe("document themes", () => {
       expect(source).toMatch(/@layer webwriter-theme\s*\{[\s\S]*tfoot > tr > :is\(th, td\)\s*\{\s*background-color: #f2f2f2;/)
     }
   })
+  it("lets a single captioned graphic determine its figure's minimum width in every bundled theme", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toContain(":has(> svg:first-child + figcaption:last-child, > figcaption:first-child + svg:last-child)) {\n      min-inline-size: min-content;")
+    }
+  })
   it("shares table picture sizing with editing and standalone documents", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain(":where(td, th) picture {\n    display: inline-block;\n    width: 100%;\n    height: auto;\n  }")

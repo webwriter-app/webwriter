@@ -12523,6 +12523,54 @@ await check("rotated figure captions flow upright and their transformation frame
   }
 })
 
+await check("captioned graphics retain their resized width and selection outline", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1280px;height:650px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><html style="scrollbar-gutter:auto"><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script></body></html>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && !view.editorError && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `graphic caption fixture failed: ${view.editorError}`)
+    const editor = view.editor!, doc = frame.contentDocument!
+    const graphic = editor.features.graphic.createGraphic()
+    doc.body.append(graphic)
+    const selection = editor.features.selection
+    const manipulation = editor.features.manipulation
+    for(const width of ["", "1180px"]) {
+      Object.assign(graphic.style, {width, maxWidth: width, height: "260px"})
+      selection.captureElement(graphic)
+      await layoutFrame()
+      const original = graphic.getBoundingClientRect()
+      assert(manipulation.cycleCaption(), "adding a caption failed")
+      const figure = graphic.parentElement!
+      const caption = figure.querySelector("figcaption")!
+      assert(figure.localName === "figure" && caption, "graphic was not captioned")
+      caption.textContent = "Graphic caption"
+      for(const above of [false, true]) {
+        if(above) figure.prepend(caption)
+        await layoutFrame()
+        const box = graphic.getBoundingClientRect(), wrapper = figure.getBoundingClientRect()
+        const outline = selection.selectionCaret!.getBoundingClientRect()
+        assert(Math.abs(box.left - original.left) < 1 && Math.abs(box.width - original.width) < 1,
+          `caption shifted or resized the ${width || "responsive"} graphic`)
+        assert(Math.abs(wrapper.left - box.left) < 1 && Math.abs(wrapper.right - box.right) < 1
+          && Math.abs(outline.left - box.left) < 1 && Math.abs(outline.right - box.right) < 1,
+          `figure and capture outline do not span the ${width || "responsive"} graphic`)
+        assert(Math.abs(outline.top - wrapper.top) < 1 && Math.abs(outline.bottom - wrapper.bottom) < 1,
+          "capture outline does not include the caption")
+      }
+      assert(selection.captureSelectedElement === graphic, "captioning released the captured graphic")
+      caption.replaceChildren()
+      assert(manipulation.setCaption("none"), "removing the caption failed")
+      const unwrapped = graphic.getBoundingClientRect()
+      assert(graphic.parentElement === doc.body && Math.abs(unwrapped.left - original.left) < 1
+        && Math.abs(unwrapped.width - original.width) < 1, "unwrapping changed the graphic placement")
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("full width resizing clears the float column", async () => {
   for(const side of ["left", "right"] as const) for(const wrapper of [false, true]) {
     const frame = document.createElement("iframe")

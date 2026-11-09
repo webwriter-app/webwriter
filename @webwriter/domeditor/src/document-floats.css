@@ -148,6 +148,16 @@
       max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));
     }
 
+    /* A resized graphic can be wider than the prose column. Keep its figure
+     * wide enough for it without expanding responsive graphics by default. */
+    :where(:is(&, & > main, & > article, & > section) > figure:not(
+      [is], .ww-full-width, .ww-float-left, .ww-float-right,
+      [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]
+    ):has(> svg:first-child + figcaption:last-child, > figcaption:first-child + svg:last-child)) {
+      min-inline-size: min-content;
+      > figcaption { overflow-wrap: anywhere; }
+    }
+
     :is(&, & > main, & > article, & > section) > :not(hr) {
       box-sizing: border-box;
     }

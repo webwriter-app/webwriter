@@ -1,6 +1,6 @@
 // SHA-256 fingerprints (first 16 bytes) of stock theme CSS from 161b22fa
 // through a106bc0c (before Full width), the bundled layout examples,
-// and snapshots taken before the widget minimum-width, list marker and wide caption updates.
+// and snapshots taken before the widget sizing, list marker and caption layout updates.
 // Hash the complete stylesheet text after normalizing HTML line endings so
 // an authored edit anywhere in a theme prevents replacement.
 export const legacyDocumentThemeFingerprints = {
@@ -39,6 +39,7 @@ export const legacyDocumentThemeFingerprints = {
     "d3558c5d0607d3402a7b32fcc8c00f37",
     "58902096ea91f4b6a95467cae923e1d5",
     "3e34e2d0d484fa7ec10eef436e340416",
+    "ec25109a34cc92a360daefa810ba130e",
   ],
   water: [
     "f4e39cd22fe2cc8e378b411a02fb8ffe",
@@ -63,6 +64,7 @@ export const legacyDocumentThemeFingerprints = {
     "c1e63c0e89676c1926acc1b0cc0fb69c",
     "b4275fdabf6451fbcc3c449bee92140a",
     "c0baa8b8419e6a42069ce7f0b525ad21",
+    "a6539459fae6c99cca69057dfad8803a",
   ],
   simple: [
     "3dbff23dc8aadc7b3d9b926c56c6ff7f",
@@ -87,6 +89,7 @@ export const legacyDocumentThemeFingerprints = {
     "b76713cb8ff488e09884ddb66a653e7a",
     "fcb33131a12d4d6509e45d1cd9318e2a",
     "2dba1bdd57bb9e612199cee68e9deb0f",
+    "8a68589a073ae00427ee4cb3b89cdf55",
   ],
   sakura: [
     "74c9e991e0d12c8d5954b65be75553ed",
@@ -111,6 +114,7 @@ export const legacyDocumentThemeFingerprints = {
     "38f5b6433c89de7189e14545773aaa9f",
     "1492863a4189373eda0cc93345724333",
     "449c9f6d07768d03a6d35b5d9f336d05",
+    "8cf0439f5daa205c897f03fda96355eb",
   ],
   pico: [
     "68eb6012d22ea91c2b58867ccbe7b47d",
@@ -135,6 +139,7 @@ export const legacyDocumentThemeFingerprints = {
     "17f38e4640c6d9c3dc710ffd74611987",
     "88c817bf864f7470cdf2f98d54ce2482",
     "5ecd79c6947d00d65c8dffef094abb5f",
+    "926336f8466b9bf00dd4a3e64a06b287",
   ],
   holiday: [
     "e8e4ac3fee35e71c78378204577f740e",
@@ -159,5 +164,6 @@ export const legacyDocumentThemeFingerprints = {
     "d369969f952f2a0de08f03802bd446c9",
     "0a0354221bcf54cee81bad89eef5c02f",
     "f7d6adb13063a99623382e14fd6e2eb6",
+    "9c3c6807570b0dd111c1b8eb9496d3bd",
   ],
 }
