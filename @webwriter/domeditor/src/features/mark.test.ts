@@ -52,8 +52,9 @@ describe("MarkFeature DOM state", () => {
     selectText(paragraph.querySelector("em")!.firstChild as Text)
     expect(feature.togglePopup()).toBe(true)
     const button = paragraph.querySelector(".ww-popup button")!
-    expect(feature.getState().popupActive).toBe(true)
+    expect(feature.getState().popupActive).toBeUndefined()
     $.move(button.firstChild!, 3)
+    expect(feature.getState().popupActive).toBe(true)
     expect(feature.togglePopup()).toBe(true)
     expect(paragraph.textContent).toBe("Before selected after")
     expect(paragraph.querySelector(".ww-popup")).toBeNull()
@@ -75,6 +76,7 @@ describe("MarkFeature DOM state", () => {
 
     const content = document.querySelector(".ww-popup-content p")!
     selectText(content.firstChild as Text)
+    expect(feature.getState().popupActive).toBeUndefined()
     expect(feature.addMark("a")).toBe(true)
     expect(content.querySelector("a")?.textContent).toBe("Content")
   })
@@ -99,11 +101,51 @@ describe("MarkFeature DOM state", () => {
     const content = document.querySelector("[popover]")!
     const text = (content.querySelector("p")?.firstChild ?? content.firstChild) as Text
     selectText(text)
+    expect(feature.getState().popupActive).toBeUndefined()
     expect(feature.insertPopup()).toBe(false)
+    expect(feature.selectLinkKind("popup", true)).toBe(false)
     $.move(text, 3)
     expect(feature.insertPopup()).toBe(false)
+    expect(feature.selectLinkKind("popup")).toBe(false)
     expect(document.querySelectorAll(".ww-popup")).toHaveLength(1)
     expect(document.querySelector(".ww-popup button")?.textContent).toBe("Toggle")
+  })
+
+  it.each([
+    ["link", "https://example.test", {}],
+    ["cross-reference", "#target", {}],
+    ["citation", "https://example.test/source", {"data-reference": JSON.stringify({type: "book", title: "Source"})}],
+  ] as const)("adds a %s inside Popup Content without changing its toggle", (kind, href, attributes) => {
+    const paragraph = setContent('<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><p>Content</p></div><h2 id="target">Target</h2>')
+    const button = paragraph.querySelector("button")!
+    const content = document.querySelector(".ww-popup-content p")!
+    $.move(button.firstChild!, 2)
+    expect(feature.getState().popupActive).toBe(true)
+
+    selectText(content.firstChild as Text)
+    expect(feature.getState().popupActive).toBeUndefined()
+    expect(feature.selectLinkKind(kind)).toBe(true)
+    const link = feature.getLinkState()!
+    expect(link.kind).toBe(kind)
+    expect(feature.editLink({identity: link.identity, kind, href, attributes})).toBe(true)
+    expect(content.querySelector("a")?.getAttribute("href")).toBe(href)
+    expect(feature.getState().popupActive).toBeUndefined()
+    expect(button.isConnected).toBe(true)
+    expect(button.getAttribute("popovertarget")).toBe("note")
+  })
+
+  it("attaches a file to text inside Popup Content", async () => {
+    const paragraph = setContent('<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><p>Notes</p></div>')
+    const button = paragraph.querySelector("button")!
+    const content = document.querySelector(".ww-popup-content p")!
+    selectText(content.firstChild as Text)
+
+    expect(feature.selectLinkKind("attachment")).toBe(true)
+    const attachment = feature.getAttachmentState()!
+    expect(await feature.attach(attachment.identity, {file: new File(["notes"], "notes.txt")})).toBe(true)
+    expect(content.querySelector('a[download="notes.txt"]')?.textContent).toBe("Notes")
+    expect(button.getAttribute("popovertarget")).toBe("note")
+    expect(feature.getState().popupActive).toBeUndefined()
   })
 
   it("can add, remove, and add a popup again without reselecting its text", () => {

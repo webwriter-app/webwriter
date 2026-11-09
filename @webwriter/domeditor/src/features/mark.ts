@@ -762,7 +762,7 @@ export class MarkFeature extends EditorFeature {
   /** Reads the current selection and its ancestors afresh on every call. */
   getState(): MarkState {
     const state = this.getUnrestrictedState()
-    if(this.storedPopup || this.selectedPopupToggle()) state.popupActive = true
+    if(this.storedPopup || this.linkPopupToggle()) state.popupActive = true
     const allowed = this.svgContext() || this.editor.features.math.activeMath
       ? undefined
       : this.allowedMarksAt(document.getSelection()?.anchorNode ?? null)
