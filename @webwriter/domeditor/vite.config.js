@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'url'
 import {existsSync, realpathSync} from 'node:fs'
-import {resolve} from 'node:path'
+import {basename, resolve} from 'node:path'
+import {build} from 'esbuild'
 import { defineConfig, loadEnv, normalizePath } from 'vite'
 import {componentLicensesPlugin} from './scripts/component-licenses.mjs'
 import {referenceFormatterPlugin} from './scripts/reference-formatter-plugin.mjs'
@@ -12,14 +13,44 @@ import {appVersionPlugin} from './scripts/app-version.mjs'
 import {canvasSnapshotPlugin} from './scripts/canvas-snapshot-plugin.mjs'
 
 const localPackageWorkerSource = fileURLToPath(new URL('./src/local-package-service-worker.ts', import.meta.url))
+const localPackageWorkerFile = 'local-package-service-worker.js'
 
 function localPackageServiceWorkerPlugin() {
+  let config
   return {
     name: 'local-package-service-worker-root',
+    configResolved(value) { config = value },
+    async buildStart() {
+      if(config.command !== 'build') return
+      // Keep the worker independent of the app's shared chunks so the proxy
+      // can allow service worker installation at one stable URL.
+      const result = await build({
+        absWorkingDir: config.root,
+        entryPoints: [localPackageWorkerSource],
+        outfile: resolve(config.root, config.build.outDir, localPackageWorkerFile),
+        bundle: true,
+        platform: 'browser',
+        format: 'esm',
+        target: config.build.target || undefined,
+        minify: Boolean(config.build.minify),
+        sourcemap: config.build.sourcemap === 'hidden' ? 'external' : config.build.sourcemap,
+        define: {'import.meta.env.BASE_URL': JSON.stringify(config.env.BASE_URL)},
+        metafile: true,
+        write: false,
+      })
+      for(const input of Object.keys(result.metafile.inputs)) this.addWatchFile(resolve(config.root, input))
+      for(const file of result.outputFiles) {
+        const fileName = basename(file.path)
+        if(fileName !== localPackageWorkerFile && fileName !== `${localPackageWorkerFile}.map`) {
+          this.error(`Unexpected local package service worker output: ${fileName}`)
+        }
+        this.emitFile({type: 'asset', fileName, source: file.contents})
+      }
+    },
     configureServer(server) {
       server.middlewares.use(async (request, response, next) => {
         const basePath = new URL(server.config.base, 'http://localhost').pathname.replace(/\/?$/, '/')
-        const workerPath = `${basePath}local-package-service-worker.js`
+        const workerPath = `${basePath}${localPackageWorkerFile}`
         if (request.url?.split('?')[0] !== workerPath) {
           next()
           return
@@ -129,12 +160,9 @@ export default defineConfig(({mode}) => {
             "editor-entry": fileURLToPath(new URL("./src/editor-entry.ts", import.meta.url)),
             "preview-entry": fileURLToPath(new URL("./src/preview-entry.ts", import.meta.url)),
             "live-learner-entry": fileURLToPath(new URL("./src/live-learner-entry.ts", import.meta.url)),
-            "local-package-service-worker": localPackageWorkerSource,
           },
           output: {
-            entryFileNames: chunk => chunk.name === "local-package-service-worker"
-              ? "local-package-service-worker.js"
-              : "assets/[name]-[hash].js",
+            entryFileNames: "assets/[name]-[hash].js",
           },
         },
     }
