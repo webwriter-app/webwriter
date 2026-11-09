@@ -25,14 +25,19 @@ export function isInsideEditorOnlyNode(element: Element | null | undefined): boo
 /** Frame resources already have a browser CSP nonce. Use it to recover their
  * provenance after HTML parsing, without an extra class or attribute. */
 export function registerFrameArtifacts(doc: Document, expectedNonce?: string) {
-  const policy = doc.head?.firstElementChild
-  if(policy?.localName !== "meta" || policy.getAttribute("http-equiv")?.toLowerCase() !== "content-security-policy") return
-  const nonce = policy.getAttribute("content")?.match(/^default-src 'none'; script-src 'nonce-([^']+)' 'strict-dynamic'/)?.[1]
-  if(!nonce || expectedNonce && nonce !== expectedNonce) return
-  markEditorOnlyNode(policy)
-  for(const element of doc.head.children) {
-    if(element.matches('meta[name="webwriter-editor-bridge"], meta[name="webwriter-preview-bridge"]')
-      || element.matches("script, link") && ((element as HTMLElement).nonce || element.getAttribute("nonce")) === nonce) markEditorOnlyNode(element)
+  const head = doc.head
+  if(!head) return
+  // The widget loader can prepend an import map after the policy takes effect.
+  for(const policy of head.children) {
+    if(policy.localName !== "meta" || policy.getAttribute("http-equiv")?.toLowerCase() !== "content-security-policy") continue
+    const nonce = policy.getAttribute("content")?.match(/^default-src 'none'; script-src 'nonce-([^']+)' 'strict-dynamic'/)?.[1]
+    if(!nonce || expectedNonce && nonce !== expectedNonce) continue
+    markEditorOnlyNode(policy)
+    for(const element of head.children) {
+      if(element.matches('meta[name="webwriter-editor-bridge"], meta[name="webwriter-preview-bridge"]')
+        || element.matches("script, link") && ((element as HTMLElement).nonce || element.getAttribute("nonce")) === nonce) markEditorOnlyNode(element)
+    }
+    return
   }
 }
 

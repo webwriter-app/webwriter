@@ -2240,6 +2240,49 @@ await check("saved document module references do not poison trusted widget loadi
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("preview renders widgets after the editor installs an import map", async () => {
+  const {editorFrameHTML} = await import("../src/frame-document")
+  const moduleURL = (source: string) => `data:text/javascript,${encodeURIComponent(source)}`
+  const tagName = "preview-test-widget"
+  const script = moduleURL(`import {label} from "preview-widget-label";
+    customElements.define("${tagName}", class extends HTMLElement {
+      connectedCallback() {
+        this.attachShadow({mode: "open"}).innerHTML = '<style>button {box-sizing:border-box;width:240px;height:80px;background:aliceblue}</style><button>' + label + '</button>';
+      }
+    });`)
+  const pkg = {name: "preview-fixture", version: "1.0.0", label: "Fixture", authors: [], keywords: [], links: {},
+    scripts: [script], styles: [], members: [{id: "widget", packageName: "preview-fixture", packageVersion: "1.0.0",
+      exportName: "./widget", kind: "widget" as const, label: "Widget", insertable: true, tagName, scriptUrl: script}]}
+  const importMap = {imports: {"preview-widget-label": moduleURL('export const label = "Preview widget ready"')}}
+  const bridgeNonce = crypto.randomUUID(), hostOrigin = location.origin
+  const editing = document.createElement("iframe"), preview = document.createElement("iframe")
+  const load = (frame: HTMLIFrameElement, html: string) => new Promise<void>(resolve => {
+    frame.addEventListener("load", () => resolve(), {once: true})
+    frame.srcdoc = html
+    fixture.append(frame)
+  })
+  try {
+    await load(editing, editorFrameHTML(`<${tagName}></${tagName}>`, {
+      bridgeNonce, hostOrigin, revision: 0, language: "en", packages: [pkg],
+      entryURL: new URL("./native-browser-frame.ts?proofreading-disabled", import.meta.url).href, executeScripts: true,
+    }))
+    const editor = editing.contentWindow!.editor!
+    await editor.getActionHandler("load-widgets")({type: "load-widgets", widgets: [{name: pkg.name, version: pkg.version}], packages: [pkg], importMap})
+    const doc = editing.contentDocument!
+    assert(doc.head.firstElementChild?.matches('script[type="importmap"]'), "the editor did not prepend its import map")
+    const snapshot = new DOMParser().parseFromString(doc.documentElement.outerHTML, "text/html")
+    preview.style.cssText = "width:640px;height:240px"
+    await load(preview, previewFrameHTML(snapshot, {bridgeNonce, hostOrigin, frameOrigin: hostOrigin, packages: [pkg], importMap,
+      entryURL: new URL("../src/preview-entry.ts", import.meta.url).href, executeScripts: true}))
+    const button = preview.contentDocument!.querySelector(tagName)?.shadowRoot?.querySelector("button")
+    assert(button?.textContent === "Preview widget ready", "preview did not load the widget and its mapped dependency")
+    const bounds = button!.getBoundingClientRect()
+    assert(bounds.width === 240 && bounds.height === 80 && preview.contentWindow!.getComputedStyle(button!).backgroundColor === "rgb(240, 248, 255)",
+      "the preview widget did not render at its expected size")
+  }
+  finally { editing.contentWindow?.editor?.destroy(); editing.remove(); preview.remove() }
+})
+
 await check("collaborated scripts remain inert with namespace prefixes, clones and later edits", async () => {
   const root = document.createElement("main"), result = document.createElement("output")
   result.id = "native-script-execution"

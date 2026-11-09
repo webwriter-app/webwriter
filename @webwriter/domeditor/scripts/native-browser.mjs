@@ -149,6 +149,7 @@ const expectedChecks = [
   "version previews preserve editing mode and reject native and direct mutations",
   "collaborated scripts remain inert with namespace prefixes, clones and later edits",
   "saved document module references do not poison trusted widget loading",
+  "preview renders widgets after the editor installs an import map",
   "attribution is limited to top-level elements and follows nesting",
   "attribution inputs keep visible carets during element and capture selection",
   "toolbox attribution opens for multiple elements and deletes metadata together",
