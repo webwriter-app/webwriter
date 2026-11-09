@@ -601,6 +601,7 @@ export abstract class EditingControls extends LitElement {
           class="font-family"
           name="font-family"
           label="Font family"
+          shortcut=${this.commandShortcut("font-picker:font-family")}
           default-value-label="Font"
           .options=${fontFamilyOptions}
           .value=${this.markStyles["font-family"] ?? ""}
@@ -610,6 +611,7 @@ export abstract class EditingControls extends LitElement {
           class="font-size"
           name="font-size"
           label="Font size"
+          shortcut=${this.commandShortcut("font-picker:font-size")}
           default-value-label="Size"
           .options=${fontSizeOptions}
           .value=${this.markStyles["font-size"] ?? ""}
@@ -620,6 +622,7 @@ export abstract class EditingControls extends LitElement {
           label="Increase font size"
           action="increaseFontSize"
           icon="IncreaseFontSize"
+          shortcut=${this.commandShortcut("increaseFontSize")}
           ?disabled=${!this.canMark}
         ></ribbon-button>
         <ribbon-button
@@ -627,6 +630,7 @@ export abstract class EditingControls extends LitElement {
           label="Decrease font size"
           action="decreaseFontSize"
           icon="DecreaseFontSize"
+          shortcut=${this.commandShortcut("decreaseFontSize")}
           ?disabled=${!this.canMark}
         ></ribbon-button>
         <ribbon-combobox
@@ -657,6 +661,7 @@ export abstract class EditingControls extends LitElement {
           label="Remove formatting"
           action="removeMarks"
           icon="RemoveMarks"
+          shortcut=${this.commandShortcut("removeMarks")}
           ?disabled=${!this.canMark && !this.canRemoveMarks}
         ></ribbon-button>
         ${this.renderMoreMarksButton()}
@@ -2862,6 +2867,11 @@ export abstract class EditingControls extends LitElement {
     const shortcut = this.settings.shortcuts[command.id] ?? ""
     const layout = isDefaultHistoryShortcut(command.id, shortcut) ? undefined : effectiveShortcutLayout(this.settings.keyboardLayout, this.shortcutLayout)
     return formatShortcut(shortcut, undefined, layout)
+  }
+
+  protected shortcutTitle(label: string, action = label) {
+    const shortcut = this.commandShortcut(action)
+    return shortcut ? `${label} (${shortcut})` : label
   }
 
   protected renderElementStyleDrawer(category: ElementStyleCategory) {

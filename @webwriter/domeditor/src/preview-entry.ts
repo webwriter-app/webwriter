@@ -4,6 +4,8 @@ import {openFrameLinksInNewTabs} from "./frame-links"
 import {registerFrameArtifacts, widgetLookupForTags} from "./editor-artifacts"
 import {observePrivateDistributionRegions} from "./distribution-presentation"
 import {hydrateDistributionInstructions} from "./distribution-dom"
+import {shortcutMatchesEvent} from "./app-settings"
+import {isAppendixInteraction, isTextFieldInteraction, isWidgetShadowInteraction} from "./utility"
 
 openFrameLinksInNewTabs(window)
 
@@ -22,6 +24,14 @@ if(nonce && hostOrigin && window.parent !== window) {
   }
   window.addEventListener("pagehide", event => { if(!event.persisted) clearPrivateMarkers() })
   const post = (message: object) => window.parent.postMessage({...message, bridgeNonce: nonce}, hostOrigin)
+  let feedbackShortcut = ""
+  document.addEventListener("keydown", event => {
+    if(event.defaultPrevented || event.isComposing || !shortcutMatchesEvent(feedbackShortcut, event)
+      || isWidgetShadowInteraction(event) || isAppendixInteraction(event) || isTextFieldInteraction(event, document.body)) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    if(!event.repeat) post({type: "preview-frame-open-feedback"})
+  }, true)
   window.addEventListener("webwriter-document-save", event => {
     event.preventDefault()
     post({type: "preview-frame-save"})
@@ -49,6 +59,9 @@ if(nonce && hostOrigin && window.parent !== window) {
   document.body?.removeAttribute("contenteditable")
   window.addEventListener("message", event => {
     if(event.source !== window.parent || event.origin !== hostOrigin || event.data?.bridgeNonce !== nonce) return
+    if(event.data.type === "preview-frame-configure" || event.data.type === "preview-frame-feedback-shortcut") {
+      feedbackShortcut = typeof event.data.feedbackShortcut === "string" ? event.data.feedbackShortcut.replace(/^Physical:/, "") : ""
+    }
     if(event.data.type === "preview-frame-configure") {
       preview.disconnect()
       if(event.data.role === "learner") {

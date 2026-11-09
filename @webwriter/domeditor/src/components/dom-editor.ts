@@ -260,6 +260,7 @@ import {
   persistAppSettings,
   SNIPPET_LABEL_MAX_LENGTH,
   shortcutFromEvent,
+  toolboxTools,
   type AppSettings,
 } from "../app-settings"
 import {getDocumentRoot} from "../document-template"
@@ -2086,7 +2087,8 @@ export class DomEditor extends LitElement {
   }
 
   private configurePreviewFrame() {
-    this.postToPreview({type: "preview-frame-configure", role: this.liveSessionActive ? this.liveSessionRole : ""})
+    this.postToPreview({type: "preview-frame-configure", role: this.liveSessionActive ? this.liveSessionRole : "",
+      feedbackShortcut: this.settings.shortcuts["toolbox.feedback"]})
   }
 
   private isPreviewMessage(event: MessageEvent) {
@@ -2097,6 +2099,10 @@ export class DomEditor extends LitElement {
 
   private handlePreviewMessage(event: MessageEvent) {
     if(!this.isPreviewMessage(event)) return false
+    if(event.data?.type === "preview-frame-open-feedback") {
+      if(this.previewActive) this.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {detail: {label: "toolbox:Feedback"}}))
+      return true
+    }
     if(event.data?.type === "preview-frame-save") {
       if(!this.replayActive) void this.downloadDocument()
       return true
@@ -3454,6 +3460,7 @@ export class DomEditor extends LitElement {
       }
     }
     if(this.editorOpaque) this.postFrameControl("shortcuts", {shortcuts: {...settings.shortcuts}})
+    if(this.previewActive) this.postToPreview({type: "preview-frame-feedback-shortcut", feedbackShortcut: settings.shortcuts["toolbox.feedback"]})
     if(settings.updateDocumentLanguage && (
       settings.language !== previous.language || !previous.updateDocumentLanguage
     )) {
@@ -3494,12 +3501,13 @@ export class DomEditor extends LitElement {
   private readonly handleConfiguredShortcut = (event: KeyboardEvent) => {
     this.dismissFloatInfo()
     if(event.defaultPrevented || event.isComposing) return
-    if(event.currentTarget !== this.editorDocument && (this.handleHostMathTab(event) || this.handleHostShapeKey(event))) return
-    if(event.currentTarget === this.editorDocument && this.graphicSelection?.capture && !this.svgText
-      && event.altKey && !event.ctrlKey && !event.metaKey) return
     const shortcut = shortcutFromEvent(event)
+    const command = shortcut ? commandForShortcutEvent(this.settings.shortcuts, event) : undefined
+    const opensToolboxOrAI = command?.id === "editor.focusAI" || command?.id.startsWith("toolbox.")
+    if(event.currentTarget !== this.editorDocument && (this.handleHostMathTab(event) || !opensToolboxOrAI && this.handleHostShapeKey(event))) return
+    if(!opensToolboxOrAI && event.currentTarget === this.editorDocument && this.graphicSelection?.capture && !this.svgText
+      && event.altKey && !event.ctrlKey && !event.metaKey) return
     if(!shortcut) return
-    const command = commandForShortcutEvent(this.settings.shortcuts, event)
     if(!command && !builtinShortcuts().has(shortcut)) return
     // Printing belongs to the document regardless of which UI control has focus.
     if(command?.id !== "document.print") {
@@ -5049,6 +5057,21 @@ export class DomEditor extends LitElement {
 
   private handleRibbonButtonClick = (event: Event) => {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
+    if(label === "focus-ai-bar" || label === "font-picker:font-family" || label === "font-picker:font-size") {
+      const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+      if(this.isEditorFocused()) this.saveEditorSelection()
+      if(label === "focus-ai-bar") void ribbon?.focusAIBar()
+      else void ribbon?.openFontPicker(label === "font-picker:font-family" ? "font-family" : "font-size")
+      return
+    }
+    if(label?.startsWith("toolbox:")) {
+      const tool = toolboxTools.find(candidate => candidate.shortcutKey && `toolbox:${candidate.label}` === label)?.label
+      const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
+      if(!tool || !toolbox || this.liveSessionActive && !this.previewActive) return
+      toolbox.selectTool(tool, true)
+      if(toolbox.activeTool === tool && !this.previewActive) this.breadcrumbVisible = true
+      return
+    }
     if(label?.startsWith("widget-import:") || label?.startsWith("widget-export:")) {
       const [action, sourceId, format] = label.split(":")
       void this.runWidgetFileConversion(action === "widget-import" ? "import" : "export", sourceId, format)
@@ -9558,6 +9581,7 @@ export class DomEditor extends LitElement {
         @shape-paint-change=${this.handleShapePaintChange}
         .proofreadingState=${this.proofreadingState}
         .disableAI=${this.settings.disableAI}
+        .settings=${this.settings}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
         .distributionGeneral=${this.distributionGeneral}
         .distribution=${this.distributionSelection}

@@ -18,7 +18,7 @@ const insertionShortcuts = [
   ["Audio", "audio", "7"],
   ["Website", "website", "8"],
   ["Video", "video", "9"],
-  ["Formula", "formula", "0"],
+  ["Formula", "formula", "9"],
 ] as const
 
 afterEach(() => {
@@ -167,7 +167,7 @@ describe("insertion ribbon shortcuts", () => {
 
     for(const [label, id, key] of insertionShortcuts) {
       const command = commandById.get(`insert.${id}`)!
-      const expectedShortcut = id === "formula" ? "Alt+Shift+0" : `${applePlatform ? "Meta" : "Ctrl"}+${key}`
+      const expectedShortcut = id === "formula" ? `Alt+Shift+${key}` : `${applePlatform ? "Meta" : "Ctrl"}+${key}`
       expect(command.defaultShortcut?.(applePlatform)).toBe(expectedShortcut)
       expect(settings.shortcuts[command.id]).toBe(expectedShortcut)
       const button = ribbon.shadowRoot!.querySelector<RibbonButton>(`ribbon-button[label="${label}"]`)!

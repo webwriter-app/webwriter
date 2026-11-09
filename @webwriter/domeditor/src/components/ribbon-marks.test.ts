@@ -56,6 +56,21 @@ const primaryButtons = (drawer: RibbonDrawer) => Array.from(
 )
 
 describe("mark ribbon controls", () => {
+  it("lets Escape close the keyboard-opened font picker before the AI chat", async () => {
+    const {ribbon, drawer} = await mountRibbon()
+    ribbon.canMark = true
+    ribbon.aiChatOpen = true
+    await ribbon.updateComplete
+    await ribbon.openFontPicker("font-family")
+    const picker = drawer.querySelector('ribbon-combobox[name="font-family"]')!.shadowRoot!.querySelector("font-combobox")!
+    const input = picker.shadowRoot!.querySelector("input")!
+    expect(input.getAttribute("aria-expanded")).toBe("true")
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true}))
+    await picker.updateComplete
+    expect(input.getAttribute("aria-expanded")).toBe("false")
+    expect(ribbon.aiChatOpen).toBe(true)
+  })
+
   it("shows five exclusive link types with icons and shortcuts", async () => {
     const {ribbon, drawer} = await mountRibbon()
     ribbon.canMark = true

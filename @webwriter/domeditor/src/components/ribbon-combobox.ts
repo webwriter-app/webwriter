@@ -5,6 +5,7 @@ import {createAnchorPositioner} from "../anchor-positioning.js"
 import {colorPaletteStyles, renderColorPalette} from "./color-palette"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
+import type {EditorCombobox} from "./editor-combobox"
 import "./font-combobox"
 import "./font-size-combobox"
 
@@ -21,6 +22,7 @@ export class RibbonCombobox extends LitElement {
     defaultValueLabel: {type: String, attribute: "default-value-label"},
     disabled: {type: Boolean, reflect: true},
     label: {type: String},
+    shortcut: {type: String},
     multiple: {type: Boolean, reflect: true},
     name: {type: String, reflect: true},
     open: {type: Boolean, reflect: true},
@@ -233,6 +235,7 @@ export class RibbonCombobox extends LitElement {
   defaultValueLabel = ""
   disabled = false
   label = "Choose"
+  shortcut = ""
   multiple = false
   name = ""
   options: readonly StyleMarkOption[] = []
@@ -275,6 +278,14 @@ export class RibbonCombobox extends LitElement {
     this.renderRoot?.querySelector(".combobox")?.removeAttribute("data-connected")
     this.renderRoot?.querySelector("font-combobox")?.close()
     this.renderRoot?.querySelector("font-size-combobox")?.close()
+  }
+
+  /** Focus the current font value and open its picker, if this control is available. */
+  async focusAndOpen() {
+    if(!this.isConnected || this.disabled) return
+    await this.updateComplete
+    if(!this.isConnected || this.disabled) return
+    await this.renderRoot.querySelector<EditorCombobox>("font-combobox, font-size-combobox")?.focusAndOpen()
   }
 
   private toggle() {
@@ -390,7 +401,7 @@ export class RibbonCombobox extends LitElement {
 
   render() {
     if(this.name === "font-family") return html`<font-combobox
-      .label=${this.label} .value=${this.value} ?disabled=${this.disabled}
+      .label=${this.label} .value=${this.value} .shortcut=${this.shortcut} ?disabled=${this.disabled}
       @font-change=${(event: CustomEvent<{value: string, fontStylesheet?: string}>) => {
         event.stopPropagation()
         this.value = event.detail.value
@@ -399,7 +410,7 @@ export class RibbonCombobox extends LitElement {
         }))
       }}></font-combobox>`
     if(this.name === "font-size") return html`<font-size-combobox
-      .label=${this.label} .value=${this.value} .options=${this.options} ?disabled=${this.disabled}
+      .label=${this.label} .value=${this.value} .shortcut=${this.shortcut} .options=${this.options} ?disabled=${this.disabled}
       @combobox-change=${(event: CustomEvent<{value: string}>) => {
         event.stopPropagation()
         this.value = event.detail.value

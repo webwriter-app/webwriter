@@ -38,16 +38,9 @@ import {defaultGraphicShapePaint, graphicShapeOptions, SVG_NAMESPACE, type Graph
 import type {WidgetOptionState, WidgetOptionValue} from "../widget-options"
 import {getElementPresentation} from "../element-names"
 import {getSectionOption} from "../sections"
+import {toolboxTools, type ToolboxTool} from "../app-settings"
 
-export type ToolboxTool = "Edit" | "Distribute" | "Style" | "AI" | "Review" | "Feedback"
-
-const tools: readonly {label: ToolboxTool, icon: string}[] = [
-  {label: "Edit", icon: "Pencil"},
-  {label: "Style", icon: "Theme"},
-  {label: "AI", icon: "AI"},
-  {label: "Review", icon: "Grammar"},
-  {label: "Distribute", icon: "users-group"},
-]
+export type {ToolboxTool} from "../app-settings"
 
 /** Document toolbox presented beside the breadcrumb rather than as top-level
  * ribbon tabs. Its pane reuses the ribbon's established controls so
@@ -1965,7 +1958,8 @@ export class DomEditorToolbox extends EditingControls {
         ${this.renderDocumentRecoveryNotice()}
         <div class="toolbox-tabs-area">
           <div class="toolbox-tabs" role="tablist" aria-label="Toolbox">
-            ${(this.preview ? [{label: "Feedback" as const, icon: "Comments"}] : tools).filter(tool => (tool.label !== "Style" || this.showStyleToolbox) && (tool.label !== "AI" || !this.disableAI)).map(tool => {
+            ${toolboxTools.filter(tool => (tool.label === "Feedback") === this.preview
+              && (tool.label !== "Style" || this.showStyleToolbox) && (tool.label !== "AI" || !this.disableAI)).map(tool => {
               const active = !this.collapsed && this.activeTool === tool.label
               const tabId = `toolbox-tab-${tool.label.toLowerCase()}`
               const contextualLabel = tool.label === "Edit" ? this.editTypeLabel : null
@@ -1996,9 +1990,9 @@ export class DomEditorToolbox extends EditingControls {
                     aria-label=${tool.label === "Review" && this.proofreadingState.error
                       ? "Review. Issue checker unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
-                    title=${tool.label === "Review" && this.proofreadingState.error
+                    title=${this.shortcutTitle(tool.label === "Review" && this.proofreadingState.error
                       ? "Issue checker unavailable"
-                      : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
+                      : contextualLabel ? `Edit ${contextualLabel}` : toolLabel, `toolbox:${tool.label}`)}
                     aria-description=${reviewDescription || nothing}
                     aria-controls="toolbox-pane"
                     aria-selected=${active}
