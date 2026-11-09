@@ -2789,7 +2789,13 @@ export class AppRibbon extends EditingControls {
         ${picker("color", "Text color", textColorOptions)}
         ${picker("background-color", "Text background color", backgroundColorOptions)}
       `, buttons: primaryDrawerMarkNames.map(mark)},
-      {label: "More marks", buttons: [{label: "Link", action: "mark:a", icon: "MarkLink", disabled: !this.canMark || this.math?.active, submenuGroups: [{label: "Link", content: this.renderSpanDropdown(this.spanSelectedMarks()), buttons: []}]}]},
+      {label: "More marks", buttons: [
+        {label: "More marks", icon: "MoreVertical", menuOnly: true, selected: this.moreMarksActive,
+          disabled: this.moreMarksDisabled,
+          submenuGroups: [{label: "More marks", content: this.renderMoreMarksDropdown(), buttons: []}]},
+        {label: "Link", action: "mark:a", icon: "MarkLink", disabled: !this.canMark || this.math?.active,
+          submenuGroups: [{label: "Link", content: this.renderSpanDropdown(), buttons: []}]},
+      ]},
     ]
     const insert = [...menuGroups.Start.find(group => group.label === "Elements")!.buttons, {label: "Formula", icon: "Formula", submenu: insertMathStructureButtons}].map((button): RibbonMenuButton => {
       const item = typeof button === "string" ? {label: button} : button

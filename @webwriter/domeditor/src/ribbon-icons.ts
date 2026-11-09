@@ -103,6 +103,7 @@ import deviceFloppy from "@tabler/icons/outline/device-floppy.svg?raw"
 import upload from "@tabler/icons/outline/upload.svg?raw"
 import download from "@tabler/icons/outline/download.svg?raw"
 import dots from "@tabler/icons/outline/dots.svg?raw"
+import dotsVertical from "@tabler/icons/outline/dots-vertical.svg?raw"
 import file from "@tabler/icons/outline/file.svg?raw"
 import fileSignal from "@tabler/icons/outline/file-signal.svg?raw"
 import fileDescription from "@tabler/icons/outline/file-description.svg?raw"
@@ -467,6 +468,7 @@ const icons: Record<string, string> = {
   Highlight: highlight,
   Superscript: superscript,
   More: dots,
+  MoreVertical: dotsVertical,
   Spelling: textSpellcheck,
   Grammar: textGrammar,
   Translate: language,

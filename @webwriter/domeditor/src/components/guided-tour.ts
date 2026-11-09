@@ -321,8 +321,8 @@ export class GuidedTour extends LitElement {
       <ribbon-button compact toggle label="Bold" icon="MarkBold" class=${this.step === 1 ? "activate" : ""}></ribbon-button>
       <ribbon-button compact toggle label="Italic" icon="MarkItalic"></ribbon-button>
       <ribbon-button compact toggle label="Underline" icon="MarkUnderline"></ribbon-button>
-      <ribbon-button compact toggle label="Strikethrough" icon="MarkStrikethrough"></ribbon-button>
-      <ribbon-button compact label="Remove formatting" icon="RemoveMarks" class="mark-remove" style="grid-column: 7; grid-row: 2"></ribbon-button>
+      <ribbon-button compact label="Remove formatting" icon="RemoveMarks" class="mark-remove" style="grid-column: 6; grid-row: 2"></ribbon-button>
+      <ribbon-button compact label="More marks" icon="MoreVertical"></ribbon-button>
       <ribbon-button label="Formula" icon="Formula" class="mark-formula" style="grid-column: 8; grid-row: 1"></ribbon-button>
       <ribbon-button label="Link…" icon="MarkLink" class="mark-span" style="grid-column: 8; grid-row: 2"></ribbon-button>
     </ribbon-drawer>`

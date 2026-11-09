@@ -257,6 +257,24 @@ describe("collapsed ribbon file menu", () => {
     expect(commands.mock.calls[0][0].detail.label).toBe("increaseFontSize")
   })
 
+  it("keeps the More marks checkboxes available in the collapsed Format menu", async () => {
+    const {ribbon, menu} = await mount()
+    ribbon.canMark = true
+    ribbon.marks = ["sup"]
+    await ribbon.updateComplete
+    await menu.updateComplete
+    const format = await open(menu, "Format")
+    const more = await open(format, "More marks")
+    expect(more.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Select Superscript"]')!.checked).toBe(true)
+    const commands = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", commands)
+    more.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Select Strikethrough"]')!.click()
+    expect(commands).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      detail: {label: "mark:s", keepDrawerOpen: true},
+    }))
+    expect(more.hidden).toBe(false)
+  })
+
   it("enables Remove formatting in the collapsed Format menu for a nonempty selection", async () => {
     const {ribbon, menu} = await mount()
     ribbon.canMark = false

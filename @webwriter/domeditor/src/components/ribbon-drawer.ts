@@ -645,6 +645,11 @@ export class RibbonDrawer extends LitElement {
       grid-column: span 2;
     }
 
+    :host([layout="marks"]) ::slotted(.mark-remove) {
+      grid-column: 6;
+      grid-row: 2;
+    }
+
     :host([layout="marks"]) ::slotted(.mark-text-color) {
       grid-column: 1;
       grid-row: 2;
@@ -652,11 +657,6 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="marks"]) ::slotted(.mark-background-color) {
       grid-column: 2;
-      grid-row: 2;
-    }
-
-    :host([layout="marks"]) ::slotted(.mark-remove) {
-      grid-column: 7;
       grid-row: 2;
     }
 
