@@ -3,6 +3,7 @@ import {hasPresentationState, presentationStateElements} from "../presentation-s
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 
+import editorStyles from "../editor.css?raw"
 import {DOMEditor} from "../domeditor"
 import {$, cloneWithoutEditorMarkers} from "../utility"
 import {markStateChangeEvent, selectionChangeEvent} from "../editor-bridge"
@@ -99,6 +100,13 @@ function targetElement(tag = "p") {
   element.textContent = "target"
   return append(element)
 }
+
+it("defines the theme tokens the editor stylesheet uses without fallbacks", () => {
+  // Read the source because Happy DOM omits ::part rules from the CSSOM.
+  const tokens = new Set(Array.from(editorStyles.matchAll(/var\(\s*(--sl-[\w-]+)\s*\)/g), match => match[1]))
+  const rootStyles = getComputedStyle(document.documentElement)
+  expect([...tokens].filter(token => !rootStyles.getPropertyValue(token).trim())).toEqual([])
+})
 
 it.each(["button", "[popover]"])("keeps a selected popup %s free of transform controls", selector => {
   document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Open</button><span id="note" popover>Content</span></span></p>'

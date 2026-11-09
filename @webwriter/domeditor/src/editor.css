@@ -21,8 +21,12 @@ html {
   overflow-y: scroll;
   overflow-x: auto;
   height: 100%;
+  /* The editor frame also runs without a widget theme. */
   --sl-color-danger-300: #fca5a5;
+  --sl-color-primary-100: #e0f2fe;
+  --sl-color-primary-300: #7dd3fc;
   --sl-color-primary-400: #38bdf8;
+  --sl-color-primary-500: #0ea5e9;
   --scrollbar-width: 16px;
   pointer-events: none;
   user-select: none;
