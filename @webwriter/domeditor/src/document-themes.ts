@@ -32,18 +32,18 @@ const disclosureLayout = `@layer webwriter-theme {
     margin-inline-start: 0;
   }
 }`
-const listDefaults = `@layer webwriter-theme {
-  :where(ul, ol, menu) { list-style-position: inside; }
+// Keep authored marker positions effective even when a theme uses list-style on li.
+const listMarkerInheritance = `@layer webwriter-theme {
   :is(ul, ol, menu) > li { list-style-position: inherit; }
 }`
 
 export const documentThemes = [
-  {value: "base", label: "Base", source: baseSource + "\n" + disclosureLayout + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
-  {value: "water", label: "Water", source: layeredSource(waterSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
-  {value: "simple", label: "Simple", source: layeredSource(simpleSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
-  {value: "sakura", label: "Sakura", source: layeredSource(sakuraSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
-  {value: "pico", label: "Pico", source: layeredSource(picoSource) + "\n" + disclosureLayout + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
-  {value: "holiday", label: "Holiday", source: layeredSource(holidaySource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
+  {value: "base", label: "Base", source: baseSource + "\n" + disclosureLayout + "\n" + floatSource + "\n" + listMarkerInheritance + "\n" + documentTypographyCSS},
+  {value: "water", label: "Water", source: layeredSource(waterSource) + "\n" + floatSource + "\n" + listMarkerInheritance + "\n" + documentTypographyCSS},
+  {value: "simple", label: "Simple", source: layeredSource(simpleSource) + "\n" + floatSource + "\n" + listMarkerInheritance + "\n" + documentTypographyCSS},
+  {value: "sakura", label: "Sakura", source: layeredSource(sakuraSource) + "\n" + floatSource + "\n" + listMarkerInheritance + "\n" + documentTypographyCSS},
+  {value: "pico", label: "Pico", source: layeredSource(picoSource) + "\n" + disclosureLayout + "\n" + floatSource + "\n" + listMarkerInheritance + "\n" + documentTypographyCSS},
+  {value: "holiday", label: "Holiday", source: layeredSource(holidaySource) + "\n" + floatSource + "\n" + listMarkerInheritance + "\n" + documentTypographyCSS},
 ] as const
 
 export type DocumentThemeName = typeof documentThemes[number]["value"]

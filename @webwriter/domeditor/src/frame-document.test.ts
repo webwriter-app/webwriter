@@ -28,7 +28,8 @@ it("upgrades a stock legacy theme in editing and preview while preserving custom
   const customizedCSS = legacyCSS + "\n" + authoredCSS
   const source = parse(`<!doctype html><head><style id="legacy" data-ww-theme="base" media="screen">${legacyCSS}</style>
     <style id="customized" data-ww-theme="base">${customizedCSS}</style><style id="authored">${authoredCSS}</style></head>
-    <body><table class="ww-full-width"><tr><td>Cell</td></tr></table></body>`)
+    <body><table class="ww-full-width"><tr><td>Cell</td></tr></table>
+    <ul style="list-style-position: inside"><li>Item</li></ul></body>`)
   const options = previewOptions({executeScripts: false})
   const editing = parse(editorFrameHTML(source.documentElement.outerHTML, editorOptions({executeScripts: false})))
   const preview = parse(previewFrameHTML(parse(previewFrameHTML(source, options)), options))
@@ -39,6 +40,7 @@ it("upgrades a stock legacy theme in editing and preview while preserving custom
     expect(root.querySelector("#customized")?.textContent).toBe(customizedCSS)
     expect(root.querySelector("#authored")?.textContent).toBe(authoredCSS)
     expect(root.querySelector("table")?.className).toBe("ww-full-width")
+    expect(root.querySelector("ul")?.style.listStylePosition).toBe("inside")
   }
 })
 

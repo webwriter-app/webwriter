@@ -1,6 +1,6 @@
 // SHA-256 fingerprints (first 16 bytes) of stock theme CSS from 161b22fa
 // through a106bc0c (before Full width), the bundled layout examples,
-// and the themes before widget minimum widths were preserved.
+// and snapshots taken before the widget minimum-width and list marker updates.
 // Hash the complete stylesheet text after normalizing HTML line endings so
 // an authored edit anywhere in a theme prevents replacement.
 export const legacyDocumentThemeFingerprints = {
@@ -37,6 +37,7 @@ export const legacyDocumentThemeFingerprints = {
     "e04f9dbc3983a7db52231350b8ae12e5",
     "abd019e708026b255585c4296cfc8cee",
     "d3558c5d0607d3402a7b32fcc8c00f37",
+    "58902096ea91f4b6a95467cae923e1d5",
   ],
   water: [
     "f4e39cd22fe2cc8e378b411a02fb8ffe",
@@ -59,6 +60,7 @@ export const legacyDocumentThemeFingerprints = {
     "ee7e62b69b877e984265e6928302b2ac",
     "ee078b104e154a28427e3ef113b9be09",
     "c1e63c0e89676c1926acc1b0cc0fb69c",
+    "b4275fdabf6451fbcc3c449bee92140a",
   ],
   simple: [
     "3dbff23dc8aadc7b3d9b926c56c6ff7f",
@@ -81,6 +83,7 @@ export const legacyDocumentThemeFingerprints = {
     "9323884de01a576952f401145bb13419",
     "45a7135997ecb7f44f1fe1a29d34e4dc",
     "b76713cb8ff488e09884ddb66a653e7a",
+    "fcb33131a12d4d6509e45d1cd9318e2a",
   ],
   sakura: [
     "74c9e991e0d12c8d5954b65be75553ed",
@@ -103,6 +106,7 @@ export const legacyDocumentThemeFingerprints = {
     "e6206f2f5cfe083d388a42055c3a9ad9",
     "939034e9bab7916d595b5d39480f6a42",
     "38f5b6433c89de7189e14545773aaa9f",
+    "1492863a4189373eda0cc93345724333",
   ],
   pico: [
     "68eb6012d22ea91c2b58867ccbe7b47d",
@@ -125,6 +129,7 @@ export const legacyDocumentThemeFingerprints = {
     "19da2b67b049ce3e67efe90bd3e0794c",
     "23c890a232fac576a2b683c3c293289c",
     "17f38e4640c6d9c3dc710ffd74611987",
+    "88c817bf864f7470cdf2f98d54ce2482",
   ],
   holiday: [
     "e8e4ac3fee35e71c78378204577f740e",
@@ -147,5 +152,6 @@ export const legacyDocumentThemeFingerprints = {
     "65c765a8ccd08c1ae1647254bf1452d1",
     "59f93935de67de5a70933f36aa0df2cf",
     "d369969f952f2a0de08f03802bd446c9",
+    "0a0354221bcf54cee81bad89eef5c02f",
   ],
 }

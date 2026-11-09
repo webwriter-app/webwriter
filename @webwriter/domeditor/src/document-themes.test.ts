@@ -37,9 +37,9 @@ describe("document themes", () => {
     }
   })
 
-  it("defaults list markers to inside in every document theme", () => {
+  it("uses the browser default for list markers unless a position is authored", () => {
     for(const theme of documentThemes) {
-      expect(theme.source).toContain(":where(ul, ol, menu) { list-style-position: inside; }")
+      expect(theme.source).not.toMatch(/list-style(?:-position)?:[^;{}]*\binside\b/)
       expect(theme.source).toContain(":is(ul, ol, menu) > li { list-style-position: inherit; }")
     }
   })

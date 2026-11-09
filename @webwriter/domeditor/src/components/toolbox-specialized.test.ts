@@ -282,11 +282,11 @@ describe("specialized element toolbox", () => {
     expect(advanced.shadowRoot!.querySelector('[data-property="list-style-position"]')).not.toBeNull()
     const positionButtons = Array.from(advanced.shadowRoot!.querySelectorAll<HTMLButtonElement>('[data-property="list-style-position"] .specialized-choice-group button'))
     expect(positionButtons.map(button => button.getAttribute("aria-label"))).toEqual(["Inside", "Outside"])
-    expect(positionButtons.map(button => button.getAttribute("aria-pressed"))).toEqual(["true", "false"])
-    advanced.state = {...advanced.state, computed: {...advanced.state.computed, "list-style-position": "outside"}}
+    expect(positionButtons.map(button => button.getAttribute("aria-pressed"))).toEqual(["false", "true"])
+    advanced.state = {...advanced.state, computed: {...advanced.state.computed, "list-style-position": "inside"}}
     await advanced.updateComplete
     expect(Array.from(advanced.shadowRoot!.querySelectorAll<HTMLButtonElement>('[data-property="list-style-position"] .specialized-choice-group button'), button => button.getAttribute("aria-pressed")))
-      .toEqual(["false", "true"])
+      .toEqual(["true", "false"])
     const root = primary.shadowRoot!
     expect(root.querySelector('[data-property="list-style-type"] select')).toBeNull()
     const group = root.querySelector('.marker-control > .specialized-choice-group')!
