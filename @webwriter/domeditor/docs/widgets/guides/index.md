@@ -17,5 +17,5 @@ These guides help you complete a specific task in an existing widget. For a firs
 | [Optimize the code bundle](optimize-code-bundle.md) | Embed only the optional code a saved document needs offline. |
 | [Convert, import, and export content](conversions.md) | Exchange content with native HTML and files. |
 | [Test and debug](testing.md) | Check saving, interactions, and editor integration. |
-| [Publish a widget](publishing.md) | Build and distribute a widget. |
 | [Migrate widget content](migrations.md) | Update content from an older version. |
+| [Publish a widget](publishing.md) | Build and distribute a widget. |
