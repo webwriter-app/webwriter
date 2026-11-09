@@ -1457,6 +1457,96 @@ describe("inline references", () => {
 describe("link keyboard edits", () => {
   const currentIdentity = () => feature.getLinkState()!.identity
 
+  it("stages a cross reference, then switches one anchor to a citation without rebuilding its label", () => {
+    const paragraph = setContent('<p>Before <em>two</em><!--keep--> words after</p><h2 id="intro">Intro</h2>')
+    const first = paragraph.querySelector("em")!.firstChild!, last = paragraph.lastChild!
+    $.selectRange(first, 0, last, 6)
+    expect(feature.selectLinkKind("cross-reference")).toBe(true)
+    expect(feature.getLinkState()).toMatchObject({kind: "cross-reference", text: "two words"})
+    expect(paragraph.querySelector("a")).toBeNull()
+    const crossReference = currentIdentity()
+    expect(feature.editLink({identity: crossReference, kind: "cross-reference", href: "#intro", attributes: {}})).toBe(true)
+    const anchor = paragraph.querySelector("a")!
+    const emphasis = anchor.querySelector("em")!
+    expect(anchor.outerHTML).toBe('<a href="#intro"><em>two</em><!--keep--> words</a>')
+    expect(feature.getLinkState()?.kind).toBe("cross-reference")
+
+    expect(feature.selectLinkKind("citation")).toBe(true)
+    expect(anchor.getAttribute("href")).toBe("#intro")
+    const citation = currentIdentity()
+    expect(() => feature.editLink({identity: crossReference, kind: "cross-reference", href: "#intro", attributes: {}})).toThrow(/selected link changed/)
+    expect(feature.editLink({identity: citation, kind: "citation", href: "https://example.test/source", attributes: {
+      "data-reference": JSON.stringify({type: "book", title: "Source"}),
+    }})).toBe(true)
+    expect(feature.getLinkState()?.kind).toBe("citation")
+    expect(anchor.querySelector("em")).toBe(emphasis)
+    expect(paragraph.querySelectorAll("a")).toHaveLength(1)
+    expect(feature.selectLinkKind("citation", true)).toBe(true)
+    expect(paragraph.querySelector("a")).toBeNull()
+    expect([...paragraph.querySelectorAll("em")].some(element => element.textContent === "two")).toBe(true)
+    expect(paragraph.textContent).toBe("Before two words after")
+  })
+
+  it("converts a download to a plain link without carrying the attachment attributes over", () => {
+    const paragraph = setContent('<p><a href="data:text/plain,test" download="note.txt" data-custom="keep"><em>Label</em></a></p>')
+    const anchor = paragraph.querySelector("a")!
+    $.move(anchor.querySelector("em")!.firstChild!, 2)
+    expect(feature.getAttachmentState()).not.toBeNull()
+    expect(feature.selectLinkKind("link", true)).toBe(true)
+    expect(feature.getLinkState()).toMatchObject({kind: "link", href: ""})
+    expect(feature.getAttachmentState()).toBeNull()
+    expect(feature.editLink({identity: currentIdentity(), kind: "link", href: "https://example.test", attributes: {}})).toBe(true)
+    expect(anchor.getAttribute("href")).toBe("https://example.test")
+    expect(anchor.hasAttribute("download")).toBe(false)
+    expect(anchor.getAttribute("data-custom")).toBe("keep")
+    expect(feature.getAttachmentState()).toBeNull()
+  })
+
+  it("switches between a popup and a link, leaving the popup in place until applying", () => {
+    const paragraph = setContent('<p><a href="https://example.test" id="label" data-custom="keep"><em>Label</em></a></p><h2 id="intro">Intro</h2>')
+    const emphasis = paragraph.querySelector("em")!
+    $.move(emphasis.firstChild!, 2)
+    expect(feature.selectLinkKind("popup")).toBe(true)
+    const toggle = paragraph.querySelector("button")!
+    const popup = document.getElementById(toggle.getAttribute("popovertarget")!)!
+    expect(paragraph.querySelector("a")).toBeNull()
+    expect(toggle.querySelector("em")).toBe(emphasis)
+    $.move(emphasis.firstChild!, 2)
+    expect(feature.selectLinkKind("cross-reference")).toBe(true)
+    expect(toggle.isConnected && popup.isConnected).toBe(true)
+    feature.actions.cancelLinkKindDraft({type: "cancelLinkKindDraft", identity: currentIdentity()})
+    expect(feature.getLinkState()).toBeNull()
+    expect(popup.isConnected).toBe(true)
+
+    expect(feature.selectLinkKind("cross-reference")).toBe(true)
+    expect(feature.editLink({identity: currentIdentity(), kind: "cross-reference", href: "#intro", attributes: {}})).toBe(true)
+    expect(toggle.isConnected || popup.isConnected).toBe(false)
+    expect(paragraph.querySelector('a[href="#intro"] em')).toBe(emphasis)
+    expect(paragraph.querySelector("#label")?.getAttribute("data-custom")).toBe("keep")
+  })
+
+  it("invalidates a staged link when its selection is replaced", () => {
+    const paragraph = setContent('<p>Draft link</p><h2 id="intro">Intro</h2>')
+    $.selectRange(paragraph.firstChild!, 0, paragraph.firstChild!, 5)
+    expect(feature.selectLinkKind("cross-reference")).toBe(true)
+    const identity = currentIdentity()
+    paragraph.textContent = "New content"
+    $.move(paragraph.firstChild!, 2)
+    expect(() => feature.editLink({identity, kind: "cross-reference", href: "#intro", attributes: {}})).toThrow(/selected link changed/)
+    expect(paragraph.innerHTML).toBe("New content")
+  })
+
+  it("still toggles plain links across separate paragraphs", () => {
+    const first = setContent("<p>First</p><p>Second</p>")
+    const second = first.nextElementSibling!
+    $.selectRange(first.firstChild!, 0, second.firstChild!, 6)
+    expect(feature.selectLinkKind("link", true)).toBe(true)
+    expect(first.querySelector("a")?.textContent).toBe("First")
+    expect(second.querySelector("a")?.textContent).toBe("Second")
+    expect(feature.selectLinkKind("link", true)).toBe(true)
+    expect(first.querySelector("a") ?? second.querySelector("a")).toBeNull()
+  })
+
   it("opens for a selection within one link, including the entire link", () => {
     const paragraph = setContent('<p>Before <a href="#intro">one <em>two</em><!--keep--></a> after</p>')
     const anchor = paragraph.querySelector("a")!

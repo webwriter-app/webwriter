@@ -5,6 +5,7 @@ import type {DocumentLayoutMode} from "./document-layout"
 import {storedCloudServices, type CloudService} from "./cloud-services"
 import {normalizeProofreadingDictionary} from "./proofreading"
 import {preferredDocumentLanguage} from "./document-languages"
+import {linkKindOptions} from "./links"
 
 export const APP_SETTINGS_STORAGE_KEY = "webwriter_app_settings_v1"
 
@@ -68,6 +69,8 @@ export const appCommands: readonly AppCommand[] = [
     icon: option.icon,
     action: `mark-detail:${option.name}`,
   })),
+  {id: "text.crossReference", section: "Text", ...linkKindOptions["cross-reference"], description: "Link to a target in the document", defaultShortcut: alternate("R")},
+  {id: "text.citation", section: "Text", ...linkKindOptions.citation, description: "Cite an external source", defaultShortcut: alternate("T")},
   {id: "text.popup", section: "Text", label: "Popup", description: "Toggle a popup on the selected text", icon: "Popup", action: "toggle-popup", defaultShortcut: alternate("Y")},
   {id: "text.attachment", section: "Text", label: "Attachment", description: "Add or remove an attachment mark", icon: "Attachment", action: "mark:attachment", defaultShortcut: alternate("E")},
   {id: "text.clear", section: "Text", label: "Clear formatting", description: "Remove text formatting", icon: "Clear", action: "removeMarks", defaultShortcut: alternate("Backspace")},

@@ -43,7 +43,7 @@ import "./link-keyboard"
 import "./guided-tour"
 import "./app-update-notice"
 import type {LinkKeyboard} from "./link-keyboard"
-import {attachmentWarningBytes, isLinkEdit, type AttachmentSelectionState, type AttachmentSource, type LinkEdit, type LinkSelectionState} from "../links"
+import {attachmentWarningBytes, isLinkEdit, isLinkKind, linkKindFromAttributes, linkKindOptions, linkKinds, type AttachmentSelectionState, type AttachmentSource, type LinkEdit, type LinkKind, type LinkSelectionState} from "../links"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
 import { LitElement, css, html, noChange, nothing, type PropertyValues } from "lit"
@@ -5236,12 +5236,10 @@ export class DomEditor extends LitElement {
       else this.focusEditor()
       return
     }
-    if(label === "toggle-popup") {
-      void this.execute({type: "togglePopup"}).finally(() => this.focusEditor())
-      return
-    }
-    if(label === "mark:attachment") {
-      void this.toggleAttachment()
+    const linkChoice = label?.startsWith("select-link:") ? label.slice("select-link:".length) : undefined
+    const chosenLink = linkChoice ?? linkKinds.find(kind => linkKindOptions[kind].action === label)
+    if(isLinkKind(chosenLink)) {
+      void this.selectLinkKind(chosenLink, linkChoice === undefined)
       return
     }
     if(label === "Undo") {
@@ -7649,6 +7647,12 @@ export class DomEditor extends LitElement {
     return this.mathSelection?.active && (this.mathSelection.display === "inline" || this.captureSelection)
   }
 
+  private get linkKeyboardKind() {
+    if(this.attachmentSelection) return "attachment"
+    const state = this.linkSelection
+    return state?.kind ?? (state ? linkKindFromAttributes(state.attributes, state.href) : "link")
+  }
+
   private get hasLinkKeyboard() {
     return (this.attachmentSelection || this.linkSelection?.active) && !this.mathSelection?.active && !this.graphicSelection?.capture
   }
@@ -7685,15 +7689,15 @@ export class DomEditor extends LitElement {
       .catch(error => { this.linkKeyboardError = error instanceof Error ? error.message : String(error) })
   }
 
-  private async toggleAttachment() {
-    if(this.previewActive || this.liveSessionActive || this.attachmentBusy) return
+  private async selectLinkKind(kind: LinkKind, toggle: boolean) {
+    if(this.previewActive || this.liveSessionActive || kind === "attachment" && this.attachmentBusy) return
     try {
-      const selection = await this.execute({type: "toggleAttachment"}) as AttachmentSelectionState | "removed" | null
-      if(!selection) throw new Error("Place the caret or select text within one paragraph to attach a file.")
+      const changed = await this.execute({type: "selectLinkKind", kind, toggle})
       this.dismissEditorMenus()
       this.linkKeyboardError = ""
-      if(selection === "removed") this.focusEditor()
-      else if(this.attachmentSelection?.identity === selection.identity) await this.focusLinkKeyboard()
+      if(!changed && kind === "attachment") throw new Error("Place the caret or select text within one paragraph to attach a file.")
+      if(changed && kind !== "popup" && this.hasLinkKeyboard) await this.focusLinkKeyboard()
+      else this.focusEditor()
     }
     catch(error) {
       this.fileError = error instanceof Error ? error.message : String(error)
@@ -7718,7 +7722,9 @@ export class DomEditor extends LitElement {
   }
 
   private closeLinkKeyboard = () => {
+    const identity = this.linkSelection?.identity
     this.linkKeyboardHidden = true
+    if(identity) void this.execute({type: "cancelLinkKindDraft", identity}).catch(() => {})
     this.focusEditor()
   }
 
@@ -9194,6 +9200,7 @@ export class DomEditor extends LitElement {
       marks: this.marks,
       popupActive: this.popupActive,
       attachmentActive: this.attachmentSelection !== null,
+      inputLinkKind: this.linkSelection?.kind ?? null,
       allowedMarks: this.allowedMarks,
       markStyles: this.markStyles,
       markAttributes: this.markAttributes,
@@ -9507,11 +9514,11 @@ export class DomEditor extends LitElement {
         ` : nothing}
         ${this.hasLinkKeyboard && !this.previewActive && !this.liveSessionActive ? html`
           ${this.linkKeyboardHidden ? html`<button class="math-keyboard-open" type="button"
-            title=${this.attachmentSelection ? "Show attachment keyboard" : "Show link keyboard"}
-            aria-label=${this.attachmentSelection ? "Show attachment keyboard" : "Show link keyboard"}
+            title=${`Show ${linkKindOptions[this.linkKeyboardKind].label.toLowerCase()} keyboard`}
+            aria-label=${`Show ${linkKindOptions[this.linkKeyboardKind].label.toLowerCase()} keyboard`}
             @pointerdown=${(event: PointerEvent) => event.preventDefault()}
-            @click=${() => { void this.focusLinkKeyboard() }}>${ribbonIcon(this.attachmentSelection ? "Attachment" : "MarkLink")}</button>` : nothing}
-          <section class="link-keyboard-area" aria-label=${this.attachmentSelection ? "Attachment input" : "Link input"} ?hidden=${this.linkKeyboardHidden}>
+            @click=${() => { void this.focusLinkKeyboard() }}>${ribbonIcon(linkKindOptions[this.linkKeyboardKind].icon)}</button>` : nothing}
+          <section class="link-keyboard-area" aria-label=${`${linkKindOptions[this.linkKeyboardKind].label} input`} ?hidden=${this.linkKeyboardHidden}>
             <dom-editor-link-keyboard .state=${this.linkSelection} .error=${this.linkKeyboardError}
               .attachment=${this.attachmentSelection} .attachmentBusy=${this.attachmentBusy}
               @link-keyboard-command=${this.handleLinkKeyboardCommand}

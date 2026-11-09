@@ -56,7 +56,7 @@ const primaryButtons = (drawer: RibbonDrawer) => Array.from(
 )
 
 describe("mark ribbon controls", () => {
-  it("opens the Attachment mark from the Link dropdown and uses the paperclip for active downloads", async () => {
+  it("shows five exclusive link types with icons and shortcuts", async () => {
     const {ribbon, drawer} = await mountRibbon()
     ribbon.canMark = true
     await ribbon.updateComplete
@@ -64,47 +64,49 @@ describe("mark ribbon controls", () => {
     await link.updateComplete
     link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await link.updateComplete
+    const group = link.shadowRoot!.querySelector('[role="radiogroup"]')!
+    const rows = [...group.querySelectorAll<HTMLElement>(".mark-dropdown-option")]
+    const radios = [...group.querySelectorAll<HTMLInputElement>('input[type="radio"][name="link-kind"]')]
+    expect(rows.map(row => row.querySelector(".mark-dropdown-option-name")?.textContent))
+      .toEqual(["Link", "Cross Reference", "Citation", "Attachment", "Popup"])
+    expect(radios).toHaveLength(5)
+    expect(rows[1].querySelector("svg.icon-tabler-hash")).not.toBeNull()
+    expect(rows[2].querySelector("svg.icon-tabler-quote")).not.toBeNull()
+    expect(rows[3].querySelector("svg.icon-tabler-paperclip")).not.toBeNull()
+    for(const [index, command] of ["a", "crossReference", "citation", "attachment", "popup"].entries()) {
+      expect(rows[index].querySelector(".mark-dropdown-shortcut")?.textContent)
+        .toBe(formatShortcut(ribbon.settings.shortcuts[`text.${command}`]))
+    }
+
     const commands = vi.fn()
     ribbon.addEventListener("ribbon-button-click", commands)
-    const option = link.shadowRoot!.querySelector(".mark-attachment")!
-    expect(option.querySelector("svg.icon-tabler-paperclip")).not.toBeNull()
-    expect(option.querySelector(".mark-dropdown-shortcut")?.textContent).toBe(formatShortcut(ribbon.settings.shortcuts["text.attachment"]))
-    option.querySelector<HTMLInputElement>("input")!.click()
-    expect(commands.mock.calls.at(-1)![0].detail.label).toBe("mark:attachment")
+    rows[1].querySelector<HTMLElement>(".mark-dropdown-option-name")!.click()
+    expect(commands.mock.calls.at(-1)![0].detail.label).toBe("select-link:cross-reference")
+    ribbon.inputLinkKind = "cross-reference"
+    await ribbon.updateComplete
+    await link.updateComplete
+    expect(radios.map(input => input.checked)).toEqual([false, true, false, false, false])
+    expect(link.label).toBe("Link")
+    expect(link.icon).toBe("MarkLink")
+    expect(link.active).toBe(false)
+
+    radios[3].click()
+    expect(commands.mock.calls.at(-1)![0].detail.label).toBe("select-link:attachment")
+    ribbon.inputLinkKind = null
     ribbon.marks = ["a"]
     ribbon.markAttributes = {a: {download: "notes.txt"}}
     await ribbon.updateComplete
     await link.updateComplete
-    expect(link.label).toBe("Attachment…")
-    expect(link.icon).toBe("Attachment")
-    expect(link.shadowRoot!.querySelector<HTMLInputElement>(".mark-attachment input")?.checked).toBe(true)
-  })
+    expect(radios.map(input => input.checked)).toEqual([false, false, false, true, false])
 
-  it("offers Popup as a checked, shortcut-enabled option in the Link dropdown", async () => {
-    const {ribbon, drawer} = await mountRibbon()
-    ribbon.canMark = true
-    await ribbon.updateComplete
-    const link = drawer.querySelector<RibbonButton>(".mark-span")!
-    await link.updateComplete
-    link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
-    await link.updateComplete
-    const events = vi.fn()
-    ribbon.addEventListener("ribbon-button-click", events)
-    const popup = link.shadowRoot!.querySelector<HTMLElement>(".mark-popup")!
-    expect(popup.textContent).toContain("Popup")
-    const checkbox = popup.querySelector<HTMLInputElement>('input[type="checkbox"]')!
-    expect(checkbox.checked).toBe(false)
-    expect(popup.querySelector(".mark-dropdown-shortcut")?.textContent).toBe(formatShortcut(ribbon.settings.shortcuts["text.popup"]))
-    checkbox.click()
-    expect(events.mock.calls.at(-1)![0].detail.label).toBe("toggle-popup")
+    radios[4].click()
+    expect(commands.mock.calls.at(-1)![0].detail.label).toBe("select-link:popup")
     ribbon.popupActive = true
+    ribbon.marks = []
+    ribbon.markAttributes = {}
     await ribbon.updateComplete
     await link.updateComplete
-    expect(link.label).toBe("Popup…")
-    expect(link.icon).toBe("Popup")
-    expect(link.action).toBe("toggle-popup")
-    expect(link.selectionCount).toBe(0)
-    expect(link.shadowRoot!.querySelector<HTMLInputElement>(".mark-popup input")?.checked).toBe(true)
+    expect(radios.map(input => input.checked)).toEqual([false, false, false, false, true])
   })
 
   it("keeps More marks available when a popup toggle disallows links", async () => {
@@ -117,8 +119,8 @@ describe("mark ribbon controls", () => {
     const more = drawer.querySelector<RibbonButton>(".mark-more")!
     await Promise.all([link.updateComplete, more.updateComplete])
 
-    expect(link.active).toBe(true)
-    expect(link.label).toBe("Popup…")
+    expect(link.active).toBe(false)
+    expect(link.label).toBe("Link")
     expect(more.disabled).toBe(false)
     expect(more.active).toBe(false)
     more.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
@@ -720,7 +722,7 @@ describe("mark ribbon controls", () => {
       "Remove formatting",
       "More marks",
       "Formula",
-      "Link…",
+      "Link",
     ])
     expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(0)
     expect(buttons.slice(2, 5).every(button => button.compact && button.toggle)).toBe(true)
@@ -957,7 +959,7 @@ describe("mark ribbon controls", () => {
     expect(ribbon.marks).toEqual(["q"])
   })
 
-  it("keeps Link as the primary toggle for More without link inputs", async () => {
+  it("keeps Link as the primary toggle alongside Attachment and Popup", async () => {
     const {ribbon, drawer} = await mountRibbon()
     ribbon.canMark = true
     ribbon.marks = ["a"]
@@ -969,10 +971,10 @@ describe("mark ribbon controls", () => {
     expect(link.toggle).toBe(true)
     expect(link.active).toBe(true)
     expect(drawer.querySelector(".mark-link")).toBeNull()
-    expect(link.label).toBe("Link…")
+    expect(link.label).toBe("Link")
     expect(link.action).toBe("mark:a")
-    expect(link.shadowRoot!.querySelector(".button-label-text")!.textContent).toBe("Link…")
-    expect(link.shadowRoot!.querySelector(".main-button")!.getAttribute("aria-label")).toBe("Link…")
+    expect(link.shadowRoot!.querySelector(".button-label-text")!.textContent).toBe("Link")
+    expect(link.shadowRoot!.querySelector(".main-button")!.getAttribute("aria-label")).toBe("Link")
     expect(link.shadowRoot!.querySelector(".submenu-trigger")).not.toBeNull()
     expect(link.shadowRoot!.querySelector('[aria-label="Web address"], [aria-label="Link: URL"], [aria-label="Title"]')).toBeNull()
 
@@ -982,12 +984,13 @@ describe("mark ribbon controls", () => {
     expect(toggled).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({label: "mark:a"})}))
 
     const more = drawer.querySelector<RibbonButton>(".mark-span")!
-    expect(more.label).toBe("Link…")
+    expect(more.label).toBe("Link")
     more.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await more.updateComplete
     const dropdown = more.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    expect(dropdown.querySelectorAll('[role="option"]')).toHaveLength(2)
-    expect(dropdown.querySelector("input[aria-label=\"Select Link\"]")).toBeNull()
+    expect([...dropdown.querySelectorAll(".mark-dropdown-option-name")].map(option => option.textContent))
+      .toEqual(["Link", "Cross Reference", "Citation", "Attachment", "Popup"])
+    expect(dropdown.querySelector<HTMLInputElement>('input[aria-label="Select Link"]')?.checked).toBe(true)
     expect(dropdown.querySelector("input, select")).not.toBeNull()
   })
 

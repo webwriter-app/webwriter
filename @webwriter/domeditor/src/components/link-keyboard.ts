@@ -2,7 +2,7 @@ import {LitElement, css, html, nothing} from "lit"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {ribbonIcon} from "../ribbon-icons"
 import {parseReference} from "../document-viewer.js"
-import {normalizeLinkHref, type AttachmentSelectionState, type AttachmentSource, type LinkEdit, type LinkSelectionState} from "../links"
+import {linkKindFromAttributes, linkKindOptions, normalizeLinkHref, type AttachmentSelectionState, type AttachmentSource, type InputLinkKind, type LinkEdit, type LinkSelectionState} from "../links"
 
 type LinkTarget = {href: string, label: string}
 type ReferenceValue = LinkTarget & {data: string}
@@ -23,9 +23,9 @@ const validHref = (href: unknown): href is string => {
 /** DOM-backed link choices with a disposable, local history of used sources. */
 export class LinkKeyboard extends LitElement {
   static properties = {
-    state: {attribute: false}, error: {type: String}, activeTab: {state: true},
+    state: {attribute: false}, error: {type: String},
     search: {state: true}, webHref: {state: true}, referenceSearch: {state: true},
-    openNewTab: {state: true}, download: {state: true}, history: {state: true},
+    openNewTab: {state: true}, history: {state: true},
     reference: {state: true}, referenceDetails: {state: true},
     validationError: {state: true}, dialogOpen: {state: true},
     attachment: {attribute: false}, attachmentBusy: {type: Boolean},
@@ -41,8 +41,8 @@ export class LinkKeyboard extends LitElement {
     }
     * { box-sizing: border-box; }
     section { display: flex; flex-direction: column; gap: .35rem; height: 100%; min-height: 0; }
-    .header, .tabs, .row, .actions { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
-    .header { flex-wrap: nowrap; }
+    .header, .row, .actions { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
+    .header { flex-wrap: nowrap; justify-content: space-between; }
     h2 { margin: 0; font-size: .88rem; font-weight: 650; }
     button, input, select { min-width: 0; color: inherit; border: 1px solid #c5cdd7; border-radius: .32rem; background: #fff; font: inherit; }
     button { min-height: 2rem; padding: .25rem .5rem; cursor: pointer; touch-action: manipulation; }
@@ -51,8 +51,6 @@ export class LinkKeyboard extends LitElement {
     button[aria-pressed="true"] { color: #fff; border-color: #315f91; background: #315f91; }
     .close { display: grid; place-items: center; flex-shrink: 0; width: 2rem; padding: .25rem; border: 0; background: transparent; }
     .close svg, .bar-action svg { width: 1.15rem; height: 1.15rem; }
-    .tabs { flex: 1; min-width: 0; flex-wrap: nowrap; }
-    .tabs button { flex: 1; }
     .panel { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: .35rem; }
     .field { display: flex; flex-direction: column; gap: .2rem; min-width: 0; flex: 1 1 calc(50% - .2rem); }
     .field.wide { flex-basis: 100%; }
@@ -78,7 +76,6 @@ export class LinkKeyboard extends LitElement {
     dialog::backdrop { background: rgb(25 35 48 / 35%); }
     dialog h2 { margin-bottom: .75rem; }
     dialog .row + .row { margin-top: .35rem; }
-    @media (max-width: 520px) { .tabs button { padding-inline: .25rem; } }
   `
 
   state: LinkSelectionState | null = null
@@ -86,18 +83,15 @@ export class LinkKeyboard extends LitElement {
   attachmentBusy = false
   error = ""
   validationError = ""
-  activeTab: "document" | "web" | "reference" = "web"
   search = ""
   webHref = ""
   referenceSearch = ""
   openNewTab = true
-  download = false
   history: LinkHistory = {urls: [], references: []}
   referenceDetails = false
   reference = emptyReference()
   dialogOpen = false
   #stateIdentity = ""
-  #initialDownload: string | null = null
   #pendingEdit: LinkEdit | null = null
 
   connectedCallback() {
@@ -113,25 +107,16 @@ export class LinkKeyboard extends LitElement {
   willUpdate(changed: Map<string, unknown>) {
     if(changed.has("state")) this.#syncState()
   }
-  async focusWebAddress() {
-    this.activeTab = "web"
-    await this.updateComplete
-    if(this.isConnected && this.state?.active && !this.closest("[hidden]")) {
-      this.renderRoot.querySelector<HTMLInputElement>("#link-search")?.focus({preventScroll: true})
-    }
-  }
-
   async focusInput() {
-    if(!this.attachment) return this.focusWebAddress()
     await this.updateComplete
-    if(this.isConnected && this.attachment && !this.closest("[hidden]")) {
-      this.renderRoot.querySelector<HTMLInputElement>("#attachment-file")?.focus({preventScroll: true})
-    }
+    if(!this.isConnected || this.closest("[hidden]")) return
+    if(this.attachment) this.renderRoot.querySelector<HTMLInputElement>("#attachment-file")?.focus({preventScroll: true})
+    else if(this.state?.active) this.renderRoot.querySelector<HTMLInputElement>("#link-search")?.focus({preventScroll: true})
   }
 
   updated(changed: Map<string, unknown>) {
     if(!this.attachment && changed.has("state") && this.state?.active && !this.state.href && !(changed.get("state") as LinkSelectionState | null)?.active) {
-      void this.focusWebAddress()
+      void this.focusInput()
     }
     const dialog = this.renderRoot.querySelector<HTMLDialogElement>("dialog")
     if(this.dialogOpen && dialog && !dialog.open) dialog.showModal()
@@ -141,50 +126,42 @@ export class LinkKeyboard extends LitElement {
   render() {
     if(this.attachment) return this.#renderAttachment(this.attachment)
     if(!this.state?.active) return nothing
-    const label = this.activeTab === "web" ? "Web address" : this.activeTab === "document" ? "Document" : "Reference"
-    const inputLabel = this.activeTab === "web" ? "Web address" : this.activeTab === "document" ? "Search document links" : "Search references"
-    const query = this.activeTab === "web" ? this.webHref : this.activeTab === "document" ? this.search : this.referenceSearch
-    const values = this.#values().filter(value => `${value.label} ${value.href} ${"data" in value ? value.data : ""}`.toLowerCase().includes(query.trim().toLowerCase()))
-    return html`<section aria-label="Link keyboard" @keydown=${this.#onKeydown}>
-      <div class="header"><h2>Link</h2>
-        <div class="tabs" role="tablist" aria-label="Link type">
-          ${([ ["web", "Web"], ["document", "Document"], ["reference", "Reference"] ] as const).map(([id, name]) => html`
-            <button type="button" role="tab" ?disabled=${id === "reference" && this.state?.referenceAllowed === false}
-              id=${`tab-${id}`} aria-controls="link-panel" tabindex=${this.activeTab === id ? "0" : "-1"}
-              aria-selected=${String(this.activeTab === id)} aria-pressed=${String(this.activeTab === id)}
-              @keydown=${this.#onTabKeydown} @pointerdown=${this.#keepSelection} @click=${() => this.activeTab = id}>${name}</button>`)}
-        </div>
-        ${this.#renderCloseButton("link")}
-      </div>
+    const kind = this.#kind()
+    const title = linkKindOptions[kind].label
+    const label = kind === "link" ? "Web address" : kind === "cross-reference" ? "Cross reference" : "Citation"
+    const inputLabel = kind === "link" ? "Web address" : kind === "cross-reference" ? "Search cross references" : "Search citations"
+    const query = kind === "link" ? this.webHref : kind === "cross-reference" ? this.search : this.referenceSearch
+    const values = this.#values(kind).filter(value => `${value.label} ${value.href} ${"data" in value ? value.data : ""}`.toLowerCase().includes(query.trim().toLowerCase()))
+    return html`<section aria-label=${`${title} keyboard`} @keydown=${this.#onKeydown}>
+      <div class="header"><h2>${title}</h2>${this.#renderCloseButton(kind)}</div>
       ${this.error && !this.dialogOpen ? html`<div role="alert">${this.error}</div>` : nothing}
-      <div id="link-panel" class="panel" role="tabpanel" aria-labelledby=${`tab-${this.activeTab}`}>
+      <div id="link-panel" class="panel">
         <div class="web-label-row"><label for="link-search">${label}</label>
-          ${this.activeTab === "web" ? html`<div class="web-options" role="group" aria-label="Link options">
+          ${kind === "link" ? html`<div class="web-options" role="group" aria-label="Link options">
             <label class="check"><input type="checkbox" .checked=${this.openNewTab} @change=${(event: Event) => this.openNewTab = (event.target as HTMLInputElement).checked}>Open in new tab</label>
-            <label class="check"><input type="checkbox" .checked=${this.download} @change=${(event: Event) => this.download = (event.target as HTMLInputElement).checked}>Download</label>
           </div>` : nothing}
         </div>
         <div class="search-bar"><input id="link-search" type="search" aria-label=${inputLabel}
-          placeholder=${this.activeTab === "web" ? "Search or enter a web address" : this.activeTab === "document" ? "Search document targets" : "Search references"}
-          .value=${query} @input=${(event: Event) => this.#setQuery((event.target as HTMLInputElement).value)}
-          @keydown=${(event: KeyboardEvent) => this.#enterToApply(event, () => this.activeTab === "web" ? this.#applyWeb() : values[0] && this.#select(values[0]))}>
-          <button class="bar-action" type="button" aria-label=${this.activeTab === "reference" ? "Add reference" : this.activeTab === "web" ? "Apply web link" : "Apply document link"}
-            title=${this.activeTab === "reference" ? "Add reference" : "Apply link"}
-            ?disabled=${this.activeTab === "document" && !values.length}
-            @pointerdown=${this.#keepSelection} @click=${() => this.activeTab === "reference" ? this.#openReferenceDialog() : this.activeTab === "web" ? this.#applyWeb() : values[0] && this.#select(values[0])}>
-            ${ribbonIcon(this.activeTab === "reference" ? "Plus" : "ArrowRight")}
+          placeholder=${kind === "link" ? "Search or enter a web address" : kind === "cross-reference" ? "Search document targets" : "Search citations"}
+          .value=${query} @input=${(event: Event) => this.#setQuery((event.target as HTMLInputElement).value, kind)}
+          @keydown=${(event: KeyboardEvent) => this.#enterToApply(event, () => kind === "link" ? this.#applyWeb() : values[0] && this.#select(values[0], kind))}>
+          <button class="bar-action" type="button" aria-label=${kind === "citation" ? "Add citation" : kind === "link" ? "Apply web link" : "Apply cross reference"}
+            title=${kind === "citation" ? "Add citation" : "Apply link"}
+            ?disabled=${kind === "cross-reference" && !values.length}
+            @pointerdown=${this.#keepSelection} @click=${() => kind === "citation" ? this.#openReferenceDialog() : kind === "link" ? this.#applyWeb() : values[0] && this.#select(values[0], kind)}>
+            ${ribbonIcon(kind === "citation" ? "Plus" : "ArrowRight")}
           </button>
         </div>
         <div class="targets" role="list" aria-label=${`${label} suggestions`}>
           ${values.length ? values.map(value => html`<div role="listitem"><button class="target" type="button" title=${value.href}
-            aria-pressed=${String(this.state?.href === value.href)} @pointerdown=${this.#keepSelection} @click=${() => this.#select(value)}>
+            aria-pressed=${String(this.state?.href === value.href)} @pointerdown=${this.#keepSelection} @click=${() => this.#select(value, kind)}>
             <span>${value.label}</span>${value.label !== value.href ? html`<small>${value.href}</small>` : nothing}
-          </button></div>`) : html`<div class="empty">No matching ${this.activeTab === "reference" ? "references" : this.activeTab === "web" ? "recent addresses" : "targets"}</div>`}
+          </button></div>`) : html`<div class="empty">No matching ${kind === "citation" ? "citations" : kind === "link" ? "recent addresses" : "targets"}</div>`}
         </div>
       </div>
       <dialog aria-labelledby="reference-heading" @cancel=${(event: Event) => { event.preventDefault(); this.dialogOpen = false }}
         @close=${() => this.dialogOpen = false}>
-        <h2 id="reference-heading">Add reference</h2>
+        <h2 id="reference-heading">Add citation</h2>
         ${this.validationError || this.error ? html`<div role="alert">${this.validationError || this.error}</div>` : nothing}
         <div class="row">${this.#input("Title", "title", true)}${this.#input("Authors", "authors")}${this.#input("Year", "year")}
           ${this.#input("Link (optional)", "href")}${this.#input("Page or location", "locator")}</div>
@@ -198,7 +175,7 @@ export class LinkKeyboard extends LitElement {
         </div>` : nothing}
         <div class="actions"><button type="button" aria-expanded=${String(this.referenceDetails)} @click=${() => this.referenceDetails = !this.referenceDetails}>More details</button>
           <button type="button" @click=${() => this.dialogOpen = false}>Cancel</button>
-          <button type="button" @click=${this.#applyReference}>Add reference</button></div>
+          <button type="button" @click=${this.#applyReference}>Add citation</button></div>
       </dialog>
     </section>`
   }
@@ -206,7 +183,7 @@ export class LinkKeyboard extends LitElement {
   #renderAttachment(attachment: AttachmentSelectionState) {
     return html`<section aria-label="Attachment keyboard" @keydown=${this.#onKeydown}>
       <div class="header">
-        <h2>Attachment</h2><div class="tabs"></div>${this.#renderCloseButton("attachment")}
+        <h2>Attachment</h2>${this.#renderCloseButton("attachment")}
       </div>
       ${this.error ? html`<div role="alert">${this.error}</div>` : nothing}
       ${this.attachmentBusy ? html`<div role="status">Preparing attachment…</div>` : nothing}
@@ -233,8 +210,8 @@ export class LinkKeyboard extends LitElement {
     </section>`
   }
 
-  #renderCloseButton(kind: "link" | "attachment") {
-    const label = `Close ${kind} keyboard`
+  #renderCloseButton(kind: InputLinkKind | "attachment") {
+    const label = `Close ${linkKindOptions[kind].label.toLowerCase()} keyboard`
     return html`<button class="close" type="button" aria-label=${label} title=${label}
       @pointerdown=${this.#keepSelection} @click=${this.#close}>${ribbonIcon("Reject")}</button>`
   }
@@ -253,9 +230,12 @@ export class LinkKeyboard extends LitElement {
       @keydown=${(event: KeyboardEvent) => this.#enterToApply(event, () => this.#applyReference())}></label>`
   }
   #setReference(key: keyof ReferenceDraft, value: string) { this.validationError = ""; this.reference = {...this.reference, [key]: value} }
-  #setQuery(value: string) {
-    if(this.activeTab === "web") this.webHref = value
-    else if(this.activeTab === "document") this.search = value
+  #kind(): InputLinkKind {
+    return this.state?.kind ?? (this.state ? linkKindFromAttributes(this.state.attributes, this.state.href) : "link")
+  }
+  #setQuery(value: string, kind = this.#kind()) {
+    if(kind === "link") this.webHref = value
+    else if(kind === "cross-reference") this.search = value
     else this.referenceSearch = value
   }
   #openReferenceDialog() {
@@ -276,20 +256,18 @@ export class LinkKeyboard extends LitElement {
     this.validationError = ""
     this.dialogOpen = false
     if(!state) return
-    if(!applied) { this.activeTab = "web"; this.search = "" }
+    if(!applied) this.search = ""
     this.webHref = state.href && !state.href.startsWith("#") ? state.href : ""
     this.referenceSearch = parseReference(state.attributes["data-reference"] ?? "")?.title ?? (applied ? this.referenceSearch : "")
     this.openNewTab = state.attributes.target === "_blank" || (!state.href && !state.attributes.target)
-    this.download = "download" in state.attributes
-    this.#initialDownload = Object.hasOwn(state.attributes, "download") ? state.attributes.download : null
   }
-  #values(): Array<LinkTarget | ReferenceValue> {
-    if(this.activeTab === "document") return [...new Map((this.state?.targets ?? []).map(target => [target.href, target])).values()]
-    if(this.activeTab === "web") return this.history.urls.map(href => ({href, label: href}))
+  #values(kind = this.#kind()): Array<LinkTarget | ReferenceValue> {
+    if(kind === "cross-reference") return [...new Map((this.state?.targets ?? []).map(target => [target.href, target])).values()]
+    if(kind === "link") return this.history.urls.map(href => ({href, label: href}))
     return [...new Map([...this.history.references, ...(this.state?.references ?? [])].map(reference => [reference.href, reference])).values()]
   }
-  #select(value: LinkTarget | ReferenceValue) {
-    if(this.activeTab === "web") { this.webHref = value.href; this.#applyWeb(); return }
+  #select(value: LinkTarget | ReferenceValue, kind = this.#kind()) {
+    if(kind === "link") { this.webHref = value.href; this.#applyWeb(); return }
     const attributes = this.#currentAttributes()
     attributes["data-reference"] = "data" in value ? value.data : null
     attributes["data-reference-locator"] = value.href === this.state?.href ? this.state.attributes["data-reference-locator"] ?? null : null
@@ -316,7 +294,6 @@ export class LinkKeyboard extends LitElement {
         attributes.rel = [...rel].join(" ")
       }
     }
-    if(this.download !== (this.#initialDownload !== null)) attributes.download = this.download ? "" : null
     this.#apply(this.webHref.trim(), attributes)
   }
   #applyReference() {
@@ -345,9 +322,9 @@ export class LinkKeyboard extends LitElement {
     if(normalized === null) { this.validationError = "Enter a valid address."; return }
     href = normalized
     this.validationError = ""
-    if(this.activeTab === "web") this.webHref = href
+    if(this.#kind() === "link") this.webHref = href
     if(this.dialogOpen && this.reference.href.trim()) this.reference = {...this.reference, href}
-    this.#pendingEdit = {identity: this.state?.identity ?? "", href, attributes}
+    this.#pendingEdit = {identity: this.state?.identity ?? "", href, attributes, kind: this.#kind()}
     this.dispatchEvent(new CustomEvent("link-keyboard-command", {detail: this.#pendingEdit, bubbles: true, composed: true}))
   }
 
@@ -382,15 +359,6 @@ export class LinkKeyboard extends LitElement {
     event.preventDefault(); event.stopPropagation()
     if(this.dialogOpen && !this.attachment) this.dialogOpen = false
     else this.#close()
-  }
-  #onTabKeydown(event: KeyboardEvent) {
-    if(!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return
-    event.preventDefault()
-    const tabs = [...this.renderRoot.querySelectorAll<HTMLButtonElement>('[role="tab"]')].filter(tab => !tab.disabled)
-    const index = tabs.indexOf(event.currentTarget as HTMLButtonElement)
-    const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
-      : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length
-    tabs[next]?.click(); tabs[next]?.focus()
   }
   #close() { this.dispatchEvent(new CustomEvent("link-keyboard-close", {bubbles: true, composed: true})) }
   #keepSelection(event: PointerEvent) { event.preventDefault() }

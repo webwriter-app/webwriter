@@ -27,7 +27,7 @@ import {isAuthoredMutation} from "../editor-artifacts"
 import {popupContentAncestor, popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
 import {isSectionElement} from "../sections"
 import {collectReferences, parseReference} from "../document-viewer.js"
-import {attachmentWarningBytes, isLinkEdit, normalizeLinkHref, type AttachmentSelectionState, type AttachmentSource, type LinkEdit, type LinkSelectionState} from "../links"
+import {attachmentWarningBytes, isLinkEdit, isLinkKind, linkKindFromAttributes, normalizeLinkHref, type AttachmentSelectionState, type AttachmentSource, type InputLinkKind, type LinkEdit, type LinkKind, type LinkSelectionState} from "../links"
 import {attachmentConfirmationEvent} from "../editor-bridge"
 import {fontStylesheetFamily, fontFamilies, fontWithFallback, syncFontResources} from "../fonts"
 import {mergeEmbeddedFonts} from "../local-fonts"
@@ -436,6 +436,7 @@ export class MarkFeature extends EditorFeature {
   /** Apply Popup to the next typed text at this caret. */
   private storedPopup = false
   private storedSelection: StoredSelection | null = null
+  private linkKindDraft: {identity: string, token: string, kind: InputLinkKind} | null = null
   private linkNodeIDs = new WeakMap<Node, string>()
   private attachmentRequest: {token: string, identity: string, href: string | null, draft: boolean} | null = null
   private attachmentConfirmation: {id: string, resolve: (confirmed: boolean) => void} | null = null
@@ -608,6 +609,12 @@ export class MarkFeature extends EditorFeature {
   actions = {
     insertPopup: ({}: {type: "insertPopup"}) => this.insertPopup(),
     togglePopup: ({}: {type: "togglePopup"}) => this.togglePopup(),
+    selectLinkKind: ({kind, toggle}: {type: "selectLinkKind", kind: LinkKind, toggle?: boolean}) => this.selectLinkKind(kind, toggle),
+    cancelLinkKindDraft: ({identity}: {type: "cancelLinkKindDraft", identity: string}) => {
+      if(this.linkKindDraft?.token !== identity) return
+      this.linkKindDraft = null
+      this.editor.postMarkState()
+    },
     editLink: (edit: LinkEdit & {type: "editLink"}) => this.editLink(edit),
     toggleAttachment: ({}: {type: "toggleAttachment"}) => this.toggleAttachment(),
     attach: (action: AttachmentSource & {type: "attach", identity: string}) => this.attach(action.identity, action),
@@ -711,6 +718,7 @@ export class MarkFeature extends EditorFeature {
     this.automaticLinkTypingBlock = null
     this.composing = false
     this.stateRefreshQueued = false
+    this.linkKindDraft = null
     this.attachmentRequest = null
     this.attachmentConfirmation?.resolve(false)
     this.attachmentConfirmation = null
@@ -841,10 +849,13 @@ export class MarkFeature extends EditorFeature {
   }
 
   /** Keyboard state carries no retained DOM nodes across the editor boundary. */
-  getLinkState(): LinkSelectionState | null {
+  private linkSelection(allowUnmarked = false) {
     const state = this.getState()
-    if(!state.canMark || !state.marks.includes("a") || this.editor.features.math.activeMath) return null
+    if(!state.canMark || this.editor.features.math.activeMath) return null
     const svg = this.svgContext()
+    const active = state.marks.includes("a")
+    const popup = allowUnmarked ? this.linkPopupToggle() : null
+    if(!active && !(allowUnmarked && (svg || popup || this.attachmentTarget()))) return null
     const context = svg ?? this.getCaret() ?? this.getSelection()
     if(!context) return null
     const {range} = context
@@ -852,26 +863,44 @@ export class MarkFeature extends EditorFeature {
     const anchors = svg ? svg.text.map(({node}) => this.svgValues(node).link).filter(anchor => anchor !== null)
       : range.collapsed ? [this.markElementAt(range.startContainer, context.block, "a")].filter(anchor => anchor !== null)
       : this.markElementsForSelection(context as MarkSelection, "a")
-    if(!range.collapsed) {
-      const anchor = anchors[0]
-      if(!anchor || anchors.some(other => other !== anchor)) return null
+    const anchor = anchors[0]
+    if(anchors.some(other => other !== anchor)) return null
+    if(!range.collapsed && anchor) {
       const linkRange = range.cloneRange()
       // Include selections that select the anchor itself from its parent.
       linkRange.selectNode(anchor)
       if(range.compareBoundaryPoints(Range.START_TO_START, linkRange) < 0
         || range.compareBoundaryPoints(Range.END_TO_END, linkRange) > 0) return null
     }
+    if(!range.collapsed && !anchor && !allowUnmarked) return null
     const attributes = {...(this.getAttributeState().a ?? {})}
     const href = attributes.href ?? ""
-    if(anchors.some(anchor => anchor instanceof HTMLAnchorElement && anchor.matches(attachmentMark))
-      || attributes.download !== undefined && /^data:/i.test(href)) return null
+    const attachment = anchor instanceof HTMLAnchorElement && anchor.matches(attachmentMark)
+      || attributes.download !== undefined && /^data:/i.test(href)
     const text = range.toString()
+    const popupContent = popup && popupContentForToggle(popup)
     const identity = JSON.stringify([this.linkNodeID(range.startContainer), range.startOffset,
       this.linkNodeID(range.endContainer), range.endOffset, text, attributes,
       anchors.map(anchor => [this.linkNodeID(anchor), Array.from(anchor.attributes).flatMap(attribute => {
         const value = attribute.name === "class" ? authoredClassValue(attribute.value) : attribute.value
         return attribute.name === "class" && !value ? [] : [[attribute.name, value]]
-      })])])
+      })]), popupContent && [this.linkNodeID(popupContent), popupContent.innerHTML]])
+    return {context, anchor, popup, attributes, href, attachment, active, identity, svg: !!svg, text}
+  }
+
+  getLinkState(): LinkSelectionState | null {
+    const draft = this.linkKindDraft
+    const selection = this.linkSelection(!!draft)
+    const pending = draft && draft.identity === selection?.identity ? draft : null
+    if(!pending && draft) this.linkKindDraft = null
+    if(!selection || !pending && (selection.attachment || !selection.active)) return null
+    const {attributes, text, svg} = selection
+    const href = selection.attachment ? "" : selection.href
+    if(selection.attachment) {
+      delete attributes.href
+      delete attributes.download
+    }
+    const kind = pending?.kind ?? linkKindFromAttributes(attributes, href)
     const targets = new Map<string, string>()
     const ids = new Set<string>()
     const duplicateIDs = new Set<string>()
@@ -890,7 +919,7 @@ export class MarkFeature extends EditorFeature {
     for(const element of document.body.children) visit(element)
     const references = collectReferences(document.body).filter(reference => !reference.conflict)
       .map(reference => ({href: reference.href, label: reference.data.title, data: JSON.stringify(reference.data)}))
-    return {active: true, identity, href, attributes, text,
+    return {active: true, identity: pending?.token ?? selection.identity, kind, href, attributes, text,
       targets: Array.from(targets, ([href, label]) => ({href, label})), references, referenceAllowed: !svg}
   }
 
@@ -975,6 +1004,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   getAttachmentState(): AttachmentSelectionState | null {
+    if(this.linkKindDraft?.identity && this.linkKindDraft.identity === this.linkSelection(true)?.identity) return null
     const request = this.attachmentRequest
     const target = this.attachmentTarget(request?.draft === true)
     if(target && (target.existing || request?.draft && request.identity === target.identity && request.href === target.href)) {
@@ -1193,12 +1223,104 @@ export class MarkFeature extends EditorFeature {
     return fragment
   }
 
+  /** Choose a link type for the live selection. Keyboard edits commit the destination. */
+  selectLinkKind(kind: LinkKind, toggle = false): boolean {
+    if(!isLinkKind(kind) || this.editor.isEditingLocked || this.editor.features.math.activeMath) return false
+    this.clearStoredMarksIfSelectionChanged()
+    if(this.svgContext() && kind !== "link" && kind !== "cross-reference") return false
+
+    const popup = this.linkPopupToggle()
+    if(kind === "popup") {
+      if(this.selectionInPopupContent()) return false
+      if(popup) {
+        if(this.linkKindDraft && this.linkKindDraft.identity === this.linkSelection(true)?.identity) {
+          this.linkKindDraft = null
+          this.editor.postMarkState()
+          return true
+        }
+        return toggle ? this.togglePopup() : true
+      }
+      const link = this.linkSelection(true)?.anchor
+      const selection = document.getSelection()
+      if(link instanceof HTMLAnchorElement && selection?.anchorNode && selection.focusNode) {
+        const {anchorNode, anchorOffset, focusNode, focusOffset} = selection
+        const range = document.createRange()
+        range.selectNode(link)
+        selection.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+        if(this.insertPopup(link)) return true
+        selection.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
+        return false
+      }
+      const caret = this.getCaret()
+      if(caret && this.effectiveCaretMarks(caret).has("a")) this.setStoredMark("a", false, caret)
+      this.linkKindDraft = null
+      this.attachmentRequest = null
+      return this.togglePopup()
+    }
+
+    if(this.storedPopup) this.storedPopup = false
+    if(popup ? this.allowedMarksAt(popup.parentNode)?.includes("a") === false : !this.isMarkAllowed("a")) return false
+    if(kind === "attachment") {
+      if(popup) {
+        const end = this.editor.doc.beginUndoGroup()
+        try {
+          if(!this.replacePopupWithLink(popup)) return false
+          this.linkKindDraft = null
+          return !!this.activateAttachment()
+        }
+        finally { end() }
+      }
+      const target = this.attachmentTarget()
+      if(!target) return false
+      const switching = this.linkKindDraft && this.linkKindDraft.identity === this.linkSelection(true)?.identity
+      this.linkKindDraft = null
+      return !!(toggle && !switching ? this.toggleAttachment() : this.activateAttachment(target))
+    }
+
+    const current = this.linkSelection(true)
+    if(!current) {
+      const context = kind === "link" && toggle ? this.getSelection() : null
+      if(!context) return false
+      const anchors = this.markElementsForSelection(context, "a")
+      if(anchors.some(anchor => anchor.matches(attachmentMark) || anchor.hasAttribute("data-reference")
+        || anchor.getAttribute("href")?.startsWith("#"))) return false
+      return (!anchors.length || this.getState().marks.includes("a")) && this.toggleMark("a")
+    }
+    const {active} = current
+    const currentKind = current.attachment ? "attachment" : linkKindFromAttributes(current.attributes, current.href)
+    const pending = this.linkKindDraft?.identity === current.identity
+    if(toggle && !pending && !popup && (active ? currentKind === kind : kind === "link")) {
+      this.linkKindDraft = null
+      return this.toggleMark("a")
+    }
+    this.attachmentRequest = null
+    if(active && currentKind === kind) this.linkKindDraft = null
+    else if(this.linkKindDraft?.identity !== current.identity || this.linkKindDraft.kind !== kind)
+      this.linkKindDraft = {identity: current.identity, token: crypto.randomUUID(), kind}
+    this.editor.postMarkState()
+    return true
+  }
+
   /** Apply a complete keyboard edit against the current selection, atomically. */
   editLink(edit: LinkEdit): boolean {
+    if(this.editor.isEditingLocked) return false
     if(!isLinkEdit(edit)) throw new TypeError("Invalid link edit")
     const state = this.getLinkState()
     if(!state || state.identity !== edit.identity) throw new Error("The selected link changed. Select it again before applying.")
+    if(edit.kind && edit.kind !== state.kind) throw new Error("The link type changed. Select it again before applying.")
+    const draft = this.linkKindDraft
+    const selection = this.linkSelection(!!draft)
+    if(!selection) return false
+    if(draft && (selection.popup ? this.allowedMarksAt(selection.popup.parentNode)?.includes("a") === false : !this.isMarkAllowed("a"))) return false
     const attributes = {...edit.attributes}
+    if(edit.kind) {
+      attributes.download = null
+      if(edit.kind !== "citation") {
+        attributes["data-reference"] = null
+        attributes["data-reference-locator"] = null
+      }
+      if(edit.kind === "cross-reference") attributes.target = null
+    }
     if(!state.href && !state.attributes.target && !Object.hasOwn(attributes, "target")) {
       attributes.target = "_blank"
       attributes.rel = [...new Set([...(attributes.rel ?? "").split(/\s+/).filter(Boolean), "noopener", "noreferrer"])].join(" ")
@@ -1208,11 +1330,14 @@ export class MarkFeature extends EditorFeature {
       throw new TypeError("Enter a title for the reference.")
     // Choosing an existing source reuses its metadata, without a bibliography model.
     const source = collectReferences(document.body).find(reference => reference.href === href)
-    if(href.startsWith("#") && source && !attributes["data-reference"]) {
+    if(!edit.kind && href.startsWith("#") && source && !attributes["data-reference"]) {
       if(source.conflict) throw new Error("This reference has conflicting metadata. Edit its citations first.")
       attributes["data-reference"] = JSON.stringify(source.data)
     }
     const isReference = !!attributes["data-reference"]
+    if(edit.kind === "citation" && !isReference) throw new TypeError("Choose or enter a citation.")
+    if(edit.kind === "cross-reference" && !href.startsWith("#")) throw new TypeError("Choose a document target.")
+    if(edit.kind === "link" && href.startsWith("#") && !selection.svg) throw new TypeError("Use Cross Reference to link to a document target.")
     if(isReference && !state.referenceAllowed) throw new Error("References require an HTML link.")
     if(!href && isReference) href = this.referenceHref()
     if(!href) throw new TypeError("Choose a document target or enter a web address.")
@@ -1220,6 +1345,8 @@ export class MarkFeature extends EditorFeature {
     if(normalized === null) throw new TypeError("Enter a valid web address.")
     href = normalized
     if(href.startsWith("#") && !isReference) {
+      if(edit.kind === "cross-reference" && !state.targets.some(target => target.href === href))
+        throw new Error("The document target is no longer available.")
       let id: string
       try { id = decodeURIComponent(href.slice(1)) } catch { throw new TypeError("Choose a valid document target.") }
       const target = document.getElementById(id)
@@ -1228,6 +1355,19 @@ export class MarkFeature extends EditorFeature {
     const endUndoGroup = this.editor.doc?.beginUndoGroup()
     this.editingLink = true
     try {
+      if(draft) {
+        if(selection.popup) {
+          if(!this.replacePopupWithLink(selection.popup)) return false
+        }
+        else if(!selection.svg && !selection.anchor && !selection.context.range.collapsed) {
+          this.wrapAttachmentSelection(selection.context as MarkSelection, document.createElement("a"))
+        }
+        else if(!this.getState().marks.includes("a")) {
+          if(!this.addMark("a")) return false
+        }
+        selection.anchor?.removeAttribute(attachmentDraftAttribute)
+        this.linkKindDraft = null
+      }
       this.setMarkAttribute("a", "href", href)
       for(const [name, value] of Object.entries(attributes)) this.setMarkAttribute("a", name, value)
     } finally { this.editingLink = false; endUndoGroup?.() }
@@ -1292,6 +1432,35 @@ export class MarkFeature extends EditorFeature {
     return anchor && anchor === toggleAt(selection.focusNode) ? anchor : null
   }
 
+  private linkPopupToggle() {
+    const popup = this.selectedPopupToggle()
+    const selection = document.getSelection()
+    return popup && ($.selectedElement === popup || !!selection?.anchorNode && !!selection.focusNode
+      && popup.contains(selection.anchorNode) && popup.contains(selection.focusNode)) ? popup : null
+  }
+
+  /** Replace the linked popup while retaining its label and unrelated wrapper attributes. */
+  private replacePopupWithLink(toggle: Element) {
+    const content = popupContentForToggle(toggle)
+    const wrapper = toggle.closest(".ww-popup")
+    if(!content || !wrapper || !toggle.isConnected) return false
+    const link = document.createElement("a")
+    for(const attribute of Array.from(toggle.attributes)) {
+      if(!["type", "popovertarget", "popovertargetaction"].includes(attribute.name))
+        link.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+    }
+    link.style.removeProperty("anchor-name")
+    if(!link.style.cssText) link.removeAttribute("style")
+    link.append(...toggle.childNodes)
+    toggle.replaceWith(link)
+    content.remove()
+    wrapper.classList.remove("ww-popup")
+    if(!wrapper.classList.length) wrapper.removeAttribute("class")
+    if(!wrapper.attributes.length && wrapper.childNodes.length === 1 && wrapper.firstChild === link) wrapper.replaceWith(link)
+    $.selectRange(link, 0, link, link.childNodes.length)
+    return true
+  }
+
   togglePopup(): boolean {
     if(this.editor.isEditingLocked) return false
     this.clearStoredMarksIfSelectionChanged()
@@ -1327,7 +1496,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   /** Turn one live, contiguous phrasing selection into a native popup toggle. */
-  insertPopup(): boolean {
+  insertPopup(replaceLink?: HTMLAnchorElement): boolean {
     if(this.editor.isEditingLocked) return false
     if(this.selectionInPopupContent()) return false
     const context = this.getSelection()
@@ -1338,6 +1507,11 @@ export class MarkFeature extends EditorFeature {
         || atomicEditingContainer(element, this.editor.schema)) return false
     }
     const fragment = context.range.cloneContents()
+    if(replaceLink) {
+      const clone = fragment.firstChild
+      if(!replaceLink.isConnected || !(clone instanceof HTMLAnchorElement) || clone !== fragment.lastChild) return false
+      clone.replaceWith(...clone.childNodes)
+    }
     if(Array.from(fragment.querySelectorAll("*")).some(element =>
       element.namespaceURI !== "http://www.w3.org/1999/xhtml" || element.localName.includes("-") || element.hasAttribute("is")
       || element.matches("a, button, input, select, textarea, [popover], [contenteditable='false']")
@@ -1345,7 +1519,11 @@ export class MarkFeature extends EditorFeature {
     let id = `popup-${crypto.randomUUID()}`
     while(document.getElementById(id)) id = `popup-${crypto.randomUUID()}`
     const wrapper = document.createElement("span")
-    wrapper.className = "ww-popup"
+    if(replaceLink) for(const attribute of Array.from(replaceLink.attributes)) {
+      if(attribute.name !== attachmentDraftAttribute && !isMarkAttributeName("a", attribute.name))
+        wrapper.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+    }
+    wrapper.classList.add("ww-popup")
     const button = document.createElement("button")
     button.type = "button"
     button.setAttribute("popovertarget", id)
@@ -1359,9 +1537,15 @@ export class MarkFeature extends EditorFeature {
     popup.append(document.createElement("p"))
     const end = this.editor.doc.beginUndoGroup()
     try {
-      button.append(context.range.extractContents())
       wrapper.append(button)
-      context.range.insertNode(wrapper)
+      if(replaceLink) {
+        button.append(...replaceLink.childNodes)
+        replaceLink.replaceWith(wrapper)
+      }
+      else {
+        button.append(context.range.extractContents())
+        context.range.insertNode(wrapper)
+      }
       if(context.block.matches("td, th, caption")) context.block.append(popup)
       else context.block.after(popup)
       $.move(popup.firstChild!, 0)
@@ -1717,7 +1901,7 @@ export class MarkFeature extends EditorFeature {
       else delete attributes[attribute]
       if(svg.range.collapsed) {
         this.storeAttributes({a: attributes}, svg.selection)
-        this.editor.postMarkState()
+        if(!this.editingLink) this.editor.postMarkState()
         return true
       }
       for(const slice of [...svg.text].reverse()) {
@@ -1758,7 +1942,7 @@ export class MarkFeature extends EditorFeature {
         else delete attributes[mark]
         this.storeAttributes(attributes, caret.selection)
       }
-      this.editor.postMarkState()
+      if(!this.editingLink) this.editor.postMarkState()
       return true
     }
 
@@ -1769,7 +1953,7 @@ export class MarkFeature extends EditorFeature {
     if(attribute !== "data-reference" && elements.every(element => (attribute === "download" ? element.getAttribute(attribute) : element.getAttribute(attribute) ?? "") === value)) return false
     elements.forEach(element => this.applyMarkAttribute(element, attribute, value))
     this.restoreSelection(context)
-    this.editor.postMarkState()
+    if(!this.editingLink) this.editor.postMarkState()
     return true
   }
 

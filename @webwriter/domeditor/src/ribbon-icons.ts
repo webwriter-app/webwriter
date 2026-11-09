@@ -61,6 +61,7 @@ import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 export {captionIconSource} from "./caption-icon"
 
 import anchor from "@tabler/icons/outline/anchor.svg?raw"
+import hash from "@tabler/icons/outline/hash.svg?raw"
 import artboard from "@tabler/icons/outline/artboard.svg?raw"
 import balloon from "@tabler/icons/outline/balloon.svg?raw"
 import balloonFilled from "@tabler/icons/filled/balloon.svg?raw"
@@ -309,6 +310,7 @@ const icons: Record<string, string> = {
   AutoReload: autoReloadIcon(),
   AutoReloadOff: autoReloadIcon(true),
   Anchor: anchor,
+  Hash: hash,
   Balloon: balloon,
   BalloonFilled: balloonFilled,
   Document: fileDescription,

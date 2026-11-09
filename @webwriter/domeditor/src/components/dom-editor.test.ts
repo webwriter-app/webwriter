@@ -11096,6 +11096,7 @@ describe("DomEditor.execute()", () => {
       dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attributes: {a: {}}, link: {
         active: true, identity: "new-link", href: "", attributes: {}, text: "Text", targets: [],
       }})
+      return true
     })
     editor.shadowRoot!.querySelector("dom-editor-toolbox")!.dispatchEvent(new CustomEvent("ribbon-button-click", {
       detail: {label}, bubbles: true, composed: true,
@@ -11107,7 +11108,39 @@ describe("DomEditor.execute()", () => {
       expect(keyboard?.shadowRoot?.activeElement).toBe(keyboard?.shadowRoot?.querySelector('[aria-label="Web address"]'))
       expect(keyboard).not.toBeNull()
     })
-    expect(execute).toHaveBeenCalledWith({type: "toggleMark", mark: "a"})
+    expect(execute).toHaveBeenCalledWith(label === "mark:a"
+      ? {type: "selectLinkKind", kind: "link", toggle: true}
+      : {type: "toggleMark", mark: "a"})
+  })
+
+  it.each([
+    ["cross-reference", "Cross Reference", "Search cross references"],
+    ["citation", "Citation", "Search citations"],
+  ] as const)("opens and focuses the %s keyboard from the Link radio menu", async (kind, label, searchLabel) => {
+    const {editor, editorWindow} = await mountEditor()
+    const focus = vi.spyOn(HTMLElement.prototype, "focus")
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: []})
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type !== "selectLinkKind") return undefined
+      dispatchMarkState(editor, editorWindow, {canMark: true, marks: [], link: {
+        active: true, kind, identity: "draft", href: "", attributes: {}, text: "Label", targets: [],
+      }})
+      return true
+    })
+    await editor.updateComplete
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    await ribbon.updateComplete
+    const link = ribbon.shadowRoot!.querySelector<RibbonButton>(".mark-span")!
+    await link.updateComplete
+    link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await link.updateComplete
+    link.shadowRoot!.querySelector<HTMLInputElement>(`input[aria-label="Select ${label}"]`)!.click()
+    expect(execute).toHaveBeenCalledWith({type: "selectLinkKind", kind, toggle: false})
+    await vi.waitFor(() => {
+      const keyboard = editor.shadowRoot!.querySelector<LinkKeyboard>("dom-editor-link-keyboard")!
+      expect(keyboard.shadowRoot!.querySelector("h2")?.textContent).toBe(label)
+      expect(focus.mock.contexts).toContain(keyboard.shadowRoot!.querySelector(`[aria-label="${searchLabel}"]`))
+    })
   })
 
   it("shows, closes, reopens, and routes the link keyboard without losing the selection", async () => {
@@ -11131,14 +11164,14 @@ describe("DomEditor.execute()", () => {
       type: "editLink", identity: "link-1", href: "#intro", attributes: {target: "_blank"},
     })
 
-    const close = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close link keyboard"]')!
+    const close = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close cross reference keyboard"]')!
     const pointer = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0})
     close.dispatchEvent(pointer)
     expect(pointer.defaultPrevented).toBe(true)
     close.click()
     await editor.updateComplete
     expect(keyboard.closest("section")!.hasAttribute("hidden")).toBe(true)
-    const reopen = editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show link keyboard"]')!
+    const reopen = editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show cross reference keyboard"]')!
     const reopenPointer = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0})
     reopen.dispatchEvent(reopenPointer)
     expect(reopenPointer.defaultPrevented).toBe(true)
@@ -11146,7 +11179,7 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBe(keyboard)
     expect(keyboard.closest("section")!.hasAttribute("hidden")).toBe(false)
-    await vi.waitFor(() => expect(keyboard.shadowRoot!.activeElement).toBe(keyboard.shadowRoot!.querySelector('[aria-label="Web address"]')))
+    await vi.waitFor(() => expect(keyboard.shadowRoot!.activeElement).toBe(keyboard.shadowRoot!.querySelector('[aria-label="Search cross references"]')))
     expect(focusEditor).toHaveBeenCalled()
   })
 
@@ -11155,7 +11188,7 @@ describe("DomEditor.execute()", () => {
     const focusEditor = vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
     const execute = vi.spyOn(editor, "execute").mockImplementation(async () => {
       dispatchMarkState(editor, editorWindow, {canMark: true, marks: []})
-      return "removed"
+      return true
     })
     dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attachment: {identity: "inside", media: []}})
     await editor.updateComplete
@@ -11163,7 +11196,7 @@ describe("DomEditor.execute()", () => {
       detail: {label: "mark:attachment"}, bubbles: true, composed: true,
     }))
     await vi.waitFor(() => expect(focusEditor).toHaveBeenCalled())
-    expect(execute).toHaveBeenCalledWith({type: "toggleAttachment"})
+    expect(execute).toHaveBeenCalledWith({type: "selectLinkKind", kind: "attachment", toggle: true})
     expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBeNull()
   })
 
@@ -11181,7 +11214,7 @@ describe("DomEditor.execute()", () => {
     expect(pane.hidden).toBe(false)
     expect(file.matches(":focus")).toBe(false)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    expect(ribbon.shadowRoot!.querySelector(".mark-span")?.getAttribute("icon")).toBe("Attachment")
+    expect(ribbon.shadowRoot!.querySelector(".mark-span")?.getAttribute("icon")).toBe("MarkLink")
 
     const close = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close attachment keyboard"]')!
     const pointer = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true})
