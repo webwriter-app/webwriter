@@ -8,7 +8,7 @@ import {preferredDocumentLanguage} from "./document-languages"
 import {linkKindOptions} from "./links"
 
 export const APP_SETTINGS_STORAGE_KEY = "webwriter_app_settings_v1"
-const shortcutsVersion = 3
+const shortcutsVersion = 4
 
 export type AppCommand = {
   id: string
@@ -100,15 +100,16 @@ export const appCommands: readonly AppCommand[] = [
   {id: "text.increase", section: "Text", label: "Increase font size", description: "Increase the selected text size", icon: "IncreaseFontSize", action: "increaseFontSize", defaultShortcut: primary("Shift+>")},
   {id: "text.decrease", section: "Text", label: "Decrease font size", description: "Decrease the selected text size", icon: "DecreaseFontSize", action: "decreaseFontSize", defaultShortcut: primary("Shift+<")},
   {id: "insert.paragraph", section: "Insert", label: "Paragraph", description: "Insert paragraph content", icon: "Paragraph", action: "Paragraph", defaultShortcut: alternate("Enter")},
+  // Read across the full Elements ribbon, then across its second row. Paragraph has its own shortcut.
   ...[
-    ["heading", "Heading", "Heading", "Heading 1", "1"],
-    ["details", "Details", "Details", "element:details", "2"],
-    ["list", "List", "List", "element:ul", "3"],
-    ["table", "Table", "Table", "Table", "4"],
-    ["image", "Image", "Image", "Image", "5"],
-    ["graphic", "Graphic", "Graphic", "Graphic", "6"],
-    ["audio", "Audio", "Audio", "Audio", "7"],
-    ["website", "Website", "Website", "Website", "8"],
+    ["list", "List", "List", "element:ul", "1"],
+    ["table", "Table", "Table", "Table", "2"],
+    ["graphic", "Graphic", "Graphic", "Graphic", "3"],
+    ["website", "Website", "Website", "Website", "4"],
+    ["heading", "Heading", "Heading", "Heading 1", "5"],
+    ["details", "Details", "Details", "element:details", "6"],
+    ["image", "Image", "Image", "Image", "7"],
+    ["audio", "Audio", "Audio", "Audio", "8"],
     ["video", "Video", "Video", "Video", "9"],
     ["formula", "Formula", "Formula", "Formula", "9"],
   ].map(([id, label, icon, action, key]) => ({
@@ -295,7 +296,13 @@ export function loadAppSettings(): AppSettings {
     }
     const savedVersion = value.shortcutsVersion ?? 0
     if(savedVersion < 4) {
-      const reset: string[] = []
+      const formerInsertionOrder = ["heading", "details", "list", "table", "image", "graphic", "audio", "website", "video"]
+      const reset = formerInsertionOrder.flatMap((name, index) => {
+        const id = `insert.${name}`
+        const binding = savedShortcuts?.[id]
+        const key = index + 1
+        return typeof binding !== "string" || !savedVersion && !binding || binding === `Ctrl+${key}` || binding === `Meta+${key}` ? [id] : []
+      })
       const formula = shortcuts["insert.formula"]
       if(formula === "Alt+Shift+0" || savedVersion < 3 && (formula === "Ctrl+0" || formula === "Meta+0")) {
         reset.push("insert.formula")
@@ -355,9 +362,7 @@ export function loadAppSettings(): AppSettings {
         ? value.autosaveCloudOnBundleChange : defaults.autosaveCloudOnBundleChange,
       shortcuts,
     }
-    if(savedVersion < shortcutsVersion || "offlineUsername" in value
-      || savedShortcuts?.["insert.formula"] !== shortcuts["insert.formula"]
-      || savedShortcuts?.["toolbox.feedback"] !== shortcuts["toolbox.feedback"]) persistAppSettings(settings)
+    if(savedVersion < shortcutsVersion || "offlineUsername" in value) persistAppSettings(settings)
     return settings
   }
   catch {

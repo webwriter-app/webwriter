@@ -2287,7 +2287,7 @@ describe("DomEditor iframe setup", () => {
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const shortcut = defaultAppSettings().shortcuts["insert.image"]
     const event = new KeyboardEvent("keydown", {
-      key: "5", code: "Digit5", metaKey: shortcut.includes("Meta"), ctrlKey: shortcut.includes("Ctrl"),
+      key: "7", code: "Digit7", metaKey: shortcut.includes("Meta"), ctrlKey: shortcut.includes("Ctrl"),
       bubbles: true, cancelable: true,
     })
     iframe.contentDocument!.dispatchEvent(event)
@@ -2302,14 +2302,14 @@ describe("DomEditor iframe setup", () => {
       detail: defaultAppSettings(apple), bubbles: true, composed: true,
     }))
     const commands = [
-      {type: "insertElement", tag: "h1"},
-      {type: "insertElement", tag: "details"},
       {type: "insertElement", tag: "ul"},
       {type: "insertElement", tag: "table"},
-      {type: "insertElement", tag: "picture"},
       {type: "insertElement", tag: "svg"},
-      {type: "insertElement", tag: "audio"},
       {type: "insertElement", tag: "iframe"},
+      {type: "insertElement", tag: "h1"},
+      {type: "insertElement", tag: "details"},
+      {type: "insertElement", tag: "picture"},
+      {type: "insertElement", tag: "audio"},
       {type: "insertElement", tag: "video"},
       {type: "insertElement", tag: "math"},
     ]

@@ -9,14 +9,14 @@ import {insertionMenuGroups} from "./ribbon-menu-config"
 import {ribbonInsertionDragType} from "./insertion-menu"
 
 const insertionShortcuts = [
-  ["Heading", "heading", "1"],
-  ["Details", "details", "2"],
-  ["List", "list", "3"],
-  ["Table", "table", "4"],
-  ["Image", "image", "5"],
-  ["Graphic", "graphic", "6"],
-  ["Audio", "audio", "7"],
-  ["Website", "website", "8"],
+  ["List", "list", "1"],
+  ["Table", "table", "2"],
+  ["Graphic", "graphic", "3"],
+  ["Website", "website", "4"],
+  ["Heading", "heading", "5"],
+  ["Details", "details", "6"],
+  ["Image", "image", "7"],
+  ["Audio", "audio", "8"],
   ["Video", "video", "9"],
   ["Formula", "formula", "9"],
 ] as const
