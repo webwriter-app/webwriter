@@ -570,7 +570,11 @@ describe("top-level captions", () => {
     expect(root.querySelector("figure")!.lastElementChild).toBe(section)
   })
 
-  it.each(["canvas", "slides"] as const)("captions the top-level layout item in %s", mode => {
+  it.each([
+    ["canvas", "body"],
+    ["board", "body > .ww-board-column > article.ww-board-card"],
+    ["slides", "body > .ww-slides-viewport > section.ww-slide"],
+  ] as const)("captions the top-level layout item in %s", (mode, rootSelector) => {
     const previousHead = document.head.innerHTML
     try {
       document.body.innerHTML = '<p>Text</p>'
@@ -582,14 +586,30 @@ describe("top-level captions", () => {
       paragraph.before(container)
       container.append(paragraph)
       $.move(paragraph.firstElementChild!.firstChild!, 1)
-      editor.features.manipulation.setCaption("below")
+      expect(editor.features.manipulation.actions.setCaption({type: "setCaption", position: "below"})).toBe(true)
       const figure = root.querySelector(":scope > figure")!
       expect(figure).not.toBeNull()
       expect(figure.firstElementChild).toBe(container)
       expect(figure.lastElementChild!.localName).toBe("figcaption")
-      expect(root.localName).toBe(mode === "canvas" ? "body" : "section")
+      expect(root.matches(rootSelector)).toBe(true)
+      expect(document.body.querySelectorAll("figure")).toHaveLength(1)
     }
     finally { document.head.innerHTML = previousHead }
+  })
+
+  it.each([
+    ["board", '<section class="ww-board-group"><h2>Group</h2><section class="ww-board-column"><h2>Column</h2><article class="ww-board-card"><p>Card content</p></article></section></section>'],
+    ["slides", '<div class="ww-slides-viewport"><section class="ww-slide"><p>Slide content</p><nav class="ww-slide-directions"><a>Next</a></nav></section></div><nav class="ww-slides-navigation"><a>1</a></nav>'],
+  ] as const)("disables captioning on %s layout structure and content outside its items", (mode, structure) => {
+    document.body.classList.add(`ww-${mode}`)
+    document.body.innerHTML = structure + '<aside id="outside"><p>Outside</p></aside>'
+    const manipulation = editor.features.manipulation
+    for(const element of document.body.querySelectorAll("section, h2, article, div, nav, a, #outside p")) {
+      $.selectElement(element)
+      expect(manipulation.getCaptionPosition(), element.outerHTML).toBeNull()
+      expect(manipulation.setCaption("below")).toBe(false)
+    }
+    expect(document.body.querySelector("figure, figcaption")).toBeNull()
   })
 
   it("does not caption the document root or disconnected selection content", () => {

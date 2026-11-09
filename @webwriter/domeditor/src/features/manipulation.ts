@@ -2114,8 +2114,9 @@ export class ManipulationFeature extends EditorFeature {
 
   private captionTarget() {
     let target = this.styleTarget
-    const root = this.editor.features.slides.active
-      ? this.editor.features.slides.containingSlide(target) : getDocumentRoot()
+    const {board, slides} = this.editor.features
+    const root = board.active ? board.containingCard(target)
+      : slides.active ? slides.containingSlide(target) : getDocumentRoot()
     if(!root || target === root || !root.contains(target)) return null
     while(target.parentElement && target.parentElement !== root) target = target.parentElement
     if(target.matches("caption, figcaption, hr, h1, h2, h3, h4, h5, h6")) return null
