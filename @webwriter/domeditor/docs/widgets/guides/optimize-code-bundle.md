@@ -2,6 +2,8 @@
 
 Use `import()` to load large optional features on demand. Offline HTML normally embeds the targets of those imports so they can run without a network connection. If a widget’s saved settings limit which features a reader can use, implement `static offlineImports(element)` to embed just those features and their dependencies.
 
+![A full bundle with four code blocks shrinks to a smaller bundle with one block](../../images/widgets/optimize-code-bundle.svg)
+
 ## Put optional features behind lazy imports
 
 Give the optional features their own loader module. Each `import()` uses a literal module specifier. In this example, the widget entry is `widgets/ww-simulation.js` and the loaders are in `simulations/loaders.js`.

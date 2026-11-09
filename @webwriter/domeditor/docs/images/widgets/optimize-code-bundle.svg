@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">Reduce the size of an offline bundle</title>
+  <desc id="desc">A full bundle contains four blocks of code. A smaller bundle beside it contains only the highlighted block.</desc>
+  <defs>
+    <path id="code" d="m81 41-8 8 8 8m18-16 8 8-8 8m-4-20-10 24"/>
+  </defs>
+  <g fill="#82d0f5" fill-opacity=".35">
+    <rect x="42" y="139" width="96" height="36" rx="4"/>
+    <rect x="222" y="139" width="96" height="36" rx="4"/>
+  </g>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="42" y="31" width="96" height="144" rx="4"/>
+    <path d="M42 67h96M42 103h96M42 139h96"/>
+    <rect x="222" y="139" width="96" height="36" rx="4"/>
+    <use href="#code"/>
+    <use href="#code" y="36"/>
+    <use href="#code" y="72"/>
+  </g>
+  <g fill="none" stroke="#065986" stroke-width="3" stroke-linejoin="round">
+    <use href="#code" y="108"/>
+    <use href="#code" x="180" y="108"/>
+  </g>
+  <path d="M151 103h12c29 0 13 54 40 54h5m-8-8 8 8-8 8" fill="none" stroke="#29a3dd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#0f2f48" font-family="system-ui, sans-serif" font-size="15" font-weight="600" text-anchor="middle">
+    <text x="90" y="202">Full bundle</text>
+    <text x="270" y="202">Smaller bundle</text>
+  </g>
+</svg>
