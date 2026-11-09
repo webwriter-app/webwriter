@@ -1039,7 +1039,9 @@ describe("package ribbon controls", () => {
     expect(getComputedStyle(search).width).toBe("100%")
     expect(button.variant).toBe("package")
     expect(button.muted).toBe(false)
-    expect(getComputedStyle(button.shadowRoot!.querySelector(".main-button")!).flexDirection).toBe("row")
+    const mainStyle = getComputedStyle(button.shadowRoot!.querySelector(".main-button")!)
+    expect(mainStyle.flexDirection).toBe("row")
+    expect(Number.parseFloat(mainStyle.minHeight)).toBe(0)
     expect(button.shadowRoot!.querySelector('button[aria-label="Show more Demo options"]')).not.toBeNull()
 
     const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!

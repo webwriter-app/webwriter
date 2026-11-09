@@ -946,7 +946,10 @@ export class RibbonButton extends LitElement {
       justify-content: flex-start;
       gap: 0.4rem;
       height: 100%;
-      padding: 0.15rem 1.35rem 0.15rem 0.4rem;
+      min-height: 0;
+      padding-block: calc(0.15rem - 1px);
+      padding-left: 0.4rem;
+      padding-right: 1.35rem;
       text-align: left;
     }
 
@@ -967,6 +970,7 @@ export class RibbonButton extends LitElement {
       height: 100%;
       min-height: 100%;
       aspect-ratio: 1 / 1;
+      padding-block: calc(0.25rem - 1px);
       transform: none;
     }
 
@@ -978,7 +982,6 @@ export class RibbonButton extends LitElement {
 
     :host([variant="package"]) .has-corner .main-button {
       grid-row: 1 / -1;
-      min-height: 0;
     }
 
     :host([variant="package"]) .has-corner :is(.corner-trigger, .submenu-trigger) {
