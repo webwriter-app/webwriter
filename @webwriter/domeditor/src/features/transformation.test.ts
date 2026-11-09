@@ -228,6 +228,34 @@ it("refreshes a pinned float's anchor on scroll and hides it when the float coll
   expect(line.style.display).toBe("none")
 })
 
+it("switches an idle selection between anchored and masked outlines as a sticky float overlaps it", () => {
+  document.body.innerHTML = '<aside style="float:left;position:sticky">Pinned</aside><p>Selected</p>'
+  const pin = document.querySelector("aside")!
+  const target = document.querySelector("p")!
+  mockRect(target, {left: 0, top: 240, width: 400, height: 150})
+  vi.spyOn(pin, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 16, 100, 120))
+  selectNode(target)
+  flushAnimationFrame()
+
+  const caret = editor.features.selection.selectionCaret!
+  const mask = () => caret.querySelector('[part~="selection-float-outline"] mask path')
+  expect(caret).toHaveAttribute("part", expect.stringContaining("selection-caret-anchored"))
+  expect(mask()).toBeNull()
+
+  vi.mocked(target.getBoundingClientRect).mockReturnValue(new DOMRect(0, 40, 400, 150))
+  document.dispatchEvent(new Event("scroll"))
+  flushAnimationFrame()
+  expect(mask()).not.toBeNull()
+  expect(caret.style.top).toBe("40px")
+
+  vi.mocked(target.getBoundingClientRect).mockReturnValue(new DOMRect(0, 240, 400, 150))
+  document.dispatchEvent(new Event("scroll"))
+  flushAnimationFrame()
+  expect(mask()).toBeNull()
+  expect(caret).toHaveAttribute("part", expect.stringContaining("selection-caret-anchored"))
+  expect($.selectedElement).toBe(target)
+})
+
 it("finishes a stable text resize without reprocessing the unchanged node selection", () => {
   const target = targetElement()
   mockRect(target)

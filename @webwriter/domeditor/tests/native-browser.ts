@@ -10061,6 +10061,45 @@ await check("pinned floats keep their selection frame aligned while scrolling", 
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("sticky float overlap updates full-width selection borders while scrolling", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1200px;height:600px;border:0;max-width:none"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head><body><aside id="pin" class="ww-float-left ww-float-sticky" style="height:160px;background:gray">Pinned float</aside><p style="height:420px">Before</p><p id="wide" class="ww-full-width" style="height:220px">Selected full-width paragraph</p><p style="height:1400px">After</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "sticky overlap fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, pin = doc.querySelector<HTMLElement>("#pin")!, target = doc.querySelector<HTMLElement>("#wide")!
+    const overlaps = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+    editor.features.selection.selectElement(target)
+    await layoutFrame()
+    const caret = editor.features.selection.selectionCaret!
+    const maskPath = () => caret.querySelector('[part~="selection-float-outline"] mask path')?.getAttribute("d")
+    const initialPin = pin.getBoundingClientRect(), initialTarget = target.getBoundingClientRect()
+    assert(!overlaps(initialPin, initialTarget), "pinned float unexpectedly overlaps the selected paragraph before scrolling")
+    assert(!maskPath() && view.getComputedStyle(caret).outlineStyle === "dotted", "selection did not start with a rectangular border")
+
+    view.scrollTo(0, initialTarget.top - 45)
+    await layoutFrame()
+    await layoutFrame()
+    assert(view.getComputedStyle(pin).position === "sticky" && overlaps(pin.getBoundingClientRect(), target.getBoundingClientRect()),
+      "pinned float did not overlap the selected paragraph after scrolling")
+    const mask = maskPath()
+    assert(mask && view.getComputedStyle(caret).outlineStyle === "none", "selection border did not switch to the float contour")
+
+    view.scrollBy(0, 24)
+    await layoutFrame()
+    assert(maskPath() && maskPath() !== mask, "selection contour did not follow the changing overlap")
+
+    view.scrollTo(0, 0)
+    await layoutFrame()
+    await layoutFrame()
+    assert(!maskPath() && view.getComputedStyle(caret).outlineStyle === "dotted", "selection border did not return to its rectangle")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("pinned empty media stays in place and keeps its controls clickable", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1200px;height:600px;border:0;max-width:none"
