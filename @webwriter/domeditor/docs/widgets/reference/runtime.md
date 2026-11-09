@@ -36,6 +36,8 @@ static offlineImports(element) {
 
 WebWriter bundles selected imports and their dependencies normally. Calls excluded by the hook reject with an error named `OfflineImportError` in the standalone file. Static imports and dynamic imports from importers without rules follow the ordinary bundling behavior.
 
+See [Optimize the code bundle](../guides/optimize-code-bundle.md) for a loader example and offline verification steps.
+
 ## Conversions
 
 The key identifies the format and determines the handler's contract. The two maps are independent. A conversion may preserve only the content its target format can represent.
