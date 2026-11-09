@@ -2229,7 +2229,8 @@ export class ManipulationFeature extends EditorFeature {
       // constraints until it is unwrapped. Keep widget/media sizing on the host.
       const text = "p:not([is]), h1:not([is]), h2:not([is]), h3:not([is]), h4:not([is]), h5:not([is]), h6:not([is])"
       const size = from.matches(text) || to.matches(text) ? ["width", "min-width", "max-width", "inline-size", "min-inline-size", "max-inline-size"] : []
-      for(const property of ["float", "clear", "position", "top", "right", "bottom", "left", "inset", "z-index", "--ww-float-size", ...size]) {
+      const margins = Array.from(source).filter(property => ["margin-left", "margin-right", "margin-inline", "margin-inline-start", "margin-inline-end"].includes(property))
+      for(const property of ["float", "clear", "position", "top", "right", "bottom", "left", "inset", "z-index", "--ww-float-size", "--ww-full-width-size", ...size, ...margins]) {
         const value = source.getPropertyValue(property)
         if(!value) continue
         destination.setProperty(property, value, source.getPropertyPriority(property))
@@ -2237,7 +2238,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       if(!source.length) from.removeAttribute("style")
     }
-    for(const name of ["ww-float-left", "ww-float-right", "ww-float-none", "ww-float-sticky"]) {
+    for(const name of ["ww-float-left", "ww-float-right", "ww-float-none", "ww-float-sticky", "ww-full-width"]) {
       if(!from.classList.contains(name)) continue
       from.classList.remove(name)
       to.classList.add(name)

@@ -389,6 +389,46 @@ describe("captions", () => {
     expect(paragraph.style.float).toBe("left")
   })
 
+  it("preserves full width and alignment when adding and removing a caption beside a sticky float", () => {
+    document.body.innerHTML = '<aside class="ww-float-left ww-float-sticky">Pinned</aside><p>Before</p><caption-widget class="authored" style="display:block; height:200px"><span>Keep</span><!--keep--></caption-widget><p>After</p>'
+    const widget = document.querySelector<HTMLElement>("caption-widget")!
+    const before = widget.previousElementSibling, after = widget.nextElementSibling
+    const layout = editor.features.layout.actions
+    $.selectElement(widget)
+    expect(layout.setFloat({type: "setFloat", side: "none", alignment: "center"})).toBe(true)
+    expect(layout.setFullWidth({type: "setFullWidth", enabled: true})).toBe(true)
+    widget.style.setProperty("--ww-full-width-size", "900px", "important")
+
+    expect(setCaption("below")).toBe(true)
+
+    const figure = document.querySelector("figure")!
+    expect(figure.previousElementSibling).toBe(before)
+    expect(figure.nextElementSibling).toBe(after)
+    expect(figure.firstElementChild).toBe(widget)
+    expect(figure).toHaveClass("ww-full-width")
+    expect(figure.style.getPropertyValue("--ww-full-width-size")).toBe("900px")
+    expect(figure.style.getPropertyPriority("--ww-full-width-size")).toBe("important")
+    expect(figure.style.marginLeft).toBe("auto")
+    expect(figure.style.marginRight).toBe("auto")
+    expect(widget.className).toBe("authored")
+    expect(widget.style.getPropertyValue("--ww-full-width-size")).toBe("")
+    expect(widget.style.marginLeft).toBe("")
+    expect(widget.style.marginRight).toBe("")
+    expect(widget.style.height).toBe("200px")
+
+    expect(setCaption("none")).toBe(true)
+
+    expect(document.querySelector("figure")).toBeNull()
+    expect(widget.previousElementSibling).toBe(before)
+    expect(widget.nextElementSibling).toBe(after)
+    expect(widget).toHaveClass("authored", "ww-full-width")
+    expect(widget.style.getPropertyValue("--ww-full-width-size")).toBe("900px")
+    expect(widget.style.getPropertyPriority("--ww-full-width-size")).toBe("important")
+    expect(widget.style.marginLeft).toBe("auto")
+    expect(widget.style.marginRight).toBe("auto")
+    expect(widget.innerHTML).toBe("<span>Keep</span><!--keep-->")
+  })
+
   it.each(["p", "caption-widget"] as const)("wraps a selected %s in a figure and adds a caption", tag => {
     document.body.innerHTML = tag === "p"
       ? '<p title="keep"><b>Content</b><!--keep--></p><p>Other</p>'

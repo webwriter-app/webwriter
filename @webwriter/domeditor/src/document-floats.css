@@ -171,6 +171,13 @@
       clear: both;
       margin-left: calc(0px - min(var(--ww-left-lane), max(0px, calc(var(--ww-full-width-size, var(--ww-wide-available)) - 100%)))) !important;
       margin-right: calc(0px - min(var(--ww-right-lane), max(0px, calc(var(--ww-full-width-size, var(--ww-wide-available)) - 100%)))) !important;
+
+      /* When a caption wraps one block, it still fills the wide placement. */
+      &:where(figure:not([is]):has(> figcaption)) > :nth-child(1 of :not(figcaption)):nth-last-child(1 of :not(figcaption)) {
+        box-sizing: border-box;
+        inline-size: 100% !important;
+        max-inline-size: none !important;
+      }
     }
 
     p:not([is]) {

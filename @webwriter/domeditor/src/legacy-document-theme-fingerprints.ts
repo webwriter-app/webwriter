@@ -1,6 +1,6 @@
 // SHA-256 fingerprints (first 16 bytes) of stock theme CSS from 161b22fa
 // through a106bc0c (before Full width), the bundled layout examples,
-// and snapshots taken before the widget minimum-width and list marker updates.
+// and snapshots taken before the widget minimum-width, list marker and wide caption updates.
 // Hash the complete stylesheet text after normalizing HTML line endings so
 // an authored edit anywhere in a theme prevents replacement.
 export const legacyDocumentThemeFingerprints = {
@@ -38,6 +38,7 @@ export const legacyDocumentThemeFingerprints = {
     "abd019e708026b255585c4296cfc8cee",
     "d3558c5d0607d3402a7b32fcc8c00f37",
     "58902096ea91f4b6a95467cae923e1d5",
+    "3e34e2d0d484fa7ec10eef436e340416",
   ],
   water: [
     "f4e39cd22fe2cc8e378b411a02fb8ffe",
@@ -61,6 +62,7 @@ export const legacyDocumentThemeFingerprints = {
     "ee078b104e154a28427e3ef113b9be09",
     "c1e63c0e89676c1926acc1b0cc0fb69c",
     "b4275fdabf6451fbcc3c449bee92140a",
+    "c0baa8b8419e6a42069ce7f0b525ad21",
   ],
   simple: [
     "3dbff23dc8aadc7b3d9b926c56c6ff7f",
@@ -84,6 +86,7 @@ export const legacyDocumentThemeFingerprints = {
     "45a7135997ecb7f44f1fe1a29d34e4dc",
     "b76713cb8ff488e09884ddb66a653e7a",
     "fcb33131a12d4d6509e45d1cd9318e2a",
+    "2dba1bdd57bb9e612199cee68e9deb0f",
   ],
   sakura: [
     "74c9e991e0d12c8d5954b65be75553ed",
@@ -107,6 +110,7 @@ export const legacyDocumentThemeFingerprints = {
     "939034e9bab7916d595b5d39480f6a42",
     "38f5b6433c89de7189e14545773aaa9f",
     "1492863a4189373eda0cc93345724333",
+    "449c9f6d07768d03a6d35b5d9f336d05",
   ],
   pico: [
     "68eb6012d22ea91c2b58867ccbe7b47d",
@@ -130,6 +134,7 @@ export const legacyDocumentThemeFingerprints = {
     "23c890a232fac576a2b683c3c293289c",
     "17f38e4640c6d9c3dc710ffd74611987",
     "88c817bf864f7470cdf2f98d54ce2482",
+    "5ecd79c6947d00d65c8dffef094abb5f",
   ],
   holiday: [
     "e8e4ac3fee35e71c78378204577f740e",
@@ -153,5 +158,6 @@ export const legacyDocumentThemeFingerprints = {
     "59f93935de67de5a70933f36aa0df2cf",
     "d369969f952f2a0de08f03802bd446c9",
     "0a0354221bcf54cee81bad89eef5c02f",
+    "f7d6adb13063a99623382e14fd6e2eb6",
   ],
 }
