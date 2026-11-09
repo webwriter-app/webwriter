@@ -954,19 +954,12 @@ export class RibbonButton extends LitElement {
       flex: 0 0 1rem;
     }
 
-    :host([variant="package"]) .submenu-toggle:not(.submenu-trigger):not(.corner-trigger) {
-      top: 50%;
-      transform: translateY(-50%);
-    }
-
     :host([variant="package"]) .button-row.has-submenu .main-button,
     :host([variant="package"]) .button-row.has-corner .main-button {
       padding-right: 0.4rem;
     }
 
-    :host([variant="package"]) .submenu-trigger,
-    :host([variant="package"]) .corner-trigger,
-    :host([variant="package"]) .submenu-placeholder {
+    :host([variant="package"]) .submenu-trigger {
       position: static;
       flex: 0 0 auto;
       align-self: stretch;
@@ -977,16 +970,33 @@ export class RibbonButton extends LitElement {
       transform: none;
     }
 
-    :host([variant="package"]) .corner-trigger {
-      width: 1.2rem;
-      aspect-ratio: auto;
-      padding-inline: 0;
+    :host([variant="package"]) .button-row.has-corner {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 1.2rem;
+      grid-template-rows: repeat(2, minmax(0, 1fr));
     }
 
-    :host([variant="package"]) .submenu-placeholder {
-      box-sizing: border-box;
-      visibility: hidden;
-      pointer-events: none;
+    :host([variant="package"]) .has-corner .main-button {
+      grid-row: 1 / -1;
+      min-height: 0;
+    }
+
+    :host([variant="package"]) .has-corner :is(.corner-trigger, .submenu-trigger) {
+      position: static;
+      grid-column: 2;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      aspect-ratio: auto;
+      padding: 0;
+    }
+
+    :host([variant="package"]) .has-corner .corner-trigger { grid-row: 1; }
+    :host([variant="package"]) .has-corner .submenu-trigger { grid-row: 2; }
+
+    :host([variant="package"]) .corner-icon {
+      width: 0.75rem;
+      height: 0.75rem;
     }
 
     :host([variant="package"]) .has-icon-action .icon-action-trigger,
@@ -1540,7 +1550,7 @@ export class RibbonButton extends LitElement {
           >
             <span class="submenu-chevron" aria-hidden="true"></span>
           </button>
-        ` : this.variant === "package" && this.corner === "close" ? html`<span class="submenu-toggle submenu-placeholder" aria-hidden="true"><span class="submenu-chevron"></span></span>` : ""}
+        ` : ""}
         ${this.notification ? html`
           <span
             class=${`button-notification${this.notificationVisible ? " visible" : ""}`}

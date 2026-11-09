@@ -1609,7 +1609,13 @@ describe("package ribbon controls", () => {
 
     const remove = currentButton.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove Alpha"]')!
     const chevron = currentButton.shadowRoot!.querySelector<HTMLButtonElement>('.submenu-trigger')!
-    expect(remove.nextElementSibling).toBe(chevron)
+    const row = getComputedStyle(remove.parentElement!)
+    expect(row.display).toBe("grid")
+    expect(row.gridTemplateRows).toBe("repeat(2, minmax(0, 1fr))")
+    expect(getComputedStyle(remove).gridColumn).toBe("2")
+    expect(getComputedStyle(chevron).gridColumn).toBe("2")
+    expect(getComputedStyle(remove).gridRow).toBe("1")
+    expect(getComputedStyle(chevron).gridRow).toBe("2")
     expect(currentButton.submenu.map(member => typeof member === "string" ? member : member.label)).toEqual(["alpha Snippet"])
     chevron.click()
     await currentButton.updateComplete
@@ -1636,7 +1642,8 @@ describe("package ribbon controls", () => {
     await button.updateComplete
 
     const remove = button.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove Single"]')!
-    expect(remove.nextElementSibling?.classList.contains("submenu-placeholder")).toBe(true)
+    expect(getComputedStyle(remove).gridRow).toBe("1")
+    expect(getComputedStyle(remove.parentElement!).gridTemplateColumns).toBe("minmax(0, 1fr) 1.2rem")
     expect(button.shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
   })
 })
@@ -1682,7 +1689,10 @@ it("keeps package search, refresh, removal and member insertion available in the
   const packages = menu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
   await packages.updateComplete
   const remove = packages.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Remove Demo"]')!
-  expect(remove.nextElementSibling?.getAttribute("aria-label")).toBe("Show more Demo options")
+  const chevron = packages.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show more Demo options"]')!
+  expect(getComputedStyle(remove.parentElement!).gridTemplateRows).toBe("repeat(2, minmax(0, 1fr))")
+  expect(getComputedStyle(remove).gridArea).toBe("1 / 2")
+  expect(getComputedStyle(chevron).gridArea).toBe("2 / 2")
   expect(packages.shadowRoot!.querySelector('[aria-label="Remove Other"]')).toBeNull()
   const search = menu.shadowRoot!.querySelector("package-search")!
   await search.updateComplete

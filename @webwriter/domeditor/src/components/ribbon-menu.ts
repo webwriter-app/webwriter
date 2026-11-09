@@ -180,6 +180,32 @@ export class RibbonMenu extends LitElement {
       width: 1.5rem;
     }
 
+    .item-row.has-package-removal {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 1.5rem;
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+    }
+
+    .has-package-removal > .item:not(.remove) {
+      grid-row: 1 / -1;
+    }
+
+    .has-package-removal > .remove {
+      display: grid;
+      grid-area: 1 / 2;
+      place-items: center;
+      padding: 0;
+    }
+
+    .has-package-removal > .remove svg {
+      width: 0.75rem;
+      height: 0.75rem;
+    }
+
+    .has-package-removal > .submenu-toggle {
+      grid-area: 2 / 2;
+    }
+
     .item.label-editor {
       min-width: 0;
       cursor: text;
@@ -915,11 +941,12 @@ export class RibbonMenu extends LitElement {
               const submenu = this.buttonSubmenu(button)
               const item = typeof button === "string" ? {label: button} : button
               const hasSubmenu = submenu.length > 0 || Boolean(item.submenuGroups || item.submenuHeader)
+              const hasPackageRemoval = !item.editingLabel && item.removeAction?.startsWith("package-toggle:")
               const isOpen = this.openSubmenu === this.buttonAction(button)
               const anchorName = `--ribbon-submenu-${groupIndex}-${buttonIndex}`
               return html`
                 <div class="item-container">
-                  <div class=${`item-row${item.selected ? " selected" : ""}${item.iconAction ? " has-icon-action" : ""}`} style=${hasSubmenu ? `anchor-name: ${anchorName}` : ""}>
+                  <div class=${`item-row${item.selected ? " selected" : ""}${item.iconAction ? " has-icon-action" : ""}${hasPackageRemoval ? " has-package-removal" : ""}`} style=${hasSubmenu ? `anchor-name: ${anchorName}` : ""}>
                     ${item.iconAction ? html`
                       <button
                         class="icon-action-trigger"
