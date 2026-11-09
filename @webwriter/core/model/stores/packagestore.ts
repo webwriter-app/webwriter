@@ -1,5 +1,6 @@
 import { cargoQueue } from "async"
 import MiniSearch from "minisearch"
+import {ZodError} from "zod"
 
 import { capitalizeWord, deepUpdate, filterObject, hashCode, mergeDeep, set, unscopePackageName } from "#utility"
 import { createEditorState, createEditorStateConfig, CustomElementsManifest, EditorStateWithHead, ManifestCustomElementDeclaration, ManifestDeclaration, ManifestPropertyLike, MemberSettings, Package, SemVer, themes } from ".."
@@ -584,31 +585,38 @@ export class PackageStore {
     if(resp.ok) {
       rawPkgs = await resp.json()
     }
-    const editingConfigs = await Promise.all(rawPkgs.map(async pkg => this.readEditingConfig(pkg)))
-    const members = await Promise.all(rawPkgs.map(async (pkg, i) => this.readPackageMembers({...pkg, editingConfig: editingConfigs[i]})))
-    return rawPkgs.map((pkg, i) => {
-      const trusted = PackageStore.allowedOrgs.some(org => pkg.name.startsWith(`${org}/`))
+    const packages = await Promise.all(rawPkgs.map(async pkg => {
+      const trusted = typeof pkg?.name === "string" && PackageStore.allowedOrgs.some(org => pkg.name.startsWith(`${org}/`))
       try {
-        return new Package({...pkg, editingConfig: editingConfigs[i]}, {members: members[i],  trusted})
+        const editingConfig = await this.readEditingConfig(pkg)
+        const members = await this.readPackageMembers({...pkg, editingConfig})
+        return new Package({...pkg, editingConfig}, {members, trusted})
       }
       catch(err) {
-        const parseIssues = JSON.parse((err as any)?.message)
-        const errors = parseIssues.map((raw: any) => {
+        if(!(err instanceof ZodError)) {
+          throw err
+        }
+        const errors = err.issues.map(issue => {
           let issueSection = pkg
-          let key = undefined
-          for(const part of raw.path) {
-            key = part
-            issueSection = issueSection[part]
+          for(const part of issue.path) {
+            issueSection = issueSection?.[part]
           }
-          const cause = (key? `"${key}": `: "") + JSON.stringify(issueSection, undefined, 2)
-          const issue = new InstallIssue(raw.message, {cause})
-          issue.stack = undefined
-          return issue
+          const key = issue.path.at(-1)
+          const cause = (key !== undefined? `"${key}": `: "") + JSON.stringify(issueSection, undefined, 2)
+          const error = new InstallIssue(issue.message, {cause})
+          error.stack = undefined
+          return error
         })
-        this.appendPackageIssues(`${pkg.name}@${pkg.version}`, ...errors)
-        return new Package({name: pkg.name, version: pkg.version}, {trusted})
+        const identity = Package.schema.safeParse({name: pkg?.name, version: pkg?.version})
+        if(!identity.success) {
+          this.appendManagementIssues(...errors)
+          return
+        }
+        this.appendPackageIssues(identity.data.id, ...errors)
+        return new Package(identity.data, {trusted})
       }
-    }).filter(pkg => pkg)
+    }))
+    return packages.filter((pkg): pkg is Package => pkg !== undefined)
   }
 
   private async validateInstalled(pkgs: Package[]) {
