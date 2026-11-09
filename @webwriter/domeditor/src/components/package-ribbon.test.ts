@@ -88,13 +88,14 @@ describe("package ribbon controls", () => {
     expect(main.hasAttribute("data-conversion")).toBe(false)
   })
 
-  it("reuses unchanged package details across unrelated ribbon updates and refreshes mutable metadata and locale", async () => {
+  it("reuses unchanged package details and names languages in the interface locale", async () => {
     const ribbon = new AppRibbon()
     const pkg = packageFixture("cached")
-    pkg.keywords = ["widget-lang-de"]
-    const locale = vi.spyOn(navigator, "language", "get").mockReturnValue("en")
-    const preferredLocales = vi.spyOn(navigator, "languages", "get").mockReturnValue(["en"])
-    ribbon.documentLanguage = "de-DE"
+    pkg.keywords = ["widget-lang-en", "widget-lang-de", "widget-lang-fr", "widget-lang-it"]
+    const browserLanguage = vi.spyOn(navigator, "language", "get").mockReturnValue("de-DE")
+    const preferredLocales = vi.spyOn(navigator, "languages", "get").mockReturnValue(["de-DE"])
+    ribbon.interfaceLanguage = "en"
+    ribbon.documentLanguage = "fr"
     ribbon.packages = [pkg]
     document.body.append(ribbon)
     try {
@@ -102,7 +103,9 @@ describe("package ribbon controls", () => {
       const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[variant="package"][label="Cached"]')!
       await button.updateComplete
       const details = button.details
-      expect(details!.keywords![0]).toMatchObject({kind: "language", label: "German"})
+      expect(details!.keywords![0]).toMatchObject({
+        kind: "language", label: "English, German, French", additionalLanguages: ["Italian"],
+      })
       const updates = vi.spyOn(button as unknown as {performUpdate(): void}, "performUpdate")
       ribbon.canMark = !ribbon.canMark
       await ribbon.updateComplete
@@ -117,20 +120,21 @@ describe("package ribbon controls", () => {
       expect(button.details).not.toBe(details)
       expect(button.details!.authors).toEqual(["Ada", "Grace"])
       expect(button.details!.description).toBe("Changed metadata")
-      expect(button.details!.keywords!.map(keyword => keyword.label)).toEqual(["Practice", "German"])
+      expect(button.details!.keywords!.map(keyword => keyword.label)).toEqual(["Practice", "English, German, French"])
       ribbon.documentLanguage = "es"
       await ribbon.updateComplete
-      expect(button.details!.keywords![1]).toMatchObject({label: "", additionalLanguages: ["German"]})
-      preferredLocales.mockReturnValue(["en", "de"])
+      expect(button.details!.keywords![1]).toMatchObject({label: "English, German", additionalLanguages: ["French", "Italian"]})
+      preferredLocales.mockReturnValue(["de-DE", "fr"])
       ribbon.requestUpdate()
       await ribbon.updateComplete
-      expect(button.details!.keywords![1].label).toBe("German")
-      locale.mockReturnValue("de")
-      ribbon.requestUpdate()
+      expect(button.details!.keywords![1].label).toBe("English, German, French")
+      ribbon.interfaceLanguage = "de"
       await ribbon.updateComplete
-      expect(button.details!.keywords![1].label).toBe("Deutsch")
+      expect(button.details!.keywords![1]).toMatchObject({
+        label: "Deutsch, Französisch", additionalLanguages: ["Englisch", "Italienisch"],
+      })
     }
-    finally { locale.mockRestore(); preferredLocales.mockRestore(); ribbon.remove() }
+    finally { browserLanguage.mockRestore(); preferredLocales.mockRestore(); ribbon.remove() }
   })
 
   it("announces hover and focus for element and package insertions only", async () => {
@@ -1115,7 +1119,7 @@ describe("package ribbon controls", () => {
     expect(availableButton.shadowRoot!.querySelector(".submenu-chevron")).toBeNull()
   })
 
-  it("opens package details with categorized badges, legacy icons and all grouped metadata", async () => {
+  it("opens package details with the widget icon beside the heading and grouped metadata below", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     const pkg = packageFixture("details")
@@ -1150,7 +1154,18 @@ describe("package ribbon controls", () => {
     expect(detailsStyle.backgroundColor).toBe("#fff")
     expect(detailsStyle.border).toBe("1px solid #a8a8a8")
     expect(hasAnchorTarget(button)).toBe(true)
-    expect(details.textContent).toContain("By Ada, Grace")
+    const heading = details.querySelector(".details-heading")!
+    const icon = heading.querySelector(".details-heading-icon")!
+    const image = icon.querySelector("img")!
+    expect(image.getAttribute("src")).toBe(pkg.iconUrl)
+    expect(heading.querySelector("h3")?.textContent).toBe("Details")
+    expect(heading.querySelector(".details-subheading")?.textContent).toBe("@webwriter/details@1.0.0")
+    expect(heading.querySelector(".details-authors")?.textContent).toBe("By Ada, Grace")
+    expect(heading.nextElementSibling?.className).toBe("details-description")
+    image.dispatchEvent(new Event("error"))
+    expect(icon.classList.contains("image-icon")).toBe(false)
+    expect(icon.querySelector("img")).toBeNull()
+    expect(icon.querySelector(".icon-tabler-package")).not.toBeNull()
     expect(details.textContent).toContain("Primary school")
     expect(details.textContent).toContain("Secondary ed.")
     expect(details.textContent).toContain("Natural sciences")

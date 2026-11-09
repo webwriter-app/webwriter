@@ -2241,13 +2241,16 @@ describe("DomEditor iframe setup", () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
     const settings = {...defaultAppSettings(), language: "de"}
-    editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.dispatchEvent(new CustomEvent("app-settings-change", {
       detail: settings,
       bubbles: true,
       composed: true,
     }))
 
     expect(editor.lang).toBe("en")
+    await editor.updateComplete
+    expect(ribbon.interfaceLanguage).toBe("en")
     expect(execute).toHaveBeenCalledWith({type: "setDocumentHeadField", field: "language", value: "de"})
   })
 

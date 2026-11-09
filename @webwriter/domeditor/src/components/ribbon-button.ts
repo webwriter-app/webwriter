@@ -1,6 +1,7 @@
 import {dropdownContentStyles, sharingLinkStyles, switchInputStyles} from "./dropdown-content.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
+import {keyed} from "lit/directives/keyed.js"
 import { ribbonIcon } from "../ribbon-icons"
 import {createAnchorPositioner} from "../anchor-positioning.js"
 import {popupAnchorCSS} from "./popup-position"
@@ -773,6 +774,17 @@ export class RibbonButton extends LitElement {
       color: hsl(240 7.3% 8%);
       overflow-wrap: anywhere;
     }
+    .package-details .details-heading {
+      display: grid;
+      grid-template-columns: 2.5rem minmax(0, 1fr);
+      column-gap: 0.5rem;
+    }
+    .button-icon.details-heading-icon {
+      position: relative;
+      width: 100%;
+      height: auto;
+    }
+    .details-heading-icon svg { position: absolute; inset: 0; }
     .details h3 { margin: 0; font-size: 0.8rem; }
     .package-details h3 { font-size: 0.75rem; }
     .details-subheading { color: #667085; font-size: 0.63rem; }
@@ -1401,17 +1413,21 @@ export class RibbonButton extends LitElement {
     return html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
       <slot name="icon">${this.hoverIcon ? html`<span class="button-icon-default">${ribbonIcon(icon)}</span>` : ribbonIcon(icon)}
       ${this.hoverIcon ? html`<span class="button-icon-hover">${ribbonIcon(this.hoverIcon)}</span>` : nothing}</slot>
-      ${this.iconUrl ? html`<img
-        src=${this.iconUrl}
-        alt=""
-        draggable="false"
-        @error=${(event: Event) => {
-          const image = event.currentTarget as HTMLImageElement
-          image.parentElement?.classList.remove("image-icon")
-          image.remove()
-        }}
-      />` : ""}
+      ${this.renderIconImage()}
     </span>`
+  }
+
+  private renderIconImage() {
+    return this.iconUrl ? html`<img
+      src=${this.iconUrl}
+      alt=""
+      draggable="false"
+      @error=${(event: Event) => {
+        const image = event.currentTarget as HTMLImageElement
+        image.parentElement?.classList.remove("image-icon")
+        image.remove()
+      }}
+    />` : nothing
   }
 
   private scheduleDetailsShow = () => {
@@ -1606,11 +1622,21 @@ export class RibbonButton extends LitElement {
           @mouseenter=${this.cancelDetailsHide}
           @mouseleave=${this.leaveDetails}
         >
-          <h3>${this.details.heading}</h3>
-          ${this.details.subheading ? html`<div class="details-subheading">${this.details.subheading}</div>` : ""}
-          ${this.details.authors?.length ? html`
-            <div class="details-authors" title=${this.details.authors.join(", ")}>By ${this.details.authors.join(", ")}</div>
-          ` : ""}
+          <div class="details-heading">
+            ${this.variant === "package" && this.detailsOpen ? keyed(this.iconUrl, html`
+              <span class=${`button-icon details-heading-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
+                ${ribbonIcon(this.icon || "Packages")}
+                ${this.renderIconImage()}
+              </span>
+            `) : nothing}
+            <div>
+              <h3>${this.details.heading}</h3>
+              ${this.details.subheading ? html`<div class="details-subheading">${this.details.subheading}</div>` : ""}
+              ${this.details.authors?.length ? html`
+                <div class="details-authors" title=${this.details.authors.join(", ")}>By ${this.details.authors.join(", ")}</div>
+              ` : ""}
+            </div>
+          </div>
           ${this.details.description ? html`<p class="details-description">${this.details.description}</p>` : ""}
           ${this.details.fields?.length ? html`<dl>${this.details.fields.map(field => html`<dt>${field.label}</dt><dd>${field.value}</dd>`)}</dl>` : ""}
           ${this.details.keywords?.length ? html`

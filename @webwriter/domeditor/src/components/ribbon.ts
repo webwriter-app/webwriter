@@ -142,6 +142,7 @@ export class AppRibbon extends EditingControls {
     collaborationStatus: {type: String},
     collaborationError: {type: String},
     packages: {attribute: false},
+    interfaceLanguage: {attribute: false},
     documentLanguage: {attribute: false},
     editingSnippetId: {attribute: false},
     installedPackages: {attribute: false},
@@ -1151,6 +1152,7 @@ export class AppRibbon extends EditingControls {
   collaborationError = ""
 
   packages: WebWriterPackage[] = []
+  interfaceLanguage = "en"
   documentLanguage = ""
   editingSnippetId: string | null = null
 
@@ -2291,8 +2293,8 @@ export class AppRibbon extends EditingControls {
   private readonly emptyPackageSubmenu: RibbonButton["submenu"] = []
 
   private packageDetails(pkg: WebWriterPackage): RibbonButtonDetails {
-    const locale = navigator.language || "en"
-    const preferredLocales = [...(navigator.languages ?? []), this.documentLanguage]
+    const locale = this.interfaceLanguage
+    const preferredLocales = [navigator.language, ...(navigator.languages ?? []), this.documentLanguage]
     // Compare values rather than array identities: local package editing can
     // change metadata in place, and changing UI language must update labels.
     const key = JSON.stringify([locale, preferredLocales, pkg.label, pkg.name, pkg.version, pkg.description, pkg.authors, pkg.keywords])
