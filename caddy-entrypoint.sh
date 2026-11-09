@@ -13,6 +13,8 @@ if [ -n "${BASIC_USER:-}" ] && [ -n "${BASIC_PASS:-}" ]; then
   {
     echo '@protected {'
     echo '	not path /health'
+    # Service worker script fetches don't reliably carry Basic Auth credentials
+    printf '\tnot {\n\t\tmethod GET HEAD\n\t\tpath /local-package-service-worker.js\n\t}\n'
     if [ -n "$EDITOR_HOST" ]; then echo "	not host $EDITOR_HOST"; fi
     echo '}'
     echo 'basic_auth @protected {'
