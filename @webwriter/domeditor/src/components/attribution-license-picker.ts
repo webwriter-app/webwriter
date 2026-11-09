@@ -1,7 +1,6 @@
 import {css} from "lit"
-import {creativeCommonsLicenses} from "../document-head"
 import {EditorCombobox} from "./editor-combobox"
-import {ccLicenseIcons} from "./cc-license-icons"
+import {attributionLicenseOptions} from "./license-options"
 
 /** The attribution form uses the same rich options as the document metadata picker. */
 export class AttributionLicensePicker extends EditorCombobox {
@@ -19,18 +18,18 @@ export class AttributionLicensePicker extends EditorCombobox {
     }
   `]
 
+  protected allowCustomValue = false
+
   constructor() {
     super()
     this.label = "License"
-    this.placeholder = "Choose a CC license"
-    this.editable = false
-    this.options = [...creativeCommonsLicenses.map(license => ({
-      value: license.code,
-      label: license.code,
-      description: license.name,
-      detail: license.description,
-      icons: ccLicenseIcons(license.code),
-    })), {value: "", label: "No license", detail: "All rights reserved"}]
+    this.placeholder = "Enter a license"
+    this.options = [...attributionLicenseOptions.options, {value: "", label: "No license", detail: "All rights reserved"}]
+    this.searchOptions = attributionLicenseOptions.searchOptions
+  }
+
+  protected displayedValue() {
+    return this.value ? super.displayedValue() : ""
   }
 
   protected handleKeydown(event: KeyboardEvent) {

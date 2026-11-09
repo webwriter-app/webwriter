@@ -17,6 +17,15 @@ export type ComboboxOption = {
 }
 
 let comboboxInstanceCount = 0
+const showAllOption: ComboboxOption = {value: "", label: "Show all..."}
+
+function matchRank(query: string, value: string) {
+  const text = value.toLocaleLowerCase("en")
+  if(text === query) return 0
+  if(text.startsWith(query)) return 1
+  if(text.includes(query)) return 2
+  return Infinity
+}
 
 /** Shared keyboard and popover behavior for editor option fields. */
 export class EditorCombobox extends LitElement {
@@ -25,6 +34,7 @@ export class EditorCombobox extends LitElement {
     label: {type: String},
     placeholder: {type: String},
     options: {attribute: false},
+    searchOptions: {attribute: false},
     formatValue: {attribute: false},
     showValue: {type: Boolean, attribute: "show-value", reflect: true},
     editable: {type: Boolean},
@@ -297,6 +307,7 @@ export class EditorCombobox extends LitElement {
   label = "Choose"
   placeholder = ""
   options: readonly ComboboxOption[] = []
+  searchOptions?: readonly ComboboxOption[]
   formatValue?: (value: string) => string
   showValue = false
   editable = true
@@ -304,8 +315,11 @@ export class EditorCombobox extends LitElement {
   values: readonly string[] = []
   disabled = false
   protected open = false
+  protected allowCustomValue = true
   private draft = ""
   private editing = false
+  private searching = false
+  private showAll = false
   private typeahead = ""
   private lastTypeahead = 0
   private tagStrip?: Element
@@ -347,7 +361,8 @@ export class EditorCombobox extends LitElement {
 
   protected willUpdate(changed: Map<string, unknown>) {
     if(changed.has("disabled") && this.disabled) this.close(true)
-    if((changed.has("value") || changed.has("showValue") || changed.has("options") || changed.has("formatValue") || changed.has("multiple")) && !this.editing) this.draft = this.displayedValue()
+    if((changed.has("value") || changed.has("showValue") || changed.has("options") || changed.has("searchOptions")
+      || changed.has("formatValue") || changed.has("multiple")) && !this.editing) this.draft = this.displayedValue()
   }
 
   protected displayedValue() {
@@ -415,11 +430,26 @@ export class EditorCombobox extends LitElement {
 
   protected selectedOption() {
     return this.options.find(option => option.value === this.value)
+      ?? this.searchOptions?.find(option => option.value === this.value)
   }
 
   protected filteredOptions() {
     if(!this.editable || this.multiple) return this.options
     const query = this.draft.trim().toLocaleLowerCase("en")
+    if(this.searchOptions) {
+      if(this.searching && query) {
+        return this.searchOptions.map(option => ({
+          option,
+          rank: Math.min(matchRank(query, option.label), matchRank(query, option.description ?? "")),
+        })).filter(({rank}) => Number.isFinite(rank))
+          .sort((a, b) => a.rank - b.rank)
+          .map(({option}) => option)
+      }
+      if(!this.showAll) return [...this.options, showAllOption]
+      const featured = new Set(this.options.map(option => option.value))
+      const [first, ...rest] = this.searchOptions.filter(option => !featured.has(option.value))
+      return first ? [...this.options, {...first, dividerBefore: true}, ...rest] : this.options
+    }
     if(!query || query === this.displayedValue().toLocaleLowerCase("en") || query === this.value.toLocaleLowerCase("en")) {
       return this.options
     }
@@ -431,6 +461,8 @@ export class EditorCombobox extends LitElement {
     this.open = false
     this.activeIndex = -1
     this.typeahead = ""
+    this.searching = false
+    this.showAll = false
     if(reset) {
       this.editing = false
       this.draft = this.displayedValue()
@@ -440,6 +472,7 @@ export class EditorCombobox extends LitElement {
 
   protected async setOpen(open: boolean) {
     if(this.disabled) return
+    if(!open && this.searchOptions) { this.close(true); return }
     if(this.multiple) {
       if(!open) { this.close(); return }
       if(!this.open) {
@@ -475,6 +508,14 @@ export class EditorCombobox extends LitElement {
 
   protected select(option: ComboboxOption, _event?: Event) {
     if(this.disabled || option.disabled) return
+    if(option === showAllOption) {
+      this.showAll = true
+      this.activeIndex = this.options.length
+      this.renderRoot.querySelector<HTMLInputElement>("input")?.focus({preventScroll: true})
+      this.requestUpdate()
+      void this.scrollToActiveOption()
+      return
+    }
     if(this.multiple) {
       this.changeValues(this.values.includes(option.value)
         ? this.values.filter(value => value !== option.value) : [...this.values, option.value])
@@ -497,9 +538,12 @@ export class EditorCombobox extends LitElement {
     if(!this.editable || this.multiple) return
     if(event?.currentTarget instanceof HTMLInputElement) this.draft = event.currentTarget.value
     const draft = this.draft.trim()
-    const exact = this.options.find(option => option.value.toLocaleLowerCase("en") === draft.toLocaleLowerCase("en")
-      || option.label.toLocaleLowerCase("en") === draft.toLocaleLowerCase("en"))
-    if(exact?.disabled) { this.close(true); return }
+    const query = draft.toLocaleLowerCase("en")
+    const exactValue = (option: ComboboxOption) => option.value.toLocaleLowerCase("en") === query
+      || option.label.toLocaleLowerCase("en") === query
+    const exact = this.options.find(exactValue) ?? this.searchOptions?.find(exactValue)
+      ?? this.searchOptions?.find(option => option.description?.toLocaleLowerCase("en") === query)
+    if(exact?.disabled || !exact && !this.allowCustomValue) { this.close(true); return }
     const value = exact?.value ?? (draft === this.displayedValue() ? this.value : draft)
     if(value !== this.value) this.emit(value)
     else this.close(true)
@@ -537,10 +581,15 @@ export class EditorCombobox extends LitElement {
     if(this.disabled || !this.editable || this.multiple) return
     this.editing = true
     this.draft = (event.currentTarget as HTMLInputElement).value
+    this.searching = true
     this.dispatchEvent(new Event("combobox-input", {bubbles: true, composed: true}))
     this.activeIndex = -1
     void this.setOpen(true)
     this.requestUpdate()
+    if(this.searchOptions) {
+      const listbox = this.renderRoot.querySelector<HTMLElement>(".listbox")
+      if(listbox) listbox.scrollTop = 0
+    }
   }
 
   protected handleKeydown(event: KeyboardEvent) {
@@ -561,7 +610,7 @@ export class EditorCombobox extends LitElement {
         ? offset > 0 ? 0 : indices.length - 1
         : (current + offset + indices.length) % indices.length] : -1
       this.requestUpdate()
-      if(this.multiple) void this.scrollToActiveOption()
+      if(this.multiple || this.searchOptions) void this.scrollToActiveOption()
       return
     }
     if(this.multiple && (event.key === "Enter" || event.key === " " && !this.typeaheadActive(event))) {
@@ -651,7 +700,8 @@ export class EditorCombobox extends LitElement {
         ?disabled=${option.disabled}
         title=${option.description ? `${option.label} — ${option.description}` : option.label}
         style=${this.optionStyle(option, index)}
-        aria-selected=${this.multiple ? this.values.includes(option.value) : selected === option}
+        aria-selected=${this.multiple ? this.values.includes(option.value)
+          : option !== showAllOption && selected?.value === option.value}
         data-active=${this.activeIndex === index ? "" : nothing}
         @mousedown=${(event: MouseEvent) => event.preventDefault()}
         @pointerenter=${() => this.activateOption(option, index)}
@@ -745,7 +795,7 @@ export class EditorCombobox extends LitElement {
               ${group ? this.renderGroupHeading(group) : nothing}
               ${this.renderGroupOptions(group, entries)}
             </div>
-          `) : this.multiple ? this.renderEmptyOptions("") : html`<span class="option-name">Press Enter to use “${this.draft.trim()}”.</span>`}
+          `) : this.multiple || !this.allowCustomValue ? this.renderEmptyOptions("") : html`<span class="option-name">Press Enter to use “${this.draft.trim()}”.</span>`}
         </div>
       ` : nothing}
     `

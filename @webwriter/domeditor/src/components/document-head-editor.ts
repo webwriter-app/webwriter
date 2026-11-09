@@ -4,7 +4,6 @@ import {popupAnchorCSS} from "./popup-position"
 import {createAnchorPositioner} from "../anchor-positioning.js"
 import {
   WEBWRITER_GENERATOR,
-  creativeCommonsLicenses,
   emptyDocumentHeadState,
   type DocumentHeadAction,
   type DocumentHeadElementKind,
@@ -12,8 +11,8 @@ import {
   type DocumentHeadField,
   type DocumentHeadState,
 } from "../document-head"
-import {EditorCombobox, type ComboboxOption} from "./editor-combobox"
-import {ccLicenseIcons} from "./cc-license-icons"
+import {EditorCombobox} from "./editor-combobox"
+import {documentLicenseOptions} from "./license-options"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {documentLanguageName, orderedLanguageOptions} from "../language-suggestions"
 import {documentThemes} from "../document-themes"
@@ -43,6 +42,15 @@ let themePickerInstanceCount = 0
 export class DocumentHeadCombobox extends EditorCombobox {
   static styles = [EditorCombobox.styles, css`
     :host([label="Language"]) { --metadata-listbox-width: 13rem; }
+
+    :host([label="License"]) .listbox {
+      max-height: min(26rem, calc(100% - .8rem));
+      position-try-order: most-height;
+    }
+
+    :host([label="License"]) .listbox:has(.option:nth-of-type(5)) {
+      min-height: min(9rem, 40dvh);
+    }
 
     :host([label="License"]) .listbox,
     :host([label="Language"]) .listbox {
@@ -786,13 +794,6 @@ export class DocumentHeadEditor extends LitElement {
   }
 
   private renderCommon() {
-    const licenseOptions: ComboboxOption[] = creativeCommonsLicenses.map(license => ({
-      value: license.url,
-      label: license.code,
-      description: license.name,
-      detail: license.description,
-      icons: ccLicenseIcons(license.code),
-    }))
     return html`
       <div class="common-grid" aria-label="Common document metadata">
         ${this.commonTextField("Title", "title", this.state.title, "title")}
@@ -804,7 +805,8 @@ export class DocumentHeadEditor extends LitElement {
               label="License"
               placeholder="Enter a license"
               .value=${this.state.license}
-              .options=${licenseOptions}
+              .options=${documentLicenseOptions.options}
+              .searchOptions=${documentLicenseOptions.searchOptions}
               @combobox-change=${(event: Event) => this.handleComboboxChange("license", event)}
             ></document-head-combobox>
             ${this.fieldActions("License", this.state.license, "license", "license")}

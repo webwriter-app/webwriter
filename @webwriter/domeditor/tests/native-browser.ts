@@ -1,6 +1,7 @@
 import {clearPresentationState, hasPresentationState, presentationStateElements, resolvePresentationSelector, setPresentationState} from "../src/presentation-state.js"
 import {captionEnumerationCSS, defaultCaptionEnumeration} from "../src/caption-enumeration"
 import {attributionAttributes} from "../src/attribution.js"
+import {commonSoftwareLicenses} from "../src/package-licenses"
 import {graphicShapeSections} from "../src/graphic"
 import listMarkerStyleSource from "../src/document-list-markers.css?raw"
 import editorStyleSource from "../src/editor.css?raw"
@@ -1169,16 +1170,18 @@ await check("Document toolbox combines metadata and layouts with primary and det
     assert(language.getBoundingClientRect().width > 80, "metadata Language field is clipped")
     const license = common.shadowRoot!.querySelector<import("../src/components/document-head-editor").DocumentHeadCombobox>('document-head-combobox[label="License"]')!
     await license.updateComplete
+    license.scrollIntoView({block: "center"})
     license.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
     await license.updateComplete
     await layoutFrame()
     const licenseDescriptions = Array.from(license.shadowRoot!.querySelectorAll<HTMLElement>(".option-description"))
-    assert(licenseDescriptions.length === 7, "license picker is missing definitions")
+    assert(licenseDescriptions.length === 7 + commonSoftwareLicenses.length, "license picker is missing definitions")
     const licensePopup = license.shadowRoot!.querySelector<HTMLElement>(".listbox")!.getBoundingClientRect()
     const licenseControl = license.getBoundingClientRect()
     assert(Math.abs(licensePopup.right - Math.max(licenseControl.right, licensePopup.width)) < 1,
       `license picker is detached from its field: ${JSON.stringify({popup: licensePopup.toJSON(), control: licenseControl.toJSON()})}`)
-    assert(licensePopup.left >= 0 && licensePopup.right <= innerWidth, "license picker overflows the viewport")
+    assert(licensePopup.left >= 0 && licensePopup.right <= innerWidth && licensePopup.top >= 0 && licensePopup.bottom <= innerHeight,
+      `license picker overflows the viewport: ${JSON.stringify({popup: licensePopup.toJSON(), control: licenseControl.toJSON(), viewport: [innerWidth, innerHeight]})}`)
     for(const description of licenseDescriptions) {
       assert(getComputedStyle(description).whiteSpace === "normal", "license definition cannot wrap")
       assert(getComputedStyle(description).fontStyle === "italic", "license definition is not italic")
