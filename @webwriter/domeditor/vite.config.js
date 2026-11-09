@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'url'
 import {existsSync, realpathSync} from 'node:fs'
 import {resolve} from 'node:path'
-import { defineConfig, loadEnv, normalizePath } from 'vite'
+import { build, defineConfig, loadEnv, normalizePath } from 'vite'
 import {componentLicensesPlugin} from './scripts/component-licenses.mjs'
 import {referenceFormatterPlugin} from './scripts/reference-formatter-plugin.mjs'
 import {distributionReaderPlugin} from './scripts/distribution-reader-plugin.mjs'
@@ -43,6 +43,38 @@ function localPackageServiceWorkerPlugin() {
   }
 }
 
+// A separate single-entry build keeps the worker free of shared chunks, so
+// the frame origin only has to serve this one stable path without auth.
+function localPackageServiceWorkerBuildPlugin() {
+  let config
+  return {
+    name: 'local-package-service-worker-build',
+    apply: 'build',
+    configResolved(resolved) {
+      config = resolved
+    },
+    async writeBundle() {
+      await build({
+        configFile: false,
+        root: config.root,
+        base: config.base,
+        mode: config.mode,
+        publicDir: false,
+        logLevel: 'warn',
+        build: {
+          outDir: resolve(config.root, config.build.outDir),
+          emptyOutDir: false,
+          sourcemap: config.build.sourcemap,
+          rollupOptions: {
+            input: localPackageWorkerSource,
+            output: {entryFileNames: 'local-package-service-worker.js'},
+          },
+        },
+      })
+    },
+  }
+}
+
 export default defineConfig(({mode}) => {
   const root = fileURLToPath(new URL('.', import.meta.url))
   const configuredDataDirectory = loadEnv(mode, root, 'WEBWRITER_DEV_DATA_DIR').WEBWRITER_DEV_DATA_DIR
@@ -50,7 +82,7 @@ export default defineConfig(({mode}) => {
   for(const directory of [...privateDirectories]) if(existsSync(directory)) privateDirectories.push(realpathSync(directory))
   const privatePaths = [...new Set(privateDirectories)].map(path => `${normalizePath(path).replace(/[?*\[\]{}()!+@]/g, "\\$&")}/**`)
   return {
-    plugins: [appVersionPlugin(), appEntryUrlsPlugin(), siteHeaderPlugin(), documentationPlugin(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
+    plugins: [appVersionPlugin(), appEntryUrlsPlugin(), siteHeaderPlugin(), documentationPlugin(), localPackageServiceWorkerPlugin(), localPackageServiceWorkerBuildPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
       referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url))), distributionReaderPlugin(), canvasSnapshotPlugin()],
     appType: "mpa",
     server: {
@@ -129,12 +161,6 @@ export default defineConfig(({mode}) => {
             "editor-entry": fileURLToPath(new URL("./src/editor-entry.ts", import.meta.url)),
             "preview-entry": fileURLToPath(new URL("./src/preview-entry.ts", import.meta.url)),
             "live-learner-entry": fileURLToPath(new URL("./src/live-learner-entry.ts", import.meta.url)),
-            "local-package-service-worker": localPackageWorkerSource,
-          },
-          output: {
-            entryFileNames: chunk => chunk.name === "local-package-service-worker"
-              ? "local-package-service-worker.js"
-              : "assets/[name]-[hash].js",
           },
         },
     }
