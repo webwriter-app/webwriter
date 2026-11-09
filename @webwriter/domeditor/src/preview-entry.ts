@@ -2,6 +2,7 @@ import {applyPreviewWidgetSnapshot, LivePreview, previewElementPath, previewWidg
 import type {LiveSessionWidgetState} from "./live-session"
 import {openFrameLinksInNewTabs} from "./frame-links"
 import {registerFrameArtifacts, widgetLookupForTags} from "./editor-artifacts"
+import {observePrivateDistributionRegions} from "./distribution-presentation"
 import {hydrateDistributionInstructions} from "./distribution-dom"
 
 openFrameLinksInNewTabs(window)
@@ -14,6 +15,12 @@ if(nonce && hostOrigin && window.parent !== window) {
   registerFrameArtifacts(document)
   hydrateDistributionInstructions(document)
   const preview = new LivePreview(widgetLookupForTags((bridge?.getAttribute("data-widget-tags") ?? "").split(" ")))
+  let stopPrivateMarkers: (() => void) | undefined
+  const clearPrivateMarkers = () => {
+    stopPrivateMarkers?.()
+    stopPrivateMarkers = undefined
+  }
+  window.addEventListener("pagehide", event => { if(!event.persisted) clearPrivateMarkers() })
   const post = (message: object) => window.parent.postMessage({...message, bridgeNonce: nonce}, hostOrigin)
   window.addEventListener("webwriter-document-save", event => {
     event.preventDefault()
@@ -45,11 +52,15 @@ if(nonce && hostOrigin && window.parent !== window) {
     if(event.data.type === "preview-frame-configure") {
       preview.disconnect()
       if(event.data.role === "learner") {
+        clearPrivateMarkers()
         preview.observeLearner(frame, document, step => post({type: "preview-frame-step", step}))
       }
-      else if(event.data.role === "host") {
-        preview.observeHost(frame, document, positions)
-        post({type: "preview-frame-base-widgets", widgets: [...preview.baseWidgetStates.values()]})
+      else {
+        stopPrivateMarkers ??= observePrivateDistributionRegions(document)
+        if(event.data.role === "host") {
+          preview.observeHost(frame, document, positions)
+          post({type: "preview-frame-base-widgets", widgets: [...preview.baseWidgetStates.values()]})
+        }
       }
     }
     else if(event.data.type === "preview-frame-print") window.print()

@@ -5,6 +5,7 @@ import {EditorFeature} from "."
 import {getDistributionSelection, hydrateDistributionInstructions, keepDistributionInstructionLast, writeDistributionConfig} from "../distribution-dom"
 import {supportsDistribution, validateDistributionConfig, type DistributionConfig} from "../distribution.js"
 import {elementAttributeTargetId} from "../element-attributes"
+import {observePrivateDistributionRegions} from "../distribution-presentation"
 import {nodeAtPath, pathFromNode} from "../utility"
 
 export type DistributionSelection = ReturnType<typeof getDistributionSelection> & {
@@ -14,6 +15,7 @@ export type DistributionSelection = ReturnType<typeof getDistributionSelection> 
 
 /** Authored session policy. Reading selection state never changes the document. */
 export class DistributionFeature extends EditorFeature {
+  private stopPrivateMarkers?: () => void
   private readonly orderObserver = new MutationObserver(records => {
     for(const record of records) if(record.target.nodeType === 1) keepDistributionInstructionLast(record.target as Element)
   })
@@ -22,10 +24,13 @@ export class DistributionFeature extends EditorFeature {
     if(this.isEnabled) return
     hydrateDistributionInstructions(document)
     super.enable()
+    this.stopPrivateMarkers = observePrivateDistributionRegions(document, layer => this.editor.addAppendix(layer))
     this.orderObserver.observe(document.body, {childList: true, subtree: true})
   }
 
   disable() {
+    this.stopPrivateMarkers?.()
+    this.stopPrivateMarkers = undefined
     this.orderObserver.disconnect()
     super.disable()
   }

@@ -4,6 +4,7 @@ import {DOMEditor} from "../domeditor"
 import {decodeDistributionConfig, distributionTarget, encodeDistributionConfig, validateDistributionConfig} from "../distribution.js"
 import type {DistributionConfig} from "../distribution.js"
 import {$, pathFromNode} from "../utility"
+import {hasAnchorTarget} from "../anchor-positioning.test-utils"
 import {elementAttributeTargetId} from "../element-attributes"
 
 let editor: DOMEditor
@@ -18,6 +19,7 @@ const setConfig = (element: Element, config: DistributionConfig | null) => {
 const makeConfig = (permissions: DistributionConfig["permissions"] = ["edit"]): DistributionConfig => ({
   version: 1, scope: "individual", permissions, add: [], items: [],
 })
+const privateMarkers = () => editor.appendix.querySelectorAll('[part~="distribution-private-marker"]')
 
 beforeEach(() => {
   document.body.replaceChildren()
@@ -96,6 +98,31 @@ describe("DistributionFeature", () => {
     expect(divider.id).toBe("")
   })
 
+  it("undoes and redoes an inline visibility policy and its marker", async () => {
+    document.body.innerHTML = "<p>Private</p>"
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const paragraph = document.querySelector("p")!
+    expect(setConfig(paragraph, {...makeConfig(), view: false})).toBe(true)
+    expect(editor.doc.canUndo).toBe(true)
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    expect(editor.toHTML(false, false)).not.toContain("distribution-private-marker")
+
+    editor.doc.undo()
+    await settle()
+    expect(paragraph.childNodes).toHaveLength(1)
+    expect(editor.doc.canRedo).toBe(true)
+    expect(privateMarkers()).toHaveLength(0)
+
+    editor.doc.redo()
+    await settle()
+    expect(paragraph.id).toBe("")
+    expect(paragraph.lastChild?.nodeType).toBe(7)
+    expect(feature().getState(paragraph)?.local).toMatchObject({view: false})
+    expect(privateMarkers()).toHaveLength(1)
+  })
+
   it("keeps both parts of a private paragraph private when Enter splits it", async () => {
     document.body.innerHTML = "<p>Private answer</p>"
     const paragraph = document.querySelector("p")!
@@ -120,6 +147,43 @@ describe("DistributionFeature", () => {
     expect(document.body.textContent).not.toContain("Delete this")
     expect(document.body.lastChild).toBe(policy)
     expect(feature().getState(document.documentElement)?.local).toEqual(makeConfig())
+  })
+
+  it("marks only the outermost private regions and follows direct DOM policy changes", async () => {
+    document.body.innerHTML = '<section id="outer"><p id="inner">Private note</p></section><p>Public note</p>'
+    const outer = document.getElementById("outer")!
+    const inner = document.getElementById("inner")!
+    const markup = document.body.innerHTML
+    const privateConfig = {...makeConfig(), view: false}
+    expect(setConfig(outer, privateConfig)).toBe(true)
+    expect(setConfig(inner, {...makeConfig(), view: false})).toBe(true)
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    expect(hasAnchorTarget(outer)).toBe(true)
+    expect(hasAnchorTarget(inner)).toBe(false)
+    expect(document.body.innerHTML.replace(/<!--\?ww-distribute [^>]+\?-->|<\?ww-distribute [^>]+>/g, "")).toBe(markup)
+
+    const policy = outer.lastChild as ProcessingInstruction
+    policy.data = encodeDistributionConfig(makeConfig())
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    expect(hasAnchorTarget(outer)).toBe(false)
+    expect(hasAnchorTarget(inner)).toBe(true)
+
+    const replacement = document.createElement("p")
+    replacement.id = inner.id
+    replacement.append(...Array.from(inner.childNodes))
+    inner.replaceWith(replacement)
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    expect(hasAnchorTarget(inner)).toBe(false)
+    expect(hasAnchorTarget(replacement)).toBe(true)
+
+    const appendix = editor.appendix
+    feature().disable()
+    expect(appendix.querySelector('[part~="distribution-private-markers"]')).toBeNull()
+    expect(hasAnchorTarget(replacement)).toBe(false)
+    expect(document.body.innerHTML.replace(/<!--\?ww-distribute [^>]+\?-->|<\?ww-distribute [^>]+>/g, "")).toBe(markup)
   })
 
   it("validates malformed configs and executable palette templates without document side effects", () => {
