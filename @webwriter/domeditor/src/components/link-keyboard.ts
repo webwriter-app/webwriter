@@ -2,7 +2,7 @@ import {LitElement, css, html, nothing} from "lit"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {ribbonIcon} from "../ribbon-icons"
 import {parseReference} from "../document-viewer.js"
-import {normalizeLinkHref, type LinkEdit, type LinkSelectionState} from "../links"
+import {normalizeLinkHref, type AttachmentSelectionState, type AttachmentSource, type LinkEdit, type LinkSelectionState} from "../links"
 
 type LinkTarget = {href: string, label: string}
 type ReferenceValue = LinkTarget & {data: string}
@@ -28,6 +28,7 @@ export class LinkKeyboard extends LitElement {
     openNewTab: {state: true}, download: {state: true}, history: {state: true},
     reference: {state: true}, referenceDetails: {state: true},
     validationError: {state: true}, dialogOpen: {state: true},
+    attachment: {attribute: false}, attachmentBusy: {type: Boolean},
   }
   static styles = css`
     ${editorInteractionStyles}
@@ -71,6 +72,8 @@ export class LinkKeyboard extends LitElement {
     .target small { opacity: .75; }
     .empty { color: #667488; padding: .5rem 0; }
     .actions { justify-content: flex-end; margin-top: .35rem; }
+    .attachment-controls { overflow: auto; padding: 2px; }
+    .attachment-controls label { margin-top: .35rem; }
     dialog { width: min(560px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow: auto; padding: 1rem; border: 1px solid #c9d0d9; border-radius: .55rem; color: inherit; background: #f2f4f7; font: inherit; }
     dialog::backdrop { background: rgb(25 35 48 / 35%); }
     dialog h2 { margin-bottom: .75rem; }
@@ -79,6 +82,8 @@ export class LinkKeyboard extends LitElement {
   `
 
   state: LinkSelectionState | null = null
+  attachment: AttachmentSelectionState | null = null
+  attachmentBusy = false
   error = ""
   validationError = ""
   activeTab: "document" | "web" | "reference" = "web"
@@ -116,8 +121,16 @@ export class LinkKeyboard extends LitElement {
     }
   }
 
+  async focusInput() {
+    if(!this.attachment) return this.focusWebAddress()
+    await this.updateComplete
+    if(this.isConnected && this.attachment && !this.closest("[hidden]")) {
+      this.renderRoot.querySelector<HTMLInputElement>("#attachment-file")?.focus({preventScroll: true})
+    }
+  }
+
   updated(changed: Map<string, unknown>) {
-    if(changed.has("state") && this.state?.active && !this.state.href && !(changed.get("state") as LinkSelectionState | null)?.active) {
+    if(!this.attachment && changed.has("state") && this.state?.active && !this.state.href && !(changed.get("state") as LinkSelectionState | null)?.active) {
       void this.focusWebAddress()
     }
     const dialog = this.renderRoot.querySelector<HTMLDialogElement>("dialog")
@@ -126,6 +139,7 @@ export class LinkKeyboard extends LitElement {
   }
 
   render() {
+    if(this.attachment) return this.#renderAttachment(this.attachment)
     if(!this.state?.active) return nothing
     const label = this.activeTab === "web" ? "Web address" : this.activeTab === "document" ? "Document" : "Reference"
     const inputLabel = this.activeTab === "web" ? "Web address" : this.activeTab === "document" ? "Search document links" : "Search references"
@@ -140,8 +154,7 @@ export class LinkKeyboard extends LitElement {
               aria-selected=${String(this.activeTab === id)} aria-pressed=${String(this.activeTab === id)}
               @keydown=${this.#onTabKeydown} @pointerdown=${this.#keepSelection} @click=${() => this.activeTab = id}>${name}</button>`)}
         </div>
-        <button class="close" type="button" aria-label="Close link keyboard" title="Close link keyboard"
-          @pointerdown=${this.#keepSelection} @click=${this.#close}>${ribbonIcon("Reject")}</button>
+        ${this.#renderCloseButton("link")}
       </div>
       ${this.error && !this.dialogOpen ? html`<div role="alert">${this.error}</div>` : nothing}
       <div id="link-panel" class="panel" role="tabpanel" aria-labelledby=${`tab-${this.activeTab}`}>
@@ -188,6 +201,49 @@ export class LinkKeyboard extends LitElement {
           <button type="button" @click=${this.#applyReference}>Add reference</button></div>
       </dialog>
     </section>`
+  }
+
+  #renderAttachment(attachment: AttachmentSelectionState) {
+    return html`<section aria-label="Attachment keyboard" @keydown=${this.#onKeydown}>
+      <div class="header">
+        <h2>Attachment</h2><div class="tabs"></div>${this.#renderCloseButton("attachment")}
+      </div>
+      ${this.error ? html`<div role="alert">${this.error}</div>` : nothing}
+      ${this.attachmentBusy ? html`<div role="status">Preparing attachment…</div>` : nothing}
+      <div class="panel attachment-controls">
+        <label for="attachment-file">Local file</label>
+        <input id="attachment-file" type="file" ?disabled=${this.attachmentBusy} @change=${(event: Event) => {
+          const input = event.currentTarget as HTMLInputElement
+          const file = input.files?.[0]
+          input.value = ""
+          if(file) this.#attach({file})
+        }}>
+        <label for="attachment-media">Media in this document</label>
+        ${attachment.media.length ? html`<form class="row" @submit=${(event: SubmitEvent) => {
+          event.preventDefault()
+          const select = this.renderRoot.querySelector<HTMLSelectElement>("#attachment-media")
+          if(select?.value) this.#attach({mediaId: select.value})
+        }}>
+          <select class="field" id="attachment-media" ?disabled=${this.attachmentBusy}>
+            ${attachment.media.map(media => html`<option value=${media.id}>${media.label}</option>`)}
+          </select>
+          <button type="submit" ?disabled=${this.attachmentBusy}>Attach media</button>
+        </form>` : html`<div class="empty" id="attachment-media">No media sources available</div>`}
+      </div>
+    </section>`
+  }
+
+  #renderCloseButton(kind: "link" | "attachment") {
+    const label = `Close ${kind} keyboard`
+    return html`<button class="close" type="button" aria-label=${label} title=${label}
+      @pointerdown=${this.#keepSelection} @click=${this.#close}>${ribbonIcon("Reject")}</button>`
+  }
+
+  #attach(source: AttachmentSource) {
+    if(this.attachmentBusy || !this.attachment) return
+    this.dispatchEvent(new CustomEvent("attachment-command", {
+      detail: {identity: this.attachment.identity, ...source}, bubbles: true, composed: true,
+    }))
   }
 
   #input(label: string, key: keyof ReferenceDraft, wide = false) {
@@ -324,7 +380,7 @@ export class LinkKeyboard extends LitElement {
   #onKeydown(event: KeyboardEvent) {
     if(event.key !== "Escape") return
     event.preventDefault(); event.stopPropagation()
-    if(this.dialogOpen) this.dialogOpen = false
+    if(this.dialogOpen && !this.attachment) this.dialogOpen = false
     else this.#close()
   }
   #onTabKeydown(event: KeyboardEvent) {

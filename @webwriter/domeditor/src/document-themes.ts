@@ -7,12 +7,36 @@ import {legacyDocumentThemeFingerprints} from "./legacy-document-theme-fingerpri
 export type DocumentThemeName = keyof typeof legacyDocumentThemeFingerprints
 
 const sharedThemeCSS = sharedCSS + documentTypographyCSS
+const previousAttachmentCSS = `@layer webwriter-theme {
+  :where(a[href][download]) {
+    padding: 0.1em 0.3em;
+    border-radius: 0.25em;
+    background-color: color-mix(in srgb, currentColor 10%, transparent);
+    overflow-wrap: anywhere;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+  :where(a[href][download])::before {
+    content: "";
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    margin-inline-end: 0.25em;
+    vertical-align: -0.15em;
+    background-color: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 7l-6.5 6.5a1.5 1.5 0 0 0 3 3l6.5 -6.5a3 3 0 0 0 -6 -6l-6.5 6.5a4.5 4.5 0 0 0 9 9l6.5 -6.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+}`
+const attachmentCSS = previousAttachmentCSS.replaceAll("a[href][download]", "a[href][download], a[data-ww-attachment]") + `
+@layer webwriter-theme-options {
+  :where(a[data-ww-attachment]) { color: var(--ww-link-color, revert-layer); }
+}`
 export const documentThemes = (Object.keys(themeSources) as DocumentThemeName[]).map(value => {
   const {source, disclosure} = themeSources[value]
   return {
     value,
     label: value[0].toUpperCase() + value.slice(1),
-    source: source + (disclosure ? disclosureCSS : "") + sharedThemeCSS,
+    source: source + (disclosure ? disclosureCSS : "") + sharedThemeCSS + attachmentCSS,
   }
 })
 
@@ -38,7 +62,9 @@ export function upgradeBundledDocumentThemes(root: Pick<Document, "head">) {
     const source = style.textContent
     if(!theme || !source || source === theme.source) continue
     const fingerprint = toHexString(digest(themeEncoder.encode(source.replace(/\r\n?/g, "\n"))).subarray(0, 16))
-    if(fingerprint === themeSources[theme.value].originalFingerprint
+    const beforeAttachments = theme.source.slice(0, -attachmentCSS.length)
+    if(source === beforeAttachments || source === beforeAttachments + previousAttachmentCSS
+      || fingerprint === themeSources[theme.value].originalFingerprint
       || legacyDocumentThemeFingerprints[theme.value].includes(fingerprint)) style.textContent = theme.source
     // The table picture migration replaces only the generated rule, keeping
     // any other CSS in the stylesheet.

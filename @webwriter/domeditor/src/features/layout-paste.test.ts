@@ -78,6 +78,57 @@ function clipboardItem(html: string) {
   } as ClipboardItem
 }
 
+describe("file attachments on paste and drop", () => {
+  it("pastes non-web files at the selection and leaves browser media on its existing path", async () => {
+    document.body.innerHTML = "<p>Before after</p>"
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 7)
+    const image = new DataTransfer()
+    image.items.add(new File(["bytes"], "image.png", {type: "image/png"}))
+    paragraph.dispatchEvent(new ClipboardEvent("paste", {clipboardData: image, bubbles: true, cancelable: true}))
+    expect(paragraph.querySelector("a")).toBeNull()
+
+    const files = new DataTransfer()
+    files.items.add(new File(["work"], "worksheet.pdf", {type: "application/pdf"}))
+    files.items.add(new File(["data"], "data.csv", {type: "text/csv"}))
+    const paste = new ClipboardEvent("paste", {clipboardData: files, bubbles: true, cancelable: true})
+    paragraph.dispatchEvent(paste)
+    expect(paste.defaultPrevented).toBe(true)
+    await vi.waitFor(() => expect(paragraph.querySelectorAll("a[download]")).toHaveLength(2))
+    expect(paragraph.textContent).toBe("Before worksheet.pdf data.csvafter")
+    expect(paragraph.querySelector("a")?.getAttribute("href")).toBe("data:application/octet-stream;base64,d29yaw==")
+  })
+
+  it("waits for the large-file decision before inserting a drop at its own caret", async () => {
+    document.body.innerHTML = "<p>Selection</p><p>Drop here</p>"
+    const [first, second] = document.querySelectorAll("p")
+    $.move(first.firstChild!, 0)
+    const range = document.createRange()
+    range.setStart(second.firstChild!, 5)
+    range.collapse(true)
+    vi.spyOn(editor.features.manipulation as unknown as {dropRange: () => Range}, "dropRange").mockReturnValue(range)
+    vi.spyOn(editor, "blobDataURL").mockResolvedValue("data:application/octet-stream;base64,AA==")
+    const post = vi.spyOn(editor, "postHostMessage")
+    const files = new DataTransfer()
+    files.items.add(new File([new Uint8Array(5_000_001)], "notes.pdf", {type: "application/pdf"}))
+    const drop = () => {
+      const event = new DragEvent("drop", {bubbles: true, cancelable: true})
+      Object.defineProperty(event, "dataTransfer", {value: files})
+      second.dispatchEvent(event)
+    }
+    const request = () => post.mock.calls.filter(([event]) => "type" in event && event.type === "editor-attachment-confirmation").at(-1)![0] as {id: string}
+    drop()
+    expect(second.querySelector("a")).toBeNull()
+    editor.features.mark.actions.resolveAttachmentConfirmation({type: "resolveAttachmentConfirmation", id: request().id, confirmed: false})
+    await Promise.resolve()
+    expect(second.querySelector("a")).toBeNull()
+    drop()
+    editor.features.mark.actions.resolveAttachmentConfirmation({type: "resolveAttachmentConfirmation", id: request().id, confirmed: true})
+    await vi.waitFor(() => expect(second.querySelector("a")?.download).toBe("notes.pdf"))
+    expect(first.querySelector("a")).toBeNull()
+  })
+})
+
 describe("pasting positioned layout items", () => {
   it("pastes a spatial group as a new group without joining it to the original", () => {
     const {source, sourceRoot} = canvasDeck()

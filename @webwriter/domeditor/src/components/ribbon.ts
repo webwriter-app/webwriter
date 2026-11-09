@@ -462,6 +462,14 @@ export class AppRibbon extends EditingControls {
     }
 
     ${documentDialogStyles}
+    .large-attachment-files {
+      max-height: 35dvh;
+      overflow: auto;
+      overflow-wrap: anywhere;
+      margin-block: 0 1rem;
+      padding-inline-start: 1.25rem;
+      font-size: .875rem;
+    }
     #settings-dialog {
       height: min(45rem, calc(100dvh - 2rem));
       padding: 0;
@@ -1128,6 +1136,7 @@ export class AppRibbon extends EditingControls {
 
   private documentDialog: "settings" | null = null
   private confirmation?: {dialogId: string, resolve: (confirmed: boolean) => void}
+  private largeAttachmentFiles: Array<{name: string, size: number}> = []
   private settingsTab: SettingsTab = "Editor"
 
   logoUrl = ""
@@ -2721,6 +2730,13 @@ export class AppRibbon extends EditingControls {
     return this.confirmWithDialog("live-session-stop-dialog")
   }
 
+  async confirmLargeAttachments(files: Array<{name: string, size: number}>): Promise<boolean> {
+    if(this.confirmation) return false
+    this.largeAttachmentFiles = files
+    this.requestUpdate()
+    return this.confirmWithDialog("large-attachment-dialog")
+  }
+
   private async confirmWithDialog(dialogId: string): Promise<boolean> {
     if(!this.isConnected || this.confirmation) return false
     let settle!: (confirmed: boolean) => void
@@ -2944,6 +2960,19 @@ export class AppRibbon extends EditingControls {
         <footer>
           <button type="button" autofocus @click=${() => this.finishConfirmation("live-session-stop-dialog", false)}>Cancel</button>
           <button class="primary" type="button" @click=${() => this.finishConfirmation("live-session-stop-dialog", true)}>Stop session</button>
+        </footer>
+      </dialog>
+      <dialog id="large-attachment-dialog" class="document-dialog confirmation-dialog" aria-labelledby="large-attachment-title" aria-describedby="large-attachment-description"
+        @cancel=${(event: Event) => { event.preventDefault(); this.finishConfirmation("large-attachment-dialog", false) }}
+        @close=${(event: Event) => { if(!(event.currentTarget as HTMLDialogElement).open) this.finishConfirmation("large-attachment-dialog", false) }}>
+        <header><h2 id="large-attachment-title">Attach large files?</h2>
+          <button class="dialog-close" type="button" aria-label="Close attachment confirmation" @click=${() => this.finishConfirmation("large-attachment-dialog", false)}>${ribbonIcon("Reject")}</button>
+        </header>
+        <p id="large-attachment-description">These files exceed 5 MB. Their contents will be embedded in the document and increase the size of saved HTML.</p>
+        <ul class="large-attachment-files">${this.largeAttachmentFiles.map(file => html`<li>${file.name} (${file.size.toLocaleString()} bytes)</li>`)}</ul>
+        <footer>
+          <button type="button" autofocus @click=${() => this.finishConfirmation("large-attachment-dialog", false)}>Cancel</button>
+          <button class="primary" type="button" @click=${() => this.finishConfirmation("large-attachment-dialog", true)}>Attach files</button>
         </footer>
       </dialog>
       <dialog id="settings-dialog" class="document-dialog" aria-labelledby="settings-dialog-title"

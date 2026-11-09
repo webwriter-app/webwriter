@@ -151,6 +151,7 @@ export abstract class EditingControls extends LitElement {
     sectionSelected: {type: Boolean, attribute: "section-selected"},
     marks: {attribute: false},
     popupActive: {type: Boolean, attribute: false},
+    attachmentActive: {type: Boolean, attribute: false},
     allowedMarks: {attribute: false},
     markStyles: {attribute: false},
     markAttributes: {attribute: false},
@@ -214,6 +215,7 @@ export abstract class EditingControls extends LitElement {
   marks: MarkName[] = []
 
   popupActive = false
+  attachmentActive = false
 
   /** Marks a containing widget allows; null when all marks are allowed. */
   allowedMarks: MarkName[] | null = null
@@ -574,9 +576,30 @@ export abstract class EditingControls extends LitElement {
 
   protected renderSpanDropdown(selected: readonly MarkName[]) {
     const shortcut = this.commandShortcut("toggle-popup")
+    const attachmentActive = !this.svgText && (this.attachmentActive || this.markAttributes.a?.download !== undefined)
     return html`
       <div class="mark-dropdown-list" role="listbox" aria-label="Advanced mark types" aria-multiselectable="true">
         ${this.spanGroupMembers().map(mark => this.renderSpanMarkOption(mark, selected))}
+        <div class="mark-dropdown-option mark-attachment" role="option" aria-selected=${attachmentActive}
+          @click=${(event: MouseEvent) => {
+            if((event.target as Element).closest("input")) return
+            (event.currentTarget as HTMLElement).querySelector("input")?.click()
+          }}>
+          <input type="checkbox" data-ribbon-input-persistent aria-label="Select Attachment"
+            .checked=${attachmentActive}
+            ?disabled=${!this.canMark || this.svgText || !!this.math?.active || this.allowedMarks?.includes("a") === false}
+            @pointerdown=${(event: PointerEvent) => event.preventDefault()}
+            @change=${(event: Event) => {
+              (event.currentTarget as HTMLInputElement).checked = attachmentActive
+              this.dispatchEvent(new CustomEvent("ribbon-button-click", {
+                detail: {label: "mark:attachment"}, bubbles: true, composed: true,
+              }))
+            }}
+          />
+          <span class="mark-dropdown-option-icon" aria-hidden="true">${ribbonIcon("Attachment")}</span>
+          <span class="mark-dropdown-option-name">Attachment</span>
+          <span class="mark-dropdown-shortcut">${this.commandShortcut("mark:attachment")}</span>
+        </div>
         <div class="mark-dropdown-option mark-popup" role="option" aria-selected=${this.popupActive}
           @click=${(event: MouseEvent) => {
             if((event.target as Element).closest("input")) return
@@ -616,9 +639,11 @@ export abstract class EditingControls extends LitElement {
     const selected = this.spanSelectedMarks().filter(mark =>
       this.spanGroupMembers().includes(mark)
     )
-    const linkActive = this.marks.includes("a")
-    const primary = this.popupActive ? "popup" : selected[0] ?? (linkActive ? "a" : null)
+    const attachmentActive = !this.svgText && (this.attachmentActive || this.markAttributes.a?.download !== undefined)
+    const linkActive = attachmentActive || this.marks.includes("a")
+    const primary = this.popupActive ? "popup" : attachmentActive ? "a" : selected[0] ?? (linkActive ? "a" : null)
     const option = primary && primary !== "popup" ? this.markOption(primary) : null
+    const attachmentPrimary = primary === "a" && attachmentActive
     const activeCount = selected.length + Number(this.popupActive) + Number(linkActive)
     const primaryAllowed = !this.allowedMarks || primary === "popup" || this.allowedMarks.includes(primary ?? "a")
     return html`
@@ -626,9 +651,9 @@ export abstract class EditingControls extends LitElement {
         class="mark-span"
         style="grid-column: 8; grid-row: 2"
         toggle
-        label=${primary === "popup" ? "Popup…" : option ? `${option.label}…` : "Link…"}
-        icon=${primary === "popup" ? "Popup" : option?.icon ?? "MarkLink"}
-        action=${primary === "popup" ? "toggle-popup" : `mark:${primary ?? "a"}`}
+        label=${primary === "popup" ? "Popup…" : attachmentPrimary ? "Attachment…" : option ? `${option.label}…` : "Link…"}
+        icon=${primary === "popup" ? "Popup" : attachmentPrimary ? "Attachment" : option?.icon ?? "MarkLink"}
+        action=${primary === "popup" ? "toggle-popup" : attachmentPrimary ? "mark:attachment" : `mark:${primary ?? "a"}`}
         ?dropdown-on-click=${!primaryAllowed}
         .selectionCount=${Math.max(0, activeCount - 1)}
         .dropdown=${this.renderSpanDropdown(selected)}

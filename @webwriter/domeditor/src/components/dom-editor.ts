@@ -43,7 +43,7 @@ import "./link-keyboard"
 import "./guided-tour"
 import "./app-update-notice"
 import type {LinkKeyboard} from "./link-keyboard"
-import {isLinkEdit, type LinkEdit, type LinkSelectionState} from "../links"
+import {attachmentWarningBytes, isLinkEdit, type AttachmentSelectionState, type AttachmentSource, type LinkEdit, type LinkSelectionState} from "../links"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
 import { LitElement, css, html, noChange, nothing, type PropertyValues } from "lit"
@@ -117,6 +117,7 @@ import type {ElementAttributeState} from "../element-attributes"
 import {widgetOptionValue, type WidgetOptionsState} from "../widget-options"
 import {
   aiEditReviewEvent,
+  attachmentConfirmationEvent,
   editorFrameControlMessage,
   restoreSnapshotTextNodeRuns,
   executeCompleteEvent,
@@ -420,6 +421,8 @@ export class DomEditor extends LitElement {
     linkSelection: {attribute: false, state: true},
     linkKeyboardHidden: {attribute: false, state: true},
     linkKeyboardError: {attribute: false, state: true},
+    attachmentSelection: {attribute: false, state: true},
+    attachmentBusy: {type: Boolean, state: true},
     elementAttributes: {attribute: false, state: true},
     selectedElementTypes: {attribute: false, state: true},
     widgetOptions: {attribute: false, state: true},
@@ -595,6 +598,8 @@ export class DomEditor extends LitElement {
   private shapeKeyboardHidden = false
   private shapePaint: Required<GraphicShapePaint> = {...defaultGraphicShapePaint}
   private linkSelection: LinkSelectionState | null = null
+  private attachmentSelection: AttachmentSelectionState | null = null
+  private attachmentBusy = false
   private linkKeyboardHidden = false
   private linkKeyboardError = ""
   private selectedElementTypes: SelectedElementTypeState[] = []
@@ -5235,6 +5240,10 @@ export class DomEditor extends LitElement {
       void this.execute({type: "togglePopup"}).finally(() => this.focusEditor())
       return
     }
+    if(label === "mark:attachment") {
+      void this.toggleAttachment()
+      return
+    }
     if(label === "Undo") {
       void this.execute({type: "undo"}).finally(() => this.focusEditor())
       return
@@ -7576,7 +7585,8 @@ export class DomEditor extends LitElement {
     if((changed.has("shapeKeyboardHidden") && this.shapeKeyboardHidden) || changed.has("svgText") && this.svgText) {
       this.renderRoot.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")?.cancelInput()
     }
-    if(changed.has("linkSelection") && this.linkSelection?.active && !(changed.get("linkSelection") as LinkSelectionState | null)?.active)
+    if(changed.has("linkSelection") && this.linkSelection?.active && !(changed.get("linkSelection") as LinkSelectionState | null)?.active
+      || changed.has("attachmentSelection") && this.attachmentSelection && !changed.get("attachmentSelection"))
       this.linkKeyboardHidden = false
     if(changed.has("mathSelection") && this.mathSelection?.active) {
       if(!changed.get("mathSelection")) this.mathKeyboardHidden = false
@@ -7639,12 +7649,16 @@ export class DomEditor extends LitElement {
     return this.mathSelection?.active && (this.mathSelection.display === "inline" || this.captureSelection)
   }
 
+  private get hasLinkKeyboard() {
+    return (this.attachmentSelection || this.linkSelection?.active) && !this.mathSelection?.active && !this.graphicSelection?.capture
+  }
+
   private get bottomPanelOpen() {
     if(this.liveSessionActive) return false
     if((this.consoleOpen || this.reviewOpen) && (!this.previewActive || this.settings.pinDeveloperConsole)) return true
     if(this.previewActive) return false
     return Boolean(this.graphicSelection?.capture && !this.shapeKeyboardHidden
-      || this.linkSelection?.active && !this.mathSelection?.active && !this.graphicSelection?.capture && !this.linkKeyboardHidden
+      || this.hasLinkKeyboard && !this.linkKeyboardHidden
       || this.isMathEditing && !this.mathKeyboardHidden)
   }
 
@@ -7659,7 +7673,7 @@ export class DomEditor extends LitElement {
     this.linkKeyboardHidden = false
     await this.updateComplete
     const keyboard = this.renderRoot.querySelector<LinkKeyboard>("dom-editor-link-keyboard")
-    if(keyboard) await keyboard.focusWebAddress()
+    if(keyboard) await keyboard.focusInput()
     else this.focusEditor()
   }
 
@@ -7669,6 +7683,43 @@ export class DomEditor extends LitElement {
     void this.execute({...event.detail, type: "editLink"})
       .then(() => this.focusEditor())
       .catch(error => { this.linkKeyboardError = error instanceof Error ? error.message : String(error) })
+  }
+
+  private async toggleAttachment() {
+    if(this.previewActive || this.liveSessionActive || this.attachmentBusy) return
+    try {
+      const selection = await this.execute({type: "toggleAttachment"}) as AttachmentSelectionState | "removed" | null
+      if(!selection) throw new Error("Place the caret or select text within one paragraph to attach a file.")
+      this.dismissEditorMenus()
+      this.linkKeyboardError = ""
+      if(selection === "removed") this.focusEditor()
+      else if(this.attachmentSelection?.identity === selection.identity) await this.focusLinkKeyboard()
+    }
+    catch(error) {
+      this.fileError = error instanceof Error ? error.message : String(error)
+      this.focusEditor()
+    }
+  }
+
+  private handleAttachmentCommand = async (event: CustomEvent<AttachmentSource & {identity: string}>) => {
+    const selection = this.attachmentSelection
+    if(!selection || this.attachmentBusy || this.previewActive || this.liveSessionActive
+      || event.detail?.identity !== selection.identity) return
+    this.attachmentBusy = true
+    this.linkKeyboardError = ""
+    try {
+      const attached = await this.execute({...event.detail, type: "attach"}, {timeout: 300_000})
+      if(attached === true) this.focusEditor()
+    }
+    catch(error) {
+      if(this.attachmentSelection?.identity === selection.identity) this.linkKeyboardError = error instanceof Error ? error.message : String(error)
+    }
+    finally { this.attachmentBusy = false }
+  }
+
+  private closeLinkKeyboard = () => {
+    this.linkKeyboardHidden = true
+    this.focusEditor()
   }
 
   private handleHTMLSourceApply = () => {
@@ -8462,6 +8513,25 @@ export class DomEditor extends LitElement {
       }
       return
     }
+    if(event.data?.type === attachmentConfirmationEvent) {
+      if(!this.isEditorMessage(event)) return
+      const {id, files} = event.data
+      if(typeof id !== "string" || !Array.isArray(files) || !files.length
+        || !files.every(file => file && typeof file.name === "string" && Number.isSafeInteger(file.size) && file.size > attachmentWarningBytes)) return
+      const revision = this.frameRevision
+      const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+      void (async () => {
+        let confirmed = false
+        try { confirmed = !this.previewActive && !this.liveSessionActive && await ribbon?.confirmLargeAttachments(files) === true }
+        finally {
+          if(this.isConnected && revision === this.frameRevision) {
+            if(confirmed) this.focusEditor()
+            await this.execute({type: "resolveAttachmentConfirmation", id, confirmed})
+          }
+        }
+      })().catch(() => { /* The editor frame may have been replaced. */ })
+      return
+    }
     if(isAIEditReviewMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
       this.routeAIEditReview(event.data.detail)
@@ -8490,7 +8560,9 @@ export class DomEditor extends LitElement {
         Object.entries(event.data.detail.attributes ?? {}).map(([mark, attributes]) => [mark, {...attributes}]),
       )
       this.linkSelection = event.data.detail.link ?? null
-      if(!this.linkSelection) this.linkKeyboardError = ""
+      if(this.attachmentSelection?.identity !== event.data.detail.attachment?.identity) this.linkKeyboardError = ""
+      this.attachmentSelection = event.data.detail.attachment ?? null
+      if(!this.linkSelection && !this.attachmentSelection) this.linkKeyboardError = ""
       this.ruby = event.data.detail.ruby ? {
         ...event.data.detail.ruby,
         annotations: event.data.detail.ruby.annotations.map(component => ({...component})),
@@ -8602,6 +8674,7 @@ export class DomEditor extends LitElement {
         this.markStyles = {}
         this.markAttributes = {}
         this.linkSelection = null
+        this.attachmentSelection = null
         this.ruby = {...emptyRubyState}
       }
       this.listType = event.data.detail.list?.type ?? null
@@ -9043,6 +9116,7 @@ export class DomEditor extends LitElement {
     this.markStyles = {}
     this.markAttributes = {}
     this.linkSelection = null
+    this.attachmentSelection = null
     this.linkKeyboardError = ""
     this.linkKeyboardHidden = false
     this.ruby = {...emptyRubyState}
@@ -9119,6 +9193,7 @@ export class DomEditor extends LitElement {
       layoutError: this.layoutError,
       marks: this.marks,
       popupActive: this.popupActive,
+      attachmentActive: this.attachmentSelection !== null,
       allowedMarks: this.allowedMarks,
       markStyles: this.markStyles,
       markAttributes: this.markAttributes,
@@ -9377,7 +9452,7 @@ export class DomEditor extends LitElement {
             allow="clipboard-write"
             allowfullscreen
             title=${this.replayActive ? "Session replay" : this.liveSessionActive ? "Live document preview" : "Document preview"}
-            sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
+            sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads"
             referrerpolicy="no-referrer"
             src=${import.meta.env.MODE === "test" ? nothing : this.frameShellURL("preview", this.previewFrameRevision)}
             srcdoc=${import.meta.env.MODE === "test" ? this.previewDocumentHTML ?? "" : nothing}
@@ -9428,15 +9503,18 @@ export class DomEditor extends LitElement {
             ></dom-editor-shape-keyboard>
           </section>
         ` : nothing}
-        ${this.linkSelection?.active && !this.mathSelection?.active && !this.graphicSelection?.capture && !this.previewActive && !this.liveSessionActive ? html`
+        ${this.hasLinkKeyboard && !this.previewActive && !this.liveSessionActive ? html`
           ${this.linkKeyboardHidden ? html`<button class="math-keyboard-open" type="button"
-            title="Show link keyboard" aria-label="Show link keyboard"
+            title=${this.attachmentSelection ? "Show attachment keyboard" : "Show link keyboard"}
+            aria-label=${this.attachmentSelection ? "Show attachment keyboard" : "Show link keyboard"}
             @pointerdown=${(event: PointerEvent) => event.preventDefault()}
-            @click=${() => { void this.focusLinkKeyboard() }}>${ribbonIcon("MarkLink")}</button>` : nothing}
-          <section class="link-keyboard-area" aria-label="Link input" ?hidden=${this.linkKeyboardHidden}>
+            @click=${() => { void this.focusLinkKeyboard() }}>${ribbonIcon(this.attachmentSelection ? "Attachment" : "MarkLink")}</button>` : nothing}
+          <section class="link-keyboard-area" aria-label=${this.attachmentSelection ? "Attachment input" : "Link input"} ?hidden=${this.linkKeyboardHidden}>
             <dom-editor-link-keyboard .state=${this.linkSelection} .error=${this.linkKeyboardError}
+              .attachment=${this.attachmentSelection} .attachmentBusy=${this.attachmentBusy}
               @link-keyboard-command=${this.handleLinkKeyboardCommand}
-              @link-keyboard-close=${() => { this.linkKeyboardHidden = true; this.focusEditor() }}
+              @attachment-command=${this.handleAttachmentCommand}
+              @link-keyboard-close=${this.closeLinkKeyboard}
             ></dom-editor-link-keyboard>
           </section>
         ` : nothing}

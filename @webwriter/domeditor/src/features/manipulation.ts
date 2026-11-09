@@ -5,7 +5,7 @@ import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
 import {documentThemeProperties, documentTypographyCSS, documentTypographyProperties, originalTypographyCSS} from "../document-theme-options"
 import {themeAccentProperties} from "../css-color"
 import {isTokenDimension, tokenize} from "@csstools/css-tokenizer"
-import {mediaElementSelector, isMediaType, isWebsiteType, mediaDefaultHTML} from "../media"
+import {mediaElementSelector, isMediaType, isWebMediaType, isWebsiteType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {attributionAttributes} from "../attribution.js"
 import {captionedFigureContent} from "../figure-layout.js"
@@ -483,9 +483,11 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private acceptsDrop(event: DragEvent) {
-    return !this.editor.isEditingLocked && !event.defaultPrevented
-      && Boolean(event.dataTransfer && Array.from(event.dataTransfer.types)
-        .some(type => ["text/html", "text/plain", this.dragType, elementDragType, ribbonInsertionDragType, graphicShapeDragType].includes(type)))
+    const data = event.dataTransfer
+    if(this.editor.isEditingLocked || event.defaultPrevented || !data) return false
+    return Array.from(data.types).some(type => ["text/html", "text/plain", this.dragType, elementDragType, ribbonInsertionDragType, graphicShapeDragType].includes(type))
+      || Array.from(data.items ?? []).some(item => item.kind === "file" && !isWebMediaType(item.type))
+      || this.attachmentFiles(data).length > 0
   }
 
   private insertDroppedGraphic(graphic: SVGSVGElement) {
@@ -2055,6 +2057,13 @@ export class ManipulationFeature extends EditorFeature {
         if(inserted === source && sourceParent?.matches("figure:not([is])") && source.parentElement !== sourceParent) this.editor.normalizeSurroundingElements(sourceParent)
       }
       else {
+        const files = this.attachmentFiles(data)
+        if(files.length) {
+          event.stopImmediatePropagation()
+          this.insertTransferredAttachments(files, false, range, event)
+          dropped = true
+          return
+        }
         const html = data.getData("text/html")
         if(html && this.editor.features.migration.needsMigration(html)) {
           $.move(range.startContainer, range.startOffset)
@@ -4471,6 +4480,11 @@ export class ManipulationFeature extends EditorFeature {
       if(ev.defaultPrevented || this.editor.features.mark.isSVGTextSelection) return
       if(["insertFromPaste", "insertFromDrop"].includes(ev.inputType)) {
         ev.preventDefault()
+        const files = this.attachmentFiles(ev.dataTransfer)
+        if(files.length) {
+          this.insertTransferredAttachments(files, ev.inputType === "insertFromPaste")
+          return
+        }
         const html = ev.dataTransfer?.getData("text/html")
         if(html && this.editor.features.migration.needsMigration(html)) {
           void this.#insertMigratedClipboardContent(html, undefined, ev.inputType === "insertFromPaste")
@@ -4563,6 +4577,12 @@ export class ManipulationFeature extends EditorFeature {
     },
     "paste": ev => {
       if(ev.defaultPrevented) return
+      const files = this.attachmentFiles(ev.clipboardData)
+      if(files.length) {
+        ev.preventDefault()
+        this.insertTransferredAttachments(files, true)
+        return
+      }
       this.editor.features.table.handlePaste(ev)
       if(ev.defaultPrevented) return
       const html = ev.clipboardData?.getData("text/html")
@@ -5541,20 +5561,35 @@ export class ManipulationFeature extends EditorFeature {
     else insert()
   }
 
-  /** Runs package migrations on `html`, then restores the selection captured
-   * before they started. Returns null when that selection or the editor's
-   * editability did not survive. */
-  async #migrateAtSelection(html: string) {
+  private attachmentFiles(data: DataTransfer | null) {
+    return Array.from(data?.files ?? []).filter(file => !isWebMediaType(file.type))
+  }
+
+  private insertTransferredAttachments(files: File[], paste: boolean, range?: Range, drop?: DragEvent) {
+    void this.#prepareAtInsertionSelection(() => this.editor.features.mark.createAttachmentFragment(files), range)
+      .then(fragment => {
+        if(!fragment) return
+        if(drop) this.insertDroppedFragment(fragment, drop, $.range)
+        else if(paste) this.insertPastedFragment(fragment)
+        else this.insertClipboardFragment(fragment)
+      })
+      .catch(error => console.error(error))
+  }
+
+  /** Restore the original insertion position after an asynchronous import,
+   * provided the target still belongs to the editable document. */
+  async #prepareAtInsertionSelection<T>(prepare: () => Promise<T | null>, dropRange?: Range) {
     const generation = this.insertionGeneration
     const selection = document.getSelection()
-    const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
+    const range = dropRange?.cloneRange() ?? (selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null)
     const owned = this.editor.features.selection.captureSelectedElement ?? this.editor.features.selection.selectedSectionElement
-    if(owned && range) range.selectNode(owned)
-    const identity = range ? captureRangeIdentity(range) : new Set<Node>()
-    const snapshot = range && !range.collapsed ? this.editor.serializeClipboardFragment(cloneRangeContents(range)).html : null
-    const migrated = await this.editor.features.migration.migrate(html)
+    if(owned && range && !dropRange) range.selectNode(owned)
+    if(!range) return null
+    const identity = captureRangeIdentity(range)
+    const snapshot = !range.collapsed ? this.editor.serializeClipboardFragment(cloneRangeContents(range)).html : null
+    const result = await prepare()
     const root = getDocumentRoot()
-    if(!this.isEnabled || generation !== this.insertionGeneration || !range?.startContainer.isConnected || !range.endContainer.isConnected || this.editor.isEditingLocked
+    if(result === null || !this.isEnabled || generation !== this.insertionGeneration || !range.startContainer.isConnected || !range.endContainer.isConnected || this.editor.isEditingLocked
       || !root.contains(range.startContainer) || !root.contains(range.endContainer)
       || [...identity].some(node => !node.isConnected || !root.contains(node))) return null
     if(snapshot !== null && this.editor.serializeClipboardFragment(cloneRangeContents(range)).html !== snapshot) return null
@@ -5562,7 +5597,11 @@ export class ManipulationFeature extends EditorFeature {
     // A widget captured while the migration ran must not become its replacement target.
     this.editor.features.selection.selectDropRange(range, {scrollIntoView: false})
     $.selectRange(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
-    return migrated
+    return result
+  }
+
+  #migrateAtSelection(html: string) {
+    return this.#prepareAtInsertionSelection(() => this.editor.features.migration.migrate(html))
   }
 
   /** Lets package migrations update pasted or dropped widgets before insertion. */

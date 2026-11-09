@@ -11147,6 +11147,68 @@ describe("DomEditor.execute()", () => {
     expect(focusEditor).toHaveBeenCalled()
   })
 
+  it("routes the Attachment control to the toggle command and returns focus after removal", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const focusEditor = vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async () => {
+      dispatchMarkState(editor, editorWindow, {canMark: true, marks: []})
+      return "removed"
+    })
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attachment: {identity: "inside", media: []}})
+    await editor.updateComplete
+    editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "mark:attachment"}, bubbles: true, composed: true,
+    }))
+    await vi.waitFor(() => expect(focusEditor).toHaveBeenCalled())
+    expect(execute).toHaveBeenCalledWith({type: "toggleAttachment"})
+    expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBeNull()
+  })
+
+  it("opens the attachment keyboard on selection and keeps its paperclip collapsed while the selection stays inside", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const focusEditor = vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    const selectAttachment = (identity: string) =>
+      dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attachment: {identity, media: []}})
+    selectAttachment("inside")
+    await editor.updateComplete
+    const keyboard = editor.shadowRoot!.querySelector<LinkKeyboard>("dom-editor-link-keyboard")!
+    await keyboard.updateComplete
+    const pane = keyboard.closest<HTMLElement>("section")!
+    const file = keyboard.shadowRoot!.querySelector<HTMLInputElement>("#attachment-file")!
+    expect(pane.hidden).toBe(false)
+    expect(file.matches(":focus")).toBe(false)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    expect(ribbon.shadowRoot!.querySelector(".mark-span")?.getAttribute("icon")).toBe("Attachment")
+
+    const close = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close attachment keyboard"]')!
+    const pointer = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true})
+    close.dispatchEvent(pointer)
+    expect(pointer.defaultPrevented).toBe(true)
+    close.click()
+    await editor.updateComplete
+    expect(pane.hidden).toBe(true)
+    selectAttachment("still-inside")
+    await editor.updateComplete
+    expect(pane.hidden).toBe(true)
+
+    const reopen = editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show attachment keyboard"]')!
+    expect(reopen.classList.contains("math-keyboard-open")).toBe(true)
+    expect(reopen.querySelector("svg.icon-tabler-paperclip")).not.toBeNull()
+    reopen.click()
+    await vi.waitFor(() => expect(keyboard.shadowRoot!.activeElement).toBe(file))
+    expect(pane.hidden).toBe(false)
+    expect(focusEditor).toHaveBeenCalled()
+
+    file.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true}))
+    await editor.updateComplete
+    expect(pane.hidden).toBe(true)
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: []})
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBeNull()
+    selectAttachment("reentered")
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector<HTMLElement>(".link-keyboard-area")?.hidden).toBe(false))
+  })
+
   it.each(["Reference could not be saved", "Target view is unavailable"])(
     "surfaces link keyboard reference/view errors: %s", async message => {
       const {editor, editorWindow} = await mountEditor()

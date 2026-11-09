@@ -3,6 +3,13 @@ export const mediaTypes = ["picture", "img", "audio", "video", "iframe", "embed"
 
 export type MediaType = typeof mediaTypes[number]
 
+/** Types handled by native image and timed-media elements. */
+export function isWebMediaType(type: string) {
+  if(/^image\/(?:apng|avif|bmp|gif|jpeg|png|svg\+xml|vnd\.microsoft\.icon|webp|x-icon)$/i.test(type)) return true
+  const kind = type.split("/")[0]
+  return (kind === "audio" || kind === "video") && !!document.createElement(kind).canPlayType(type)
+}
+
 /** Percentage insets editable by both crop fields and transform handles. */
 export function mediaCropInsets(value: string): number[] | null {
   if(!value || value.trim() === "none") return [0, 0, 0, 0]

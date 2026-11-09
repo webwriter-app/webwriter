@@ -41,6 +41,7 @@ import {
   proofreadingDictionaryAddEvent,
   type ProofreadingState,
   selectionChangeEvent,
+  attachmentConfirmationEvent,
   shapeKeyboardInputEvent,
   presenceChangeEvent,
   documentHeadStateChangeEvent,
@@ -725,6 +726,11 @@ export class DOMEditor {
     return url
   }
 
+  mediaSourceFilename(source: string) {
+    const blob = this.mediaBlobs.get(source)
+    return blob instanceof File ? blob.name : undefined
+  }
+
   mediaSourceSize(source: string) {
     const blob = this.mediaBlobs.get(source)
     if(blob) return blob.size
@@ -801,7 +807,8 @@ export class DOMEditor {
       return
     }
     // The frame host handles controls on the same window message target.
-    if(ev.data.type === selectionChangeEvent || ev.data.type === shapeKeyboardInputEvent || ev.data.type === editorFrameControlMessage || ev.data.type === proofreadingDictionaryAddEvent || ev.data.type === commentReviewRequestEvent) {
+    if(ev.data.type === selectionChangeEvent || ev.data.type === shapeKeyboardInputEvent || ev.data.type === editorFrameControlMessage
+      || ev.data.type === proofreadingDictionaryAddEvent || ev.data.type === commentReviewRequestEvent || ev.data.type === attachmentConfirmationEvent) {
       return
     }
 
@@ -1188,12 +1195,16 @@ export class DOMEditor {
       })
       return
     }
+    const attributes = this.features.mark.getAttributeState()
+    if(attributes.a?.download !== undefined && /^data:/i.test(attributes.a.href ?? "")) delete attributes.a.href
+    const attachment = this.features.mark.getAttachmentState()
     this.postBridgeEvent(markStateChangeEvent, {
       ...this.features.mark.getState(),
       canRemoveMarks: this.features.mark.canRemoveMarks,
       styles: this.features.mark.getStyleState(),
-      attributes: this.features.mark.getAttributeState(),
-      link: this.features.mark.getLinkState() ?? undefined,
+      attributes,
+      link: attachment ? undefined : this.features.mark.getLinkState() ?? undefined,
+      attachment: attachment ?? undefined,
       ruby: this.features.mark.getRubyState(),
     })
   }
@@ -1515,6 +1526,7 @@ export class DOMEditor {
       ["img[src], audio[src], video[src], source[src], track[src], input[type='image'][src]", "src"],
       ["video[poster]", "poster"],
       ["object[data]", "data"],
+      ["a[download][href^='http:' i], a[download][href^='https:' i]", "href"],
     ]
     // A downloaded HTML frame can still fetch its own scripts and resources.
     // Do not present that document as a self-contained offline export.
@@ -1573,7 +1585,7 @@ export class DOMEditor {
     return response
   }
 
-  private async blobDataURL(blob: Blob) {
+  async blobDataURL(blob: Blob) {
     const bytes = new Uint8Array(await blob.arrayBuffer())
     let binary = ""
     const chunkSize = 0x8000

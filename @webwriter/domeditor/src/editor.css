@@ -257,7 +257,7 @@ picture:state(ww-media-empty) > img:not([src]):not([srcset]) {
   display: none;
 }
 
-a:not([href]) {
+a:not([href], [data-ww-attachment]) {
   text-decoration: underline;
   color: #0000ee;
 }
