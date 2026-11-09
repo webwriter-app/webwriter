@@ -3171,6 +3171,33 @@ describe("transform controls and geometry", () => {
     }
   })
 
+  it("refreshes measured iframe frames and selection outlines after a non-bubbling scroll", () => {
+    document.body.innerHTML = '<section style="overflow: auto"><iframe title="Activity" style="width: 320px; height: 180px; zoom: 1.25"></iframe></section>'
+    const target = document.querySelector<HTMLIFrameElement>("iframe")!
+    let rect = new DOMRect(100, 120, 400, 225)
+    vi.spyOn(target, "getBoundingClientRect").mockImplementation(() => rect)
+    captureNode(target)
+
+    const caret = editor.features.selection.selectionCaret!
+    const overlay = feature.overlay
+    expect(overlay.style.left).toBe("100px")
+    expect(overlay.style.top).toBe("120px")
+    expect(caret.style.left).toBe(overlay.style.left)
+    expect(caret.style.top).toBe(overlay.style.top)
+    flushAnimationFrame()
+
+    rect = new DOMRect(60, 35, 400, 225)
+    // Scroll events do not bubble; the document capture listener must refresh
+    // measured geometry while the iframe remains selected and idle.
+    target.parentElement!.dispatchEvent(new Event("scroll"))
+    flushAnimationFrame()
+
+    expect(overlay.style.left).toBe("60px")
+    expect(overlay.style.top).toBe("35px")
+    expect(caret.style.left).toBe("60px")
+    expect(caret.style.top).toBe("35px")
+  })
+
   it.each([30, -20])("resizes an iframe vertically by %s pixels, preserving its DOM and undo/redo", async dy => {
     document.body.innerHTML = '<figure><!--keep--><iframe title="Activity" height="180" src="about:blank"></iframe><figcaption>Keep caption</figcaption></figure>'
     const target = document.querySelector("iframe")!

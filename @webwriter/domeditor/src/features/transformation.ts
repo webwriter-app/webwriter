@@ -139,7 +139,7 @@ export class TransformationFeature extends EditorFeature {
   readonly #refreshViewportControls = () => {
     this.#movementPeers = null
     if(this.#floatAnchorLine?.style.display === "") this.refreshGeometry()
-    else if(this.#coalescesGeometry || this.#group.length || this.#groupContext) this.#scheduleFrame()
+    else if(!this.#anchored || this.#coalescesGeometry || this.#group.length || this.#groupContext) this.#scheduleFrame()
     // The anchored frame follows scrolling natively. Its upright control stems
     // still switch sides together when their top row crosses the viewport edge.
     if(this.#anchored && this.target) setPart(this.overlay, "transform-overlay-at-top", this.target.getBoundingClientRect().top < 42)
