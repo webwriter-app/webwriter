@@ -1049,7 +1049,7 @@ describe("package ribbon controls", () => {
     expect(getComputedStyle(controls).gap).toBe("0")
     expect(getComputedStyle(controls).paddingBottom).toBe("4px")
     expect(RibbonDrawer.styles.toString()).toMatch(/::slotted\(ribbon-button\)\s*\{\s*grid-column: auto;/)
-    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
+    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, calc(100% / 3))")
     expect(getComputedStyle(search).height).toBe("calc(100% - 4px)")
     expect(getComputedStyle(button.shadowRoot!.querySelector(".button-row")!).height).toBe("100%")
     expect(getComputedStyle(search.shadowRoot!.querySelector(".field")!).backgroundColor).toBe("transparent")
@@ -1391,7 +1391,7 @@ describe("package ribbon controls", () => {
 
     expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(count)
     expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(16 - count)
-    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
+    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, calc(100% / 3))")
   })
 
   it.each([[256, 5], [384, 8], [512, 11]])("keeps snippets within the three-row package capacity at %s pixels", async (width, count) => {
@@ -1433,7 +1433,7 @@ describe("package ribbon controls", () => {
     expect(drawer.packageColumnCount).toBe(1)
     expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(2)
     expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(2)
-    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
+    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, calc(100% / 3))")
     expect(RibbonDrawer.styles.toString()).toMatch(/::slotted\(package-search\)\s*\{\s*grid-column: auto;/)
     expect(RibbonDrawer.styles.toString()).toMatch(/::slotted\(ribbon-button\)\s*\{\s*grid-column: auto;/)
   })

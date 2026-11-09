@@ -12488,6 +12488,46 @@ await check("Elements pullout reserves matching padding after its opening animat
 })
 
 
+await check("Package drawer keeps visible rows in place when opening", async () => {
+  const {RibbonDrawer} = await import("../src/components/ribbon-drawer")
+  const {RibbonButton} = await import("../src/components/ribbon-button")
+  await import("../src/components/package-search")
+  const drawer = new RibbonDrawer()
+  drawer.label = "Packages"
+  drawer.layout = "packages"
+  drawer.expandable = true
+  drawer.style.cssText = "position:fixed;left:100px;top:100px;width:320px;height:90.8125px"
+  drawer.append(document.createElement("package-search"))
+  for(const label of ["Snippets", "Quiz", "Music Score", "Chart", "Automaton", "Timeline"]) {
+    const button = new RibbonButton()
+    button.label = label
+    button.variant = "package"
+    if(label === "Timeline") button.slot = "more"
+    drawer.append(button)
+  }
+  document.body.append(drawer)
+  try {
+    await drawer.updateComplete
+    await layoutFrame()
+    const visible = [...drawer.children].slice(0, 6)
+    const closed = visible.map(item => item.getBoundingClientRect())
+    assert(closed[4].top === closed[5].top && closed[4].top > closed[2].top, "packages do not fill three rows")
+    const checkRows = () => visible.forEach((item, index) => {
+      const {top, bottom} = item.getBoundingClientRect()
+      assert(top === closed[index].top && bottom === closed[index].bottom, `package cell ${index + 1} moved or resized`)
+    })
+    const shell = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
+    await drawer.updateComplete
+    checkRows()
+    await Promise.all(shell.getAnimations().map(animation => animation.finished))
+    checkRows()
+    assert(drawer.lastElementChild!.getBoundingClientRect().top >= closed[5].bottom, "overflow package did not get a new row")
+  }
+  finally {drawer.remove()}
+})
+
+
 await check("rotated figure captions flow upright and their transformation frames fit the content", async () => {
   const overlaps = (polygon: {x: number, y: number}[], rect: DOMRect) => {
     const text = [{x: rect.left, y: rect.top}, {x: rect.right, y: rect.top}, {x: rect.right, y: rect.bottom}, {x: rect.left, y: rect.bottom}]

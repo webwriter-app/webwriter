@@ -364,16 +364,18 @@ describe("responsive ribbon drawer", () => {
 
     const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
     const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    Object.defineProperty(controls, "currentCSSZoom", {value: 1.25})
     Object.defineProperty(controls, "getBoundingClientRect", {
-      value: () => ({top: 100, height: 80, width: 240}), configurable: true,
+      value: () => ({top: 100, height: 110, width: 240}), configurable: true,
     })
     Object.defineProperty(section, "getBoundingClientRect", {
-      value: () => ({top: 100, height: 80}), configurable: true,
+      value: () => ({top: 100, height: 112}), configurable: true,
     })
     ;(drawer as unknown as {captureExpandedContentOffset(): void}).captureExpandedContentOffset()
 
     expect(controls.style.getPropertyValue("--package-expanded-grid-offset")).toBe("0px")
     expect(controls.style.getPropertyValue("--package-expanded-grid-padding")).toBe("4px")
+    expect(controls.style.getPropertyValue("--package-row-height")).toBe("28px")
     expect(RibbonDrawer.styles.toString()).toContain("grid-auto-rows: var(--package-row-height, 2.45rem)")
   })
 
