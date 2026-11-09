@@ -17,7 +17,7 @@ import {getDocumentRoot} from "./document-template"
 import {creativeCommonsLicenses} from "./document-head"
 import {siteTranslations} from "./site-translations"
 import distributionReaderSources from "virtual:distribution-reader-sources"
-import {readDistributionConfigs} from "./distribution-dom"
+import {readDistributionConfigs, visitSerializableElements} from "./distribution-dom"
 import {packageWidgetSchemaDefinitions, type WebWriterPackage} from "./packages"
 import type {IImportMap} from "@jspm/import-map"
 import {hasImportMapEntries, packageImportMapId, packageImportMapScript, packageModuleEntries} from "./package-dependencies"
@@ -176,21 +176,7 @@ export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWri
     head.append(script)
   }
   const tags = new Set<string>()
-  const collectTags = (node: ParentNode) => {
-    node.querySelectorAll("*").forEach(element => {
-      tags.add(element.localName)
-      if(element.localName === "template" && element.namespaceURI === "http://www.w3.org/1999/xhtml") {
-        collectTags((element as HTMLTemplateElement).content)
-      }
-    })
-  }
-  collectTags(documentElement)
-  // Templates held in policy data also contribute resources before their first insertion.
-  for(const config of distribution.filter(config => config.permissions.includes("insert"))) for(const item of config.items) {
-    const template = owner.createElement("template")
-    template.innerHTML = item.html
-    collectTags(template.content)
-  }
+  visitSerializableElements(documentElement, distribution, element => tags.add(element.localName))
   documentElement.querySelectorAll('style[id="webwriter-widget-sizing"]').forEach(style => style.remove())
   const widgetSizing = documentWidgetStyleSource(packageWidgetSchemaDefinitions(packages))
   if(widgetSizing) {

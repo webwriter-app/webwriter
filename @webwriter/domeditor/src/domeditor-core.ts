@@ -1412,7 +1412,7 @@ export class DOMEditor {
     const {documentElement} = root
     await this.inlineBlobSources(documentElement)
     if(offline) {
-      await this.bundleOfflinePackageModules(documentElement)
+      await this.bundleOfflinePackageModules(root)
       await this.inlineExternalResources(documentElement)
     }
     const serialize = prepareWidgetGroupingsForSerialization(documentElement)
@@ -1471,28 +1471,38 @@ export class DOMEditor {
     }
   }
 
-  private async bundleOfflinePackageModules(root: HTMLElement) {
-    const plan = this.features.dependency.packageDependencyPlan
+  private async bundleOfflinePackageModules(root: HTMLDocumentParts) {
+    const {documentElement} = root
+    const dependency = this.features.dependency
+    const plan = dependency.packageDependencyPlan
     if(!plan?.map || !plan.entries.length) return
     const base = runtimeDocumentBaseURL()
     const entries = new Set(plan.entries.map(url => new URL(url, base).href))
-    const scripts = Array.from(root.querySelectorAll<HTMLScriptElement>('script[type="module"][src]'),
+    const scripts = Array.from(documentElement.querySelectorAll<HTMLScriptElement>('script[type="module"][src]'),
       script => ({script, url: new URL(script.getAttribute("src")!, base).href})).filter(({url}) => entries.has(url))
     if(!scripts.length) return
     const bundleOfflineModules = this.options.bundleOfflineModules
     if(!bundleOfflineModules) throw new Error("Offline export is unavailable in this editing session")
     const urls = scripts.map(({url}) => url)
-    const {js, css} = await bundleOfflineModules(urls, plan.map, base)
+    const bundled = new Set(urls)
+    const widgetEntries = new Map<string, string>()
+    for(const pkg of dependency.installedPackages) for(const member of pkg.members) {
+      if(member.kind !== "widget" || !member.tagName || !member.scriptUrl) continue
+      const url = new URL(member.scriptUrl, base).href
+      if(bundled.has(url)) widgetEntries.set(member.tagName, url)
+    }
+    const offlineImports = this.features.widget.offlineImports(root, widgetEntries)
+    const {js, css} = await bundleOfflineModules(urls, plan.map, base, offlineImports)
     if(parseModule(js)[0].length) throw new Error("Offline package bundle contains unresolved module imports")
     const first = scripts[0].script
-    const bundle = root.ownerDocument.createElement("script")
+    const bundle = documentElement.ownerDocument.createElement("script")
     bundle.type = "module"
     bundle.src = await this.blobDataURL(new Blob([js], {type: "text/javascript"}))
     bundle.setAttribute(originalPackageEntriesAttribute, JSON.stringify(urls))
     first.replaceWith(bundle)
     scripts.slice(1).forEach(({script}) => script.remove())
     if(css) {
-      const style = root.ownerDocument.createElement("style")
+      const style = documentElement.ownerDocument.createElement("style")
       style.setAttribute(offlinePackageStyleAttribute, "")
       style.textContent = css
       bundle.before(style)

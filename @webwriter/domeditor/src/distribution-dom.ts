@@ -76,6 +76,25 @@ export function readDistributionConfigs(root: Pick<Document, "head" | "documentE
   return instructions.map(({config}) => config)
 }
 
+function visitElements(root: Node, callback: (element: Element) => void) {
+  visit(root, node => {
+    if(node.nodeType === 1) callback(node as Element)
+  })
+}
+
+/** Visit authored elements and the elements readers can insert from policy data. */
+export function visitSerializableElements(root: Element, configs: Iterable<DistributionConfig>, visit: (element: Element) => void) {
+  visitElements(root, visit)
+  for(const config of configs) {
+    if(!config.permissions.includes("insert")) continue
+    for(const item of config.items) {
+      const template = root.ownerDocument.createElement("template")
+      template.innerHTML = item.html
+      visitElements(template.content, visit)
+    }
+  }
+}
+
 /** Convert validated HTML comment carriers back into their DOM processing instructions. */
 export function hydrateDistributionInstructions(root: Node): void {
   const carriers: {comment: Comment; config: DistributionConfig}[] = []

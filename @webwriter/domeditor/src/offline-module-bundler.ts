@@ -3,6 +3,13 @@ import {fetchNpmFile} from "./npm-files"
 
 let esbuildReady: Promise<void> | null = null
 
+export type OfflineImportRule = {
+  importer: string
+  keep: readonly string[] | "*"
+}
+
+export type OfflineImportSelection = ReadonlyMap<string, ReadonlySet<string> | "*">
+
 const globPattern = (glob: string) => new RegExp("^" + glob
   .replace(/^\.\//, "")
   .replace(/^(?![^/]*\/)/, "**/") // A pattern without a slash matches the file name at any depth
@@ -62,7 +69,7 @@ export function resolveOfflineModule(specifier: string, importer: string, map: I
 
 /** Loaded only for an offline export containing an ESM dependency graph. Modules of packages declaring
  * `"sideEffects": false` are left out when none of their exports are used, as bundlers do. */
-export async function bundleOfflineModules(entries: string[], map: IImportMap, baseUrl: string) {
+export async function bundleOfflineModules(entries: string[], map: IImportMap, baseUrl: string, offlineImports?: OfflineImportSelection) {
   // srcdoc documents can report about:srcdoc as their base URL. The entry
   // module still provides an absolute HTTP base for the portable import map.
   const resolutionBase = /^https?:$/.test(new URL(baseUrl).protocol) ? baseUrl : entries[0]
@@ -92,12 +99,20 @@ export async function bundleOfflineModules(entries: string[], map: IImportMap, b
       name: "resolved-http-modules",
       setup(build) {
         build.onResolve({filter: /.*/}, async args => {
+          const keep = args.kind === "dynamic-import" ? offlineImports?.get(args.importer) : undefined
+          if(keep && keep !== "*" && !keep.has(args.path)) {
+            return {path: "excluded-import", namespace: "webwriter-offline"}
+          }
           const parent = /^https?:/.test(args.importer) ? args.importer : resolutionBase
           const url = resolveOfflineModule(args.path, parent, map, resolutionBase)
           if(!/^https?:$/.test(new URL(url).protocol)) throw new Error(`Offline export cannot bundle module URL: ${url}`)
           // Widget entries always run: loading them registers their elements.
           return {path: url, namespace: "webwriter-http", sideEffects: entries.includes(url) ? undefined : await moduleSideEffects(url)}
         })
+        build.onLoad({filter: /^excluded-import$/, namespace: "webwriter-offline"}, () => ({
+          contents: 'throw Object.assign(new Error("This module is unavailable in the offline document."), {name: "OfflineImportError"})',
+          loader: "js",
+        }))
         build.onLoad({filter: /.*/, namespace: "webwriter-http"}, async args => {
           const response = await fetch(args.path)
           if(!response.ok) throw new Error(`Could not fetch ${args.path}: ${response.status} ${response.statusText}`)
