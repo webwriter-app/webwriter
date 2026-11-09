@@ -6,7 +6,6 @@ import { DistributionControls, type DistributionSelectionState } from "./distrib
 
 const inheritedConfig: DistributionConfig = {
   version: 1,
-  target: "source-target",
   scope: "group",
   permissions: ["edit", "style", "insert"],
   add: ["user-snippet:quote"],
@@ -21,10 +20,9 @@ const choices: DistributionItem[] = [
 ]
 
 const makeState = (overrides: Partial<DistributionSelectionState> = {}): DistributionSelectionState => ({
-  target: "target-1",
+  identity: "selection-1",
   local: null,
   effective: null,
-  inheritedFrom: null,
   ...overrides,
 })
 
@@ -111,7 +109,7 @@ describe("distribution controls", () => {
     card.dispatchEvent(drop)
     await control.updateComplete
     expect(drop.defaultPrevented).toBe(true)
-    expect(received).toEqual([{target: "target-1", general: true, ...(type === nodeDragType ? {token: "drag-token"} : {action: "element:p"})}])
+    expect(received).toEqual([{target: "selection-1", general: true, ...(type === nodeDragType ? {token: "drag-token"} : {action: "element:p"})}])
     expect(card.classList.contains("drop-active")).toBe(false)
   })
 
@@ -149,7 +147,7 @@ describe("distribution controls", () => {
     expect(card.classList.contains("drop-active")).toBe(false)
     over()
     await control.updateComplete
-    control.state = makeState({target: "another"})
+    control.state = makeState({identity: "another"})
     await control.updateComplete
     await control.updateComplete
     expect(card.classList.contains("drop-active")).toBe(false)
@@ -162,7 +160,7 @@ describe("distribution controls", () => {
   })
 
   it("can hide its internal heading when a surrounding ribbon drawer provides one", async () => {
-    const control = await mount(makeState({ local: { version: 1, target: "target-1", scope: "individual", permissions: [], add: [], items: [] } }))
+    const control = await mount(makeState({ local: { version: 1, scope: "individual", permissions: [], add: [], items: [] } }))
     control.heading = "Permissions for readers"
     control.hideHeading = true
     await control.updateComplete
@@ -173,16 +171,16 @@ describe("distribution controls", () => {
   })
 
   it("renders permissions in the canonical order and uses their concise labels", async () => {
-    const control = await mount(makeState({ local: { version: 1, target: "target-1", scope: "individual", permissions: [], add: [], items: [] } }))
+    const control = await mount(makeState({ local: { version: 1, scope: "individual", permissions: [], add: [], items: [] } }))
     const labels = [...control.shadowRoot!.querySelectorAll(".permissions label")]
       .map((label) => label.textContent?.trim())
-    expect(labels).toEqual(["Edit", "Move", "Delete", "Duplicate", "Style", "Insert"])
+    expect(labels).toEqual(["View", "Edit", "Move", "Delete", "Duplicate", "Style", "Insert"])
   })
 
   it("renders one card per permission with a leading icon and a trailing large native checkbox", async () => {
-    const control = await mount(makeState({local: {...inheritedConfig, target: "target-1"}}))
+    const control = await mount(makeState({local: {...inheritedConfig}}))
     const cards = [...control.shadowRoot!.querySelectorAll<HTMLElement>(".permission-card")]
-    expect(cards).toHaveLength(6)
+    expect(cards).toHaveLength(7)
     expect(getComputedStyle(control.shadowRoot!.querySelector(".permissions")!).gridTemplateColumns).toBe("minmax(0, 1fr)")
     for(const card of cards) {
       const label = card.querySelector(".permission")!
@@ -194,8 +192,52 @@ describe("distribution controls", () => {
     }
   })
 
+  it("defaults View to on and restores nested permissions when it is turned back on", async () => {
+    const control = await mount(makeState())
+    const root = control.shadowRoot!
+    const view = root.querySelector<HTMLInputElement>('[data-permission="view"] input')!
+    const nested = root.querySelector(".nested-permissions")!
+    expect(view.checked).toBe(true)
+    expect(nested.querySelectorAll(".permission-card")).toHaveLength(6)
+
+    const local = {...inheritedConfig}
+    control.state = makeState({local})
+    await control.updateComplete
+    const received = changes(control)
+    control.addEventListener("distribution-config-change", event => {
+      control.state = makeState({local: (event as CustomEvent<DistributionChangeDetail>).detail.config})
+    })
+    addButton(control).click()
+    await control.updateComplete
+    view.click()
+    await control.updateComplete
+    expect(received[0].config).toEqual({...local, view: false})
+    expect(view.disabled).toBe(false)
+    expect(nested.hasAttribute("data-hidden")).toBe(true)
+    expect([...nested.querySelectorAll("input, button")].every(control => (control as HTMLInputElement).disabled)).toBe(true)
+    expect(nested.querySelector(".picker")).toBeNull()
+    const data = new DataTransfer()
+    data.setData(ribbonInsertionDragType, "element:p")
+    const drop = dragEvent("drop", data)
+    nested.querySelector('[data-permission="insert"]')!.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(false)
+
+    view.click()
+    await control.updateComplete
+    expect(received[1].config).toEqual(local)
+    expect(nested.hasAttribute("data-hidden")).toBe(false)
+    expect(nested.querySelectorAll("input:checked")).toHaveLength(3)
+    expect(addButton(control).disabled).toBe(false)
+
+    control.state = makeState({local, hiddenByAncestor: true})
+    await control.updateComplete
+    expect(view.checked).toBe(false)
+    expect(view.disabled).toBe(true)
+    expect(nested.querySelectorAll("input:disabled")).toHaveLength(6)
+  })
+
   it("keeps allowed additions dormant until Insert is enabled and preserves them when disabled", async () => {
-    const local: DistributionConfig = {...inheritedConfig, target: "target-1", permissions: []}
+    const local: DistributionConfig = {...inheritedConfig, permissions: []}
     const control = await mount(makeState({local}))
     const received = changes(control)
     const card = control.shadowRoot!.querySelector<HTMLElement>('[data-permission="insert"]')!
@@ -207,7 +249,7 @@ describe("distribution controls", () => {
     expect(received[0].config?.permissions).toEqual(["insert"])
     expect(received[0].config?.add).toEqual(local.add)
     expect(received[0].config?.items).toEqual(local.items)
-    control.state = {...makeState({local: received[0].config}), target: "target-1"}
+    control.state = {...makeState({local: received[0].config})}
     await control.updateComplete
     const list = card.querySelector('ul[aria-label="Allowed additions"]')!
     expect(list.querySelectorAll("li")).toHaveLength(1)
@@ -221,20 +263,20 @@ describe("distribution controls", () => {
     expect(received[1].config?.permissions).toEqual([])
     expect(received[1].config?.add).toEqual(local.add)
     expect(received[1].config?.items).toEqual(local.items)
-    control.state = {...makeState({local: received[1].config}), target: "target-1"}
+    control.state = {...makeState({local: received[1].config})}
     await control.updateComplete
     expect(card.querySelector(".insert-options")).toBeNull()
     expect(control.shadowRoot!.querySelector("domeditor-insertion-menu")).toBeNull()
 
     toggle.checked = true
     toggle.dispatchEvent(new Event("change", {bubbles: true}))
-    control.state = {...makeState({local: received[2].config}), target: "target-1"}
+    control.state = {...makeState({local: received[2].config})}
     await control.updateComplete
     expect(card.querySelector('ul[aria-label="Allowed additions"] li')).not.toBeNull()
   })
 
   it("closes the picker when external state disables Insert", async () => {
-    const local: DistributionConfig = {...inheritedConfig, target: "target-1"}
+    const local: DistributionConfig = {...inheritedConfig}
     const control = await mount(makeState({local}))
     addButton(control).click()
     await control.updateComplete
@@ -246,12 +288,12 @@ describe("distribution controls", () => {
   })
 
   it("edits inherited permissions directly, copying the complete effective policy without inheritance controls", async () => {
-    const control = await mount(makeState({ effective: inheritedConfig, inheritedFrom: "group-4" }))
+    const control = await mount(makeState({ effective: inheritedConfig }))
     const received = changes(control)
     expect(control.shadowRoot!.textContent).not.toContain("Inherited from")
     expect(control.shadowRoot!.textContent).not.toContain("configuration")
     control.shadowRoot!.querySelector<HTMLInputElement>('[data-permission="move"] input')!.click()
-    expect(received).toEqual([{ target: "target-1", config: { ...inheritedConfig, target: "target-1", permissions: ["edit", "style", "insert", "move"], add: ["user-snippet:quote"], items: [{ ...inheritedConfig.items[0] }] } }])
+    expect(received).toEqual([{ target: "selection-1", config: { ...inheritedConfig, permissions: ["edit", "style", "insert", "move"], add: ["user-snippet:quote"], items: [{ ...inheritedConfig.items[0] }] } }])
   })
 
   it("creates an empty, explicit override when no configuration is effective", async () => {
@@ -260,27 +302,28 @@ describe("distribution controls", () => {
     expect(control.shadowRoot!.querySelectorAll("ul li")).toHaveLength(0)
     control.shadowRoot!.querySelector<HTMLInputElement>('[data-permission="edit"] input')!.click()
     expect(received[0]).toEqual({
-      target: "target-1",
-      config: { version: 1, target: "target-1", scope: "individual", permissions: ["edit"], add: [], items: [] },
+      target: "selection-1",
+      config: { version: 1, scope: "individual", permissions: ["edit"], add: [], items: [] },
     })
   })
 
-  it("keeps a selected target with no authored id and uses a valid config placeholder", async () => {
-    const control = await mount(makeState({ target: "" }))
+  it("edits a selection without an authored id using its transient identity", async () => {
+    const control = await mount(makeState({identity: "selection-without-authored-id"}))
     const received = changes(control)
     control.shadowRoot!.querySelector<HTMLInputElement>('[data-permission="edit"] input')!.click()
-    expect(received[0].target).toBe("")
-    expect(received[0].config?.target).toBe("selection")
+    expect(received[0].target).toBe("selection-without-authored-id")
+    expect(received[0].config).not.toHaveProperty("target")
   })
 
   it("renders general permissions without selection controls and edits a local-or-empty root config", async () => {
-    const state = makeState({ effective: inheritedConfig, inheritedFrom: "parent-group" })
+    const state = makeState({ effective: inheritedConfig })
     const control = await mount(state)
     control.general = true
     control.heading = ""
     await control.updateComplete
     const received = changes(control)
     expect(control.shadowRoot!.querySelector("h2")?.textContent).toBe("Permissions for readers")
+    expect(control.shadowRoot!.querySelector('[data-permission="view"]')).toBeNull()
     expect(control.shadowRoot!.querySelector("select")).toBeNull()
     expect([...control.shadowRoot!.querySelectorAll("button")].map((button) => button.textContent?.trim())).toEqual([])
     expect([...control.shadowRoot!.querySelectorAll<HTMLInputElement>("input")].every((input) => !input.disabled)).toBe(true)
@@ -289,9 +332,9 @@ describe("distribution controls", () => {
     edit.checked = true
     edit.dispatchEvent(new Event("change", { bubbles: true }))
     expect(received[0]).toEqual({
-      target: "target-1",
+      target: "selection-1",
       general: true,
-      config: { version: 1, target: "target-1", scope: "individual", permissions: ["edit"], add: [], items: [] },
+      config: { version: 1, scope: "individual", permissions: ["edit"], add: [], items: [] },
     })
 
     control.state = { ...state, local: received[0].config }
@@ -321,7 +364,7 @@ describe("distribution controls", () => {
   })
 
   it("omits inheritance and override controls for local configurations", async () => {
-    const local = { ...inheritedConfig, target: "target-1" }
+    const local = { ...inheritedConfig }
     const control = await mount(makeState({ local }))
     const received = changes(control)
     expect(control.shadowRoot!.textContent).not.toMatch(/Inherited from|Inherit configuration|Override|Create configuration/)
@@ -329,10 +372,10 @@ describe("distribution controls", () => {
   })
 
   it("emits grouping and permission edits against the current local configuration", async () => {
-    const control = await mount(makeState({ local: { ...inheritedConfig, target: "target-1" } }))
+    const control = await mount(makeState({ local: { ...inheritedConfig } }))
     const received = changes(control)
     control.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Bigger group"]')!.click()
-    const editPermission = control.shadowRoot!.querySelector<HTMLInputElement>(".permissions input[type=checkbox]")!
+    const editPermission = control.shadowRoot!.querySelector<HTMLInputElement>('[data-permission="edit"] input')!
     editPermission.checked = false
     editPermission.dispatchEvent(new Event("change", { bubbles: true }))
     expect(received[0].config).toMatchObject({scope: "group", groupSize: 4})
@@ -340,7 +383,7 @@ describe("distribution controls", () => {
   })
 
   it("renders just the white bordered grouping control without a label in grouping view", async () => {
-    const control = await mount(makeState({effective: inheritedConfig, inheritedFrom: "outer"}))
+    const control = await mount(makeState({effective: inheritedConfig}))
     const received = changes(control)
     control.view = "grouping"
     control.hideHeading = true
@@ -351,16 +394,16 @@ describe("distribution controls", () => {
     expect(getComputedStyle(grouping).backgroundColor).toBe("#fff")
     expect(getComputedStyle(grouping).borderTopColor).toBe("#c5ccd5")
     control.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Bigger group"]')!.click()
-    expect(received[0].config).toMatchObject({target: "target-1", groupSize: 4, items: inheritedConfig.items, permissions: inheritedConfig.permissions})
+    expect(received[0].config).toMatchObject({groupSize: 4, items: inheritedConfig.items, permissions: inheritedConfig.permissions})
   })
 
   it("renders half-height permission cards without grouping in compact permission view", async () => {
-    const control = await mount(makeState({local: {...inheritedConfig, target: "target-1"}}))
+    const control = await mount(makeState({local: {...inheritedConfig}}))
     control.view = "permissions"
     control.compact = true
     await control.updateComplete
     expect(control.shadowRoot!.querySelector(".grouping")).toBeNull()
-    expect(control.shadowRoot!.querySelectorAll(".permission-card")).toHaveLength(6)
+    expect(control.shadowRoot!.querySelectorAll(".permission-card")).toHaveLength(7)
     expect(getComputedStyle(control.shadowRoot!.querySelector(".permission")!).minHeight).toBe("18.4px")
     expect(getComputedStyle(control.shadowRoot!.querySelector(".permission input")!).width).toBe("12.8px")
   })
@@ -386,13 +429,13 @@ describe("distribution controls", () => {
     control.compact = true
     control.hideHeading = true
     await control.updateComplete
-    expect(control.shadowRoot!.querySelectorAll(".permission-card")).toHaveLength(6)
+    expect(control.shadowRoot!.querySelectorAll(".permission-card")).toHaveLength(7)
     expect([...control.shadowRoot!.querySelectorAll("input")].every(input => input.disabled)).toBe(true)
     expect(control.shadowRoot!.textContent).not.toContain("Select an element")
   })
 
   it("selects groups or All as separate segments while remembering and adjusting the group count", async () => {
-    const control = await mount(makeState({local: {...inheritedConfig, target: "target-1", scope: "individual"}}))
+    const control = await mount(makeState({local: {...inheritedConfig, scope: "individual"}}))
     let writes = 0
     control.addEventListener("distribution-config-change", event => {
       writes++
@@ -448,7 +491,7 @@ describe("distribution controls", () => {
   })
 
   it("adds exact widget and snippet choices, then removes them without showing action ids", async () => {
-    const initialState = makeState({ local: { version: 1, target: "target-1", scope: "individual", permissions: ["insert"], add: [], items: [] } })
+    const initialState = makeState({ local: { version: 1, scope: "individual", permissions: ["insert"], add: [], items: [] } })
     const control = await mount(initialState)
     const received = changes(control)
     await chooseFromPicker(control, "Sample widget")
@@ -476,7 +519,7 @@ describe("distribution controls", () => {
       {id: "insert-math:fraction", label: "Fraction", html: "<math></math>"},
       choices[2],
     ]
-    const local: DistributionConfig = {...inheritedConfig, target: "target-1", add: items.map(item => item.id), items}
+    const local: DistributionConfig = {...inheritedConfig, add: items.map(item => item.id), items}
     const control = await mount(makeState({local}), items)
     const rows = [...control.shadowRoot!.querySelectorAll("li")]
     const icons = rows.map(row => row.querySelector(".allowed-icon svg")!)
@@ -501,7 +544,7 @@ describe("distribution controls", () => {
   })
 
   it("filters the supplied choices and supports arrow, Enter, and Escape keys", async () => {
-    const local: DistributionConfig = { version: 1, target: "target-1", scope: "individual", permissions: ["insert"], add: [], items: [] }
+    const local: DistributionConfig = { version: 1, scope: "individual", permissions: ["insert"], add: [], items: [] }
     const control = await mount(makeState({ local }))
     const received = changes(control)
     addButton(control).click()
@@ -533,7 +576,7 @@ describe("distribution controls", () => {
   })
 
   it("offers All standard elements in the picker and never offers a wildcard for packages", async () => {
-    const initialState = makeState({ local: { version: 1, target: "target-1", scope: "individual", permissions: ["insert"], add: ["user-snippet:quote"], items: [choices[2]] } })
+    const initialState = makeState({ local: { version: 1, scope: "individual", permissions: ["insert"], add: ["user-snippet:quote"], items: [choices[2]] } })
     const control = await mount(initialState)
     const received = changes(control)
     await chooseFromPicker(control, "All standard elements")
@@ -549,11 +592,11 @@ describe("distribution controls", () => {
   })
 
   it("keeps inherited fields editable and disables all controls while locked", async () => {
-    const inherited = await mount(makeState({ effective: inheritedConfig, inheritedFrom: "group-4" }))
+    const inherited = await mount(makeState({ effective: inheritedConfig }))
     expect([...inherited.shadowRoot!.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select")].every((field) => !field.disabled)).toBe(true)
     inherited.remove()
 
-    const local = await mount(makeState({ local: { ...inheritedConfig, target: "target-1" } }))
+    const local = await mount(makeState({ local: { ...inheritedConfig } }))
     local.disabled = true
     await local.updateComplete
     expect([...local.shadowRoot!.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button")].every((field) => field.disabled)).toBe(true)

@@ -59,6 +59,8 @@ vi.mock("../live-session-recovery", () => ({
 }))
 import {LocalPackageWorkerClient} from "../local-package-worker-client"
 import {LiveSession} from "../live-session"
+import {distributionTarget, emptyDistributionConfig, encodeDistributionConfig} from "../distribution.js"
+import {readDistributionConfigs} from "../distribution-dom"
 import {IncrementalPreviewRecorder} from "../live-session-incremental"
 import {createLiveSessionReplayFile, readLiveSessionReplayFile} from "../live-session-replay"
 import {LiveSessionReplayClient} from "../live-session-replay-client"
@@ -8784,6 +8786,40 @@ describe("DomEditor.execute()", () => {
       expect(source.body.innerHTML).toBe(authoredHTML)
       expect(host.installedPackages[0].scripts).toEqual([script])
       expect(host.previewDocumentHTML).toContain(script)
+    }
+    finally { learner.destroy(); host.disposeLiveSession() }
+  })
+
+  it("sends only visible subtrees to participants and keeps host widget paths aligned", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const authored = iframe.contentDocument!
+    authored.body.innerHTML = '<x-widget id="private"><p id="private-child">private answer</p></x-widget><x-widget></x-widget><p id="public">Visible</p>'
+    const visiblePolicy = {...emptyDistributionConfig(), permissions: ["edit" as const]}
+    for(const [id, policy] of [
+      ["private", {...emptyDistributionConfig(), view: false}], ["private-child", emptyDistributionConfig()], ["public", visiblePolicy],
+    ] as const) {
+      authored.getElementById(id)!.append(authored.createProcessingInstruction(distributionTarget, encodeDistributionConfig(policy)))
+    }
+
+    await host.enterPreview()
+    await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    const session = host.liveSession as LiveSession
+    const learner = new LiveSession({id: session.id, role: "learner", learner: {id: "ada", name: "Ada", color: "red"}})
+    try {
+      expect(learner.baseHTML?.includes("private answer")).toBe(false)
+      const shared = new DOMParser().parseFromString(learner.baseHTML!, "text/html")
+      expect([...shared.body.children].map(element => element.localName)).toEqual(["x-widget", "p"])
+      expect(readDistributionConfigs(shared)).toEqual(new Map([[shared.getElementById("public"), visiblePolicy]]))
+      expect(authored.getElementById("private")?.textContent).toBe("private answer")
+      expect(host.previewDocumentHTML).toContain("private answer")
+
+      const widget = {path: [0], html: "<x-widget>learner state</x-widget>"}
+      learner.publish({kind: "widget", widgets: [widget]})
+      await vi.waitFor(() => expect(host.widgetStateAtStep("[1]", "ada")).toEqual(widget))
+      expect(host.widgetStateAtStep("[0]", "ada")).toBeUndefined()
+      learner.publish({kind: "document", html: learner.baseHTML!.replace(">Visible<", ">Updated<")})
+      expect(session.steps.at(-1)?.html).toContain(">Updated<")
     }
     finally { learner.destroy(); host.disposeLiveSession() }
   })

@@ -10,7 +10,7 @@ const setup = (permissions: ("edit" | "move" | "delete" | "duplicate" | "style" 
   const target = root.createElement("div")
   target.id = "distribution-target"
   root.body.append(target)
-  writeDistributionConfig(target, {...emptyDistributionConfig(target.id), permissions, add, items})
+  writeDistributionConfig(target, {...emptyDistributionConfig(), permissions, add, items})
   return root
 }
 
@@ -49,7 +49,7 @@ describe("distribution export", () => {
     const dormant = root.createElement("div")
     dormant.id = "dormant-target"
     root.body.append(dormant)
-    writeDistributionConfig(dormant, {...emptyDistributionConfig(dormant.id), add: [unused.id], items: [unused]})
+    writeDistributionConfig(dormant, {...emptyDistributionConfig(), add: [unused.id], items: [unused]})
     appendSerializedAssets(root, [resources])
     expect(root.querySelector('script[src="/chosen.js"]')).not.toBeNull()
     expect(root.querySelector('link[href="/chosen.css"]')).not.toBeNull()

@@ -11,11 +11,11 @@ const configured = overrides => validateGroupingRules({...defaultGroupingRules("
 
 describe("widget grouping rules", () => {
   it("derives stable formation rules for explicit distribution sizes, including long targets", () => {
-    const config = {scope: "group", target: "x".repeat(256), groupSize: 4}
+    const config = {scope: "group", groupSize: 4}
     const revision = distributionGroupingRevision(config)
     expect(distributionGroupingRevision(config)).toBe(revision)
     const rules = validateGroupingRules(JSON.parse(decodeURIComponent(revision)))
-    expect(rules).toMatchObject({groupBy: "members", number: 4, seed: config.target})
+    expect(rules).toMatchObject({groupBy: "members", number: 4, seed: ""})
     expect(distributionGroupingRevision({...config, groupSize: undefined})).toBeUndefined()
     expect(distributionGroupingRevision({...config, scope: "all"})).toBeUndefined()
   })

@@ -2,9 +2,8 @@ import {tokenize} from "@csstools/css-tokenizer"
 
 /** DOM-shaped snapshots are transient inputs to validation, never document state.
  * Both the browser DOM and the server HTML parser use this same comparison. */
-export function validateDistributionChange(before, after, configs, parseFragment) {
+export function validateDistributionChange(before, after, parseFragment) {
   try {
-    const policies = new Map(configs.map(config => [config.target, config]))
     const parents = new Map(), oldIds = new Map(), newIds = new Map(), oldElements = [], newElements = []
     const index = (node, parent, ids) => {
       parents.set(node, parent)
@@ -18,14 +17,13 @@ export function validateDistributionChange(before, after, configs, parseFragment
     }
     index(before, null, oldIds)
     index(after, null, newIds)
-    for(const target of policies.keys()) if(!oldIds.has(target) && newIds.has(target)) return false
-    const policy = node => {
+    const policyOwner = node => {
       for(let current = node; current; current = parents.get(current)) {
-        const config = policies.get(current.attrs?.id)
-        if(config) return config
+        if(current.policy) return current
       }
       return null
     }
+    const policy = node => policyOwner(node)?.policy
     const allows = (node, permission) => Boolean(policy(node)?.permissions.includes(permission))
     const allAllow = (node, permission) => allows(node, permission)
       && (node.children ?? []).every(child => !child.attrs || allAllow(child, permission))
@@ -125,7 +123,7 @@ export function validateDistributionChange(before, after, configs, parseFragment
     // operations. They are text editing, not palette/template insertion.
     const proseTags = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "br", "wbr", "span", "b", "strong", "i", "em", "u", "s", "sub", "sup", "small", "mark", "code", "kbd", "samp", "q", "abbr", "cite", "bdi", "bdo"])
     const textAttributes = node => { const attrs = {...node.attrs}; delete attrs.id; return attrs }
-    const commentKey = node => JSON.stringify([policy(node)?.target, node.value])
+    const commentKey = node => JSON.stringify([policy(node), node.value])
     const commentCounts = root => {
       const counts = new Map()
       const visit = node => {
@@ -149,7 +147,7 @@ export function validateDistributionChange(before, after, configs, parseFragment
     const prose = (node, inserted = false) => {
       if(node.name === "#text") return true
       if(node.name === "#comment") return retainedComment(node)
-      if(!proseTags.has(node.name) || node.namespace !== "http://www.w3.org/1999/xhtml" || node.attrs?.is || policies.has(node.attrs?.id)) return false
+      if(!proseTags.has(node.name) || node.namespace !== "http://www.w3.org/1999/xhtml" || node.attrs?.is || node.policy) return false
       if(inserted && (node.attrs?.id || Object.keys(node.attrs ?? {}).length && !proseSources.some(source => source.name === node.name
         && same(textAttributes(source), textAttributes(node))))) return false
       return (node.children ?? []).every(child => prose(child, inserted))
@@ -172,7 +170,8 @@ export function validateDistributionChange(before, after, configs, parseFragment
       if(old) { unchanged.set(next, old); reused.add(old) }
     }
     const compatible = (a, b) => a.name === b.name && a.namespace === b.namespace
-      && (a.attrs?.id || b.attrs?.id ? a.attrs?.id === b.attrs?.id : true)
+      && (a.attrs?.id || b.attrs?.id ? a.attrs?.id === b.attrs?.id : true) && same(a.policy, b.policy)
+    const hasPolicy = node => Boolean(node.policy || node.children?.some(hasPolicy))
     const compare = (old, next) => {
       if(same(old, next)) return true
       if(!compatible(old, next)) return false
@@ -194,7 +193,7 @@ export function validateDistributionChange(before, after, configs, parseFragment
           matches.set(i, candidate)
           if(parents.get(candidate) !== old && (!(allAllow(candidate, "move") && allows(old, "move")
             || allAllow(candidate, "edit") && allows(old, "edit") && prose(candidate))
-            || policy(candidate)?.target !== policy(old)?.target)) return false
+            || policyOwner(candidate) !== policyOwner(old))) return false
         }
       }
       for(let i = 0; i < previous.length; i++) if(!used.has(i)) {
@@ -220,12 +219,12 @@ export function validateDistributionChange(before, after, configs, parseFragment
         for(const template of templates(old)) {
           if(!template.length || template.some((_, offset) => matches.has(i + offset))) continue
           const added = current.slice(i, i + template.length)
-          if(added.length === template.length && same(templateShape(added), templateShape(template))) { count = template.length; break }
+          if(added.length === template.length && !added.some(hasPolicy) && same(templateShape(added), templateShape(template))) { count = template.length; break }
         }
         if(!count && allows(old, "edit") && (current[i].name === "#text" || prose(current[i], true))) count = 1
-        if(!count && allows(old, "duplicate")) {
+        if(!count && allows(old, "duplicate") && !hasPolicy(current[i])) {
           const candidate = [...oldIds.values()].find(node => allAllow(node, "duplicate")
-            && policy(node)?.target === policy(old)?.target && same(templateShape([node]), templateShape([current[i]])))
+            && policyOwner(node) === policyOwner(old) && same(templateShape([node]), templateShape([current[i]])))
           if(candidate) count = 1
         }
         if(!count) return false
@@ -234,7 +233,7 @@ export function validateDistributionChange(before, after, configs, parseFragment
       return true
     }
     // Only BODY is editable. Head instructions, resources and HTML attributes are immutable to readers.
-    if(before.name !== "html" || after.name !== "html" || !same(before.attrs, after.attrs)) return false
+    if(before.name !== "html" || after.name !== "html" || !same(before.attrs, after.attrs) || !same(before.policy, after.policy)) return false
     const oldHead = before.children.find(node => node.name === "head"), newHead = after.children.find(node => node.name === "head")
     if(!same(oldHead, newHead)) return false
     const oldBody = before.children.find(node => node.name === "body"), newBody = after.children.find(node => node.name === "body")

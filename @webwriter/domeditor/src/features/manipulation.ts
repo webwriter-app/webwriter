@@ -1,4 +1,5 @@
 import {remapPastedAuthoredIds} from "../authored-identities"
+import {isDistributionPI} from "../distribution-dom"
 import {clearPresentationState, hasPresentationState, setPresentationState} from "../presentation-state.js"
 import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
 import {documentThemeProperties, documentTypographyCSS, documentTypographyProperties, originalTypographyCSS} from "../document-theme-options"
@@ -1886,8 +1887,8 @@ export class ManipulationFeature extends EditorFeature {
         const offset = this.splitTextLikePoint(block, point)
         const right = this.cloneSplitContinuation(block)
         right.removeAttribute("id")
-        right.append(...Array.from(block.childNodes).slice(offset))
-        if(block.childNodes.length) block.after(...nodes)
+        this.appendSplitContent(block, right, Array.from(block.childNodes).slice(offset), false)
+        if(Array.from(block.childNodes).some(node => !isDistributionPI(node))) block.after(...nodes)
         else block.replaceWith(...nodes)
         if(right.childNodes.length) nodes.at(-1)!.after(right)
         affected.add(parent)
@@ -3346,11 +3347,11 @@ export class ManipulationFeature extends EditorFeature {
 
       const offset = this.splitTextLikePoint(block, $.range)
       const right = this.cloneSplitContinuation(block)
-      right.append(...Array.from(block.childNodes).slice(offset).filter(node => !isOutOfFlow(node)))
+      this.appendSplitContent(block, right, Array.from(block.childNodes).slice(offset).filter(node => !isOutOfFlow(node)), false)
       block.normalize()
       right.normalize()
 
-      if(block.childNodes.length) block.after(...nodes)
+      if(Array.from(block.childNodes).some(node => !isDistributionPI(node))) block.after(...nodes)
       else block.replaceWith(...nodes)
       const last = nodes.at(-1)!
       if(right.childNodes.length) {
@@ -3655,6 +3656,19 @@ export class ManipulationFeature extends EditorFeature {
     return continuation
   }
 
+  private appendSplitContent(element: Element, continuation: Element, children: Node[], keepEmpty = true) {
+    const content = children.filter(node => !isDistributionPI(node))
+    continuation.append(...content)
+    if(this.editor.options.reader || !keepEmpty && !content.length) return
+    // Both authoring continuations retain the policy of the original content.
+    const instruction = Array.from(element.childNodes).find(isDistributionPI)
+    if(instruction) continuation.append(continuation.ownerDocument.createProcessingInstruction(instruction.target, instruction.data))
+  }
+
+  private canJoinDistributionRegions(first: Element, second: Element) {
+    return Array.from(first.childNodes).find(isDistributionPI)?.data === Array.from(second.childNodes).find(isDistributionPI)?.data
+  }
+
   /** Promotes a DOM point through nested mark wrappers to an offset in the
    * containing non-mark element, splitting text and marks only when the point
    * is actually inside them. */
@@ -3689,12 +3703,12 @@ export class ManipulationFeature extends EditorFeature {
       if(pointOffset === 0) {
         pointOffset = index
       }
-      else if(pointOffset === pointNode.childNodes.length) {
+      else if(pointOffset >= pointNode.childNodes.length - Number(isDistributionPI(pointNode.lastChild))) {
         pointOffset = index + 1
       }
       else {
         const right = this.cloneSplitContinuation(pointNode)
-        right.append(...Array.from(pointNode.childNodes).slice(pointOffset).filter(node => !isOutOfFlow(node)))
+        this.appendSplitContent(pointNode, right, Array.from(pointNode.childNodes).slice(pointOffset).filter(node => !isOutOfFlow(node)))
         pointNode.after(right)
         pointOffset = Array.from(parent.childNodes).indexOf(right)
       }
@@ -3754,9 +3768,9 @@ export class ManipulationFeature extends EditorFeature {
         ? this.editor.schema.create(undefined, container.ownerDocument)
         : this.cloneSplitContinuation(container)) as Element
       container.after(next)
-      const moving = Array.from(container.childNodes).slice(offset).filter(node => !isOutOfFlow(node))
+      const moving = Array.from(container.childNodes).slice(offset).filter(node => !isOutOfFlow(node) && !isDistributionPI(node))
       this.editor.features.list.prepareSplitContinuation(container, next, moving)
-      next.append(...moving)
+      this.appendSplitContent(container, next, moving)
       if(depth === 0 && isContentfulWidget(container, this.editor.schema)) {
         // Older authored options can contain bare text even when their current
         // contract requires paragraphs. Wrap only the split inline run.
@@ -4699,7 +4713,7 @@ export class ManipulationFeature extends EditorFeature {
           ? this.editor.schema.create()
           : this.cloneSplitContinuation(container)) as Element
         container.after(next)
-        next.append(...right)
+        this.appendSplitContent(container, next, right)
         node? $.move(node, -1): $.move(next, 0)
       }
       if(insertedWidget?.isConnected) {
@@ -4892,7 +4906,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "backward") {
         const {elementBefore, elementAfter} = $
-        if(elementBefore.matches("summary") || elementAfter.matches("summary")) return
+        if(elementBefore.matches("summary") || elementAfter.matches("summary") || !this.canJoinDistributionRegions(elementBefore, elementAfter)) return
         if(!elementBefore.textContent) {
           this.editor.features.list.splitAroundRemovedItem(elementBefore)
           elementBefore.remove()
@@ -4900,15 +4914,15 @@ export class ManipulationFeature extends EditorFeature {
         }
         else {
           const joinTarget = elementAfter.firstChild
-          elementBefore.append(...Array.from(elementAfter.childNodes).filter(node => !isOutOfFlow(node)))
+          elementBefore.append(...Array.from(elementAfter.childNodes).filter(node => !isOutOfFlow(node) && !isDistributionPI(node)))
           if(joinTarget) this.moveToStart(joinTarget)
           elementBefore.normalize()
-          if(!elementAfter.childNodes.length) elementAfter.remove()
+          if(Array.from(elementAfter.childNodes).every(isDistributionPI)) elementAfter.remove()
         }
       }
       else if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "forward") {
         const {elementBefore, elementAfter} = $
-        if(elementBefore.matches("summary") || elementAfter.matches("summary")) return
+        if(elementBefore.matches("summary") || elementAfter.matches("summary") || !this.canJoinDistributionRegions(elementBefore, elementAfter)) return
         if(!elementAfter.textContent) {
           this.editor.features.list.splitAroundRemovedItem(elementAfter)
           elementAfter.remove()
@@ -4916,10 +4930,10 @@ export class ManipulationFeature extends EditorFeature {
         }
         else {
           const joinTarget = elementAfter.firstChild
-          elementAfter.prepend(...Array.from(elementBefore.childNodes).filter(node => !isOutOfFlow(node)))
+          elementAfter.prepend(...Array.from(elementBefore.childNodes).filter(node => !isOutOfFlow(node) && !isDistributionPI(node)))
           if(joinTarget) this.moveToStart(joinTarget)
           elementAfter.normalize()
-          if(!elementBefore.childNodes.length) elementBefore.remove()
+          if(Array.from(elementBefore.childNodes).every(isDistributionPI)) elementBefore.remove()
         }
       }
     })
@@ -4940,10 +4954,10 @@ export class ManipulationFeature extends EditorFeature {
     const summary = details.querySelector(":scope > summary")
     const content = Array.from(details.childNodes).filter(node => node.nodeType !== Node.COMMENT_NODE
       && !(node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()))
-    if(!summary || content[0] !== summary || content[1] !== paragraph) return false
+    if(!summary || content[0] !== summary || content[1] !== paragraph || !this.canJoinDistributionRegions(summary, paragraph)) return false
     this.withNormalization(() => {
       const seam = summary.childNodes.length
-      summary.append(...Array.from(paragraph.childNodes))
+      summary.append(...Array.from(paragraph.childNodes).filter(node => !isDistributionPI(node)))
       $.move(summary, seam)
     })
     return true
@@ -5580,11 +5594,11 @@ export class ManipulationFeature extends EditorFeature {
       if(!parent) return
       const offset = this.splitTextLikePoint(block, $.range)
       const right = this.cloneSplitContinuation(block)
-      right.append(...Array.from(block.childNodes).slice(offset).filter(node => !isOutOfFlow(node)))
+      this.appendSplitContent(block, right, Array.from(block.childNodes).slice(offset).filter(node => !isOutOfFlow(node)), false)
       block.normalize()
       right.normalize()
 
-      if(block.childNodes.length) block.after(widget)
+      if(Array.from(block.childNodes).some(node => !isDistributionPI(node))) block.after(widget)
       else block.replaceWith(widget)
       if(right.childNodes.length) widget.after(right)
     }

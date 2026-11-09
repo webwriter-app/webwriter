@@ -1,7 +1,7 @@
 import type {DistributionNode} from "./distribution-validation.js"
 import {validateDistributionChange} from "./distribution-validation.js"
-import {readDistributionConfigs} from "./distribution-dom"
-import {editorWidgetLookup, isEditorOnlyNode, isEditorOwnedAttribute} from "./editor-artifacts"
+import {localDistributionInstruction, readDistributionConfigs} from "./distribution-dom"
+import {editorWidgetLookup, isEditorOnlyNode, isEditorOwnedAttribute, registerFrameArtifacts} from "./editor-artifacts"
 
 /** Stable, artifact-free validation projection; never stored as an editor model. */
 export function distributionSnapshot(node: Node, isWidget = editorWidgetLookup(node)): DistributionNode | null {
@@ -21,8 +21,14 @@ export function distributionSnapshot(node: Node, isWidget = editorWidgetLookup(n
     if(attribute.name !== "class" || value) attrs[attribute.name] = value
   }
   const container = element.localName === "template" && "content" in element ? (element as HTMLTemplateElement).content : element
+  const policy = localDistributionInstruction(element)
   return {name: element.localName, namespace: element.namespaceURI ?? undefined, attrs,
-    children: Array.from(container.childNodes).flatMap(child => { const value = distributionSnapshot(child, isWidget); return value ? [value] : [] })}
+    ...(policy ? {policy: policy.config} : {}),
+    children: Array.from(container.childNodes).flatMap(child => {
+      if(child === policy?.node) return policy.text ? [{name: "#text", value: policy.text}] : []
+      const value = distributionSnapshot(child, isWidget)
+      return value ? [value] : []
+    })}
 }
 
 export function distributionFragment(html: string, root: Document): DistributionNode[] {
@@ -36,13 +42,20 @@ export function createBrowserDistributionValidator(baseHTML: string) {
   const parser = new DOMParser()
   const base = parser.parseFromString(baseHTML, "text/html")
   const configs = readDistributionConfigs(base)
-  const snapshot = (html: string) => distributionSnapshot(parser.parseFromString(html, "text/html").documentElement)!
+  const snapshot = (html: string) => {
+    const parsed = parser.parseFromString(html, "text/html")
+    registerFrameArtifacts(parsed)
+    return distributionSnapshot(parsed.documentElement)!
+  }
   return {
-    configured: configs.length > 0,
+    configured: configs.size > 0,
     validate(beforeHTML: string | undefined, afterHTML: string) {
       if(typeof afterHTML !== "string" || afterHTML.length > 8 * 1024 * 1024) return false
-      return validateDistributionChange(snapshot(beforeHTML ?? baseHTML), snapshot(afterHTML), configs,
-        html => distributionFragment(html, base))
+      try {
+        return validateDistributionChange(snapshot(beforeHTML ?? baseHTML), snapshot(afterHTML),
+          html => distributionFragment(html, base))
+      }
+      catch { return false }
     },
   }
 }

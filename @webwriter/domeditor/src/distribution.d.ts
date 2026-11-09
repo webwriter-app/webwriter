@@ -16,10 +16,11 @@ export interface DistributionItem {
 
 export interface DistributionConfig {
   version: 1
-  target: string
   scope: DistributionScope
   /** Requested participants per group; omitted for existing session-defined groups. */
   groupSize?: number
+  /** Defaults to visible. A hidden element's entire subtree is private to the host. */
+  view?: boolean
   permissions: DistributionPermission[]
   add: string[]
   items: DistributionItem[]
@@ -31,4 +32,7 @@ export function isDistributionPermission(value: unknown): value is DistributionP
 export function validateDistributionConfig(value: unknown): DistributionConfig
 export function encodeDistributionConfig(config: DistributionConfig): string
 export function decodeDistributionConfig(data: string): DistributionConfig | null
-export function emptyDistributionConfig(target: string): DistributionConfig
+export function emptyDistributionConfig(): DistributionConfig
+export function supportsDistribution(tag: string, namespace: string | null): boolean
+export function distributionInstruction(data: string): DistributionConfig | null
+export function distributionTextInstruction(tag: string, namespace: string | null, text: string): {config: DistributionConfig, text: string} | null

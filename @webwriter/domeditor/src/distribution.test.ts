@@ -12,7 +12,6 @@ import type { DistributionConfig } from "./distribution.js"
 
 const config = (overrides: Record<string, unknown> = {}): DistributionConfig => ({
   version: 1,
-  target: "article-7",
   scope: "group",
   permissions: ["edit", "move"],
   add: ["element:section"],
@@ -33,7 +32,7 @@ describe("distribution config", () => {
   })
 
   it("canonicalizes and round trips strings containing ?> and comments", () => {
-    const input = config({ target: "stable-target", permissions: ["style", "edit"] })
+    const input = config({ permissions: ["style", "edit"] })
     const canonical = validateDistributionConfig(input)
     expect(canonical).not.toBe(input)
     expect(canonical.items).not.toBe(input.items)
@@ -42,9 +41,15 @@ describe("distribution config", () => {
 
   it("keeps an explicit empty permissions override", () => {
     expect(validateDistributionConfig(config({ permissions: [] })).permissions).toEqual([])
-    expect(emptyDistributionConfig("target")).toEqual({
-      version: 1, target: "target", scope: "individual", permissions: [], add: [], items: [],
+    expect(emptyDistributionConfig()).toEqual({
+      version: 1, scope: "individual", permissions: [], add: [], items: [],
     })
+  })
+
+  it("persists only an explicit View denial without discarding other permissions", () => {
+    expect(validateDistributionConfig(config({view: true}))).toEqual(config())
+    expect(decodeDistributionConfig(encodeDistributionConfig(config({view: false})))).toEqual(config({view: false}))
+    expect(() => validateDistributionConfig(config({view: "false"}))).toThrow(TypeError)
   })
 
   it("preserves dormant add lists when insertion permission is disabled", () => {

@@ -8,6 +8,8 @@ import {isDataBlock} from "../active-content"
 import {closestElement, containsElement, hasClass, readableNodePath, type ReadableElement, type ReadableNode} from "../dom-readers"
 import {applyPreviewUpdate} from "../live-session-permissions.js"
 import {createBrowserDistributionValidator} from "../distribution-snapshot"
+import {filterLiveSessionDocument} from "../distribution-dom"
+import {prepareWidgetGroupingsForSerialization, restoreWidgetGroupingClones} from "../widget-grouping-dom"
 import {captureLiveSessionReplay, captureLiveSessionSnapshot, type LiveSessionReplay} from "../live-session-replay"
 import {cleanLiveSessionDocument} from "../live-session-replay"
 import {LiveSessionLrs, createLrsConnection, type LrsConfiguration, type LrsStatus} from "../live-session-lrs"
@@ -761,6 +763,7 @@ export class DomEditor extends LitElement {
   private savingLiveReplay = false
   private liveSession: LiveSession | null = null
   private liveSessionUnsubscribe: (() => void) | null = null
+  private liveSharedWidgetPaths?: Map<string, string>
   private liveLearners: LiveLearnerRibbonItem[] = []
   private liveSteps: LiveSessionStep[] = []
   private liveFeedback: LiveSessionFeedback[] = []
@@ -1303,16 +1306,20 @@ export class DomEditor extends LitElement {
     if(!source?.documentElement) return this.frameDocumentHTML
     const inertDocument = getInertDocument(source)
     const root = inertDocument.importNode(source.documentElement, true) as HTMLElement
+    restoreWidgetGroupingClones(source.documentElement, root)
     clearEditorArtifacts(root, [], this.isInstalledWidget)
-    return `${serializeDoctype(source.doctype)}${root.outerHTML}`
+    const serialize = prepareWidgetGroupingsForSerialization(root)
+    return serialize(`${serializeDoctype(source.doctype)}${root.outerHTML}`)
   }
 
   /** Creates a static copy for preview without bootstrapping another
    * DOMEditor. The live editor iframe remains mounted separately so its Yjs
    * document, undo manager, widgets, and selection stay untouched. */
   private currentPreviewHTML() {
-    const source = this.editorDocument?.cloneNode(true) as Document | null
+    const editorDocument = this.editorDocument
+    const source = editorDocument?.cloneNode(true) as Document | null
     if(!source?.documentElement) throw new Error("The editor document is not ready")
+    restoreWidgetGroupingClones(editorDocument!, source)
     return this.preparePreviewDocument(source)
   }
 
@@ -1909,7 +1916,7 @@ export class DomEditor extends LitElement {
       return
     }
     if(this.previewOpaque) {
-      this.liveOverlayWidgets = this.previewWidgetPositions.map(widget => {
+      this.liveOverlayWidgets = this.previewWidgetPositions.filter(widget => !this.liveSharedWidgetPaths || this.liveSharedWidgetPaths.has(widget.path)).map(widget => {
         const learners = this.liveLearners.flatMap(learner => {
           if(!learner.enabled) return []
           const hasState = this.widgetStateAtStep(widget.path, learner.id)
@@ -1931,6 +1938,7 @@ export class DomEditor extends LitElement {
       const path = previewElementPath(widget, previewDocument)
       if(!path) return []
       const key = JSON.stringify(path)
+      if(this.liveSharedWidgetPaths && !this.liveSharedWidgetPaths.has(key)) return []
       const learners = this.liveLearners.flatMap(learner => {
         if(!learner.enabled) return []
         const hasState = this.widgetStateAtStep(key, learner.id)
@@ -1951,16 +1959,18 @@ export class DomEditor extends LitElement {
   }
 
   private widgetStateAtStep(pathKey: string, learnerId: string) {
+    const sharedPath = this.liveSharedWidgetPaths ? this.liveSharedWidgetPaths.get(pathKey) : pathKey
+    if(sharedPath === undefined) return
     const id = this.livePreview.baseWidgetStates.get(pathKey)?.id
     return this.liveStatesAtStep.get(learnerId)?.widgets?.find(widget =>
-      id ? widget.id === id : widget.path && JSON.stringify(widget.path) === pathKey,
+      id ? widget.id === id : widget.path && JSON.stringify(widget.path) === sharedPath,
     )
   }
 
   private syncLiveAggregates() {
     if(!this.liveSessionActive || this.liveSessionRole !== "host") return
     const inputs: LiveWidgetAggregateInput[] = [...this.livePreview.baseWidgetStates].flatMap(([pathKey, base]) => {
-      if(!base.path) return []
+      if(!base.path || this.liveSharedWidgetPaths && !this.liveSharedWidgetPaths.has(pathKey)) return []
       return [{path: base.path, id: base.id, aggregateId: this.liveSelectedAggregates.get(pathKey),
         view: this.liveSelectedWidgetLearners.has(pathKey) ? "individual" : this.liveThumbnailWidgets.has(pathKey) ? "thumbnails" : "aggregate",
         participants: this.liveLearners.filter(learner => learner.enabled).map(learner => ({
@@ -1992,7 +2002,7 @@ export class DomEditor extends LitElement {
       const snapshot = learnerId
         ? this.widgetStateAtStep(pathKey, learnerId)
         : this.livePreview.baseWidgetStates.get(pathKey)
-      if(snapshot) this.postToPreview({type: "preview-frame-apply", snapshot})
+      if(snapshot) this.postToPreview({type: "preview-frame-apply", snapshot: {...snapshot, path: this.livePreview.baseWidgetStates.get(pathKey)?.path ?? snapshot.path}})
       return
     }
     const frame = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")
@@ -2864,6 +2874,7 @@ export class DomEditor extends LitElement {
     this.stopReplayLrs()
     this.replayLrsStatus = null
     this.livePreviewSource = null
+    this.liveSharedWidgetPaths = undefined
     this.livePreview.disconnect()
     this.clearLivePlaybackTimer()
     this.liveSessionUnsubscribe?.()
@@ -3031,6 +3042,8 @@ export class DomEditor extends LitElement {
     try {
       if(!this.editorWindow) await this.waitForEditorWindow()
       if(generation !== this.previewGeneration) return
+      if(this.distributionPendingConfigs.size && !await this.distributionWriteQueue) throw new Error("Distribution settings could not be saved before preview")
+      if(generation !== this.previewGeneration) return
       const lock = this.setPreviewEditingLocked(true)
       if(lock) await lock
       if(generation !== this.previewGeneration) return
@@ -3128,7 +3141,18 @@ export class DomEditor extends LitElement {
       const generation = this.previewGeneration
       const previewHTML = this.previewDocumentHTML ?? this.currentPreviewHTML()
       const previewSource = new DOMParser().parseFromString(previewHTML, "text/html")
-      const distribution = createBrowserDistributionValidator(previewHTML)
+      const widgetPaths = previewWidgetElements(previewSource).map(widget => ({widget, path: previewElementPath(widget, previewSource)}))
+      const filtered = filterLiveSessionDocument(previewSource)
+      let sharedWidgetPaths: Map<string, string> | undefined
+      if(filtered) {
+        // Serialization rejoins text on either side of a removed element.
+        previewSource.body.normalize()
+        sharedWidgetPaths = new Map()
+        for(const {widget, path} of widgetPaths) {
+          const shared = previewElementPath(widget, previewSource)
+          if(path && shared) sharedWidgetPaths.set(JSON.stringify(path), JSON.stringify(shared))
+        }
+      }
       let previewDependencies = {packages: this.installedPackages, importMap: this.packageImportMap}
       if(this.installedPackages.some(isLocalResourcePackage)) {
         previewDependencies = await bundleLocalPreviewPackages(previewSource,
@@ -3140,6 +3164,8 @@ export class DomEditor extends LitElement {
       const identity = serverUrl ? await createLiveHostIdentity() : undefined
       if(!this.isConnected || !this.previewActive || generation !== this.previewGeneration
         || this.fileOperationActive || this.linkedDocumentLoading) return
+      const baseHTML = this.preparePreviewDocument(previewSource, previewDependencies)
+      const distribution = createBrowserDistributionValidator(baseHTML)
       let link = ""
       if(serverUrl && identity) {
         const source = new URL(location.href)
@@ -3153,11 +3179,12 @@ export class DomEditor extends LitElement {
         id: sessionId,
         role: "host",
         ...(distribution.configured ? {validateDocument: distribution.validate} : {}),
-        baseHTML: this.preparePreviewDocument(previewSource, previewDependencies), previewDependencies,
+        baseHTML, previewDependencies,
         ...(serverUrl ? {serverUrl} : {}),
         ...(identity ? {peer: {hostPublicKey: identity.publicKey, hostPrivateKey: identity.privateKey, secret: identity.secret}} : {}),
       })
       this.resetLivePlayback()
+      this.liveSharedWidgetPaths = sharedWidgetPaths
       this.connectLiveSession(session, "host", link)
       const frame = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")
       if(frame?.contentDocument) this.livePreview.observeHost(frame, frame.contentDocument, () => {
@@ -7155,8 +7182,8 @@ export class DomEditor extends LitElement {
     this.distributionAcceptedStates.set(state.identity, state)
     const pending = this.distributionPendingConfigs.get(state.identity)
     if(!pending) return state
-    const config = pending.config ? {...pending.config, target: state.target || pending.config.target} : null
-    return {...state, local: config, effective: config ?? state.effective, inheritedFrom: config ? null : state.inheritedFrom}
+    const config = pending.config
+    return {...state, local: config, effective: config ?? state.effective}
   }
 
   private refreshDistributionState(identity: string, error?: string) {
@@ -7169,7 +7196,7 @@ export class DomEditor extends LitElement {
 
   private handleDistributionConfigChange = (event: CustomEvent<{target: string, config: DistributionConfig | null, general?: boolean}>) => {
     const state = event.detail.general ? this.distributionGeneral : this.distributionSelection
-    if(!state || this.distributionPending || event.detail.target !== state.target) return
+    if(!state || this.distributionPending || event.detail.target !== state.identity) return
     void this.writeDistributionConfig(state, event.detail.config)
   }
 
@@ -7203,7 +7230,7 @@ export class DomEditor extends LitElement {
   private handleDistributionInsertDrop = async (event: CustomEvent<DistributionInsertDrop>) => {
     const {general, target, action, token} = event.detail
     const initial = general ? this.distributionGeneral : this.distributionSelection
-    if(!initial || initial.target !== target || this.htmlPending || this.historyState.preview !== null) return
+    if(!initial || initial.identity !== target || this.htmlPending || this.historyState.preview !== null) return
     this.handleRibbonDragEnd()
     const frame = this.frameRevision
     try {
@@ -7243,8 +7270,9 @@ export class DomEditor extends LitElement {
       // Resolve against the latest projected policy without applying an asynchronous drop to a new selection.
       const current = general ? this.distributionGeneral : this.distributionSelection
       if(!item || !current || current.identity !== initial.identity || frame !== this.frameRevision) return
-      const config = current.local ?? current.effective ?? emptyDistributionConfig(current.target || "selection")
-      const next: DistributionConfig = {...config, target: current.target || "selection", permissions: config.permissions.includes("insert") ? [...config.permissions] : [...config.permissions, "insert"],
+      const config = current.local ?? current.effective ?? emptyDistributionConfig()
+      if(!general && (current.hiddenByAncestor || config.view === false)) return
+      const next: DistributionConfig = {...config, permissions: config.permissions.includes("insert") ? [...config.permissions] : [...config.permissions, "insert"],
         add: config.add.includes(item.id) ? [...config.add] : [...config.add, item.id],
         items: [...config.items.filter(candidate => candidate.id !== item!.id), item]}
       if(!await this.writeDistributionConfig(current, next)) return

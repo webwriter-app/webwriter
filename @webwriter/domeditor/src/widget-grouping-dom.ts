@@ -76,6 +76,7 @@ export function hydrateWidgetGroupings(root: Node) {
 }
 
 export function prepareWidgetGroupingsForSerialization(root: Node) {
+  hydrateDistributionInstructions(root)
   const nonce = `ww-grouping-pi-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`
   const markers: {marker: string; target: string; data: string}[] = []
   visit(root, node => {

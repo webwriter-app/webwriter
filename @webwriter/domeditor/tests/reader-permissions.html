@@ -13,9 +13,9 @@ if(layout === "canvas") {
     Object.assign(element.style, {position: "absolute", left: "100px", top: `${50 + index * 120}px`, width: "760px"})
   })
 }
-writeDistributionConfig(document.documentElement, {...emptyDistributionConfig(document.documentElement.id), permissions: ["edit", "move", "delete"]})
-writeDistributionConfig(document.getElementById("movable"), {...emptyDistributionConfig("movable"), permissions: ["move", "delete"]})
-writeDistributionConfig(document.getElementById("locked"), emptyDistributionConfig("locked"))
+writeDistributionConfig(document.body, {...emptyDistributionConfig(), permissions: ["edit", "move", "delete"]})
+writeDistributionConfig(document.getElementById("movable"), {...emptyDistributionConfig(), permissions: ["move", "delete"]})
+writeDistributionConfig(document.getElementById("locked"), emptyDistributionConfig())
 const script = document.createElement("script")
 script.type = "module"
 script.textContent = sources.core + "\ndistributionReader.mountDistributionReader(document)"

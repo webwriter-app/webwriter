@@ -2,7 +2,7 @@ import {clearPresentationState, setPresentationState} from "../presentation-stat
 import type {ElementSelectionType, WidgetConversionState} from "../editor-bridge"
 import {readWidgetGrouping, writeWidgetGrouping} from "../widget-grouping-dom"
 import type {WidgetGroupingRules, WidgetGroupingContext} from "../widget-grouping.js"
-import {effectiveDistribution, ensureDistributionTarget, readDistributionConfigs, visitSerializableElements, writeDistributionConfig} from "../distribution-dom"
+import {effectiveDistribution, readDistributionConfigs, visitSerializableElements, writeDistributionConfig} from "../distribution-dom"
 import {emptyDistributionConfig, type DistributionConfig} from "../distribution.js"
 import {EditorFeature} from "."
 import {elementAttributeTargetId, isEditorOnlyElementAttribute, isUnsafeElementAttributeName, isUnsafeElementAttributeValue} from "../element-attributes"
@@ -680,9 +680,8 @@ export class WidgetFeature extends EditorFeature {
     if(this.editor.isEditingLocked) return false
     const effective = effectiveDistribution(widget)?.config
     const scope = enabled ? (readWidgetGrouping(widget) ? "group" : "all") : "individual"
-    const current = effective ?? emptyDistributionConfig(widget.id || "pending")
-    const target = ensureDistributionTarget(widget)
-    const config: DistributionConfig = {...current, target, scope}
+    const current = effective ?? emptyDistributionConfig()
+    const config: DistributionConfig = {...current, scope}
     writeDistributionConfig(widget, config)
     widget.removeAttribute("shared")
     this.editor.doc.syncFromDOM()
@@ -698,8 +697,8 @@ export class WidgetFeature extends EditorFeature {
       const legacyShared = !effective && widget.hasAttribute("shared")
       let updated: DistributionConfig | undefined
       if((effective && effective.config.scope !== "individual") || legacyShared) {
-        const current = effective?.config ?? emptyDistributionConfig(widget.id || "pending")
-        updated = {...current, target: ensureDistributionTarget(widget), scope: grouping ? "group" : "all"}
+        const current = effective?.config ?? emptyDistributionConfig()
+        updated = {...current, scope: grouping ? "group" : "all"}
       }
       writeWidgetGrouping(widget, grouping)
       if(updated) {

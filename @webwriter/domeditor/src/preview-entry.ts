@@ -2,6 +2,7 @@ import {applyPreviewWidgetSnapshot, LivePreview, previewElementPath, previewWidg
 import type {LiveSessionWidgetState} from "./live-session"
 import {openFrameLinksInNewTabs} from "./frame-links"
 import {registerFrameArtifacts, widgetLookupForTags} from "./editor-artifacts"
+import {hydrateDistributionInstructions} from "./distribution-dom"
 
 openFrameLinksInNewTabs(window)
 
@@ -11,6 +12,7 @@ const hostOrigin = bridge?.getAttribute("data-host-origin")
 
 if(nonce && hostOrigin && window.parent !== window) {
   registerFrameArtifacts(document)
+  hydrateDistributionInstructions(document)
   const preview = new LivePreview(widgetLookupForTags((bridge?.getAttribute("data-widget-tags") ?? "").split(" ")))
   const post = (message: object) => window.parent.postMessage({...message, bridgeNonce: nonce}, hostOrigin)
   window.addEventListener("webwriter-document-save", event => {

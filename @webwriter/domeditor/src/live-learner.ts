@@ -3,8 +3,9 @@ import {editorHostOrigin} from "./frame-origins"
 import {openFrameLinksInNewTabs} from "./frame-links"
 import {LivePreview} from "./live-preview"
 import type {LiveSession} from "./live-session"
-import {widgetLookupForTags} from "./editor-artifacts"
+import {markEditorOnlyNode, widgetLookupForTags} from "./editor-artifacts"
 import {packageWidgetSchemaDefinitions} from "./packages"
+import {hydrateDistributionInstructions} from "./distribution-dom"
 
 function showSessionEnded(root: Document) {
   const appendix = root.body.shadowRoot ?? root.body.attachShadow({mode: "open"})
@@ -70,6 +71,7 @@ export function connectLiveLearner(session: LiveSession, root: Document = docume
   let disconnectLinks: (() => void) | undefined
   let removeSessionEnded: (() => void) | undefined
   const track = () => {
+    hydrateDistributionInstructions(root)
     disconnectLinks = openFrameLinksInNewTabs(view as Window & typeof globalThis)
     preview.observeLearner({contentWindow: view}, root, step => {
       if(session.status !== "stopped") session.publish(step)
@@ -98,16 +100,19 @@ export function connectLiveLearner(session: LiveSession, root: Document = docume
       ...dependencies,
     })
     const prepared = new DOMParser().parseFromString(html, "text/html")
+    const bootstrap = new Set<Node | null>([prepared.head.querySelector("base")])
     if(!prepared.head.querySelector('meta[name="viewport"]')) {
       const viewport = prepared.createElement("meta")
       viewport.name = "viewport"
       viewport.content = "width=device-width, initial-scale=1"
       prepared.head.prepend(viewport)
+      bootstrap.add(viewport)
     }
     const referrer = prepared.createElement("meta")
     referrer.name = "referrer"
     referrer.content = "no-referrer"
     prepared.head.prepend(referrer)
+    bootstrap.add(referrer)
     if(prepared.doctype) {
       const doctype = root.importNode(prepared.doctype, true)
       if(root.doctype) root.replaceChild(doctype, root.doctype)
@@ -118,7 +123,10 @@ export function connectLiveLearner(session: LiveSession, root: Document = docume
       for(const attribute of Array.from(target.attributes)) target.removeAttributeNode(attribute)
       for(const attribute of Array.from(replacement.attributes)) target.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
     }
-    root.head.replaceChildren(...Array.from(prepared.head.childNodes, node => root.importNode(node, true)))
+    root.head.replaceChildren(...Array.from(prepared.head.childNodes, node => {
+      const copy = root.importNode(node, true)
+      return bootstrap.has(node) ? markEditorOnlyNode(copy as Element) : copy
+    }))
     root.body.replaceChildren(...Array.from(prepared.body.childNodes, node => root.importNode(node, true)))
     root.designMode = "off"
     rendered = true

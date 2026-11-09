@@ -1160,9 +1160,9 @@ export function isDocumentHeadStateChangeMessage(value: unknown): value is Docum
 }
 
 function isDistributionSelection(value: unknown): boolean {
-  if(!isRecord(value) || typeof value.target !== "string" || typeof value.identity !== "string"
+  if(!isRecord(value) || typeof value.identity !== "string"
     || !(value.path === null || Array.isArray(value.path) && value.path.every(isNonnegativeInteger))
-    || !(value.inheritedFrom === null || typeof value.inheritedFrom === "string")
+    || !(value.hiddenByAncestor === undefined || typeof value.hiddenByAncestor === "boolean")
     || !(value.error === undefined || typeof value.error === "string")) return false
   try {
     for(const config of [value.local, value.effective]) if(config !== null) validateDistributionConfig(config)

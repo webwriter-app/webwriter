@@ -1,4 +1,5 @@
 import {clearEditorMarkerClasses, copyEditorArtifactState, editorWidgetLookup, isEditorOwnedAttribute, setEditorWidgetLookup} from "./editor-artifacts"
+import {isDistributionPI} from "./distribution-dom"
 export {createAnchorPositioner, type AnchorPositioner} from "./anchor-positioning.js"
 export {authoredClassValue, clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, isEditorOwnedAttribute, removeEditorMarker} from "./editor-artifacts"
 import type { Schema } from "./schema"
@@ -15,7 +16,7 @@ import {inlineMathRoot, mathBoundaryPoint, mathRoot, MATH_NAMESPACE} from "./mat
 /** Prose, its formatting, and inline formulas; comments and line breaks
  * remain part of the text flow. Widgets are always separate content. */
 export function isParagraphContent(node: Node): boolean {
-  if(node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE) return true
+  if(node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE || node.nodeType === Node.PROCESSING_INSTRUCTION_NODE) return true
   if(!isElement(node) || node.hasAttribute("is")) return false
   if(node.namespaceURI === MATH_NAMESPACE && node.localName === "math") return node.getAttribute("display") !== "block"
   if(node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("br,wbr,rt,rp")) return Array.from(node.childNodes).every(isParagraphContent)
@@ -207,7 +208,7 @@ export function isEmptyParagraph(node: Node | null): boolean {
     || node.getAttribute("contenteditable") === "false") return false
   let breaks = 0
   const empty = (child: Node): boolean => child instanceof Text ? !child.data.trim()
-    : child.nodeType === Node.COMMENT_NODE ? true
+    : child.nodeType === Node.COMMENT_NODE || child.nodeType === Node.PROCESSING_INSTRUCTION_NODE ? true
       : isElement(child) && !child.hasAttribute("is") && child.getAttribute("contenteditable") !== "false"
         && (child.localName === "br" ? ++breaks <= 1 : isMarkElement(child))
         && Array.from(child.childNodes).every(empty)
@@ -1354,7 +1355,11 @@ export class EditingSelection {
   static get flowRanges() {
     if(this.isMultiElementSelection) return this.ranges.map(range => range.cloneRange())
     const range = this.range.cloneRange()
-    if(this.selectedElement === getDocumentRoot() || this.selectedElement === document.body) range.selectNodeContents(getDocumentRoot())
+    const root = getDocumentRoot()
+    if(this.selectedElement === root || this.selectedElement === document.body) range.selectNodeContents(root)
+    if(range.endContainer === root && isDistributionPI(root.lastChild) && range.endOffset === root.childNodes.length) {
+      range.setEndBefore(root.lastChild)
+    }
     const ranges: Range[] = []
     for(const element of this.excludedFlowElements) {
       const before = range.cloneRange()
@@ -1667,7 +1672,7 @@ export function getSidesOfPoint(point: Range) {
   const leftNodes = []
   const rightNodes = []
   for(const node of nodes) {
-    if(isOutOfFlow(node)) continue
+    if(isOutOfFlow(node) || node.nodeType === Node.PROCESSING_INSTRUCTION_NODE) continue
     const isBefore = point?.comparePoint(node, 0) === -1
     if(isBefore) {
       leftNodes.push(node)

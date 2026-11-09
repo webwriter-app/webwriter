@@ -4,7 +4,7 @@ export const groupingTarget = "ww-grouping"
 export function distributionGroupingRevision(config) {
   if(config?.scope !== "group" || config.groupSize === undefined) return undefined
   return encodeURIComponent(JSON.stringify(validateGroupingRules({
-    ...defaultGroupingRules(config.target), number: config.groupSize,
+    ...defaultGroupingRules(""), number: config.groupSize,
   })))
 }
 

@@ -811,17 +811,15 @@ describe("toolbox", () => {
     const toolbox = await mountToolbox()
     const local: DistributionConfig = {
       version: 1,
-      target: "element-1",
       scope: "group",
       permissions: ["edit"],
       add: ["user-snippet:quote"],
       items: [{id: "user-snippet:quote", label: "Quote", html: "<blockquote></blockquote>"}],
     }
     const state: DistributionSelectionState = {
-      target: "element-1",
+      identity: "transient-selection-1",
       local,
       effective: local,
-      inheritedFrom: null,
     }
     const items: DistributionItem[] = [
       {id: "element:section", label: "Section", html: "<section></section>"},

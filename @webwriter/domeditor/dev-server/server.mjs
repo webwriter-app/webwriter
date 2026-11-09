@@ -104,22 +104,17 @@ const widgetGroupingDeclaration = (documentId, widgetId) => {
   if(elements.length > 1) throw Object.assign(new Error("Widget ID is ambiguous in the shared document"), {status: 409})
   const widget = elements[0]
   if(!widget) return null
-  const head = isYMap(mirror) ? mirror.get("head") : document.getXmlElement("document-head")
-  const configs = new Map()
-  for(const node of isYXmlElement(head) ? head.toArray() : []) {
-    if(!isYXmlElement(node) || node.getAttribute(widgetNodeKind) !== widgetProcessingInstructionKind
-      || node.getAttribute(widgetProcessingInstructionTarget) !== distributionTarget) continue
-    const config = decodeDistributionConfig(node.toArray().map(child => child.toString()).join(""))
-    if(!config || configs.has(config.target)) throw Object.assign(new Error("Invalid distribution grouping declaration"), {status: 409})
-    configs.set(config.target, config)
-  }
   let policy
   for(let element = widget; isYXmlElement(element); element = element.parent) {
-    policy = configs.get(element.getAttribute("id"))
-    if(policy) break
+    const instructions = element.toArray().filter(node => isYXmlElement(node)
+      && node.getAttribute(widgetNodeKind) === widgetProcessingInstructionKind
+      && node.getAttribute(widgetProcessingInstructionTarget) === distributionTarget)
+    if(instructions.length > 1) throw Object.assign(new Error("Duplicate distribution grouping declaration"), {status: 409})
+    if(!instructions.length) continue
+    policy = decodeDistributionConfig(instructions[0].toArray().map(child => child.toString()).join(""))
+    if(!policy) throw Object.assign(new Error("Invalid distribution grouping declaration"), {status: 409})
+    break
   }
-  const attributes = isYMap(mirror) ? mirror.get("attributes") : document.getXmlElement("document-attributes")
-  if(!policy && isYXmlElement(attributes)) policy = configs.get(attributes.getAttribute("id"))
   const distributionRevision = distributionGroupingRevision(policy)
   if(distributionRevision) return distributionRevision
   const instructions = widget.toArray().filter(node => isYXmlElement(node)
@@ -725,7 +720,7 @@ export async function createDevServer(options = {}) {
         let session = liveSessionTokens.get(room)
         if(session && (session.token !== token || session.hostKey !== hostKey)) return apiError(response, 403, "Live session permission denied")
         const bytes = [...liveSessionTokens.values()].filter(entry => entry !== session)
-          .reduce((sum, entry) => sum + Buffer.byteLength(entry.html ?? ""), Buffer.byteLength(html))
+          .reduce((sum, entry) => sum + Buffer.byteLength(entry.html ?? ""), Buffer.byteLength(distribution.html))
         if((!session && liveSessionTokens.size >= 32) || bytes > 256 * 1024 * 1024) return apiError(response, 503, "Live session document cache is full")
         if(!session) {
           session = {token, hostKey, learners: new Map(), connections: 0}
@@ -736,7 +731,7 @@ export async function createDevServer(options = {}) {
           }, 60_000)
           session.timer.unref()
         }
-        session.html = html
+        session.html = distribution.html
         session.distribution = distribution
         const documentURL = new URL("/live/", liveDocumentOrigin())
         documentURL.search = new URLSearchParams({liveSession: id, liveToken: token, liveServer: origin.replace(/^http/, "ws")}).toString()

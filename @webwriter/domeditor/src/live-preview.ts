@@ -7,6 +7,7 @@ import type {LiveWidgetAggregateInput, WidgetDataSnapshot} from "./widget-aggreg
 import {WidgetAggregateViews} from "./widget-aggregate-view"
 import {effectiveDistribution} from "./distribution-dom"
 import {encodeDistributionConfig} from "./distribution.js"
+import {prepareWidgetGroupingsForSerialization, restoreWidgetGroupingClones} from "./widget-grouping-dom"
 import {IncrementalPreviewRecorder} from "./live-session-incremental"
 import {validLiveSessionWidgetEvent} from "./live-session-permissions.js"
 
@@ -177,8 +178,10 @@ export class LivePreview {
     registerFrameArtifacts(previewDocument)
     const source = previewDocument.cloneNode(true) as Document
     copyEditorArtifactState(previewDocument, source)
+    restoreWidgetGroupingClones(previewDocument, source)
     clearEditorArtifacts(source, [], editorWidgetLookup(previewDocument) ?? this.isWidget)
-    return `${serializeDoctype(source.doctype)}${source.documentElement.outerHTML}`
+    const serialize = prepareWidgetGroupingsForSerialization(source.documentElement)
+    return serialize(`${serializeDoctype(source.doctype)}${source.documentElement.outerHTML}`)
   }
 
   private normalizedPreviewPoint(x: number, y: number, previewDocument: Document) {

@@ -79,7 +79,7 @@ export function restoreOriginalResourceURLs(root: ParentNode) {
 export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWriterPackage[], importMap?: IImportMap | null) {
   const {documentElement, body, baseURI} = root
   const owner = documentElement.ownerDocument
-  const distribution = readDistributionConfigs(root)
+  const distribution = [...readDistributionConfigs(root).values()]
   removeSerializedReaderScripts(documentElement)
   const permissions = new Set(distribution.flatMap(config => config.permissions))
   const resourceKey = (url: string) => {
