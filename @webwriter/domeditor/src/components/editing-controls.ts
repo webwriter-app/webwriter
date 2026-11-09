@@ -1,3 +1,5 @@
+import {live} from "lit/directives/live.js"
+import {linkKindFromAttributes, linkKindOptions, linkKinds, type InputLinkKind, type LinkKind} from "../links"
 import {normalizeURLInput} from "../url-input.js"
 import "./widget-grouping-dialog"
 import type {WidgetGroupingDialog} from "./widget-grouping-dialog"
@@ -44,17 +46,15 @@ import {
 import {
   backgroundColorOptions,
   emptyRubyState,
-  excludedMarkNames,
   fontFamilyOptions,
   fontSizeOptions,
-  markAttributeOptionsFor,
   markShortcutLabel,
   mergedMarkGroupFor,
+  moreDrawerMarkNames,
   primaryDrawerMarkNames,
   primaryMarkOptions,
   secondaryMarkOptions,
   textColorOptions,
-  type MarkAttributeOption,
   type MarkAttributeValues,
   type MarkName,
   type MarkOption,
@@ -152,6 +152,7 @@ export abstract class EditingControls extends LitElement {
     marks: {attribute: false},
     popupActive: {type: Boolean, attribute: false},
     attachmentActive: {type: Boolean, attribute: false},
+    inputLinkKind: {attribute: false},
     allowedMarks: {attribute: false},
     markStyles: {attribute: false},
     markAttributes: {attribute: false},
@@ -216,6 +217,7 @@ export abstract class EditingControls extends LitElement {
 
   popupActive = false
   attachmentActive = false
+  inputLinkKind: InputLinkKind | null = null
 
   /** Marks a containing widget allows; null when all marks are allowed. */
   allowedMarks: MarkName[] | null = null
@@ -335,10 +337,6 @@ export abstract class EditingControls extends LitElement {
 
   historyError = ""
 
-  protected spanMarkSelection: MarkName[] = []
-
-  protected spanMarkSelectionSynced = false
-
   settings: AppSettings = defaultAppSettings()
 
   protected readonly handleRibbonPointerDown = (event: MouseEvent) => {
@@ -451,172 +449,95 @@ export abstract class EditingControls extends LitElement {
     return [...primaryMarkOptions, ...secondaryMarkOptions].find(option => option.name === name)!
   }
 
-  protected dispatchMarkAttribute(mark: MarkName, attribute: string, event: Event, url = false) {
-    const input = event.currentTarget as HTMLInputElement
-    let value: string | null = url ? normalizeURLInput(input.value) : input.value
-    if(input.type === "checkbox") {
-      value = input.checked ? input.value : ""
-      if(attribute === "target") value = input.checked ? "_blank" : ""
-      if(attribute === "download") value = input.checked ? "" : null
-    }
-    this.dispatchEvent(new CustomEvent("mark-attribute-change", {
-      detail: {mark, attribute, value},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  protected renderDropdownAttribute(mark: MarkName, option: MarkAttributeOption, active = true) {
-    if(option.options) return html`
-      <select
-        class="mark-dropdown-attribute"
-        ?data-ribbon-input-persistent=${mark === "a"}
-        aria-label=${`${this.markOption(mark).label}: ${option.label}`}
-        title=${option.label}
-        .value=${this.markAttributes[mark]?.[option.name] ?? option.options[0]?.value ?? ""}
-        ?disabled=${!this.canMark || !active}
-        @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event)}
-      >${option.options.map(item => html`<option value=${item.value}>${item.label}</option>`)}</select>
-    `
+  private renderMarkDropdownOption(option: {
+    label: string
+    icon: string
+    action: string
+    active: boolean
+    disabled: boolean
+    radio?: LinkKind
+    keepDrawerOpen?: boolean
+  }) {
+    const shortcut = this.commandShortcut(option.action)
     return html`
-      <input
-        class="mark-dropdown-attribute"
-        ?data-ribbon-input-persistent=${mark === "a"}
-        inputmode=${option.inputType === "url" ? "url" : nothing}
-        aria-label=${`${this.markOption(mark).label}: ${option.label}`}
-        placeholder=${option.placeholder}
-        title=${option.label}
-        .value=${this.markAttributes[mark]?.[option.name] ?? ""}
-        ?disabled=${!this.canMark || !active}
-        @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event, option.inputType === "url")}
-      />
-    `
-  }
-
-  protected spanGroupMembers() {
-    return (mergedMarkGroupFor("span")?.members ?? []).filter(mark => !excludedMarkNames.includes(mark)
-      && [...primaryMarkOptions, ...secondaryMarkOptions].some(option => option.name === mark))
-  }
-
-  protected activeSpanMarks() {
-    return (mergedMarkGroupFor("span")?.members ?? []).filter(mark => this.marks.includes(mark))
-  }
-
-  protected spanSelectedMarks() {
-    return this.spanMarkSelectionSynced ? this.spanMarkSelection : this.activeSpanMarks()
-  }
-
-  protected sameMarkSet(first: readonly MarkName[], second: readonly MarkName[]) {
-    return first.length === second.length && first.every(mark => second.includes(mark))
-  }
-
-  protected syncSpanMarkSelection() {
-    const active = this.activeSpanMarks()
-    if(!this.sameMarkSet(this.spanMarkSelection, active)) this.spanMarkSelection = active
-    this.spanMarkSelectionSynced = true
-  }
-
-  protected toggleSpanMark(mark: MarkName) {
-    if(!this.canMark) return
-    const selected = this.spanSelectedMarks()
-    const next = selected.includes(mark)
-      ? selected.filter(candidate => candidate !== mark)
-      : [...selected, mark]
-    if(this.sameMarkSet(selected, next)) return
-    this.spanMarkSelection = next
-    this.spanMarkSelectionSynced = true
-    this.requestUpdate()
-    this.dispatchEvent(new CustomEvent("ribbon-combobox-change", {
-      detail: {name: "mark-types", value: next[0] ?? "", values: next},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  protected renderSpanMarkOption(mark: MarkName, selected: readonly MarkName[]) {
-    const option = this.markOption(mark)
-    const attributes = markAttributeOptionsFor(mark)
-    const active = selected.includes(mark)
-    const shortcut = this.commandShortcut(`mark:${mark}`)
-    return html`
-      <div
-        class="mark-dropdown-option"
-        role="option"
-        aria-selected=${active}
+      <div class="mark-dropdown-option"
+        role=${option.radio ? nothing : "option"} aria-selected=${option.radio ? nothing : option.active}
         @click=${(event: MouseEvent) => {
-          const target = event.target as Element
-          if(target.closest("input, select, button, textarea, a")) return
-          const input = (event.currentTarget as HTMLElement).querySelector<HTMLInputElement>('input[type="checkbox"]')
-          input?.click()
-        }}
-      >
-        <input
-          type="checkbox"
-          data-ribbon-input-persistent
-          aria-label=${`Select ${option.label}`}
-          .checked=${active}
-          ?disabled=${!this.canMark || this.svgText}
+          if((event.target as Element).closest("input")) return
+          (event.currentTarget as HTMLElement).querySelector("input")?.click()
+        }}>
+        <input type=${option.radio ? "radio" : "checkbox"} name=${option.radio ? "link-kind" : nothing}
+          data-ribbon-input-persistent aria-label=${`Select ${option.label}`}
+          .checked=${live(option.active)}
+          ?disabled=${option.disabled}
+          @pointerdown=${(event: PointerEvent) => event.preventDefault()}
           @change=${(event: Event) => {
-            this.toggleSpanMark(mark)
-            const input = event.currentTarget as HTMLInputElement
-            input.checked = this.spanSelectedMarks().includes(mark)
+            if(option.radio) this.requestUpdate()
+            else (event.currentTarget as HTMLInputElement).checked = option.active
+            this.dispatchEvent(new CustomEvent("ribbon-button-click", {
+              detail: {label: option.radio ? `select-link:${option.radio}` : option.action, keepDrawerOpen: option.keepDrawerOpen},
+              bubbles: true,
+              composed: true,
+            }))
           }}
         />
         <span class="mark-dropdown-option-icon" aria-hidden="true">${ribbonIcon(option.icon)}</span>
         <span class="mark-dropdown-option-name">${option.label}</span>
-        ${attributes.length ? html`
-          <span class="mark-dropdown-attributes" aria-hidden=${!active}>
-            ${attributes.map(attribute => this.renderDropdownAttribute(mark, attribute, active))}
-          </span>
-        ` : ""}
-        ${shortcut ? html`<span class="mark-dropdown-shortcut">${shortcut}</span>` : ""}
+        ${shortcut ? html`<span class="mark-dropdown-shortcut">${shortcut}</span>` : nothing}
       </div>
     `
   }
 
-  protected renderSpanDropdown(selected: readonly MarkName[]) {
-    const shortcut = this.commandShortcut("toggle-popup")
-    const attachmentActive = !this.svgText && (this.attachmentActive || this.markAttributes.a?.download !== undefined)
+  private moreMarkDisabled(mark: MarkName) {
+    return !this.canMark || this.allowedMarks?.includes(mark) === false
+      || (mark !== "s" && (this.svgText || !!this.math?.active))
+  }
+
+  protected get moreMarksDisabled() {
+    return moreDrawerMarkNames.every(mark => this.moreMarkDisabled(mark))
+  }
+
+  protected get moreMarksActive() {
+    return moreDrawerMarkNames.some(mark => this.marks.includes(mark))
+  }
+
+  protected renderMoreMarksDropdown() {
     return html`
-      <div class="mark-dropdown-list" role="listbox" aria-label="Advanced mark types" aria-multiselectable="true">
-        ${this.spanGroupMembers().map(mark => this.renderSpanMarkOption(mark, selected))}
-        <div class="mark-dropdown-option mark-attachment" role="option" aria-selected=${attachmentActive}
-          @click=${(event: MouseEvent) => {
-            if((event.target as Element).closest("input")) return
-            (event.currentTarget as HTMLElement).querySelector("input")?.click()
-          }}>
-          <input type="checkbox" data-ribbon-input-persistent aria-label="Select Attachment"
-            .checked=${attachmentActive}
-            ?disabled=${!this.canMark || this.svgText || !!this.math?.active || this.allowedMarks?.includes("a") === false}
-            @pointerdown=${(event: PointerEvent) => event.preventDefault()}
-            @change=${(event: Event) => {
-              (event.currentTarget as HTMLInputElement).checked = attachmentActive
-              this.dispatchEvent(new CustomEvent("ribbon-button-click", {
-                detail: {label: "mark:attachment"}, bubbles: true, composed: true,
-              }))
-            }}
-          />
-          <span class="mark-dropdown-option-icon" aria-hidden="true">${ribbonIcon("Attachment")}</span>
-          <span class="mark-dropdown-option-name">Attachment</span>
-          <span class="mark-dropdown-shortcut">${this.commandShortcut("mark:attachment")}</span>
-        </div>
-        <div class="mark-dropdown-option mark-popup" role="option" aria-selected=${this.popupActive}
-          @click=${(event: MouseEvent) => {
-            if((event.target as Element).closest("input")) return
-            (event.currentTarget as HTMLElement).querySelector("input")?.click()
-          }}>
-          <input type="checkbox" data-ribbon-input-persistent aria-label="Select Popup"
-            .checked=${this.popupActive}
-            ?disabled=${!this.canMark || this.svgText || !!this.math?.active}
-            @pointerdown=${(event: PointerEvent) => event.preventDefault()}
-            @change=${() => this.dispatchEvent(new CustomEvent("ribbon-button-click", {
-              detail: {label: "toggle-popup"}, bubbles: true, composed: true,
-            }))}
-          />
-          <span class="mark-dropdown-option-icon" aria-hidden="true">${ribbonIcon("Popup")}</span>
-          <span class="mark-dropdown-option-name">Popup</span>
-          ${shortcut ? html`<span class="mark-dropdown-shortcut">${shortcut}</span>` : ""}
-        </div>
+      <div class="mark-dropdown-list" role="listbox" aria-label="More marks" aria-multiselectable="true">
+        ${moreDrawerMarkNames.map(mark => this.renderMarkDropdownOption({
+          ...this.markOption(mark),
+          action: `mark:${mark}`,
+          active: this.marks.includes(mark),
+          disabled: this.moreMarkDisabled(mark),
+          keepDrawerOpen: true,
+        }))}
+      </div>
+    `
+  }
+
+  protected get activeLinkKind(): LinkKind | null {
+    if(this.inputLinkKind) return this.inputLinkKind
+    const attributes = this.markAttributes.a ?? {}
+    if(!this.svgText && (this.attachmentActive || attributes.download !== undefined)) return "attachment"
+    if(this.marks.includes("a")) return linkKindFromAttributes(attributes)
+    return this.popupActive ? "popup" : null
+  }
+
+  private linkKindDisabled(kind: LinkKind) {
+    return !this.canMark || !!this.math?.active || (this.svgText && kind !== "link" && kind !== "cross-reference")
+      || (kind !== "popup" && this.allowedMarks?.includes("a") === false && this.activeLinkKind !== "popup")
+  }
+
+  protected renderLinkDropdown() {
+    const active = this.activeLinkKind
+    return html`
+      <div class="mark-dropdown-list" role="radiogroup" aria-label="Link type">
+        ${linkKinds.map(kind => this.renderMarkDropdownOption({
+          ...linkKindOptions[kind],
+          active: active === kind,
+          disabled: this.linkKindDisabled(kind),
+          radio: kind,
+        }))}
       </div>
     `
   }
@@ -635,29 +556,35 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected renderSpanButton() {
-    const selected = this.spanSelectedMarks().filter(mark =>
-      this.spanGroupMembers().includes(mark)
-    )
-    const attachmentActive = !this.svgText && (this.attachmentActive || this.markAttributes.a?.download !== undefined)
-    const linkActive = attachmentActive || this.marks.includes("a")
-    const primary = this.popupActive ? "popup" : attachmentActive ? "a" : selected[0] ?? (linkActive ? "a" : null)
-    const option = primary && primary !== "popup" ? this.markOption(primary) : null
-    const attachmentPrimary = primary === "a" && attachmentActive
-    const activeCount = selected.length + Number(this.popupActive) + Number(linkActive)
-    const primaryAllowed = !this.allowedMarks || primary === "popup" || this.allowedMarks.includes(primary ?? "a")
+  private renderMoreMarksButton() {
+    return html`
+      <ribbon-button
+        class="mark-more"
+        compact
+        toggle
+        dropdown-on-click
+        label="More marks"
+        icon="MoreVertical"
+        .dropdown=${this.renderMoreMarksDropdown()}
+        ?active=${this.moreMarksActive}
+        ?disabled=${this.moreMarksDisabled}
+      ></ribbon-button>
+    `
+  }
+
+  private renderLinkButton() {
     return html`
       <ribbon-button
         class="mark-span"
         style="grid-column: 8; grid-row: 2"
         toggle
-        label=${primary === "popup" ? "Popup…" : attachmentPrimary ? "Attachment…" : option ? `${option.label}…` : "Link…"}
-        icon=${primary === "popup" ? "Popup" : attachmentPrimary ? "Attachment" : option?.icon ?? "MarkLink"}
-        action=${primary === "popup" ? "toggle-popup" : attachmentPrimary ? "mark:attachment" : `mark:${primary ?? "a"}`}
-        ?dropdown-on-click=${!primaryAllowed}
-        .selectionCount=${Math.max(0, activeCount - 1)}
-        .dropdown=${this.renderSpanDropdown(selected)}
-        ?active=${activeCount > 0}
+        label="Link"
+        icon="MarkLink"
+        action="mark:a"
+        shortcut=${this.commandShortcut("mark:a")}
+        ?dropdown-on-click=${this.allowedMarks?.includes("a") === false && this.activeLinkKind !== "popup"}
+        .dropdown=${this.renderLinkDropdown()}
+        ?active=${this.activeLinkKind === "link"}
         ?disabled=${!this.canMark || this.math?.active}
       ></ribbon-button>
     `
@@ -674,6 +601,7 @@ export abstract class EditingControls extends LitElement {
           class="font-family"
           name="font-family"
           label="Font family"
+          shortcut=${this.commandShortcut("font-picker:font-family")}
           default-value-label="Font"
           .options=${fontFamilyOptions}
           .value=${this.markStyles["font-family"] ?? ""}
@@ -683,6 +611,7 @@ export abstract class EditingControls extends LitElement {
           class="font-size"
           name="font-size"
           label="Font size"
+          shortcut=${this.commandShortcut("font-picker:font-size")}
           default-value-label="Size"
           .options=${fontSizeOptions}
           .value=${this.markStyles["font-size"] ?? ""}
@@ -693,6 +622,7 @@ export abstract class EditingControls extends LitElement {
           label="Increase font size"
           action="increaseFontSize"
           icon="IncreaseFontSize"
+          shortcut=${this.commandShortcut("increaseFontSize")}
           ?disabled=${!this.canMark}
         ></ribbon-button>
         <ribbon-button
@@ -700,6 +630,7 @@ export abstract class EditingControls extends LitElement {
           label="Decrease font size"
           action="decreaseFontSize"
           icon="DecreaseFontSize"
+          shortcut=${this.commandShortcut("decreaseFontSize")}
           ?disabled=${!this.canMark}
         ></ribbon-button>
         <ribbon-combobox
@@ -725,15 +656,17 @@ export abstract class EditingControls extends LitElement {
         ${primaryDrawerMarkNames.map(mark => this.visibleMarkButton(mark))}
         <ribbon-button
           class="mark-remove"
-          style="grid-column: 7; grid-row: 2"
+          style="grid-column: 6; grid-row: 2"
           compact
           label="Remove formatting"
           action="removeMarks"
           icon="RemoveMarks"
+          shortcut=${this.commandShortcut("removeMarks")}
           ?disabled=${!this.canMark && !this.canRemoveMarks}
         ></ribbon-button>
+        ${this.renderMoreMarksButton()}
         ${this.renderFormulaButton()}
-        ${this.renderSpanButton()}
+        ${this.renderLinkButton()}
       </ribbon-drawer>
     `
   }
@@ -2936,6 +2869,11 @@ export abstract class EditingControls extends LitElement {
     return formatShortcut(shortcut, undefined, layout)
   }
 
+  protected shortcutTitle(label: string, action = label) {
+    const shortcut = this.commandShortcut(action)
+    return shortcut ? `${label} (${shortcut})` : label
+  }
+
   protected renderElementStyleDrawer(category: ElementStyleCategory) {
     return html`
       <ribbon-drawer
@@ -3107,7 +3045,6 @@ export abstract class EditingControls extends LitElement {
   protected usesNativePointerInteraction(_event: MouseEvent) { return false }
 
   protected willUpdate(changed: Map<string, unknown>) {
-    if(changed.has("marks")) this.syncSpanMarkSelection()
     if(changed.has("commentState")) this.commentDraft = this.commentState.text
   }
 

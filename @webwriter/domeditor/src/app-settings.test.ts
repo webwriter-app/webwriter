@@ -93,12 +93,12 @@ describe("formula shortcut migration", () => {
     expect(reservedShortcutReason("Alt+Shift+0", apple)).toBe("")
   })
 
-  it.each(["Ctrl+0", "Meta+0"])("replaces the former formula shortcut %s", oldShortcut => {
+  it.each(["Ctrl+0", "Meta+0", "Alt+Shift+0"])("replaces the former formula shortcut %s", oldShortcut => {
     const settings = defaultAppSettings(false)
     settings.shortcuts["insert.formula"] = oldShortcut
     localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...settings, shortcutsVersion: 2}))
-    expect(loadAppSettings().shortcuts["insert.formula"]).toBe("Alt+Shift+0")
-    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).shortcutsVersion).toBe(3)
+    expect(loadAppSettings().shortcuts["insert.formula"]).toBe("Alt+Shift+9")
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).shortcutsVersion).toBe(4)
   })
 
   it("preserves disabled and custom formula shortcuts", () => {
@@ -114,16 +114,75 @@ describe("formula shortcut migration", () => {
   it("disables the former formula shortcut when its replacement is occupied", () => {
     const settings = defaultAppSettings(false)
     settings.shortcuts["insert.formula"] = "Ctrl+0"
-    settings.shortcuts["insert.heading"] = "Alt+Shift+0"
+    settings.shortcuts["insert.heading"] = "Physical:Alt+Shift+9"
     localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...settings, shortcutsVersion: 2}))
     const loaded = loadAppSettings()
     expect(loaded.shortcuts["insert.formula"]).toBe("")
-    expect(loaded.shortcuts["insert.heading"]).toBe("Alt+Shift+0")
+    expect(loaded.shortcuts["insert.heading"]).toBe("Physical:Alt+Shift+9")
+  })
+})
+
+describe("Feedback shortcut migration", () => {
+  it.each([undefined, "Alt+Shift+6"])("releases zero for Feedback with saved binding %s", feedback => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({shortcutsVersion: 3, shortcuts: {
+      "insert.formula": "Alt+Shift+0", "toolbox.feedback": feedback, "toolbox.style": "Alt+Shift+2",
+    }}))
+    const {shortcuts} = loadAppSettings()
+    expect(shortcuts["insert.formula"]).toBe("Alt+Shift+9")
+    expect(shortcuts["toolbox.feedback"]).toBe("Alt+Shift+0")
+    expect(shortcuts).not.toHaveProperty("toolbox.style")
+    expect(loadAppSettings().shortcuts).toEqual(shortcuts)
+  })
+
+  it.each(["", "Alt+F9"])("keeps an explicit Feedback binding of %s", feedback => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({shortcutsVersion: 3, shortcuts: {
+      "insert.formula": "Alt+Shift+0", "toolbox.feedback": feedback,
+    }}))
+    expect(loadAppSettings().shortcuts["toolbox.feedback"]).toBe(feedback)
+  })
+
+  it("leaves Feedback unassigned if zero is already customized", () => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({shortcutsVersion: 3, shortcuts: {
+      "editor.undo": "Physical:Alt+Shift+0", "toolbox.feedback": "Alt+Shift+6",
+    }}))
+    const {shortcuts} = loadAppSettings()
+    expect(shortcuts["editor.undo"]).toBe("Physical:Alt+Shift+0")
+    expect(shortcuts["toolbox.feedback"]).toBe("")
   })
 })
 
 
 describe("keyboard layout shortcut labels", () => {
+  it("moves numbered insertion defaults together while preserving custom and disabled bindings", () => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({shortcutsVersion: 3, shortcuts: {
+      "insert.heading": "Ctrl+1", "insert.details": "Ctrl+2", "insert.list": "Ctrl+3",
+      "insert.table": "Ctrl+4", "insert.image": "Ctrl+5", "insert.graphic": "Ctrl+6",
+      "insert.audio": "", "insert.website": "Ctrl+8", "insert.video": "Alt+V",
+      "document.save": "Physical:Ctrl+7", "document.open": "Physical:Meta+7",
+    }}))
+    const defaults = defaultAppSettings().shortcuts
+    const {shortcuts} = loadAppSettings()
+    for(const id of ["heading", "details", "list", "table", "graphic", "website"]) {
+      expect(shortcuts[`insert.${id}`]).toBe(defaults[`insert.${id}`])
+    }
+    expect(shortcuts["insert.image"]).toBe("")
+    expect(shortcuts["insert.audio"]).toBe("")
+    expect(shortcuts["insert.video"]).toBe("Alt+V")
+  })
+
+  it("loads new picker and toolbox shortcuts without taking saved custom bindings", () => {
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({shortcutsVersion: 3, shortcuts: {
+      "editor.undo": "Physical:Alt+Shift+G", "editor.redo": "Alt+Shift+4", "text.clear": "",
+    }}))
+    const {shortcuts} = loadAppSettings()
+    expect(shortcuts["editor.undo"]).toBe("Physical:Alt+Shift+G")
+    expect(shortcuts["editor.redo"]).toBe("Alt+Shift+4")
+    expect(shortcuts["text.fontFamily"]).toBe("")
+    expect(shortcuts["toolbox.review"]).toBe("")
+    expect(shortcuts["text.fontSize"]).toBe("Alt+Shift+H")
+    expect(shortcuts["text.clear"]).toBe("")
+  })
+
   it("labels physical shortcuts using the active layout without changing matching", () => {
     const layout = new Map([["KeyY", "z"], ["KeyZ", "y"]])
     expect(formatShortcut("Alt+Shift+Y", false, layout)).toBe("Alt+Shift+Z")

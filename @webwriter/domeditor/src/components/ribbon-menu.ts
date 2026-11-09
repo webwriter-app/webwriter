@@ -15,6 +15,7 @@ export type RibbonMenuGroup = {
 
 export type RibbonMenuButton = string | {
   label: string
+  shortcut?: string
   italic?: boolean
   selected?: boolean
   action?: string
@@ -796,7 +797,16 @@ export class RibbonMenu extends LitElement {
       this.closeSubmenus()
       return
     }
-    this.showSubmenu(key, toggle, true, label)
+    void this.showSubmenu(key, toggle, true, label)
+  }
+
+  async revealSubmenu(action: string) {
+    await this.updateComplete
+    const trigger = [...this.renderRoot.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="menu"][data-action]')]
+      .find(button => button.dataset.action === action)
+    if(!this.isConnected || !trigger || trigger.disabled) return null
+    if(this.openSubmenu === action) return this.renderRoot.querySelector<RibbonMenu>(".submenu ribbon-menu")
+    return this.showSubmenu(action, trigger, false, trigger.textContent?.trim() || action)
   }
 
   private showSubmenu(key: string, toggle: HTMLButtonElement, focusFirst = true, label = key) {
@@ -804,11 +814,11 @@ export class RibbonMenu extends LitElement {
     this.openSubmenu = key
     this.openSubmenuToggle = toggle
     this.dispatchEvent(new CustomEvent("ribbon-submenu-open", {detail: {label}, bubbles: true, composed: true}))
-    void this.updateComplete.then(() => {
-      if(!this.isConnected || this.openSubmenu !== key || !toggle.isConnected) return
+    return this.updateComplete.then(() => {
+      if(!this.isConnected || this.openSubmenu !== key || !toggle.isConnected) return null
       const submenu = Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".submenu"))
         .find(candidate => candidate.dataset.submenuKey === key)
-      if(!submenu) return
+      if(!submenu) return null
       if(typeof submenu.showPopover === "function") submenu.showPopover()
       if(!CSS.supports("top", "anchor(top)") || !CSS.supports("left", "anchor(right)")) {
         const anchor = (toggle.closest(".item-row") ?? toggle).getBoundingClientRect()
@@ -819,10 +829,12 @@ export class RibbonMenu extends LitElement {
         submenu.style.left = `${Math.max(8, Math.min(left, window.innerWidth - bounds.width - 8))}px`
         submenu.style.top = `${Math.max(8, Math.min(anchor.top, window.innerHeight - bounds.height - 8))}px`
       }
-      if(!focusFirst) return
       const nested = submenu.querySelector<RibbonMenu>("ribbon-menu")
-      if(nested) void nested.updateComplete.then(() => nested.renderRoot.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus())
-      else this.menuItems(submenu)[0]?.focus()
+      if(focusFirst) {
+        if(nested) void nested.updateComplete.then(() => nested.renderRoot.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus())
+        else this.menuItems(submenu)[0]?.focus()
+      }
+      return nested
     })
   }
 
@@ -985,7 +997,7 @@ export class RibbonMenu extends LitElement {
                       draggable=${String(Boolean(this.dragTag(button) || this.packageInsertionAction(button)) && !item.disabled && !item.menuOnly)}
                       role="menuitem"
                       tabindex=${groupIndex === 0 && buttonIndex === 0 ? "0" : "-1"}
-                      title=${this.buttonAction(button).startsWith("widget-conversion:") ? `Convert to ${label}` : label}
+                      title=${this.buttonAction(button).startsWith("widget-conversion:") ? `Convert to ${label}` : item.shortcut ? `${label} (${item.shortcut})` : label}
                       data-action=${this.buttonAction(button)}
                       ?data-conversion=${isWidgetConversionAction(this.buttonAction(button))}
                       ?disabled=${item.disabled}

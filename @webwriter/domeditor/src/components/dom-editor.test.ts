@@ -19,6 +19,7 @@ import type {MathKeyboard} from "./math-keyboard"
 import type {LinkKeyboard} from "./link-keyboard"
 import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
+import type {RibbonCombobox} from "./ribbon-combobox"
 import type {RibbonMenu} from "./ribbon-menu"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonTab} from "./ribbon-tab"
@@ -68,7 +69,7 @@ import * as liveRecovery from "../live-session-recovery"
 import {createReplayWorkerHandler, type ReplayWorkerRequest, type ReplayWorkerResponse} from "../live-session-replay-worker"
 import type {LiveSessionOverlay} from "./live-session-overlay"
 import type {LiveSessionControls} from "./live-session-controls"
-import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, loadAppSettings, loadDocumentSettings} from "../app-settings"
+import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, formatShortcut, loadAppSettings, loadDocumentSettings} from "../app-settings"
 import * as recentDocumentStorage from "../recent-documents"
 import * as documentRecoveryStorage from "../document-recovery"
 
@@ -2137,6 +2138,98 @@ describe("DomEditor iframe setup", () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ["G", "font-family", "font-combobox", "Font family", "text.fontFamily"],
+    ["H", "font-size", "font-size-combobox", "Font size", "text.fontSize"],
+  ] as const)("routes the %s font picker shortcut from the editor", async (key, name, tag, label, id) => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: [], styles: {"font-size": "16px"}})
+    await editor.updateComplete
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const open = vi.spyOn(ribbon, "openFontPicker").mockResolvedValue(undefined)
+    const event = new KeyboardEvent("keydown", {key, code: `Key${key}`, altKey: true, shiftKey: true, cancelable: true})
+    iframe.contentDocument!.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(open).toHaveBeenCalledExactlyOnceWith(name)
+    const picker = ribbon.shadowRoot!.querySelector<RibbonCombobox>(`ribbon-combobox[name="${name}"]`)!
+    await picker.updateComplete
+    const field = picker.shadowRoot!.querySelector(tag)!
+    await field.updateComplete
+    expect(field.shadowRoot!.querySelector("input")!.title).toBe(`${label} (${formatShortcut(ribbon.settings.shortcuts[id])})`)
+  })
+
+  it("runs formatting shortcuts and lists them in native ribbon tooltips", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: []})
+    await editor.updateComplete
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    for(const [id, action, label, key, code] of [
+      ["text.clear", "removeMarks", "Remove formatting", "Backspace", "Backspace"],
+      ["text.increase", "increaseFontSize", "Increase font size", ">", "Period"],
+      ["text.decrease", "decreaseFontSize", "Decrease font size", "<", "Comma"],
+    ]) {
+      const shortcut = ribbon.settings.shortcuts[id]
+      const event = new KeyboardEvent("keydown", {key, code, shiftKey: true, altKey: shortcut.includes("Alt"),
+        ctrlKey: shortcut.includes("Ctrl"), metaKey: shortcut.includes("Meta"), cancelable: true})
+      iframe.contentDocument!.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(execute).toHaveBeenLastCalledWith({type: action})
+      const button = ribbon.shadowRoot!.querySelector<RibbonButton>(`ribbon-button[action="${action}"]`)!
+      expect(button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.title).toBe(`${label} (${formatShortcut(shortcut)})`)
+    }
+  })
+
+  it("focuses the AI bar and opens numbered toolboxes with the configured shortcuts", async () => {
+    const {editor, iframe} = await mountEditor()
+    const focus = vi.spyOn(HTMLElement.prototype, "focus")
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const press = (key: string, code: string, shiftKey = true) => {
+      const event = new KeyboardEvent("keydown", {key, code, altKey: true, shiftKey, cancelable: true})
+      iframe.contentDocument!.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    await ribbon.updateComplete
+    press("J", "KeyJ")
+    const prompt = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+    await vi.waitFor(() => expect(focus.mock.contexts).toContain(prompt))
+    expect(prompt.title).toBe(`AI prompt (${formatShortcut(ribbon.settings.shortcuts["editor.focusAI"])})`)
+
+    toolbox.showStyleToolbox = true
+    await toolbox.updateComplete
+    const oldStyleShortcut = new KeyboardEvent("keydown", {key: "2", code: "Digit2", altKey: true, shiftKey: true, cancelable: true})
+    iframe.contentDocument!.dispatchEvent(oldStyleShortcut)
+    expect(oldStyleShortcut.defaultPrevented).toBe(false)
+    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="Style"]')!.title).toBe("Style")
+    for(const [key, tool] of [["1", "Edit"], ["3", "AI"], ["4", "Review"], ["5", "Distribute"]]) {
+      press(key, `Digit${key}`)
+      expect(toolbox.activeTool).toBe(tool)
+      await toolbox.updateComplete
+      const button = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`[data-tool="${tool}"]`)!
+      expect(button.title).toContain(formatShortcut(ribbon.settings.shortcuts[`toolbox.${tool.toLowerCase()}`]))
+    }
+
+    const settings = {...ribbon.settings, shortcuts: {...ribbon.settings.shortcuts, "toolbox.review": "Alt+9"}}
+    ribbon.dispatchEvent(new CustomEvent("app-settings-change", {detail: settings, bubbles: true, composed: true}))
+    await editor.updateComplete
+    press("9", "Digit9", false)
+    await toolbox.updateComplete
+    expect(toolbox.activeTool).toBe("Review")
+    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="Review"]')!.title).toBe(`Review (${formatShortcut("Alt+9")})`)
+
+    Object.assign(editor, {previewActive: true})
+    await editor.updateComplete
+    await toolbox.updateComplete
+    press("0", "Digit0")
+    await toolbox.updateComplete
+    expect(toolbox.activeTool).toBe("Feedback")
+    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="Feedback"]')!.title)
+      .toBe(`Feedback (${formatShortcut(settings.shortcuts["toolbox.feedback"])})`)
+  })
+
   it.each(["Ctrl", "Meta"])("preserves native undo in UI fields and widget controls (%s)", async modifier => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
@@ -2194,7 +2287,7 @@ describe("DomEditor iframe setup", () => {
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const shortcut = defaultAppSettings().shortcuts["insert.image"]
     const event = new KeyboardEvent("keydown", {
-      key: "5", code: "Digit5", metaKey: shortcut.includes("Meta"), ctrlKey: shortcut.includes("Ctrl"),
+      key: "7", code: "Digit7", metaKey: shortcut.includes("Meta"), ctrlKey: shortcut.includes("Ctrl"),
       bubbles: true, cancelable: true,
     })
     iframe.contentDocument!.dispatchEvent(event)
@@ -2209,25 +2302,26 @@ describe("DomEditor iframe setup", () => {
       detail: defaultAppSettings(apple), bubbles: true, composed: true,
     }))
     const commands = [
-      {type: "insertElement", tag: "h1"},
-      {type: "insertElement", tag: "details"},
       {type: "insertElement", tag: "ul"},
       {type: "insertElement", tag: "table"},
-      {type: "insertElement", tag: "picture"},
       {type: "insertElement", tag: "svg"},
-      {type: "insertElement", tag: "audio"},
       {type: "insertElement", tag: "iframe"},
+      {type: "insertElement", tag: "h1"},
+      {type: "insertElement", tag: "details"},
+      {type: "insertElement", tag: "picture"},
+      {type: "insertElement", tag: "audio"},
       {type: "insertElement", tag: "video"},
       {type: "insertElement", tag: "math"},
     ]
     for(const [index, command] of commands.entries()) {
       execute.mockClear()
-      const key = String((index + 1) % 10)
+      const formula = command.tag === "math"
+      const key = formula ? "9" : String(index + 1)
       const event = new KeyboardEvent("keydown", {
         key, code: `Digit${key}`,
-        metaKey: key === "0" ? false : apple,
-        ctrlKey: key === "0" ? false : !apple,
-        altKey: key === "0", shiftKey: key === "0",
+        metaKey: !formula && apple,
+        ctrlKey: !formula && !apple,
+        altKey: formula, shiftKey: formula,
         bubbles: true, cancelable: true,
       })
       iframe.contentDocument!.dispatchEvent(event)
@@ -2241,13 +2335,16 @@ describe("DomEditor iframe setup", () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
     const settings = {...defaultAppSettings(), language: "de"}
-    editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.dispatchEvent(new CustomEvent("app-settings-change", {
       detail: settings,
       bubbles: true,
       composed: true,
     }))
 
     expect(editor.lang).toBe("en")
+    await editor.updateComplete
+    expect(ribbon.interfaceLanguage).toBe("en")
     expect(execute).toHaveBeenCalledWith({type: "setDocumentHeadField", field: "language", value: "de"})
   })
 
@@ -7950,6 +8047,24 @@ describe("DomEditor.execute()", () => {
     expect(download).toHaveBeenCalledOnce()
   })
 
+  it("opens Feedback only for the current authenticated preview frame", async () => {
+    const {editor} = await mountEditor()
+    Object.assign(editor, {previewActive: true})
+    await editor.updateComplete
+    const frame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.preview-frame")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    await toolbox.updateComplete
+    const nonce = (editor as unknown as {bridgeNonce: string}).bridgeNonce
+    const request = (source: Window | null, bridgeNonce: string, origin = window.location.origin) =>
+      window.dispatchEvent(new MessageEvent("message", {source, origin, data: {type: "preview-frame-open-feedback", bridgeNonce}}))
+    request(window, nonce)
+    request(frame.contentWindow, "wrong")
+    request(frame.contentWindow, nonce, "https://untrusted.test")
+    expect(toolbox.activeTool).toBeNull()
+    request(frame.contentWindow, nonce)
+    expect(toolbox.activeTool).toBe("Feedback")
+  })
+
   it("exits preview from the file tab", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
@@ -11093,6 +11208,7 @@ describe("DomEditor.execute()", () => {
       dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attributes: {a: {}}, link: {
         active: true, identity: "new-link", href: "", attributes: {}, text: "Text", targets: [],
       }})
+      return true
     })
     editor.shadowRoot!.querySelector("dom-editor-toolbox")!.dispatchEvent(new CustomEvent("ribbon-button-click", {
       detail: {label}, bubbles: true, composed: true,
@@ -11104,7 +11220,39 @@ describe("DomEditor.execute()", () => {
       expect(keyboard?.shadowRoot?.activeElement).toBe(keyboard?.shadowRoot?.querySelector('[aria-label="Web address"]'))
       expect(keyboard).not.toBeNull()
     })
-    expect(execute).toHaveBeenCalledWith({type: "toggleMark", mark: "a"})
+    expect(execute).toHaveBeenCalledWith(label === "mark:a"
+      ? {type: "selectLinkKind", kind: "link", toggle: true}
+      : {type: "toggleMark", mark: "a"})
+  })
+
+  it.each([
+    ["cross-reference", "Cross Reference", "Search cross references"],
+    ["citation", "Citation", "Search citations"],
+  ] as const)("opens and focuses the %s keyboard from the Link radio menu", async (kind, label, searchLabel) => {
+    const {editor, editorWindow} = await mountEditor()
+    const focus = vi.spyOn(HTMLElement.prototype, "focus")
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: []})
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type !== "selectLinkKind") return undefined
+      dispatchMarkState(editor, editorWindow, {canMark: true, marks: [], link: {
+        active: true, kind, identity: "draft", href: "", attributes: {}, text: "Label", targets: [],
+      }})
+      return true
+    })
+    await editor.updateComplete
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    await ribbon.updateComplete
+    const link = ribbon.shadowRoot!.querySelector<RibbonButton>(".mark-span")!
+    await link.updateComplete
+    link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await link.updateComplete
+    link.shadowRoot!.querySelector<HTMLInputElement>(`input[aria-label="Select ${label}"]`)!.click()
+    expect(execute).toHaveBeenCalledWith({type: "selectLinkKind", kind, toggle: false})
+    await vi.waitFor(() => {
+      const keyboard = editor.shadowRoot!.querySelector<LinkKeyboard>("dom-editor-link-keyboard")!
+      expect(keyboard.shadowRoot!.querySelector("h2")?.textContent).toBe(label)
+      expect(focus.mock.contexts).toContain(keyboard.shadowRoot!.querySelector(`[aria-label="${searchLabel}"]`))
+    })
   })
 
   it("shows, closes, reopens, and routes the link keyboard without losing the selection", async () => {
@@ -11128,14 +11276,14 @@ describe("DomEditor.execute()", () => {
       type: "editLink", identity: "link-1", href: "#intro", attributes: {target: "_blank"},
     })
 
-    const close = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close link keyboard"]')!
+    const close = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close cross reference keyboard"]')!
     const pointer = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0})
     close.dispatchEvent(pointer)
     expect(pointer.defaultPrevented).toBe(true)
     close.click()
     await editor.updateComplete
     expect(keyboard.closest("section")!.hasAttribute("hidden")).toBe(true)
-    const reopen = editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show link keyboard"]')!
+    const reopen = editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show cross reference keyboard"]')!
     const reopenPointer = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0})
     reopen.dispatchEvent(reopenPointer)
     expect(reopenPointer.defaultPrevented).toBe(true)
@@ -11143,7 +11291,7 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBe(keyboard)
     expect(keyboard.closest("section")!.hasAttribute("hidden")).toBe(false)
-    await vi.waitFor(() => expect(keyboard.shadowRoot!.activeElement).toBe(keyboard.shadowRoot!.querySelector('[aria-label="Web address"]')))
+    await vi.waitFor(() => expect(keyboard.shadowRoot!.activeElement).toBe(keyboard.shadowRoot!.querySelector('[aria-label="Search cross references"]')))
     expect(focusEditor).toHaveBeenCalled()
   })
 
@@ -11152,7 +11300,7 @@ describe("DomEditor.execute()", () => {
     const focusEditor = vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
     const execute = vi.spyOn(editor, "execute").mockImplementation(async () => {
       dispatchMarkState(editor, editorWindow, {canMark: true, marks: []})
-      return "removed"
+      return true
     })
     dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attachment: {identity: "inside", media: []}})
     await editor.updateComplete
@@ -11160,7 +11308,7 @@ describe("DomEditor.execute()", () => {
       detail: {label: "mark:attachment"}, bubbles: true, composed: true,
     }))
     await vi.waitFor(() => expect(focusEditor).toHaveBeenCalled())
-    expect(execute).toHaveBeenCalledWith({type: "toggleAttachment"})
+    expect(execute).toHaveBeenCalledWith({type: "selectLinkKind", kind: "attachment", toggle: true})
     expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBeNull()
   })
 
@@ -11178,7 +11326,7 @@ describe("DomEditor.execute()", () => {
     expect(pane.hidden).toBe(false)
     expect(file.matches(":focus")).toBe(false)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    expect(ribbon.shadowRoot!.querySelector(".mark-span")?.getAttribute("icon")).toBe("Attachment")
+    expect(ribbon.shadowRoot!.querySelector(".mark-span")?.getAttribute("icon")).toBe("MarkLink")
 
     const close = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close attachment keyboard"]')!
     const pointer = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true})

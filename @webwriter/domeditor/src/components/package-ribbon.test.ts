@@ -88,11 +88,14 @@ describe("package ribbon controls", () => {
     expect(main.hasAttribute("data-conversion")).toBe(false)
   })
 
-  it("reuses unchanged package details across unrelated ribbon updates and refreshes mutable metadata and locale", async () => {
+  it("reuses unchanged package details and names languages in the interface locale", async () => {
     const ribbon = new AppRibbon()
     const pkg = packageFixture("cached")
-    pkg.keywords = ["widget-lang-de"]
-    const locale = vi.spyOn(navigator, "language", "get").mockReturnValue("en")
+    pkg.keywords = ["widget-lang-en", "widget-lang-de", "widget-lang-fr", "widget-lang-it"]
+    const browserLanguage = vi.spyOn(navigator, "language", "get").mockReturnValue("de-DE")
+    const preferredLocales = vi.spyOn(navigator, "languages", "get").mockReturnValue(["de-DE"])
+    ribbon.interfaceLanguage = "en"
+    ribbon.documentLanguage = "fr"
     ribbon.packages = [pkg]
     document.body.append(ribbon)
     try {
@@ -100,7 +103,9 @@ describe("package ribbon controls", () => {
       const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[variant="package"][label="Cached"]')!
       await button.updateComplete
       const details = button.details
-      expect(details!.keywords).toEqual([{label: "German", icon: "KeywordLanguage"}])
+      expect(details!.keywords![0]).toMatchObject({
+        kind: "language", label: "English, German, French", additionalLanguages: ["Italian"],
+      })
       const updates = vi.spyOn(button as unknown as {performUpdate(): void}, "performUpdate")
       ribbon.canMark = !ribbon.canMark
       await ribbon.updateComplete
@@ -115,13 +120,21 @@ describe("package ribbon controls", () => {
       expect(button.details).not.toBe(details)
       expect(button.details!.authors).toEqual(["Ada", "Grace"])
       expect(button.details!.description).toBe("Changed metadata")
-      expect(button.details!.keywords!.map(keyword => keyword.label)).toEqual(["German", "Practice"])
-      locale.mockReturnValue("de")
+      expect(button.details!.keywords!.map(keyword => keyword.label)).toEqual(["Practice", "English, German, French"])
+      ribbon.documentLanguage = "es"
+      await ribbon.updateComplete
+      expect(button.details!.keywords![1]).toMatchObject({label: "English, German", additionalLanguages: ["French", "Italian"]})
+      preferredLocales.mockReturnValue(["de-DE", "fr"])
       ribbon.requestUpdate()
       await ribbon.updateComplete
-      expect(button.details!.keywords![0].label).toBe("Deutsch")
+      expect(button.details!.keywords![1].label).toBe("English, German, French")
+      ribbon.interfaceLanguage = "de"
+      await ribbon.updateComplete
+      expect(button.details!.keywords![1]).toMatchObject({
+        label: "Deutsch, Französisch", additionalLanguages: ["Englisch", "Italienisch"],
+      })
     }
-    finally { locale.mockRestore(); ribbon.remove() }
+    finally { browserLanguage.mockRestore(); preferredLocales.mockRestore(); ribbon.remove() }
   })
 
   it("announces hover and focus for element and package insertions only", async () => {
@@ -1049,7 +1062,7 @@ describe("package ribbon controls", () => {
     expect(getComputedStyle(controls).gap).toBe("0")
     expect(getComputedStyle(controls).paddingBottom).toBe("4px")
     expect(RibbonDrawer.styles.toString()).toMatch(/::slotted\(ribbon-button\)\s*\{\s*grid-column: auto;/)
-    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
+    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, calc(100% / 3))")
     expect(getComputedStyle(search).height).toBe("calc(100% - 4px)")
     expect(getComputedStyle(button.shadowRoot!.querySelector(".button-row")!).height).toBe("100%")
     expect(getComputedStyle(search.shadowRoot!.querySelector(".field")!).backgroundColor).toBe("transparent")
@@ -1106,12 +1119,17 @@ describe("package ribbon controls", () => {
     expect(availableButton.shadowRoot!.querySelector(".submenu-chevron")).toBeNull()
   })
 
-  it("opens compact package details to the left with friendly keyword metadata", async () => {
+  it("opens package details with the widget icon beside the heading and grouped metadata below", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     const pkg = packageFixture("details")
     pkg.authors = ["Ada", "Grace"]
-    pkg.keywords = ["webwriter-widget", "widget-practical", "isced2011-1", "iscedf2013-05"]
+    ribbon.documentLanguage = "de"
+    pkg.keywords = [
+      "webwriter-widget", "widget-practical", "widget-lang-de-AT", "widget-lang-gd-GB", "widget-online-use",
+      "isced2011-1", "isced2011-2", "isced2011-3", "iscedf2013-05", "iscedf2013-0612",
+      "historical-map", "local-history", "teacher-made",
+    ]
     ribbon.packages = [pkg]
     ribbon.installedPackages = [pkg]
     document.body.append(ribbon)
@@ -1132,16 +1150,41 @@ describe("package ribbon controls", () => {
 
     const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
     expect(details.getAttribute("part")).toMatch(/anchor-control-/)
+    const detailsStyle = getComputedStyle(details)
+    expect(detailsStyle.backgroundColor).toBe("#fff")
+    expect(detailsStyle.border).toBe("1px solid #a8a8a8")
     expect(hasAnchorTarget(button)).toBe(true)
-    expect(details.textContent).toContain("By Ada, Grace")
-    expect(details.textContent).toContain("Primary education")
-    expect(details.textContent).toContain("Natural sciences, mathematics and statistics")
+    const heading = details.querySelector(".details-heading")!
+    const icon = heading.querySelector(".details-heading-icon")!
+    const image = icon.querySelector("img")!
+    expect(image.getAttribute("src")).toBe(pkg.iconUrl)
+    expect(heading.querySelector("h3")?.textContent).toBe("Details")
+    expect(heading.querySelector(".details-subheading")?.textContent).toBe("@webwriter/details@1.0.0")
+    expect(heading.querySelector(".details-authors")?.textContent).toBe("By Ada, Grace")
+    expect(heading.nextElementSibling?.className).toBe("details-description")
+    image.dispatchEvent(new Event("error"))
+    expect(icon.classList.contains("image-icon")).toBe(false)
+    expect(icon.querySelector("img")).toBeNull()
+    expect(icon.querySelector(".icon-tabler-package")).not.toBeNull()
+    expect(details.textContent).toContain("Primary school")
+    expect(details.textContent).toContain("Secondary ed.")
+    expect(details.textContent).toContain("Natural sciences")
     expect(details.textContent).not.toContain("License")
     expect(details.textContent).not.toContain("Contents")
     expect(details.textContent).not.toContain("webwriter-widget")
-    expect(details.querySelector(".icon-tabler-backpack")).not.toBeNull()
-    expect(details.querySelector(".icon-tabler-flask")).not.toBeNull()
-    expect(getComputedStyle(details).backgroundColor).toBe("#fff")
+    const badges = Array.from(details.querySelectorAll<HTMLElement>(".details-keyword"))
+    expect(badges.map(badge => badge.dataset.kind)).toEqual([
+      "type", "language", "field", "field", "online", "level", "level", "custom", "custom", "custom",
+    ])
+    expect(badges[1].textContent).toContain("German")
+    const languageCount = badges[1].querySelector("span[title]")
+    expect(languageCount?.textContent).toBe("+1")
+    expect(languageCount?.getAttribute("title")).toBe("Scottish Gaelic")
+    expect(badges[9].textContent?.trim()).toBe("teacher-made")
+    expect(badges[9].querySelector("svg")).toBeNull()
+    for(const icon of ["backpack", "microscope", "cpu", "help-square", "language", "wifi"]) {
+      expect(details.querySelector(`.icon-tabler-${icon}`)).not.toBeNull()
+    }
   })
 
   it("delays widget details and cancels pending tooltips while moving between packages", async () => {
@@ -1391,7 +1434,7 @@ describe("package ribbon controls", () => {
 
     expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(count)
     expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(16 - count)
-    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
+    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, calc(100% / 3))")
   })
 
   it.each([[256, 5], [384, 8], [512, 11]])("keeps snippets within the three-row package capacity at %s pixels", async (width, count) => {
@@ -1433,7 +1476,7 @@ describe("package ribbon controls", () => {
     expect(drawer.packageColumnCount).toBe(1)
     expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(2)
     expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(2)
-    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
+    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, calc(100% / 3))")
     expect(RibbonDrawer.styles.toString()).toMatch(/::slotted\(package-search\)\s*\{\s*grid-column: auto;/)
     expect(RibbonDrawer.styles.toString()).toMatch(/::slotted\(ribbon-button\)\s*\{\s*grid-column: auto;/)
   })

@@ -396,7 +396,9 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="packages"]) .controls {
       grid-template-columns: repeat(auto-fill, minmax(min(8rem, 100%), 1fr));
-      grid-template-rows: repeat(3, minmax(0, 1fr));
+      /* Match the equal fixed tracks used when the drawer opens, including
+       * how the browser rounds fractional row heights. */
+      grid-template-rows: repeat(3, calc(100% / 3));
       grid-auto-flow: row;
       grid-auto-columns: minmax(0, 1fr);
       grid-auto-rows: minmax(0, 1fr);
@@ -426,7 +428,6 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="packages"][single-column]) .controls {
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: repeat(3, minmax(0, 1fr));
       grid-auto-columns: minmax(0, 1fr);
       grid-auto-flow: row;
     }
@@ -644,6 +645,11 @@ export class RibbonDrawer extends LitElement {
       grid-column: span 2;
     }
 
+    :host([layout="marks"]) ::slotted(.mark-remove) {
+      grid-column: 6;
+      grid-row: 2;
+    }
+
     :host([layout="marks"]) ::slotted(.mark-text-color) {
       grid-column: 1;
       grid-row: 2;
@@ -651,11 +657,6 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="marks"]) ::slotted(.mark-background-color) {
       grid-column: 2;
-      grid-row: 2;
-    }
-
-    :host([layout="marks"]) ::slotted(.mark-remove) {
-      grid-column: 7;
       grid-row: 2;
     }
 
@@ -1346,9 +1347,10 @@ export class RibbonDrawer extends LitElement {
     const paddingTop = Number.parseFloat(controlsStyle.paddingTop) || 0
     const paddingBottom = Number.parseFloat(controlsStyle.paddingBottom) || 0
     const collapsedRowCount = 3
+    const controlsHeight = controlsBounds.height / (controls.currentCSSZoom || 1)
     const rowHeight = Math.max(
       0,
-      (controlsBounds.height - paddingTop - paddingBottom - rowGap * (collapsedRowCount - 1)) /
+      (controlsHeight - paddingTop - paddingBottom - rowGap * (collapsedRowCount - 1)) /
         collapsedRowCount,
     )
     // The fixed expanded rows already reproduce the closed grid's top edge.

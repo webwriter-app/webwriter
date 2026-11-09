@@ -86,12 +86,13 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   document.addEventListener("wheel", () => post({type: "editor-frame-interaction"}), {capture: true, passive: true})
   document.addEventListener("keydown", event => {
     post({type: "editor-frame-interaction"})
-    // The captured graphic owns its Option shortcuts before application bindings.
-    if(event.altKey && !event.ctrlKey && !event.metaKey && !editor.features.mark.isSVGTextSelection
-      && editor.features.selection.captureSelectedElement?.localName === "svg") return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return
     const command = commandForShortcutEvent(shortcuts, event)
+    // The captured graphic owns Option shortcuts except for opening the toolbox or AI bar.
+    const opensToolboxOrAI = command?.id === "editor.focusAI" || command?.id.startsWith("toolbox.")
+    if(!opensToolboxOrAI && event.altKey && !event.ctrlKey && !event.metaKey && !editor.features.mark.isSVGTextSelection
+      && editor.features.selection.captureSelectedElement?.localName === "svg") return
     if(!command && !builtinShortcuts().has(shortcut)) return
     if(!shouldCaptureFrameShortcut(event, command?.action)) return
     event.preventDefault()

@@ -41,6 +41,7 @@ import "./package-search"
 import "./ribbon-button"
 import {type RibbonButton, type RibbonButtonDetails} from "./ribbon-button"
 import "./ribbon-combobox"
+import type {RibbonCombobox} from "./ribbon-combobox"
 import "./ribbon-drawer"
 import {RibbonDrawer} from "./ribbon-drawer"
 import "./ribbon-menu"
@@ -142,6 +143,8 @@ export class AppRibbon extends EditingControls {
     collaborationStatus: {type: String},
     collaborationError: {type: String},
     packages: {attribute: false},
+    interfaceLanguage: {attribute: false},
+    documentLanguage: {attribute: false},
     editingSnippetId: {attribute: false},
     installedPackages: {attribute: false},
     consoleOpen: {type: Boolean, attribute: false},
@@ -1150,6 +1153,8 @@ export class AppRibbon extends EditingControls {
   collaborationError = ""
 
   packages: WebWriterPackage[] = []
+  interfaceLanguage = "en"
+  documentLanguage = ""
   editingSnippetId: string | null = null
 
   installedPackages: WebWriterPackage[] = []
@@ -1347,6 +1352,8 @@ export class AppRibbon extends EditingControls {
 
   private readonly handleDocumentKeydown = (event: KeyboardEvent) => {
     if(event.key !== "Escape") return
+    if(event.composedPath().some(target => target instanceof HTMLElement
+      && target.matches("font-combobox[open], font-size-combobox[open]"))) return
     if(this.renderRoot.querySelector(".document-dialog[open]")) return
     if(this.aiChatOpen) {
       event.stopImmediatePropagation()
@@ -1539,6 +1546,41 @@ export class AppRibbon extends EditingControls {
     }
     this.activeMenu = "Start"
     this.menuOpen = false
+  }
+
+  async openFontPicker(name: "font-family" | "font-size") {
+    await this.updateComplete
+    if(!this.isConnected || !this.canMark || this.previewActive || this.liveSessionActive
+      || this.historyState.preview || this.pendingAIEdit) return
+    let root: ParentNode
+    if(this.expanded) {
+      this.selectStart()
+      await this.updateComplete
+      const drawer = this.renderRoot.querySelector<RibbonDrawer>('ribbon-drawer[layout="marks"]')
+      if(!drawer) return
+      await drawer.updateComplete
+      if(drawer.collapsed) {
+        drawer.openDrawer()
+        await drawer.updateComplete
+      }
+      root = drawer
+    }
+    else {
+      this.menuOpen = true
+      await this.updateComplete
+      const format = await this.renderRoot.querySelector<RibbonMenu>("#ribbon-file-menu")?.revealSubmenu("Format")
+      if(!format || !this.menuOpen) return
+      await format.updateComplete
+      root = format.renderRoot
+    }
+    await root.querySelector<RibbonCombobox>(`ribbon-combobox[name="${name}"]`)?.focusAndOpen()
+  }
+
+  async focusAIBar() {
+    if(this.settings.disableAI) return
+    this.dismissCollapsedMenu()
+    await this.updateComplete
+    if(!this.settings.disableAI) this.renderRoot.querySelector<HTMLTextAreaElement>(".ai-prompt-input:not(:disabled)")?.focus({preventScroll: true})
   }
 
   private updateAIPrompt(event: Event) {
@@ -2289,10 +2331,11 @@ export class AppRibbon extends EditingControls {
   private readonly emptyPackageSubmenu: RibbonButton["submenu"] = []
 
   private packageDetails(pkg: WebWriterPackage): RibbonButtonDetails {
-    const locale = navigator.language || "en"
+    const locale = this.interfaceLanguage
+    const preferredLocales = [navigator.language, ...(navigator.languages ?? []), this.documentLanguage]
     // Compare values rather than array identities: local package editing can
     // change metadata in place, and changing UI language must update labels.
-    const key = JSON.stringify([locale, pkg.label, pkg.name, pkg.version, pkg.description, pkg.authors, pkg.keywords])
+    const key = JSON.stringify([locale, preferredLocales, pkg.label, pkg.name, pkg.version, pkg.description, pkg.authors, pkg.keywords])
     const cached = this.packageDetailsCache.get(pkg)
     if(cached?.key === key) return cached.details
     const details = {
@@ -2300,7 +2343,7 @@ export class AppRibbon extends EditingControls {
       subheading: `${pkg.name}@${pkg.version}`,
       description: pkg.description,
       authors: pkg.authors,
-      keywords: packageKeywordPresentations(pkg.keywords, locale).slice(0, 8),
+      keywords: packageKeywordPresentations(pkg.keywords, locale, preferredLocales),
     }
     this.packageDetailsCache.set(pkg, {key, details})
     return details
@@ -2766,25 +2809,31 @@ export class AppRibbon extends EditingControls {
       return {label: option.label, icon: option.icon, action: `mark:${name}`, disabled: !this.canMark}
     }
     const picker = (name: string, label: string, options: typeof fontFamilyOptions) => html`
-      <ribbon-combobox name=${name} label=${label} default-value-label=${label}
+      <ribbon-combobox name=${name} label=${label} default-value-label=${label} shortcut=${this.commandShortcut(`font-picker:${name}`)}
         variant=${name.includes("color") ? "color" : ""}
         .options=${options} .value=${this.markStyles[name as keyof typeof this.markStyles] ?? ""}
         ?disabled=${!this.canMark}></ribbon-combobox>
     `
     const format: RibbonMenuGroup[] = [
       {label: "Font", content: html`
-        ${picker("font-family", "Font", fontFamilyOptions)}
-        ${picker("font-size", "Size", fontSizeOptions)}
+        ${picker("font-family", "Font family", fontFamilyOptions)}
+        ${picker("font-size", "Font size", fontSizeOptions)}
       `, buttons: [
-        {label: "Increase font size", action: "increaseFontSize", icon: "IncreaseFontSize", disabled: !this.canMark},
-        {label: "Decrease font size", action: "decreaseFontSize", icon: "DecreaseFontSize", disabled: !this.canMark},
-        {label: "Remove formatting", action: "removeMarks", icon: "RemoveMarks", disabled: !this.canMark && !this.canRemoveMarks},
+        {label: "Increase font size", action: "increaseFontSize", icon: "IncreaseFontSize", shortcut: this.commandShortcut("increaseFontSize"), disabled: !this.canMark},
+        {label: "Decrease font size", action: "decreaseFontSize", icon: "DecreaseFontSize", shortcut: this.commandShortcut("decreaseFontSize"), disabled: !this.canMark},
+        {label: "Remove formatting", action: "removeMarks", icon: "RemoveMarks", shortcut: this.commandShortcut("removeMarks"), disabled: !this.canMark && !this.canRemoveMarks},
       ]},
       {label: "Standard marks", content: html`
         ${picker("color", "Text color", textColorOptions)}
         ${picker("background-color", "Text background color", backgroundColorOptions)}
       `, buttons: primaryDrawerMarkNames.map(mark)},
-      {label: "More marks", buttons: [{label: "Link", action: "mark:a", icon: "MarkLink", disabled: !this.canMark || this.math?.active, submenuGroups: [{label: "Link", content: this.renderSpanDropdown(this.spanSelectedMarks()), buttons: []}]}]},
+      {label: "More marks", buttons: [
+        {label: "More marks", icon: "MoreVertical", menuOnly: true, selected: this.moreMarksActive,
+          disabled: this.moreMarksDisabled,
+          submenuGroups: [{label: "More marks", content: this.renderMoreMarksDropdown(), buttons: []}]},
+        {label: "Link", action: "mark:a", icon: "MarkLink", selected: this.activeLinkKind === "link", disabled: !this.canMark || this.math?.active,
+          submenuGroups: [{label: "Link", content: this.renderLinkDropdown(), buttons: []}]},
+      ]},
     ]
     const insert = [...menuGroups.Start.find(group => group.label === "Elements")!.buttons, {label: "Formula", icon: "Formula", submenu: insertMathStructureButtons}].map((button): RibbonMenuButton => {
       const item = typeof button === "string" ? {label: button} : button
@@ -3448,7 +3497,7 @@ export class AppRibbon extends EditingControls {
   }
 
   private get aiChatRenderDependencies() {
-    return [this.settings.disableAI, this.previewActive, this.historyState.preview,
+    return [this.settings.disableAI, this.commandShortcut("focus-ai-bar"), this.previewActive, this.historyState.preview,
       this.aiChats, this.activeAIChatId, this.aiChatOpen, this.aiBusy, this.aiRequestChatId,
       this.aiProviders, this.activeAIProvider, this.aiModel, this.aiEffort, this.aiProgress, this.pendingAIEdit]
   }
@@ -3598,7 +3647,7 @@ export class AppRibbon extends EditingControls {
                 data-ribbon-input-persistent
                 .value=${this.aiPrompt}
                 ?disabled=${Boolean(pending)}
-                title=${barThinking ? this.aiProgress : ""}
+                title=${expanded ? "" : this.shortcutTitle(barThinking && this.aiProgress ? this.aiProgress : "AI prompt", "focus-ai-bar")}
                 @input=${this.updateAIPrompt}
                 @keydown=${this.handleAIChatPromptKeydown}
               ></textarea>
@@ -3689,11 +3738,6 @@ export class AppRibbon extends EditingControls {
       ]},
       {label: "About", buttons: [{label: "About WebWriter...", icon: "About", action: "about-webwriter"}]},
     ]
-  }
-
-  private shortcutTitle(label: string, action = label) {
-    const shortcut = this.commandShortcut(action)
-    return shortcut ? `${label} (${shortcut})` : label
   }
 
   render() {

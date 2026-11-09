@@ -3,6 +3,7 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import {AppRibbon} from "./ribbon"
 import {RibbonMenu} from "./ribbon-menu"
 import {primaryDrawerMarkNames} from "../marks"
+import {formatShortcut} from "../app-settings"
 
 afterEach(() => document.body.replaceChildren())
 
@@ -253,8 +254,43 @@ describe("collapsed ribbon file menu", () => {
       .toEqual(primaryDrawerMarkNames.map(name => `mark:${name}`))
     const commands = vi.fn()
     ribbon.addEventListener("ribbon-button-click", commands)
-    format.shadowRoot!.querySelector<HTMLButtonElement>('[title="Increase font size"]')!.click()
+    const increase = format.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="increaseFontSize"]')!
+    expect(increase.title).toBe(`Increase font size (${formatShortcut(ribbon.settings.shortcuts["text.increase"])})`)
+    increase.click()
     expect(commands.mock.calls[0][0].detail.label).toBe("increaseFontSize")
+  })
+
+  it("opens and focuses the font picker through Format while the ribbon stays collapsed", async () => {
+    const {ribbon, menu} = await mount()
+    ribbon.canMark = true
+    ribbon.dismissCollapsedMenu()
+    await ribbon.updateComplete
+    await ribbon.openFontPicker("font-size")
+    expect(ribbon.expanded).toBe(false)
+    expect(menu.hidden).toBe(false)
+    const format = menu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+    const picker = format.shadowRoot!.querySelector('ribbon-combobox[name="font-size"]')!
+    const size = picker.shadowRoot!.querySelector("font-size-combobox")!
+    expect(size.shadowRoot!.querySelector("input")?.getAttribute("aria-expanded")).toBe("true")
+    expect(size.shadowRoot!.activeElement).toBe(size.shadowRoot!.querySelector("input"))
+  })
+
+  it("keeps the More marks checkboxes available in the collapsed Format menu", async () => {
+    const {ribbon, menu} = await mount()
+    ribbon.canMark = true
+    ribbon.marks = ["sup"]
+    await ribbon.updateComplete
+    await menu.updateComplete
+    const format = await open(menu, "Format")
+    const more = await open(format, "More marks")
+    expect(more.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Select Superscript"]')!.checked).toBe(true)
+    const commands = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", commands)
+    more.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Select Strikethrough"]')!.click()
+    expect(commands).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      detail: {label: "mark:s", keepDrawerOpen: true},
+    }))
+    expect(more.hidden).toBe(false)
   })
 
   it("enables Remove formatting in the collapsed Format menu for a nonempty selection", async () => {
@@ -264,7 +300,7 @@ describe("collapsed ribbon file menu", () => {
     await ribbon.updateComplete
     await menu.updateComplete
     const format = await open(menu, "Format")
-    const clear = format.shadowRoot!.querySelector<HTMLButtonElement>('[title="Remove formatting"]')!
+    const clear = format.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="removeMarks"]')!
     expect(clear.disabled).toBe(false)
     const commands = vi.fn()
     ribbon.addEventListener("ribbon-button-click", commands)
@@ -273,7 +309,7 @@ describe("collapsed ribbon file menu", () => {
 
     const {menu: disabledMenu} = await mount()
     const disabledFormat = await open(disabledMenu, "Format")
-    expect(disabledFormat.shadowRoot!.querySelector<HTMLButtonElement>('[title="Remove formatting"]')!.disabled).toBe(true)
+    expect(disabledFormat.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="removeMarks"]')!.disabled).toBe(true)
   })
 
   it("opens insertion options recursively and closes only the innermost menu on Escape", async () => {

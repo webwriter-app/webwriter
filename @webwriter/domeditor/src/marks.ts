@@ -164,7 +164,14 @@ export const primaryDrawerMarkNames = [
   "b",
   "i",
   "u",
+] as const satisfies readonly MarkName[]
+
+export const moreDrawerMarkNames = [
   "s",
+  "sup",
+  "sub",
+  "code",
+  "kbd",
 ] as const satisfies readonly MarkName[]
 
 /** Marks handled by the generic mark group, including preserved authored marks. */

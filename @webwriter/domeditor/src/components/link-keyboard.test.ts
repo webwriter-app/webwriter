@@ -5,7 +5,7 @@ import {LinkKeyboard, linkHistoryKey} from "./link-keyboard"
 
 const source = {href: "#ref-source", label: "A source", data: JSON.stringify({type: "book", title: "A source", author: [{family: "Lovelace", given: "Ada", ORCID: "keep"}], issued: {"date-parts": [[1843, 2, 3]]}, custom: {keep: true}})}
 const makeState = (overrides: Partial<LinkSelectionState> = {}): LinkSelectionState => ({
-  active: true, identity: "link-1", href: "#chapter", text: "Chapter", attributes: {href: "#chapter"},
+  active: true, identity: "link-1", href: "", text: "Chapter", attributes: {},
   targets: [{href: "#chapter", label: "Chapter"}, {href: "#appendix", label: "Appendix"}], references: [source], ...overrides,
 })
 const root = (keyboard: LinkKeyboard) => keyboard.shadowRoot!
@@ -16,7 +16,9 @@ async function mount(state = makeState()) {
   return keyboard
 }
 async function tab(keyboard: LinkKeyboard, name: string) {
-  root(keyboard).querySelector<HTMLButtonElement>(`#tab-${name}`)!.click(); await keyboard.updateComplete
+  const kind = name === "web" || name === "link" ? "link" : name === "document" || name === "cross-reference" ? "cross-reference" : "citation"
+  keyboard.state = Object.assign({}, keyboard.state, {kind}) as LinkSelectionState
+  await keyboard.updateComplete
 }
 async function type(keyboard: LinkKeyboard, value: string, selector = "#link-search") {
   const field = root(keyboard).querySelector<HTMLInputElement>(selector)!
@@ -29,7 +31,7 @@ function listen(keyboard: LinkKeyboard) {
 }
 async function openDialog(keyboard: LinkKeyboard) {
   await tab(keyboard, "reference")
-  root(keyboard).querySelector<HTMLButtonElement>('[aria-label="Add reference"]')!.click()
+  root(keyboard).querySelector<HTMLButtonElement>('[aria-label="Add citation"]')!.click()
   await keyboard.updateComplete
   return root(keyboard).querySelector<HTMLDialogElement>("dialog")!
 }
@@ -83,50 +85,15 @@ describe("link keyboard", () => {
     expect(document.activeElement).toBe(text)
   })
 
-  it("focuses Web address when opened and keeps later state updates from stealing focus", async () => {
+  it("focuses the derived panel input and renders no tabs", async () => {
     const keyboard = await mount(makeState({href: "", attributes: {}}))
     await keyboard.updateComplete
     expect(root(keyboard).activeElement).toBe(input(keyboard))
     expect(input(keyboard).getAttribute("aria-label")).toBe("Web address")
-    const documentTab = root(keyboard).querySelector<HTMLButtonElement>("#tab-document")!
-    documentTab.focus()
-    documentTab.click()
-    await keyboard.updateComplete
-    keyboard.state = {...keyboard.state!, targets: [{href: "#new", label: "New"}]}
-    await keyboard.updateComplete
-    expect(root(keyboard).activeElement).toBe(documentTab)
-    expect(keyboard.activeTab).toBe("document")
-    await keyboard.focusWebAddress()
-    expect(keyboard.activeTab).toBe("web")
-    expect(root(keyboard).activeElement).toBe(input(keyboard))
-  })
-
-  it("defaults to Web with compact heading tabs and a shared search/list layout", async () => {
-    const keyboard = await mount()
-    expect([...root(keyboard).querySelectorAll("[role=tab]")].map(tab => tab.textContent?.trim())).toEqual(["Web", "Document", "Reference"])
+    expect(root(keyboard).querySelector("[role=tablist]")).toBeNull()
     expect(root(keyboard).querySelector("h2")!.textContent).toBe("Link")
-    expect(root(keyboard).querySelector(".header [role=tablist]")).not.toBeNull()
     expect(getComputedStyle(keyboard).height).toBe("280px")
-    for(const name of ["web", "document", "reference"]) {
-      await tab(keyboard, name)
-      expect(root(keyboard).querySelectorAll(".panel .search-bar input")).toHaveLength(1)
-      expect(root(keyboard).querySelector(".panel .targets[role=list]")).not.toBeNull()
-    }
     expect(root(keyboard).querySelector("dialog")!.open).toBe(false)
-  })
-
-  it("supports arrow tabs, skips unavailable references, and defaults new selections to Web", async () => {
-    const keyboard = await mount(makeState({referenceAllowed: false}))
-    const first = root(keyboard).querySelector<HTMLButtonElement>("[role=tab]")!
-    first.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true}))
-    await keyboard.updateComplete
-    expect(root(keyboard).querySelector('[aria-selected="true"]')!.textContent?.trim()).toBe("Document")
-    root(keyboard).querySelector<HTMLButtonElement>('[aria-selected="true"]')!.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true}))
-    await keyboard.updateComplete
-    expect(first.getAttribute("aria-selected")).toBe("true")
-    keyboard.state = makeState({identity: "other", attributes: {"data-reference": source.data}})
-    await keyboard.updateComplete
-    expect(first.getAttribute("aria-selected")).toBe("true")
   })
 
   it("filters document targets and fills the bar while applying the chosen value", async () => {
@@ -139,24 +106,16 @@ describe("link keyboard", () => {
     expect(commands[0]).toMatchObject({identity: "link-1", href: "#appendix", attributes: {"data-reference": null}})
     keyboard.state = makeState({identity: "updated", href: "#appendix", attributes: {href: "#appendix"}})
     await keyboard.updateComplete
-    expect(keyboard.activeTab).toBe("document")
     expect(input(keyboard).value).toBe("Appendix")
   })
 
-  it("always shows Web options and applies them through the input arrow", async () => {
-    const keyboard = await mount(makeState({href: "https://old.test", attributes: {target: "_blank", rel: "author noopener", download: "file.pdf", "data-reference": source.data}})), commands = listen(keyboard)
-    expect(root(keyboard).querySelector(".web-label-row .web-options")).not.toBeNull()
-    expect(root(keyboard).querySelector(".panel .actions")).toBeNull()
+  it("keeps only the new-tab option in the web panel and emits panel kind", async () => {
+    const keyboard = await mount(makeState({href: "https://old.test", attributes: {target: "_blank", rel: "author noopener", download: "file.pdf"}})), commands = listen(keyboard)
+    expect(root(keyboard).querySelector(".web-label-row .web-options")!.textContent).toContain("Open in new tab")
+    expect(root(keyboard).querySelector(".web-options")!.textContent).not.toContain("Download")
     await type(keyboard, "https://new.test")
-    const checks = root(keyboard).querySelectorAll<HTMLInputElement>(".web-options input")
-    checks[0].click(); checks[1].click()
-    expect(commands).toHaveLength(0)
-    const arrow = root(keyboard).querySelector<HTMLButtonElement>('[aria-label="Apply web link"]')!
-    expect(arrow.querySelector("svg")).not.toBeNull()
-    const pointer = new MouseEvent("pointerdown", {bubbles: true, cancelable: true})
-    arrow.dispatchEvent(pointer); expect(pointer.defaultPrevented).toBe(true)
-    arrow.click()
-    expect(commands[0]).toMatchObject({href: "https://new.test", attributes: {target: null, rel: "author noopener", download: null, "data-reference": null}})
+    root(keyboard).querySelector<HTMLButtonElement>('[aria-label="Apply web link"]')!.click()
+    expect(commands[0]).toMatchObject({href: "https://new.test", kind: "link", attributes: {target: "_blank", download: "file.pdf"}})
   })
 
   it("filters remembered URLs and applies a suggestion to both the bar and the link", async () => {
@@ -177,7 +136,6 @@ describe("link keyboard", () => {
     expect(commands[0]).toMatchObject({href: source.href, attributes: {"data-reference": source.data, "data-reference-locator": null}})
     keyboard.state = makeState({identity: "applied", href: source.href, attributes: {"data-reference": source.data}})
     await keyboard.updateComplete
-    expect(keyboard.activeTab).toBe("reference")
     expect(input(keyboard).value).toBe("A source")
     const saved = JSON.parse(localStorage.getItem(linkHistoryKey)!).references[0]
     expect(JSON.parse(saved.data)).toEqual(JSON.parse(source.data))

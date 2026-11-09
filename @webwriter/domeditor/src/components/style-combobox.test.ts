@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {StyleCombobox} from "./style-combobox"
+import {formatShortcut} from "../app-settings"
 
 afterEach(() => document.body.replaceChildren())
 
@@ -15,6 +16,37 @@ async function mount(editable = true) {
 }
 
 describe("shared Style combobox", () => {
+  it("focuses the current value, opens suggestions, and shows the formatted shortcut in native titles", async () => {
+    const combo = await mount(false)
+    combo.value = "2"
+    combo.shortcut = "Alt+Shift+Y"
+    await combo.updateComplete
+    const input = combo.shadowRoot!.querySelector<HTMLInputElement>("input")!
+
+    await combo.focusAndOpen()
+
+    expect(combo.open).toBe(true)
+    expect(combo.shadowRoot!.activeElement).toBe(input)
+    expect(input.selectionStart).toBe(0)
+    expect(input.selectionEnd).toBe(input.value.length)
+    expect(input.title).toBe(`Value (${formatShortcut(combo.shortcut)})`)
+    expect(combo.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.title).toBe(input.title)
+    await combo.focusAndOpen()
+    expect(combo.open).toBe(true)
+  })
+
+  it("does not focus or open when disabled or disconnected", async () => {
+    const combo = await mount(false)
+    combo.disabled = true
+    await combo.updateComplete
+    await combo.focusAndOpen()
+    expect(combo.open).toBe(false)
+    combo.remove()
+    combo.disabled = false
+    await combo.focusAndOpen()
+    expect(combo.open).toBe(false)
+  })
+
   it("edits custom numerical values and retains all named presets while typing", async () => {
     const combo = await mount()
     combo.showValue = true

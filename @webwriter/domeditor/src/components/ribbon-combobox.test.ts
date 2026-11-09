@@ -2,10 +2,32 @@
 import {afterEach, expect, it, vi} from "vitest"
 import {RibbonCombobox} from "./ribbon-combobox"
 import {colorPaletteStyles} from "./color-palette"
+import {formatShortcut} from "../app-settings"
 
 afterEach(() => {
   document.body.replaceChildren()
   localStorage.removeItem("webwriter_recent_custom_colors_v1")
+})
+
+it("opens the font-size picker on shortcut activation and forwards its native tooltip", async () => {
+  const combo = new RibbonCombobox()
+  combo.name = "font-size"
+  combo.label = "Font size"
+  combo.shortcut = "Alt+Shift+Y"
+  combo.value = "16"
+  document.body.append(combo)
+  await combo.updateComplete
+  const picker = combo.shadowRoot!.querySelector("font-size-combobox")!
+  await picker.updateComplete
+
+  await combo.focusAndOpen()
+  await picker.updateComplete
+
+  const input = picker.shadowRoot!.querySelector<HTMLInputElement>("input")!
+  expect(picker.open).toBe(true)
+  expect(picker.shadowRoot!.activeElement).toBe(input)
+  expect(input.title).toBe(`Font size (${formatShortcut(combo.shortcut)})`)
+  expect(picker.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.title).toBe(input.title)
 })
 
 it("keeps the ten most recently used custom colors across palettes", async () => {

@@ -4,6 +4,7 @@ import {ref} from "lit/directives/ref.js"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {ribbonIcon} from "../ribbon-icons"
+import {formatShortcut} from "../app-settings"
 
 export type ComboboxOption = {
   value: string
@@ -32,6 +33,7 @@ export class EditorCombobox extends LitElement {
   static properties = {
     value: {type: String},
     label: {type: String},
+    shortcut: {type: String},
     placeholder: {type: String},
     options: {attribute: false},
     searchOptions: {attribute: false},
@@ -326,6 +328,20 @@ export class EditorCombobox extends LitElement {
   private tagResizeObserver?: ResizeObserver
   protected activeIndex = -1
   private readonly listboxId = `document-head-suggestions-${++comboboxInstanceCount}`
+  shortcut = ""
+
+  /** Focus the current value and open its native suggestion list without toggling it closed. */
+  async focusAndOpen() {
+    if(!this.isConnected || this.disabled) return
+    await this.updateComplete
+    if(!this.isConnected || this.disabled) return
+    const input = this.renderRoot.querySelector<HTMLInputElement>("input")
+    if(!input) return
+    input.focus({preventScroll: true})
+    input.select()
+    if(!this.open) await this.setOpen(true)
+    else await this.updateComplete
+  }
 
   private readonly observeTagStrip = (strip?: Element) => {
     this.tagResizeObserver?.disconnect()
@@ -741,12 +757,14 @@ export class EditorCombobox extends LitElement {
   render() {
     const options = this.open ? this.filteredOptions() : []
     const groups = this.optionGroups(options)
+    const shortcutTitle = this.shortcut ? `${this.label} (${formatShortcut(this.shortcut)})` : nothing
     return html`
       <span class="control" style=${`anchor-name: --${this.listboxId}`}
         @focusout=${this.handleControlFocusOut} @keydown=${this.handleControlKeydown}>
         <input
           role="combobox"
           aria-label=${this.label}
+          title=${shortcutTitle}
           aria-autocomplete=${this.editable && !this.multiple ? "list" : "none"}
           aria-expanded=${this.open}
           aria-haspopup="listbox"
@@ -773,6 +791,7 @@ export class EditorCombobox extends LitElement {
           tabindex="-1"
           ?disabled=${this.disabled}
           aria-label=${`Show ${this.label.toLocaleLowerCase()} suggestions`}
+          title=${shortcutTitle}
           aria-expanded=${this.open}
           aria-controls=${this.listboxId}
           @mousedown=${(event: MouseEvent) => event.preventDefault()}

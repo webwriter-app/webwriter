@@ -111,6 +111,7 @@ const expectedChecks = [
   "paragraph boundary deletion reverses Enter in Document and Board",
   "triple clicks preserve native paragraph selections in Document and Board",
   "Elements pullout reserves matching padding after its opening animation",
+  "Package drawer keeps visible rows in place when opening",
   "Board columns and cards retain native editing and standalone layout",
   "Board media shrinks with card height in editing and standalone documents",
   "Board controls and transform frames follow CSS anchors through layout changes",

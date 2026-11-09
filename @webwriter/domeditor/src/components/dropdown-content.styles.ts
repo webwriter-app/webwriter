@@ -78,11 +78,12 @@ export const dropdownContentStyles = css`
     }
 
     .mark-dropdown-option:hover,
-    .mark-dropdown-option[aria-selected="true"] {
+    .mark-dropdown-option[aria-selected="true"],
+    .mark-dropdown-option:has(> input[type="radio"]:checked) {
       background: #eef4fb;
     }
 
-    .mark-dropdown-option > input[type="checkbox"] {
+    .mark-dropdown-option > :is(input[type="checkbox"], input[type="radio"]) {
       margin: 0;
       accent-color: #3977c7;
     }

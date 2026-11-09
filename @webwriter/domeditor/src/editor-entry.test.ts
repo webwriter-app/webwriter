@@ -248,7 +248,9 @@ it("publishes document updates, owns only document shortcuts, and disconnects co
   expect(prints()).toHaveLength(4)
 
   window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
-    type: editorFrameControlMessage, bridgeNonce: nonce, command: "shortcuts", shortcuts: {"editor.undo": "Alt+Shift+1", "document.print": "Ctrl+P"},
+    type: editorFrameControlMessage, bridgeNonce: nonce, command: "shortcuts", shortcuts: {
+      "editor.undo": "Alt+Shift+1", "document.print": "Ctrl+P", "editor.focusAI": "Alt+Shift+J", "toolbox.review": "Alt+Shift+4",
+    },
   }}))
   const graphic = document.createElementNS("http://www.w3.org/2000/svg", "svg")
   document.body.append(graphic)
@@ -262,6 +264,12 @@ it("publishes document updates, owns only document shortcuts, and disconnects co
   const beforeShape = undoCount()
   expect(shapeShortcut().defaultPrevented).toBe(false)
   expect(undoCount()).toBe(beforeShape)
+  for(const [key, code, action] of [["J", "KeyJ", "focus-ai-bar"], ["4", "Digit4", "toolbox:Review"]]) {
+    const event = new KeyboardEvent("keydown", {key, code, altKey: true, shiftKey: true, bubbles: true, cancelable: true})
+    graphic.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({type: "editor-frame-shortcut", action}), origin)
+  }
   graphicInputState.mark.isSVGTextSelection = true
   expect(shapeShortcut().defaultPrevented).toBe(true)
   expect(undoCount()).toBe(beforeShape + 1)

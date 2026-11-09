@@ -5,8 +5,10 @@ import type {DocumentLayoutMode} from "./document-layout"
 import {storedCloudServices, type CloudService} from "./cloud-services"
 import {normalizeProofreadingDictionary} from "./proofreading"
 import {preferredDocumentLanguage} from "./document-languages"
+import {linkKindOptions} from "./links"
 
 export const APP_SETTINGS_STORAGE_KEY = "webwriter_app_settings_v1"
+const shortcutsVersion = 4
 
 export type AppCommand = {
   id: string
@@ -23,6 +25,16 @@ const primary = (key: string) => (applePlatform: boolean) => `${applePlatform ? 
 // Use the existing alternate modifier for commands whose familiar bindings
 // open browser windows/files or switch system input sources (Ctrl+Space).
 const alternate = (key: string) => (_applePlatform: boolean) => `Alt+Shift+${key}`
+
+export const toolboxTools = [
+  {label: "Edit", icon: "Pencil", shortcutKey: "1"},
+  {label: "Style", icon: "Theme", shortcutKey: null},
+  {label: "AI", icon: "AI", shortcutKey: "3"},
+  {label: "Review", icon: "Grammar", shortcutKey: "4"},
+  {label: "Distribute", icon: "users-group", shortcutKey: "5"},
+  {label: "Feedback", icon: "Comments", shortcutKey: "0"},
+] as const
+export type ToolboxTool = typeof toolboxTools[number]["label"]
 
 const operationLabel = (operation: string) => operation
   .split("-")
@@ -46,6 +58,16 @@ export const appCommands: readonly AppCommand[] = [
     legacyShortcuts: apple => apple ? [] : ["Ctrl+Shift+Z"],
   },
   {id: "editor.preview", section: "Editor", label: "Preview", description: "Toggle the document preview", icon: "Preview", action: "Preview", defaultShortcut: primary("Alt+P")},
+  {id: "editor.focusAI", section: "Editor", label: "Focus AI bar", description: "Focus the AI prompt in the ribbon", icon: "AI", action: "focus-ai-bar", defaultShortcut: alternate("J")},
+  ...toolboxTools.flatMap(({label, icon, shortcutKey}) => shortcutKey === null ? [] : [{
+    id: `toolbox.${label.toLowerCase()}`,
+    section: "Editor" as const,
+    label: `Open ${label} toolbox`,
+    description: `Show the ${label} toolbox`,
+    icon,
+    action: `toolbox:${label}`,
+    defaultShortcut: alternate(shortcutKey),
+  }]),
   ...primaryMarkOptions.filter(option => !excludedMarkNames.includes(option.name)).map(option => ({
     id: `text.${option.name}`,
     section: "Text" as const,
@@ -68,23 +90,28 @@ export const appCommands: readonly AppCommand[] = [
     icon: option.icon,
     action: `mark-detail:${option.name}`,
   })),
+  {id: "text.crossReference", section: "Text", ...linkKindOptions["cross-reference"], description: "Link to a target in the document", defaultShortcut: alternate("R")},
+  {id: "text.citation", section: "Text", ...linkKindOptions.citation, description: "Cite an external source", defaultShortcut: alternate("T")},
   {id: "text.popup", section: "Text", label: "Popup", description: "Toggle a popup on the selected text", icon: "Popup", action: "toggle-popup", defaultShortcut: alternate("Y")},
   {id: "text.attachment", section: "Text", label: "Attachment", description: "Add or remove an attachment mark", icon: "Attachment", action: "mark:attachment", defaultShortcut: alternate("E")},
   {id: "text.clear", section: "Text", label: "Clear formatting", description: "Remove text formatting", icon: "Clear", action: "removeMarks", defaultShortcut: alternate("Backspace")},
+  {id: "text.fontFamily", section: "Text", label: "Font family", description: "Open the font family picker", icon: "Text", action: "font-picker:font-family", defaultShortcut: alternate("G")},
+  {id: "text.fontSize", section: "Text", label: "Font size", description: "Open the font size picker", icon: "IncreaseFontSize", action: "font-picker:font-size", defaultShortcut: alternate("H")},
   {id: "text.increase", section: "Text", label: "Increase font size", description: "Increase the selected text size", icon: "IncreaseFontSize", action: "increaseFontSize", defaultShortcut: primary("Shift+>")},
   {id: "text.decrease", section: "Text", label: "Decrease font size", description: "Decrease the selected text size", icon: "DecreaseFontSize", action: "decreaseFontSize", defaultShortcut: primary("Shift+<")},
   {id: "insert.paragraph", section: "Insert", label: "Paragraph", description: "Insert paragraph content", icon: "Paragraph", action: "Paragraph", defaultShortcut: alternate("Enter")},
+  // Read across the full Elements ribbon, then across its second row. Paragraph has its own shortcut.
   ...[
-    ["heading", "Heading", "Heading", "Heading 1", "1"],
-    ["details", "Details", "Details", "element:details", "2"],
-    ["list", "List", "List", "element:ul", "3"],
-    ["table", "Table", "Table", "Table", "4"],
-    ["image", "Image", "Image", "Image", "5"],
-    ["graphic", "Graphic", "Graphic", "Graphic", "6"],
-    ["audio", "Audio", "Audio", "Audio", "7"],
-    ["website", "Website", "Website", "Website", "8"],
+    ["list", "List", "List", "element:ul", "1"],
+    ["table", "Table", "Table", "Table", "2"],
+    ["graphic", "Graphic", "Graphic", "Graphic", "3"],
+    ["website", "Website", "Website", "Website", "4"],
+    ["heading", "Heading", "Heading", "Heading 1", "5"],
+    ["details", "Details", "Details", "element:details", "6"],
+    ["image", "Image", "Image", "Image", "7"],
+    ["audio", "Audio", "Audio", "Audio", "8"],
     ["video", "Video", "Video", "Video", "9"],
-    ["formula", "Formula", "Formula", "Formula", "0"],
+    ["formula", "Formula", "Formula", "Formula", "9"],
   ].map(([id, label, icon, action, key]) => ({
     id: `insert.${id}`,
     section: "Insert" as const,
@@ -237,12 +264,15 @@ export function loadAppSettings(): AppSettings {
     const stored = globalThis.localStorage?.getItem(APP_SETTINGS_STORAGE_KEY)
     if(!stored) return defaults
     const value = JSON.parse(stored) as Partial<AppSettings> & {shortcutsVersion?: number; defaultTemplate?: DocumentLayoutMode; offlineUsername?: unknown; disableSpellChecking?: unknown}
-    const shortcuts = value.shortcuts && typeof value.shortcuts === "object"
+    const savedShortcuts = value.shortcuts && typeof value.shortcuts === "object" ? value.shortcuts : undefined
+    const assigned = new Set(appCommands.map(({id}) => savedShortcuts?.[id]).filter((shortcut): shortcut is string => typeof shortcut === "string")
+      .map(shortcut => shortcut.replace(/^Physical:/, "")))
+    const shortcuts = savedShortcuts
       ? Object.fromEntries(appCommands.map(command => [
         command.id,
-        typeof value.shortcuts?.[command.id] === "string"
-          ? value.shortcuts[command.id]
-          : defaults.shortcuts[command.id],
+        typeof savedShortcuts[command.id] === "string"
+          ? savedShortcuts[command.id]
+          : assigned.has(defaults.shortcuts[command.id]) ? "" : defaults.shortcuts[command.id],
       ]))
       : defaults.shortcuts
     // Older settings saved every unassigned insertion command as an empty
@@ -264,12 +294,29 @@ export function loadAppSettings(): AppSettings {
         if(!shortcuts[id] && !Object.values(shortcuts).includes(shortcut)) shortcuts[id] = shortcut
       }
     }
-    // Replace the old zoom-reset binding without taking another command's shortcut.
-    if((value.shortcutsVersion ?? 0) < 3
-      && (shortcuts["insert.formula"] === "Ctrl+0" || shortcuts["insert.formula"] === "Meta+0")) {
-      const shortcut = defaults.shortcuts["insert.formula"]
-      shortcuts["insert.formula"] = Object.entries(shortcuts)
-        .some(([id, assigned]) => id !== "insert.formula" && assigned === shortcut) ? "" : shortcut
+    const savedVersion = value.shortcutsVersion ?? 0
+    if(savedVersion < 4) {
+      const formerInsertionOrder = ["heading", "details", "list", "table", "image", "graphic", "audio", "website", "video"]
+      const reset = formerInsertionOrder.flatMap((name, index) => {
+        const id = `insert.${name}`
+        const binding = savedShortcuts?.[id]
+        const key = index + 1
+        return typeof binding !== "string" || !savedVersion && !binding || binding === `Ctrl+${key}` || binding === `Meta+${key}` ? [id] : []
+      })
+      const formula = shortcuts["insert.formula"]
+      if(formula === "Alt+Shift+0" || savedVersion < 3 && (formula === "Ctrl+0" || formula === "Meta+0")) {
+        reset.push("insert.formula")
+      }
+      if(typeof savedShortcuts?.["toolbox.feedback"] !== "string" || shortcuts["toolbox.feedback"] === "Alt+Shift+6") {
+        reset.push("toolbox.feedback")
+      }
+      // Release all moved defaults before assigning new ones, keeping custom bindings first.
+      for(const id of reset) shortcuts[id] = ""
+      for(const id of reset) {
+        const shortcut = defaults.shortcuts[id]
+        const occupied = Object.entries(shortcuts).some(([other, binding]) => other !== id && binding.replace(/^Physical:/, "") === shortcut)
+        shortcuts[id] = occupied ? "" : shortcut
+      }
     }
     const cloudServices = storedCloudServices(value.cloudServices)
     const settings: AppSettings = {
@@ -315,7 +362,7 @@ export function loadAppSettings(): AppSettings {
         ? value.autosaveCloudOnBundleChange : defaults.autosaveCloudOnBundleChange,
       shortcuts,
     }
-    if((value.shortcutsVersion ?? 0) < 3 || "offlineUsername" in value) persistAppSettings(settings)
+    if(savedVersion < shortcutsVersion || "offlineUsername" in value) persistAppSettings(settings)
     return settings
   }
   catch {
@@ -326,7 +373,7 @@ export function loadAppSettings(): AppSettings {
 export function persistAppSettings(settings: AppSettings) {
   try {
     globalThis.localStorage?.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...settings,
-      cloudServices: storedCloudServices(settings.cloudServices), shortcutsVersion: 3}))
+      cloudServices: storedCloudServices(settings.cloudServices), shortcutsVersion}))
   }
   catch {
     // Settings remain active for this session when storage is unavailable.

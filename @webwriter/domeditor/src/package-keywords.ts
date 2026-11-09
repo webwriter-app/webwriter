@@ -1,46 +1,62 @@
 export type PackageKeywordPresentation = {
+  kind: "type" | "language" | "field" | "online" | "level" | "custom"
   label: string
   icon?: string
+  additionalLanguages?: string[]
 }
 
-const standardizedKeywords: Record<string, PackageKeywordPresentation> = {
-  "widget-online": {label: "Online", icon: "KeywordOnline"},
-  "widget-online-edit": {label: "Online while editing", icon: "KeywordOnline"},
-  "widget-online-use": {label: "Online when used", icon: "KeywordOnline"},
+const onlineLabels = {
+  "widget-online": "Online only",
+  "widget-online-edit": "Online when editing",
+  "widget-online-use": "Online when using",
+}
+
+type Badge = {label: string, icon: string}
+
+const widgetTypes: Record<string, Badge> = {
   "widget-presentational": {label: "Presentation", icon: "KeywordPresentation"},
   "widget-practical": {label: "Practice", icon: "KeywordPractice"},
   "widget-simulational": {label: "Simulation", icon: "KeywordSimulation"},
   "widget-conceptual": {label: "Concept", icon: "KeywordConcept"},
   "widget-informational": {label: "Information", icon: "KeywordInformation"},
-  "widget-contextual": {label: "Real-world context", icon: "KeywordContext"},
+  "widget-contextual": {label: "Context", icon: "KeywordContext"},
 }
 
-const educationLevels: Record<string, PackageKeywordPresentation> = {
-  "0": {label: "Early childhood education", icon: "EducationEarlyChildhood"},
-  "1": {label: "Primary education", icon: "EducationPrimary"},
-  "2": {label: "Lower secondary education", icon: "EducationSecondary"},
-  "3": {label: "Upper secondary education", icon: "EducationSecondary"},
-  "4": {label: "Post-secondary non-tertiary education", icon: "EducationPostSecondary"},
-  "5": {label: "Short-cycle tertiary education", icon: "EducationTertiary"},
-  "6": {label: "Bachelor’s or equivalent level", icon: "EducationDegree"},
-  "7": {label: "Master’s or equivalent level", icon: "EducationDegree"},
-  "8": {label: "Doctoral or equivalent level", icon: "EducationDegree"},
-  "9": {label: "Education level not elsewhere classified", icon: "EducationOther"},
+const educationLevels: Record<string, Badge> = {
+  "0": {label: "Preschool", icon: "EducationEarlyChildhood"},
+  "1": {label: "Primary school", icon: "EducationSchool"},
+  "2": {label: "Middle school", icon: "EducationSchool"},
+  "3": {label: "High school", icon: "EducationSchool"},
+  "4": {label: "Vocational cert.", icon: "EducationSchool"},
+  "5": {label: "Associate deg.", icon: "EducationHigher"},
+  "6": {label: "Bachelor's", icon: "EducationHigher"},
+  "7": {label: "Master's", icon: "EducationHigher"},
+  "8": {label: "Doctorate", icon: "EducationHigher"},
+  "9": {label: "Misc. ed.", icon: "EducationOther"},
+  "2-4": {label: "Secondary ed.", icon: "EducationSchool"},
+  "5-8": {label: "Higher ed.", icon: "EducationHigher"},
 }
 
-const educationFields: Record<string, PackageKeywordPresentation> = {
+const educationFields: Record<string, Badge> = {
   "00": {label: "Generic programmes and qualifications", icon: "EducationFieldGeneral"},
   "01": {label: "Education", icon: "EducationFieldEducation"},
-  "02": {label: "Arts and humanities", icon: "EducationFieldArts"},
-  "03": {label: "Social sciences, journalism and information", icon: "EducationFieldSocialSciences"},
-  "04": {label: "Business, administration and law", icon: "EducationFieldBusiness"},
-  "05": {label: "Natural sciences, mathematics and statistics", icon: "EducationFieldSciences"},
-  "06": {label: "Information and communication technologies", icon: "EducationFieldTechnology"},
-  "07": {label: "Engineering, manufacturing and construction", icon: "EducationFieldEngineering"},
-  "08": {label: "Agriculture, forestry, fisheries and veterinary", icon: "EducationFieldAgriculture"},
-  "09": {label: "Health and welfare", icon: "EducationFieldHealth"},
+  "02": {label: "Humanities", icon: "EducationFieldArts"},
+  "03": {label: "Social sciences", icon: "EducationFieldSocialSciences"},
+  "04": {label: "Business", icon: "EducationFieldBusiness"},
+  "05": {label: "Natural sciences", icon: "EducationFieldSciences"},
+  "06": {label: "ICT", icon: "EducationFieldTechnology"},
+  "07": {label: "Engineering", icon: "EducationFieldEngineering"},
+  "08": {label: "Food production", icon: "EducationFieldAgriculture"},
+  "09": {label: "Health", icon: "EducationFieldHealth"},
   "10": {label: "Services", icon: "EducationFieldServices"},
+  "99": {label: "Other fields", icon: "EducationFieldOther"},
+  "all": {label: "All fields", icon: "EducationFieldGeneral"},
 }
+
+const coreFields = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
+const higherLevels = ["5", "6", "7", "8"]
+const languagePrefix = "widget-lang-"
+const baseLanguage = (tag: string) => tag.toLowerCase().split("-")[0]
 
 const naturalName = (keyword: string) => keyword
   .replaceAll(/[-_]+/g, " ")
@@ -96,33 +112,77 @@ function languageName(tag: string, locale: string) {
   }
 }
 
-/** Turns npm package keywords into compact, user-facing metadata labels. */
+/** Groups npm package keywords in the order used by the original package palette. */
 export function packageKeywordPresentations(
   keywords: string[],
   locale = typeof navigator === "undefined" ? "en" : navigator.language || "en",
-) {
-  const presentations = keywords.flatMap<PackageKeywordPresentation>(keyword => {
+  preferredLocales: readonly string[] = [],
+): PackageKeywordPresentation[] {
+  const normalizedKeywords = new Set<string>()
+  const types: PackageKeywordPresentation[] = []
+  const languages: string[] = []
+  const additionalLanguages: string[] = []
+  const seenLanguages = new Set<string>()
+  const preferredLanguages = new Set([locale, ...preferredLocales].map(baseLanguage))
+  const fields = new Set<string>()
+  const levels = new Set<string>()
+  const custom: PackageKeywordPresentation[] = []
+
+  for(const keyword of keywords) {
     const normalized = keyword.toLowerCase()
-    if(normalized === "webwriter-widget") return []
+    if(normalizedKeywords.has(normalized)) continue
+    normalizedKeywords.add(normalized)
+    if(normalized === "webwriter-widget" || Object.hasOwn(onlineLabels, normalized)) continue
 
-    const standardized = standardizedKeywords[normalized]
-    if(standardized) return [standardized]
-
-    if(normalized.startsWith("widget-lang-")) {
-      const tag = keyword.slice("widget-lang-".length)
-      return [{label: languageName(tag, locale) ?? naturalName(tag), icon: "KeywordLanguage"}]
+    if(Object.hasOwn(widgetTypes, normalized)) {
+      types.push({kind: "type", ...widgetTypes[normalized]})
+      continue
     }
 
-    const levelCode = normalized.match(/^isced2011-(\d+)$/)?.[1]
-    if(levelCode && educationLevels[levelCode[0]]) return [educationLevels[levelCode[0]]]
-
-    const fieldCode = normalized.match(/^iscedf2013-(\d+)$/)?.[1]
-    if(fieldCode && educationFields[fieldCode.slice(0, 2)]) {
-      return [educationFields[fieldCode.slice(0, 2)]]
+    if(normalized.startsWith(languagePrefix) && normalized.length > languagePrefix.length) {
+      const language = baseLanguage(normalized.slice(languagePrefix.length))
+      if(!language || seenLanguages.has(language)) continue
+      seenLanguages.add(language)
+      const label = languageName(language, locale) ?? naturalName(language)
+      const group = preferredLanguages.has(language) ? languages : additionalLanguages
+      group.push(label)
+      continue
     }
 
-    return [{label: naturalName(keyword)}]
-  })
+    const level = normalized.match(/^isced2011-(\d)\d*$/)?.[1]
+    if(level) {
+      levels.add(level)
+      continue
+    }
 
-  return [...new Map(presentations.map(presentation => [presentation.label, presentation])).values()]
+    const field = normalized.match(/^iscedf2013-(\d{2})\d*$/)?.[1]
+    if(field && educationFields[field]) {
+      fields.add(field)
+      continue
+    }
+
+    if(keyword.trim()) custom.push({kind: "custom", label: keyword})
+  }
+
+  // The desktop palette treats levels 2 and 3 together as secondary education.
+  if(levels.has("2") && levels.has("3")) {
+    for(const level of ["2", "3", "4"]) levels.delete(level)
+    levels.add("2-4")
+  }
+  if(higherLevels.every(level => levels.has(level))) {
+    for(const level of higherLevels) levels.delete(level)
+    levels.add("5-8")
+  }
+
+  const fieldCodes = coreFields.every(field => fields.has(field)) ? ["all"] : [...fields].sort()
+  const online = (Object.keys(onlineLabels) as (keyof typeof onlineLabels)[])
+    .find(keyword => normalizedKeywords.has(keyword))
+  const badges = [...types]
+  if(languages.length || additionalLanguages.length) {
+    badges.push({kind: "language", label: languages.join(", "), icon: "KeywordLanguage", additionalLanguages})
+  }
+  for(const code of fieldCodes) badges.push({kind: "field", ...educationFields[code]})
+  if(online) badges.push({kind: "online", label: onlineLabels[online], icon: "KeywordOnline"})
+  for(const level of [...levels].sort()) badges.push({kind: "level", ...educationLevels[level]})
+  return badges.concat(custom)
 }

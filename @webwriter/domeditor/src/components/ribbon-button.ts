@@ -1,6 +1,7 @@
 import {dropdownContentStyles, sharingLinkStyles, switchInputStyles} from "./dropdown-content.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
+import {keyed} from "lit/directives/keyed.js"
 import { ribbonIcon } from "../ribbon-icons"
 import {createAnchorPositioner} from "../anchor-positioning.js"
 import {popupAnchorCSS} from "./popup-position"
@@ -768,7 +769,24 @@ export class RibbonButton extends LitElement {
 
     :host([details-open]) .details { display: block; }
     .details.disabled-reason { width: max-content; overflow-wrap: anywhere; }
+    .package-details {
+      width: min(25rem, calc(100vw - 1rem));
+      color: hsl(240 7.3% 8%);
+      overflow-wrap: anywhere;
+    }
+    .package-details .details-heading {
+      display: grid;
+      grid-template-columns: 2.5rem minmax(0, 1fr);
+      column-gap: 0.5rem;
+    }
+    .button-icon.details-heading-icon {
+      position: relative;
+      width: 100%;
+      height: auto;
+    }
+    .details-heading-icon svg { position: absolute; inset: 0; }
     .details h3 { margin: 0; font-size: 0.8rem; }
+    .package-details h3 { font-size: 0.75rem; }
     .details-subheading { color: #667085; font-size: 0.63rem; }
     .details-authors {
       overflow: hidden;
@@ -785,22 +803,30 @@ export class RibbonButton extends LitElement {
     .details-keywords {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.2rem 0.45rem;
+      gap: 5px;
       margin-top: 0.4rem;
-      color: #667085;
-      font-size: 0.63rem;
+      font-size: 0.9em;
     }
     .details-keyword {
       display: inline-flex;
       align-items: center;
-      gap: 0.18rem;
+      gap: 4px;
+      min-width: 0;
+      min-height: 18px;
+      padding: 0 4px;
+      border: 1px solid currentColor;
+      border-radius: 5px;
+      background: hsl(240 5.9% 90%);
     }
+    .details-keyword[data-kind="type"] { background: hsl(34.3 100% 91.8%); }
+    .details-keyword[data-kind="language"] { background: hsl(0 93.3% 94.1%); }
+    .details-keyword[data-kind="field"] { background: #fff; }
+    .details-keyword[data-kind="online"] { background: hsl(214.3 94.6% 92.7%); }
+    .details-keyword[data-kind="level"] { background: hsl(140.6 84.2% 92.5%); }
     .details-keyword-icon {
       display: inline-flex;
-      flex: 0 0 0.72rem;
-      width: 0.72rem;
-      height: 0.72rem;
-      color: #526b86;
+      flex: 0 0 16px;
+      height: 16px;
     }
     .details-keyword-icon svg { display: block; width: 100%; height: 100%; }
 
@@ -1387,17 +1413,21 @@ export class RibbonButton extends LitElement {
     return html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
       <slot name="icon">${this.hoverIcon ? html`<span class="button-icon-default">${ribbonIcon(icon)}</span>` : ribbonIcon(icon)}
       ${this.hoverIcon ? html`<span class="button-icon-hover">${ribbonIcon(this.hoverIcon)}</span>` : nothing}</slot>
-      ${this.iconUrl ? html`<img
-        src=${this.iconUrl}
-        alt=""
-        draggable="false"
-        @error=${(event: Event) => {
-          const image = event.currentTarget as HTMLImageElement
-          image.parentElement?.classList.remove("image-icon")
-          image.remove()
-        }}
-      />` : ""}
+      ${this.renderIconImage()}
     </span>`
+  }
+
+  private renderIconImage() {
+    return this.iconUrl ? html`<img
+      src=${this.iconUrl}
+      alt=""
+      draggable="false"
+      @error=${(event: Event) => {
+        const image = event.currentTarget as HTMLImageElement
+        image.parentElement?.classList.remove("image-icon")
+        image.remove()
+      }}
+    />` : nothing
   }
 
   private scheduleDetailsShow = () => {
@@ -1586,25 +1616,38 @@ export class RibbonButton extends LitElement {
           @mouseenter=${this.cancelDetailsHide} @mouseleave=${this.leaveDetails}>${disabledTooltip}</aside>
       ` : this.details ? html`
         <aside
-          class="details"
+          class=${this.variant === "package" ? "details package-details" : "details"}
           role="tooltip"
           popover="manual"
           @mouseenter=${this.cancelDetailsHide}
           @mouseleave=${this.leaveDetails}
         >
-          <h3>${this.details.heading}</h3>
-          ${this.details.subheading ? html`<div class="details-subheading">${this.details.subheading}</div>` : ""}
-          ${this.details.authors?.length ? html`
-            <div class="details-authors" title=${this.details.authors.join(", ")}>By ${this.details.authors.join(", ")}</div>
-          ` : ""}
+          <div class="details-heading">
+            ${this.variant === "package" && this.detailsOpen ? keyed(this.iconUrl, html`
+              <span class=${`button-icon details-heading-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
+                ${ribbonIcon(this.icon || "Packages")}
+                ${this.renderIconImage()}
+              </span>
+            `) : nothing}
+            <div>
+              <h3>${this.details.heading}</h3>
+              ${this.details.subheading ? html`<div class="details-subheading">${this.details.subheading}</div>` : ""}
+              ${this.details.authors?.length ? html`
+                <div class="details-authors" title=${this.details.authors.join(", ")}>By ${this.details.authors.join(", ")}</div>
+              ` : ""}
+            </div>
+          </div>
           ${this.details.description ? html`<p class="details-description">${this.details.description}</p>` : ""}
           ${this.details.fields?.length ? html`<dl>${this.details.fields.map(field => html`<dt>${field.label}</dt><dd>${field.value}</dd>`)}</dl>` : ""}
           ${this.details.keywords?.length ? html`
             <div class="details-keywords">
               ${this.details.keywords.map(keyword => html`
-                <span class="details-keyword">
+                <span class="details-keyword" data-kind=${keyword.kind}>
                   ${keyword.icon ? html`<span class="details-keyword-icon" aria-hidden="true">${ribbonIcon(keyword.icon)}</span>` : ""}
-                  <span>${keyword.label}</span>
+                  ${keyword.label ? html`<span>${keyword.label}</span>` : nothing}
+                  ${keyword.additionalLanguages?.length ? html`
+                    <span title=${keyword.additionalLanguages.join(", ")}>+${keyword.additionalLanguages.length}</span>
+                  ` : nothing}
                 </span>
               `)}
             </div>

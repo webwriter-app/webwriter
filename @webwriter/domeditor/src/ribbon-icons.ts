@@ -61,6 +61,7 @@ import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 export {captionIconSource} from "./caption-icon"
 
 import anchor from "@tabler/icons/outline/anchor.svg?raw"
+import hash from "@tabler/icons/outline/hash.svg?raw"
 import artboard from "@tabler/icons/outline/artboard.svg?raw"
 import balloon from "@tabler/icons/outline/balloon.svg?raw"
 import balloonFilled from "@tabler/icons/filled/balloon.svg?raw"
@@ -103,6 +104,7 @@ import deviceFloppy from "@tabler/icons/outline/device-floppy.svg?raw"
 import upload from "@tabler/icons/outline/upload.svg?raw"
 import download from "@tabler/icons/outline/download.svg?raw"
 import dots from "@tabler/icons/outline/dots.svg?raw"
+import dotsVertical from "@tabler/icons/outline/dots-vertical.svg?raw"
 import file from "@tabler/icons/outline/file.svg?raw"
 import fileSignal from "@tabler/icons/outline/file-signal.svg?raw"
 import fileDescription from "@tabler/icons/outline/file-description.svg?raw"
@@ -227,27 +229,30 @@ import variable from "@tabler/icons/outline/variable.svg?raw"
 import vocabulary from "@tabler/icons/outline/vocabulary.svg?raw"
 import x from "@tabler/icons/outline/x.svg?raw"
 import search from "@tabler/icons/outline/search.svg?raw"
-import babyCarriage from "@tabler/icons/outline/baby-carriage.svg?raw"
+import alertSquare from "@tabler/icons/outline/alert-square.svg?raw"
 import backpack from "@tabler/icons/outline/backpack.svg?raw"
-import bell from "@tabler/icons/outline/bell.svg?raw"
+import book from "@tabler/icons/outline/book.svg?raw"
+import book2 from "@tabler/icons/outline/book-2.svg?raw"
 import books from "@tabler/icons/outline/books.svg?raw"
 import briefcase from "@tabler/icons/outline/briefcase.svg?raw"
-import buildingBank from "@tabler/icons/outline/building-bank.svg?raw"
-import bulb from "@tabler/icons/outline/bulb.svg?raw"
-import certificate from "@tabler/icons/outline/certificate.svg?raw"
-import checklist from "@tabler/icons/outline/checklist.svg?raw"
-import deviceLaptop from "@tabler/icons/outline/device-laptop.svg?raw"
-import flask from "@tabler/icons/outline/flask.svg?raw"
+import buildingStore from "@tabler/icons/outline/building-store.svg?raw"
+import chalkboard from "@tabler/icons/outline/chalkboard.svg?raw"
+import cpu from "@tabler/icons/outline/cpu.svg?raw"
+import heartbeat from "@tabler/icons/outline/heartbeat.svg?raw"
+import helpSquare from "@tabler/icons/outline/help-square.svg?raw"
+import horseToy from "@tabler/icons/outline/horse-toy.svg?raw"
+import infoSquare from "@tabler/icons/outline/info-square.svg?raw"
+import microscope from "@tabler/icons/outline/microscope.svg?raw"
 import news from "@tabler/icons/outline/news.svg?raw"
-import presentation from "@tabler/icons/outline/presentation.svg?raw"
 import refresh from "@tabler/icons/outline/refresh.svg?raw"
 import bolt from "@tabler/icons/outline/bolt.svg?raw"
 import school from "@tabler/icons/outline/school.svg?raw"
-import stethoscope from "@tabler/icons/outline/stethoscope.svg?raw"
-import tools from "@tabler/icons/outline/tools.svg?raw"
+import squareAsterisk from "@tabler/icons/outline/square-asterisk.svg?raw"
+import squareChevronRight from "@tabler/icons/outline/square-chevron-right.svg?raw"
+import squareDot from "@tabler/icons/outline/square-dot.svg?raw"
+import tool from "@tabler/icons/outline/tool.svg?raw"
 import tractor from "@tabler/icons/outline/tractor.svg?raw"
 import wifi from "@tabler/icons/outline/wifi.svg?raw"
-import world from "@tabler/icons/outline/world.svg?raw"
 
 const iconContents = (icon: string) => icon.match(/<svg[^>]*>([\s\S]*?)<\/svg>/)?.[1] ?? ""
 
@@ -305,6 +310,7 @@ const icons: Record<string, string> = {
   AutoReload: autoReloadIcon(),
   AutoReloadOff: autoReloadIcon(true),
   Anchor: anchor,
+  Hash: hash,
   Balloon: balloon,
   BalloonFilled: balloonFilled,
   Document: fileDescription,
@@ -464,6 +470,7 @@ const icons: Record<string, string> = {
   Highlight: highlight,
   Superscript: superscript,
   More: dots,
+  MoreVertical: dotsVertical,
   Spelling: textSpellcheck,
   Grammar: textGrammar,
   Translate: language,
@@ -490,30 +497,28 @@ const icons: Record<string, string> = {
   Goto: search,
   KeywordOnline: wifi,
   KeywordLanguage: language,
-  KeywordPresentation: presentation,
-  KeywordPractice: checklist,
-  KeywordSimulation: refresh,
-  KeywordConcept: bulb,
-  KeywordInformation: infoCircle,
-  KeywordContext: world,
-  EducationEarlyChildhood: babyCarriage,
-  EducationPrimary: backpack,
-  EducationSecondary: school,
-  EducationPostSecondary: certificate,
-  EducationTertiary: buildingBank,
-  EducationDegree: certificate,
-  EducationOther: books,
+  KeywordPresentation: alertSquare,
+  KeywordPractice: helpSquare,
+  KeywordSimulation: squareChevronRight,
+  KeywordConcept: squareDot,
+  KeywordInformation: infoSquare,
+  KeywordContext: squareAsterisk,
+  EducationEarlyChildhood: horseToy,
+  EducationSchool: backpack,
+  EducationHigher: school,
+  EducationOther: book2,
   EducationFieldGeneral: books,
-  EducationFieldEducation: school,
-  EducationFieldArts: palette,
+  EducationFieldEducation: chalkboard,
+  EducationFieldArts: brush,
   EducationFieldSocialSciences: news,
   EducationFieldBusiness: briefcase,
-  EducationFieldSciences: flask,
-  EducationFieldTechnology: deviceLaptop,
-  EducationFieldEngineering: tools,
+  EducationFieldSciences: microscope,
+  EducationFieldTechnology: cpu,
+  EducationFieldEngineering: tool,
   EducationFieldAgriculture: tractor,
-  EducationFieldHealth: stethoscope,
-  EducationFieldServices: bell,
+  EducationFieldHealth: heartbeat,
+  EducationFieldServices: buildingStore,
+  EducationFieldOther: book,
   About: infoCircle,
   Margins: boxMargin,
   Columns: columns3,

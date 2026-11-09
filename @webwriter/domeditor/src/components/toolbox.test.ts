@@ -7,6 +7,7 @@ import {RibbonDrawer} from "./ribbon-drawer"
 import {AIProviderStore} from "../ai-provider"
 import {emptyProofreadingState, emptyVersionHistoryState} from "../editor-bridge"
 import {emptyDocumentHeadState} from "../document-head"
+import {formatShortcut} from "../app-settings"
 import type {DistributionConfig, DistributionItem} from "../distribution.js"
 import type {DistributionSelectionState} from "./distribution-controls"
 
@@ -415,7 +416,7 @@ describe("toolbox", () => {
 
     const review = toolButton(toolbox, "Review")
     expect(review.getAttribute("aria-label")).toBe("Review. Issue checker unavailable")
-    expect(review.title).toBe("Issue checker unavailable")
+    expect(review.title).toBe(`Issue checker unavailable (${formatShortcut(toolbox.settings.shortcuts["toolbox.review"])})`)
     expect(review.querySelector(".proofreading-error-badge")?.textContent).toBe("!")
 
     review.click()
