@@ -7,7 +7,7 @@ import {Generator, Provider, setFetch, fetch as jspmFetch} from "@jspm/generator
 import {ImportMap, IImportMap} from "@jspm/import-map"
 import {BuildOptions} from "esbuild-wasm"
 import { SemVer } from "semver"
-import publishedPackageIDs from "./published-packages.json"
+import publishedPackageMajors from "./published-packages.json"
 
 
 SemVer.prototype.toString = function(this) {
@@ -526,16 +526,20 @@ async function deleteSnippet(id: string) {
 }
 
 async function getPackages(ids: string[]) {
-  // Freeze discovery and update suggestions for WebWriter 1. Explicit IDs still load as requested.
-  const pkgIds = ids.length
-    ? ids.map(id => id.startsWith("@")? id.split("/").slice(0, 2).join("/"): id.split("/")[0])
-    : publishedPackageIDs
-  const _ids = pkgIds.map(id => `${id}/package.json`)
-  const pkgs = (await Promise.allSettled(_ids.map(async id => {
-    const resp = await getAsset(id)
+  const fromCatalog = !ids.length
+  const pkgIds = fromCatalog
+    ? publishedPackageMajors
+    : ids.map(id => id.startsWith("@")? id.split("/").slice(0, 2).join("/"): id.split("/")[0])
+  const pkgs = (await Promise.allSettled(pkgIds.map(async pkgId => {
+    const path = `${pkgId}/package.json`
+    // jsDelivr resolves the catalog's major aliases. Explicit requests keep their existing asset path.
+    const resp = fromCatalog? await fetch(new URL(path, CDN_URL)): await getAsset(path)
     const json = await resp.json()
-    const isLocal = new SemVer(id.split("/")[1].split("@").at(-1)!).prerelease.includes("local")
     const version = new SemVer(json.version)
+    if(fromCatalog && (pkgId !== `${json.name}@${version.major}` || version.prerelease.length)) {
+      throw Error(`Unexpected published package for ${pkgId}`)
+    }
+    const isLocal = !fromCatalog && new SemVer(path.split("/")[1].split("@").at(-1)!).prerelease.includes("local")
     if(isLocal) {
       version.prerelease = [...version.prerelease, "local"]
     }
