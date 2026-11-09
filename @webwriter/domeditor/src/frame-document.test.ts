@@ -4,7 +4,7 @@ import {bundleLocalPreviewPackages, editorFrameHTML, previewFrameHTML, type Edit
 import * as offlineBundler from "./offline-module-bundler"
 import {defaultDocumentTheme, documentTheme} from "./document-themes"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "./local-package-worker"
-import {packageImportMapId} from "./package-dependencies"
+import {packageImportMapId, packageImportMapScript} from "./package-dependencies"
 import {appendSerializedAssets, originalURLAttribute} from "./serialization"
 import type {WebWriterPackage} from "./packages"
 import legacyLayoutExample from "../examples/layouts/document.html?raw"
@@ -328,6 +328,18 @@ describe("isolated frame documents", () => {
     expect(root.querySelectorAll("img")[1].getAttribute("src")).toBe(`${hostOrigin}/authored.png`)
     expect(pkg.scripts).toEqual([script])
     expect(pkg.members[0].scriptUrl).toBe(script)
+  })
+
+  it("replaces the editor CSP when a widget import map precedes it in the snapshot", () => {
+    const source = parse(editorFrameHTML('<html><head><meta name="description" content="Lesson"></head><body><demo-widget></demo-widget></body></html>', editorOptions()))
+    source.head.prepend(packageImportMapScript(source, {imports: {"widget-dependency": "https://cdn.example/widget-dependency.js"}}))
+
+    const preview = parse(previewFrameHTML(parse(source.documentElement.outerHTML), previewOptions()))
+    const policies = preview.head.querySelectorAll('meta[http-equiv="Content-Security-Policy"]')
+    expect(policies).toHaveLength(1)
+    expect(policies[0].getAttribute("content")).not.toContain(`'nonce-${editorOptions().bridgeNonce}'`)
+    expect(preview.head.querySelector('meta[name="webwriter-editor-bridge"]')).toBeNull()
+    expect(preview.head.querySelector('meta[name="description"]')?.getAttribute("content")).toBe("Lesson")
   })
 
   it("replaces the host preview policy when preparing a learner preview with fresh script nonces", () => {
