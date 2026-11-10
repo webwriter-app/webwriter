@@ -58,17 +58,22 @@ describe("Bunny Fonts", () => {
     expect(widget.outerHTML).toBe("<test-widget></test-widget>")
   })
 
-  it("links a used font when a nested CSS rule's style lacks a fontFamily property", () => {
+  it("finds font families and custom properties after a nested CSS descriptor block", () => {
+    const customHref = bunnyFontStylesheet({...font, familyName: "Zilla Slab"})
     const style = document.createElement("style")
-    style.textContent = "@media screen { .popup { top: 0; } .custom { font-family: Alegreya, serif; } }"
+    style.textContent = `@media screen {
+      .popup { top: 0; }
+      .custom { font-family: Alegreya, serif; --custom-font: "Zilla Slab", serif; }
+    }`
     document.head.append(style)
     const rules = (style.sheet!.cssRules[0] as CSSGroupingRule).cssRules
     // Emulate the descriptor block of a native @position-try rule.
-    Object.defineProperty((rules[0] as CSSStyleRule).style, "fontFamily", {value: undefined})
+    const descriptors = (rules[0] as CSSStyleRule).style
+    Object.defineProperties(descriptors, {fontFamily: {value: undefined}, 0: {value: undefined}})
 
-    syncFontResources(document, new Map([["alegreya", href]]))
+    syncFontResources(document, new Map([["alegreya", href], ["zilla slab", customHref]]))
 
-    expect(document.head.querySelector("link")?.href).toBe(href)
+    expect([...document.head.querySelectorAll("link")].map(link => link.href)).toEqual([href, customHref])
   })
 
   it("recognizes imported Bunny catalog slugs without dropping a used resource", () => {

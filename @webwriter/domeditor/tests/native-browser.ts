@@ -6437,6 +6437,61 @@ await check("local fonts embed selected bytes and load under the editor CSP", as
   }
 })
 
+await check("custom fonts load and survive selection changes with the document theme", async () => {
+  const {embedFontFiles} = await import("../src/local-fonts")
+  const bytes = await (await fetch(localFontURL)).blob()
+  const font = await embedFontFiles([bytes])
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:700px;height:350px"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head>
+    <body><h1>Font sample x</h1><p>Another paragraph</p>
+    <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script></body>`
+  nativeRootEditor.addAppendix(frame)
+  try {
+    for(let attempt = 0; !frame.contentWindow?.editor && attempt < 200; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    const view = frame.contentWindow!, editor = view.editor!, doc = frame.contentDocument!
+    assert(editor, `custom font editor did not initialize: ${view.editorError}`)
+    const errors: string[] = []
+    view.addEventListener("error", event => errors.push(event.message))
+    const selection = doc.getSelection()!
+    const heading = doc.querySelector("h1")!, paragraph = doc.querySelector("p")!
+    const setFont = (value: string, fontStylesheet?: string) => editor.features.mark.actions.setStyleMark({
+      type: "setStyleMark", property: "font-family", value, fontStylesheet,
+    })
+    const fontLinks = () => [...doc.head.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')]
+      .filter(link => link.href === font.stylesheet)
+    const selectHeading = () => {
+      const range = doc.createRange()
+      range.selectNodeContents(heading)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+    doc.body.focus()
+    selectHeading()
+    assert(setFont(font.value, font.stylesheet), "custom font was not applied to the selected heading")
+    const [link] = fontLinks()
+    assert(link, "applying the custom font did not add its stylesheet")
+    if(!link.sheet) await new Promise<void>((resolve, reject) => {
+      link.addEventListener("load", () => resolve(), {once: true})
+      link.addEventListener("error", () => reject(new Error("custom font stylesheet failed to load")), {once: true})
+    })
+    const faces = await doc.fonts.load(`16px ${JSON.stringify(font.family)}`, "x")
+    assert(faces.length > 0 && faces.every(face => face.status === "loaded"), "the selected font face did not load")
+    assert(view.getComputedStyle(heading.querySelector("span")!).fontFamily.includes(font.family), "heading uses the fallback family")
+
+    selection.collapse(paragraph.firstChild, 1)
+    await layoutFrame()
+    assert(fontLinks().length === 1 && faces.every(face => doc.fonts.has(face)), "moving the caret discarded the heading's font")
+
+    selectHeading()
+    assert(setFont(""), "custom font could not be removed")
+    await layoutFrame()
+    assert(fontLinks().length === 0, "clearing the last use retained the custom font stylesheet")
+    assert(errors.length === 0, `font changes raised browser errors: ${errors.join(", ")}`)
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("ribbon shapes retain their aspect ratio under the document theme", async () => {
   const theme = document.createElement("style")
   theme.textContent = defaultDocumentTheme.source
