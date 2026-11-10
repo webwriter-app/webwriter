@@ -1,7 +1,7 @@
 import {markEditorOnlyNode} from "./editor-artifacts"
 import type {IImportMap} from "@jspm/import-map"
-import type {WebWriterPackage, WebWriterPackageRegistry} from "./packages"
-import {canonicalNpmUrl, fetchWithin, JSDELIVR_DATA_ENDPOINT, JSDELIVR_NPM_ENDPOINT, NPM_FILE_MIRRORS, NPM_FILE_TIMEOUT_MS, NPM_REGISTRY_ENDPOINT} from "./npm-files"
+import {packageUpdateKind, packageVersionMajor, type WebWriterPackage, type WebWriterPackageRegistry} from "./packages"
+import {canonicalNpmUrl, fetchWithin, JSDELIVR_DATA_ENDPOINT, JSDELIVR_NPM_ENDPOINT, NPM_FILE_MIRRORS, NPM_FILE_TIMEOUT_MS, npmPublishedVersions} from "./npm-files"
 export {runtimeDocumentBaseURL} from "./document-base-url"
 
 /** Runtime assets and their exact browser resolutions for one installed set. */
@@ -34,68 +34,94 @@ export function packageModuleEntries(packages: WebWriterPackage[]) {
   return [...new Set(packages.flatMap(pkg => pkg.scripts))]
 }
 
-const exactVersion = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
-
-/** Finds pinned published WebWriter packages referenced by an authored document.
- * Offline exports are restored on a clone so their original bundle metadata stays intact. */
+/** Resolve the pinned packages for a preview, or compatible packages for editing.
+ * When editing, retire saved widget resources so the frame and subsequent exports
+ * get those resources from the resolved packages. */
 export async function loadDocumentPackages(
   source: Document,
   registry?: WebWriterPackageRegistry,
   installed: WebWriterPackage[] = [],
+  {forEditing = false}: {forEditing?: boolean} = {},
 ): Promise<WebWriterPackage[]> {
-  const restored = source.cloneNode(true) as Document
+  const restored = forEditing ? source : source.cloneNode(true) as Document
   const packageProvider = npmFileProvider(JSDELIVR_NPM_ENDPOINT)
   const {restoreOriginalResourceURLs} = await import("./serialization")
   restoreOriginalResourceURLs(restored)
 
   const scripts: HTMLScriptElement[] = []
-  const collectScripts = (root: ParentNode) => {
+  const styles: HTMLLinkElement[] = []
+  const collectAssets = (root: ParentNode) => {
     root.querySelectorAll<HTMLScriptElement>('script[type="module"][src]').forEach(script => scripts.push(script))
-    root.querySelectorAll<HTMLTemplateElement>("template").forEach(template => collectScripts(template.content))
+    if(forEditing) root.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]').forEach(link => styles.push(link))
+    root.querySelectorAll<HTMLTemplateElement>("template").forEach(template => collectAssets(template.content))
   }
-  collectScripts(restored)
+  collectAssets(restored)
 
-  const references = new Map<string, {name: string, version: string}>()
-  const authoredByPackage = new Map<string, Set<string>>()
-  const versionsByName = new Map<string, string>()
+  const references = new Map<string, {name: string, version: string, scripts: Array<{url: string, script: HTMLScriptElement}>}>()
+  const packageURL = (raw: string) => {
+    try { return canonicalNpmUrl(new URL(raw, restored.baseURI).href) }
+    catch { return "" }
+  }
+  const packagePath = (url: string) => url.startsWith(`${JSDELIVR_NPM_ENDPOINT}/`)
+    ? url.slice(JSDELIVR_NPM_ENDPOINT.length + 1).replace(exactPackagePath, "$1$3")
+    : url
   for(const script of scripts) {
-    const raw = script.getAttribute("src")
-    if(!raw) continue
-    let url: string
-    try { url = canonicalNpmUrl(new URL(raw, restored.baseURI).href) }
-    catch { continue }
+    const url = packageURL(script.getAttribute("src")!)
     const ref = packageProvider.parseUrlPkg(url)
-    if(!ref || !ref.name.startsWith("@webwriter/") || !exactVersion.test(ref.version)) continue
-    const previousVersion = versionsByName.get(ref.name)
-    if(previousVersion && previousVersion !== ref.version) {
-      throw new Error(`Document references conflicting versions of ${ref.name}: ${previousVersion} and ${ref.version}`)
+    if(!ref || !ref.name.startsWith("@webwriter/")) continue
+    const version = ref.version.replace(/%2b/gi, "+")
+    if(packageVersionMajor(version) === undefined) continue
+    const reference = references.get(ref.name) ?? {name: ref.name, version, scripts: []}
+    if(reference.version !== version) {
+      if(!forEditing || packageVersionMajor(reference.version) !== packageVersionMajor(version)) {
+        throw new Error(`Document references conflicting versions of ${ref.name}: ${reference.version} and ${version}`)
+      }
+      if(packageUpdateKind(reference.version, version)) reference.version = version
     }
-    versionsByName.set(ref.name, ref.version)
-    const key = `${ref.name}@${ref.version}`
-    references.set(key, {name: ref.name, version: ref.version})
-    const authored = authoredByPackage.get(key) ?? new Set<string>()
-    authored.add(url)
-    authoredByPackage.set(key, authored)
+    reference.scripts.push({url, script})
+    references.set(ref.name, reference)
   }
 
   if(!references.size) return []
   const activeRegistry = registry ?? new (await import("./packages")).WebWriterPackageRegistry()
-  const installedByKey = new Map(installed.map(pkg => [`${pkg.name}@${pkg.version}`, pkg]))
-  const packages = await Promise.all([...references].map(async([key, reference]) => {
-    const existing = installedByKey.get(key)
-    const installedScripts = new Set(existing?.scripts.map(url => canonicalNpmUrl(url)) ?? [])
-    const hasAllAuthoredScripts = [...(authoredByPackage.get(key) ?? [])].every(url => installedScripts.has(url))
-    return existing && hasAllAuthoredScripts ? existing : await activeRegistry.getPackage(reference)
+  const packages = await Promise.all([...references.values()].map(async({name, version: pinned, scripts: authored}) => {
+    let version = pinned
+    const existing = installed.find(pkg => pkg.name === name && !pkg.developerSource && (forEditing || pkg.version === pinned))
+    if(forEditing) {
+      if(existing && packageUpdateKind(version, existing.version) === "compatible") version = existing.version
+      // If metadata is temporarily unavailable, an installed compatible version
+      // or the document's pinned version can still be loaded.
+      version = await activeRegistry.latestCompatibleVersion(name, version).catch(() => version)
+    }
+    const installedScripts = new Set(existing?.scripts.map(canonicalNpmUrl) ?? [])
+    const reuse = existing?.version === version && (version === pinned
+      ? authored.every(({url}) => installedScripts.has(url))
+      : existing.manifest && authored.every(({url}) => existing.scripts.some(script => packagePath(canonicalNpmUrl(script)) === packagePath(url))))
+    const pkg = reuse ? existing : await activeRegistry.getPackage({name, version})
+    const order = authored.map(({url}) => forEditing ? packagePath(url) : url)
+    const position = (url: string) => {
+      const canonical = canonicalNpmUrl(url)
+      const index = order.indexOf(forEditing ? packagePath(canonical) : canonical)
+      return index === -1 ? Infinity : index
+    }
+    return {...pkg, scripts: [...pkg.scripts].sort((a, b) => position(a) - position(b))}
   }))
-  const authoredOrder = scripts.flatMap(script => {
-    try { return [canonicalNpmUrl(new URL(script.getAttribute("src")!, restored.baseURI).href)] }
-    catch { return [] }
-  })
-  return packages.map(pkg => ({...pkg, scripts: [...pkg.scripts].sort((a, b) => {
-    const index = (url: string) => authoredOrder.indexOf(canonicalNpmUrl(url))
-    const order = (url: string) => index(url) === -1 ? Infinity : index(url)
-    return order(a) - order(b)
-  })}))
+  if(forEditing) {
+    const managedStyles = new Set(packages.flatMap(pkg => pkg.styles.map(url => packagePath(canonicalNpmUrl(url)))))
+    for(const pkg of packages) {
+      if(!pkg.scripts.length) continue
+      for(const {url, script} of references.get(pkg.name)?.scripts ?? []) {
+        managedStyles.add(packagePath(url).replace(/\.(?:m?js)$/, ".css"))
+        script.remove()
+      }
+    }
+    for(const link of styles) {
+      const url = packageURL(link.getAttribute("href")!)
+      const ref = packageProvider.parseUrlPkg(url)
+      if(ref && references.has(ref.name) && managedStyles.has(packagePath(url))) link.remove()
+    }
+  }
+  return packages
 }
 
 /** Whether an npm file host answers at all, probed with a small published file. */
@@ -124,10 +150,7 @@ function publishedVersions(name: string, cache: PublishedVersionCache) {
         }
       }
       catch { /* Use the registry below. */ }
-      const response = await fetchWithin(globalThis.fetch.bind(globalThis), `${NPM_REGISTRY_ENDPOINT}/${name.replace("/", "%2f")}`, {headers: {accept: "application/vnd.npm.install-v1+json"}}, NPM_FILE_TIMEOUT_MS)
-      if(response.status === 404) return []
-      if(!response.ok) throw new Error(`The versions of ${name} could not be read (${response.status})`)
-      return Object.keys((await response.json() as {versions?: Record<string, unknown>}).versions ?? {})
+      return npmPublishedVersions(name, globalThis.fetch.bind(globalThis))
     })()
     cache.set(name, request)
     request.catch(() => cache.delete(name))

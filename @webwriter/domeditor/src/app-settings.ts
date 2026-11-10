@@ -225,6 +225,7 @@ export type AppSettings = {
   showGuidedTour: boolean
   pinDeveloperConsole: boolean
   autoReloadPackages: boolean
+  autoUpdatePackages: boolean
   autosaveCloudOnBundleChange: boolean
   disableAnimations: boolean
   shortcuts: Record<string, string>
@@ -249,6 +250,7 @@ export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
     showGuidedTour: true,
     pinDeveloperConsole: false,
     autoReloadPackages: true,
+    autoUpdatePackages: true,
     autosaveCloudOnBundleChange: false,
     disableAnimations: false,
     shortcuts: Object.fromEntries(appCommands.map(command => [
@@ -358,6 +360,9 @@ export function loadAppSettings(): AppSettings {
       autoReloadPackages: typeof value.autoReloadPackages === "boolean"
         ? value.autoReloadPackages
         : defaults.autoReloadPackages,
+      autoUpdatePackages: typeof value.autoUpdatePackages === "boolean"
+        ? value.autoUpdatePackages
+        : defaults.autoUpdatePackages,
       autosaveCloudOnBundleChange: typeof value.autosaveCloudOnBundleChange === "boolean"
         ? value.autosaveCloudOnBundleChange : defaults.autosaveCloudOnBundleChange,
       shortcuts,

@@ -1,5 +1,5 @@
 import {dropdownContentStyles, sharingLinkStyles, switchInputStyles} from "./dropdown-content.styles"
-import {editorInteractionStyles} from "./editing-controls.styles"
+import {editorInteractionStyles, packageUpdateStyles} from "./editing-controls.styles"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
 import {keyed} from "lit/directives/keyed.js"
 import { ribbonIcon } from "../ribbon-icons"
@@ -51,6 +51,7 @@ export class RibbonButton extends LitElement {
     corner: {type: String},
     cornerLabel: {type: String, attribute: "corner-label"},
     cornerAction: {type: String, attribute: "corner-action"},
+    packageUpdate: {attribute: false},
     keepDrawerOpen: {type: Boolean, attribute: "keep-drawer-open"},
     openDrawer: {type: Boolean, attribute: "open-drawer"},
     management: {type: Boolean, reflect: true},
@@ -1097,6 +1098,20 @@ export class RibbonButton extends LitElement {
       color: #991b1b;
     }
 
+    ${packageUpdateStyles}
+
+    :host([variant="package"]) .button-row:has(.package-update) .main-button {
+      padding-inline-end: 1.75rem;
+    }
+
+    :host([variant="package"]) button.package-update {
+      inset-inline-end: 1.45rem;
+    }
+
+    :host([variant="package"]) .button-row:not([data-connected]) button.package-update:not(:disabled):active {
+      background: #a8c9ee;
+    }
+
     .button-row[data-connected],
     :host([package-add]) .button-row[data-connected] {
       border: 1px solid #a8a8a8;
@@ -1151,6 +1166,7 @@ export class RibbonButton extends LitElement {
   corner = ""
   cornerLabel = ""
   cornerAction = ""
+  packageUpdate?: {action: string, label: string}
   keepDrawerOpen = false
   openDrawer = false
   management = false
@@ -1557,6 +1573,12 @@ export class RibbonButton extends LitElement {
             ${this.selectionCount > 0 ? html`<small class="selection-count">+${this.selectionCount}</small>`: ""}
           </span>
         </button>
+        ${this.packageUpdate ? html`
+          <button class="package-update" type="button" aria-label=${this.packageUpdate.label} title=${this.packageUpdate.label}
+            ?disabled=${this.loading || this.disabled} @click=${() => this.dispatchClick(this.packageUpdate!.action)}>
+            ${ribbonIcon("Refresh")}
+          </button>
+        ` : nothing}
         <slot name="trailing"></slot>
         ${this.corner === "close" ? html`
           <button

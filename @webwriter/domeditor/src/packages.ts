@@ -1,6 +1,6 @@
 import type {WidgetEditingConfig, WidgetSchemaDefinition} from "./schema"
 import {stripActiveContent} from "./active-content"
-import {fetchNpmFile, JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT} from "./npm-files"
+import {fetchNpmFile, JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT, npmPublishedVersions} from "./npm-files"
 
 export {JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT}
 export const NPM_SEARCH_ENDPOINT = "https://registry.npmjs.org/-/v1/search"
@@ -294,6 +294,24 @@ export function packageDocumentationExcerpt(markdown: string, options: PackageDo
 export const packageMemberAction = (member: Pick<PackageMember, "id">) => `package-member:${member.id}`
 export const packageAction = (pkg: Pick<WebWriterPackage, "name">) => `package:${pkg.name}`
 export const packageToggleAction = (pkg: Pick<WebWriterPackage, "name">) => `package-toggle:${pkg.name}`
+export const packageUpdateAction = (pkg: Pick<WebWriterPackage, "name">) => `package-update:${pkg.name}`
+
+const packageVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
+
+export const packageVersionMajor = (version: string) => packageVersionPattern.exec(version)?.[1]
+
+/** Only stable releases are offered as updates. Build metadata does not change precedence. */
+export function packageUpdateKind(current: string, candidate: string): "compatible" | "major" | undefined {
+  const from = packageVersionPattern.exec(current)
+  const to = packageVersionPattern.exec(candidate)
+  if(!from || !to || to[4]) return
+  for(let component = 1; component <= 3; component++) {
+    if(to[component] !== from[component]) {
+      return BigInt(to[component]) > BigInt(from[component]) ? component === 1 ? "major" : "compatible" : undefined
+    }
+  }
+  if(from[4]) return "compatible"
+}
 
 export function packageInsertionItems(packages: WebWriterPackage[], includeUninsertable = false): PackageInsertionItem[] {
   return packages.flatMap(pkg => pkg.members
@@ -720,7 +738,7 @@ export class WebWriterPackageRegistry {
       url.searchParams.set("text", WEBWRITER_PACKAGE_QUERY)
       url.searchParams.set("size", "250")
       url.searchParams.set("from", String(from))
-      const response = await this.fetcher(url)
+      const response = await this.fetcher(url, {cache: "no-cache"})
       if(!response.ok) throw new Error(`npm package search failed (${response.status})`)
       const result = await response.json() as NpmSearchResponse
       const objects = result.objects ?? []
@@ -744,6 +762,12 @@ export class WebWriterPackageRegistry {
         return summary
       }
     }))
+  }
+
+  async latestCompatibleVersion(name: string, version: string) {
+    const versions = await npmPublishedVersions(name, this.fetcher)
+    return versions.reduce((latest, candidate) => packageUpdateKind(latest, candidate) === "compatible"
+      ? candidate : latest, version)
   }
 
   getPackage(summary: Pick<WebWriterPackage, "name" | "version"> & Partial<WebWriterPackage>) {

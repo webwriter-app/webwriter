@@ -331,9 +331,10 @@ describe("WebWriterPackageRegistry", () => {
       version: "1.0.0",
       keywords: ["webwriter-widget"],
     }}))
-    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
       const url = new URL(String(input))
       if(url.origin === "https://registry.npmjs.org" && url.pathname === "/-/v1/search") {
+        expect(options?.cache).toBe("no-cache")
         const from = Number(url.searchParams.get("from"))
         expect(url.searchParams.get("text")).toBe("scope:webwriter keywords:webwriter-widget")
         return Response.json({total: 252, objects: from === 0 ? packages : [packages[0], {package: {
@@ -350,6 +351,15 @@ describe("WebWriterPackageRegistry", () => {
     expect(result.at(-1)).toMatchObject({name: "@webwriter/last", version: "2.0.0"})
     expect(fetcher.mock.calls.filter(([input]) => String(input).includes("/-/v1/search"))
       .map(([input]) => new URL(String(input)).searchParams.get("from"))).toEqual(["0", "250"])
+  })
+
+  it("looks up the newest stable version in the requested major directly on npm", async () => {
+    const fetcher = vi.fn().mockResolvedValue(Response.json({versions: {
+      "1.9.0": {}, "1.10.1": {}, "1.10.0": {}, "1.11.0-beta.0": {}, "2.0.0": {},
+    }}))
+    const registry = new WebWriterPackageRegistry(fetcher)
+    await expect(registry.latestCompatibleVersion("@webwriter/demo", "1.9.1")).resolves.toBe("1.10.1")
+    expect(fetcher).toHaveBeenCalledWith("https://registry.npmjs.org/%40webwriter%2Fdemo", expect.objectContaining({cache: "no-cache"}))
   })
 
   it("excludes other publishers and accepts a final page without a total", async () => {

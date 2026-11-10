@@ -40,6 +40,17 @@ export async function fetchWithin(fetcher: typeof fetch, url: string, init: Requ
   finally { clearTimeout(timer) }
 }
 
+/** Read version metadata from npm without relying on the search index or a cached packument. */
+export async function npmPublishedVersions(name: string, fetcher: typeof fetch) {
+  const response = await fetchWithin(fetcher, `${NPM_REGISTRY_ENDPOINT}/${encodeURIComponent(name)}`, {
+    headers: {accept: "application/vnd.npm.install-v1+json"},
+    cache: "no-cache",
+  }, NPM_FILE_TIMEOUT_MS)
+  if(response.status === 404) return []
+  if(!response.ok) throw new Error(`The versions of ${name} could not be read (${response.status})`)
+  return Object.keys((await response.json() as {versions?: Record<string, unknown>}).versions ?? {})
+}
+
 /** Fetches a file, retrying jsDelivr npm files on the mirrors when jsDelivr fails, throttles or stalls.
  * A mirror's response is rebuilt without its own URL, so a module fetched this way keeps the requested
  * jsDelivr URL, and with it its import-map scope and relative imports. */

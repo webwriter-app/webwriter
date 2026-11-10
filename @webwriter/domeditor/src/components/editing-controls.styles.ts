@@ -16,6 +16,36 @@ export const editorInteractionStyles = css`
     }
 `
 
+export const packageUpdateStyles = css`
+    button.package-update {
+      position: absolute;
+      z-index: 1;
+      inset-block-start: 50%;
+      translate: 0 -50%;
+      display: grid;
+      place-items: center;
+      width: 1.25rem;
+      height: 1.25rem;
+      min-height: 0;
+      padding: 0;
+      color: #1e4f87;
+      background: rgb(196 220 244 / 65%);
+    }
+
+    button.package-update:not(:disabled):is(:hover, :focus-visible) {
+      background: #c4dcf4;
+    }
+
+    button.package-update:not(:disabled):active {
+      background: #a8c9ee;
+    }
+
+    button.package-update svg {
+      width: 0.8rem;
+      height: 0.8rem;
+    }
+`
+
 export const editingControlStyles = css`
     ${editorInteractionStyles}
     ${choiceGroupStyles}
