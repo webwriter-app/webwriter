@@ -11255,6 +11255,29 @@ describe("DomEditor.execute()", () => {
     })
   })
 
+  it("removes a cross reference from its checked Link menu row and returns focus", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const focusEditor = vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async () => {
+      dispatchMarkState(editor, editorWindow, {canMark: true, marks: []})
+      return true
+    })
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attributes: {a: {href: "#intro"}}})
+    await editor.updateComplete
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    await ribbon.updateComplete
+    const link = ribbon.shadowRoot!.querySelector<RibbonButton>(".mark-span")!
+    await link.updateComplete
+    link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await link.updateComplete
+    const row = link.shadowRoot!.querySelector<HTMLElement>('[title="Remove Cross Reference"]')!
+    expect(row.querySelector("input")?.checked).toBe(true)
+    row.click()
+    expect(execute).toHaveBeenCalledExactlyOnceWith({type: "removeLinkKind", kind: "cross-reference"})
+    await vi.waitFor(() => expect(focusEditor).toHaveBeenCalled())
+    expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBeNull()
+  })
+
   it("shows, closes, reopens, and routes the link keyboard without losing the selection", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

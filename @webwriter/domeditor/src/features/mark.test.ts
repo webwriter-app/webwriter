@@ -1499,6 +1499,76 @@ describe("inline references", () => {
 describe("link keyboard edits", () => {
   const currentIdentity = () => feature.getLinkState()!.identity
 
+  it.each([
+    ["link", 'href="/web"'],
+    ["cross-reference", 'href="#intro"'],
+    ["citation", `href="#source" data-reference='${JSON.stringify({type: "book", title: "Source"})}'`],
+    ["attachment", 'href="/notes.txt" download'],
+  ] as const)("removes an active %s at the caret while preserving its label and authored attributes", (kind, attributes) => {
+    const paragraph = setContent(`<p>Before <a ${attributes} id="label"><em>Label</em><!--keep--></a> after</p>`)
+    const emphasis = paragraph.querySelector("em")!
+    const text = emphasis.firstChild!
+    $.move(text, 2)
+    expect(feature.removeLinkKind(kind)).toBe(true)
+    expect(paragraph.innerHTML).toBe('Before <span id="label"><em>Label</em><!--keep--></span> after')
+    expect(paragraph.querySelector("em")).toBe(emphasis)
+    expect(document.getSelection()?.anchorNode).toBe(text)
+    expect(document.getSelection()?.anchorOffset).toBe(2)
+    expect(feature.removeLinkKind(kind)).toBe(false)
+    editor.doc.undo()
+    expect(document.querySelector("a#label")).not.toBeNull()
+    editor.doc.redo()
+    expect(document.querySelector("span#label")).not.toBeNull()
+  })
+
+  it("removes a partially selected attachment and preserves a backwards selection", () => {
+    const paragraph = setContent('<p><a href="/notes.txt" download><img alt="Cover">Label</a></p>')
+    const image = paragraph.querySelector("img")!
+    const text = image.nextSibling as Text
+    $.selectRange(paragraph, 1, text, 1)
+    expect(feature.removeLinkKind("attachment")).toBe(true)
+    expect(paragraph.querySelector("a")).toBeNull()
+    expect(paragraph.firstChild).toBe(image)
+    const selection = document.getSelection()
+    expect(selection?.toString()).toBe("abel")
+    expect(selection?.anchorNode).toBe(paragraph)
+    expect(selection?.anchorOffset).toBe(2)
+    expect(selection?.focusNode).toBe(text)
+  })
+
+  it("removes a popup from its toggle and leaves the label in the paragraph", () => {
+    const paragraph = setContent('<p><span class="ww-popup"><button popovertarget="note"><em>Label</em></button></span></p><div class="ww-popup-content" id="note" popover><p>Content</p></div>')
+    $.move(paragraph.querySelector("em")!.firstChild!, 2)
+    expect(feature.removeLinkKind("popup")).toBe(true)
+    expect(paragraph.innerHTML).toBe("<em>Label</em>")
+    expect(document.getElementById("note")).toBeNull()
+  })
+
+  it("cancels a checked draft and ignores removal of a link type outside the live selection", () => {
+    const paragraph = setContent('<p><a href="/web">Link</a></p>')
+    const text = paragraph.querySelector("a")!.firstChild!
+    $.move(text, 2)
+    expect(feature.selectLinkKind("citation")).toBe(true)
+    expect(feature.getLinkState()?.kind).toBe("citation")
+    expect(feature.removeLinkKind("link")).toBe(false)
+    expect(feature.removeLinkKind("citation")).toBe(true)
+    expect(feature.getLinkState()?.kind).toBe("link")
+    expect(feature.removeLinkKind("citation")).toBe(false)
+    expect(paragraph.innerHTML).toBe('<a href="/web">Link</a>')
+  })
+
+  it("removes an SVG cross reference at the caret while retaining text positioning", () => {
+    const svg = setContent('<svg><text><a xlink:href="#intro" fill="red"><tspan x="20">Label</tspan></a></text></svg>')
+    const label = svg.querySelector("tspan")!
+    $.move(label.firstChild!, 2)
+    expect(feature.getLinkState()?.kind).toBe("cross-reference")
+    expect(feature.removeLinkKind("cross-reference")).toBe(true)
+    expect(svg.querySelector("a")).toBeNull()
+    expect(svg.querySelector('tspan[fill="red"] > tspan[x="20"]')).toBe(label)
+    expect(document.getSelection()?.anchorNode).toBe(label.firstChild)
+    expect(document.getSelection()?.anchorOffset).toBe(2)
+  })
+
   it("stages a cross reference, then switches one anchor to a citation without rebuilding its label", () => {
     const paragraph = setContent('<p>Before <em>two</em><!--keep--> words after</p><h2 id="intro">Intro</h2>')
     const first = paragraph.querySelector("em")!.firstChild!, last = paragraph.lastChild!

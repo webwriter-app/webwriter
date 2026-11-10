@@ -610,6 +610,7 @@ export class MarkFeature extends EditorFeature {
     insertPopup: ({}: {type: "insertPopup"}) => this.insertPopup(),
     togglePopup: ({}: {type: "togglePopup"}) => this.togglePopup(),
     selectLinkKind: ({kind, toggle}: {type: "selectLinkKind", kind: LinkKind, toggle?: boolean}) => this.selectLinkKind(kind, toggle),
+    removeLinkKind: ({kind}: {type: "removeLinkKind", kind: LinkKind}) => this.removeLinkKind(kind),
     cancelLinkKindDraft: ({identity}: {type: "cancelLinkKindDraft", identity: string}) => {
       if(this.linkKindDraft?.token !== identity) return
       this.linkKindDraft = null
@@ -860,7 +861,8 @@ export class MarkFeature extends EditorFeature {
     if(!context) return null
     const {range} = context
     if(!range.startContainer.isConnected || !range.endContainer.isConnected) return null
-    const anchors = svg ? svg.text.map(({node}) => this.svgValues(node).link).filter(anchor => anchor !== null)
+    const anchors = svg ? (range.collapsed ? [range.startContainer] : svg.text.map(({node}) => node))
+      .map(node => this.svgValues(node).link).filter(anchor => anchor !== null)
       : range.collapsed ? [this.markElementAt(range.startContainer, context.block, "a")].filter(anchor => anchor !== null)
       : this.markElementsForSelection(context as MarkSelection, "a")
     const anchor = anchors[0]
@@ -1018,9 +1020,9 @@ export class MarkFeature extends EditorFeature {
     const target = this.attachmentTarget()
     if(!target) return null
     const {anchor, context} = target
-    const {range, selection} = context
+    const {range} = context
     if(target.existing && anchor && (range.collapsed || this.coversAttachment(range, anchor))) {
-      this.removeAttachment(anchor, selection)
+      this.removeLinkAnchor(anchor, context)
       return "removed"
     }
     const pending = this.attachmentRequest
@@ -1055,7 +1057,7 @@ export class MarkFeature extends EditorFeature {
     return atEdge(range.startContainer, range.startOffset, true) && atEdge(range.endContainer, range.endOffset, false)
   }
 
-  private removeAttachment(anchor: Element, selection: Selection) {
+  private removeLinkAnchor(anchor: Element, {range, selection}: MarkCaret | MarkSelection) {
     this.attachmentRequest = null
     const end = this.editor.doc.beginUndoGroup()
     try {
@@ -1067,23 +1069,30 @@ export class MarkFeature extends EditorFeature {
         const parent = anchor.parentNode!
         const index = Array.from(parent.childNodes).indexOf(anchor)
         const children = Array.from(anchor.childNodes)
+        const svg = anchor.namespaceURI === SVG_NAMESPACE
         const attributes = Array.from(anchor.attributes).filter(attribute =>
-          attribute.name !== attachmentDraftAttribute && !isMarkAttributeName("a", attribute.name))
-        const span = attributes.length ? document.createElement("span") : null
+          attribute.name !== attachmentDraftAttribute && !isMarkAttributeName("a", attribute.name)
+          && !(svg && attribute.localName === "href" && attribute.namespaceURI === "http://www.w3.org/1999/xlink"))
+        const wrapper = attributes.length ? document.createElementNS(anchor.namespaceURI,
+          svg ? this.svgTextRoot(anchor) ? "tspan" : "g" : "span") : null
         const position = (node: Node, offset: number): [Node, number] => {
-          if(node === anchor) return span ? [span, offset] : [parent, index + offset]
-          if(!span && node === parent && offset > index) return [parent, offset + children.length - 1]
+          if(node === anchor) return wrapper ? [wrapper, offset] : [parent, index + offset]
+          if(!wrapper && node === parent && offset > index) return [parent, offset + children.length - 1]
           return [node, offset]
         }
-        const start = position(selection.anchorNode!, selection.anchorOffset)
-        const finish = position(selection.focusNode!, selection.focusOffset)
-        if(span) {
-          for(const attribute of attributes) span.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
-          span.append(...children)
-          anchor.replaceWith(span)
+        const start = position(range.startContainer, range.startOffset)
+        const finish = position(range.endContainer, range.endOffset)
+        const backwards = !range.collapsed && selection.anchorNode === range.endContainer && selection.anchorOffset === range.endOffset
+        if(wrapper) {
+          for(const attribute of attributes) wrapper.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+          wrapper.append(...children)
+          anchor.replaceWith(wrapper)
         }
         else anchor.replaceWith(...children)
-        selection.setBaseAndExtent(...start, ...finish)
+        if(backwards) selection.setBaseAndExtent(...finish, ...start)
+        else selection.setBaseAndExtent(...start, ...finish)
+        this.storedMarks?.delete("a")
+        delete this.storedAttributes?.a
       }
       this.editor.postMarkState()
     }
@@ -1221,6 +1230,31 @@ export class MarkFeature extends EditorFeature {
       fragment.append(link)
     })
     return fragment
+  }
+
+  removeLinkKind(kind: LinkKind): boolean {
+    if(!isLinkKind(kind) || this.editor.isEditingLocked || this.editor.features.math.activeMath) return false
+    this.clearStoredMarksIfSelectionChanged()
+    const current = this.linkSelection(true)
+    const draft = this.linkKindDraft
+    if(draft && draft.identity === current?.identity) {
+      if(draft.kind !== kind) return false
+      this.actions.cancelLinkKindDraft({type: "cancelLinkKindDraft", identity: draft.token})
+      return true
+    }
+    if(kind === "popup") return (this.storedPopup || !!this.linkPopupToggle()) && this.togglePopup()
+    if(kind === "attachment") {
+      const target = this.attachmentTarget()
+      if(target?.existing && target.anchor) {
+        this.removeLinkAnchor(target.anchor, target.context)
+        return true
+      }
+      return !!this.getAttachmentState() && this.toggleAttachment() === "removed"
+    }
+    if(!current?.active || current.attachment || linkKindFromAttributes(current.attributes) !== kind) return false
+    if(!current.anchor) return this.removeMark("a")
+    this.removeLinkAnchor(current.anchor, current.context)
+    return true
   }
 
   /** Choose a link type for the live selection. Keyboard edits commit the destination. */

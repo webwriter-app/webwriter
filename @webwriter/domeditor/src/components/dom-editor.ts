@@ -5259,10 +5259,10 @@ export class DomEditor extends LitElement {
       else this.focusEditor()
       return
     }
-    const linkChoice = label?.startsWith("select-link:") ? label.slice("select-link:".length) : undefined
-    const chosenLink = linkChoice ?? linkKinds.find(kind => linkKindOptions[kind].action === label)
+    const linkChoice = /^(select|remove)-link:(.+)$/.exec(label ?? "")
+    const chosenLink = linkChoice?.[2] ?? linkKinds.find(kind => linkKindOptions[kind].action === label)
     if(isLinkKind(chosenLink)) {
-      void this.selectLinkKind(chosenLink, linkChoice === undefined)
+      void this.selectLinkKind(chosenLink, linkChoice?.[1] === "remove" ? "remove" : linkChoice ? "select" : "toggle")
       return
     }
     if(label === "Undo") {
@@ -7712,14 +7712,16 @@ export class DomEditor extends LitElement {
       .catch(error => { this.linkKeyboardError = error instanceof Error ? error.message : String(error) })
   }
 
-  private async selectLinkKind(kind: LinkKind, toggle: boolean) {
+  private async selectLinkKind(kind: LinkKind, mode: "select" | "toggle" | "remove") {
     if(this.previewActive || this.liveSessionActive || kind === "attachment" && this.attachmentBusy) return
     try {
-      const changed = await this.execute({type: "selectLinkKind", kind, toggle})
+      const changed = mode === "remove"
+        ? await this.execute({type: "removeLinkKind", kind})
+        : await this.execute({type: "selectLinkKind", kind, toggle: mode === "toggle"})
       this.dismissEditorMenus()
       this.linkKeyboardError = ""
-      if(!changed && kind === "attachment") throw new Error("Place the caret or select text within one paragraph to attach a file.")
-      if(changed && kind !== "popup" && this.hasLinkKeyboard) await this.focusLinkKeyboard()
+      if(!changed && kind === "attachment" && mode !== "remove") throw new Error("Place the caret or select text within one paragraph to attach a file.")
+      if(changed && kind !== "popup" && mode !== "remove" && this.hasLinkKeyboard) await this.focusLinkKeyboard()
       else this.focusEditor()
     }
     catch(error) {
