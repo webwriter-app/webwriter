@@ -6,6 +6,7 @@ import "@testing-library/jest-dom/vitest"
 import {DOMEditor} from "../domeditor"
 import {$} from "../utility"
 import {hasPresentationState, presentationStateElements} from "../presentation-state.js"
+import {hasAnchorControl, hasAnchorTarget} from "../anchor-positioning.test-utils"
 import {buildTableMap} from "../table"
 import {markStateChangeEvent, selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
 import * as Y from "yjs"
@@ -1465,6 +1466,17 @@ describe("table cell selection", () => {
 })
 
 describe("table gap controls", () => {
+  let tableAnchorsSupported = false
+  beforeEach(() => {
+    tableAnchorsSupported = false
+    const css = CSS
+    vi.stubGlobal("CSS", Object.assign(Object.create(css), {
+      supports: (property: string, value?: string) => value === "--ww-table" ? tableAnchorsSupported
+        : value === undefined ? css.supports(property) : css.supports(property, value),
+    }))
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
   function box(left: number, top: number, right: number, bottom: number) {
     return {x: left, y: top, left, top, right, bottom, width: right - left, height: bottom - top, toJSON: () => ({})}
   }
@@ -1514,6 +1526,29 @@ describe("table gap controls", () => {
     expect(document.body.querySelector(".◆table-gaps")).toBeNull()
     expect(editor.toHTML(true)).not.toContain("table-gaps")
     expect(editor.doc.body.toString()).not.toContain("table-gaps")
+  })
+
+  it("keeps ordinary gap controls anchored without measuring on scroll and releases the anchor when hidden", async () => {
+    document.body.innerHTML = "<section><table><tbody><tr><td>A</td><td>B</td></tr></tbody></table></section>"
+    const table = document.querySelector("table")!
+    mockTableGeometry(table, Array.from(table.rows), [Array.from(table.rows[0].cells)])
+    tableAnchorsSupported = true
+    const buttons = await renderGaps(table)
+    const overlay = editor.appendix.querySelector<HTMLElement>(".◆table-gaps")!
+    expect(hasAnchorTarget(table)).toBe(true)
+    expect(hasAnchorControl(overlay)).toBe(true)
+    expect(buttons[0].style.left).toBe("0px")
+    expect(buttons[0].style.top).toBe("-8px")
+
+    const measure = vi.spyOn(table.rows[0], "getBoundingClientRect")
+    table.parentElement!.dispatchEvent(new Event("scroll"))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(measure).not.toHaveBeenCalled()
+
+    table.style.transform = "scaleX(0)"
+    window.dispatchEvent(new Event("resize"))
+    await vi.waitFor(() => expect(overlay.hidden).toBe(true))
+    expect(hasAnchorControl(overlay)).toBe(false)
   })
 
   it("measures only cells needed for column gaps in a tall table", async () => {

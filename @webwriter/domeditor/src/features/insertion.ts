@@ -61,6 +61,15 @@ export class InsertionFeature extends EditorFeature {
     return menu
   }
 
+  captureListeners = {
+    scroll: (event: Event) => {
+      const range = this.commandRange
+      if(!range?.startContainer.isConnected || !this.menu.open
+        || !(event.target instanceof Node) || !event.target.contains(range.startContainer)) return
+      this.positionMenu(range)
+    },
+  }
+
   activeListeners = {
     keydown: (ev: KeyboardEvent) => {
       if(this.menu.open) {
@@ -231,6 +240,10 @@ export class InsertionFeature extends EditorFeature {
     this.commandRange = range
     this.setTriggerHighlight(this.commandRange)
     this.menu.query = query
+    this.positionMenu(range)
+  }
+
+  private positionMenu(range: Range) {
     const rect = this.commandPositionRect(range)
     this.menu.setPosition(rect.left, rect.bottom + 6)
   }

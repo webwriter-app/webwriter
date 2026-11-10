@@ -218,6 +218,26 @@ describe("insertion menu", () => {
     expect(menu.style.top).toBe("126px")
   })
 
+  it("moves the open command menu when its enclosing scroller moves", async () => {
+    document.body.innerHTML = "<section><p></p></section><aside></aside>"
+    const block = document.querySelector("p")!
+    let bottom = 120
+    vi.spyOn(block, "getBoundingClientRect").mockImplementation(() => new DOMRect(40, bottom - 20, 120, 20))
+    $.move(block)
+    typeCommand()
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    expect(menu.style.top).toBe("126px")
+
+    bottom = 60
+    document.querySelector("aside")!.dispatchEvent(new Event("scroll"))
+    expect(menu.style.top).toBe("126px")
+    block.parentElement!.dispatchEvent(new Event("scroll"))
+    expect(menu.open).toBe(true)
+    expect(menu.style.top).toBe("66px")
+    expect(block.textContent).toBe("++")
+  })
+
   it.each(["auto", "stable both-edges"])("anchors the command menu with %s scrollbar gutters", async gutter => {
     const root = document.documentElement, original = root.style.scrollbarGutter
     root.style.scrollbarGutter = gutter
