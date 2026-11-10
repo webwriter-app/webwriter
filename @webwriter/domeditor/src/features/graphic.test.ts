@@ -892,10 +892,13 @@ describe("graphic editing", () => {
     const image = document.querySelector("svg image")!
     const data = new DataTransfer()
     data.items.add(new File(["image"], "photo.png", {type: "image/png"}))
+    data.items.add(new File(["unused"], "extra.png", {type: "image/png"}))
+    const createURL = vi.spyOn(editor, "createMediaURL")
     const drop = imageDragEvent("drop", {bubbles: true, composed: true, cancelable: true, dataTransfer: data})
     editor.features.media.placeholder.element.dispatchEvent(drop)
     expect(drop.defaultPrevented).toBe(true)
     await vi.waitFor(() => expect(image.getAttribute("href")).toMatch(/^blob:/))
+    expect(createURL).toHaveBeenCalledOnce()
     expect(document.querySelectorAll("svg image")).toHaveLength(1)
     image.removeAttribute("href")
     await mutationsDelivered()

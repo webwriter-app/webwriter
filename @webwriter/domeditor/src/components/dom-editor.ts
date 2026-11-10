@@ -43,7 +43,7 @@ import "./link-keyboard"
 import "./guided-tour"
 import "./app-update-notice"
 import type {LinkKeyboard} from "./link-keyboard"
-import {attachmentWarningBytes, isLinkEdit, isLinkKind, linkKindFromAttributes, linkKindOptions, linkKinds, type AttachmentSelectionState, type AttachmentSource, type LinkEdit, type LinkKind, type LinkSelectionState} from "../links"
+import {attachmentWarningBytes, isLinkEdit, isLinkKind, linkKindFromAttributes, linkKindOptions, linkKinds, type AttachmentMediaPreview, type AttachmentSelectionState, type AttachmentSource, type LinkEdit, type LinkKind, type LinkSelectionState} from "../links"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
 import { LitElement, css, html, noChange, nothing, type PropertyValues } from "lit"
@@ -60,7 +60,7 @@ import type {DomEditorToolbox} from "./toolbox"
 import type {LayoutSelectionState} from "../layouts"
 import type { EditingAction } from "../domeditor"
 import {elementDragType, insertionMenuItems, ribbonElementInsertionAction, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
-import type {EditorStateSnapshot} from "../editor-state"
+import {isEditorStateUpdate, type EditorStateSnapshot} from "../editor-state"
 import {copyEditorArtifactState, isAuthoredContentEditableMutation, isAuthoredMutation, isEditorOnlyNode, registerFrameArtifacts} from "../editor-artifacts"
 import {
   defaultPackageExportSource,
@@ -933,6 +933,7 @@ export class DomEditor extends LitElement {
     }
 
     .document-stage {
+      --attachment-keyboard-height: min(280px, 50%);
       display: flex;
       position: relative;
       grid-row: 3;
@@ -984,6 +985,11 @@ export class DomEditor extends LitElement {
     .shape-keyboard-area[hidden] { display: none; }
     .shape-keyboard-area dom-editor-shape-keyboard { pointer-events: auto; }
     .link-keyboard-area { height: min(280px, 100%); }
+    .link-keyboard-area.attachment-keyboard-area { height: var(--attachment-keyboard-height); }
+    /* Reserve an unobstructed scroll viewport for previewing media at the end of the document. */
+    .document-stage:has(.attachment-keyboard-area:not([hidden])) > .editor-frame {
+      height: calc(100% - var(--attachment-keyboard-height));
+    }
     .link-keyboard-area[hidden] { display: none; }
     .link-keyboard-area dom-editor-link-keyboard { height: 100%; pointer-events: auto; }
 
@@ -2337,6 +2343,7 @@ export class DomEditor extends LitElement {
           ? frameImportMap(importMap, window.location.origin, editorFrameOrigin())! : importMap} : {}),
       }
       this.postToEditor(initializeMessage)
+      if(!this.editorOpaque) this.frameState = undefined
       if(this.previewEditingLocked && this.editorOpaque) this.postFrameControl("preview-editing", {locked: true})
       const packageLoadRequestId = `packages-${++this.packageLoadSequence}`
       const packageLoad = new Promise<unknown>((resolve, reject) => {
@@ -4135,28 +4142,7 @@ export class DomEditor extends LitElement {
       this.installedPackages = [...this.installedPackages.filter(pkg => !names.has(pkg.name)), ...packages]
       this.persistInstalledPackages()
     }
-    const reloadError = new Error("The editor iframe was reloaded for a document change")
-    this.editorReadyPromise?.catch(() => {})
-    this.editorReadyReject?.(reloadError)
-    this.documentTreeObserver?.disconnect()
-    this.documentTreeObserver = null
-    if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
-    if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
-    this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
-    this.editorDocument = null
-    this.documentReplica?.destroy()
-    this.documentReplica = null
-    this.documentReplicaId = ""
-    this.documentReplicaSequence = 0
-    this.documentReplicaSyncPending = false
-    this.authoredSnapshotCache = null
-    this.editorWindow = null
-    this.packageLoadPromise = null
-    this.editorReadyPromise = null
-    this.editorReadyResolve = null
-    this.editorReadyReject = null
-    this.savedEditorSelection = null
-    this.frameState = undefined
+    this.resetEditorFrame(new Error("The editor iframe was reloaded for a document change"))
     this.documentHead = emptyDocumentHeadState()
     this.documentSettingsId = settingsId
     if(isNewDocument) this.accessibilityReviewEnabled = false
@@ -4180,12 +4166,6 @@ export class DomEditor extends LitElement {
     // Only successful widget initialization may reveal the incoming document.
     this.documentFramePending = true
     this.frameDocumentHTML = `${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
-    this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
-      clearTimeout(timer)
-      abortCleanup?.()
-      reject(reloadError)
-    })
-    this.pendingExecutions.clear()
     // Hold the outgoing draft until the replacement frame initializes.
     const finishRecovery = this.activeDocumentRecovery !== recovery ? this.detachDocumentRecovery() : undefined
     if(this.activeDocumentRecovery === recovery) this.documentRecoveryGeneration++
@@ -6291,42 +6271,18 @@ export class DomEditor extends LitElement {
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const documentRevision = this.documentChangeSequence
     const snapshot = await this.execute({type: "snapshotState"}) as EditorStateSnapshot
-    if(!snapshot || !Array.isArray(snapshot.update)) throw new TypeError("The editor returned an invalid state snapshot")
-    if(this.installedPackages !== currentPackages || this.frameRevision !== revision || this.documentChangeSequence !== documentRevision) {
+    if(!snapshot || !isEditorStateUpdate(snapshot.update)) throw new TypeError("The editor returned an invalid state snapshot")
+    // Snapshot preparation can publish media conversions. Compare with the
+    // frame's final published revision so those updates do not abort reload.
+    const changed = snapshot.replicaSequence === undefined ? this.documentChangeSequence !== documentRevision
+      : this.documentReplicaSyncPending || this.documentReplicaSequence !== snapshot.replicaSequence
+    if(this.installedPackages !== currentPackages || this.frameRevision !== revision || changed) {
       throw new Error("The editor changed while loading packages. Try again.")
     }
     const shouldRefocus = this.isEditorFocused() || this.savedEditorSelection !== null
-    const reloadError = new Error("The editor iframe was reloaded for a package change")
-    this.editorReadyPromise?.catch(() => {})
-    this.editorReadyReject?.(reloadError)
-
-    this.documentTreeObserver?.disconnect()
-    this.documentTreeObserver = null
-    if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
-    if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
-    this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
-    this.editorDocument = null
-    this.documentReplica?.destroy()
-    this.documentReplica = null
-    this.documentReplicaId = ""
-    this.documentReplicaSequence = 0
-    this.documentReplicaSyncPending = false
-    this.authoredSnapshotCache = null
-    this.editorWindow = null
-    this.packageLoadPromise = null
-    this.editorReadyPromise = null
-    this.editorReadyResolve = null
-    this.editorReadyReject = null
-    this.savedEditorSelection = null
-    this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
-      clearTimeout(timer)
-      abortCleanup?.()
-      reject(reloadError)
-    })
-    this.pendingExecutions.clear()
+    this.resetEditorFrame(new Error("The editor iframe was reloaded for a package change"))
     this.frameState = snapshot
     this.installedPackages = nextPackages
-    this.retainProofreadingDuringReload()
     this.persistInstalledPackages()
     this.frameRevision++
     await this.updateComplete
@@ -6341,8 +6297,7 @@ export class DomEditor extends LitElement {
 
   /** Drop requests bound to a replaced child realm while preserving the live
    * document snapshot and host-owned document/file metadata. */
-  private resetEditorFrameForShellRestart() {
-    const reloadError = new Error("The editor iframe was reloaded")
+  private resetEditorFrame(reloadError = new Error("The editor iframe was reloaded")) {
     this.editorReadyPromise?.catch(() => {})
     this.editorReadyReject?.(reloadError)
     this.editorReadyPromise = null
@@ -6362,6 +6317,8 @@ export class DomEditor extends LitElement {
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
     if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("focus", this.handleHostWindowFocus)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("blur", this.handleHostWindowBlur)
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
@@ -7850,6 +7807,21 @@ export class DomEditor extends LitElement {
     finally { this.attachmentBusy = false }
   }
 
+  private handleAttachmentMediaPreview = async (event: CustomEvent<AttachmentMediaPreview>) => {
+    const selection = this.attachmentSelection
+    if(!selection || this.attachmentBusy || this.previewActive || this.liveSessionActive
+      || event.detail?.identity !== selection.identity) return
+    this.linkKeyboardError = ""
+    try {
+      const found = await this.execute({...event.detail, type: "previewAttachmentMedia"})
+      if(found === false && this.attachmentSelection?.identity === selection.identity)
+        this.linkKeyboardError = "The media source is no longer available."
+    }
+    catch(error) {
+      if(this.attachmentSelection?.identity === selection.identity) this.linkKeyboardError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
   private closeLinkKeyboard = () => {
     const identity = this.linkSelection?.identity
     this.linkKeyboardHidden = true
@@ -8464,22 +8436,20 @@ export class DomEditor extends LitElement {
           const restartedShell = this.editorShellInstanceId !== null && this.editorShellRevision === this.frameRevision
           this.editorShellInstanceId = instanceId as string
           this.editorShellRevision = this.frameRevision
-          let html = this.editorSrcdoc
           if(restartedShell) {
             const replica = this.documentReplica
             const state: EditorStateSnapshot | undefined = replica ? {
-              update: Array.from(Y.encodeStateAsUpdate(replica.doc)),
+              update: Y.encodeStateAsUpdate(replica.doc),
               widgetDataDocumentId: replica.widgetDataDocumentId,
-            } : undefined
+            } : this.frameState
             if(!state) {
               const latestDocument = this.snapshotEditorDocumentHTML()
               if(latestDocument !== null) this.frameDocumentHTML = latestDocument
             }
-            this.resetEditorFrameForShellRestart()
+            this.resetEditorFrame()
             this.frameState = state
-            html = this.editorSrcdoc
           }
-          frame.contentWindow?.postMessage({type: "webwriter-frame-document", html}, editorFrameOrigin())
+          frame.contentWindow?.postMessage({type: "webwriter-frame-document", html: this.editorSrcdoc}, editorFrameOrigin())
           return
         }
         if(this.editorShellRevision === this.frameRevision) return
@@ -8538,6 +8508,7 @@ export class DomEditor extends LitElement {
           const replica = new EditorDocumentReplica(message)
           this.documentReplica?.destroy()
           this.documentReplica = replica
+          this.frameState = undefined
         }
         else {
           const observe = (transaction: Y.Transaction) => {
@@ -9647,11 +9618,13 @@ export class DomEditor extends LitElement {
             aria-label=${`Show ${linkKindOptions[this.linkKeyboardKind].label.toLowerCase()} keyboard`}
             @pointerdown=${(event: PointerEvent) => event.preventDefault()}
             @click=${() => { void this.focusLinkKeyboard() }}>${ribbonIcon(linkKindOptions[this.linkKeyboardKind].icon)}</button>` : nothing}
-          <section class="link-keyboard-area" aria-label=${`${linkKindOptions[this.linkKeyboardKind].label} input`} ?hidden=${this.linkKeyboardHidden}>
+          <section class=${`link-keyboard-area${this.attachmentSelection ? " attachment-keyboard-area" : ""}`}
+            aria-label=${`${linkKindOptions[this.linkKeyboardKind].label} input`} ?hidden=${this.linkKeyboardHidden}>
             <dom-editor-link-keyboard .state=${this.linkSelection} .error=${this.linkKeyboardError}
               .attachment=${this.attachmentSelection} .attachmentBusy=${this.attachmentBusy}
               @link-keyboard-command=${this.handleLinkKeyboardCommand}
               @attachment-command=${this.handleAttachmentCommand}
+              @attachment-media-preview=${this.handleAttachmentMediaPreview}
               @link-keyboard-close=${this.closeLinkKeyboard}
             ></dom-editor-link-keyboard>
           </section>

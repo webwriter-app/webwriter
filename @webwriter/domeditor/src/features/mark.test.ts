@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {clearPresentationState, setPresentationState} from "../presentation-state.js"
+import {clearPresentationState, hasPresentationState, setPresentationState} from "../presentation-state.js"
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import type {XmlElement, XmlText} from "yjs"
@@ -1940,6 +1940,7 @@ describe("attachment marks", () => {
     expect(anchor.querySelector("em")).toBe(emphasis)
     expect(anchor.innerHTML).toBe("<em>these</em> files")
     expect(anchor.download).toBe("worksheet.bin")
+    expect(feature.getAttachmentState()).toMatchObject({filename: "worksheet.bin"})
     expect(anchor.getAttribute("href")).toBe("data:application/octet-stream;base64,AP+A")
     expect(paragraph.innerHTML).toContain("<!--keep--> after")
     expect(feature.getLinkState()).toBeNull()
@@ -1957,6 +1958,39 @@ describe("attachment marks", () => {
     expect(paragraph.querySelector("a")).toBe(anchor)
     expect(anchor.textContent).toBe("first.txt")
     expect(anchor.download).toBe("second.txt")
+    expect(feature.getAttachmentState()).toMatchObject({filename: "second.txt"})
+    anchor.download = "renamed-by-widget.txt"
+    expect(feature.getAttachmentState()).toMatchObject({filename: "renamed-by-widget.txt"})
+  })
+
+  it("previews live media by identity while preserving the attachment selection and markup", () => {
+    vi.useFakeTimers()
+    try {
+      const paragraph = setContent('<p><a download="notes.txt" href="/notes.txt">Notes</a></p><figure><picture><img alt="Diagram" src="/diagram.png"></picture></figure><audio src="/recording.mp3"></audio>')
+      selectText(paragraph.querySelector("a")!.firstChild as Text, 1, 4)
+      const selection = document.getSelection()!
+      const before = cleanHTML()
+      const [image, audio] = document.querySelectorAll("img, audio")
+      const scrollImage = vi.spyOn(image, "scrollIntoView")
+      const scrollAudio = vi.spyOn(audio, "scrollIntoView")
+      const {identity, media} = feature.getAttachmentState()!
+      const preview = (mediaId: string) => feature.actions.previewAttachmentMedia({type: "previewAttachmentMedia", identity, mediaId})
+      expect(preview(media[0].id)).toBe(true)
+      expect(scrollImage).toHaveBeenCalledWith(expect.objectContaining({block: "center"}))
+      expect(hasPresentationState(image, "attachment-media-preview")).toBe(true)
+      expect(selection.toString()).toBe("ote")
+      expect(editor.features.selection.captureSelectedElement).toBeNull()
+      expect(cleanHTML()).toBe(before)
+      expect(preview(media[1].id)).toBe(true)
+      expect(scrollAudio).toHaveBeenCalledOnce()
+      expect(hasPresentationState(image, "attachment-media-preview")).toBe(false)
+      vi.advanceTimersByTime(2000)
+      expect(hasPresentationState(audio, "attachment-media-preview")).toBe(false)
+      image.replaceWith(image.cloneNode(true))
+      expect(preview(media[0].id)).toBe(false)
+      expect(scrollImage).toHaveBeenCalledOnce()
+    }
+    finally { vi.useRealTimers() }
   })
 
   it("uses the selected media resource and excludes media inside widgets", async () => {

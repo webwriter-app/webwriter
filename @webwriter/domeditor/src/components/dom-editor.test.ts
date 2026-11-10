@@ -1322,6 +1322,21 @@ describe("DomEditor iframe setup", () => {
     expect(editor.shadowRoot!.activeElement).toBe(reloadedFrame)
   })
 
+  it.each([true, false])("uses the snapshot's published revision during package reload (current: %s)", async current => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const previousRevision = host.frameRevision
+    vi.spyOn(host, "waitForEditorWindow").mockResolvedValue(window)
+    vi.spyOn(editor, "execute").mockImplementationOnce(async () => {
+      host.documentChangeSequence++
+      host.documentReplicaSequence = 2
+      return {update: new Uint8Array([0]), replicaSequence: current ? 2 : 1}
+    })
+    if(current) await host.reloadEditor([])
+    else await expect(host.reloadEditor([])).rejects.toThrow("The editor changed while loading packages")
+    expect(host.frameRevision).toBe(previousRevision + Number(current))
+  })
+
   it.each(["initial", "preview", "reload", "disconnected"])("focuses the initial selection after loading: %s", async mode => {
     const editor = new DomEditor()
     Object.assign(editor, {frameStarted: true})

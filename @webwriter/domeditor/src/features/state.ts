@@ -682,7 +682,8 @@ export class StateFeature extends EditorFeature {
       // Object URLs belong to the outgoing iframe. Embed their bytes before
       // capturing shared state so replacing that realm cannot discard media.
       await this.editor.inlineBlobSources(document)
-      return this.editor.doc.snapshot()
+      const snapshot = this.editor.doc.snapshot()
+      return {...snapshot, replicaSequence: this.editor.documentReplicaSequence}
     },
     serializeDocument: ({offline = false}: {type: "serializeDocument", offline?: boolean}) =>
       this.editor.serializeHTML(offline),

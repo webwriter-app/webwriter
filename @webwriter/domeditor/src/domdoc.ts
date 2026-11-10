@@ -469,7 +469,7 @@ export class SharedDOMDoc {
     this.updateLocalSelection()
     const selection = this.#relativeSelection
     return {
-      update: Array.from(Y.encodeStateAsUpdate(this.doc)),
+      update: Y.encodeStateAsUpdate(this.doc),
       widgetDataDocumentId: this.widgetData.documentId,
       ...(selection ? {
         selection: {

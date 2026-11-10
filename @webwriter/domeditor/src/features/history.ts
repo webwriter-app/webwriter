@@ -1,4 +1,6 @@
 import * as Y from "yjs"
+import {toHexString} from "lib0/buffer"
+import {digest} from "lib0/hash/sha256"
 import {DocumentListenerMap, EditorFeature} from "."
 import {
   type VersionHistoryChanges,
@@ -12,6 +14,15 @@ import {userInitials} from "../user-identity"
 import {hydrateWidgetGroupings} from "../widget-grouping-dom"
 import {safeCssColor} from "../css-color"
 import {isAuthoredContentEditableMutation, isEditorOnlyNode, isInsideEditorOnlyNode} from "../editor-artifacts"
+import {inlineMediaHTML} from "../serialization-primitives"
+
+// Older checkpoints store plain HTML. New checkpoints keep large, unchanged
+// data URLs once in the shared document, independently of checkpoint count.
+type PackedSource = {html: string, assets: {offset: number, id: string}[]}
+type CheckpointSource = string | PackedSource
+const historyAssetPrefix = "data:application/x-webwriter-history-asset,"
+const historyAssetMinimumLength = 4096
+const assetEncoder = new TextEncoder()
 
 type StoredCheckpoint = {
   id: string
@@ -19,7 +30,7 @@ type StoredCheckpoint = {
   label: string
   user: VersionHistoryUser
   changes: VersionHistoryChanges
-  source: string
+  source: CheckpointSource
   restoredFrom?: string
 }
 
@@ -31,7 +42,7 @@ type PreparedCheckpoint = {
   source: string
   changes?: VersionHistoryChanges
   restoredFrom?: string
-  stateDiff?: {beforeSource: string, afterSource: string, changes: VersionHistoryChanges}
+  stateDiff?: {beforeSource: CheckpointSource, afterSource: CheckpointSource, changes: VersionHistoryChanges}
 }
 
 const checkpointDelay = 700
@@ -47,6 +58,8 @@ export class HistoryFeature extends EditorFeature {
   #checkpoints!: Y.Array<StoredCheckpoint>
   #comments!: Y.Array<StoredComment>
   #versions!: Y.Array<StoredVersion>
+  #assets!: Y.Map<string>
+  readonly #assetIds = new Map<string, string>()
   readonly #historyOrigin = {source: "domeditor-version-history"}
   #checkpointTimer: ReturnType<typeof setTimeout> | undefined
   #checkpointGeneration = 0
@@ -55,7 +68,7 @@ export class HistoryFeature extends EditorFeature {
   #previewCheckpointId: string | null = null
   #previewChanges: VersionHistoryState["preview"] = null
   #previewCurrentSource: string | null = null
-  #previewSource: string | null = null
+  #previewSource: CheckpointSource | null = null
   #currentCheckpointId: string | null = null
   #publishingSource: string | null = null
   #restoring = false
@@ -149,13 +162,21 @@ export class HistoryFeature extends EditorFeature {
   readonly #handleHistoryChange = () => {
     if(this.#publishingSource !== null) return
     const source = this.#previewCheckpointId ? null : this.#source()
-    if(source !== null && this.#checkpoints.toArray().at(-1)?.source === source) {
+    if(source !== null && this.#sameSource(this.#checkpoints.toArray().at(-1)?.source, source)) {
       // A collaborator may publish the same snapshot before our debounce ends.
       this.#cancelCheckpoint()
       this.#checkpointAuthors.clear()
     }
     else if(this.#checkpointWorking) this.#queueCheckpoint()
     this.postState(this.#state(source ?? undefined))
+  }
+
+  readonly #handleAssetsChange = (event: Y.YMapEvent<string>) => {
+    for(const [id, change] of event.changes.keys) {
+      if(typeof change.oldValue === "string") this.#assetIds.delete(change.oldValue)
+      const url = this.#assets.get(id)
+      if(typeof url === "string") this.#assetIds.set(url, id)
+    }
   }
 
   readonly #handleUndoStateChange = () => {
@@ -182,6 +203,9 @@ export class HistoryFeature extends EditorFeature {
     this.#checkpoints = this.editor.doc.doc.getArray<StoredCheckpoint>("version-history")
     this.#comments = this.editor.doc.doc.getArray<StoredComment>("version-history-comments")
     this.#versions = this.editor.doc.doc.getArray<StoredVersion>("version-history-saves")
+    this.#assets = this.editor.doc.doc.getMap<string>("version-history-assets")
+    this.#assets.forEach((url, id) => this.#assetIds.set(url, id))
+    this.#assets.observe(this.#handleAssetsChange)
     super.enable()
     this.#unobserveUndoState = this.editor.doc.observeHistoryState(this.#handleUndoStateChange)
     this.#unobserveHistorySelection = this.editor.doc.observeHistorySelection(() => this.editor.features.selection.revealSelection())
@@ -209,6 +233,8 @@ export class HistoryFeature extends EditorFeature {
     this.#checkpoints.unobserve(this.#handleHistoryChange)
     this.#comments.unobserve(this.#handleHistoryChange)
     this.#versions.unobserve(this.#handleHistoryChange)
+    this.#assets.unobserve(this.#handleAssetsChange)
+    this.#assetIds.clear()
     this.editor.doc.doc.off("afterTransaction", this.#handleTransaction)
     this.clearPreview()
     this.#checkpointAuthors.clear()
@@ -221,8 +247,8 @@ export class HistoryFeature extends EditorFeature {
   }
 
   #state(sourceSnapshot?: string, checkpointDiff?: {
-    beforeSource: string
-    afterSource: string
+    beforeSource: CheckpointSource
+    afterSource: CheckpointSource
     changes: VersionHistoryChanges
   }): VersionHistoryState {
     const source = this.#previewCurrentSource ?? sourceSnapshot ?? this.#source()
@@ -252,12 +278,13 @@ export class HistoryFeature extends EditorFeature {
       checkpointIds: [...version.checkpointIds].reverse(),
       commentCount: commentCounts.get(version.id) ?? 0,
       isUnsaved: false,
-      isCurrent: versionSource === source,
+      isCurrent: this.#sameSource(versionSource, source),
     })).reverse()
-    if(!saved.length || pending.length || saved.at(-1)!.source !== source) {
+    if(!saved.length || pending.length || !this.#sameSource(saved.at(-1)!.source, source)) {
       const unsaved = this.#unsavedCheckpoint(source, pending)
       const diffSource = saved.at(-1)?.source ?? this.#checkpoints.toArray()[0]?.source ?? source
-      const changes = checkpointDiff?.beforeSource === diffSource && checkpointDiff.afterSource === unsaved.source
+      const changes = checkpointDiff && this.#sameSource(checkpointDiff.beforeSource, diffSource)
+        && this.#sameSource(checkpointDiff.afterSource, unsaved.source)
         ? {...checkpointDiff.changes} : this.#diff(diffSource, unsaved.source)
       versions.unshift({
         id: unsavedVersionId,
@@ -271,7 +298,7 @@ export class HistoryFeature extends EditorFeature {
         ].map(checkpoint => checkpoint.id),
         commentCount: 0,
         isUnsaved: true,
-        isCurrent: unsaved.source === source,
+        isCurrent: this.#sameSource(unsaved.source, source),
       })
     }
     return {
@@ -374,7 +401,7 @@ export class HistoryFeature extends EditorFeature {
   #recordCheckpoint(label?: string, prepared?: PreparedCheckpoint, user = this.#localUser()) {
     const source = prepared?.source ?? this.#source()
     const matchingCheckpoint = this.#checkpoints.toArray().at(-1)
-    if(matchingCheckpoint?.source === source) {
+    if(matchingCheckpoint && this.#sameSource(matchingCheckpoint.source, source)) {
       const previousCheckpointId = this.#currentCheckpointId
       this.#currentCheckpointId = matchingCheckpoint.id
       if(previousCheckpointId !== matchingCheckpoint.id) this.postState(this.#state(source))
@@ -382,13 +409,14 @@ export class HistoryFeature extends EditorFeature {
     }
     const previous = this.#checkpoints.toArray().at(-1)
     const changes = prepared?.changes ?? (previous ? this.#diff(previous.source, source) : emptyChanges())
+    const assets = new Map<string, string>()
     const checkpoint: StoredCheckpoint = {
       id: this.#id("checkpoint"),
       timestamp: Date.now(),
       label: label ?? `Edited by ${user.name}`,
       user,
       changes,
-      source,
+      source: this.#packSource(source, assets),
       ...(prepared?.restoredFrom ? {restoredFrom: prepared.restoredFrom} : {}),
     }
     this.#currentCheckpointId = checkpoint.id
@@ -412,6 +440,7 @@ export class HistoryFeature extends EditorFeature {
     let committed = false
     try {
       this.editor.doc.doc.transact(() => {
+        assets.forEach((url, id) => { if(!this.#assets.has(id)) this.#assets.set(id, url) })
         this.#checkpoints.push([checkpoint])
       }, this.#historyOrigin)
       committed = true
@@ -476,8 +505,9 @@ export class HistoryFeature extends EditorFeature {
     this.#flushCheckpoint()
     const checkpoint = this.#checkpoint(checkpointId)
     if(!checkpoint) throw new Error("That version is no longer available")
+    const source = this.#sourceHTML(checkpoint.source)
     this.clearPreview()
-    if(this.#source() === checkpoint.source) {
+    if(this.#sameSource(checkpoint.source, this.#source())) {
       const state = this.state()
       this.postState(state)
       return state
@@ -486,7 +516,7 @@ export class HistoryFeature extends EditorFeature {
     this.editor.doc.stopCapturing()
     this.editor.doc.stopObserve()
     try {
-      this.#applySource(checkpoint.source)
+      this.#applySource(source)
       this.editor.doc.clearSelection()
       this.editor.doc.syncFromDOM()
     }
@@ -505,6 +535,73 @@ export class HistoryFeature extends EditorFeature {
    * added for detached copies, which the live editor must not load. */
   #source() {
     return this.editor.toHTML(false, false)
+  }
+
+  #packSource(source: string, newAssets?: Map<string, string>): CheckpointSource {
+    const parts: string[] = [], assets: PackedSource["assets"] = []
+    let end = 0, offset = 0
+    for(const match of inlineMediaHTML(source)) {
+      if(match.url.length < historyAssetMinimumLength) continue
+      let id = this.#assetIds.get(match.url)
+      if(!id && newAssets) {
+        // Detach the retained URL from the original full HTML string.
+        const serialized = JSON.stringify(match.url)
+        id = toHexString(digest(assetEncoder.encode(serialized)))
+        if(!newAssets.has(id)) newAssets.set(id, JSON.parse(serialized))
+      }
+      if(!id) continue
+      const part = source.slice(end, match.offset)
+      parts.push(part)
+      offset += part.length
+      assets.push({offset, id})
+      end = match.offset + match.url.length
+    }
+    if(!assets.length) return source
+    parts.push(source.slice(end))
+    return {html: parts.join(""), assets}
+  }
+
+  #assetURL(id: string) {
+    const url = this.#assets.get(id)
+    if(typeof url !== "string") throw new Error("Version history media is missing")
+    return url
+  }
+
+  #sameSource(left: CheckpointSource | undefined, right: CheckpointSource): boolean {
+    if(left === right) return true
+    if(left === undefined || typeof left === "string" && typeof right === "string") return false
+    if(typeof left === "string") return this.#sameSource(right, left)
+    if(typeof right !== "string") return left.html === right.html && left.assets.length === right.assets.length
+      && left.assets.every(({offset, id}, index) => offset === right.assets[index].offset && id === right.assets[index].id)
+    let start = 0, position = 0
+    for(const {offset, id} of left.assets) {
+      const url = this.#assets.get(id)
+      if(typeof url !== "string" || !right.startsWith(left.html.slice(start, offset), position)
+        || !right.startsWith(url, position + offset - start)) return false
+      position += offset - start + url.length
+      start = offset
+    }
+    const tail = left.html.slice(start)
+    return position + tail.length === right.length && right.endsWith(tail)
+  }
+
+  #sourceHTML(source: CheckpointSource, forDiff = false) {
+    // Escape literal occurrences of the marker in both inputs so authored
+    // text or attributes cannot compare equal to a generated asset reference.
+    const part = (value: string) => forDiff ? value.replaceAll(historyAssetPrefix, historyAssetPrefix + "literal,") : value
+    if(typeof source === "string") return part(source)
+    let start = 0
+    const parts = source.assets.map(({offset, id}) => {
+      const prefix = part(source.html.slice(start, offset))
+      start = offset
+      return prefix + (forDiff ? historyAssetPrefix + id : this.#assetURL(id))
+    })
+    parts.push(part(source.html.slice(start)))
+    return parts.join("")
+  }
+
+  #diffHTML(source: CheckpointSource) {
+    return this.#sourceHTML(typeof source === "string" ? this.#packSource(source) : source, true)
   }
 
   #applySource(source: string) {
@@ -546,6 +643,7 @@ export class HistoryFeature extends EditorFeature {
     }
     const checkpoint = this.#checkpoint(checkpointId)
     if(!checkpoint) throw new Error("That version is no longer available")
+    const source = this.#sourceHTML(checkpoint.source)
     if(!this.#previewCheckpointId) {
       this.#previewCurrentSource = this.#source()
       this.editor.doc.pauseDOMSync()
@@ -554,7 +652,7 @@ export class HistoryFeature extends EditorFeature {
     this.#previewObserver?.disconnect()
     this.#previewCheckpointId = checkpointId
     this.#previewSource = checkpoint.source
-    this.#applySource(checkpoint.source)
+    this.#applySource(source)
     const changes = this.#diff(checkpoint.source, this.#previewCurrentSource!)
     this.#previewChanges = {
       checkpointId,
@@ -583,10 +681,10 @@ export class HistoryFeature extends EditorFeature {
     const latest = pending[0]
     // Restoring a version is a history event, but must not replace the unsaved
     // edits that the user may want to recover through their version card.
-    if(latest?.restoredFrom && latest.source === source) {
+    if(latest?.restoredFrom && this.#sameSource(latest.source, source)) {
       return pending.find(checkpoint => !checkpoint.restoredFrom) ?? latest
     }
-    return latest?.source === source ? latest : {
+    return latest && this.#sameSource(latest.source, source) ? latest : {
       id: unsavedVersionId, source, label: "Unsaved changes", timestamp: latest?.timestamp ?? Date.now(),
       user: this.#pendingAuthor(),
     }
@@ -598,7 +696,7 @@ export class HistoryFeature extends EditorFeature {
     this.#previewObserver ??= new MutationObserver(records => {
       records.push(...this.#previewObserver!.takeRecords())
       const checkpoint = this.#previewCheckpointId && this.#checkpoint(this.#previewCheckpointId)
-      if(!checkpoint || this.#source() === checkpoint.source) return
+      if(!checkpoint || this.#sameSource(checkpoint.source, this.#source())) return
       this.#previewObserver!.disconnect()
       try {
         for(const record of records.reverse()) {
@@ -658,7 +756,7 @@ export class HistoryFeature extends EditorFeature {
     const checkpoints = this.#checkpoints.toArray()
     let checkpointId: string | null = null
     for(let index = checkpoints.length - 1; index >= 0; index--) {
-      if(checkpoints[index].source === source) {
+      if(this.#sameSource(checkpoints[index].source, source)) {
         checkpointId = checkpoints[index].id
         break
       }
@@ -693,11 +791,11 @@ export class HistoryFeature extends EditorFeature {
       ?? `${kind}-${this.editor.doc.doc.clientID.toString(36)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
   }
 
-  #diff(beforeSource: string, afterSource: string) {
-    if(beforeSource === afterSource) return emptyChanges()
+  #diff(beforeSource: CheckpointSource, afterSource: CheckpointSource) {
+    if(this.#sameSource(beforeSource, afterSource)) return emptyChanges()
     const parser = new DOMParser()
-    const before = parser.parseFromString(beforeSource, "text/html")
-    const after = parser.parseFromString(afterSource, "text/html")
+    const before = parser.parseFromString(this.#diffHTML(beforeSource), "text/html")
+    const after = parser.parseFromString(this.#diffHTML(afterSource), "text/html")
     const changes = emptyChanges()
     if(this.#attributeSignature(before.documentElement) !== this.#attributeSignature(after.documentElement)) changes.modified++
     for(const _ of this.#diffElement(before.head, after.head, changes)) {}
@@ -705,17 +803,17 @@ export class HistoryFeature extends EditorFeature {
     return changes
   }
 
-  async #deferredDiff(beforeSource: string, afterSource: string, generation: number) {
+  async #deferredDiff(beforeSource: CheckpointSource, afterSource: CheckpointSource, generation: number) {
     if(generation !== this.#checkpointGeneration) return null
-    if(beforeSource === afterSource) return emptyChanges()
+    if(this.#sameSource(beforeSource, afterSource)) return emptyChanges()
     const yieldTask = () => new Promise<void>(resolve => setTimeout(resolve, 0))
     const parser = new DOMParser()
     await yieldTask()
     if(generation !== this.#checkpointGeneration) return null
-    const before = parser.parseFromString(beforeSource, "text/html")
+    const before = parser.parseFromString(this.#diffHTML(beforeSource), "text/html")
     await yieldTask()
     if(generation !== this.#checkpointGeneration) return null
-    const after = parser.parseFromString(afterSource, "text/html")
+    const after = parser.parseFromString(this.#diffHTML(afterSource), "text/html")
     await yieldTask()
     if(generation !== this.#checkpointGeneration) return null
     const changes = emptyChanges()

@@ -22,6 +22,7 @@ vi.mock("./domeditor", () => ({
       sharedDocs.push(this.doc)
       vi.spyOn(this.doc, "disconnectCollaboration").mockImplementation(providerDisconnect)
     }
+    destroy = vi.fn(() => this.doc.destroy())
     features = {
       graphic: graphicInputState.graphic,
       media: graphicInputState.media,
@@ -309,7 +310,9 @@ it("publishes document updates, owns only document shortcuts, and disconnects co
 
   const updateCount = () => postMessage.mock.calls.filter(([message]) => message.type === "editor-frame-update").length
   const beforePageHide = updateCount()
+  const editor = (window as any).editor
   window.dispatchEvent(Object.assign(new Event("pagehide"), {persisted: true}))
+  expect(editor.destroy).not.toHaveBeenCalled()
   window.dispatchEvent(Object.assign(new Event("pageshow"), {persisted: true}))
   paragraph.append("After cache restore")
   await flushMutations()
@@ -317,6 +320,8 @@ it("publishes document updates, owns only document shortcuts, and disconnects co
   expect(afterRestore).toBeGreaterThan(beforePageHide)
 
   window.dispatchEvent(Object.assign(new Event("pagehide"), {persisted: false}))
+  expect(editor.destroy).toHaveBeenCalledOnce()
+  expect((window as any).editor).toBeUndefined()
   paragraph.append("After teardown")
   await flushMutations()
   expect(updateCount()).toBe(afterRestore)

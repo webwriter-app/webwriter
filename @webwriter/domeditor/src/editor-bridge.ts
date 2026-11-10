@@ -12,7 +12,7 @@ import {
   type RubyState,
   type StyleMarkValues,
 } from "./marks"
-import type {EditorStateSnapshot} from "./editor-state"
+import {isEditorStateUpdate, type EditorStateSnapshot} from "./editor-state"
 import {isMediaType, type MediaSelectionState} from "./media"
 import type {WebWriterPackage} from "./packages"
 import {type TableSelectionState} from "./table"
@@ -312,8 +312,7 @@ export function isInitializeEditorMessage(value: unknown): value is InitializeEd
     && (message.initialState === undefined || (
       !!message.initialState
       && typeof message.initialState === "object"
-      && Array.isArray(message.initialState.update)
-      && message.initialState.update.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255)
+      && isEditorStateUpdate(message.initialState.update)
     ))
 }
 

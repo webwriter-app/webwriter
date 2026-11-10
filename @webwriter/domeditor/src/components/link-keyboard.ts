@@ -2,7 +2,7 @@ import {LitElement, css, html, nothing} from "lit"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {ribbonIcon} from "../ribbon-icons"
 import {parseReference} from "../document-viewer.js"
-import {linkKindFromAttributes, linkKindOptions, normalizeLinkHref, type AttachmentSelectionState, type AttachmentSource, type InputLinkKind, type LinkEdit, type LinkSelectionState} from "../links"
+import {linkKindFromAttributes, linkKindOptions, normalizeLinkHref, type AttachmentMediaPreview, type AttachmentSelectionState, type AttachmentSource, type InputLinkKind, type LinkEdit, type LinkSelectionState} from "../links"
 
 type LinkTarget = {href: string, label: string}
 type ReferenceValue = LinkTarget & {data: string}
@@ -72,6 +72,7 @@ export class LinkKeyboard extends LitElement {
     .actions { justify-content: flex-end; margin-top: .35rem; }
     .attachment-controls { overflow: auto; padding: 2px; }
     .attachment-controls label { margin-top: .35rem; }
+    .attachment-filename { overflow-wrap: anywhere; }
     dialog { width: min(560px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow: auto; padding: 1rem; border: 1px solid #c9d0d9; border-radius: .55rem; color: inherit; background: #f2f4f7; font: inherit; }
     dialog::backdrop { background: rgb(25 35 48 / 35%); }
     dialog h2 { margin-bottom: .75rem; }
@@ -188,6 +189,7 @@ export class LinkKeyboard extends LitElement {
       ${this.error ? html`<div role="alert">${this.error}</div>` : nothing}
       ${this.attachmentBusy ? html`<div role="status">Preparing attachment…</div>` : nothing}
       <div class="panel attachment-controls">
+        ${attachment.filename ? html`<div class="attachment-filename">Attached file <strong>${attachment.filename}</strong></div>` : nothing}
         <label for="attachment-file">Local file</label>
         <input id="attachment-file" type="file" ?disabled=${this.attachmentBusy} @change=${(event: Event) => {
           const input = event.currentTarget as HTMLInputElement
@@ -204,6 +206,8 @@ export class LinkKeyboard extends LitElement {
           <select class="field" id="attachment-media" ?disabled=${this.attachmentBusy}>
             ${attachment.media.map(media => html`<option value=${media.id}>${media.label}</option>`)}
           </select>
+          <button type="button" ?disabled=${this.attachmentBusy} @pointerdown=${this.#keepSelection}
+            @click=${this.#previewAttachmentMedia}>Preview</button>
           <button type="submit" ?disabled=${this.attachmentBusy}>Attach media</button>
         </form>` : html`<div class="empty" id="attachment-media">No media sources available</div>`}
       </div>
@@ -220,6 +224,14 @@ export class LinkKeyboard extends LitElement {
     if(this.attachmentBusy || !this.attachment) return
     this.dispatchEvent(new CustomEvent("attachment-command", {
       detail: {identity: this.attachment.identity, ...source}, bubbles: true, composed: true,
+    }))
+  }
+
+  #previewAttachmentMedia = () => {
+    const mediaId = this.renderRoot.querySelector<HTMLSelectElement>("#attachment-media")?.value
+    if(this.attachmentBusy || !this.attachment || !mediaId) return
+    this.dispatchEvent(new CustomEvent<AttachmentMediaPreview>("attachment-media-preview", {
+      detail: {identity: this.attachment.identity, mediaId}, bubbles: true, composed: true,
     }))
   }
 

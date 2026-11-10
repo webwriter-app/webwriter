@@ -21,13 +21,14 @@ import {
   type StyleMarkName,
   type StyleMarkValues,
 } from "../marks"
-import {$, authoredClassValue, cloneRangeContents, cloneWithoutEditorMarkers, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, isParagraphContent, textOffsetIn, textPointAtOffset} from "../utility"
+import {$, authoredClassValue, cloneRangeContents, cloneWithoutEditorMarkers, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, isParagraphContent, textOffsetIn, textPointAtOffset, uiMotionDisabled} from "../utility"
+import {clearPresentationState, setPresentationState} from "../presentation-state.js"
 import {SVG_NAMESPACE} from "../graphic"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {popupContentAncestor, popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
 import {isSectionElement} from "../sections"
 import {collectReferences, parseReference} from "../document-viewer.js"
-import {attachmentWarningBytes, isLinkEdit, isLinkKind, linkKindFromAttributes, normalizeLinkHref, type AttachmentSelectionState, type AttachmentSource, type InputLinkKind, type LinkEdit, type LinkKind, type LinkSelectionState} from "../links"
+import {attachmentWarningBytes, isLinkEdit, isLinkKind, linkKindFromAttributes, normalizeLinkHref, type AttachmentMediaPreview, type AttachmentSelectionState, type AttachmentSource, type InputLinkKind, type LinkEdit, type LinkKind, type LinkSelectionState} from "../links"
 import {attachmentConfirmationEvent} from "../editor-bridge"
 import {fontStylesheetFamily, fontFamilies, fontWithFallback, syncFontResources} from "../fonts"
 import {mergeEmbeddedFonts} from "../local-fonts"
@@ -440,6 +441,7 @@ export class MarkFeature extends EditorFeature {
   private linkNodeIDs = new WeakMap<Node, string>()
   private attachmentRequest: {token: string, identity: string, href: string | null, draft: boolean} | null = null
   private attachmentConfirmation: {id: string, resolve: (confirmed: boolean) => void} | null = null
+  private attachmentPreview: {element: Element, timer: ReturnType<typeof setTimeout>} | null = null
   private editingLink = false
   private automaticLinkBlock: Element | null = null
   private automaticLinkTypingBlock: Element | null = null
@@ -619,6 +621,8 @@ export class MarkFeature extends EditorFeature {
     editLink: (edit: LinkEdit & {type: "editLink"}) => this.editLink(edit),
     toggleAttachment: ({}: {type: "toggleAttachment"}) => this.toggleAttachment(),
     attach: (action: AttachmentSource & {type: "attach", identity: string}) => this.attach(action.identity, action),
+    previewAttachmentMedia: ({identity, mediaId}: AttachmentMediaPreview & {type: "previewAttachmentMedia"}) =>
+      this.previewAttachmentMedia(identity, mediaId),
     resolveAttachmentConfirmation: ({id, confirmed}: {type: "resolveAttachmentConfirmation", id: string, confirmed: boolean}) => {
       if(this.attachmentConfirmation?.id !== id) return
       this.attachmentConfirmation.resolve(confirmed === true)
@@ -721,6 +725,7 @@ export class MarkFeature extends EditorFeature {
     this.stateRefreshQueued = false
     this.linkKindDraft = null
     this.attachmentRequest = null
+    this.clearAttachmentPreview()
     this.attachmentConfirmation?.resolve(false)
     this.attachmentConfirmation = null
     this.clearStoredMarks()
@@ -879,6 +884,7 @@ export class MarkFeature extends EditorFeature {
     const href = attributes.href ?? ""
     const attachment = anchor instanceof HTMLAnchorElement && anchor.matches(attachmentMark)
       || attributes.download !== undefined && /^data:/i.test(href)
+    if(attachment && !allowUnmarked) return null
     const text = range.toString()
     const popupContent = popup && popupContentForToggle(popup)
     const identity = JSON.stringify([this.linkNodeID(range.startContainer), range.startOffset,
@@ -979,12 +985,15 @@ export class MarkFeature extends EditorFeature {
         || media instanceof HTMLMediaElement && media.srcObject) return []
       const source = media.currentSrc || media.getAttribute("src")
       if(!source) return []
-      let url: URL
-      try { url = new URL(source, media.baseURI) } catch { return [] }
-      if(!["http:", "https:", "data:", "blob:"].includes(url.protocol) || url.username || url.password) return []
+      // The picker only needs metadata. Avoid reparsing large embedded URLs on every selection update.
+      let url: URL | undefined
+      if(!/^data:/i.test(source)) {
+        try { url = new URL(source, media.baseURI) } catch { return [] }
+        if(!["http:", "https:", "data:", "blob:"].includes(url.protocol) || url.username || url.password) return []
+      }
       const fallback = media instanceof HTMLImageElement ? "image" : media.localName
-      let name = this.editor.mediaSourceFilename(url.href)
-      if(url.protocol === "http:" || url.protocol === "https:") {
+      let name = url?.protocol === "blob:" ? this.editor.mediaSourceFilename(url.href) : undefined
+      if(url?.protocol === "http:" || url?.protocol === "https:") {
         const basename = url.pathname.split("/").pop()
         if(basename) {
           try { name = decodeURIComponent(basename) } catch { name = basename }
@@ -992,17 +1001,41 @@ export class MarkFeature extends EditorFeature {
       }
       const label = media.getAttribute("aria-label")?.trim() || media.getAttribute("alt")?.trim()
         || media.closest("figure")?.querySelector(":scope > figcaption")?.textContent?.trim() || name || fallback
-      return [{id: this.linkNodeID(media), label, name, fallback, url}]
+      return [{id: this.linkNodeID(media), label, name, fallback, element: media, source: url?.href ?? source}]
     })
   }
 
   private attachmentState(target: NonNullable<ReturnType<MarkFeature["attachmentTarget"]>>): AttachmentSelectionState {
-    const {identity, href, existing} = target
+    const {identity, href, existing, anchor} = target
     const current = this.attachmentRequest
     if(current?.identity !== identity || current.href !== href || current.draft !== !existing) {
       this.attachmentRequest = {token: crypto.randomUUID(), identity, href, draft: !existing}
     }
-    return {identity: this.attachmentRequest!.token, media: this.attachmentMedia().map(({id, label}) => ({id, label}))}
+    const filename = anchor?.getAttribute("download")
+    return {identity: this.attachmentRequest!.token, ...(filename ? {filename} : {}),
+      media: this.attachmentMedia().map(({id, label}) => ({id, label}))}
+  }
+
+  private previewAttachmentMedia(identity: string, mediaId: string) {
+    const request = this.attachmentRequest
+    if(!this.isEnabled || !request || request.token !== identity) return false
+    const target = this.attachmentTarget()
+    if(!target || target.identity !== request.identity || target.href !== request.href) return false
+    const media = this.attachmentMedia().find(candidate => candidate.id === mediaId)
+    if(!media) return false
+    this.clearAttachmentPreview()
+    const {element} = media
+    element.scrollIntoView({block: "center", inline: "nearest", behavior: uiMotionDisabled(element) ? "instant" : "smooth"})
+    setPresentationState(element, "attachment-media-preview")
+    this.attachmentPreview = {element, timer: setTimeout(() => this.clearAttachmentPreview(), 2000)}
+    return true
+  }
+
+  private clearAttachmentPreview() {
+    if(!this.attachmentPreview) return
+    clearTimeout(this.attachmentPreview.timer)
+    clearPresentationState(this.attachmentPreview.element, "attachment-media-preview")
+    this.attachmentPreview = null
   }
 
   getAttachmentState(): AttachmentSelectionState | null {
@@ -1159,10 +1192,10 @@ export class MarkFeature extends EditorFeature {
       const media = this.attachmentMedia().find(candidate => candidate.id === source.mediaId)
       if(!media) throw new Error("The media source is no longer available.")
       try {
-        const response = await fetch(media.url, {signal: AbortSignal.timeout(10_000)})
+        const response = await fetch(media.source, {signal: AbortSignal.timeout(10_000)})
         if(!response.ok) throw new Error()
-        if(/^https?:$/.test(media.url.protocol) && /^attachment(?:\s*;|\s*$)/i.test(response.headers.get("Content-Disposition") ?? "")) {
-          href = media.url.href
+        if(/^https?:/.test(media.source) && /^attachment(?:\s*;|\s*$)/i.test(response.headers.get("Content-Disposition") ?? "")) {
+          href = media.source
           await response.body?.cancel()
         }
         file = href ? new Blob() : await response.blob()

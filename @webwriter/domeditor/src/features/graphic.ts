@@ -1664,7 +1664,7 @@ export class GraphicFeature extends EditorFeature {
       ? this.editor.features.media.placeholder.target
       : graphicShapeGeometry(graphicShapeForNode(event.target instanceof Node ? event.target : null))
     const target = candidate?.localName === "image" && isEmptyMedia(candidate) && !this.#isLocked(candidate) ? candidate : null
-    const commit = (source: string, index: number) => {
+    const commit = (source: string | File, index: number) => {
       if(!this.isEnabled || this.editor.isEditingLocked || !graphic.isConnected
         || atomicEditingContainer(graphic.parentElement, this.editor.schema)) return
       if(target && (!graphic.contains(target) || !isEmptyMedia(target) || this.#isLocked(target)
@@ -1676,7 +1676,7 @@ export class GraphicFeature extends EditorFeature {
         image.setAttribute("y", cleanNumber(point.y - bounds.height / 2 + index * 24))
       }
       this.editor.doc.stopCapturing()
-      image.setAttribute("href", source)
+      image.setAttribute("href", typeof source === "string" ? source : this.editor.createMediaURL(source))
       if(!target) graphic.append(image)
       this.editor.features.selection.captureElement(graphic)
       this.#selectShape(image as SVGGraphicsElement)
@@ -1685,7 +1685,7 @@ export class GraphicFeature extends EditorFeature {
       this.editor.doc.stopCapturing()
     }
     if(files.length) files.forEach((file, index) => {
-      if(file.type.startsWith("image/")) { commit(this.editor.createMediaURL(file), index); return }
+      if(file.type.startsWith("image/")) { commit(file, index); return }
       if(!this.isEnabled || this.editor.isEditingLocked || !graphic.isConnected
         || atomicEditingContainer(graphic.parentElement, this.editor.schema)) return
       const container = document.createElementNS(SVG_NAMESPACE, "foreignObject")

@@ -150,6 +150,39 @@ describe("history selection restoration", () => {
 })
 
 describe("collaborative version history", () => {
+  it("shares inline media across checkpoints and restores the exact bytes after a snapshot reload", () => {
+    const attachment = "data:application/octet-stream;base64," + "ABCD".repeat(4096)
+    const replacement = "data:application/octet-stream;base64," + "EFGH".repeat(4096)
+    const image = "data:image/png;base64," + "IJKL".repeat(4096)
+    document.body.innerHTML = `<p><a download="notes.bin" href="${attachment}">Notes</a></p><img src="${image}">`
+    let history = editor.features.history.actions
+    const state = () => history.getVersionHistory({type: "getVersionHistory"})
+    const first = state().currentCheckpointId!
+    document.querySelector("a")!.textContent = "Updated notes"
+    const textEdit = state()
+    expect(textEdit.checkpoints[0].changes).toEqual({added: 0, removed: 0, modified: 1})
+    document.querySelector("a")!.setAttribute("href", replacement)
+    expect(state().checkpoints[0].changes).toEqual({added: 0, removed: 0, modified: 1})
+
+    const checkpoints = editor.doc.doc.getArray("version-history").toArray()
+    expect(JSON.stringify(checkpoints)).not.toContain(attachment)
+    expect(JSON.stringify(checkpoints)).not.toContain(image)
+    expect(Array.from(editor.doc.doc.getMap<string>("version-history-assets").values()).sort())
+      .toEqual([attachment, image, replacement].sort())
+    const snapshot = structuredClone(editor.doc.snapshot())
+    editor.destroy()
+    document.body.replaceChildren()
+    editor = new DOMEditor({initialState: snapshot})
+    history = editor.features.history.actions
+    history.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: first})
+    expect(document.querySelector("a")?.getAttribute("href")).toBe(attachment)
+    expect(document.querySelector("img")?.getAttribute("src")).toBe(image)
+    history.clearVersionPreview({type: "clearVersionPreview"})
+    expect(document.querySelector("a")?.getAttribute("href")).toBe(replacement)
+    history.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: first})
+    expect(document.querySelector("a")?.getAttribute("href")).toBe(attachment)
+  })
+
   it("publishes local undo availability immediately without serializing checkpoints, and cleans up", async () => {
     const history = editor.features.history
     history.disable()
