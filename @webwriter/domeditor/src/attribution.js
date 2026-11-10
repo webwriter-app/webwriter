@@ -414,7 +414,7 @@ export function createAttributionController(doc, options = {}) {
       const horizontalWidth = canvasTransform ? `${box.width}px` : "anchor-size(width)"
       const horizontalPosition = `body::part(${part}) { position-anchor: ${name}; left: auto; right: anchor(right); width: ${horizontalWidth}; ${below ? "top: calc(anchor(bottom) + 2px); bottom: auto;" : "bottom: calc(anchor(top) + 2px); top: auto;"} }`
       record.before = horizontal && !below ? annotationSpace : 0
-      record.rules = `:where(${selector}):nth-child(n) { anchor-name: ${anchor && anchor !== "none" ? `${anchor}, ` : ""}${name} !important; --ww-attribution-after: ${horizontal && below ? annotationSpace : 0}px; }\n${horizontal ? horizontalPosition : position(part, left)}${wrapped && contact && !compact ? `\n${position(`${part}-contact`, horizontal ? left : !left)}` : ""}`
+      record.rules = `:where(${record.selector}):nth-child(n) { anchor-name: ${anchor && anchor !== "none" ? `${anchor}, ` : ""}${name} !important; --ww-attribution-after: ${horizontal && below ? annotationSpace : 0}px; }\n${horizontal ? horizontalPosition : position(part, left)}${wrapped && contact && !compact ? `\n${position(`${part}-contact`, horizontal ? left : !left)}` : ""}`
     }
     if(footnoteList?.children.length) footnotes.append(footnoteList)
     if(current) for(const [element, record] of notes) if(!current.has(element)) removeNote(element, record)
