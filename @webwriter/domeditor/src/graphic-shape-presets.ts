@@ -328,6 +328,36 @@ function connectorAttachment(path:string,center:BubblePoint,tip:BubblePoint) {
   }
   return best
 }
+
+export function constrainCalloutTip(type: string, values: number[], previous: number[]) {
+  const cloud = type === "cloud-callout"
+  if(!cloud && !isSpeechBubbleType(type)) return values
+  const [x, y, roundness] = values
+  const center = bubblePoint(50, 37.5)
+  const segments = cloud ? [] : bubbleSegments(type === "oval-callout", roundness)
+  const body = cloud ? cloudLobes(roundness) : `M 0 37.5 ${segments.map(segment => bubbleCommand(segment, 0)).join(" ")} Z`
+  let dx = x - center.x, dy = y - center.y
+  const length = Math.hypot(dx, dy)
+  if(length < 1e-6) {
+    dx = previous[0] - center.x
+    dy = previous[1] - center.y
+    if(Math.hypot(dx, dy) < 1e-6) dy = 1
+  }
+  const directionLength = Math.hypot(dx, dy)
+  dx /= directionLength
+  dy /= directionLength
+  const tip = bubblePoint(center.x + dx, center.y + dy)
+  let edge = connectorAttachment(body, center, tip).distance
+  // The cloud handle sits on the right edge of the last dot. Keep both
+  // the dot's center and the visible endpoint outside the cloud.
+  if(cloud) {
+    edge = Math.max(edge, connectorAttachment(body, bubblePoint(center.x + 3, center.y), bubblePoint(tip.x + 3, tip.y)).distance)
+  }
+  const minimum = edge + (cloud ? 4 : .5)
+  if(length >= minimum) return values
+  return [center.x + dx * minimum, center.y + dy * minimum, roundness]
+}
+
 const lineCalloutPreset = (label:string,bent:boolean) => base(label,"Callouts",([ex,ey,r])=>{
   const body=lineBoxPath(r),{point:start,normal}=connectorAttachment(body,bubblePoint(65,37.5),bubblePoint(ex,ey))
   const elbow=bubblePoint(start.x+normal.x*10,start.y+normal.y*10)

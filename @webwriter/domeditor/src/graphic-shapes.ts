@@ -1,4 +1,4 @@
-import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyChordPreset, legacyCloudPreset, legacySpeechBubblePresets, isConnectedCalloutType, connectedCalloutTypes, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
+import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyChordPreset, legacyCloudPreset, legacySpeechBubblePresets, isConnectedCalloutType, connectedCalloutTypes, constrainCalloutTip, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
 
 export const graphicConnectorRole = "connector"
 
@@ -439,6 +439,6 @@ export function adjustGraphicPreset(element: Element, state: GraphicPresetState,
     const [min, max] = state.definition.adjustmentLimits(state.values, index)
     values[index] = Math.max(adjustment.min, min, Math.min(adjustment.max, max, values[index]))
   }
-  writeGraphicPreset(element, state, state.bounds, values)
+  writeGraphicPreset(element, state, state.bounds, constrainCalloutTip(state.type, values, state.values))
   return true
 }

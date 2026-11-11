@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyCloudPreset, legacyCurvedArrowPresets, legacySpeechBubblePresets, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
+import {graphicShapePresets, isSpeechBubbleType, legacyArrowPresets, legacyCalloutPresets, legacyCloudPreset, legacyCurvedArrowPresets, legacySpeechBubblePresets, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
 import {adjustGraphicPreset, graphicPresetFillRule, graphicPresetHandles, graphicPresetOptions, graphicPresetPath, readGraphicPreset, writeGraphicPreset} from "./graphic-shapes"
 
 const bounds = {x: -137.25, y: 219.75, width: 273.5, height: 146.25}
@@ -286,6 +286,29 @@ describe("native SVG shape presets", () => {
     expect(final.values[1]).toBeCloseTo(beforeRound.values[1],4)
     expect(final.values[2]).toBeCloseTo(control.max,4)
     expect(element.hasAttribute("data-parameters")).toBe(false)
+  })
+
+  it.each(["rectangular-callout", "rounded-rectangular-callout", "oval-callout", "cloud-callout"] as const)("keeps the %s connector tip outside the body", type => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("aria-label", graphicShapePresets[type].label)
+    element.setAttribute("d", graphicPresetPath(type, bounds))
+    const point = (x: number, y: number) => ({x: bounds.x + x / 100 * bounds.width, y: bounds.y + y / 100 * bounds.height})
+    const move = (x: number, y: number) => {
+      expect(adjustGraphicPreset(element, readGraphicPreset(element)!, "adjust-end-x", point(x, y))).toBe(true)
+      return graphicPresetHandles(readGraphicPreset(element)!)[0].point
+    }
+    expect(move(50, 20).y).toBeLessThan(bounds.y)
+    expect(move(80, 37.5).x).toBeGreaterThan(point(100, 37.5).x)
+    expect(move(50, 60).y).toBeGreaterThan(point(50, 75).y)
+    const left = move(20, 37.5)
+    expect(left.x).toBeLessThan(bounds.x)
+    expect(move(type === "cloud-callout" ? 53 : 50, 37.5).x).toBeCloseTo(left.x, 4)
+    const outside = move(2, 2)
+    if(type === "rectangular-callout") expect(outside.x).toBeLessThan(point(2, 2).x)
+    else {
+      expect(outside.x).toBeCloseTo(point(2, 2).x, 4)
+      expect(outside.y).toBeCloseTo(point(2, 2).y, 4)
+    }
   })
 
   it.each(["rectangular-callout","rounded-rectangular-callout","oval-callout"] as const)("moves the $type speech bubble tail around its body with one endpoint POI", type => {
@@ -725,7 +748,9 @@ describe("native SVG shape presets", () => {
     expect(graphicPresetHandles(state!).length).toBeGreaterThan(0)
 
     definition.adjustments.forEach((adjustment, index) => {
-      for(const value of [adjustment.min, (adjustment.min + adjustment.max) / 2, adjustment.max]) {
+      const middle = adjustment.name === "end-y" && (isSpeechBubbleType(option.type) || option.type === "cloud-callout")
+        ? 110 : (adjustment.min + adjustment.max) / 2
+      for(const value of [adjustment.min, middle, adjustment.max]) {
         const before = readGraphicPreset(reloaded)!
         expect(adjustGraphicPreset(reloaded, before, `adjust-${adjustment.name}`, value)).toBe(true)
         const after = readGraphicPreset(reloaded)
@@ -771,7 +796,7 @@ describe("native SVG shape presets", () => {
         expect(handle.point.y).toBeCloseTo(input.y,3)
         return
       }
-      const target = (adjustment.min + adjustment.max) / 2
+      const target = middle
       const nextValues = [...current.values]
       nextValues[index] = target
       const handle = adjustment.point(nextValues)
@@ -1138,7 +1163,7 @@ describe("native SVG shape presets", () => {
   ] as const)("round-trips %s through horizontal, vertical, and double preset reflections", type => {
     const definition = graphicShapePresets[type]
     const values = type === "pie" ? [132] : type === "chord" ? [31, 124]
-      : type === "rectangular-callout" ? [37, 72, 19] : definition.adjustments.map(adjustment => adjustment.default)
+      : type === "rectangular-callout" ? [37, 92, 19] : definition.adjustments.map(adjustment => adjustment.default)
     const reflections = [
       {horizontal: true, vertical: false},
       {horizontal: false, vertical: true},
