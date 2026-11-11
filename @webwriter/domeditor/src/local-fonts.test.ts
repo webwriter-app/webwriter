@@ -1,17 +1,19 @@
 // @vitest-environment happy-dom
 import {readFile} from "node:fs/promises"
+import {createRequire} from "node:module"
 import {describe, expect, it, vi} from "vitest"
 import {base64DataURL, cssFontString, embeddedFontRules, embedFontFiles, fontCSSDataURL, mergeEmbeddedFonts} from "./local-fonts"
 
+const resolve = createRequire(import.meta.url).resolve
 const fontPaths = [
-  "../../../node_modules/temml/dist/Temml.woff2",
-  "../../../node_modules/@wagnerflo/cc-icons/fonts/cc-icons.woff",
-  "../../../node_modules/@wagnerflo/cc-icons/fonts/cc-icons.ttf",
-  "../../../node_modules/@wagnerflo/cc-icons/fonts/cc-icons.otf",
+  "temml/dist/Temml.woff2",
+  "@wagnerflo/cc-icons/fonts/cc-icons.woff",
+  "@wagnerflo/cc-icons/fonts/cc-icons.ttf",
+  "@wagnerflo/cc-icons/fonts/cc-icons.otf",
 ]
 
 async function fontFiles() {
-  return Promise.all(fontPaths.map(async path => new Blob([await readFile(new URL(path, import.meta.url))])))
+  return Promise.all(fontPaths.map(async path => new Blob([await readFile(resolve(path))])))
 }
 
 function decodeStylesheet(href: string) {

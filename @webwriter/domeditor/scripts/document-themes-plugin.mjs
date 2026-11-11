@@ -6,7 +6,7 @@ import {transform} from "esbuild"
 export const documentThemeSourcesId = "virtual:document-theme-sources"
 const originalId = `${documentThemeSourcesId}-original`
 const themeNames = ["base", "water", "simple", "sakura", "pico", "holiday"]
-const themeDirectory = new URL("../../core/model/schemas/resource/themes/", import.meta.url)
+const themeDirectory = new URL("../src/assets/document-themes/", import.meta.url)
 const floatsFile = new URL("../src/document-floats.css", import.meta.url)
 const typographyFile = new URL("../src/document-theme-options.css", import.meta.url)
 

@@ -1,4 +1,4 @@
-import appIconSource from "../../../static/assets/app-icon-transparent.svg?raw"
+import appIconSource from "../static-assets/assets/app-icon-transparent.svg?raw"
 import canvasSnapdomSource from "virtual:canvas-snapdom-source"
 import {attributionAttributes} from "./attribution.js"
 import listMarkerStyleSource from "./document-list-markers.css?raw"

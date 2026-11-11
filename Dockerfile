@@ -12,8 +12,8 @@ ENV VITE_APP_ORIGIN=$VITE_APP_ORIGIN \
     VITE_EDITOR_ORIGIN=$VITE_EDITOR_ORIGIN
 
 COPY . .
-RUN bun install && bun run preparestatic
-RUN cd @webwriter/domeditor && node node_modules/vite/bin/vite.js build
+RUN bun install
+RUN cd @webwriter/domeditor && npm run build
 
 # --- Serve ---
 FROM caddy:2-alpine

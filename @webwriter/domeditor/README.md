@@ -1,6 +1,8 @@
 # DOMEditor development server
 
-Run the editor and its localhost backend together:
+Use an up-to-date Node.js 22 release and run `bun install --frozen-lockfile` from
+the repository root. From this package directory, run the editor and its
+localhost backend together:
 
 ```sh
 npm start
