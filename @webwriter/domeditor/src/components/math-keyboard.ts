@@ -254,7 +254,7 @@ export class MathKeyboard extends LitElement {
             <svg class="drawing-surface" viewBox="0 0 1000 300" preserveAspectRatio="none"
               role="img" aria-label="Draw a formula" aria-busy=${String(this.handwritingBusy)}
               @pointerdown=${this.#penDown} @pointermove=${this.#penMove} @pointerup=${this.#penUp}
-              @pointercancel=${this.#cancelStroke} @lostpointercapture=${this.#cancelStroke}
+              @pointercancel=${this.#cancelStroke} @lostpointercapture=${this.#lostPointerCapture}
               @contextmenu=${this.#keepSelection}>
               ${[...this.strokes, ...(this.#stroke ? [this.#stroke] : [])].map(stroke => svg`<polyline
                 points=${stroke.map(point => `${point.x},${point.y}`).join(" ")}
@@ -407,25 +407,41 @@ export class MathKeyboard extends LitElement {
       return
     }
     if(!this.#stroke) return
-    // Bound the recognizer's input before allocating an unbounded stroke.
-    if(this.strokes.reduce((count, stroke) => count + stroke.length, this.#stroke.length) >= 2048) {
+    if(!this.#appendStrokePoint(this.#stroke, this.#point(event))) {
       this.handwritingError = "Too much drawn. Clear the surface and write a smaller fragment."
       return
     }
-    this.#stroke.push(this.#point(event))
     this.requestUpdate()
+  }
+
+  #appendStrokePoint(stroke: Stroke, point: StrokePoint) {
+    // Bound the total input to the recognizer.
+    if(this.strokes.reduce((count, saved) => count + saved.length, stroke.length) >= 2048) return false
+    stroke.push(point)
+    return true
   }
 
   #penUp(event: PointerEvent) {
     if(event.pointerId !== this.#pointer) return
     if(this.#erasePoint) this.#erase(event)
     const stroke = this.#stroke
+    if(stroke) {
+      // A fast release can carry movement that never arrived as a pointermove.
+      const point = this.#point(event)
+      const last = stroke[stroke.length - 1]
+      if(point.x !== last.x || point.y !== last.y) this.#appendStrokePoint(stroke, point)
+    }
     this.#stroke = undefined
     this.#pointer = undefined
     this.#erasePoint = undefined
     if(stroke && stroke.length > 1) this.strokes = [...this.strokes, stroke]
     this.requestUpdate()
     if(!this.handwritingError) this.#scheduleRecognition()
+  }
+
+  #lostPointerCapture(event: PointerEvent) {
+    if(event.buttons === 0 && this.#stroke) this.#penUp(event)
+    else this.#cancelStroke(event)
   }
 
   #cancelStroke(event: PointerEvent) {

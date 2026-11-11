@@ -1743,7 +1743,11 @@ export class GraphicFeature extends EditorFeature {
       this.#cancelPointer(event)
     },
     lostpointercapture: event => {
-      if(this.#stroke?.pointerId === event.pointerId) this.#cancelStroke()
+      if(this.#stroke?.pointerId === event.pointerId) {
+        // A quick release can lose capture before pointerup reaches this listener.
+        if(event.buttons === 0) this.#finishStroke(event)
+        else this.#cancelStroke()
+      }
       if(this.#path?.drag?.pointerId === event.pointerId) this.#cancelPath()
     },
     wheel: event => this.#handleWheel(event),
