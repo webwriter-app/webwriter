@@ -13,6 +13,7 @@ Before adding code, work through these questions in order:
 2. Does equivalent code already exist in this codebase?
    - Reuse or extend it; do not create a competing implementation.
 3. Can the web platform, HTML, CSS, or JavaScript already do it?
+   - Use the [Modern Web Guidance skill](.agents/skills/modern-web-guidance/SKILL.md) when planning HTML, CSS, or client-side JavaScript changes. Check its guidance for native features, browser support, and fallbacks.
    - Use the platform feature.
 4. Can an installed dependency already do it?
    - Use the dependency.
