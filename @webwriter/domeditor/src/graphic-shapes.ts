@@ -1,4 +1,4 @@
-import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyChordPreset, legacyCloudPreset, legacyRoundFlowPresets, legacySequentialStoragePreset, legacySpeechBubblePresets, isConnectedCalloutType, connectedCalloutTypes, constrainCalloutTip, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
+import {graphicShapePresets, legacyArrowPresets, legacyBannerPaths, legacyCalloutPresets, legacyChordPreset, legacyCloudPreset, legacyRoundFlowPresets, legacySequentialStoragePreset, legacySpeechBubblePresets, isConnectedCalloutType, connectedCalloutTypes, constrainCalloutTip, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
 
 export const graphicConnectorRole = "connector"
 
@@ -19,7 +19,7 @@ const numberPattern = /[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g
 // These open detail contours run opposite to the silhouette. SVG closes
 // them for filling, so reverse their direction to keep the overlap solid.
 const reversedDetailPresets = new Set<GraphicPresetType>([
-  "cylinder", "cube", "folded-corner", "ribbon-up", "ribbon-down",
+  "cylinder", "cube", "folded-corner",
   "magnetic-disk", "direct-access-storage",
 ])
 
@@ -135,6 +135,13 @@ function getTemplates() {
       : option.type === "chord" || option.type === "sequential-access-storage" || isConnectedCalloutType(option.type)
         ? [] : [values => presetDrawing(option.type, values)]
     if(reversedDetailPresets.has(option.type)) drawings.push(definition.draw)
+    const legacyBanner = legacyBannerPaths[option.type]
+    if(legacyBanner) {
+      drawings.push(legacyBanner)
+      if(option.type === "ribbon-up" || option.type === "ribbon-down") {
+        drawings.push(values => orientDetailContours(legacyBanner(values)))
+      }
+    }
     if(option.type === "delay") drawings.push(legacyDelayPath)
     if(option.type === "left-brace") {
       drawings.push(([p]) => `M 70 5 Q 48 5 52 25 L 52 40 Q 52 50 ${p} 50 Q 52 50 52 60 L 52 75 Q 48 95 70 95`)

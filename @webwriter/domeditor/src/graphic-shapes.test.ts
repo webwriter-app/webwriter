@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {graphicShapePresets, isSpeechBubbleType, legacyArrowPresets, legacyCalloutPresets, legacyCloudPreset, legacyCurvedArrowPresets, legacySpeechBubblePresets, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
+import {graphicShapePresets, isSpeechBubbleType, legacyArrowPresets, legacyBannerPaths, legacyCalloutPresets, legacyCloudPreset, legacyCurvedArrowPresets, legacySpeechBubblePresets, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
 import {adjustGraphicPreset, graphicPresetFillRule, graphicPresetHandles, graphicPresetOptions, graphicPresetPath, readGraphicPreset, writeGraphicPreset} from "./graphic-shapes"
 
 const bounds = {x: -137.25, y: 219.75, width: 273.5, height: 146.25}
@@ -879,7 +879,7 @@ describe("native SVG shape presets", () => {
     const definition = graphicShapePresets[type]
     const values = definition.adjustments.map(adjustment => (adjustment.min + adjustment.max) / 2)
     let index = 0
-    const legacy = definition.draw(values).replace(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g, value => {
+    const legacy = (legacyBannerPaths[type] ?? definition.draw)(values).replace(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g, value => {
       const horizontal = index++ % 2 === 0
       return String((horizontal ? bounds.x : bounds.y) + Number(value) / 100 * (horizontal ? bounds.width : bounds.height))
     })
@@ -895,6 +895,25 @@ describe("native SVG shape presets", () => {
     expect(element.getAttribute("fill-rule")).toBe("nonzero")
     expect(readGraphicPreset(element)?.type).toBe(type)
     expect(readGraphicPreset(element)!.values[0]).toBeCloseTo(values[0], 3)
+  })
+
+  it.each([
+    ["ribbon-up", "M 20 14 L 80 14 L 80 30 L 100 30 L 90 55 L 100 80 L 80 80 L 65 65 L 35 65 L 20 80 L 0 80 L 10 55 L 0 30 L 20 30 Z M 80 30 L 80 65 L 20 65 L 20 30 M 35 80 L 20 65 M 65 80 L 80 65"],
+    ["ribbon-down", "M 80 86 L 20 86 L 20 70 L 0 70 L 10 45 L 0 20 L 20 20 L 35 35 L 65 35 L 80 20 L 100 20 L 90 45 L 100 70 L 80 70 Z M 20 70 L 20 35 L 80 35 L 80 70 M 65 20 L 80 35 M 35 20 L 20 35"],
+    ["vertical-scroll", "M 20 12 Q 20 0 30 0 L 95 0 Q 100 12 90 12 L 80 12 L 80 88 Q 80 100 70 100 L 5 100 Q 0 88 10 88 L 20 88 Z M 30 0 Q 40 12 30 12 L 20 12 M 70 100 Q 60 88 70 88 L 80 88"],
+    ["horizontal-scroll", "M 88 20 Q 100 20 100 30 L 100 95 Q 88 100 88 90 L 88 80 L 12 80 Q 0 80 0 70 L 0 5 Q 12 0 12 10 L 12 20 Z M 100 30 Q 88 40 88 30 L 88 20 M 0 70 Q 12 60 12 70 L 12 80"],
+  ] as const)("keeps saved %s geometry until a shape adjustment", (type, savedPath) => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("aria-label", graphicShapePresets[type].label)
+    element.setAttribute("d", savedPath)
+    const state = readGraphicPreset(element)!
+    expect(state.type).toBe(type)
+    expect(state.values[0]).toBeCloseTo(12, 4)
+    expect(element.getAttribute("d")).toBe(savedPath)
+    const handle = graphicPresetHandles(state)[0]
+    expect(adjustGraphicPreset(element, state, handle.name, 16)).toBe(true)
+    expect(element.getAttribute("d")).toBe(graphicPresetPath(type, {x: 0, y: 0, width: 100, height: 100}, [16]))
+    expect(readGraphicPreset(element)?.values[0]).toBeCloseTo(16, 4)
   })
 
   it("joins the tape to the reel in one outline throughout a Tail height drag", () => {

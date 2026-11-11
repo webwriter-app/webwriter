@@ -131,13 +131,41 @@ const irregularStar = (n: number, inner: number, variant: number) => polygon(Arr
   return [50+radius*Math.cos(theta),50+radius*Math.sin(theta)]
 }))
 const starPreset = (n: number, inner: number) => base(`${n}-point star`, "Stars and banners", star(n), [poi("inner", "Inner radius", inner, 0, 48, p => ({x:50+p*Math.sin(Math.PI/n),y:50-p*Math.cos(Math.PI/n)}))])
+const ribbonOutline = (d: number) => `M 20 ${20-d/2} L 80 ${20-d/2} L 80 30 L 100 30 L 90 55 L 100 80 L 80 80 L 65 65 L 35 65 L 20 80 L 0 80 L 10 55 L 0 30 L 20 30 Z`
 const ribbonPreset = (label: string, down: boolean, curved: boolean) => base(label, "Stars and banners", ([d]) => {
   const path = curved
     ? `M 20 15 Q 50 ${15+d} 80 15 L 80 30 L 100 25 L 90 50 L 100 75 L 80 70 L 80 80 Q 50 ${80+d} 20 80 L 20 70 L 0 75 L 10 50 L 0 25 L 20 30 Z M 20 30 L 20 70 M 80 30 L 80 70 M 20 70 L 35 80 M 80 70 L 65 80`
-    : `M 20 ${20-d/2} L 80 ${20-d/2} L 80 30 L 100 30 L 90 55 L 100 80 L 80 80 L 65 65 L 35 65 L 20 80 L 0 80 L 10 55 L 0 30 L 20 30 Z M 20 30 L 20 65 L 80 65 L 80 30 M 20 65 L 35 80 M 80 65 L 65 80`
+    : `${ribbonOutline(d)} M 20 30 L 20 80 M 80 30 L 80 80 M 20 65 L 80 65`
   return down ? turn(path,2) : path
 }, [poi("fold", curved ? "Ribbon curve" : "Fold depth", 15, 0, curved ? 28 : 40, p => ({x:50,y:down ? curved ? 85-p/2 : 80+p/2 : curved ? 15+p/2 : 20-p/2}), "y")])
-const scrollPath = (d: number) => `M 20 ${d} Q 20 0 30 0 L 95 0 Q 100 ${d} 90 ${d} L 80 ${d} L 80 ${100-d} Q 80 100 70 100 L 5 100 Q 0 ${100-d} 10 ${100-d} L 20 ${100-d} Z M 30 0 Q 40 ${d} 30 ${d} L 20 ${d} M 70 100 Q 60 ${100-d} 70 ${100-d} L 80 ${100-d}`
+
+const scrollPath = (radius: number) => {
+  // Cubic quarter circles keep the coordinates affine in the roll radius.
+  const k = radius * 4 / 3 * (Math.SQRT2 - 1)
+  const near = 20 + radius, far = 100 - radius, diameter = 2 * radius
+  const halfOutline = `L ${far} 0
+    C ${far+k} 0 100 ${radius-k} 100 ${radius}
+    C 100 ${radius+k} ${far+k} ${diameter} ${far} ${diameter}
+    L 80 ${diameter} L 80 ${far}
+    C 80 ${far+k} ${80-radius+k} 100 ${80-radius} 100`
+  // The outline already draws a quarter of each end. Draw only the rest,
+  // in the same winding direction, so the end stays filled and has one stroke.
+  const end = `M ${near} 0
+    C ${near+k} 0 ${near+radius} ${radius-k} ${near+radius} ${radius}
+    C ${near+radius} ${radius+k} ${near+k} ${diameter} ${near} ${diameter}
+    C ${near-k} ${diameter} 20 ${radius+k} 20 ${radius}
+    M ${near} ${diameter} L 80 ${diameter}`
+  return `M ${near} 0 ${halfOutline} ${turn(halfOutline, 2)} Z ${end} ${turn(end, 2)}`
+}
+
+const legacyRibbonPath = (d: number) => `${ribbonOutline(d)} M 20 30 L 20 65 L 80 65 L 80 30 M 20 65 L 35 80 M 80 65 L 65 80`
+const legacyScrollPath = (d: number) => `M 20 ${d} Q 20 0 30 0 L 95 0 Q 100 ${d} 90 ${d} L 80 ${d} L 80 ${100-d} Q 80 100 70 100 L 5 100 Q 0 ${100-d} 10 ${100-d} L 20 ${100-d} Z M 30 0 Q 40 ${d} 30 ${d} L 20 ${d} M 70 100 Q 60 ${100-d} 70 ${100-d} L 80 ${100-d}`
+export const legacyBannerPaths: Partial<Record<keyof typeof graphicShapePresets, GraphicShapePreset["draw"]>> = {
+  "ribbon-up": ([d]) => legacyRibbonPath(d),
+  "ribbon-down": ([d]) => turn(legacyRibbonPath(d), 2),
+  "vertical-scroll": ([d]) => legacyScrollPath(d),
+  "horizontal-scroll": ([d]) => turn(legacyScrollPath(d), 1),
+}
 const cloudBubble = () => "M 12 60 C -5 60 -3 38 10 35 C -2 18 12 10 25 15 C 28 -3 46 -3 50 10 C 63 -3 78 0 78 15 C 96 5 105 20 92 33 C 110 40 100 58 88 58 C 88 78 68 80 60 67 C 48 83 32 78 30 65 C 17 78 7 73 12 60 Z"
 const cloudCoordinates = cloudBubble().match(/-?\d+/g)!.map(Number)
 const cloudPoints = Array.from({length:cloudCoordinates.length/2}, (_,i) => ({x:cloudCoordinates[i*2],y:cloudCoordinates[i*2+1]}))
@@ -568,8 +596,8 @@ const originalGraphicShapePresets = {
   "ribbon-down": ribbonPreset("Ribbon down", true, false),
   "curved-ribbon-up": ribbonPreset("Curved ribbon up", false, true),
   "curved-ribbon-down": ribbonPreset("Curved ribbon down", true, true),
-  "vertical-scroll": base("Vertical scroll", "Stars and banners", ([d]) => scrollPath(d), [poi("curl", "Curl depth", 10, 4, 18, p => ({x:80,y:p}), "y")]),
-  "horizontal-scroll": base("Horizontal scroll", "Stars and banners", ([d]) => turn(scrollPath(d),1), [poi("curl", "Curl depth", 10, 4, 18, p => ({x:100-p,y:80}))]),
+  "vertical-scroll": base("Vertical scroll", "Stars and banners", ([d]) => scrollPath(d), [poi("curl", "Roll thickness", 10, 4, 18, p => ({x:20,y:p}), "y")]),
+  "horizontal-scroll": base("Horizontal scroll", "Stars and banners", ([d]) => turn(scrollPath(d),1), [poi("curl", "Roll thickness", 10, 4, 18, p => ({x:100-p,y:20}))]),
   "wave": base("Wave", "Stars and banners", ([d]) => `M 0 20 C 35 ${20-d} 65 ${20+d} 100 20 L 100 80 C 65 ${80+d} 35 ${80-d} 0 80 Z`, [poi("amplitude", "Wave amplitude", 30, 5, 45, p => ({x:25.46875,y:20-.28125*p}), "y")]),
   "double-wave": base("Double wave", "Stars and banners", ([d]) => `M 0 20 Q 12.5 ${20-d} 25 20 Q 37.5 ${20+d} 50 20 Q 62.5 ${20-d} 75 20 Q 87.5 ${20+d} 100 20 L 100 80 Q 87.5 ${80+d} 75 80 Q 62.5 ${80-d} 50 80 Q 37.5 ${80+d} 25 80 Q 12.5 ${80-d} 0 80 Z`, [poi("amplitude", "Wave amplitude", 25, 5, 40, p => ({x:12.5,y:20-p/2}), "y")]),
   "rectangular-callout": calloutPreset("Rectangular callout", "rectangle"),
