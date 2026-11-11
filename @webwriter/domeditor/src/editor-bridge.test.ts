@@ -226,6 +226,11 @@ describe("editor bridge message guards", () => {
       syncUrl: "ws://localhost/session",
       initialState: {update: [0, 127, 255]},
     })).toBe(true)
+    expect(isInitializeEditorMessage({
+      type: initializeEditorMessage,
+      syncUrl: "ws://localhost/session",
+      initialState: {update: new Uint8Array([0, 127, 255])},
+    })).toBe(true)
 
     expectAllRejected(isInitializeEditorMessage, [
       {type: initializeEditorMessage, syncUrl: 42},

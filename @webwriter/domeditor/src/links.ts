@@ -62,10 +62,12 @@ export type LinkEdit = {
 
 export type AttachmentSelectionState = {
   identity: string
+  filename?: string
   media: Array<{id: string, label: string}>
 }
 
 export type AttachmentSource = {file: File} | {mediaId: string}
+export type AttachmentMediaPreview = {identity: string, mediaId: string}
 
 export const attachmentWarningBytes = 5_000_000
 
@@ -73,6 +75,7 @@ export function isAttachmentSelectionState(value: unknown): value is AttachmentS
   if(!value || typeof value !== "object" || Array.isArray(value)) return false
   const state = value as AttachmentSelectionState
   return typeof state.identity === "string" && !!state.identity && Array.isArray(state.media)
+    && (state.filename === undefined || typeof state.filename === "string")
     && state.media.every(item => !!item && typeof item === "object" && typeof item.id === "string" && typeof item.label === "string")
 }
 

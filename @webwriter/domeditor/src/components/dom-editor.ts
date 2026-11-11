@@ -43,7 +43,7 @@ import "./link-keyboard"
 import "./guided-tour"
 import "./app-update-notice"
 import type {LinkKeyboard} from "./link-keyboard"
-import {attachmentWarningBytes, isLinkEdit, isLinkKind, linkKindFromAttributes, linkKindOptions, linkKinds, type AttachmentSelectionState, type AttachmentSource, type LinkEdit, type LinkKind, type LinkSelectionState} from "../links"
+import {attachmentWarningBytes, isLinkEdit, isLinkKind, linkKindFromAttributes, linkKindOptions, linkKinds, type AttachmentMediaPreview, type AttachmentSelectionState, type AttachmentSource, type LinkEdit, type LinkKind, type LinkSelectionState} from "../links"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
 import { LitElement, css, html, noChange, nothing, type PropertyValues } from "lit"
@@ -60,7 +60,7 @@ import type {DomEditorToolbox} from "./toolbox"
 import type {LayoutSelectionState} from "../layouts"
 import type { EditingAction } from "../domeditor"
 import {elementDragType, insertionMenuItems, ribbonElementInsertionAction, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
-import type {EditorStateSnapshot} from "../editor-state"
+import {isEditorStateUpdate, type EditorStateSnapshot} from "../editor-state"
 import {copyEditorArtifactState, isAuthoredContentEditableMutation, isAuthoredMutation, isEditorOnlyNode, registerFrameArtifacts} from "../editor-artifacts"
 import {
   defaultPackageExportSource,
@@ -71,6 +71,8 @@ import {
   INSTALLED_PACKAGES_STORAGE_KEY,
   INSTALLED_PACKAGE_IMPORT_MAP_STORAGE_KEY,
   packageMemberAction,
+  packageUpdateKind,
+  packageVersionMajor,
   refreshPackageLabels,
   packageTestTimeout,
   WebWriterPackageRegistry,
@@ -834,7 +836,6 @@ export class DomEditor extends LitElement {
   private dirtyTrackingReady = false
   private dirtyTrackingMutationPending = false
   private dirtyTrackingTimer: ReturnType<typeof setTimeout> | undefined
-  private packageCatalogRequested = false
   private dependencyRefreshPromise: Promise<void> = Promise.resolve()
   private installedPackagesRestored = false
   private readonly packageRegistry = new WebWriterPackageRegistry()
@@ -932,6 +933,7 @@ export class DomEditor extends LitElement {
     }
 
     .document-stage {
+      --attachment-keyboard-height: min(280px, 50%);
       display: flex;
       position: relative;
       grid-row: 3;
@@ -983,6 +985,11 @@ export class DomEditor extends LitElement {
     .shape-keyboard-area[hidden] { display: none; }
     .shape-keyboard-area dom-editor-shape-keyboard { pointer-events: auto; }
     .link-keyboard-area { height: min(280px, 100%); }
+    .link-keyboard-area.attachment-keyboard-area { height: var(--attachment-keyboard-height); }
+    /* Reserve an unobstructed scroll viewport for previewing media at the end of the document. */
+    .document-stage:has(.attachment-keyboard-area:not([hidden])) > .editor-frame {
+      height: calc(100% - var(--attachment-keyboard-height));
+    }
     .link-keyboard-area[hidden] { display: none; }
     .link-keyboard-area dom-editor-link-keyboard { height: 100%; pointer-events: auto; }
 
@@ -2336,6 +2343,7 @@ export class DomEditor extends LitElement {
           ? frameImportMap(importMap, window.location.origin, editorFrameOrigin())! : importMap} : {}),
       }
       this.postToEditor(initializeMessage)
+      if(!this.editorOpaque) this.frameState = undefined
       if(this.previewEditingLocked && this.editorOpaque) this.postFrameControl("preview-editing", {locked: true})
       const packageLoadRequestId = `packages-${++this.packageLoadSequence}`
       const packageLoad = new Promise<unknown>((resolve, reject) => {
@@ -3450,6 +3458,9 @@ export class DomEditor extends LitElement {
     this.lang = "en"
     this.updateMotionPreference()
     this.localPackageManager.autoReload = settings.autoReloadPackages
+    if(settings.autoUpdatePackages && !previous.autoUpdatePackages) {
+      void this.loadPackageCatalog(new CustomEvent("package-catalog-request", {detail: {refresh: true}}))
+    }
     if(settings.pinDeveloperConsole && !previous.pinDeveloperConsole) {
       this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
     }
@@ -4040,8 +4051,9 @@ export class DomEditor extends LitElement {
           if(!this.isConnected || revision !== this.documentChangeSequence || frame !== this.frameRevision) {
             throw new Error("The document changed while opening the recovery draft. Try again.")
           }
-          this.clearDocumentCollaboration()
-          await this.reloadDocument(source, false, null, undefined, {recovery: claim, discardRecovery})
+          if(await this.reloadDocument(source, false, null, undefined, {
+            recovery: claim, discardRecovery, beforeSwitch: () => this.clearDocumentCollaboration(),
+          }) === false) return
           if(!this.isConnected) return
           claim.documentKey = latest.documentKey
           this.documentRecoveryCheckpoint = latest
@@ -4104,47 +4116,33 @@ export class DomEditor extends LitElement {
   }
 
   private async reloadDocument(htmlSource: string, isNewDocument = false, settingsId: string | null = null, accessibilityReviewEnabled?: boolean,
-    {recovery = null, discardRecovery = false}: {recovery?: ActiveDocumentRecovery | null, discardRecovery?: boolean} = {}) {
+    {recovery = null, discardRecovery = false, beforeSwitch}: {
+      recovery?: ActiveDocumentRecovery | null, discardRecovery?: boolean, beforeSwitch?: () => void,
+    } = {}) {
+    const parsed = new DOMParser().parseFromString(htmlSource, "text/html")
+    const revision = this.documentChangeSequence
+    const frameRevision = this.frameRevision
+    const installed = this.installedPackages
+    const packages = await loadDocumentPackages(parsed, this.packageRegistry, installed, {forEditing: true})
+    const changes = this.packageMajorChanges(installed, packages)
+    if(changes.length && !await this.confirmPackageChanges(changes)) return false
+    await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
+    if(!this.isConnected || revision !== this.documentChangeSequence || frameRevision !== this.frameRevision
+      || installed !== this.installedPackages) {
+      throw new Error("The document changed while loading its widgets. Open the file again.")
+    }
     this.dismissGuidedTour()
     this.freshDocumentLayoutSnapshot = null
     this.aiDocumentedPackages.clear()
     this.editorFrameStartupError = null
-    await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
-    const parsed = new DOMParser().parseFromString(htmlSource, "text/html")
-    const revision = this.documentChangeSequence
-    const frameRevision = this.frameRevision
-    const packages = await loadDocumentPackages(parsed, this.packageRegistry, this.installedPackages)
-    if(!this.isConnected || revision !== this.documentChangeSequence || frameRevision !== this.frameRevision) {
-      throw new Error("The document changed while loading its widgets. Open the file again.")
-    }
+    beforeSwitch?.()
     if(this.previewActive || this.previewTransition) this.clearPreview()
     if(packages.length) {
       const names = new Set(packages.map(pkg => pkg.name))
       this.installedPackages = [...this.installedPackages.filter(pkg => !names.has(pkg.name)), ...packages]
       this.persistInstalledPackages()
     }
-    const reloadError = new Error("The editor iframe was reloaded for a document change")
-    this.editorReadyPromise?.catch(() => {})
-    this.editorReadyReject?.(reloadError)
-    this.documentTreeObserver?.disconnect()
-    this.documentTreeObserver = null
-    if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
-    if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
-    this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
-    this.editorDocument = null
-    this.documentReplica?.destroy()
-    this.documentReplica = null
-    this.documentReplicaId = ""
-    this.documentReplicaSequence = 0
-    this.documentReplicaSyncPending = false
-    this.authoredSnapshotCache = null
-    this.editorWindow = null
-    this.packageLoadPromise = null
-    this.editorReadyPromise = null
-    this.editorReadyResolve = null
-    this.editorReadyReject = null
-    this.savedEditorSelection = null
-    this.frameState = undefined
+    this.resetEditorFrame(new Error("The editor iframe was reloaded for a document change"))
     this.documentHead = emptyDocumentHeadState()
     this.documentSettingsId = settingsId
     if(isNewDocument) this.accessibilityReviewEnabled = false
@@ -4168,12 +4166,6 @@ export class DomEditor extends LitElement {
     // Only successful widget initialization may reveal the incoming document.
     this.documentFramePending = true
     this.frameDocumentHTML = `${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
-    this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
-      clearTimeout(timer)
-      abortCleanup?.()
-      reject(reloadError)
-    })
-    this.pendingExecutions.clear()
     // Hold the outgoing draft until the replacement frame initializes.
     const finishRecovery = this.activeDocumentRecovery !== recovery ? this.detachDocumentRecovery() : undefined
     if(this.activeDocumentRecovery === recovery) this.documentRecoveryGeneration++
@@ -4324,27 +4316,20 @@ export class DomEditor extends LitElement {
     this.linkedDocumentLoading = true
     const revision = this.documentChangeSequence
     try {
-      const {exampleDocumentLayout, findExampleDocument, loadExampleDocument, loadExamplePackages} = await import("../example-documents")
+      const {exampleDocumentLayout, findExampleDocument, loadExampleDocument} = await import("../example-documents")
       const example = findExampleDocument(id)
       if(!example) throw new Error("This example could not be found.")
       const layout = exampleDocumentLayout(new URL(location.href).searchParams.get("layout"))
       const source = await loadExampleDocument(id, layout)
-      const packages = await loadExamplePackages(source, this.packageRegistry)
       await startupReady
       if(!this.isConnected || this.liveSessionActive || new URL(location.href).searchParams.get("example") !== id
         || exampleDocumentLayout(new URL(location.href).searchParams.get("layout")) !== layout
         || revision !== this.documentChangeSequence) return
       await this.runFileOperation(async () => {
         this.documentLoading = true
-        this.clearDocumentCollaboration()
-        this.installedPackages = [...this.installedPackages.filter(pkg => !packages.some(examplePackage => examplePackage.name === pkg.name)), ...packages]
-        // The trusted package loader supplies these modules inside the editor;
-        // exports restore them through the existing package serialization path.
-        const modules = new Set(packages.flatMap(pkg => pkg.scripts))
-        source.querySelectorAll<HTMLScriptElement>('script[type="module"][src]').forEach(script => {
-          if(modules.has(script.getAttribute("src")!)) script.remove()
-        })
-        await this.reloadDocument(serializeDoctype(source.doctype) + source.documentElement.outerHTML, false, null, false)
+        if(await this.reloadDocument(serializeDoctype(source.doctype) + source.documentElement.outerHTML, false, null, false, {
+          beforeSwitch: () => this.clearDocumentCollaboration(),
+        }) === false) return
         this.backendDocumentId = null
         this.fileHandle = null
         this.storageLocation = "local"
@@ -4373,12 +4358,15 @@ export class DomEditor extends LitElement {
         await startupReady
         if(!this.isConnected || this.liveSessionActive || !currentLink()) return
         if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening the editing link. Open the link again.")
-        this.backendClient = client
-        this.backendSession = client.session
-        this.backendState = "connected"
-        this.collaborationRoom = `document-${document.id}`
-        this.sharedDocumentToken = token
-        await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client), true)
+        if(await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client), true, {
+          beforeSwitch: () => {
+            this.backendClient = client
+            this.backendSession = client.session
+            this.backendState = "connected"
+            this.collaborationRoom = `document-${document.id}`
+            this.sharedDocumentToken = token
+          },
+        }) === false) return
         this.backendDocumentId = document.id
         this.fileHandle = null
         this.storageLocation = "development-server"
@@ -4554,8 +4542,9 @@ export class DomEditor extends LitElement {
         localDocument = (await rememberRecentDocument(this.recentDocuments, localDocument))[0]
       }
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
-      this.clearDocumentCollaboration()
-      await this.reloadDocument(source, false, localDocument ? documentOpenReference(localDocument) : null, true, {discardRecovery})
+      if(await this.reloadDocument(source, false, localDocument ? documentOpenReference(localDocument) : null, true, {
+        discardRecovery, beforeSwitch: () => this.clearDocumentCollaboration(),
+      }) === false) return
       this.backendDocumentId = null
       this.fileHandle = handle
       this.storageLocation = "local"
@@ -4722,10 +4711,14 @@ export class DomEditor extends LitElement {
       if(beforeLoad && !await beforeLoad()) return
       if(this.backendClient !== client) throw new Error("The document storage connection changed while opening the file.")
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
-      this.clearDocumentCollaboration()
-      // Private documents reopen from their saved HTML, not a stale live room.
-      if(sharing.enabled) this.collaborationRoom = `document-${document.id}`
-      await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client), true, {discardRecovery})
+      if(await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client), true, {
+        discardRecovery,
+        beforeSwitch: () => {
+          this.clearDocumentCollaboration()
+          // Private documents reopen from their saved HTML, not a stale live room.
+          if(sharing.enabled) this.collaborationRoom = `document-${document.id}`
+        },
+      }) === false) return
       this.backendDocumentId = document.id
       this.fileHandle = null
       this.downloadedFileName = null
@@ -5229,6 +5222,10 @@ export class DomEditor extends LitElement {
       else this.focusEditor()
       return
     }
+    if(label?.startsWith("package-update:")) {
+      void this.updatePublishedPackage(label.slice("package-update:".length))
+      return
+    }
     if(label?.startsWith("package-toggle:")) {
       const name = label.slice("package-toggle:".length)
       const pkg = this.installedPackages.find(candidate => candidate.name === name) ??
@@ -5259,10 +5256,10 @@ export class DomEditor extends LitElement {
       else this.focusEditor()
       return
     }
-    const linkChoice = label?.startsWith("select-link:") ? label.slice("select-link:".length) : undefined
-    const chosenLink = linkChoice ?? linkKinds.find(kind => linkKindOptions[kind].action === label)
+    const linkChoice = /^(select|remove)-link:(.+)$/.exec(label ?? "")
+    const chosenLink = linkChoice?.[2] ?? linkKinds.find(kind => linkKindOptions[kind].action === label)
     if(isLinkKind(chosenLink)) {
-      void this.selectLinkKind(chosenLink, linkChoice === undefined)
+      void this.selectLinkKind(chosenLink, linkChoice?.[1] === "remove" ? "remove" : linkChoice ? "select" : "toggle")
       return
     }
     if(label === "Undo") {
@@ -6210,7 +6207,8 @@ export class DomEditor extends LitElement {
       if(installation?.signal.aborted) return undefined
       const localRecord = [...this.localPackageManager.records.values()].find(candidate => candidate.package.name === pkg.name)
       if(localRecord) localRecord.enabled = installed
-      this.packages = this.packages.map(candidate => candidate.name === resolvedPackage.name ? resolvedPackage : candidate)
+      if(installed && !localPackage) this.packages = this.packages.map(candidate =>
+        candidate.name === resolvedPackage.name && candidate.version === resolvedPackage.version ? resolvedPackage : candidate)
       return installed ? resolvedPackage : undefined
     }
     catch(error) {
@@ -6267,42 +6265,24 @@ export class DomEditor extends LitElement {
       this.persistInstalledPackages()
       return
     }
+    const currentPackages = this.installedPackages
+    const revision = this.frameRevision
     this.aiDocumentedPackages.clear()
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
+    const documentRevision = this.documentChangeSequence
     const snapshot = await this.execute({type: "snapshotState"}) as EditorStateSnapshot
-    if(!snapshot || !Array.isArray(snapshot.update)) throw new TypeError("The editor returned an invalid state snapshot")
+    if(!snapshot || !isEditorStateUpdate(snapshot.update)) throw new TypeError("The editor returned an invalid state snapshot")
+    // Snapshot preparation can publish media conversions. Compare with the
+    // frame's final published revision so those updates do not abort reload.
+    const changed = snapshot.replicaSequence === undefined ? this.documentChangeSequence !== documentRevision
+      : this.documentReplicaSyncPending || this.documentReplicaSequence !== snapshot.replicaSequence
+    if(this.installedPackages !== currentPackages || this.frameRevision !== revision || changed) {
+      throw new Error("The editor changed while loading packages. Try again.")
+    }
     const shouldRefocus = this.isEditorFocused() || this.savedEditorSelection !== null
-    const reloadError = new Error("The editor iframe was reloaded for a package change")
-    this.editorReadyPromise?.catch(() => {})
-    this.editorReadyReject?.(reloadError)
-
-    this.documentTreeObserver?.disconnect()
-    this.documentTreeObserver = null
-    if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
-    if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
-    this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
-    this.editorDocument = null
-    this.documentReplica?.destroy()
-    this.documentReplica = null
-    this.documentReplicaId = ""
-    this.documentReplicaSequence = 0
-    this.documentReplicaSyncPending = false
-    this.authoredSnapshotCache = null
-    this.editorWindow = null
-    this.packageLoadPromise = null
-    this.editorReadyPromise = null
-    this.editorReadyResolve = null
-    this.editorReadyReject = null
-    this.savedEditorSelection = null
-    this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
-      clearTimeout(timer)
-      abortCleanup?.()
-      reject(reloadError)
-    })
-    this.pendingExecutions.clear()
+    this.resetEditorFrame(new Error("The editor iframe was reloaded for a package change"))
     this.frameState = snapshot
     this.installedPackages = nextPackages
-    this.retainProofreadingDuringReload()
     this.persistInstalledPackages()
     this.frameRevision++
     await this.updateComplete
@@ -6317,8 +6297,7 @@ export class DomEditor extends LitElement {
 
   /** Drop requests bound to a replaced child realm while preserving the live
    * document snapshot and host-owned document/file metadata. */
-  private resetEditorFrameForShellRestart() {
-    const reloadError = new Error("The editor iframe was reloaded")
+  private resetEditorFrame(reloadError = new Error("The editor iframe was reloaded")) {
     this.editorReadyPromise?.catch(() => {})
     this.editorReadyReject?.(reloadError)
     this.editorReadyPromise = null
@@ -6338,6 +6317,8 @@ export class DomEditor extends LitElement {
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
     if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("focus", this.handleHostWindowFocus)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("blur", this.handleHostWindowBlur)
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
@@ -6399,22 +6380,102 @@ export class DomEditor extends LitElement {
     }
   }
 
+  private packageMajorChanges(installed: readonly WebWriterPackage[], packages: readonly WebWriterPackage[]) {
+    return packages.flatMap(pkg => {
+      const previous = installed.find(candidate => candidate.name === pkg.name)
+      const major = previous && packageVersionMajor(previous.version)
+      return previous && major !== undefined && major !== packageVersionMajor(pkg.version)
+        ? [{name: pkg.name, from: previous.version, to: pkg.version}] : []
+    })
+  }
+
+  private async confirmPackageChanges(changes: ReturnType<DomEditor["packageMajorChanges"]>) {
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    return await ribbon?.confirmPackageChanges(changes) === true
+  }
+
+  private canUpdatePublishedPackages() {
+    return this.isConnected && !document.hidden && !this.fileOperationActive && !this.linkedDocumentLoading
+      && !this.documentLoading && !this.documentFramePending && !this.busyPackageNames.length && !this.localPackagesLoading
+      && !this.previewActive && !this.previewTransition && !this.liveSessionActive && !this.liveSessionStarting
+  }
+
+  private isPublishedPackage(pkg: WebWriterPackage) {
+    return !isLocalResourcePackage(pkg) && !this.localPackages.some(candidate => candidate.name === pkg.name)
+  }
+
+  private async applyPublishedPackageUpdates(updates: WebWriterPackage[]) {
+    const previous = this.installedPackages
+    const byName = new Map(updates.map(pkg => [pkg.name, pkg]))
+    const next = previous.map(pkg => byName.get(pkg.name) ?? pkg)
+    this.busyPackageNames = [...byName.keys()]
+    this.packageError = ""
+    try { await this.reloadEditor(next) }
+    catch(error) {
+      if(this.isConnected && this.installedPackages === next) {
+        try { await this.reloadEditor(previous) }
+        catch(rollbackError) { console.warn("Could not reload the previous widgets", rollbackError) }
+      }
+      this.packageError = error instanceof Error ? error.message : String(error)
+    }
+    finally { this.busyPackageNames = this.busyPackageNames.filter(name => !byName.has(name)) }
+  }
+
+  private async updatePublishedPackage(name: string) {
+    if(!this.canUpdatePublishedPackages()) return
+    const installed = this.installedPackages
+    const current = installed.find(pkg => pkg.name === name)
+    const candidate = this.packages.find(pkg => pkg.name === name)
+    if(!current || !candidate || !this.isPublishedPackage(current) || !packageUpdateKind(current.version, candidate.version)) return
+    try {
+      const changes = this.packageMajorChanges(installed, [candidate])
+      if(changes.length && !await this.confirmPackageChanges(changes)) return
+      const update = await this.packageRegistry.getPackage(candidate)
+      if(this.installedPackages !== installed || !this.canUpdatePublishedPackages() || !this.isPublishedPackage(current)) return
+      await this.applyPublishedPackageUpdates([update])
+    }
+    catch(error) { this.packageError = error instanceof Error ? error.message : String(error) }
+  }
+
+  private async updateCompatiblePublishedPackages() {
+    if(!this.settings.autoUpdatePackages || !this.canUpdatePublishedPackages()) return
+    const installed = this.installedPackages
+    const updates = await Promise.all(installed.filter(pkg => this.isPublishedPackage(pkg)).map(async pkg => {
+      const catalog = this.packages.find(candidate => candidate.name === pkg.name)
+      const catalogVersion = catalog && packageUpdateKind(pkg.version, catalog.version) === "compatible" ? catalog.version : pkg.version
+      try {
+        const version = await this.packageRegistry.latestCompatibleVersion(pkg.name, catalogVersion).catch(() => catalogVersion)
+        if(packageUpdateKind(pkg.version, version) !== "compatible") return
+        return await this.packageRegistry.getPackage(catalog?.version === version ? catalog : {name: pkg.name, version})
+      }
+      catch(error) {
+        this.packageError = error instanceof Error ? error.message : String(error)
+        return undefined
+      }
+    }))
+    const available = updates.filter((pkg): pkg is WebWriterPackage => !!pkg && this.isPublishedPackage(pkg))
+    if(available.length && this.installedPackages === installed && this.settings.autoUpdatePackages && this.canUpdatePublishedPackages()) {
+      await this.applyPublishedPackageUpdates(available)
+    }
+  }
+
   private async loadPackageCatalog(event?: Event) {
-    const refresh = (event as CustomEvent<{refresh?: boolean}> | undefined)?.detail?.refresh === true
-    if(this.packagesLoading || this.packageCatalogRequested && !refresh) return
-    this.packageCatalogRequested = true
+    if(this.packagesLoading) return
+    const refreshDependencies = !event || (event as CustomEvent<{refresh?: boolean}>).detail?.refresh === true
     this.packagesLoading = true
     this.packageError = ""
     try {
       this.packages = await this.packageRegistry.search()
     }
     catch(error) {
+      this.packages = []
       this.packageError = error instanceof Error ? error.message : String(error)
     }
     finally {
       this.packagesLoading = false
-      await this.refreshPackageDependencies()
     }
+    await this.updateCompatiblePublishedPackages()
+    if(refreshDependencies && !this.fileOperationActive && !this.linkedDocumentLoading) await this.refreshPackageDependencies()
   }
 
   private restoreInstalledPackages() {
@@ -7712,14 +7773,16 @@ export class DomEditor extends LitElement {
       .catch(error => { this.linkKeyboardError = error instanceof Error ? error.message : String(error) })
   }
 
-  private async selectLinkKind(kind: LinkKind, toggle: boolean) {
+  private async selectLinkKind(kind: LinkKind, mode: "select" | "toggle" | "remove") {
     if(this.previewActive || this.liveSessionActive || kind === "attachment" && this.attachmentBusy) return
     try {
-      const changed = await this.execute({type: "selectLinkKind", kind, toggle})
+      const changed = mode === "remove"
+        ? await this.execute({type: "removeLinkKind", kind})
+        : await this.execute({type: "selectLinkKind", kind, toggle: mode === "toggle"})
       this.dismissEditorMenus()
       this.linkKeyboardError = ""
-      if(!changed && kind === "attachment") throw new Error("Place the caret or select text within one paragraph to attach a file.")
-      if(changed && kind !== "popup" && this.hasLinkKeyboard) await this.focusLinkKeyboard()
+      if(!changed && kind === "attachment" && mode !== "remove") throw new Error("Place the caret or select text within one paragraph to attach a file.")
+      if(changed && kind !== "popup" && mode !== "remove" && this.hasLinkKeyboard) await this.focusLinkKeyboard()
       else this.focusEditor()
     }
     catch(error) {
@@ -7742,6 +7805,21 @@ export class DomEditor extends LitElement {
       if(this.attachmentSelection?.identity === selection.identity) this.linkKeyboardError = error instanceof Error ? error.message : String(error)
     }
     finally { this.attachmentBusy = false }
+  }
+
+  private handleAttachmentMediaPreview = async (event: CustomEvent<AttachmentMediaPreview>) => {
+    const selection = this.attachmentSelection
+    if(!selection || this.attachmentBusy || this.previewActive || this.liveSessionActive
+      || event.detail?.identity !== selection.identity) return
+    this.linkKeyboardError = ""
+    try {
+      const found = await this.execute({...event.detail, type: "previewAttachmentMedia"})
+      if(found === false && this.attachmentSelection?.identity === selection.identity)
+        this.linkKeyboardError = "The media source is no longer available."
+    }
+    catch(error) {
+      if(this.attachmentSelection?.identity === selection.identity) this.linkKeyboardError = error instanceof Error ? error.message : String(error)
+    }
   }
 
   private closeLinkKeyboard = () => {
@@ -8358,22 +8436,20 @@ export class DomEditor extends LitElement {
           const restartedShell = this.editorShellInstanceId !== null && this.editorShellRevision === this.frameRevision
           this.editorShellInstanceId = instanceId as string
           this.editorShellRevision = this.frameRevision
-          let html = this.editorSrcdoc
           if(restartedShell) {
             const replica = this.documentReplica
             const state: EditorStateSnapshot | undefined = replica ? {
-              update: Array.from(Y.encodeStateAsUpdate(replica.doc)),
+              update: Y.encodeStateAsUpdate(replica.doc),
               widgetDataDocumentId: replica.widgetDataDocumentId,
-            } : undefined
+            } : this.frameState
             if(!state) {
               const latestDocument = this.snapshotEditorDocumentHTML()
               if(latestDocument !== null) this.frameDocumentHTML = latestDocument
             }
-            this.resetEditorFrameForShellRestart()
+            this.resetEditorFrame()
             this.frameState = state
-            html = this.editorSrcdoc
           }
-          frame.contentWindow?.postMessage({type: "webwriter-frame-document", html}, editorFrameOrigin())
+          frame.contentWindow?.postMessage({type: "webwriter-frame-document", html: this.editorSrcdoc}, editorFrameOrigin())
           return
         }
         if(this.editorShellRevision === this.frameRevision) return
@@ -8432,6 +8508,7 @@ export class DomEditor extends LitElement {
           const replica = new EditorDocumentReplica(message)
           this.documentReplica?.destroy()
           this.documentReplica = replica
+          this.frameState = undefined
         }
         else {
           const observe = (transaction: Y.Transaction) => {
@@ -9541,11 +9618,13 @@ export class DomEditor extends LitElement {
             aria-label=${`Show ${linkKindOptions[this.linkKeyboardKind].label.toLowerCase()} keyboard`}
             @pointerdown=${(event: PointerEvent) => event.preventDefault()}
             @click=${() => { void this.focusLinkKeyboard() }}>${ribbonIcon(linkKindOptions[this.linkKeyboardKind].icon)}</button>` : nothing}
-          <section class="link-keyboard-area" aria-label=${`${linkKindOptions[this.linkKeyboardKind].label} input`} ?hidden=${this.linkKeyboardHidden}>
+          <section class=${`link-keyboard-area${this.attachmentSelection ? " attachment-keyboard-area" : ""}`}
+            aria-label=${`${linkKindOptions[this.linkKeyboardKind].label} input`} ?hidden=${this.linkKeyboardHidden}>
             <dom-editor-link-keyboard .state=${this.linkSelection} .error=${this.linkKeyboardError}
               .attachment=${this.attachmentSelection} .attachmentBusy=${this.attachmentBusy}
               @link-keyboard-command=${this.handleLinkKeyboardCommand}
               @attachment-command=${this.handleAttachmentCommand}
+              @attachment-media-preview=${this.handleAttachmentMediaPreview}
               @link-keyboard-close=${this.closeLinkKeyboard}
             ></dom-editor-link-keyboard>
           </section>

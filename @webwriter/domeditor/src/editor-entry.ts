@@ -29,6 +29,8 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   disableAnimations?: boolean
   shortcuts?: Record<string, string>
 }) => {
+  const listeners = new AbortController()
+  const {signal} = listeners
   const previewEditingLock = Symbol("preview editing")
   let bookmark: SelectionBookmark | null = null
   const saveSelection = () => {
@@ -63,27 +65,35 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   const setUsername = (name: string) => editor.doc?.setUser({name: name.trim() || `User ${editor.doc.doc.clientID.toString(36).toUpperCase()}`})
   if(settings.username !== undefined) setUsername(settings.username)
   setMotion(settings.disableAnimations === true)
-  const documentSync = publishEditorDocument(editor.doc, settings.documentReplicaId ?? nonce, message => window.parent.postMessage({...message, documentReplicaId: settings.documentReplicaId, bridgeNonce: nonce}, origin))
-  const stopDocumentSync = (event: PageTransitionEvent) => {
+  const documentSync = publishEditorDocument(editor.doc, settings.documentReplicaId ?? nonce, message => {
+    editor.documentReplicaSequence = message.sequence
+    window.parent.postMessage({...message, documentReplicaId: settings.documentReplicaId, bridgeNonce: nonce}, origin)
+  })
+  const teardown = (event: PageTransitionEvent) => {
     if(event.persisted) return
-    window.removeEventListener("pagehide", stopDocumentSync)
+    listeners.abort()
     documentSync.destroy()
+    bookmark = null
+    setMotion(false)
+    const frame = window as Window & {editor?: DOMEditor}
+    if(frame.editor === editor) delete frame.editor
+    editor.destroy()
   }
-  window.addEventListener("pagehide", stopDocumentSync)
+  window.addEventListener("pagehide", teardown, {signal})
   // Run before feature capture listeners can claim canvas/slide gestures.
   window.addEventListener("pointerdown", event => {
     const target = event.target as Node | null
     post({type: "editor-frame-pointerdown", widgetShadow: isWidgetShadowInteraction(event), appendix: isAppendixInteraction(event),
       targetPath: target && document.body.contains(target) ? pathFromNode(document.body, target) : null})
-  }, true)
+  }, {capture: true, signal})
   document.addEventListener("focusin", event => {
     post({type: "editor-frame-focusin", widgetShadow: isWidgetShadowInteraction(event)})
-  }, true)
+  }, {capture: true, signal})
   // Reactivating Chrome can focus only this child Window; the already-focused
   // body need not emit focusin, and cross-origin hosts cannot observe Window.focus.
-  window.addEventListener("focus", () => post({type: "editor-frame-window-focus"}))
-  window.addEventListener("blur", () => post({type: "editor-frame-window-blur"}))
-  document.addEventListener("wheel", () => post({type: "editor-frame-interaction"}), {capture: true, passive: true})
+  window.addEventListener("focus", () => post({type: "editor-frame-window-focus"}), {signal})
+  window.addEventListener("blur", () => post({type: "editor-frame-window-blur"}), {signal})
+  document.addEventListener("wheel", () => post({type: "editor-frame-interaction"}), {capture: true, passive: true, signal})
   document.addEventListener("keydown", event => {
     post({type: "editor-frame-interaction"})
     const shortcut = shortcutFromEvent(event)
@@ -98,7 +108,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     event.preventDefault()
     event.stopImmediatePropagation()
     if(command && !event.repeat) post({type: "editor-frame-shortcut", action: command.action})
-  }, true)
+  }, {capture: true, signal})
   window.addEventListener("message", event => {
     if(event.source !== window.parent || event.origin !== origin || event.data?.bridgeNonce !== nonce
       || event.data?.type !== editorFrameControlMessage) return
@@ -167,8 +177,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     else if(data.command === "username" && typeof data.username === "string") setUsername(data.username)
     else if(data.command === "drag") replayHostDrag(event.data)
     else if(data.command === "pointer") replayHostPointer(event.data)
-  })
-  void editor
+  }, {signal})
 }
 
 const initialize = (event: MessageEvent) => {

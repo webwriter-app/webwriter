@@ -34,8 +34,9 @@ export async function checkDocumentRecovery() {
   const image = "data:image/png;base64,AQID"
   const audio = "data:audio/mpeg;base64,BAUG"
   const video = "data:video/mp4;base64,BwgJ"
+  const attachment = "data:application/octet-stream;base64,CgsM"
   const svg = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'></svg>"
-  const html = `<!DOCTYPE html><html><body><!--authored--><img src="${image}" srcset="${image}, ${image} 2x"><img src="${svg}"><audio src="${audio}"></audio><video src="${video}"></video></body></html>`
+  const html = `<!DOCTYPE html><html><body><!--authored--><img src="${image}" srcset="${image}, ${image} 2x"><img src="${svg}"><audio src="${audio}"></audio><video src="${video}"></video><a download="notes.bin" href="${attachment}">Notes</a></body></html>`
   try {
     if(seeded) {
       const legacy = (await listDocumentRecoveries()).filter(item => item.id.startsWith(id + "-"))
@@ -61,7 +62,7 @@ export async function checkDocumentRecovery() {
         tx.oncomplete = () => { db.close(); resolve([docs.result, assets.result]) }
       }
     })
-    if([image, svg, audio, video].some(url => JSON.stringify(drafts).includes(url) || cachedAssets.filter(asset => asset.url === url).length !== 1)) {
+    if([image, svg, audio, video, attachment].some(url => JSON.stringify(drafts).includes(url) || cachedAssets.filter(asset => asset.url === url).length !== 1)) {
       throw new Error("Media must be cached separately and deduplicated across recovery drafts")
     }
     if(await readDocumentRecovery(first.id) !== html) throw new Error("Recovery did not preserve the exact HTML")

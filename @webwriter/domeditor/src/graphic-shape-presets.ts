@@ -106,6 +106,23 @@ const arrowCallout = (label: string, direction: number) => base(label, "Block ar
 
 const crossPath = (t: number) => polygon([[50-t/2,0],[50+t/2,0],[50+t/2,50-t/2],[100,50-t/2],[100,50+t/2],[50+t/2,50+t/2],[50+t/2,100],[50-t/2,100],[50-t/2,50+t/2],[0,50+t/2],[0,50-t/2],[50-t/2,50-t/2]])
 const roundFlow = (r: number) => `M 0 50 C 0 ${50-r} ${50-r} 0 50 0 C ${50+r} 0 100 ${50-r} 100 50 C 100 ${50+r} ${50+r} 100 50 100 C ${50-r} 100 0 ${50+r} 0 50 Z`
+const flowchartCurvature = poi("curvature", "Curvature", 27.615, 0, 50, p => ({x:25-.375*p,y:25-.375*p}))
+const roundFlowSymbol = (label: string, detail: string) => {
+  const draw = (r: number) => `${roundFlow(r)} ${detail}`
+  return {
+    preset: base(label, "Flowchart", () => draw(flowchartCurvature.default), []),
+    legacy: {
+      definition: base(label, "Flowchart", ([r]) => draw(r), [flowchartCurvature]),
+      upgrade: () => [],
+    },
+  }
+}
+const summingJunction = roundFlowSymbol("Summing junction", "M 15 15 L 85 85 M 15 85 L 85 15")
+const orSymbol = roundFlowSymbol("Or", "M 0 50 L 100 50 M 50 0 L 50 100")
+export const legacyRoundFlowPresets: Partial<Record<string, typeof summingJunction.legacy>> = {
+  "summing-junction": summingJunction.legacy,
+  "or": orSymbol.legacy,
+}
 const cylinderPath = (d: number) => `M 0 ${d} C 0 ${-d/3} 100 ${-d/3} 100 ${d} L 100 ${100-d} C 100 ${100+d/3} 0 ${100+d/3} 0 ${100-d} Z M 0 ${d} C 0 ${d*7/3} 100 ${d*7/3} 100 ${d}`
 
 const irregularStar = (n: number, inner: number, variant: number) => polygon(Array.from({length:n*2}, (_,i) => {
@@ -114,13 +131,41 @@ const irregularStar = (n: number, inner: number, variant: number) => polygon(Arr
   return [50+radius*Math.cos(theta),50+radius*Math.sin(theta)]
 }))
 const starPreset = (n: number, inner: number) => base(`${n}-point star`, "Stars and banners", star(n), [poi("inner", "Inner radius", inner, 0, 48, p => ({x:50+p*Math.sin(Math.PI/n),y:50-p*Math.cos(Math.PI/n)}))])
+const ribbonOutline = (d: number) => `M 20 ${20-d/2} L 80 ${20-d/2} L 80 30 L 100 30 L 90 55 L 100 80 L 80 80 L 65 65 L 35 65 L 20 80 L 0 80 L 10 55 L 0 30 L 20 30 Z`
 const ribbonPreset = (label: string, down: boolean, curved: boolean) => base(label, "Stars and banners", ([d]) => {
   const path = curved
     ? `M 20 15 Q 50 ${15+d} 80 15 L 80 30 L 100 25 L 90 50 L 100 75 L 80 70 L 80 80 Q 50 ${80+d} 20 80 L 20 70 L 0 75 L 10 50 L 0 25 L 20 30 Z M 20 30 L 20 70 M 80 30 L 80 70 M 20 70 L 35 80 M 80 70 L 65 80`
-    : `M 20 ${20-d/2} L 80 ${20-d/2} L 80 30 L 100 30 L 90 55 L 100 80 L 80 80 L 65 65 L 35 65 L 20 80 L 0 80 L 10 55 L 0 30 L 20 30 Z M 20 30 L 20 65 L 80 65 L 80 30 M 20 65 L 35 80 M 80 65 L 65 80`
+    : `${ribbonOutline(d)} M 20 30 L 20 80 M 80 30 L 80 80 M 20 65 L 80 65`
   return down ? turn(path,2) : path
 }, [poi("fold", curved ? "Ribbon curve" : "Fold depth", 15, 0, curved ? 28 : 40, p => ({x:50,y:down ? curved ? 85-p/2 : 80+p/2 : curved ? 15+p/2 : 20-p/2}), "y")])
-const scrollPath = (d: number) => `M 20 ${d} Q 20 0 30 0 L 95 0 Q 100 ${d} 90 ${d} L 80 ${d} L 80 ${100-d} Q 80 100 70 100 L 5 100 Q 0 ${100-d} 10 ${100-d} L 20 ${100-d} Z M 30 0 Q 40 ${d} 30 ${d} L 20 ${d} M 70 100 Q 60 ${100-d} 70 ${100-d} L 80 ${100-d}`
+
+const scrollPath = (radius: number) => {
+  // Cubic quarter circles keep the coordinates affine in the roll radius.
+  const k = radius * 4 / 3 * (Math.SQRT2 - 1)
+  const near = 20 + radius, far = 100 - radius, diameter = 2 * radius
+  const halfOutline = `L ${far} 0
+    C ${far+k} 0 100 ${radius-k} 100 ${radius}
+    C 100 ${radius+k} ${far+k} ${diameter} ${far} ${diameter}
+    L 80 ${diameter} L 80 ${far}
+    C 80 ${far+k} ${80-radius+k} 100 ${80-radius} 100`
+  // The outline already draws a quarter of each end. Draw only the rest,
+  // in the same winding direction, so the end stays filled and has one stroke.
+  const end = `M ${near} 0
+    C ${near+k} 0 ${near+radius} ${radius-k} ${near+radius} ${radius}
+    C ${near+radius} ${radius+k} ${near+k} ${diameter} ${near} ${diameter}
+    C ${near-k} ${diameter} 20 ${radius+k} 20 ${radius}
+    M ${near} ${diameter} L 80 ${diameter}`
+  return `M ${near} 0 ${halfOutline} ${turn(halfOutline, 2)} Z ${end} ${turn(end, 2)}`
+}
+
+const legacyRibbonPath = (d: number) => `${ribbonOutline(d)} M 20 30 L 20 65 L 80 65 L 80 30 M 20 65 L 35 80 M 80 65 L 65 80`
+const legacyScrollPath = (d: number) => `M 20 ${d} Q 20 0 30 0 L 95 0 Q 100 ${d} 90 ${d} L 80 ${d} L 80 ${100-d} Q 80 100 70 100 L 5 100 Q 0 ${100-d} 10 ${100-d} L 20 ${100-d} Z M 30 0 Q 40 ${d} 30 ${d} L 20 ${d} M 70 100 Q 60 ${100-d} 70 ${100-d} L 80 ${100-d}`
+export const legacyBannerPaths: Partial<Record<keyof typeof graphicShapePresets, GraphicShapePreset["draw"]>> = {
+  "ribbon-up": ([d]) => legacyRibbonPath(d),
+  "ribbon-down": ([d]) => turn(legacyRibbonPath(d), 2),
+  "vertical-scroll": ([d]) => legacyScrollPath(d),
+  "horizontal-scroll": ([d]) => turn(legacyScrollPath(d), 1),
+}
 const cloudBubble = () => "M 12 60 C -5 60 -3 38 10 35 C -2 18 12 10 25 15 C 28 -3 46 -3 50 10 C 63 -3 78 0 78 15 C 96 5 105 20 92 33 C 110 40 100 58 88 58 C 88 78 68 80 60 67 C 48 83 32 78 30 65 C 17 78 7 73 12 60 Z"
 const cloudCoordinates = cloudBubble().match(/-?\d+/g)!.map(Number)
 const cloudPoints = Array.from({length:cloudCoordinates.length/2}, (_,i) => ({x:cloudCoordinates[i*2],y:cloudCoordinates[i*2+1]}))
@@ -328,6 +373,36 @@ function connectorAttachment(path:string,center:BubblePoint,tip:BubblePoint) {
   }
   return best
 }
+
+export function constrainCalloutTip(type: string, values: number[], previous: number[]) {
+  const cloud = type === "cloud-callout"
+  if(!cloud && !isSpeechBubbleType(type)) return values
+  const [x, y, roundness] = values
+  const center = bubblePoint(50, 37.5)
+  const segments = cloud ? [] : bubbleSegments(type === "oval-callout", roundness)
+  const body = cloud ? cloudLobes(roundness) : `M 0 37.5 ${segments.map(segment => bubbleCommand(segment, 0)).join(" ")} Z`
+  let dx = x - center.x, dy = y - center.y
+  const length = Math.hypot(dx, dy)
+  if(length < 1e-6) {
+    dx = previous[0] - center.x
+    dy = previous[1] - center.y
+    if(Math.hypot(dx, dy) < 1e-6) dy = 1
+  }
+  const directionLength = Math.hypot(dx, dy)
+  dx /= directionLength
+  dy /= directionLength
+  const tip = bubblePoint(center.x + dx, center.y + dy)
+  let edge = connectorAttachment(body, center, tip).distance
+  // The cloud handle sits on the right edge of the last dot. Keep both
+  // the dot's center and the visible endpoint outside the cloud.
+  if(cloud) {
+    edge = Math.max(edge, connectorAttachment(body, bubblePoint(center.x + 3, center.y), bubblePoint(tip.x + 3, tip.y)).distance)
+  }
+  const minimum = edge + (cloud ? 4 : .5)
+  if(length >= minimum) return values
+  return [center.x + dx * minimum, center.y + dy * minimum, roundness]
+}
+
 const lineCalloutPreset = (label:string,bent:boolean) => base(label,"Callouts",([ex,ey,r])=>{
   const body=lineBoxPath(r),{point:start,normal}=connectorAttachment(body,bubblePoint(65,37.5),bubblePoint(ex,ey))
   const elbow=bubblePoint(start.x+normal.x*10,start.y+normal.y*10)
@@ -358,6 +433,14 @@ export const legacyCalloutPresets: Record<string, {definition: GraphicShapePrese
   "cloud-callout": {definition: base("Cloud callout", "Callouts", ([p]) => `${cloudBubble()} ${ellipse(22,86,5,4)} ${ellipse(p,96,3,2)}`, [poi("tail", "Thought tail position", 14, 4, 45, p => ({x:p,y:96}))]), upgrade: ([p]) => [p,96,12]},
   "line-callout-1": {definition: base("Line callout 1", "Callouts", ([p]) => `M 30 0 L 100 0 L 100 75 L 30 75 Z M 28 15 L ${p} 100`, [poi("tail", "Leader endpoint", 5, 0, 25, p => ({x:p,y:100}))]), upgrade: ([p]) => [p,100,0]},
   "line-callout-2": {definition: base("Line callout 2", "Callouts", ([p]) => `M 30 0 L 100 0 L 100 75 L 30 75 Z M 28 15 L 18 15 L ${p} 100`, [poi("tail", "Leader endpoint", 5, 0, 25, p => ({x:p,y:100}))]), upgrade: ([p]) => [p,100,0]},
+}
+
+const tapeTailHeight = poi("tail", "Tail height", 45 * (1 - Math.SQRT1_2), 4, 30, height => ({x:100,y:90-height}), "y")
+export const legacySequentialStoragePreset = {
+  definition: base("Sequential access storage", "Flowchart", ([height]) =>
+    `${ellipse(45,45,45,45)} M 45 90 L 100 90 L 100 ${90-height} L 75 ${90-height}`,
+    [poi("tail", "Tail height", 10, 0, 90, height => ({x:100,y:90-height}), "y")]),
+  upgrade: ([height]: number[]) => [Math.max(tapeTailHeight.min, Math.min(tapeTailHeight.max, height))],
 }
 
 const originalGraphicShapePresets = {
@@ -428,8 +511,8 @@ const originalGraphicShapePresets = {
   "braces": {...base("Braces pair", "Basic shapes", values => { const d=v(values,0,12); return `M 42 5 Q ${42-d} 5 32 25 L 32 40 Q 32 50 20 50 Q 32 50 32 60 L 32 75 Q ${42-d} 95 42 95 M 58 5 Q ${58+d} 5 68 25 L 68 40 Q 68 50 80 50 Q 68 50 68 60 L 68 75 Q ${58+d} 95 58 95` }, [poi("curve", "Curve",12,0,42,p => ({x:39.5-.5*p,y:10}))]), open:true},
   "left-bracket": {...base("Left bracket", "Basic shapes", ([r]) => `M 75 0 L ${25+r} 0 Q 25 0 25 ${r} L 25 ${100-r} Q 25 100 ${25+r} 100 L 75 100`, [poi("radius", "Corner radius", 0, 0, 50, p => ({x:25+p,y:0}))]), open:true},
   "right-bracket": {...base("Right bracket", "Basic shapes", ([r]) => `M 25 0 L ${75-r} 0 Q 75 0 75 ${r} L 75 ${100-r} Q 75 100 ${75-r} 100 L 25 100`, [poi("radius", "Corner radius", 0, 0, 50, p => ({x:75-p,y:0}))]), open:true},
-  "left-brace": {...base("Left brace", "Basic shapes", values => `M 70 5 Q 48 5 52 25 L 52 40 Q 52 50 ${v(values,0,25)} 50 Q 52 50 52 60 L 52 75 Q 48 95 70 95`, [poi("width", "Brace width",25,0,52,p => ({x:p,y:50}))]), open:true},
-  "right-brace": {...base("Right brace", "Basic shapes", values => `M 30 5 Q 52 5 48 25 L 48 40 Q 48 50 ${100-v(values,0,25)} 50 Q 48 50 48 60 L 48 75 Q 52 95 30 95`, [poi("width", "Brace width",25,0,100,p => ({x:100-p,y:50}))]), open:true},
+  "left-brace": {...base("Left brace", "Basic shapes", values => `M 70 5 Q 52 5 52 25 L 52 40 Q 52 50 ${v(values,0,25)} 50 Q 52 50 52 60 L 52 75 Q 52 95 70 95`, [poi("width", "Brace width",25,0,52,p => ({x:p,y:50}))]), open:true},
+  "right-brace": {...base("Right brace", "Basic shapes", values => `M 30 5 Q 48 5 48 25 L 48 40 Q 48 50 ${100-v(values,0,25)} 50 Q 48 50 48 60 L 48 75 Q 48 95 30 95`, [poi("width", "Brace width",25,0,100,p => ({x:100-p,y:50}))]), open:true},
   "left-arrow": blockArrow("Left arrow", 2),
   "up-arrow": blockArrow("Up arrow", 3),
   "down-arrow": blockArrow("Down arrow", 1),
@@ -474,19 +557,26 @@ const originalGraphicShapePresets = {
   "preparation": base("Preparation", "Flowchart", ([p]) => polygon([[p,0],[100-p,0],[100,50],[100-p,100],[p,100],[0,50]]), [poi("point", "Point depth", 22, 0, 50, p => ({x:p,y:0}))]),
   "manual-input": base("Manual input", "Flowchart", ([s]) => polygon([[0,s],[100,0],[100,100],[0,100]]), [poi("slope", "Top slope", 22, 0, 100, p => ({x:0,y:p}), "y")]),
   "manual-operation": base("Manual operation", "Flowchart", ([s]) => polygon([[0,0],[100,0],[100-s,100],[s,100]]), [poi("inset", "Bottom inset", 20, 0, 50, p => ({x:p,y:100}))]),
-  "flowchart-connector": base("Connector", "Flowchart", ([r]) => roundFlow(r), [poi("curvature", "Curvature", 27.615, 0, 50, p => ({x:25-.375*p,y:25-.375*p}))]),
+  "flowchart-connector": base("Connector", "Flowchart", ([r]) => roundFlow(r), [flowchartCurvature]),
   "offpage-connector": base("Off-page connector", "Flowchart", ([p]) => polygon([[0,0],[100,0],[100,p],[50,100],[0,p]]), [poi("point", "Shoulder height", 75, 0, 100, p => ({x:100,y:p}), "y")]),
   "card": base("Card", "Flowchart", ([p]) => polygon([[p,0],[100,0],[100,100],[0,100],[0,p]]), [poi("corner", "Clipped corner", 25, 0, 100, p => ({x:p,y:0}))]),
   "punched-tape": base("Punched tape", "Flowchart", ([d]) => `M 0 15 C 30 ${15+d} 70 ${15-d} 100 15 L 100 85 C 70 ${85-d} 30 ${85+d} 0 85 Z`, [poi("wave", "Wave depth", 20, 0, 35, p => ({x:24.0625,y:15+.28125*p}), "y")]),
-  "summing-junction": base("Summing junction", "Flowchart", ([r]) => `${roundFlow(r)} M 15 15 L 85 85 M 15 85 L 85 15`, [poi("curvature", "Curvature", 27.615, 0, 50, p => ({x:25-.375*p,y:25-.375*p}))]),
-  "or": base("Or", "Flowchart", ([r]) => `${roundFlow(r)} M 0 50 L 100 50 M 50 0 L 50 100`, [poi("curvature", "Curvature", 27.615, 0, 50, p => ({x:25-.375*p,y:25-.375*p}))]),
+  "summing-junction": summingJunction.preset,
+  "or": orSymbol.preset,
   "collate": base("Collate", "Flowchart", ([p]) => polygon([[0,0],[100,0],[50,p],[100,100],[0,100],[50,p]]), [poi("waist", "Waist height", 50, 0, 100, p => ({x:50,y:p}), "y")]),
   "sort": base("Sort", "Flowchart", ([p]) => `${polygon([[50,0],[100,p],[50,100],[0,p]])} M 0 ${p} L 100 ${p}`, [poi("division", "Division height", 50, 0, 100, p => ({x:0,y:p}), "y")]),
   "extract": base("Extract", "Flowchart", ([p]) => polygon([[p,0],[100,100],[0,100]]), [poi("apex", "Apex position", 50, 0, 100, p => ({x:p,y:0}))]),
   "merge": base("Merge", "Flowchart", ([p]) => polygon([[0,0],[100,0],[p,100]]), [poi("apex", "Apex position", 50, 0, 100, p => ({x:p,y:100}))]),
   "stored-data": base("Stored data", "Flowchart", ([r]) => `M ${r} 0 L 100 0 C ${100-r} 0 ${100-r} 100 100 100 L ${r} 100 C 0 100 0 0 ${r} 0 Z`, [poi("curve", "End curvature", 20, 0, 100, p => ({x:p,y:0}))]),
-  "delay": base("Delay", "Flowchart", ([r]) => `M 0 0 L ${100-r} 0 C 100 0 100 100 ${100-r} 100 L 0 100 Z`, [poi("curve", "End curvature", 45, 0, 100, p => ({x:100-p,y:0}))]),
-  "sequential-access-storage": base("Sequential access storage", "Flowchart", ([t]) => `${ellipse(45,45,45,45)} M 45 90 L 100 90 L 100 ${90-t} L 75 ${90-t}`, [poi("tail", "Tail height", 10, 0, 90, p => ({x:100,y:90-p}), "y")]),
+  "delay": base("Delay", "Flowchart", ([r]) =>
+    `M 0 0 L ${100-r} 0 C ${100-r/3} 0 100 25 100 50 C 100 75 ${100-r/3} 100 ${100-r} 100 L 0 100 Z`,
+    [poi("curve", "End curvature", 38, 0, 100, p => ({x:100-p,y:0}))]),
+  "sequential-access-storage": base("Sequential access storage", "Flowchart", ([height]) => {
+    // Follow the reel from its bottom tangent to the upper edge of the tape.
+    const y = 90 - height
+    const x = 50 + 50 * Math.sqrt(1 - ((y - 45) / 45) ** 2)
+    return `M 50 90 A 50 45 0 0 1 0 45 A 50 45 0 0 1 50 0 A 50 45 0 0 1 ${x} ${y} L 100 ${y} L 100 90 Z`
+  }, [tapeTailHeight]),
   "magnetic-disk": base("Magnetic disk", "Flowchart", ([d]) => cylinderPath(d), [poi("depth", "Cap depth", 15, 0, 30, p => ({x:0,y:p}), "y")]),
   "direct-access-storage": base("Direct access storage", "Flowchart", ([d]) => turn(cylinderPath(d), 1), [poi("depth", "Cap depth", 15, 0, 30, p => ({x:100-p,y:0}))]),
   "display": base("Display", "Flowchart", ([d]) => `M ${d} 0 L 80 0 C 100 0 100 100 80 100 L ${d} 100 L 0 50 Z`, [poi("point", "Point depth", 20, 0, 80, p => ({x:p,y:0}))]),
@@ -506,8 +596,8 @@ const originalGraphicShapePresets = {
   "ribbon-down": ribbonPreset("Ribbon down", true, false),
   "curved-ribbon-up": ribbonPreset("Curved ribbon up", false, true),
   "curved-ribbon-down": ribbonPreset("Curved ribbon down", true, true),
-  "vertical-scroll": base("Vertical scroll", "Stars and banners", ([d]) => scrollPath(d), [poi("curl", "Curl depth", 10, 4, 18, p => ({x:80,y:p}), "y")]),
-  "horizontal-scroll": base("Horizontal scroll", "Stars and banners", ([d]) => turn(scrollPath(d),1), [poi("curl", "Curl depth", 10, 4, 18, p => ({x:100-p,y:80}))]),
+  "vertical-scroll": base("Vertical scroll", "Stars and banners", ([d]) => scrollPath(d), [poi("curl", "Roll thickness", 10, 4, 18, p => ({x:20,y:p}), "y")]),
+  "horizontal-scroll": base("Horizontal scroll", "Stars and banners", ([d]) => turn(scrollPath(d),1), [poi("curl", "Roll thickness", 10, 4, 18, p => ({x:100-p,y:20}))]),
   "wave": base("Wave", "Stars and banners", ([d]) => `M 0 20 C 35 ${20-d} 65 ${20+d} 100 20 L 100 80 C 65 ${80+d} 35 ${80-d} 0 80 Z`, [poi("amplitude", "Wave amplitude", 30, 5, 45, p => ({x:25.46875,y:20-.28125*p}), "y")]),
   "double-wave": base("Double wave", "Stars and banners", ([d]) => `M 0 20 Q 12.5 ${20-d} 25 20 Q 37.5 ${20+d} 50 20 Q 62.5 ${20-d} 75 20 Q 87.5 ${20+d} 100 20 L 100 80 Q 87.5 ${80+d} 75 80 Q 62.5 ${80-d} 50 80 Q 37.5 ${80+d} 25 80 Q 12.5 ${80-d} 0 80 Z`, [poi("amplitude", "Wave amplitude", 25, 5, 40, p => ({x:12.5,y:20-p/2}), "y")]),
   "rectangular-callout": calloutPreset("Rectangular callout", "rectangle"),

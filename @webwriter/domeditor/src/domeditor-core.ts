@@ -454,7 +454,11 @@ export class DOMEditor {
     }
   }
 
-  constructor(readonly options: DOMEditorOptions = {}, extensions?: EditorExtensionFactory) {
+  readonly options: Omit<DOMEditorOptions, "initialState">
+  documentReplicaSequence?: number
+
+  constructor({initialState, ...options}: DOMEditorOptions = {}, extensions?: EditorExtensionFactory) {
+    this.options = options
     const registry = {
       "head": new HeadFeature(this),
       "math": new MathFeature(this),
@@ -504,13 +508,14 @@ export class DOMEditor {
         throw error
       }
     }
-    const initialState = options.initialState
     const initialYDoc = initialState?.update?.length ? new Y.Doc() : undefined
-    if(initialYDoc) {
+    if(initialYDoc && initialState) {
       try {
-        Y.applyUpdate(initialYDoc, Uint8Array.from(initialState!.update))
+        const {update} = initialState
+        Y.applyUpdate(initialYDoc, update instanceof Uint8Array ? update : Uint8Array.from(update))
       }
       catch(error) {
+        initialYDoc.destroy()
         this.cleanupUnregisteredAppendix()
         throw new TypeError("The initial editor state contains an invalid Yjs update", {cause: error})
       }
@@ -874,7 +879,7 @@ export class DOMEditor {
         // Attribution keeps its selection while focus moves to the appendix.
         // Shape insertion already publishes its final selection synchronously.
         if(ev.data.type !== "beginHTMLSelectionEdit" && ev.data.type !== "getStyleState" && ev.data.type !== "openAttribution"
-          && ev.data.type !== "addGraphicShape") this.postSelectionPath()
+          && ev.data.type !== "addGraphicShape" && ev.data.type !== "previewAttachmentMedia") this.postSelectionPath()
         if(requestId) {
           this.postExecutionEvent(executeCompleteEvent, {requestId, result: value})
         }
@@ -911,6 +916,7 @@ export class DOMEditor {
   postHostMessage(message: object) {
     if(this.options.reader) return
     const send = () => {
+      if(this.#destroyed) return
       if(this.options.documentReplicaId) this.doc?.flushDOMChanges()
       const target = window.parent === window? window: window.parent
       target.postMessage({...message, documentReplicaId: this.options.documentReplicaId, bridgeNonce: this.#bridgeNonce}, this.#bridgeOrigin)

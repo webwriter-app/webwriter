@@ -1,4 +1,5 @@
 import {batchPresentationStates, clearPresentationState, hasPresentationState, presentationStateElements, setPresentationState} from "../presentation-state.js"
+import {createAnchorPositioner} from "../anchor-positioning.js"
 import {EditorFeature} from "."
 import {popupContentAncestor} from "../element-names"
 import {isAuthoredMutation} from "../editor-artifacts"
@@ -71,6 +72,8 @@ export class TableFeature extends EditorFeature {
   private gapFrame: number | null = null
   private gapResizeObserver: ResizeObserver | null = null
   private gapTable: HTMLTableElement | null = null
+  private readonly gapAnchors = createAnchorPositioner()
+  private gapNeedsScrollRefresh = false
   private hoverTable: HTMLTableElement | null = null
   private gapControls: Array<{button: HTMLButtonElement, axis: "row" | "column", index: number, map: TableMap}> = []
   private anchorCell: HTMLTableCellElement | null = null
@@ -146,6 +149,7 @@ export class TableFeature extends EditorFeature {
     })
     window.addEventListener("blur", this.finishResize)
     window.addEventListener("resize", this.scheduleGaps)
+    document.addEventListener("webwriter-canvas-zoom", this.scheduleGaps)
     const FrameResizeObserver = document.defaultView?.ResizeObserver
     if(FrameResizeObserver) this.gapResizeObserver = new FrameResizeObserver(this.scheduleGaps)
     this.scheduleGaps()
@@ -192,14 +196,17 @@ export class TableFeature extends EditorFeature {
     this.pasteLifecycle++
     window.removeEventListener("blur", this.finishResize)
     window.removeEventListener("resize", this.scheduleGaps)
+    document.removeEventListener("webwriter-canvas-zoom", this.scheduleGaps)
     this.gapResizeObserver?.disconnect()
     this.gapResizeObserver = null
     if(this.gapFrame !== null) cancelAnimationFrame(this.gapFrame)
     this.gapFrame = null
+    this.gapAnchors.destroy()
     this.gapOverlay?.remove()
     this.gapOverlay = null
     this.gapControls = []
     this.gapTable = null
+    this.gapNeedsScrollRefresh = false
     this.hoverTable = null
     if(this.gapStylesheet) this.editor.appendix.adoptedStyleSheets = this.editor.appendix.adoptedStyleSheets.filter(sheet => sheet !== this.gapStylesheet)
     this.gapStylesheet = null
@@ -244,7 +251,7 @@ export class TableFeature extends EditorFeature {
 
   private createGapOverlay() {
     this.gapStylesheet = createStylesheet(`
-      .◆table-gaps { position: fixed; inset: 0; pointer-events: none; z-index: 10002; color: var(--sl-color-primary-400, #38bdf8); }
+      .◆table-gaps { position: fixed; pointer-events: none; z-index: 10002; color: var(--sl-color-primary-400, #38bdf8); }
       .◆table-gaps button { position: absolute; width: 24px; height: 24px; padding: 0; margin: 0; border: 0;
         background: transparent; color: inherit; pointer-events: auto; cursor: pointer; transform: translate(-50%, -50%); }
       .◆table-gaps button::before { content: ''; position: absolute; width: 6px; height: 6px; border-radius: 50%;
@@ -269,19 +276,30 @@ export class TableFeature extends EditorFeature {
     return this.gapOverlay
   }
 
+  private hideGaps() {
+    this.gapNeedsScrollRefresh = false
+    if(this.gapTable) this.gapResizeObserver?.disconnect()
+    this.gapTable = null
+    if(!this.gapOverlay) return
+    this.gapOverlay.hidden = true
+    this.gapAnchors.release(this.gapOverlay)
+  }
+
   private renderGaps() {
     const table = this.pointerSelecting || this.resize ? null : this.editableTable(this.hoverTable) ? this.hoverTable : this.selectedTable
     if(!this.editableTable(table)) {
-      if(this.gapOverlay) this.gapOverlay.hidden = true
+      this.hideGaps()
       return
     }
     const map = buildTableMap(table)
     const matrices = new WeakMap<Element, DOMMatrix>()
     const geometry = this.editor.features.transformation.boxGeometry(table, true, matrices)
-    const {matrix, corners: [origin], width, height} = geometry
+    const {matrix, corners: [origin], width, height, rect} = geometry
     if(!map.rows.length || !map.width || !width || !height
       || !matrix.is2D || Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) < 1e-8) {
-      if(this.gapOverlay) this.gapOverlay.hidden = true
+      this.hideGaps()
+      // A table can gain a rendered box when scrolling reveals it.
+      this.gapNeedsScrollRefresh = true
       return
     }
     if(this.gapTable !== table) {
@@ -291,12 +309,20 @@ export class TableFeature extends EditorFeature {
       this.gapTable = table
     }
     const overlay = this.gapOverlay ?? this.createGapOverlay()
-    overlay.hidden = false
+    const anchored = CSS.supports("position-anchor", "--ww-table")
+    // Sticky rows or cells can move relative to the table itself.
+    const checked = new Set<Element>([table])
+    let needsScrollRefresh = !anchored
     const rtl = getComputedStyle(table).direction === "rtl"
     // Measure boundaries in the table's axes. Client bounding boxes lose the
     // edge positions at steep rotations; reuse the selection overlay geometry.
     const inverse = matrix.inverse()
     const localRect = (element: HTMLElement) => {
+      for(let node: Element | null = element; !needsScrollRefresh && node && !checked.has(node); node = node.parentElement) {
+        checked.add(node)
+        const position = getComputedStyle(node).position
+        needsScrollRefresh = position === "sticky" || position === "fixed"
+      }
       const points = this.editor.features.transformation.boxGeometry(element, true, matrices).corners.map(point => {
         const x = point.x - origin.x, y = point.y - origin.y
         return {x: inverse.a * x + inverse.c * y, y: inverse.b * x + inverse.d * y}
@@ -330,6 +356,18 @@ export class TableFeature extends EditorFeature {
       return rtl ? box.right - box.width * (index - cell.column) / cell.columnSpan
         : box.left + box.width * (index - cell.column) / cell.columnSpan
     })
+    this.gapNeedsScrollRefresh = needsScrollRefresh
+    if(anchored) {
+      overlay.style.removeProperty("inset")
+      this.gapAnchors.bind(overlay, table)
+    }
+    else {
+      overlay.style.inset = "0"
+      this.gapAnchors.release(overlay)
+    }
+    overlay.hidden = false
+    const left = anchored ? origin.x - rect.left : fixedClientX(origin.x)
+    const topOffset = anchored ? origin.y - rect.top : origin.y
     let controlIndex = 0
     for(const axis of ["column", "row"] as const) {
       const count = axis === "column" ? map.width : map.rows.length
@@ -359,8 +397,8 @@ export class TableFeature extends EditorFeature {
         control.button.setAttribute("aria-label", `Insert ${axis} ${index + 1}`)
         const x = axis === "column" ? position : -tableGapOffset
         const y = axis === "row" ? position : top - tableGapOffset
-        control.button.style.left = `${fixedClientX(origin.x + matrix.a * x + matrix.c * y)}px`
-        control.button.style.top = `${origin.y + matrix.b * x + matrix.d * y}px`
+        control.button.style.left = `${left + matrix.a * x + matrix.c * y}px`
+        control.button.style.top = `${topOffset + matrix.b * x + matrix.d * y}px`
         control.button.style.transform = `translate(-50%, -50%) ${geometry.styles.transform}`
         control.button.style.setProperty("--gap-length", `${axis === "column" ? bottom - top + tableGapOffset : width + tableGapOffset}px`)
       }
@@ -1417,7 +1455,9 @@ export class TableFeature extends EditorFeature {
     },
   } as const
 
-  captureListeners = {scroll: this.scheduleGaps}
+  captureListeners = {
+    scroll: () => { if(this.gapNeedsScrollRefresh) this.scheduleGaps() },
+  }
 
   passiveListeners = {
     pointerout: (event: PointerEvent) => {

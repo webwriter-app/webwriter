@@ -1,7 +1,7 @@
 import {dropdownContentStyles} from "./dropdown-content.styles"
 import {SNIPPET_LABEL_MAX_LENGTH} from "../app-settings"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
-import {editorInteractionStyles} from "./editing-controls.styles"
+import {editorInteractionStyles, packageUpdateStyles} from "./editing-controls.styles"
 import { ribbonIcon } from "../ribbon-icons"
 import {ribbonElementInsertionAction, ribbonElementTag, ribbonInsertionAction, startElementDrag, startRibbonInsertionDrag} from "./insertion-menu"
 
@@ -41,6 +41,7 @@ export type RibbonMenuButton = string | {
   warning?: string
   removeAction?: string
   removeLabel?: string
+  packageUpdate?: {action: string, label: string}
   editingLabel?: boolean
 }
 
@@ -207,6 +208,20 @@ export class RibbonMenu extends LitElement {
       grid-area: 2 / 2;
     }
 
+    ${packageUpdateStyles}
+
+    .has-package-removal:has(.package-update) {
+      position: relative;
+    }
+
+    .has-package-removal:has(.package-update) > .item[data-action] {
+      padding-inline-end: 1.75rem;
+    }
+
+    .has-package-removal button.package-update {
+      inset-inline-end: 1.75rem;
+    }
+
     .item.label-editor {
       min-width: 0;
       cursor: text;
@@ -357,6 +372,16 @@ export class RibbonMenu extends LitElement {
         left: anchor(right);
         margin-left: 0.25rem;
         position-try-fallbacks: flip-inline, bottom span-left;
+      }
+
+      .submenu[data-submenu-key="Packages"] {
+        position-try-fallbacks: flip-inline, --ww-package-submenu-inset, bottom span-left;
+      }
+
+      @position-try --ww-package-submenu-inset {
+        left: auto;
+        right: 0.5rem;
+        margin-left: 0;
       }
 
       .submenu.shape-gallery {
@@ -1017,6 +1042,11 @@ export class RibbonMenu extends LitElement {
                       <span class=${`item-label${item.italic ? " italic" : ""}`}>${label}</span>
                       ${item.warning ? html`<span class="warning-bubble" role="img" aria-label=${item.warning} title=${item.warning}>!</span>` : nothing}
                     </button>`}
+                    ${item.packageUpdate ? html`
+                      <button class="item package-update" type="button" role="menuitem" tabindex="-1"
+                        aria-label=${item.packageUpdate.label} title=${item.packageUpdate.label} ?disabled=${item.disabled}
+                        @click=${() => this.handleClick(item.packageUpdate!, true)}>${ribbonIcon("Refresh")}</button>
+                    ` : nothing}
                     ${item.editingLabel ? html`<button class="item label-confirm" type="button" role="menuitem" tabindex="-1"
                       aria-label="Confirm snippet name" title="Confirm snippet name" ?disabled=${item.disabled}
                       @pointerdown=${(event: Event) => event.preventDefault()}

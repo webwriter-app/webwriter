@@ -838,6 +838,16 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
+        <section class="setting-card" aria-label="Widget updates">
+          <label class="checkbox-setting">
+            <input type="checkbox" .checked=${this.settings.autoUpdatePackages}
+              @change=${(event: Event) => this.emitSettings({...this.settings, autoUpdatePackages: (event.currentTarget as HTMLInputElement).checked})}
+            />
+            <span class="checkbox-label">Automatically update installed widgets</span>
+            <span class="checkbox-description">Install minor and patch updates for published widgets.</span>
+          </label>
+        </section>
+
         <section class="setting-card" aria-label="Motion">
           <label class="checkbox-setting">
             <input

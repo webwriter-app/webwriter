@@ -1,3 +1,5 @@
+import {inlineMediaHTML} from "./serialization-primitives"
+
 export type DocumentRecovery = {id: string, title: string, updatedAt: number, documentKey?: string}
 
 const databaseName = "webwriter-document-recovery"
@@ -6,9 +8,6 @@ const discardedPrefix = "webwriter-document-recovery-discarded:"
 type StoredDocument = {id: string, parts: string[], assetDigests: string[]}
 type StoredAsset = {digest: string, url: string}
 type RecoveryWrite = {record: DocumentRecovery, replacedIds: string[]}
-// Full URL attributes may contain spaces and SVG markup. The other branch
-// handles URLs embedded in CSS and comma-separated base64 srcset candidates.
-const inlineMedia = /\b(?:src|poster|data|(?:xlink:)?href)\s*=\s*(["'])(data:(?:image|audio|video)\/[\w.+-]+[^\s"',]*,[\s\S]*?)\1|data:(?:image|audio|video)\/[\w.+-]+(?:;(?!base64,)[\w=.+-]+)*(?:;base64,[\da-z+/=]*|,[^\s"'<>)]*)/gi
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -124,9 +123,7 @@ export function discardedDocumentRecoveryIds() {
 function splitHTML(html: string): {parts: string[], urls: string[]} {
   const parts: string[] = [], urls: string[] = []
   let offset = 0
-  for(const match of html.matchAll(inlineMedia)) {
-    const url = match[2] ?? match[0]
-    const index = match.index! + match[0].indexOf(url)
+  for(const {url, offset: index} of inlineMediaHTML(html)) {
     parts.push(html.slice(offset, index))
     urls.push(url)
     offset = index + url.length

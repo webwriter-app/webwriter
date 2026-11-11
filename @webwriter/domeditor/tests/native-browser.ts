@@ -5508,13 +5508,17 @@ await check("table insertion controls follow rotated edges and preview lines", a
   parent.innerHTML = '<table style="width:320px;border-spacing:8px;border:2px solid black"><caption>Rotated table</caption><tbody><tr><th colspan="2">Merged heading</th></tr><tr><td>Left cell</td><td>Right cell</td></tr></tbody></table>'
   const table = parent.querySelector("table")!
   table.querySelectorAll<HTMLElement>("td, th").forEach(cell => cell.style.cssText = "height:48px;padding:12px;border:1px solid black;background:#f1f5f9")
-  fixture.append(parent)
+  const scroller = document.createElement("div")
+  scroller.style.cssText = "width:440px;height:360px;overflow:auto;overflow-anchor:none"
+  scroller.append(parent)
+  fixture.append(scroller)
   const near = (actual: number, expected: number, label: string) => assert(Math.abs(actual - expected) < 1.5, `${label}: ${actual} != ${expected}`)
   try {
     for(const rtl of [false, true]) for(const angle of [0, 45, 90, 135, -75]) {
       table.style.direction = rtl ? "rtl" : "ltr"
       table.style.rotate = "none"
       parent.style.transform = "none"
+      scroller.scrollTo(0, 0)
       await layoutFrame()
       const original = table.getBoundingClientRect()
       const rows = Array.from(table.rows, row => row.getBoundingClientRect())
@@ -5552,6 +5556,24 @@ await check("table insertion controls follow rotated edges and preview lines", a
         near(line.left + line.width / 2, (expected.x + end.x) / 2, `${angle}/${rtl}/${index} preview x`)
         near(line.top + line.height / 2, (expected.y + end.y) / 2, `${angle}/${rtl}/${index} preview y`)
       })
+      const checkScroll = async (scroll: () => void, horizontal: boolean) => {
+        const beforeTable = table.getBoundingClientRect()
+        const beforeButtons = buttons.map(button => button.getBoundingClientRect())
+        const offsets = buttons.map(button => button.style.cssText)
+        scroll()
+        await layoutFrame()
+        const after = table.getBoundingClientRect()
+        const dx = after.left - beforeTable.left, dy = after.top - beforeTable.top
+        assert(dy !== 0 && (!horizontal || dx !== 0), "fixture must scroll the table")
+        buttons.forEach((button, index) => {
+          const rect = button.getBoundingClientRect()
+          assert(button.style.cssText === offsets[index], "scroll rewrote table-relative button geometry")
+          near(rect.left - beforeButtons[index].left, dx, `${angle}/${rtl}/${index} scroll x`)
+          near(rect.top - beforeButtons[index].top, dy, `${angle}/${rtl}/${index} scroll y`)
+        })
+      }
+      await checkScroll(() => scroller.scrollBy(scroller.scrollLeft > 20 ? -20 : 20, scroller.scrollTop > 20 ? -20 : 20), true)
+      if(angle === 0 && !rtl) await checkScroll(() => window.scrollBy(0, window.scrollY > 20 ? -20 : 20), false)
       assert(!table.querySelector("button, span"), "insertion UI leaked into authored content")
       assert(!editor.toHTML(true).includes("table-gaps"), "insertion UI leaked into serialization")
     }
@@ -5560,10 +5582,49 @@ await check("table insertion controls follow rotated edges and preview lines", a
     assert(table.rows.length === before + 1, "rotated row control did not insert a row")
   }
   finally {
-    parent.remove()
+    scroller.remove()
     $.selectDocumentStart()
     editor.features.selection.processSelection()
   }
+
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:760px;height:500px"
+  frame.srcdoc = `<!doctype html><style>${canvasStyles}</style><body class="ww-canvas">
+    <table style="position:absolute;left:170px;top:130px;width:320px"><tr><td>A</td><td>B</td></tr></table>
+    <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script></body>`
+  editor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow! as Window & typeof globalThis
+    for(let attempt = 0; !view.editor && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
+    assert(view.editor?.features.canvas.active, "Canvas table fixture did not initialize")
+    const doc = frame.contentDocument!, canvasEditor = view.editor!, table = doc.querySelector("table")!
+    const cell = table.rows[0].cells[0]
+    canvasEditor.features.selection.selectElement(table)
+    table.dispatchEvent(new view.PointerEvent("pointermove", {bubbles:true, composed:true}))
+    await layoutFrame()
+    const button = canvasEditor.appendix.querySelector<HTMLButtonElement>('.◆table-gaps button[aria-label="Insert column 1"]')!
+    const assertGap = (label: string) => {
+      const gap = button.getBoundingClientRect(), cellRect = cell.getBoundingClientRect()
+      near(gap.left + gap.width / 2, cellRect.left, `${label} x`)
+      near(gap.top + gap.height / 2, cellRect.top - 8 * canvasEditor.features.canvas.zoom, `${label} y`)
+    }
+    const wheel = (options: WheelEventInit) => canvasEditor.appendix.querySelector("slot")!.dispatchEvent(
+      new view.WheelEvent("wheel", {clientX:40, clientY:100, bubbles:true, composed:true, cancelable:true, ...options}))
+    assertGap("initial Canvas gap")
+    const before = table.getBoundingClientRect()
+    const offset = button.style.cssText
+    wheel({deltaX:24, deltaY:32})
+    await layoutFrame()
+    assert(table.getBoundingClientRect().left !== before.left, "Canvas wheel did not pan the table")
+    assert(button.style.cssText === offset, "panning rewrote table-relative button geometry")
+    assertGap("Canvas gap during pan")
+    const zoom = canvasEditor.features.canvas.zoom
+    wheel({deltaY:-100, ctrlKey:true})
+    await layoutFrame()
+    assert(canvasEditor.features.canvas.zoom !== zoom, "Canvas wheel did not zoom the table")
+    assertGap("Canvas gap after zoom")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
 await check("selection feature treats custom element as atomic", async () => {
@@ -6435,6 +6496,61 @@ await check("local fonts embed selected bytes and load under the editor CSP", as
   finally {
     field.remove(); frame.remove()
   }
+})
+
+await check("custom fonts load and survive selection changes with the document theme", async () => {
+  const {embedFontFiles} = await import("../src/local-fonts")
+  const bytes = await (await fetch(localFontURL)).blob()
+  const font = await embedFontFiles([bytes])
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:700px;height:350px"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head>
+    <body><h1>Font sample x</h1><p>Another paragraph</p>
+    <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script></body>`
+  nativeRootEditor.addAppendix(frame)
+  try {
+    for(let attempt = 0; !frame.contentWindow?.editor && attempt < 200; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    const view = frame.contentWindow!, editor = view.editor!, doc = frame.contentDocument!
+    assert(editor, `custom font editor did not initialize: ${view.editorError}`)
+    const errors: string[] = []
+    view.addEventListener("error", event => errors.push(event.message))
+    const selection = doc.getSelection()!
+    const heading = doc.querySelector("h1")!, paragraph = doc.querySelector("p")!
+    const setFont = (value: string, fontStylesheet?: string) => editor.features.mark.actions.setStyleMark({
+      type: "setStyleMark", property: "font-family", value, fontStylesheet,
+    })
+    const fontLinks = () => [...doc.head.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')]
+      .filter(link => link.href === font.stylesheet)
+    const selectHeading = () => {
+      const range = doc.createRange()
+      range.selectNodeContents(heading)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+    doc.body.focus()
+    selectHeading()
+    assert(setFont(font.value, font.stylesheet), "custom font was not applied to the selected heading")
+    const [link] = fontLinks()
+    assert(link, "applying the custom font did not add its stylesheet")
+    if(!link.sheet) await new Promise<void>((resolve, reject) => {
+      link.addEventListener("load", () => resolve(), {once: true})
+      link.addEventListener("error", () => reject(new Error("custom font stylesheet failed to load")), {once: true})
+    })
+    const faces = await doc.fonts.load(`16px ${JSON.stringify(font.family)}`, "x")
+    assert(faces.length > 0 && faces.every(face => face.status === "loaded"), "the selected font face did not load")
+    assert(view.getComputedStyle(heading.querySelector("span")!).fontFamily.includes(font.family), "heading uses the fallback family")
+
+    selection.collapse(paragraph.firstChild, 1)
+    await layoutFrame()
+    assert(fontLinks().length === 1 && faces.every(face => doc.fonts.has(face)), "moving the caret discarded the heading's font")
+
+    selectHeading()
+    assert(setFont(""), "custom font could not be removed")
+    await layoutFrame()
+    assert(fontLinks().length === 0, "clearing the last use retained the custom font stylesheet")
+    assert(errors.length === 0, `font changes raised browser errors: ${errors.join(", ")}`)
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
 await check("ribbon shapes retain their aspect ratio under the document theme", async () => {
@@ -8804,9 +8920,11 @@ await check("Board columns and cards retain native editing and standalone layout
     const setColumnWidth = (width: string) => editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {width}})
     setColumnWidth("300px"); await layoutFrame()
     assert(Math.abs(columns[0].getBoundingClientRect().width - 300) < .5, "Element width did not resize the board column")
-    columns[0].style.maxWidth = "300px" // The resize handle also writes a matching cap.
+    columns[0].style.maxWidth = "300px"
     setColumnWidth("520px"); await layoutFrame()
-    assert(Math.abs(columns[0].getBoundingClientRect().width - 520) < .5, "Element width did not resize a previously dragged column")
+    assert(Math.abs(columns[0].getBoundingClientRect().width - 300) < .5, "Element width overrode an authored maximum")
+    columns[0].style.removeProperty("max-width")
+    assert(Math.abs(columns[0].getBoundingClientRect().width - 520) < .5, "Element width did not grow after removing the maximum")
     setColumnWidth(""); await layoutFrame()
     assert(Math.abs(columns[0].getBoundingClientRect().width - 450) < .5, "clearing Element width did not restore the board default")
     assert(rects.every((rect, i) => !i || rect.left > rects[i - 1].right), "columns did not grow horizontally")
@@ -8964,10 +9082,13 @@ await check("Board columns and cards retain native editing and standalone layout
       assert(isCard ? after.height > bounds.height && Math.abs(after.width - bounds.width) < .5
         : after.width > bounds.width && Math.abs(after.height - bounds.height) < .5, "Board resize did not grow on only its permitted axis")
       assert(isCard ? !target.style.width && !target.style.maxWidth : !target.style.height && !target.style.maxHeight, "Board resize wrote dimensions on the other axis")
+      if(!isCard) assert(!target.style.flexBasis && !target.style.maxWidth, "Board column resize wrote a flex basis or maximum width")
       editor.doc.undo(); await layoutFrame()
     }
     await resizeTarget(card, 40, 30)
     await resizeTarget(board.columns()[0], 30, 40)
+    editor.features.selection.selectElement(board.columns()[0])
+    setColumnWidth("520px")
     card.style.height = "230px"
     card.innerHTML = '<p></p><p></p><p><br></p><custom-widget style="display:block;height:48px">Embedded content</custom-widget>'
     await layoutFrame()
@@ -8986,7 +9107,8 @@ await check("Board columns and cards retain native editing and standalone layout
     assert(Math.abs(editorWidgetTop - previewWidgetTop) < 1, `blank Board lines shifted embedded content in preview: editor=${editorWidgetTop}, preview=${previewWidgetTop}`)
     exportedCard.style.height = ""
     const exportedRects = exportedColumns.map(column => column.getBoundingClientRect())
-    assert(exportedRects.every((rect, i) => Math.abs(rect.width - exportedRects[0].width) < 1 && (!i || rect.left > exportedRects[i - 1].right)), "standalone Board layout needs editor code")
+    assert(exportedRects.every((rect, i) => Math.abs(rect.width - (i === 0 ? 520 : 450)) < 1
+      && (!i || rect.left > exportedRects[i - 1].right)), "standalone Board layout did not retain column widths")
     await checkOverflow(exported)
     preview.remove()
     for(const column of board.columns()) assert(board.removeColumn(column), "last board column could not be removed")

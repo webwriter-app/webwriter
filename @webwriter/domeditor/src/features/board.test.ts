@@ -70,7 +70,7 @@ describe("Board layout", () => {
     expect(manipulation.getStyleState([], column, false).target?.boardRole).toBeUndefined()
   })
 
-  it("applies column width edits from Element options after default and dragged sizes", () => {
+  it("edits column width in Element options and preserves an authored maximum", () => {
     convert("board")
     const column = columns()[0], heading = column.querySelector("h2")!
     editor.features.selection.selectElement(column)
@@ -79,21 +79,19 @@ describe("Board layout", () => {
 
     setWidth("300px")
     expect(column.style.width).toBe("300px")
-    expect(column.style.flexBasis).toBe("300px")
+    expect(column.style.flexBasis).toBe("")
     expect(column.style.maxWidth).toBe("")
     expect(manipulation.actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["width"]}).inline.width?.value).toBe("300px")
 
-    // A drag writes all three declarations; a later toolbox edit must also
-    // move its cap so the column can grow beyond the dragged size.
     column.style.maxWidth = "300px"
     setWidth("520px")
     expect(column.style.width).toBe("520px")
-    expect(column.style.flexBasis).toBe("520px")
-    expect(column.style.maxWidth).toBe("520px")
+    expect(column.style.flexBasis).toBe("")
+    expect(column.style.maxWidth).toBe("300px")
     setWidth("")
     expect(column.style.width).toBe("")
     expect(column.style.flexBasis).toBe("")
-    expect(column.style.maxWidth).toBe("")
+    expect(column.style.maxWidth).toBe("300px")
     expect(column.querySelector("h2")).toBe(heading)
   })
 
@@ -1139,21 +1137,16 @@ describe("Board layout", () => {
     const column = columns()[0]
     $.move(column.querySelector("h2")!); editor.features.selection.processSelection(); board().refresh()
     await settle(); editor.doc.syncFromDOM(); editor.doc.stopCapturing()
-    const initial = {width: column.style.width, flexBasis: column.style.flexBasis, height: column.style.height, maxHeight: column.style.maxHeight}
+    const initial = column.style.cssText
     const handle = board().transformOverlay(column)?.querySelector<HTMLElement>("[part~='transform-overlay-board-resize-column']")!
     handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 32, clientX: 320, clientY: 270}))
     document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, buttons: 1, pointerId: 32, clientX: 340, clientY: 310}))
     await settle()
-    expect(column.style.width).not.toBe(initial.width)
-    expect(column.style.flexBasis).not.toBe(initial.flexBasis)
-    expect(column.style.height).toBe(initial.height)
-    expect(column.style.maxHeight).toBe(initial.maxHeight)
+    expect(column.style.width).not.toBe("")
+    expect(Array.from(column.style)).toEqual(["width"])
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, pointerId: 32}))
     await settle(); editor.doc.undo(); await settle()
-    expect(column.style.width).toBe(initial.width)
-    expect(column.style.flexBasis).toBe(initial.flexBasis)
-    expect(column.style.height).toBe(initial.height)
-    expect(column.style.maxHeight).toBe(initial.maxHeight)
+    expect(column.style.cssText).toBe(initial)
     expect(column.className).not.toContain("◆transform-target")
     expect(document.body.className).not.toContain("◆transform-scaling-")
   })

@@ -62,6 +62,39 @@ function dragData(target: Element) {
 }
 
 describe("package ribbon controls", () => {
+  it("shows a separate update action only for outdated packages in management mode", async () => {
+    const ribbon = new AppRibbon()
+    const installed = packageFixture()
+    const update = {...installed, version: "2.0.0"}
+    const local: WebWriterPackage = {...packageFixture("local"), developerSource: {kind: "local", path: "fixtures/local"}}
+    ribbon.installedPackages = [installed, local]
+    ribbon.packages = [update, {...local, version: "2.0.0", developerSource: undefined}, packageFixture("new")]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    expect(button.shadowRoot!.querySelector(".package-update")).toBeNull()
+
+    const click = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", click)
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    drawer.dispatchEvent(new CustomEvent("ribbon-drawer-state-change", {detail: {label: "Packages", open: true}}))
+    await ribbon.updateComplete
+    await button.updateComplete
+    const control = button.shadowRoot!.querySelector<HTMLButtonElement>(".package-update")!
+    expect(control.getAttribute("aria-label")).toBe("Update Demo to 2.0.0")
+    expect(button.shadowRoot!.querySelector(".corner-trigger")).not.toBeNull()
+    expect(ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Local"]')!.packageUpdate).toBeUndefined()
+    expect(ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="New"]')!.packageUpdate).toBeUndefined()
+    control.click()
+    expect(click.mock.calls[0][0].detail).toMatchObject({label: "package-update:@webwriter/demo", keepDrawerOpen: true})
+
+    ribbon.installedPackages = [update, local]
+    await ribbon.updateComplete
+    await button.updateComplete
+    expect(button.shadowRoot!.querySelector(".package-update")).toBeNull()
+  })
+
   it("marks a conversion target and calls attention to it in the drawer overflow", async () => {
     const ribbon = new AppRibbon()
     const packages = Array.from({length: 8}, (_, index) => packageFixture(`package-${index}`))
@@ -1599,7 +1632,7 @@ describe("package ribbon controls", () => {
     expect(pkg.members.map(member => member.label)).toEqual(["PhET Simulation", "Overdensity", "Liquid Density", "Density", "Dens"])
   })
 
-  it("focuses package search when expanding the drawer", async () => {
+  it("focuses package search and requests the catalog when expanding the drawer", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     ribbon.packages = [packageFixture("alpha"), packageFixture("beta"), packageFixture("gamma")]
@@ -1612,6 +1645,8 @@ describe("package ribbon controls", () => {
     await search.updateComplete
     const input = search.shadowRoot!.querySelector<HTMLInputElement>("input")!
     const toggle = drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+    const requests = vi.fn()
+    ribbon.addEventListener("package-catalog-request", requests)
     toggle.focus()
     toggle.click()
     await drawer.updateComplete
@@ -1619,6 +1654,7 @@ describe("package ribbon controls", () => {
 
     expect(drawer.hasAttribute("drawer-open")).toBe(true)
     expect(search.shadowRoot!.activeElement).toBe(input)
+    expect(requests).toHaveBeenCalledTimes(1)
 
     toggle.focus()
     toggle.click()
@@ -1729,7 +1765,11 @@ it("keeps package search, refresh, removal and member insertion available in the
   await ribbon.updateComplete
   const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
   await menu.updateComplete
+  const requests = vi.fn()
+  ribbon.addEventListener("package-catalog-request", requests)
   menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
+  expect(requests).toHaveBeenCalledTimes(1)
+  requests.mockClear()
   await menu.updateComplete
   const packages = menu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
   await packages.updateComplete
@@ -1748,8 +1788,6 @@ it("keeps package search, refresh, removal and member insertion available in the
   await menu.updateComplete
   await packages.updateComplete
   expect(packages.shadowRoot!.querySelector('[title="Other"]')).toBeNull()
-  const requests = vi.fn()
-  ribbon.addEventListener("package-catalog-request", requests)
   await search.updateComplete
   search.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Refresh list"]')!.click()
   expect(requests.mock.calls[0][0].detail).toEqual({refresh: true})

@@ -34,6 +34,35 @@ export function checkGraphicShapeFills() {
         for(const key of ["x", "y", "width", "height"] as const) assert(Math.abs(bounds[key] - original[key]) < .001, `${type}: ${key} changed`)
       }
     }
+    const frame = {x: 0, y: 0, width: 100, height: 100}
+    const outline = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement
+    outline.setAttribute("stroke", "black")
+    outline.setAttribute("stroke-width", "2")
+    svg.replaceChildren(outline)
+    for(const type of ["ribbon-up", "ribbon-down"] as const) {
+      outline.setAttribute("d", graphicPresetPath(type, frame))
+      const point = (x: number, y: number) => type === "ribbon-up" ? new DOMPoint(x, y) : new DOMPoint(100-x, 100-y)
+      for(const x of [20, 80]) assert(outline.isPointInStroke(point(x, 72.5)), `${type}: missing fold seam`)
+      for(const x of [30, 70]) assert(!outline.isPointInStroke(point(x, 75)), `${type}: stray diagonal outside the ribbon`)
+    }
+    for(const type of ["vertical-scroll", "horizontal-scroll"] as const) {
+      const point = (x: number, y: number) => type === "vertical-scroll" ? new DOMPoint(x, y) : new DOMPoint(100-y, x)
+      for(const radius of [4, 10, 18]) {
+        outline.setAttribute("d", graphicPresetPath(type, frame, [radius]))
+        for(const [x, y] of [[20+radius, radius], [80-radius, 100-radius]]) {
+          assert(outline.isPointInFill(point(x, y)), `${type}: hollow roll at radius ${radius}`)
+          assert(!outline.isPointInStroke(point(x, y)), `${type}: unexpected stroke inside the roll`)
+          for(const angle of [45, 135, 225, 315]) {
+            const t = angle * Math.PI / 180
+            const sample = (r: number) => point(x + r*Math.cos(t), y + r*Math.sin(t))
+            assert(outline.isPointInStroke(sample(radius-.65)) && outline.isPointInStroke(sample(radius+.65)),
+              `${type}: broken roll border at radius ${radius}, angle ${angle}`)
+            assert(!outline.isPointInStroke(sample(radius-1.35)),
+              `${type}: roll border is too thick at radius ${radius}, angle ${angle}`)
+          }
+        }
+      }
+    }
     for(const type of ["frame", "donut", "prohibited"] as const) {
       const path = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement
       path.setAttribute("d", graphicPresetPath(type, {x: 0, y: 0, width: 100, height: 100}))

@@ -459,9 +459,15 @@ export abstract class EditingControls extends LitElement {
     keepDrawerOpen?: boolean
   }) {
     const shortcut = this.commandShortcut(option.action)
+    const dispatch = (label: string) => this.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label, keepDrawerOpen: option.keepDrawerOpen},
+      bubbles: true,
+      composed: true,
+    }))
     return html`
       <div class="mark-dropdown-option"
         role=${option.radio ? nothing : "option"} aria-selected=${option.radio ? nothing : option.active}
+        title=${option.radio && option.active && !option.disabled ? `Remove ${option.label}` : nothing}
         @click=${(event: MouseEvent) => {
           if((event.target as Element).closest("input")) return
           (event.currentTarget as HTMLElement).querySelector("input")?.click()
@@ -471,14 +477,16 @@ export abstract class EditingControls extends LitElement {
           .checked=${live(option.active)}
           ?disabled=${option.disabled}
           @pointerdown=${(event: PointerEvent) => event.preventDefault()}
+          @click=${option.radio && option.active ? () => dispatch(`remove-link:${option.radio}`) : nothing}
           @change=${(event: Event) => {
-            if(option.radio) this.requestUpdate()
-            else (event.currentTarget as HTMLInputElement).checked = option.active
-            this.dispatchEvent(new CustomEvent("ribbon-button-click", {
-              detail: {label: option.radio ? `select-link:${option.radio}` : option.action, keepDrawerOpen: option.keepDrawerOpen},
-              bubbles: true,
-              composed: true,
-            }))
+            if(option.radio) {
+              this.requestUpdate()
+              if(!option.active) dispatch(`select-link:${option.radio}`)
+            }
+            else {
+              (event.currentTarget as HTMLInputElement).checked = option.active
+              dispatch(option.action)
+            }
           }}
         />
         <span class="mark-dropdown-option-icon" aria-hidden="true">${ribbonIcon(option.icon)}</span>

@@ -40,6 +40,25 @@ beforeEach(() => localStorage.clear())
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks() })
 
 describe("link keyboard", () => {
+  it("shows the current filename and previews the selected media without submitting the attachment form", async () => {
+    const keyboard = await mount()
+    keyboard.attachment = {identity: "attachment", filename: "uploaded-notes.txt", media: [
+      {id: "image", label: "Diagram"}, {id: "audio", label: "Recording"},
+    ]}
+    await keyboard.updateComplete
+    expect(root(keyboard).querySelector(".attachment-filename")?.textContent).toContain("uploaded-notes.txt")
+    const preview = vi.fn(), attach = vi.fn()
+    keyboard.addEventListener("attachment-media-preview", preview)
+    keyboard.addEventListener("attachment-command", attach)
+    root(keyboard).querySelector<HTMLSelectElement>("#attachment-media")!.value = "audio"
+    root(keyboard).querySelector<HTMLButtonElement>('form button[type="button"]')!.click()
+    expect(preview).toHaveBeenCalledWith(expect.objectContaining({detail: {identity: "attachment", mediaId: "audio"}}))
+    expect(attach).not.toHaveBeenCalled()
+    keyboard.attachment = {...keyboard.attachment, filename: "replacement.txt"}
+    await keyboard.updateComplete
+    expect(root(keyboard).querySelector(".attachment-filename")?.textContent).toContain("replacement.txt")
+  })
+
   it("corrects a scheme-less address in both the field and dispatched command", async () => {
     const keyboard = await mount(), commands = listen(keyboard)
     await type(keyboard, " www.example.test/path ")

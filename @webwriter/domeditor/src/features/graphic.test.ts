@@ -892,10 +892,13 @@ describe("graphic editing", () => {
     const image = document.querySelector("svg image")!
     const data = new DataTransfer()
     data.items.add(new File(["image"], "photo.png", {type: "image/png"}))
+    data.items.add(new File(["unused"], "extra.png", {type: "image/png"}))
+    const createURL = vi.spyOn(editor, "createMediaURL")
     const drop = imageDragEvent("drop", {bubbles: true, composed: true, cancelable: true, dataTransfer: data})
     editor.features.media.placeholder.element.dispatchEvent(drop)
     expect(drop.defaultPrevented).toBe(true)
     await vi.waitFor(() => expect(image.getAttribute("href")).toMatch(/^blob:/))
+    expect(createURL).toHaveBeenCalledOnce()
     expect(document.querySelectorAll("svg image")).toHaveLength(1)
     image.removeAttribute("href")
     await mutationsDelivered()
@@ -5404,7 +5407,31 @@ it("keeps the first freehand pointer active when a secondary pointer presses the
   expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
 })
 
-it.each(["pointercancel", "lostpointercapture", "blur"])("cleans up a freehand preview on %s", eventName => {
+it("commits a released freehand stroke once when capture loss precedes pointerup", async () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+  const graphic = document.querySelector("svg")!
+  await mutationsDelivered()
+  editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "draw"})
+  const pointer = (type: string, x: number, y: number, buttons: number) => graphic.dispatchEvent(new PointerEvent(type, {
+    bubbles: true, cancelable: true, isPrimary: true, pointerType: "mouse", pointerId: 29, button: 0, buttons, clientX: x, clientY: y,
+  }))
+  pointer("pointerdown", 10, 20, 1)
+  pointer("pointermove", 30, 40, 1)
+  expect(graphic.querySelector("path")).toBeNull()
+  expect(editor.appendix.querySelector(".◆graphic-preview")).not.toBeNull()
+  pointer("lostpointercapture", 60, 50, 0)
+  const path = graphic.querySelector("path")!
+  expect(path).toHaveAttribute("d", expect.stringMatching(/L 60 50$/))
+  expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+  pointer("pointerup", 60, 50, 0)
+  expect(graphic.querySelectorAll("path")).toHaveLength(1)
+  editor.doc.undo()
+  expect(graphic.querySelector("path")).toBeNull()
+  editor.doc.redo()
+  expect(graphic.querySelectorAll("path")).toHaveLength(1)
+})
+
+it.each(["pointercancel", "lostpointercapture", "blur"])("cleans up a freehand preview on %s while drawing", eventName => {
   editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
   const graphic = document.querySelector("svg")!
   editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "draw"})
@@ -5412,7 +5439,10 @@ it.each(["pointercancel", "lostpointercapture", "blur"])("cleans up a freehand p
   graphic.dispatchEvent(new PointerEvent("pointermove", {isPrimary: true, pointerType: "pen", bubbles: true, buttons: 1, pointerId: 31, clientX: 30, clientY: 40}))
   expect(editor.appendix.querySelector(".◆graphic-preview")).not.toBeNull()
   const target: EventTarget = eventName === "blur" ? window : graphic
-  target.dispatchEvent(eventName === "blur" ? new Event(eventName) : new PointerEvent(eventName, {isPrimary: true, pointerType: "pen", bubbles: true, pointerId: 31}))
+  target.dispatchEvent(eventName === "blur" ? new Event(eventName) : new PointerEvent(eventName, {
+    isPrimary: true, pointerType: "pen", bubbles: true, pointerId: 31, buttons: eventName === "lostpointercapture" ? 1 : 0,
+  }))
+  graphic.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 31, clientX: 50, clientY: 60}))
   expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
   expect(Array.from(graphic.querySelectorAll("path")).some(path => graphicShapeType(path) === "freehand")).toBe(false)
   expect(graphic.querySelector("[class*='◆']")).toBeNull()

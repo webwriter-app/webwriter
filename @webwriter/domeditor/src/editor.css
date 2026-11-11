@@ -547,6 +547,11 @@ body:state(ww-table-column-resize) * {
   anchor-name: --hover-anchor;
 }
 
+:state(ww-attachment-media-preview) {
+  outline: 3px solid #0078d7 !important;
+  outline-offset: 3px !important;
+}
+
 /* Hover and selection visuals live in BODY's shadow tree; authored elements
  * only carry anchor and editor-state classes. */
 :state(ww-element-selected),

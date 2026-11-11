@@ -118,6 +118,39 @@ describe("package dependency resolution", () => {
       .rejects.toThrow("conflicting versions of @webwriter/demo")
   })
 
+  it("edits with the latest compatible release and retires saved widget resources", async () => {
+    const base = "https://cdn.jsdelivr.net/npm/@webwriter/demo"
+    const source = documentWith(`<script type="module" src="${base}@1.2.3/second.js"></script>
+      <script type="module" src="${base}@1.3.0/first.js"></script>
+      <link rel="stylesheet" href="${base}@1.2.3/second.css">
+      <link rel="stylesheet" href="${base}@1.2.3/unrelated.css">
+      <script type="module" src="https://example.test/authored.js"></script>
+      <template><script type="module" src="${base}@1.2.3/second.js"></script><webwriter-demo></webwriter-demo></template>`)
+    const latestCompatibleVersion = vi.fn().mockResolvedValue("1.10.0")
+    const latest = resolvedPackage("@webwriter/demo", "1.10.0", [`${base}@1.10.0/first.js`, `${base}@1.10.0/second.js`])
+    const getPackage = vi.fn().mockResolvedValue(latest)
+    const [pkg] = await loadDocumentPackages(source, {getPackage, latestCompatibleVersion} as never, [], {forEditing: true})
+
+    expect(latestCompatibleVersion).toHaveBeenCalledWith("@webwriter/demo", "1.3.0")
+    expect(getPackage).toHaveBeenCalledWith({name: latest.name, version: latest.version})
+    expect(pkg.scripts).toEqual([...latest.scripts].reverse())
+    expect([...source.querySelectorAll("script[src], link[href]")].map(element => element.getAttribute("src") ?? element.getAttribute("href"))).toEqual([
+      `${base}@1.2.3/unrelated.css`, "https://example.test/authored.js",
+    ])
+    expect(source.querySelector("template")!.content.querySelector("script")).toBeNull()
+    expect(source.querySelector("template")!.content.querySelector("webwriter-demo")).not.toBeNull()
+  })
+
+  it("keeps a newer installed version in the same major when npm is unavailable", async () => {
+    const base = "https://cdn.jsdelivr.net/npm/@webwriter/demo"
+    const source = documentWith(`<script type="module" src="${base}@1.2.3/index.js"></script>`)
+    const installed = resolvedPackage("@webwriter/demo", "1.4.0", [`${base}@1.4.0/index.js`])
+    const latestCompatibleVersion = vi.fn().mockRejectedValue(new Error("offline"))
+    const getPackage = vi.fn()
+    await expect(loadDocumentPackages(source, {getPackage, latestCompatibleVersion} as never, [installed], {forEditing: true})).resolves.toEqual([installed])
+    expect(getPackage).not.toHaveBeenCalled()
+  })
+
   it("links every widget script, fully bundled ones included, as one graph with portable absolute mappings", async () => {
     const entries = ["https://cdn.example/a.js", "https://cdn.example/b.js", "https://cdn.example/legacy.js"]
     expect(packageModuleEntries([])).toEqual([])
@@ -138,7 +171,7 @@ describe("package dependency resolution", () => {
       requests.push(url)
       if(url === "https://data.jsdelivr.com/v1/packages/npm/lit") return Response.json({versions: [{version: "3.3.3"}, {version: "2.8.0"}]})
       if(url.startsWith("https://data.jsdelivr.com/")) return new Response(null, {status: 503})
-      if(url === "https://registry.npmjs.org/@lit%2freactive-element") return Response.json({versions: {"2.1.2": {}, "1.6.3": {}}})
+      if(url === "https://registry.npmjs.org/%40lit%2Freactive-element") return Response.json({versions: {"2.1.2": {}, "1.6.3": {}}})
       return new Response(null, {status: 404})
     }))
     const provider = npmFileProvider("https://cdn.jsdelivr.net/npm")

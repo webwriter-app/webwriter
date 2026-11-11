@@ -403,6 +403,10 @@ export class MathFeature extends EditorFeature {
     },
     copy: event => this.clipboard(event, false),
     cut: event => this.clipboard(event, true),
+    scroll: event => {
+      const root = this.activeMath
+      if(root && event.target instanceof Node && event.target.contains(root)) this.scheduleRefresh()
+    },
   }
 
   activeListeners: DocumentListenerMap = {
@@ -428,7 +432,6 @@ export class MathFeature extends EditorFeature {
     pointerup: () => { if(this.drag) { this.drag = null; this.changed() } },
     pointercancel: () => { this.drag = null; this.setHovered(null) },
     selectionchange: () => { this.pendingStyles(); this.scheduleRefresh() },
-    scroll: () => this.scheduleRefresh(),
   }
 
   get activeMath() {

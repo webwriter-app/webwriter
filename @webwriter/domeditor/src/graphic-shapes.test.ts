@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyCloudPreset, legacyCurvedArrowPresets, legacySpeechBubblePresets, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
+import {graphicShapePresets, isSpeechBubbleType, legacyArrowPresets, legacyBannerPaths, legacyCalloutPresets, legacyCloudPreset, legacyCurvedArrowPresets, legacySpeechBubblePresets, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
 import {adjustGraphicPreset, graphicPresetFillRule, graphicPresetHandles, graphicPresetOptions, graphicPresetPath, readGraphicPreset, writeGraphicPreset} from "./graphic-shapes"
 
 const bounds = {x: -137.25, y: 219.75, width: 273.5, height: 146.25}
@@ -96,6 +96,80 @@ const expectMirroredPaths = (left: string, right: string, axis: "x" | "y", bound
 }
 
 describe("native SVG shape presets", () => {
+  it.each([
+    ["summing-junction", "M 15 15 L 85 85 M 15 85 L 85 15"],
+    ["or", "M 0 50 L 100 50 M 50 0 L 50 100"],
+  ] as const)("recognizes saved %s symbols without offering curvature", (type, detail) => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    const saved = `M 0 50 C 0 0 0 0 50 0 C 100 0 100 0 100 50 C 100 100 100 100 50 100 C 0 100 0 100 0 50 Z ${detail}`
+    const outline = "M 0 50 C 0 22.385 22.385 0 50 0 C 77.615 0 100 22.385 100 50 C 100 77.615 77.615 100 50 100 C 22.385 100 0 77.615 0 50 Z"
+    const frame = {x: 0, y: 0, width: 100, height: 100}
+    element.setAttribute("d", saved)
+    const legacy = readGraphicPreset(element)!
+    expect(legacy.type).toBe(type)
+    expect(graphicPresetHandles(legacy)).toEqual([])
+    expect(adjustGraphicPreset(element, legacy, "adjust-curvature", 5)).toBe(false)
+    expect(element.getAttribute("d")).toBe(saved)
+
+    writeGraphicPreset(element, legacy, frame)
+    expect(element.getAttribute("d")).toBe(`${outline} ${detail}`)
+    const current = readGraphicPreset(element)!
+    expect(current.type).toBe(type)
+    expect(current.definition.adjustments).toEqual([])
+    expect(graphicPresetHandles(current)).toEqual([])
+  })
+
+  it("adjusts the curvature of a saved Delay within its visible frame", () => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    const saved = "M 20 10 L 80 10 C 120 10 120 70 80 70 L 20 70 Z"
+    element.setAttribute("d", saved)
+    const before = readGraphicPreset(element)!
+    expect(before.type).toBe("delay")
+    expect(before.bounds.width).toBeCloseTo(90)
+    expect(graphicPresetHandles(before)[0].point.x).toBeCloseTo(80)
+    expect(element.getAttribute("d")).toBe(saved)
+
+    expect(adjustGraphicPreset(element, before, "adjust-curve", {x: 80, y: 10})).toBe(true)
+    expectSamePresetPath(element.getAttribute("d")!, "M 20 10 L 80 10 C 100 10 110 25 110 40 C 110 55 100 70 80 70 L 20 70 Z")
+
+    for(const x of [50, 110, 20]) {
+      expect(adjustGraphicPreset(element, readGraphicPreset(element)!, "adjust-curve", {x, y: 10})).toBe(true)
+      const after = readGraphicPreset(element)!
+      expect(after.type).toBe("delay")
+      expect(after.bounds.x).toBeCloseTo(20)
+      expect(after.bounds.width).toBeCloseTo(90)
+      expect(graphicPresetHandles(after)[0].point.x).toBeCloseTo(x)
+    }
+  })
+
+  it.each(["left-brace", "right-brace"] as const)("joins the %s end curves tangentially to the vertical strokes", type => {
+    for(const bounds of [{x: 0, y: 0, width: 60, height: 480}, {x: 0, y: 0, width: 480, height: 60}]) {
+      const path = graphicPresetPath(type, bounds, [12])
+      const commands = Array.from(path.matchAll(/[MLQ] ([^MLQ]+)/g), ([, coordinates]) => coordinates.trim().split(/\s+/).map(Number))
+      const [, [topControlX, , topJoinX], [topLineX], , , [bottomJoinX], [bottomControlX]] = commands
+      expect(topControlX).toBe(topJoinX)
+      expect(topJoinX).toBe(topLineX)
+      expect(bottomControlX).toBe(bottomJoinX)
+    }
+  })
+
+  it.each([
+    ["left-brace", "M 70 5 Q 48 5 52 25 L 52 40 Q 52 50 16 50 Q 52 50 52 60 L 52 75 Q 48 95 70 95"],
+    ["right-brace", "M 30 5 Q 52 5 48 25 L 48 40 Q 48 50 84 50 Q 48 50 48 60 L 48 75 Q 52 95 30 95"],
+  ] as const)("retains saved %s paths and smooths them on resize", (type, path) => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("d", path)
+    const state = readGraphicPreset(element)!
+    expect(state?.type).toBe(type)
+    expect(state.values[0]).toBeCloseTo(16)
+    expect(element.getAttribute("d")).toBe(path)
+
+    const resized = {x: 25, y: 10, width: 65, height: 450}
+    writeGraphicPreset(element, state, resized)
+    expectSamePresetPath(element.getAttribute("d")!, graphicPresetPath(type, resized, [16]))
+    expect(readGraphicPreset(element)?.values[0]).toBeCloseTo(16)
+  })
+
   it("uses one radial inner-radius POI for the cloud while preserving lobe midpoints", () => {
     const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
     element.setAttribute("aria-label", "Cloud")
@@ -258,6 +332,29 @@ describe("native SVG shape presets", () => {
     expect(final.values[1]).toBeCloseTo(beforeRound.values[1],4)
     expect(final.values[2]).toBeCloseTo(control.max,4)
     expect(element.hasAttribute("data-parameters")).toBe(false)
+  })
+
+  it.each(["rectangular-callout", "rounded-rectangular-callout", "oval-callout", "cloud-callout"] as const)("keeps the %s connector tip outside the body", type => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("aria-label", graphicShapePresets[type].label)
+    element.setAttribute("d", graphicPresetPath(type, bounds))
+    const point = (x: number, y: number) => ({x: bounds.x + x / 100 * bounds.width, y: bounds.y + y / 100 * bounds.height})
+    const move = (x: number, y: number) => {
+      expect(adjustGraphicPreset(element, readGraphicPreset(element)!, "adjust-end-x", point(x, y))).toBe(true)
+      return graphicPresetHandles(readGraphicPreset(element)!)[0].point
+    }
+    expect(move(50, 20).y).toBeLessThan(bounds.y)
+    expect(move(80, 37.5).x).toBeGreaterThan(point(100, 37.5).x)
+    expect(move(50, 60).y).toBeGreaterThan(point(50, 75).y)
+    const left = move(20, 37.5)
+    expect(left.x).toBeLessThan(bounds.x)
+    expect(move(type === "cloud-callout" ? 53 : 50, 37.5).x).toBeCloseTo(left.x, 4)
+    const outside = move(2, 2)
+    if(type === "rectangular-callout") expect(outside.x).toBeLessThan(point(2, 2).x)
+    else {
+      expect(outside.x).toBeCloseTo(point(2, 2).x, 4)
+      expect(outside.y).toBeCloseTo(point(2, 2).y, 4)
+    }
   })
 
   it.each(["rectangular-callout","rounded-rectangular-callout","oval-callout"] as const)("moves the $type speech bubble tail around its body with one endpoint POI", type => {
@@ -694,10 +791,12 @@ describe("native SVG shape presets", () => {
     expect(state?.type).toBe(option.type)
     for(const key of ["x", "y", "width", "height"] as const) expect(state!.bounds[key]).toBeCloseTo(bounds[key], 3)
     definition.adjustments.forEach((adjustment, index) => expect(state!.values[index]).toBeCloseTo(adjustment.default, 3))
-    expect(graphicPresetHandles(state!).length).toBeGreaterThan(0)
+    expect(graphicPresetHandles(state!).length > 0).toBe(definition.adjustments.some(adjustment => !adjustment.hidden))
 
     definition.adjustments.forEach((adjustment, index) => {
-      for(const value of [adjustment.min, (adjustment.min + adjustment.max) / 2, adjustment.max]) {
+      const middle = adjustment.name === "end-y" && (isSpeechBubbleType(option.type) || option.type === "cloud-callout")
+        ? 110 : (adjustment.min + adjustment.max) / 2
+      for(const value of [adjustment.min, middle, adjustment.max]) {
         const before = readGraphicPreset(reloaded)!
         expect(adjustGraphicPreset(reloaded, before, `adjust-${adjustment.name}`, value)).toBe(true)
         const after = readGraphicPreset(reloaded)
@@ -743,7 +842,7 @@ describe("native SVG shape presets", () => {
         expect(handle.point.y).toBeCloseTo(input.y,3)
         return
       }
-      const target = (adjustment.min + adjustment.max) / 2
+      const target = middle
       const nextValues = [...current.values]
       nextValues[index] = target
       const handle = adjustment.point(nextValues)
@@ -776,11 +875,11 @@ describe("native SVG shape presets", () => {
     after.values.forEach((value, index) => expect(value).toBeCloseTo(index === after.values.length - 1 ? 37 : 18, 3))
   })
 
-  it.each(["cylinder", "cube", "folded-corner", "ribbon-up", "ribbon-down", "magnetic-disk", "direct-access-storage", "sequential-access-storage"] as const)("retains saved %s paths and upgrades their fill when edited", type => {
+  it.each(["cylinder", "cube", "folded-corner", "ribbon-up", "ribbon-down", "magnetic-disk", "direct-access-storage"] as const)("retains saved %s paths and upgrades their fill when edited", type => {
     const definition = graphicShapePresets[type]
     const values = definition.adjustments.map(adjustment => (adjustment.min + adjustment.max) / 2)
     let index = 0
-    const legacy = definition.draw(values).replace(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g, value => {
+    const legacy = (legacyBannerPaths[type] ?? definition.draw)(values).replace(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g, value => {
       const horizontal = index++ % 2 === 0
       return String((horizontal ? bounds.x : bounds.y) + Number(value) / 100 * (horizontal ? bounds.width : bounds.height))
     })
@@ -796,6 +895,71 @@ describe("native SVG shape presets", () => {
     expect(element.getAttribute("fill-rule")).toBe("nonzero")
     expect(readGraphicPreset(element)?.type).toBe(type)
     expect(readGraphicPreset(element)!.values[0]).toBeCloseTo(values[0], 3)
+  })
+
+  it.each([
+    ["ribbon-up", "M 20 14 L 80 14 L 80 30 L 100 30 L 90 55 L 100 80 L 80 80 L 65 65 L 35 65 L 20 80 L 0 80 L 10 55 L 0 30 L 20 30 Z M 80 30 L 80 65 L 20 65 L 20 30 M 35 80 L 20 65 M 65 80 L 80 65"],
+    ["ribbon-down", "M 80 86 L 20 86 L 20 70 L 0 70 L 10 45 L 0 20 L 20 20 L 35 35 L 65 35 L 80 20 L 100 20 L 90 45 L 100 70 L 80 70 Z M 20 70 L 20 35 L 80 35 L 80 70 M 65 20 L 80 35 M 35 20 L 20 35"],
+    ["vertical-scroll", "M 20 12 Q 20 0 30 0 L 95 0 Q 100 12 90 12 L 80 12 L 80 88 Q 80 100 70 100 L 5 100 Q 0 88 10 88 L 20 88 Z M 30 0 Q 40 12 30 12 L 20 12 M 70 100 Q 60 88 70 88 L 80 88"],
+    ["horizontal-scroll", "M 88 20 Q 100 20 100 30 L 100 95 Q 88 100 88 90 L 88 80 L 12 80 Q 0 80 0 70 L 0 5 Q 12 0 12 10 L 12 20 Z M 100 30 Q 88 40 88 30 L 88 20 M 0 70 Q 12 60 12 70 L 12 80"],
+  ] as const)("keeps saved %s geometry until a shape adjustment", (type, savedPath) => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("aria-label", graphicShapePresets[type].label)
+    element.setAttribute("d", savedPath)
+    const state = readGraphicPreset(element)!
+    expect(state.type).toBe(type)
+    expect(state.values[0]).toBeCloseTo(12, 4)
+    expect(element.getAttribute("d")).toBe(savedPath)
+    const handle = graphicPresetHandles(state)[0]
+    expect(adjustGraphicPreset(element, state, handle.name, 16)).toBe(true)
+    expect(element.getAttribute("d")).toBe(graphicPresetPath(type, {x: 0, y: 0, width: 100, height: 100}, [16]))
+    expect(readGraphicPreset(element)?.values[0]).toBeCloseTo(16, 4)
+  })
+
+  it("joins the tape to the reel in one outline throughout a Tail height drag", () => {
+    const type = "sequential-access-storage"
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("d", graphicPresetPath(type, bounds))
+    const {min, max, default: initial} = graphicShapePresets[type].adjustments[0]
+    expect(initial).toBeCloseTo(45 * (1 - Math.SQRT1_2))
+    for(const [draggedHeight, height] of [[initial, initial], [25, 25], [90, max], [0, min]]) {
+      const target = {x: bounds.x + bounds.width, y: bounds.y + (90 - draggedHeight) * bounds.height / 100}
+      expect(adjustGraphicPreset(element, readGraphicPreset(element)!, "adjust-tail", target)).toBe(true)
+      const state = readGraphicPreset(element)!
+      expect(state.type).toBe(type)
+      expect(state.values[0]).toBeCloseTo(height, 7)
+      const path = element.getAttribute("d")!
+      expect(path.match(/[MALZ]/g)).toEqual(["M", "A", "A", "A", "L", "L", "Z"])
+      const [join, end, bottom] = Array.from(path.matchAll(/[AL] ([^ALZ]+)/g), ([, points]) => points.match(/[^ ]+/g)!.slice(-2).map(Number)).slice(-3)
+      const rx = bounds.width / 2, ry = bounds.height * .45
+      expect(((join[0] - bounds.x - rx) / rx) ** 2 + ((join[1] - bounds.y - ry) / ry) ** 2).toBeCloseTo(1, 7)
+      expect(join[0]).toBeLessThan(end[0])
+      expect(join[1]).toBe(end[1])
+      expect(end[0]).toBe(bottom[0])
+      expect(bottom[1]).toBeCloseTo(bounds.y + 2 * ry, 7)
+      const [handle] = graphicPresetHandles(state)
+      expect(handle.point.x).toBeCloseTo(end[0], 7)
+      expect(handle.point.y).toBeCloseTo(end[1], 7)
+    }
+  })
+
+  it.each([
+    ["M 45 90 L 100 90 L 100 80 L 75 80", 10],
+    ["M 75 25 L 100 25 L 100 90 L 45 90", 30],
+  ] as const)("recognizes saved tape contours and upgrades them on edit", (tail, height) => {
+    const type = "sequential-access-storage"
+    const path = `M 0 45 C 0 20.1465 20.1465 0 45 0 C 69.8535 0 90 20.1465 90 45 C 90 69.8535 69.8535 90 45 90 C 20.1465 90 0 69.8535 0 45 Z ${tail}`
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("d", path)
+    const state = readGraphicPreset(element)!
+    expect(state.type).toBe(type)
+    expect(state.values[0]).toBeCloseTo(height, 7)
+    expect(element.getAttribute("d")).toBe(path)
+    const reflection = {horizontal: true, vertical: true}
+    writeGraphicPreset(element, {...state, reflection}, bounds)
+    expectSamePresetPath(element.getAttribute("d")!, graphicPresetPath(type, bounds, [height], reflection))
+    expect(readGraphicPreset(element)?.reflection).toEqual(reflection)
+    expect(readGraphicPreset(element)?.values[0]).toBeCloseTo(height, 7)
   })
 
   it("keeps the intentional cutouts in frames, donuts and prohibited signs", () => {
@@ -1110,7 +1274,7 @@ describe("native SVG shape presets", () => {
   ] as const)("round-trips %s through horizontal, vertical, and double preset reflections", type => {
     const definition = graphicShapePresets[type]
     const values = type === "pie" ? [132] : type === "chord" ? [31, 124]
-      : type === "rectangular-callout" ? [37, 72, 19] : definition.adjustments.map(adjustment => adjustment.default)
+      : type === "rectangular-callout" ? [37, 92, 19] : definition.adjustments.map(adjustment => adjustment.default)
     const reflections = [
       {horizontal: true, vertical: false},
       {horizontal: false, vertical: true},

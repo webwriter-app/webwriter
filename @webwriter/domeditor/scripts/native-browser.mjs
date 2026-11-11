@@ -218,6 +218,7 @@ const expectedChecks = [
   "font list previews only load the active web font",
   "font searches split installed and web results without scrolling",
   "local fonts embed selected bytes and load under the editor CSP",
+  "custom fonts load and survive selection changes with the document theme",
   "shape labels retain capture while typing and selecting text",
   "iframe lifecycle reaches load and cleans up",
   "New discards the previous canvas iframe and its document state",

@@ -589,6 +589,7 @@ afterEach(async() => {
 
 beforeEach(() => {
   vi.spyOn(WebWriterPackageRegistry.prototype, "search").mockResolvedValue([])
+  vi.spyOn(WebWriterPackageRegistry.prototype, "latestCompatibleVersion").mockImplementation(async (_name, version) => version)
   // Bridge messages in these component tests are dispatched directly instead
   // of crossing the iframe's postMessage implementation. Add the same
   // per-editor nonce that production messages carry so tests exercise the
@@ -618,12 +619,14 @@ describe("DomEditor document loading", () => {
       const script = `https://cdn.jsdelivr.net/npm/${name}@${version}/dist/widgets/${name === "@webwriter/code" ? "ww-code-javascript" : tagName}.js`
       return {...demoPackage, name, version, scripts: [script], members: [{...demoPackage.members[0], tagName, scriptUrl: script}]}
     })
-    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    const reload = vi.spyOn(host, "reloadDocument")
+    vi.spyOn(host, "waitForEditorWindow").mockResolvedValue(undefined)
     vi.spyOn(host, "focusEditor").mockImplementation(() => {})
     await host.restoreExampleDocument("binary", Promise.resolve())
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<webwriter-code-javascript"), false, null, false)
-    expect(reload.mock.calls[0][0]).toContain('data-ww-theme="base"')
-    expect(reload.mock.calls[0][0]).not.toContain('src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"')
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<webwriter-code-javascript"), false, null, false,
+      {beforeSwitch: expect.any(Function)})
+    expect(host.frameDocumentHTML).toContain('data-ww-theme="base"')
+    expect(host.frameDocumentHTML).not.toContain('src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"')
     expect(host.installedPackages.map((pkg: WebWriterPackage) => pkg.name)).toEqual(["@webwriter/code"])
     expect(host.fileName).toBe("Count like a computer")
     expect(host.fileHandle).toBeNull()
@@ -1317,6 +1320,21 @@ describe("DomEditor iframe setup", () => {
     const reloadedFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
     expect(reloadedFrame).not.toBe(iframe)
     expect(editor.shadowRoot!.activeElement).toBe(reloadedFrame)
+  })
+
+  it.each([true, false])("uses the snapshot's published revision during package reload (current: %s)", async current => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const previousRevision = host.frameRevision
+    vi.spyOn(host, "waitForEditorWindow").mockResolvedValue(window)
+    vi.spyOn(editor, "execute").mockImplementationOnce(async () => {
+      host.documentChangeSequence++
+      host.documentReplicaSequence = 2
+      return {update: new Uint8Array([0]), replicaSequence: current ? 2 : 1}
+    })
+    if(current) await host.reloadEditor([])
+    else await expect(host.reloadEditor([])).rejects.toThrow("The editor changed while loading packages")
+    expect(host.frameRevision).toBe(previousRevision + Number(current))
   })
 
   it.each(["initial", "preview", "reload", "disconnected"])("focuses the initial selection after loading: %s", async mode => {
@@ -2437,6 +2455,7 @@ describe("DomEditor iframe setup", () => {
 
   it("restores installed packages and starts the package catalog fetch on mount", async () => {
     localStorage.setItem(INSTALLED_PACKAGES_STORAGE_KEY, JSON.stringify([demoPackage]))
+    vi.spyOn(packageDependencies, "resolvePackageDependencies").mockResolvedValue({entries: demoPackage.scripts, map: {}})
     const search = vi.mocked(WebWriterPackageRegistry.prototype.search)
     const editor = new DomEditor()
     Object.assign(editor, {frameStarted: true})
@@ -2450,13 +2469,14 @@ describe("DomEditor iframe setup", () => {
     expect((editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages).toEqual([demoPackage])
 
     // Widget scripts load after their import map is resolved.
-    await vi.waitFor(() => expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+    await (editor as any).packageLoadPromise
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
       type: loadWidgetsMessage,
       widgets: [{name: demoPackage.name, version: demoPackage.version}],
       packages: [demoPackage],
       importMap: {},
       requestId: expect.any(String),
-    }), window.location.origin))
+    }), window.location.origin)
   })
 
   it("refreshes restored widget labels before showing them in the package dropdown", async () => {
@@ -2483,31 +2503,135 @@ describe("DomEditor iframe setup", () => {
     expect(button.submenu[0]).toMatchObject({label: "Word Puzzle"})
   })
 
-  it("refreshes an already requested package catalog and ignores duplicate in-flight requests", async () => {
+  it("revalidates the package catalog on every request and coalesces in-flight requests", async () => {
     const editor = new DomEditor()
     const load = (event?: Event) => (editor as unknown as {loadPackageCatalog(event?: Event): Promise<void>}).loadPackageCatalog(event)
     const search = vi.mocked(WebWriterPackageRegistry.prototype.search)
     const dependencies = vi.spyOn(editor as any, "refreshPackageDependencies").mockResolvedValue(undefined)
+    const request = () => new Event("package-catalog-request")
+    const refresh = () => new CustomEvent("package-catalog-request", {detail: {refresh: true}})
     await load()
-    await load(new Event("package-catalog-request"))
-    expect(search).toHaveBeenCalledTimes(1)
+    search.mockResolvedValueOnce([demoPackage])
+    await load(request())
+    expect(search).toHaveBeenCalledTimes(2)
     expect(dependencies).toHaveBeenCalledTimes(1)
+    expect((editor as any).packages).toEqual([demoPackage])
 
     let complete!: (packages: WebWriterPackage[]) => void
     search.mockReturnValueOnce(new Promise(resolve => { complete = resolve }))
-    const refresh = () => new CustomEvent("package-catalog-request", {detail: {refresh: true}})
     const pending = load(refresh())
-    await load(refresh())
-    expect(search).toHaveBeenCalledTimes(2)
-    complete([demoPackage])
+    await load(request())
+    expect(search).toHaveBeenCalledTimes(3)
+    const updated = {...demoPackage, version: "2.0.0"}
+    complete([updated])
     await pending
-    expect((editor as unknown as {packages: WebWriterPackage[]}).packages).toEqual([demoPackage])
+    expect((editor as any).packages).toEqual([updated])
     expect(dependencies).toHaveBeenCalledTimes(2)
 
     search.mockRejectedValueOnce(new Error("Catalog unavailable"))
-    await load(refresh())
-    expect((editor as unknown as {packageError: string}).packageError).toBe("Catalog unavailable")
-    expect(dependencies).toHaveBeenCalledTimes(3)
+    await load(request())
+    expect((editor as any).packageError).toBe("Catalog unavailable")
+    expect((editor as any).packages).toEqual([])
+    expect(dependencies).toHaveBeenCalledTimes(2)
+  })
+
+  it("refreshes the catalog on request and applies only compatible published updates", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const current = {...demoPackage, version: "1.0.0"}
+    const compatible = {...current, version: "1.1.0"}
+    const major = {...current, version: "2.0.0"}
+    const local: WebWriterPackage = {...current, name: "@webwriter/local", developerSource: {kind: "local", path: "fixtures/local"}}
+    const other = {...current, name: "@webwriter/other"}
+    host.installedPackages = [current, local, other]
+    const search = vi.mocked(WebWriterPackageRegistry.prototype.search)
+    search.mockResolvedValue([major, {...local, version: "2.0.0"}, {...other, version: "2.0.0"}])
+    const compatibleVersion = vi.mocked(WebWriterPackageRegistry.prototype.latestCompatibleVersion)
+    compatibleVersion.mockImplementation(async (name, version) => name === current.name ? compatible.version : version)
+    vi.spyOn(host.packageRegistry, "getPackage").mockResolvedValue(compatible)
+    const reload = vi.spyOn(host, "reloadEditor").mockImplementation(async next => {host.installedPackages = next})
+    host.settings = {...host.settings, autoUpdatePackages: false}
+    await host.loadPackageCatalog(new Event("package-catalog-request"))
+    expect(host.packages[0]).toBe(major)
+    expect(reload).not.toHaveBeenCalled()
+    host.settings = {...host.settings, autoUpdatePackages: true}
+    await host.loadPackageCatalog(new Event("package-catalog-request"))
+    expect(reload).toHaveBeenCalledExactlyOnceWith([compatible, local, other])
+    expect(host.packages[0]).toBe(major)
+    expect(compatibleVersion).not.toHaveBeenCalledWith(local.name, expect.anything())
+  })
+
+  it("confirms a major widget upgrade before replacing the installed package", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const current = {...demoPackage, version: "1.0.0"}
+    const update = {...current, version: "2.0.0"}
+    host.installedPackages = [current]
+    host.packages = [update]
+    const getPackage = vi.spyOn(host.packageRegistry, "getPackage").mockResolvedValue(update)
+    const reload = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#package-major-change-dialog")!
+
+    const cancelled = host.updatePublishedPackage(current.name)
+    await ribbon.updateComplete
+    expect(dialog.open).toBe(true)
+    expect(dialog.textContent).toContain("1.0.0 → 2.0.0")
+    dialog.querySelector<HTMLButtonElement>("footer button")!.click()
+    await cancelled
+    expect(getPackage).not.toHaveBeenCalled()
+    expect(reload).not.toHaveBeenCalled()
+
+    const accepted = host.updatePublishedPackage(current.name)
+    await ribbon.updateComplete
+    expect(dialog.open).toBe(true)
+    dialog.querySelector<HTMLButtonElement>("button.primary")!.click()
+    await accepted
+    expect(reload).toHaveBeenCalledExactlyOnceWith([update])
+  })
+
+  it("rolls back a widget update whose runtime fails to load", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const current = {...demoPackage, version: "1.0.0"}
+    const update = {...current, version: "1.0.1"}
+    host.installedPackages = [current]
+    host.packages = [update]
+    vi.spyOn(host.packageRegistry, "getPackage").mockResolvedValue(update)
+    const reload = vi.spyOn(host, "reloadEditor").mockImplementationOnce(async next => {
+      host.installedPackages = next
+      throw new Error("Widget failed to load")
+    }).mockImplementation(async next => {host.installedPackages = next})
+
+    await host.updatePublishedPackage(current.name)
+
+    expect(reload.mock.calls).toEqual([[[update]], [[current]]])
+    expect(host.installedPackages).toEqual([current])
+    expect(host.packages).toEqual([update])
+    expect(host.packageError).toBe("Widget failed to load")
+    expect(host.busyPackageNames).toEqual([])
+  })
+
+  it("leaves the current document open when a file's major widget change is declined", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const current = {...demoPackage, version: "1.0.0"}
+    const update = {...current, version: "2.1.0"}
+    host.installedPackages = [current]
+    host.fileName = "Current"
+    const html = `<script type="module" src="https://cdn.jsdelivr.net/npm/${current.name}@2.0.0/index.js"></script><p>Incoming</p>`
+    const handle = {name: "incoming.html", getFile: async () => new File([html], "incoming.html")}
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([handle]))
+    vi.mocked(WebWriterPackageRegistry.prototype.latestCompatibleVersion).mockResolvedValue(update.version)
+    vi.spyOn(host.packageRegistry, "getPackage").mockResolvedValue(update)
+    const confirm = vi.spyOn(host, "confirmPackageChanges").mockResolvedValue(false)
+    const disconnect = vi.spyOn(host, "clearDocumentCollaboration")
+    await host.openDocument()
+
+    expect(confirm).toHaveBeenCalledWith([{name: current.name, from: "1.0.0", to: "2.1.0"}])
+    expect(host.installedPackages).toEqual([current])
+    expect(host.fileName).toBe("Current")
+    expect(disconnect).not.toHaveBeenCalled()
   })
 
   it("reloads the editor only when a catalog dependency check changes the import map", async () => {
@@ -4430,7 +4554,7 @@ describe("DomEditor file actions", () => {
     Object.defineProperty(input, "files", {value: [new File(["<p>Imported</p>"], "import.html")]})
     input.dispatchEvent(new Event("change"))
     await opening
-    expect(reload).toHaveBeenCalledWith("<p>Imported</p>", false, null, true, {discardRecovery: false})
+    expect(reload).toHaveBeenCalledWith("<p>Imported</p>", false, null, true, {discardRecovery: false, beforeSwitch: expect.any(Function)})
     expect(host.backendClient.listDocuments).not.toHaveBeenCalled()
     expect(host.fileHandle).toBeNull()
     expect(host.fileName).toBe("import")
@@ -4697,7 +4821,7 @@ describe("DomEditor file actions", () => {
     Object.defineProperty(input, "files", {value: [new File(["<p>Upload</p>"], "Uploaded.html")]})
     input.dispatchEvent(new Event("change"))
     await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
-    expect(reload).toHaveBeenCalledWith("<p>Upload</p>", false, null, true, {discardRecovery: false})
+    expect(reload).toHaveBeenCalledWith("<p>Upload</p>", false, null, true, {discardRecovery: false, beforeSwitch: expect.any(Function)})
     expect(host.settings.activeCloudServiceId).toBe("test-cloud")
     expect(host.backendDocumentId).toBeNull()
   })
@@ -4711,7 +4835,7 @@ describe("DomEditor file actions", () => {
 
     await (editor as any).openDocument()
 
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<p>Opened</p>"), false, expect.stringMatching(/^local:/), true, {discardRecovery: false})
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<p>Opened</p>"), false, expect.stringMatching(/^local:/), true, {discardRecovery: false, beforeSwitch: expect.any(Function)})
     expect((editor as any).fileHandle).toBe(handle)
     expect((editor as any).fileName).toBe("opened")
     expect((editor as any).fileDirty).toBe(false)
@@ -4773,7 +4897,7 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect((editor as any).fileName).toBe("Server lesson"))
     expect(menu.shadowRoot!.querySelector("dialog")!.open).toBe(false)
     expect(backend.getDocument).toHaveBeenCalledWith("doc-1")
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("From server"), false, null, true, {discardRecovery: false})
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("From server"), false, null, true, {discardRecovery: false, beforeSwitch: expect.any(Function)})
     expect((editor as any).backendDocumentId).toBe("doc-1")
     expect((editor as any).fileName).toBe("Server lesson")
   })
@@ -4822,7 +4946,7 @@ describe("DomEditor file actions", () => {
     })
     await vi.waitFor(() => expect((editor as any).fileHandle).toBe(handle))
     await vi.waitFor(() => expect((editor as any).fileOperationActive).toBe(false))
-    expect(reload).toHaveBeenCalledWith("<p>Linked local document</p>", false, "local:stored", true, {discardRecovery: false})
+    expect(reload).toHaveBeenCalledWith("<p>Linked local document</p>", false, "local:stored", true, {discardRecovery: false, beforeSwitch: expect.any(Function)})
     expect(picker).not.toHaveBeenCalled()
     expect(new URL(location.href).searchParams.get("open")).toBe("local:stored")
     expect(new URL(location.href).searchParams.get("other")).toBe("keep")
@@ -4880,7 +5004,7 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect((editor as any).fileOperationActive).toBe(false))
     expect(login).toHaveBeenCalledWith(base)
     expect(getDocument).toHaveBeenCalledWith("folder/lesson")
-    expect(reload).toHaveBeenCalledWith("<p>Cloud document</p>", false, reference, true, {discardRecovery: false})
+    expect(reload).toHaveBeenCalledWith("<p>Cloud document</p>", false, reference, true, {discardRecovery: false, beforeSwitch: expect.any(Function)})
     expect(new URL(location.href).searchParams.get("open")).toBe(reference)
   })
 
@@ -11255,6 +11379,29 @@ describe("DomEditor.execute()", () => {
     })
   })
 
+  it("removes a cross reference from its checked Link menu row and returns focus", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const focusEditor = vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async () => {
+      dispatchMarkState(editor, editorWindow, {canMark: true, marks: []})
+      return true
+    })
+    dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attributes: {a: {href: "#intro"}}})
+    await editor.updateComplete
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    await ribbon.updateComplete
+    const link = ribbon.shadowRoot!.querySelector<RibbonButton>(".mark-span")!
+    await link.updateComplete
+    link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await link.updateComplete
+    const row = link.shadowRoot!.querySelector<HTMLElement>('[title="Remove Cross Reference"]')!
+    expect(row.querySelector("input")?.checked).toBe(true)
+    row.click()
+    expect(execute).toHaveBeenCalledExactlyOnceWith({type: "removeLinkKind", kind: "cross-reference"})
+    await vi.waitFor(() => expect(focusEditor).toHaveBeenCalled())
+    expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBeNull()
+  })
+
   it("shows, closes, reopens, and routes the link keyboard without losing the selection", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
@@ -12102,14 +12249,17 @@ describe("document collaboration menu", () => {
     host.sharedDocumentToken = "previous-token"
     const disconnect = vi.spyOn(host, "clearDocumentCollaboration")
     const rooms: Array<string | null> = []
-    const reload = vi.spyOn(host, "reloadDocument").mockImplementation(async () => {rooms.push(host.collaborationRoom)})
+    const reload = vi.spyOn(host, "reloadDocument").mockImplementation(async (...args) => {
+      ;(args[4] as {beforeSwitch: () => void}).beforeSwitch()
+      rooms.push(host.collaborationRoom)
+    })
 
     await host.openBackendDocument("saved")
 
     expect(client.getDocumentSharing).toHaveBeenCalledWith("saved")
     expect(disconnect).toHaveBeenCalledOnce()
     expect(rooms).toEqual([sharingEnabled ? "document-saved" : null])
-    expect(reload).toHaveBeenCalledWith(content, false, "http://localhost:1234/api/documents/saved", true, {discardRecovery: false})
+    expect(reload).toHaveBeenCalledWith(content, false, "http://localhost:1234/api/documents/saved", true, {discardRecovery: false, beforeSwitch: expect.any(Function)})
     expect(new URL(host.syncUrl).searchParams.get("session")).toBe(sharingEnabled ? "document-saved" : null)
     expect(host.sharedDocumentToken).toBeNull()
     expect(host.linkSharingEnabled).toBe(sharingEnabled)
@@ -12270,9 +12420,11 @@ it("opens a server editing link without an account and passes its token to colla
   const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(session), {headers: {"Content-Type": "application/json"}}))
     .mockResolvedValueOnce(new Response(JSON.stringify({document: {id: "shared", title: "Shared", format: "html", content: "<p>Editable</p>"}}), {headers: {"Content-Type": "application/json"}}))
   vi.stubGlobal("fetch", fetch)
-  const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+  const reload = vi.spyOn(host, "reloadDocument").mockImplementation(async (...args) => {
+    ;(args[4] as {beforeSwitch: () => void}).beforeSwitch()
+  })
   await host.restoreLinkedDocument(`http://localhost:1234/api/shared-documents/${token}`)
-  expect(reload).toHaveBeenCalledWith("<p>Editable</p>", false, "http://localhost:1234/api/documents/shared", true)
+  expect(reload).toHaveBeenCalledWith("<p>Editable</p>", false, "http://localhost:1234/api/documents/shared", true, {beforeSwitch: expect.any(Function)})
   expect(host.backendDocumentId).toBe("shared")
   expect(new URL(host.syncUrl).searchParams.get("session")).toBe("document-shared")
   expect(new URL(host.syncUrl).searchParams.get("share")).toBe(token)

@@ -29,7 +29,7 @@ import {mediaCaptureOptions, type MediaType} from "../media"
 import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames} from "../marks"
 import {packageKeywordPresentations} from "../package-keywords"
 import type {PackageMember, WebWriterPackage} from "../packages"
-import {packageAction, packageMemberAction, packageToggleAction} from "../packages"
+import {packageAction, packageMemberAction, packageToggleAction, packageUpdateAction, packageUpdateKind} from "../packages"
 import {safeCssColor} from "../css-color"
 import {ribbonIcon} from "../ribbon-icons"
 import {uiMotionDisabled} from "../utility"
@@ -465,7 +465,7 @@ export class AppRibbon extends EditingControls {
     }
 
     ${documentDialogStyles}
-    .large-attachment-files {
+    .confirmation-list {
       max-height: 35dvh;
       overflow: auto;
       overflow-wrap: anywhere;
@@ -1140,6 +1140,7 @@ export class AppRibbon extends EditingControls {
   private documentDialog: "settings" | null = null
   private confirmation?: {dialogId: string, resolve: (confirmed: boolean) => void}
   private largeAttachmentFiles: Array<{name: string, size: number}> = []
+  private packageMajorChanges: Array<{name: string, from: string, to: string}> = []
   private settingsTab: SettingsTab = "Editor"
 
   logoUrl = ""
@@ -2262,7 +2263,7 @@ export class AppRibbon extends EditingControls {
       this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")?.closeSubmenus()
     }
     if(changed.has("menuOpen") && this.menuOpen) this.dispatchEvent(new Event("recent-documents-refresh", {bubbles: true, composed: true}))
-    if(changed.has("activeMenu") && this.activeMenu === "Start") {
+    if(changed.get("activeMenu") !== undefined && this.activeMenu === "Start") {
       this.dispatchEvent(new Event("package-catalog-request", {bubbles: true, composed: true}))
     }
     if(
@@ -2381,6 +2382,15 @@ export class AppRibbon extends EditingControls {
     }
   }
 
+  private packageUpdate(pkg: WebWriterPackage) {
+    if(this.isDeveloperPackage(pkg) || this.busyPackageNames.includes(pkg.name)) return
+    const installed = this.installedPackages.find(candidate => candidate.name === pkg.name)
+    const latest = this.packages.find(candidate => candidate.name === pkg.name)
+    if(installed && latest && packageUpdateKind(installed.version, latest.version)) {
+      return {action: packageUpdateAction(pkg), label: `Update ${pkg.label} to ${latest.version}`}
+    }
+  }
+
   private renderPackageButton(result: PackageSearchResult, slot = "") {
     const {pkg, members} = result
     const {installed, busy, conversion, label, action, dragAction, dragHTML, submenu} = this.packageButton(result)
@@ -2401,6 +2411,7 @@ export class AppRibbon extends EditingControls {
         .corner=${management && installed ? "close" : ""}
         .cornerLabel=${installed ? `Remove ${pkg.label}` : `Add ${pkg.label}`}
         .cornerAction=${management && installed ? packageToggleAction(pkg) : ""}
+        .packageUpdate=${management ? this.packageUpdate(pkg) : undefined}
         .details=${this.packageDetails(pkg)}
         ?active=${installed}
         ?management=${management}
@@ -2780,6 +2791,13 @@ export class AppRibbon extends EditingControls {
     return this.confirmWithDialog("large-attachment-dialog")
   }
 
+  async confirmPackageChanges(changes: Array<{name: string, from: string, to: string}>): Promise<boolean> {
+    if(this.confirmation) return false
+    this.packageMajorChanges = changes
+    this.requestUpdate()
+    return this.confirmWithDialog("package-major-change-dialog")
+  }
+
   private async confirmWithDialog(dialogId: string): Promise<boolean> {
     if(!this.isConnected || this.confirmation) return false
     let settle!: (confirmed: boolean) => void
@@ -2864,6 +2882,7 @@ export class AppRibbon extends EditingControls {
         action, dragAction, dragHTML, submenu,
         removeAction: installed ? packageToggleAction(pkg) : undefined,
         removeLabel: `Remove ${pkg.label}`,
+        packageUpdate: this.packageUpdate(pkg),
       }
     }))
     return [{label: "Editing", buttons: [
@@ -3018,10 +3037,23 @@ export class AppRibbon extends EditingControls {
           <button class="dialog-close" type="button" aria-label="Close attachment confirmation" @click=${() => this.finishConfirmation("large-attachment-dialog", false)}>${ribbonIcon("Reject")}</button>
         </header>
         <p id="large-attachment-description">These files exceed 5 MB. Their contents will be embedded in the document and increase the size of saved HTML.</p>
-        <ul class="large-attachment-files">${this.largeAttachmentFiles.map(file => html`<li>${file.name} (${file.size.toLocaleString()} bytes)</li>`)}</ul>
+        <ul class="confirmation-list">${this.largeAttachmentFiles.map(file => html`<li>${file.name} (${file.size.toLocaleString()} bytes)</li>`)}</ul>
         <footer>
           <button type="button" autofocus @click=${() => this.finishConfirmation("large-attachment-dialog", false)}>Cancel</button>
           <button class="primary" type="button" @click=${() => this.finishConfirmation("large-attachment-dialog", true)}>Attach files</button>
+        </footer>
+      </dialog>
+      <dialog id="package-major-change-dialog" class="document-dialog confirmation-dialog" aria-labelledby="package-major-change-title" aria-describedby="package-major-change-description"
+        @cancel=${(event: Event) => { event.preventDefault(); this.finishConfirmation("package-major-change-dialog", false) }}
+        @close=${(event: Event) => { if(!(event.currentTarget as HTMLDialogElement).open) this.finishConfirmation("package-major-change-dialog", false) }}>
+        <header><h2 id="package-major-change-title">Change widget versions?</h2>
+          <button class="dialog-close" type="button" aria-label="Close widget version confirmation" @click=${() => this.finishConfirmation("package-major-change-dialog", false)}>${ribbonIcon("Reject")}</button>
+        </header>
+        <p id="package-major-change-description">These widgets will switch to a different major version. Existing widgets may behave differently.</p>
+        <ul class="confirmation-list">${this.packageMajorChanges.map(({name, from, to}) => html`<li>${name} (${from} → ${to})</li>`)}</ul>
+        <footer>
+          <button type="button" autofocus @click=${() => this.finishConfirmation("package-major-change-dialog", false)}>Cancel</button>
+          <button class="primary" type="button" @click=${() => this.finishConfirmation("package-major-change-dialog", true)}>Install versions</button>
         </footer>
       </dialog>
       <dialog id="settings-dialog" class="document-dialog" aria-labelledby="settings-dialog-title"
@@ -3878,6 +3910,11 @@ export class AppRibbon extends EditingControls {
           id="ribbon-file-menu"
           .groups=${this.liveSessionActive ? [] : when(this.menuOpen, () => this.fileMenuGroups(), () => noChange)}
           @ribbon-button-click=${this.handleFileMenuAction}
+          @ribbon-submenu-open=${(event: CustomEvent<{label: string}>) => {
+            if(event.detail.label === "Packages" && event.composedPath()[0] === event.currentTarget) {
+              this.dispatchEvent(new Event("package-catalog-request", {bubbles: true, composed: true}))
+            }
+          }}
           @keydown=${(event: KeyboardEvent) => {
             if(event.key !== "Escape") return
             event.stopPropagation()

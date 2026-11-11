@@ -839,7 +839,7 @@ describe("StateFeature", () => {
     {kind: "backward range", anchorPath: [2, 0], anchorOffset: 3, focusPath: [0, 0], focusOffset: 1},
     {kind: "element", anchorPath: [], anchorOffset: 3, focusPath: [], focusOffset: 4},
     {kind: "gap", anchorPath: [], anchorOffset: 3, focusPath: [], focusOffset: 3},
-  ])("round-trips a $kind through a JSON snapshot without normalizing authored DOM", async ({anchorPath, anchorOffset, focusPath, focusOffset}) => {
+  ])("round-trips a $kind through a cloned snapshot without normalizing authored DOM", async ({anchorPath, anchorOffset, focusPath, focusOffset}) => {
     document.body.innerHTML = '<p class="authored">Before</p><!--keep--><p>After</p><snapshot-widget value="7"><span>Private</span></snapshot-widget><svg viewBox="0 0 10 10"><path d="M0 0L10 10"></path></svg>'
     const point = (path: number[]) => path.reduce<Node>((node, index) => node.childNodes[index], document.body)
     const editor = new DOMEditor()
@@ -848,7 +848,8 @@ describe("StateFeature", () => {
     try {
       document.getSelection()!.setBaseAndExtent(point(anchorPath), anchorOffset, point(focusPath), focusOffset)
       authored = editor.toHTML(true)
-      snapshot = JSON.parse(JSON.stringify(await editor.getActionHandler("snapshotState")({type: "snapshotState"})))
+      snapshot = structuredClone(await editor.getActionHandler("snapshotState")({type: "snapshotState"})) as EditorStateSnapshot
+      expect(snapshot.update).toBeInstanceOf(Uint8Array)
     }
     finally { editor.destroy() }
     document.body.replaceChildren()
@@ -1024,7 +1025,7 @@ describe("StateFeature", () => {
     document.getSelection()!.setPosition(paragraph.firstChild!, 2)
     let snapshot: EditorStateSnapshot
     try {
-      snapshot = JSON.parse(JSON.stringify(await editor.getActionHandler("snapshotState")({type: "snapshotState"})))
+      snapshot = structuredClone(await editor.getActionHandler("snapshotState")({type: "snapshotState"})) as EditorStateSnapshot
       expect(document.querySelector("p")).toBe(paragraph)
     }
     finally { editor.destroy() }

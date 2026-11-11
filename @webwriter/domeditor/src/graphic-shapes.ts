@@ -1,4 +1,4 @@
-import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyChordPreset, legacyCloudPreset, legacySpeechBubblePresets, isConnectedCalloutType, connectedCalloutTypes, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
+import {graphicShapePresets, legacyArrowPresets, legacyBannerPaths, legacyCalloutPresets, legacyChordPreset, legacyCloudPreset, legacyRoundFlowPresets, legacySequentialStoragePreset, legacySpeechBubblePresets, isConnectedCalloutType, connectedCalloutTypes, constrainCalloutTip, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
 
 export const graphicConnectorRole = "connector"
 
@@ -19,13 +19,17 @@ const numberPattern = /[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g
 // These open detail contours run opposite to the silhouette. SVG closes
 // them for filling, so reverse their direction to keep the overlap solid.
 const reversedDetailPresets = new Set<GraphicPresetType>([
-  "cylinder", "cube", "folded-corner", "ribbon-up", "ribbon-down",
-  "magnetic-disk", "direct-access-storage", "sequential-access-storage",
+  "cylinder", "cube", "folded-corner",
+  "magnetic-disk", "direct-access-storage",
 ])
 
 function presetDrawing(type: GraphicPresetType, values: number[]) {
   const path = graphicShapePresets[type].draw(values)
   if(!reversedDetailPresets.has(type)) return path
+  return orientDetailContours(path)
+}
+
+function orientDetailContours(path: string) {
   return path.split(/(?=M)/).map(subpath => {
     if(subpath.includes("Z")) return subpath.trim()
     const commands = Array.from(subpath.matchAll(/([MLQC])([^MLQCZ]+)/g), match => ({
@@ -99,7 +103,7 @@ function reflectPath(path: string, bounds: Bounds, reflection: Reflection) {
 }
 
 export function graphicPresetPath(type: GraphicPresetType, bounds: Bounds, values = defaults(graphicShapePresets[type]), reflection?: Reflection) {
-  const path = scalePath(presetDrawing(type, values), bounds, type === "chord" ? 1e10 : 1e6)
+  const path = scalePath(presetDrawing(type, values), bounds, type === "chord" || type === "sequential-access-storage" ? 1e10 : 1e6)
   return reflection?.horizontal || reflection?.vertical ? reflectPath(path, bounds, reflection) : path
 }
 
@@ -117,6 +121,7 @@ type Template = {
   upgrade?: (values: number[]) => number[]
 }
 let templates: Map<string, Template[]> | undefined
+const legacyDelayPath = ([r]: number[]) => `M 0 0 L ${100-r} 0 C 100 0 100 100 ${100-r} 100 L 0 100 Z`
 
 function getTemplates() {
   if(templates) return templates
@@ -127,8 +132,23 @@ function getTemplates() {
     // the current recipe without requiring private metadata in saved content.
     const drawings: Template["draw"][] = option.type === "pie"
       ? [([p]) => `M 50 50 L 100 ${p} C 100 78 78 100 50 100 C 22 100 0 78 0 50 C 0 22 22 0 50 0 L 50 50 Z`]
-      : option.type === "chord" || isConnectedCalloutType(option.type) ? [] : [values => presetDrawing(option.type, values)]
+      : option.type === "chord" || option.type === "sequential-access-storage" || isConnectedCalloutType(option.type)
+        ? [] : [values => presetDrawing(option.type, values)]
     if(reversedDetailPresets.has(option.type)) drawings.push(definition.draw)
+    const legacyBanner = legacyBannerPaths[option.type]
+    if(legacyBanner) {
+      drawings.push(legacyBanner)
+      if(option.type === "ribbon-up" || option.type === "ribbon-down") {
+        drawings.push(values => orientDetailContours(legacyBanner(values)))
+      }
+    }
+    if(option.type === "delay") drawings.push(legacyDelayPath)
+    if(option.type === "left-brace") {
+      drawings.push(([p]) => `M 70 5 Q 48 5 52 25 L 52 40 Q 52 50 ${p} 50 Q 52 50 52 60 L 52 75 Q 48 95 70 95`)
+    }
+    if(option.type === "right-brace") {
+      drawings.push(([p]) => `M 30 5 Q 52 5 48 25 L 48 40 Q 48 50 ${100-p} 50 Q 48 50 48 60 L 48 75 Q 52 95 30 95`)
+    }
     if(option.type === "double-wave") {
       drawings.push(([d]) => `M 0 20 Q 25 ${20-d} 50 20 Q 75 ${20+d} 100 20 L 100 80 Q 75 ${80+d} 50 80 Q 25 ${80-d} 0 80 Z`)
     }
@@ -142,10 +162,16 @@ function getTemplates() {
       const outer = definition.draw([0]).split(/(?=M)/)[0]
       drawings.push(([r]) => `${outer} M ${50-r*.7} ${50-r*.7} C ${50-r*1.5} ${50+r*.2} ${50-r*.2} ${50+r*1.5} ${50+r*.7} ${50+r*.7} Z M ${50+r*.7} ${50+r*.7-12} C ${50+r*1.5} ${50-r*.2} ${50+r*.2} ${50-r*1.5} ${50-r*.7+12} ${50-r*.7} Z`)
     }
-    const legacy = option.type === "cloud" ? legacyCloudPreset : option.type === "chord" ? legacyChordPreset : legacyCalloutPresets[option.type] ?? legacyArrowPresets[option.type]
+    const legacy = option.type === "cloud" ? legacyCloudPreset : option.type === "chord" ? legacyChordPreset
+      : legacyRoundFlowPresets[option.type] ?? legacyCalloutPresets[option.type] ?? legacyArrowPresets[option.type]
     const variants = [...drawings.map(draw => ({draw, definition, upgrade: undefined as Template["upgrade"]})),
       ...(legacy ? [{draw: legacy.definition.draw, definition: legacy.definition, upgrade: legacy.upgrade}] : []),
       ...(legacySpeechBubblePresets[option.type] ? [{draw:legacySpeechBubblePresets[option.type].definition.draw,definition:legacySpeechBubblePresets[option.type].definition,upgrade:legacySpeechBubblePresets[option.type].upgrade}] : [])]
+    if(option.type === "sequential-access-storage") {
+      const {definition, upgrade} = legacySequentialStoragePreset
+      variants.push({draw: definition.draw, definition, upgrade},
+        {draw: values => orientDetailContours(definition.draw(values)), definition, upgrade})
+    }
     for(const {draw: originalDraw, definition, upgrade} of variants) {
       const normalizedIndex = definition.adjustments.findIndex(adjustment => adjustment.name === (definition as GraphicShapePreset).normalizedAdjustment)
       const draw = normalizedIndex < 0 ? originalDraw : (values: number[]) => originalDraw(values.map((value, i) => i === normalizedIndex ? definition.adjustments[i].default : value))
@@ -238,6 +264,21 @@ function readChordPreset(path: string, actual: number[]): GraphicPresetState | n
   return {type: "chord", definition: graphicShapePresets.chord, bounds, values: [start, Math.max(.5, sweep)]}
 }
 
+function readSequentialStoragePreset(path: string, actual: number[]): GraphicPresetState | null {
+  if(signature(path) !== "M##A#######A#######A#######L##L##Z" || !actual.every(Number.isFinite)) return null
+  const [, bottom, rx, ry, , , , left, centerY] = actual
+  if(!(rx > 0 && ry > 0)) return null
+  const bounds = {x: left, y: centerY - ry, width: rx * 2, height: ry / .45}
+  const type = "sequential-access-storage", definition = graphicShapePresets[type]
+  const {min, max} = definition.adjustments[0]
+  const height = (bottom - actual.at(-3)!) / bounds.height * 100
+  if(height < min - 1e-4 || height > max + 1e-4) return null
+  const values = [Math.max(min, Math.min(max, height))]
+  const expected = coordinates(graphicPresetPath(type, bounds, values))
+  if(expected.some((value, i) => Math.abs(value - actual[i]) > .0001)) return null
+  return {type, definition, bounds, values}
+}
+
 /** Read the fixed, untouched half of the bubble before validating the entire
  * generated contour. The tail never determines the body's design frame. */
 function readSpeechBubblePreset(path:string,label:string|null): GraphicPresetState | null {
@@ -306,7 +347,7 @@ export function readGraphicPreset(element: Element | null): GraphicPresetState |
 
 function readPreset(path: string, label: string | null, preferred?: GraphicPresetType): GraphicPresetState | null {
   const actual = coordinates(path)
-  let state = readPiePreset(path, actual) ?? readChordPreset(path, actual) ?? readSpeechBubblePreset(path,label)
+  let state = readPiePreset(path, actual) ?? readChordPreset(path, actual) ?? readSequentialStoragePreset(path, actual) ?? readSpeechBubblePreset(path,label)
   if(state && preferred && state.type !== preferred) state = null
   const candidates = state ? [] : [...getTemplates().get(signature(path)) ?? []]
   // Accessible names disambiguate geometrically identical presets, but never
@@ -328,6 +369,13 @@ function readPreset(path: string, label: string | null, preferred?: GraphicPrese
     const bounds = {x: horizontal[0]!, y: vertical[0]!, width: horizontal[1]! * 100, height: vertical[1]! * 100}
     const expected = coordinates(scalePath(template.draw(values), bounds))
     if(expected.length !== actual.length || expected.some((value, i) => Math.abs(value - actual[i]) > 0.0001)) continue
+    if(template.draw === legacyDelayPath) {
+      // The old cubic reaches only three quarters of the way from its
+      // endpoints to its control points. Use that midpoint as the right edge.
+      const inset = bounds.width * values[0] / 100
+      bounds.width -= inset / 4
+      values[0] = inset * .75 / bounds.width * 100
+    }
     state = {type: template.type, definition: graphicShapePresets[template.type], bounds,
       values: template.upgrade ? template.upgrade(values) : template.type === "pie" ? [270 - Math.atan2(values[0] - 50, 50) * 180 / Math.PI] : values}
     break
@@ -433,6 +481,6 @@ export function adjustGraphicPreset(element: Element, state: GraphicPresetState,
     const [min, max] = state.definition.adjustmentLimits(state.values, index)
     values[index] = Math.max(adjustment.min, min, Math.min(adjustment.max, max, values[index]))
   }
-  writeGraphicPreset(element, state, state.bounds, values)
+  writeGraphicPreset(element, state, state.bounds, constrainCalloutTip(state.type, values, state.values))
   return true
 }

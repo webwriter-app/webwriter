@@ -27,12 +27,19 @@ async function openHandwriting(keyboard: MathKeyboard) {
   return keyboard.shadowRoot!.querySelector<SVGSVGElement>(".drawing-surface")!
 }
 
-function draw(surface: SVGSVGElement, id = 1) {
+function drawingPointer(surface: SVGSVGElement, id: number) {
   surface.setPointerCapture = vi.fn()
   vi.spyOn(surface, "getBoundingClientRect").mockReturnValue({left: 0, top: 0, width: 600, height: 200} as DOMRect)
-  for(const [type, x, y] of [["pointerdown", 40, 40], ["pointermove", 80, 100], ["pointerup", 80, 100]] as const) {
-    surface.dispatchEvent(new PointerEvent(type, {pointerId: id, isPrimary: true, button: 0, clientX: x, clientY: y, cancelable: true}))
-  }
+  return (type: string, clientX: number, clientY: number, buttons: number) => surface.dispatchEvent(new PointerEvent(type, {
+    pointerId: id, isPrimary: true, pointerType: "mouse", button: 0, buttons, clientX, clientY, cancelable: true,
+  }))
+}
+
+function draw(surface: SVGSVGElement, id = 1) {
+  const pointer = drawingPointer(surface, id)
+  pointer("pointerdown", 40, 40, 1)
+  pointer("pointermove", 80, 100, 1)
+  pointer("pointerup", 80, 100, 0)
 }
 
 const ink = (...points: [number, number][]) => points.map(([x, y], t) => ({x: x / 600 * 1000, y: y / 200 * 300, t}))
@@ -49,6 +56,46 @@ describe("formula keyboard", () => {
     const keyboard = await mountKeyboard()
     expect(getComputedStyle(keyboard).opacity || "1").toBe("1")
     expect(getComputedStyle(keyboard).backgroundColor).toBe("#f2f4f7")
+  })
+
+  it.each(["pointerup", "lostpointercapture"])("recognizes a fast mouse stroke finished by %s", async ending => {
+    recognition.recognize.mockResolvedValue('<math xmlns="http://www.w3.org/1998/Math/MathML"><mi>x</mi></math>')
+    const keyboard = await mountKeyboard()
+    const surface = await openHandwriting(keyboard)
+    vi.useFakeTimers()
+    const pointer = drawingPointer(surface, 1)
+    pointer("pointerdown", 60, 40, 1)
+    const points = [[60, 40]]
+    if(ending === "lostpointercapture") {
+      pointer("pointermove", 120, 80, 1)
+      points.push([120, 80])
+    }
+    expect(keyboard.strokes).toHaveLength(0)
+    pointer(ending, 180, 100, 0)
+    points.push([180, 100])
+    expect(keyboard.strokes).toHaveLength(1)
+    pointer(ending === "pointerup" ? "lostpointercapture" : "pointerup", 180, 100, 0)
+    await vi.advanceTimersByTimeAsync(800)
+    expect(recognition.recognize).toHaveBeenCalledOnce()
+    expect(recognition.recognize.mock.calls[0][0][0].map(({x, y}: {x: number, y: number}) => [x, y])).toEqual(points)
+    expect(surface.querySelectorAll("polyline")).toHaveLength(1)
+  })
+
+  it.each([["pointercancel", 0], ["lostpointercapture", 1]] as const)("discards handwriting on %s while drawing", async (ending, buttons) => {
+    const keyboard = await mountKeyboard()
+    const surface = await openHandwriting(keyboard)
+    vi.useFakeTimers()
+    const pointer = drawingPointer(surface, 1)
+    pointer("pointerdown", 60, 40, 1)
+    pointer("pointermove", 120, 80, 1)
+    await keyboard.updateComplete
+    expect(surface.querySelectorAll("polyline")).toHaveLength(1)
+    pointer(ending, 180, 100, buttons)
+    pointer("pointerup", 180, 100, 0)
+    await vi.advanceTimersByTimeAsync(800)
+    expect(surface.querySelectorAll("polyline")).toHaveLength(0)
+    expect(keyboard.strokes).toHaveLength(0)
+    expect(recognition.recognize).not.toHaveBeenCalled()
   })
 
   it("erases a stroke on right click, preserves unrelated ink, and recognizes what remains", async () => {

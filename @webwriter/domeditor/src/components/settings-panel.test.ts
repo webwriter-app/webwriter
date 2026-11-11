@@ -700,6 +700,16 @@ it("persists global auto-reload and exposes it under developer console settings"
   expect(loadAppSettings().autoReloadPackages).toBe(false)
 })
 
+it("lets users disable automatic published widget updates in Editor settings", async () => {
+  const panel = await mountPanel()
+  const input = panel.shadowRoot!.querySelector<HTMLInputElement>('section[aria-label="Widget updates"] input')!
+  expect(input.checked).toBe(true)
+  panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+  input.click()
+  expect(loadAppSettings().autoUpdatePackages).toBe(false)
+  expect(loadAppSettings().autoReloadPackages).toBe(true)
+})
+
 
 it("offers Disable AI, validates its saved value, and persists the preference", async () => {
   expect(defaultAppSettings().disableAI).toBe(false)

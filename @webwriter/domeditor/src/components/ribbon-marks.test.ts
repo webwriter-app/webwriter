@@ -101,6 +101,8 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     await link.updateComplete
     expect(radios.map(input => input.checked)).toEqual([false, true, false, false, false])
+    radios[1].click()
+    expect(commands.mock.calls.at(-1)![0].detail.label).toBe("remove-link:cross-reference")
     expect(link.label).toBe("Link")
     expect(link.icon).toBe("MarkLink")
     expect(link.active).toBe(false)
@@ -113,6 +115,8 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     await link.updateComplete
     expect(radios.map(input => input.checked)).toEqual([false, false, false, true, false])
+    rows[3].querySelector<HTMLElement>(".mark-dropdown-option-name")!.click()
+    expect(commands.mock.calls.at(-1)![0].detail.label).toBe("remove-link:attachment")
 
     radios[4].click()
     expect(commands.mock.calls.at(-1)![0].detail.label).toBe("select-link:popup")
@@ -122,6 +126,9 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     await link.updateComplete
     expect(radios.map(input => input.checked)).toEqual([false, false, false, false, true])
+    radios[4].click()
+    expect(commands.mock.calls.at(-1)![0].detail.label).toBe("remove-link:popup")
+    expect(commands).toHaveBeenCalledTimes(6)
   })
 
   it("keeps More marks available when a popup toggle disallows links", async () => {

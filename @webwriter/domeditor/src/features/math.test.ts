@@ -296,6 +296,24 @@ describe("DOM MathML editing", () => {
     expect(editor.appendix.querySelector<HTMLElement>(".◆math-overlay > span")!.style.left).toBe("30px")
   })
 
+  it("keeps the structural caret and guides aligned inside a nested scroller", async () => {
+    const math = load("<msup><mi>x</mi><mrow></mrow></msup>")
+    const slot = math.querySelector("mrow")!
+    let top = 50
+    vi.spyOn(slot, "getBoundingClientRect").mockImplementation(() => new DOMRect(30, top, 12, 16))
+    $.move(slot, 0)
+    editor.features.math.refresh()
+    const caret = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!
+    expect(caret.style.top).toBe("50px")
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+
+    top = 25
+    math.parentElement!.dispatchEvent(new Event("scroll"))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(caret.style.top).toBe("25px")
+    expect(editor.appendix.querySelector<HTMLElement>(".◆math-overlay > span")!.style.top).toBe("25px")
+  })
+
   it.each(["abs", "paren", "binom"])("uses the full character box for the %s placeholder and caret", structure => {
     const math = load()
     command(`structure:${structure}`)

@@ -88,7 +88,11 @@ export function syncFontResources(document: Document, resources: Map<string, str
   const readStyle = (style: CSSStyleDeclaration) => {
     fontFamilies(style.getPropertyValue("font-family")).forEach(family => used.add(family))
     // A custom property can supply a family to var() in authored styles.
-    for(const name of Array.from(style)) if(name.startsWith("--")) fontFamilies(style.getPropertyValue(name)).forEach(family => used.add(family))
+    for(let index = 0; index < style.length; index++) {
+      // Descriptor blocks such as @position-try may lack indexed properties.
+      const name = style.item(index)
+      if(name.startsWith("--")) fontFamilies(style.getPropertyValue(name)).forEach(family => used.add(family))
+    }
   }
   const readRules = (rules: CSSRuleList) => {
     for(const rule of Array.from(rules)) {

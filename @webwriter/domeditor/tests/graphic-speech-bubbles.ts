@@ -22,7 +22,8 @@ export async function checkGraphicSpeechBubbles() {
     graphic.setAttribute("viewBox","0 0 800 500")
     Object.assign(graphic.style,{width:"800px",height:"500px"})
     const bounds={x:200,y:140,width:320,height:190}
-    const targets=[[50,-20],[-20,38],[120,38],[50,100],[120,90]]
+    const targets=[[50,-20],[-20,38],[120,38],[50,100],[120,90]] as const
+    const interiorTargets=[[20,37.5,true],[50,60,true]] as const
     const measurement=doc.createElementNS("http://www.w3.org/2000/svg","svg")
     measurement.style.cssText="position:fixed;width:1px;height:1px;opacity:0;pointer-events:none"
     const probe=doc.createElementNS(measurement.namespaceURI,"path") as SVGPathElement
@@ -35,7 +36,8 @@ export async function checkGraphicSpeechBubbles() {
       return a.length===b.length && a.every((value,index)=>Math.abs(value-b[index])<.03)
     }
     for(const type of ["rectangular-callout","rounded-rectangular-callout","oval-callout","cloud-callout","line-callout-1","line-callout-2"] as const) {
-      for(const rotation of [0,35]) for(const [tipX,tipY] of targets) {
+      const dragTargets = type.startsWith("line-callout") ? targets : [...targets, ...interiorTargets]
+      for(const rotation of [0,35]) for(const [tipX,tipY,inside] of dragTargets) {
         graphic.replaceChildren(doc.createComment("preserve sibling"))
         editor.features.selection.captureElement(graphic)
         editor.features.graphic.actions.addGraphicShape({type:"addGraphicShape",shape:type})
@@ -75,11 +77,18 @@ export async function checkGraphicSpeechBubbles() {
         assert(shape.getAttribute("d")===original,`${type}/${tipX}/${tipY}: preview mutated source geometry`)
         const preview=editor.appendix.querySelector<SVGPathElement>(".◆graphic-preview path")!
         assert(preview,`${type}: missing preview`)
-        const expected=graphicPresetPath(type,bounds,values),actual=preview.getAttribute("d")!
-        assert(same(actual,expected),`${type}/${tipX}/${tipY}: preview differs from the requested tip geometry`)
+        const actual=preview.getAttribute("d")!
+        if(inside) {
+          // Move the reference tail to the top so the tested sides retain their original outline.
+          probe.setAttribute("d",graphicPresetPath(type,bounds,[50,-150,values[2]]))
+          assert(probe.isPointInFill(new view.DOMPoint(target.x,target.y)),`${type}: target is outside the body`)
+          const previewTip=graphicPresetHandles(readGraphicPreset(preview)!)[0].point
+          assert(!probe.isPointInFill(new view.DOMPoint(previewTip.x,previewTip.y)),`${type}: preview tip entered the body`)
+        }
+        else assert(same(actual,graphicPresetPath(type,bounds,values)),`${type}/${tipX}/${tipY}: preview differs from the requested tip geometry`)
         doc.dispatchEvent(new view.PointerEvent("pointerup",{...pointer,clientX:destination.x,clientY:destination.y}))
         await layout()
-        assert(same(shape.getAttribute("d")!,expected),`${type}: commit differs from preview`)
+        assert(same(shape.getAttribute("d")!,actual),`${type}: commit differs from preview`)
         editor.doc.stopCapturing();editor.doc.undo();await layout()
         assert(graphic.querySelector("path")!.getAttribute("d")===original,`${type}: undo failed`)
         assert(graphic.firstChild?.nodeType===Node.COMMENT_NODE,`${type}: authored sibling was lost`)

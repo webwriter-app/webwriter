@@ -547,6 +547,32 @@ describe("element attribution editing", () => {
     expect(editor!.setDocumentLayout("document", "board")).toBe(true)
   })
 
+  it("anchors each saved attribution to its own website card", () => {
+    document.body.innerHTML = "<p>Board</p>"
+    start()
+    expect(editor!.setDocumentLayout("board", "document")).toBe(true)
+    const board = editor!.features.board, column = board.columns()[0]
+    expect(board.addCard(column)).toBe(true)
+    const cards = board.cards(column)
+    const authors = ["First author", "Second author"]
+    try {
+      cards.forEach((card, index) => {
+        card.id = `website-card-${index}`
+        card.replaceChildren(document.createElement("iframe"))
+        card.setAttribute(attributionAttributes.name, authors[index])
+        bounds(card)
+      })
+      editor!.features.attribution.refresh()
+      expect(notes().map(note => note.textContent)).toEqual(authors)
+      const rules = document.adoptedStyleSheets.flatMap(sheet =>
+        Array.from(sheet.cssRules).filter((rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE))
+      const owners = rules.filter(rule => rule.style.getPropertyValue("--ww-attribution-after"))
+        .map(rule => Array.from(document.querySelectorAll(rule.selectorText), element => element.id))
+      expect(owners).toEqual(cards.map(card => [card.id]))
+    }
+    finally { document.body.classList.remove("ww-board") }
+  })
+
   it.each([false, true])("keeps native input carets visible while the element remains selected (capture: %s)", captured => {
     const element = start()
     element.setAttribute(attributionAttributes.name, "Ada")
