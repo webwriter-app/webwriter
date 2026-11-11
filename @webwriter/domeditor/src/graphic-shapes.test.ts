@@ -96,6 +96,34 @@ const expectMirroredPaths = (left: string, right: string, axis: "x" | "y", bound
 }
 
 describe("native SVG shape presets", () => {
+  it.each(["left-brace", "right-brace"] as const)("joins the %s end curves tangentially to the vertical strokes", type => {
+    for(const bounds of [{x: 0, y: 0, width: 60, height: 480}, {x: 0, y: 0, width: 480, height: 60}]) {
+      const path = graphicPresetPath(type, bounds, [12])
+      const commands = Array.from(path.matchAll(/[MLQ] ([^MLQ]+)/g), ([, coordinates]) => coordinates.trim().split(/\s+/).map(Number))
+      const [, [topControlX, , topJoinX], [topLineX], , , [bottomJoinX], [bottomControlX]] = commands
+      expect(topControlX).toBe(topJoinX)
+      expect(topJoinX).toBe(topLineX)
+      expect(bottomControlX).toBe(bottomJoinX)
+    }
+  })
+
+  it.each([
+    ["left-brace", "M 70 5 Q 48 5 52 25 L 52 40 Q 52 50 16 50 Q 52 50 52 60 L 52 75 Q 48 95 70 95"],
+    ["right-brace", "M 30 5 Q 52 5 48 25 L 48 40 Q 48 50 84 50 Q 48 50 48 60 L 48 75 Q 52 95 30 95"],
+  ] as const)("retains saved %s paths and smooths them on resize", (type, path) => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("d", path)
+    const state = readGraphicPreset(element)!
+    expect(state?.type).toBe(type)
+    expect(state.values[0]).toBeCloseTo(16)
+    expect(element.getAttribute("d")).toBe(path)
+
+    const resized = {x: 25, y: 10, width: 65, height: 450}
+    writeGraphicPreset(element, state, resized)
+    expectSamePresetPath(element.getAttribute("d")!, graphicPresetPath(type, resized, [16]))
+    expect(readGraphicPreset(element)?.values[0]).toBeCloseTo(16)
+  })
+
   it("uses one radial inner-radius POI for the cloud while preserving lobe midpoints", () => {
     const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
     element.setAttribute("aria-label", "Cloud")

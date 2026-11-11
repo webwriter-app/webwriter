@@ -129,6 +129,12 @@ function getTemplates() {
       ? [([p]) => `M 50 50 L 100 ${p} C 100 78 78 100 50 100 C 22 100 0 78 0 50 C 0 22 22 0 50 0 L 50 50 Z`]
       : option.type === "chord" || isConnectedCalloutType(option.type) ? [] : [values => presetDrawing(option.type, values)]
     if(reversedDetailPresets.has(option.type)) drawings.push(definition.draw)
+    if(option.type === "left-brace") {
+      drawings.push(([p]) => `M 70 5 Q 48 5 52 25 L 52 40 Q 52 50 ${p} 50 Q 52 50 52 60 L 52 75 Q 48 95 70 95`)
+    }
+    if(option.type === "right-brace") {
+      drawings.push(([p]) => `M 30 5 Q 52 5 48 25 L 48 40 Q 48 50 ${100-p} 50 Q 48 50 48 60 L 48 75 Q 52 95 30 95`)
+    }
     if(option.type === "double-wave") {
       drawings.push(([d]) => `M 0 20 Q 25 ${20-d} 50 20 Q 75 ${20+d} 100 20 L 100 80 Q 75 ${80+d} 50 80 Q 25 ${80-d} 0 80 Z`)
     }
