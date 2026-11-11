@@ -1693,6 +1693,11 @@ export class DomEditor extends LitElement {
       this.liveFeedback = this.replayFeedback.filter(message => message.time <= time)
     }
     if(!this.replayActive) this.liveStatesAtStep = this.statesAtLiveStep(this.liveStreamStep)
+    const learners = this.liveLearners.map(learner => {
+      const submitted = this.livePreview.hasSubmittedWidget(this.ownerDocument, this.liveStatesAtStep.get(learner.id)?.widgets)
+      return submitted === Boolean(learner.submitted) ? learner : {...learner, submitted}
+    })
+    if(learners.some((learner, index) => learner !== this.liveLearners[index])) this.liveLearners = learners
     if(this.replayActive) {
       const html = this.replaySelectedLearner ? this.liveStatesAtStep.get(this.replaySelectedLearner)?.html ?? this.replayBaseHTML : this.replayBaseHTML
       if(html !== this.replayRenderedHTML) {

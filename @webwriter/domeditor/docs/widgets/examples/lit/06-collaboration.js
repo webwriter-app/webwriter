@@ -2,7 +2,15 @@ import {LitElementWw} from "@webwriter/lit"
 import {html, css} from "lit"
 
 class WwQuiz extends LitElementWw {
-  static properties = {answer: {type: String, reflect: true}, error: {state: true}}
+  static formAssociated = true
+  static properties = {
+    answer: {type: String, reflect: true},
+    required: {type: Boolean, reflect: true},
+    formDisabled: {state: true},
+    feedbackOnSubmit: {type: Boolean, attribute: "feedback-on-submit"},
+    submitted: {type: Boolean},
+    error: {state: true},
+  }
   static options = {
     answer: {
       type: "select",
@@ -35,15 +43,38 @@ class WwQuiz extends LitElementWw {
     button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
     output { display: block; min-block-size: 1.5em; margin-block-start: .75rem; }
   `
+  #lastChoice
+
   constructor() {
     super()
+    this.internals = this.attachInternals?.()
     this.answer = "false"
     this.error = ""
   }
 
-  dataPending() { this.error = "" }
-  dataChanged() { this.error = "" }
+  dataPending() { this.error = ""; this.updateFormState() }
+  dataChanged() {
+    this.error = ""
+    const choice = this.choice
+    if(this.#lastChoice !== undefined && this.#lastChoice !== choice) this.removeAttribute("submitted")
+    this.#lastChoice = choice
+    this.updateFormState()
+  }
   dataError(error) { this.error = error.message }
+
+  get formValue() { return this.dataReady ? this.choice || null : null }
+
+  updated() { this.updateFormState() }
+
+  updateFormState() {
+    const value = this.formValue
+    this.internals?.setFormValue(value)
+    if(this.required && !value) {
+      const anchor = this.shadowRoot?.querySelector("button") ?? undefined
+      this.internals?.setValidity({valueMissing: true}, "Choose an answer.", anchor)
+    }
+    else this.internals?.setValidity({})
+  }
 
   get choice() {
     try {
@@ -54,10 +85,13 @@ class WwQuiz extends LitElementWw {
   }
 
   choose(value) {
-    if(this.editable || !this.dataReady) return
+    if(this.editable || this.formDisabled || !this.dataReady) return
     try {
       const state = JSON.parse(this.data || "{}")
+      const previousChoice = this.choice
       this.data = JSON.stringify({...state, choice: value})
+      if(value !== previousChoice) this.removeAttribute("submitted")
+      this.updateFormState()
     }
     catch(error) {
       this.error = error.message
@@ -66,15 +100,20 @@ class WwQuiz extends LitElementWw {
 
   resetAnswer() { this.answer = "false" }
 
+  reportValidity() { return this.internals?.reportValidity() ?? true }
+  formDisabledCallback(disabled) { this.formDisabled = disabled }
+
   render() {
     const editing = this.editable
     const ready = this.dataReady
-    const result = this.error || (!ready ? "Loading answers…" : (this.choice ? (this.choice === this.answer ? "Correct!" : "Try again.") : ""))
+    const choice = this.choice
+    const showFeedback = choice && (!this.feedbackOnSubmit || this.submitted)
+    const result = this.error || (!ready ? "Loading answers…" : showFeedback ? (choice === this.answer ? "Correct!" : "Try again.") : "")
     return html`
       <slot><p>Add a question.</p></slot>
       <div class="controls" ?hidden=${editing}>
-        <button type="button" value="true" ?disabled=${!ready} @click=${() => this.choose("true")}>True</button>
-        <button type="button" value="false" ?disabled=${!ready} @click=${() => this.choose("false")}>False</button>
+        <button type="button" value="true" ?disabled=${!ready || this.formDisabled} @click=${() => this.choose("true")}>True</button>
+        <button type="button" value="false" ?disabled=${!ready || this.formDisabled} @click=${() => this.choose("false")}>False</button>
       </div>
       <p class="author-hint" ?hidden=${!editing}>Edit the question and correct answer, then use Preview.</p>
       <output aria-live="polite">${result}</output>`

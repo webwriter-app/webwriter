@@ -6,6 +6,10 @@ import type {LiveSession} from "./live-session"
 import {markEditorOnlyNode, widgetLookupForTags} from "./editor-artifacts"
 import {packageWidgetSchemaDefinitions} from "./packages"
 import {hydrateDistributionInstructions} from "./distribution-dom"
+import {mountDocumentReader, type DocumentReader} from "./document-viewer.js"
+import {createAnchorPositioner} from "./anchor-positioning.js"
+import {creativeCommonsLicenses} from "./document-head"
+import {siteTranslations} from "./site-translations"
 
 function showSessionEnded(root: Document) {
   const appendix = root.body.shadowRoot ?? root.body.attachShadow({mode: "open"})
@@ -70,12 +74,18 @@ export function connectLiveLearner(session: LiveSession, root: Document = docume
   let rendered = Boolean(options.rendered)
   let disconnectLinks: (() => void) | undefined
   let removeSessionEnded: (() => void) | undefined
+  let reader: DocumentReader | null = null
   const track = () => {
     hydrateDistributionInstructions(root)
     disconnectLinks = openFrameLinksInNewTabs(view as Window & typeof globalThis)
     preview.observeLearner({contentWindow: view}, root, step => {
       if(session.status !== "stopped") session.publish(step)
     })
+    if(root === document) {
+      const locale = root.documentElement.lang.toLowerCase().split(/[-_]/)[0]
+      reader = mountDocumentReader(creativeCommonsLicenses, `${import.meta.env.BASE_URL}assets/app-icon-transparent.svg`,
+        null, siteTranslations[locale], createAnchorPositioner)
+    }
   }
   const sync = () => {
     if(session.status === "stopped") {
@@ -157,6 +167,7 @@ export function connectLiveLearner(session: LiveSession, root: Document = docume
   }
   const disconnect = () => {
     stopTracking()
+    reader?.destroy()
     removeSessionEnded?.()
     removeSessionEnded = undefined
     view.removeEventListener("pagehide", disconnect)

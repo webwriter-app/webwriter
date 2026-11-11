@@ -105,6 +105,9 @@ export function validateDistributionChange(before, after, parseFragment) {
       for(const name of new Set([...Object.keys(old.attrs), ...Object.keys(next.attrs)])) {
         if(old.attrs[name] === next.attrs[name]) continue
         if(name === "id") return false
+        // The reader records submission on the widget even in view-only regions.
+        if(name === "submitted" && old.namespace === "http://www.w3.org/1999/xhtml"
+          && old.name.includes("-") && (next.attrs[name] === "" || next.attrs[name] === undefined)) continue
         if(name === "style") {
           const value = next.attrs.style ?? ""
           const a = styleMap(old.attrs.style ?? ""), b = styleMap(value)

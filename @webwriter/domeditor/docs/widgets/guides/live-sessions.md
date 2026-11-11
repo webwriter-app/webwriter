@@ -24,6 +24,37 @@ writing them back. Live sessions capture those changes, including remote updates
 and undo or redo; temporary properties and shadow DOM are not the aggregation
 interface.
 
+## Submit answers from the reader
+
+Set `static formAssociated = true` on the custom element class to include it in the reader's
+**Submit** action. An authored HTML form can group widgets with ordinary inputs
+for validation.
+
+```html
+<form>
+  <ww-quiz name="answer" required feedback-on-submit>
+    <p>The Moon is a star.</p>
+    <script type="application/json" slot="data">{"choice":""}</script>
+  </ww-quiz>
+</form>
+```
+
+Use `ElementInternals.setValidity()` to report invalid input, such as a missing
+required selection, and forward `reportValidity()` so the reader can show the validation message.
+For ordinary HTML forms, give the widget a `name` and publish its response with
+`ElementInternals.setFormValue()`. A widget that submits multiple values can pass `FormData`
+with one entry for each selected option.
+
+After the learner confirms, the reader adds the boolean `submitted` attribute
+and dispatches a non-bubbling `submit` event on each participating widget. A
+widget can use the event for immediate feedback or observe the attribute to
+show feedback when a snapshot is restored. Remove the attribute when the
+response changes. The Lit quiz demonstrates this with `feedback-on-submit`.
+
+In a live session, the attribute travels with the learner's widget snapshot.
+Keep the response in the widget's data block so the host and replay can read it
+alongside the marker.
+
 ## Declare an aggregated view
 
 Add `static aggregate` to your widget class. Choose a shape and extract the

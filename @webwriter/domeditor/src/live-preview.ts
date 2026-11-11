@@ -73,10 +73,27 @@ export class LivePreview {
   private documentUpdateQueued = false
   private generation = 0
   private data = new WeakMap<Element, {signature: string; snapshot: WidgetDataSnapshot}>()
+  private submittedWidgets = new WeakMap<readonly LiveSessionWidgetState[], boolean>()
   private aggregateViews?: WidgetAggregateViews
   private recorder?: IncrementalPreviewRecorder
 
   constructor(private readonly isWidget?: WidgetLookup) {}
+
+  hasSubmittedWidget(owner: Document, widgets?: readonly LiveSessionWidgetState[]) {
+    if(!widgets) return false
+    const cached = this.submittedWidgets.get(widgets)
+    if(cached !== undefined) return cached
+    const submitted = widgets.some(({html}) => {
+      if(!html || !/submitted/i.test(html)) return false
+      // Parse in an inert template. Only the widget host can mark its response.
+      const template = owner.createElement("template")
+      template.innerHTML = html
+      const widget = template.content.firstElementChild
+      return Boolean(widget?.localName.includes("-") && widget.hasAttribute("submitted"))
+    })
+    this.submittedWidgets.set(widgets, submitted)
+    return submitted
+  }
 
   showAggregates(previewDocument: Document, inputs: LiveWidgetAggregateInput[]) {
     this.aggregateViews ??= new WidgetAggregateViews(previewDocument)
@@ -285,6 +302,8 @@ export class LivePreview {
       else if(pointerTimer === undefined) pointerTimer = setTimeout(flushPointer, delay)
     }
     const click = (event: Event) => {
+      const appendix = previewDocument.body.shadowRoot
+      if(appendix && event.composedPath().includes(appendix)) return
       const pointerEvent = event as PointerEvent
       const point = this.normalizedPreviewPoint(pointerEvent.clientX, pointerEvent.clientY, previewDocument)
       publish({

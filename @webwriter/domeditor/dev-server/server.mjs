@@ -603,7 +603,7 @@ export async function createDevServer(options = {}) {
           const syncType = decoding.readVarUint(decoder)
           const distribution = liveSessionTokens.get(request.liveRoom)?.distribution
           if(syncType !== 0 && (syncType > 2 || !acceptLearnerUpdate(shared, decoding.readVarUint8Array(decoder), request.liveLearner,
-            distribution?.configured ? distribution.validate : undefined))) {
+            distribution?.configured ? distribution.validate : undefined, false))) {
             throw new Error("Forbidden live update")
           }
         }

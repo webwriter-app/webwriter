@@ -57,6 +57,7 @@ const expectedChecks = [
   "bundled document themes always render light colors",
   "standalone live learners open the document without editor controls or an iframe",
   "standalone live learners exchange private peer activity and feedback",
+  "reader submission validates native forms and anchors confirmation at narrow widths",
   "standalone live learners join through a peer invitation",
   "standalone live learners receive large initial documents over HTTP and synchronize activity",
   "live learners render host widgets with shared dependencies and a fresh preview policy",

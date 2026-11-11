@@ -9275,6 +9275,18 @@ describe("DomEditor.execute()", () => {
       })])
       expect((editor as unknown as {liveStreamStep: number}).liveStreamStep).toBe(1)
 
+      learner.publish({kind: "widget", widgets: [{path: [0], html: '<demo-quiz><span submitted>Draft</span></demo-quiz>'}]})
+      await vi.waitFor(() => expect((editor as any).liveStreamStep).toBe(2))
+      expect(toggle.querySelector(".learner-submitted")).toBeNull()
+
+      learner.publish({kind: "widget", widgets: [{path: [0], html: '<demo-quiz submitted=""></demo-quiz>'}]})
+      await vi.waitFor(() => expect(toggle.querySelector(".learner-avatar .learner-submitted")).not.toBeNull())
+      expect(toggle.getAttribute("aria-label")).toBe("Ada Lovelace, connected, submitted an answer")
+
+      learner.publish({kind: "widget", widgets: [{path: [0], html: "<demo-quiz></demo-quiz>"}]})
+      await vi.waitFor(() => expect(toggle.querySelector(".learner-submitted")).toBeNull())
+      expect(toggle.getAttribute("aria-label")).toBe("Ada Lovelace, connected")
+
       toggle.click()
       await editor.updateComplete
       await ribbon.updateComplete
