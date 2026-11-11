@@ -106,6 +106,23 @@ const arrowCallout = (label: string, direction: number) => base(label, "Block ar
 
 const crossPath = (t: number) => polygon([[50-t/2,0],[50+t/2,0],[50+t/2,50-t/2],[100,50-t/2],[100,50+t/2],[50+t/2,50+t/2],[50+t/2,100],[50-t/2,100],[50-t/2,50+t/2],[0,50+t/2],[0,50-t/2],[50-t/2,50-t/2]])
 const roundFlow = (r: number) => `M 0 50 C 0 ${50-r} ${50-r} 0 50 0 C ${50+r} 0 100 ${50-r} 100 50 C 100 ${50+r} ${50+r} 100 50 100 C ${50-r} 100 0 ${50+r} 0 50 Z`
+const flowchartCurvature = poi("curvature", "Curvature", 27.615, 0, 50, p => ({x:25-.375*p,y:25-.375*p}))
+const roundFlowSymbol = (label: string, detail: string) => {
+  const draw = (r: number) => `${roundFlow(r)} ${detail}`
+  return {
+    preset: base(label, "Flowchart", () => draw(flowchartCurvature.default), []),
+    legacy: {
+      definition: base(label, "Flowchart", ([r]) => draw(r), [flowchartCurvature]),
+      upgrade: () => [],
+    },
+  }
+}
+const summingJunction = roundFlowSymbol("Summing junction", "M 15 15 L 85 85 M 15 85 L 85 15")
+const orSymbol = roundFlowSymbol("Or", "M 0 50 L 100 50 M 50 0 L 50 100")
+export const legacyRoundFlowPresets: Partial<Record<string, typeof summingJunction.legacy>> = {
+  "summing-junction": summingJunction.legacy,
+  "or": orSymbol.legacy,
+}
 const cylinderPath = (d: number) => `M 0 ${d} C 0 ${-d/3} 100 ${-d/3} 100 ${d} L 100 ${100-d} C 100 ${100+d/3} 0 ${100+d/3} 0 ${100-d} Z M 0 ${d} C 0 ${d*7/3} 100 ${d*7/3} 100 ${d}`
 
 const irregularStar = (n: number, inner: number, variant: number) => polygon(Array.from({length:n*2}, (_,i) => {
@@ -512,12 +529,12 @@ const originalGraphicShapePresets = {
   "preparation": base("Preparation", "Flowchart", ([p]) => polygon([[p,0],[100-p,0],[100,50],[100-p,100],[p,100],[0,50]]), [poi("point", "Point depth", 22, 0, 50, p => ({x:p,y:0}))]),
   "manual-input": base("Manual input", "Flowchart", ([s]) => polygon([[0,s],[100,0],[100,100],[0,100]]), [poi("slope", "Top slope", 22, 0, 100, p => ({x:0,y:p}), "y")]),
   "manual-operation": base("Manual operation", "Flowchart", ([s]) => polygon([[0,0],[100,0],[100-s,100],[s,100]]), [poi("inset", "Bottom inset", 20, 0, 50, p => ({x:p,y:100}))]),
-  "flowchart-connector": base("Connector", "Flowchart", ([r]) => roundFlow(r), [poi("curvature", "Curvature", 27.615, 0, 50, p => ({x:25-.375*p,y:25-.375*p}))]),
+  "flowchart-connector": base("Connector", "Flowchart", ([r]) => roundFlow(r), [flowchartCurvature]),
   "offpage-connector": base("Off-page connector", "Flowchart", ([p]) => polygon([[0,0],[100,0],[100,p],[50,100],[0,p]]), [poi("point", "Shoulder height", 75, 0, 100, p => ({x:100,y:p}), "y")]),
   "card": base("Card", "Flowchart", ([p]) => polygon([[p,0],[100,0],[100,100],[0,100],[0,p]]), [poi("corner", "Clipped corner", 25, 0, 100, p => ({x:p,y:0}))]),
   "punched-tape": base("Punched tape", "Flowchart", ([d]) => `M 0 15 C 30 ${15+d} 70 ${15-d} 100 15 L 100 85 C 70 ${85-d} 30 ${85+d} 0 85 Z`, [poi("wave", "Wave depth", 20, 0, 35, p => ({x:24.0625,y:15+.28125*p}), "y")]),
-  "summing-junction": base("Summing junction", "Flowchart", ([r]) => `${roundFlow(r)} M 15 15 L 85 85 M 15 85 L 85 15`, [poi("curvature", "Curvature", 27.615, 0, 50, p => ({x:25-.375*p,y:25-.375*p}))]),
-  "or": base("Or", "Flowchart", ([r]) => `${roundFlow(r)} M 0 50 L 100 50 M 50 0 L 50 100`, [poi("curvature", "Curvature", 27.615, 0, 50, p => ({x:25-.375*p,y:25-.375*p}))]),
+  "summing-junction": summingJunction.preset,
+  "or": orSymbol.preset,
   "collate": base("Collate", "Flowchart", ([p]) => polygon([[0,0],[100,0],[50,p],[100,100],[0,100],[50,p]]), [poi("waist", "Waist height", 50, 0, 100, p => ({x:50,y:p}), "y")]),
   "sort": base("Sort", "Flowchart", ([p]) => `${polygon([[50,0],[100,p],[50,100],[0,p]])} M 0 ${p} L 100 ${p}`, [poi("division", "Division height", 50, 0, 100, p => ({x:0,y:p}), "y")]),
   "extract": base("Extract", "Flowchart", ([p]) => polygon([[p,0],[100,100],[0,100]]), [poi("apex", "Apex position", 50, 0, 100, p => ({x:p,y:0}))]),

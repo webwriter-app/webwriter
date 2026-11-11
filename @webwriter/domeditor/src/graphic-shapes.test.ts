@@ -96,6 +96,29 @@ const expectMirroredPaths = (left: string, right: string, axis: "x" | "y", bound
 }
 
 describe("native SVG shape presets", () => {
+  it.each([
+    ["summing-junction", "M 15 15 L 85 85 M 15 85 L 85 15"],
+    ["or", "M 0 50 L 100 50 M 50 0 L 50 100"],
+  ] as const)("recognizes saved %s symbols without offering curvature", (type, detail) => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    const saved = `M 0 50 C 0 0 0 0 50 0 C 100 0 100 0 100 50 C 100 100 100 100 50 100 C 0 100 0 100 0 50 Z ${detail}`
+    const outline = "M 0 50 C 0 22.385 22.385 0 50 0 C 77.615 0 100 22.385 100 50 C 100 77.615 77.615 100 50 100 C 22.385 100 0 77.615 0 50 Z"
+    const frame = {x: 0, y: 0, width: 100, height: 100}
+    element.setAttribute("d", saved)
+    const legacy = readGraphicPreset(element)!
+    expect(legacy.type).toBe(type)
+    expect(graphicPresetHandles(legacy)).toEqual([])
+    expect(adjustGraphicPreset(element, legacy, "adjust-curvature", 5)).toBe(false)
+    expect(element.getAttribute("d")).toBe(saved)
+
+    writeGraphicPreset(element, legacy, frame)
+    expect(element.getAttribute("d")).toBe(`${outline} ${detail}`)
+    const current = readGraphicPreset(element)!
+    expect(current.type).toBe(type)
+    expect(current.definition.adjustments).toEqual([])
+    expect(graphicPresetHandles(current)).toEqual([])
+  })
+
   it("adjusts the curvature of a saved Delay within its visible frame", () => {
     const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
     const saved = "M 20 10 L 80 10 C 120 10 120 70 80 70 L 20 70 Z"
@@ -768,7 +791,7 @@ describe("native SVG shape presets", () => {
     expect(state?.type).toBe(option.type)
     for(const key of ["x", "y", "width", "height"] as const) expect(state!.bounds[key]).toBeCloseTo(bounds[key], 3)
     definition.adjustments.forEach((adjustment, index) => expect(state!.values[index]).toBeCloseTo(adjustment.default, 3))
-    expect(graphicPresetHandles(state!).length).toBeGreaterThan(0)
+    expect(graphicPresetHandles(state!).length > 0).toBe(definition.adjustments.some(adjustment => !adjustment.hidden))
 
     definition.adjustments.forEach((adjustment, index) => {
       const middle = adjustment.name === "end-y" && (isSpeechBubbleType(option.type) || option.type === "cloud-callout")

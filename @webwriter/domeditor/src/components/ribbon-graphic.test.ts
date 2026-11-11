@@ -506,6 +506,22 @@ describe("graphic ribbon", () => {
   })
 
   it.each([
+    ["summing-junction", false], ["or", false], ["flowchart-connector", true],
+  ] as const)("renders the expected curvature control for %s", async (shape, hasCurvature) => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Edit"
+    ribbon.graphic = {active: true, capture: true, selectionCount: 1, shape, parameters: {"adjust-curvature": "28"}}
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const geometry = ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Style"] .graphic-geometry-controls')!
+    expect(geometry.querySelector('input[aria-label="Graphic: Width"]')).toBeTruthy()
+    const field = geometry.querySelector('input[aria-label="Graphic: Curvature"]')
+    if(hasCurvature) expect(field).toHaveValue(28)
+    else expect(field).toBeNull()
+  })
+
+  it.each([
     ["rectangular-callout", "adjust-roundness", "Corner roundness"],
     ["rounded-rectangular-callout", "adjust-roundness", "Corner roundness"],
     ["oval-callout", "adjust-roundness", "Bubble roundness"],
