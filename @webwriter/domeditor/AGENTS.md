@@ -4,6 +4,8 @@
 
 This project is a browser-native, collaborative DOM editor. The live HTML DOM is the document state. Preserve that model when making changes.
 
+Use an up-to-date Node.js 22 release and run `bun install --frozen-lockfile` from the repository root. Run the DOM Editor commands below from `@webwriter/domeditor`.
+
 ## Decision order
 
 Before adding code, work through these questions in order:
@@ -25,8 +27,8 @@ Do not introduce a dependency until the platform and installed dependencies have
 
 ## Task delegation
 
-- Sol orchestrates the work and delegates suitable simple, scoped, context-light tasks only to Luna.
-- Sol never delegates tasks to Codex 5.3 Spark.
+- Sol orchestrates the work. Delegate simple, well-scoped tasks that need little context to Luna.
+- Delegate complex subtasks to Sol agents only when a very large work package can be split into independent chunks and is best completed in parallel.
 
 ## Architectural invariants
 
