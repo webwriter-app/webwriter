@@ -1967,6 +1967,10 @@ export class TransformationFeature extends EditorFeature {
     if(gesture.canvas && !crop) this.#writeCanvasViewBox(gesture.canvas.initial)
     if(display === "inline" && target instanceof HTMLElement) this.#write("display", "inline-block")
     const resizeBox = () => {
+      if(boardLayoutRole(target) === "column" && x) {
+        this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
+        return
+      }
       if(text) {
         this.#write("height", "auto")
         this.#write("min-height", mathRoot(target) === target ? "" : "0px")
@@ -1994,10 +1998,6 @@ export class TransformationFeature extends EditorFeature {
         if(y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       }
       else if(target instanceof HTMLIFrameElement && y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
-      else if(boardLayoutRole(target) === "column" && x) {
-        this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
-        this.#write("flex-basis", `${Math.max(1, gesture.cssWidth + dw)}px`)
-      }
       else if(boardLayoutRole(target) === "card" && y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       if(x) {
         const width = Math.max(0, gesture.cssWidth + dw)

@@ -8920,9 +8920,11 @@ await check("Board columns and cards retain native editing and standalone layout
     const setColumnWidth = (width: string) => editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {width}})
     setColumnWidth("300px"); await layoutFrame()
     assert(Math.abs(columns[0].getBoundingClientRect().width - 300) < .5, "Element width did not resize the board column")
-    columns[0].style.maxWidth = "300px" // The resize handle also writes a matching cap.
+    columns[0].style.maxWidth = "300px"
     setColumnWidth("520px"); await layoutFrame()
-    assert(Math.abs(columns[0].getBoundingClientRect().width - 520) < .5, "Element width did not resize a previously dragged column")
+    assert(Math.abs(columns[0].getBoundingClientRect().width - 300) < .5, "Element width overrode an authored maximum")
+    columns[0].style.removeProperty("max-width")
+    assert(Math.abs(columns[0].getBoundingClientRect().width - 520) < .5, "Element width did not grow after removing the maximum")
     setColumnWidth(""); await layoutFrame()
     assert(Math.abs(columns[0].getBoundingClientRect().width - 450) < .5, "clearing Element width did not restore the board default")
     assert(rects.every((rect, i) => !i || rect.left > rects[i - 1].right), "columns did not grow horizontally")
@@ -9080,10 +9082,13 @@ await check("Board columns and cards retain native editing and standalone layout
       assert(isCard ? after.height > bounds.height && Math.abs(after.width - bounds.width) < .5
         : after.width > bounds.width && Math.abs(after.height - bounds.height) < .5, "Board resize did not grow on only its permitted axis")
       assert(isCard ? !target.style.width && !target.style.maxWidth : !target.style.height && !target.style.maxHeight, "Board resize wrote dimensions on the other axis")
+      if(!isCard) assert(!target.style.flexBasis && !target.style.maxWidth, "Board column resize wrote a flex basis or maximum width")
       editor.doc.undo(); await layoutFrame()
     }
     await resizeTarget(card, 40, 30)
     await resizeTarget(board.columns()[0], 30, 40)
+    editor.features.selection.selectElement(board.columns()[0])
+    setColumnWidth("520px")
     card.style.height = "230px"
     card.innerHTML = '<p></p><p></p><p><br></p><custom-widget style="display:block;height:48px">Embedded content</custom-widget>'
     await layoutFrame()
@@ -9102,7 +9107,8 @@ await check("Board columns and cards retain native editing and standalone layout
     assert(Math.abs(editorWidgetTop - previewWidgetTop) < 1, `blank Board lines shifted embedded content in preview: editor=${editorWidgetTop}, preview=${previewWidgetTop}`)
     exportedCard.style.height = ""
     const exportedRects = exportedColumns.map(column => column.getBoundingClientRect())
-    assert(exportedRects.every((rect, i) => Math.abs(rect.width - exportedRects[0].width) < 1 && (!i || rect.left > exportedRects[i - 1].right)), "standalone Board layout needs editor code")
+    assert(exportedRects.every((rect, i) => Math.abs(rect.width - (i === 0 ? 520 : 450)) < 1
+      && (!i || rect.left > exportedRects[i - 1].right)), "standalone Board layout did not retain column widths")
     await checkOverflow(exported)
     preview.remove()
     for(const column of board.columns()) assert(board.removeColumn(column), "last board column could not be removed")

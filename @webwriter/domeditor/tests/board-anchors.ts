@@ -108,8 +108,9 @@ export async function checkBoardAnchors(inspect = false) {
     const grownFrame = activeOverlay.getBoundingClientRect(), grownGroup = grouper.getBoundingClientRect()
     near(grownGroup.top + grownGroup.height / 2, grownFrame.top + grownFrame.height / 2, "grown column group midpoint")
     const previousWidth = cardButton.getBoundingClientRect().width
-    frameTarget.style.width = frameTarget.style.flexBasis = "380px"
+    frameTarget.style.width = "380px"
     await layout(view)
+    near(frameTarget.getBoundingClientRect().width, 380, "ungrouped column width")
     checkRect(cardButton, expectedCardSlot(frameTarget), "resized column card slot")
     checkRect(activeOverlay, frameTarget.getBoundingClientRect(), "resized column frame")
     assert(cardButton.getBoundingClientRect().width < previousWidth - 40, "column resizing did not resize its anchored controls")
@@ -128,6 +129,7 @@ export async function checkBoardAnchors(inspect = false) {
     board.setGrouping("new", board.columns()[0]); await layout(view); board.refresh()
     ;({card: cardButton, column: columnButton} = getControls())
     const groupedColumn = board.columns()[0]
+    near(groupedColumn.getBoundingClientRect().width, 380, "grouped column width")
     checkRect(cardButton, expectedCardSlot(groupedColumn), "grouped column card slot")
     const lastOwner = Array.from(doc.body.children).filter(node => node.matches(".ww-board-column,.ww-board-group")).at(-1) as HTMLElement
     const bodyStyle = view.getComputedStyle(doc.body), ownerRect = lastOwner.getBoundingClientRect()

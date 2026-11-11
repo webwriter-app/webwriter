@@ -67,7 +67,7 @@ body.ww-board > section.ww-board-group:not([is]) > h2:not([is]) {
 }
 body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) { grid-row: 2; }
 ${boardColumnSelector()} {
-  box-sizing: border-box; flex: 0 0 min(450px, calc(100vw - 2.5rem)); width: min(450px, calc(100vw - 2.5rem)); min-width: 0;
+  box-sizing: border-box; flex: 0 0 auto; width: min(450px, calc(100vw - 2.5rem)); min-width: 0;
   display: flex; flex-direction: column; align-self: flex-start; gap: .75rem; min-height: 10rem;
   margin: 0; padding: 1rem 1rem 3.5rem; border: 1px solid #d4deea; border-radius: .75rem; background: #f4f7fa;
 }
