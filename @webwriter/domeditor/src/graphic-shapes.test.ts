@@ -96,6 +96,29 @@ const expectMirroredPaths = (left: string, right: string, axis: "x" | "y", bound
 }
 
 describe("native SVG shape presets", () => {
+  it("adjusts the curvature of a saved Delay within its visible frame", () => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    const saved = "M 20 10 L 80 10 C 120 10 120 70 80 70 L 20 70 Z"
+    element.setAttribute("d", saved)
+    const before = readGraphicPreset(element)!
+    expect(before.type).toBe("delay")
+    expect(before.bounds.width).toBeCloseTo(90)
+    expect(graphicPresetHandles(before)[0].point.x).toBeCloseTo(80)
+    expect(element.getAttribute("d")).toBe(saved)
+
+    expect(adjustGraphicPreset(element, before, "adjust-curve", {x: 80, y: 10})).toBe(true)
+    expectSamePresetPath(element.getAttribute("d")!, "M 20 10 L 80 10 C 100 10 110 25 110 40 C 110 55 100 70 80 70 L 20 70 Z")
+
+    for(const x of [50, 110, 20]) {
+      expect(adjustGraphicPreset(element, readGraphicPreset(element)!, "adjust-curve", {x, y: 10})).toBe(true)
+      const after = readGraphicPreset(element)!
+      expect(after.type).toBe("delay")
+      expect(after.bounds.x).toBeCloseTo(20)
+      expect(after.bounds.width).toBeCloseTo(90)
+      expect(graphicPresetHandles(after)[0].point.x).toBeCloseTo(x)
+    }
+  })
+
   it.each(["left-brace", "right-brace"] as const)("joins the %s end curves tangentially to the vertical strokes", type => {
     for(const bounds of [{x: 0, y: 0, width: 60, height: 480}, {x: 0, y: 0, width: 480, height: 60}]) {
       const path = graphicPresetPath(type, bounds, [12])

@@ -117,6 +117,7 @@ type Template = {
   upgrade?: (values: number[]) => number[]
 }
 let templates: Map<string, Template[]> | undefined
+const legacyDelayPath = ([r]: number[]) => `M 0 0 L ${100-r} 0 C 100 0 100 100 ${100-r} 100 L 0 100 Z`
 
 function getTemplates() {
   if(templates) return templates
@@ -129,6 +130,7 @@ function getTemplates() {
       ? [([p]) => `M 50 50 L 100 ${p} C 100 78 78 100 50 100 C 22 100 0 78 0 50 C 0 22 22 0 50 0 L 50 50 Z`]
       : option.type === "chord" || isConnectedCalloutType(option.type) ? [] : [values => presetDrawing(option.type, values)]
     if(reversedDetailPresets.has(option.type)) drawings.push(definition.draw)
+    if(option.type === "delay") drawings.push(legacyDelayPath)
     if(option.type === "left-brace") {
       drawings.push(([p]) => `M 70 5 Q 48 5 52 25 L 52 40 Q 52 50 ${p} 50 Q 52 50 52 60 L 52 75 Q 48 95 70 95`)
     }
@@ -334,6 +336,13 @@ function readPreset(path: string, label: string | null, preferred?: GraphicPrese
     const bounds = {x: horizontal[0]!, y: vertical[0]!, width: horizontal[1]! * 100, height: vertical[1]! * 100}
     const expected = coordinates(scalePath(template.draw(values), bounds))
     if(expected.length !== actual.length || expected.some((value, i) => Math.abs(value - actual[i]) > 0.0001)) continue
+    if(template.draw === legacyDelayPath) {
+      // The old cubic reaches only three quarters of the way from its
+      // endpoints to its control points. Use that midpoint as the right edge.
+      const inset = bounds.width * values[0] / 100
+      bounds.width -= inset / 4
+      values[0] = inset * .75 / bounds.width * 100
+    }
     state = {type: template.type, definition: graphicShapePresets[template.type], bounds,
       values: template.upgrade ? template.upgrade(values) : template.type === "pie" ? [270 - Math.atan2(values[0] - 50, 50) * 180 / Math.PI] : values}
     break

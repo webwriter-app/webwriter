@@ -515,7 +515,9 @@ const originalGraphicShapePresets = {
   "extract": base("Extract", "Flowchart", ([p]) => polygon([[p,0],[100,100],[0,100]]), [poi("apex", "Apex position", 50, 0, 100, p => ({x:p,y:0}))]),
   "merge": base("Merge", "Flowchart", ([p]) => polygon([[0,0],[100,0],[p,100]]), [poi("apex", "Apex position", 50, 0, 100, p => ({x:p,y:100}))]),
   "stored-data": base("Stored data", "Flowchart", ([r]) => `M ${r} 0 L 100 0 C ${100-r} 0 ${100-r} 100 100 100 L ${r} 100 C 0 100 0 0 ${r} 0 Z`, [poi("curve", "End curvature", 20, 0, 100, p => ({x:p,y:0}))]),
-  "delay": base("Delay", "Flowchart", ([r]) => `M 0 0 L ${100-r} 0 C 100 0 100 100 ${100-r} 100 L 0 100 Z`, [poi("curve", "End curvature", 45, 0, 100, p => ({x:100-p,y:0}))]),
+  "delay": base("Delay", "Flowchart", ([r]) =>
+    `M 0 0 L ${100-r} 0 C ${100-r/3} 0 100 25 100 50 C 100 75 ${100-r/3} 100 ${100-r} 100 L 0 100 Z`,
+    [poi("curve", "End curvature", 38, 0, 100, p => ({x:100-p,y:0}))]),
   "sequential-access-storage": base("Sequential access storage", "Flowchart", ([t]) => `${ellipse(45,45,45,45)} M 45 90 L 100 90 L 100 ${90-t} L 75 ${90-t}`, [poi("tail", "Tail height", 10, 0, 90, p => ({x:100,y:90-p}), "y")]),
   "magnetic-disk": base("Magnetic disk", "Flowchart", ([d]) => cylinderPath(d), [poi("depth", "Cap depth", 15, 0, 30, p => ({x:0,y:p}), "y")]),
   "direct-access-storage": base("Direct access storage", "Flowchart", ([d]) => turn(cylinderPath(d), 1), [poi("depth", "Cap depth", 15, 0, 30, p => ({x:100-p,y:0}))]),

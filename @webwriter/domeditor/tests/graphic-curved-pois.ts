@@ -11,7 +11,7 @@ export async function checkGraphicCurvedPOIs() {
   frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
   document.body.append(frame)
   const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor, editorError?: string}
-  const types = ["document","wave","double-wave","cloud","parentheses","braces","seal-1","curved-ribbon-up","oval-callout","cloud-callout"] as const
+  const types = ["delay","document","wave","double-wave","cloud","parentheses","braces","seal-1","curved-ribbon-up","oval-callout","cloud-callout"] as const
   try {
     for(let attempt = 0; !view.editor && !view.editorError && attempt < 250; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
     assert(view.editor, view.editorError ?? "Curved POI fixture did not initialize")
@@ -48,6 +48,7 @@ export async function checkGraphicCurvedPOIs() {
         const currentHandles = [...editor.appendix.querySelectorAll<HTMLButtonElement>(".◆graphic-specific-handles button")]
         const state = readGraphicPreset(shape)!
         const original = shape.getAttribute("d")!
+        const originalWidth = type === "delay" ? (shape as SVGGraphicsElement).getBBox().width : 0
         const next = [...state.values]
         const index = visible[handleIndex].index
         const adjustment = state.definition.adjustments[index]
@@ -85,6 +86,7 @@ export async function checkGraphicCurvedPOIs() {
         assert(shape.getAttribute("d") === original,`${type}/${rotation}/${handleIndex}: preview changed authored geometry`)
         const preview = editor.appendix.querySelector<SVGPathElement>(".◆graphic-preview path")!
         assert(preview,`${type}: missing preview`)
+        if(type === "delay") assert(Math.abs(preview.getBBox().width - originalWidth) < .001, "Delay: dragging curvature changed the preview width")
         const actual = numbers(preview.getAttribute("d")!)
         assert(actual.length === expected.length && actual.every((value,i) => Math.abs(value-expected[i]) < .001),`${type}/${rotation}/${handleIndex}: preview geometry differs from expected; offset ${JSON.stringify(offset)}, target ${JSON.stringify(target)}, diff ${Math.max(...actual.map((value,i)=>Math.abs(value-expected[i])))}, values ${JSON.stringify(readGraphicPreset(preview)?.values)}`)
 
@@ -92,6 +94,7 @@ export async function checkGraphicCurvedPOIs() {
         await layout()
         const edited = shape.getAttribute("d")!
         assert(edited === preview.getAttribute("d"),`${type}: commit differs from preview`)
+        if(type === "delay") assert(Math.abs((shape as SVGGraphicsElement).getBBox().width - originalWidth) < .001, "Delay: committing curvature changed the shape width")
         assert(graphicShapeType(shape) === type,`${type}: committed type changed`)
         editor.doc.stopCapturing()
         editor.doc.undo()
