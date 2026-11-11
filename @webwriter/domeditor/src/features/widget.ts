@@ -14,14 +14,23 @@ import {getElementPresentation} from "../element-names"
 import {$, atomicEditingContainer, clearEditorArtifacts, cloneInert, getInertDocument, pathFromNode, removeEditorMarker} from "../utility"
 import type {Schema} from "../schema"
 import type {OfflineImportRule, OfflineImportSelection} from "../offline-module-bundler"
+import {inspectWidgetEffects, mountWidgetEffects, parseWidgetEffectReference, validateWidgetEffect, widgetEffectDeclarations, widgetEffectReference} from "../widget-effects"
 import {
   isWidgetFileFormat,
+  isRecord as isDeclarationMap,
   matchesWidgetFileFormat,
   widgetActionState,
   widgetOptionAttributeValue,
   widgetOptionState,
   widgetOptionGroupState,
+  widgetDeclarations,
+  widgetConversionMethod,
+  widgetOptionDeclaration,
+  readWidgetOption,
+  validWidgetOptionValue,
+  widgetReferenceOption,
   type WidgetOptionsState,
+  type WidgetPermissionState,
   type WidgetOptionState,
   type WidgetActionState,
   type WidgetOptionValue,
@@ -29,7 +38,7 @@ import {
 
 type Declarations = Record<string, unknown>
 const htmlNamespace = "http://www.w3.org/1999/xhtml"
-const isDeclarationMap = (value: unknown): value is Declarations => !!value && typeof value === "object" && !Array.isArray(value)
+const effectOptionPrefix = "effect:"
 
 /** Global attributes whose properties base classes write back themselves. */
 const globalAttributeProperties = new Set(["lang", "dir", "title", "hidden", "id", "slot", "contentEditable"])
@@ -47,6 +56,9 @@ export class WidgetFeature extends EditorFeature {
   #fileConversions = new AbortController()
   #refreshQueued = false
   #observingReferences = false
+  #effects?: ReturnType<typeof mountWidgetEffects>
+  #observingEffects = false
+  readonly #rejectedEffects = new WeakMap<Element, Map<string, string>>()
   #pendingFileAction?: {widget: Element, cancel: () => void}
   #legacyOptions?: {widget: Element, panel: HTMLElement, popover: string | null}
 
@@ -121,6 +133,7 @@ export class WidgetFeature extends EditorFeature {
       else this.#clearEditable(element, previousSchema)
     })
     this.editor.doc.widgetData.sync()
+    this.#effects?.refresh()
   }
 
   /** IDs are authored state and survive removal and reconnection.
@@ -239,11 +252,14 @@ export class WidgetFeature extends EditorFeature {
       if(this.editor.isEditingLocked) return false
       const elements = this.editor.features.manipulation.selectedElementsOfType(selectionType).filter(element => this.isWidget(element))
       if(!elements.length) return false
+      if(name.startsWith(effectOptionPrefix) && !Object.hasOwn(widgetDeclarations(elements[0], "options"), name)) {
+        return elements.length === 1 && this.setOption(elements[0], name, value)
+      }
       if(!elements.every(element => {
-        const declaration = this.#declarations(element, "options")[name]
+        const declaration = widgetDeclarations(element, "options")[name]
         if(declaration === undefined) return false
         const option = this.#referenceOption(element, widgetOptionState(name, declaration, value, this.#locale()))
-        return !option.hidden && !option.disabled && !option.readOnly && this.#validOptionValue(option, value, element)
+        return !option.hidden && !option.disabled && !option.readOnly && validWidgetOptionValue(option, value, element)
       })) return false
       const end = this.editor.doc.beginUndoGroup()
       try {
@@ -340,38 +356,15 @@ export class WidgetFeature extends EditorFeature {
     return document.documentElement.lang || navigator.language || "en"
   }
 
-  /** Instance declarations override static maps. Legacy dynamicOptions are an
-   * alias, with canonical options taking precedence for duplicate names. */
-  #declarations(widget: Element, kind: "options" | "actions" | "optionGroups" | "convertFrom" | "convertTo"): Declarations {
-    const read = (name: string) => {
-      try {
-        const own = (widget as unknown as Record<string, unknown>)[name]
-        if(isDeclarationMap(own)) return own
-        const inherited = (widget.constructor as unknown as Record<string, unknown>)[name]
-        return isDeclarationMap(inherited) ? inherited : {}
-      }
-      catch { return {} }
-    }
-    return kind === "options" ? {...read("dynamicOptions"), ...read(kind)} : read(kind)
-  }
-
   #baseTag(name: string) {
     const entry = this.editor.schema.get(name)
     return /^[a-z][a-z0-9]*$/.test(name) && entry && !entry.headOnly && !entry.contentNamespace
       && name !== "html" && name !== "body"
   }
 
-  #conversionMethod(widget: Element, declaration: unknown) {
-    try {
-      const method = typeof declaration === "string" ? (widget as unknown as Declarations)[declaration] : declaration
-      return typeof method === "function" ? method : undefined
-    }
-    catch { return undefined }
-  }
-
   #conversionKeys(widget: Element, kind: "convertFrom" | "convertTo") {
-    return Object.entries(this.#declarations(widget, kind)).flatMap(([key, method]) =>
-      this.#conversionMethod(widget, method) ? [key] : [])
+    return Object.entries(widgetDeclarations(widget, kind)).flatMap(([key, method]) =>
+      widgetConversionMethod(widget, method) ? [key] : [])
   }
 
   #importTags(widgetTag: string, constructor: CustomElementConstructor) {
@@ -466,11 +459,11 @@ export class WidgetFeature extends EditorFeature {
     if(importing && (!(file instanceof File) || !matchesWidgetFileFormat(file, format))) {
       throw new TypeError(`Choose a ${format} file to import.`)
     }
-    const method = this.#conversionMethod(widget, this.#declarations(widget, direction)[format])
+    const method = widgetConversionMethod(widget, widgetDeclarations(widget, direction)[format])
     if(!method) return false
     const snapshot = importing ? clearEditorArtifacts(cloneInert(widget, true), [], this.isWidget) : null
     const current = () => this.#canConvertFile(widget)
-      && this.#conversionMethod(widget, this.#declarations(widget, direction)[format])
+      && widgetConversionMethod(widget, widgetDeclarations(widget, direction)[format])
       && (!snapshot || snapshot.isEqualNode(clearEditorArtifacts(cloneInert(widget, true), [], this.isWidget)))
     const signal = this.#fileConversions.signal
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -515,7 +508,7 @@ export class WidgetFeature extends EditorFeature {
     const {element, parent, widget} = selected
     let detached: Element | DocumentFragment
     if(widget) {
-      const method = this.#conversionMethod(element, this.#declarations(element, "convertTo")[target])
+      const method = widgetConversionMethod(element, widgetDeclarations(element, "convertTo")[target])
       const output: unknown = method?.call(element)
       if(!(output instanceof Element || output instanceof DocumentFragment) || output instanceof ShadowRoot
         || output.isConnected || output.parentNode) return false
@@ -523,7 +516,7 @@ export class WidgetFeature extends EditorFeature {
     }
     else {
       const replacement = document.createElement(target)
-      const method = this.#conversionMethod(replacement, this.#declarations(replacement, "convertFrom")[element.localName])
+      const method = widgetConversionMethod(replacement, widgetDeclarations(replacement, "convertFrom")[element.localName])
       if(!method || !this.isWidget(replacement)) return false
       const copy = clearEditorArtifacts(cloneInert(element, true), [], this.isWidget)
       const fragment = copy.ownerDocument!.createDocumentFragment()
@@ -566,22 +559,6 @@ export class WidgetFeature extends EditorFeature {
     return true
   }
 
-  /** Use Lit's property mapping when the editor option leaves its attribute unspecified. */
-  #optionDeclaration(widget: Element, name: string, declaration: unknown) {
-    if(!declaration || typeof declaration !== "object" || Array.isArray(declaration)) return declaration
-    const option = declaration as Declarations
-    if(typeof option.attribute === "string" || option.attribute === false) return declaration
-    let properties: unknown
-    try { properties = (widget.constructor as unknown as {elementProperties?: unknown}).elementProperties }
-    catch { return declaration }
-    const property = properties instanceof Map ? properties.get(name) : undefined
-    if(!property || typeof property !== "object") return declaration
-    const {attribute, state} = property as {attribute?: unknown, state?: unknown}
-    if(typeof attribute === "string" || attribute === false) return {...option, attribute}
-    if(state === true) return {...option, attribute: false}
-    return declaration
-  }
-
   #widgetAt(path: number[], localName: string) {
     let node: Node = document.body
     for(const index of path) {
@@ -600,33 +577,43 @@ export class WidgetFeature extends EditorFeature {
     const widget = [...path].reverse().find(element => document.body.contains(element) && this.isWidget(element))
     if(!widget) return null
     const locale = this.#locale()
-    const options = Object.entries(this.#declarations(widget, "options")).map(([name, rawDeclaration]) => {
-      const declaration = this.#optionDeclaration(widget, name, rawDeclaration)
-      let value: unknown = null
-      try { value = (widget as unknown as Record<string, unknown>)[name] }
-      catch { /* A failing widget getter leaves the field empty. */ }
-      let option = widgetOptionState(name, declaration, value, locale)
-      // Legacy dynamicOptions use attribute names (e.g. detailed-feedback)
-      // instead of their corresponding camel-cased property names.
-      if(value === undefined && option.attribute !== null) {
-        const attribute = widget.getAttribute(option.attribute)
-        const parsed = option.type === "boolean" ? attribute !== null
-          : option.type === "number" && attribute !== null ? Number(attribute) : attribute
-        option = widgetOptionState(name, declaration, parsed, locale)
-      }
+    const options = Object.entries(widgetDeclarations(widget, "options")).map(([name, rawDeclaration]) => {
+      const option = readWidgetOption(widget, name, rawDeclaration, locale)
       if(option.type === "reference" && !this.#observingReferences) {
         this.#observingReferences = true
         this.#observer?.observe(document.body, {childList: true, subtree: true, attributes: true, attributeOldValue: true, characterData: true})
       }
       return this.#referenceOption(widget, option)
     })
-    const actions = Object.entries(this.#declarations(widget, "actions"))
+    const effects = widgetEffectDeclarations(widget)
+    const effectState = effects.size ? inspectWidgetEffects(document.body, widget, this.isWidget) : undefined
+    if(effectState) {
+      this.#observingEffects = true
+      const {choices, statuses} = effectState
+      for(const [attribute, effect] of effects) {
+        if(!this.#editableEffectAttribute(attribute)) continue
+        const raw = widget.getAttribute(attribute)
+        const reference = raw && parseWidgetEffectReference(raw)
+        const value = reference ? widgetEffectReference(reference.id, reference.name) : raw
+        const status = statuses?.get(attribute)
+        const previous = this.#rejectedEffects.get(widget)?.get(attribute)
+        const problem = previous && validateWidgetEffect(document.body, widget, attribute, previous, this.isWidget)
+        if(previous && !problem) this.#rejectedEffects.get(widget)?.delete(attribute)
+        const description = problem || status?.message
+        options.push({
+          ...widgetOptionState(attribute, {...effect, type: "select", control: "select", placeholder: "Disconnected"}, value, locale),
+          name: `${effectOptionPrefix}${attribute}`, attribute, choices,
+          ...(description ? {description} : {}),
+        })
+      }
+    }
+    const actions = Object.entries(widgetDeclarations(widget, "actions"))
       .filter(([name]) => typeof (widget as unknown as Record<string, unknown>)[name] === "function")
       .map(([name, declaration]) => ({...widgetActionState(name, declaration, locale),
         ...(this.#runningActions.has(widget) ? {busy: true} : {}),
         ...(this.#actionErrors.get(widget)?.has(name) ? {error: this.#actionErrors.get(widget)!.get(name)} : {}),
       }))
-    const groups = Object.entries(this.#declarations(widget, "optionGroups"))
+    const groups = Object.entries(widgetDeclarations(widget, "optionGroups"))
       .map(([name, declaration]) => widgetOptionGroupState(name, declaration, locale))
     const supported = this.editor.schema.get(widget)?.sharedData === true
     let grouping: WidgetGroupingRules | null = null, error: string | undefined
@@ -651,23 +638,43 @@ export class WidgetFeature extends EditorFeature {
 
   /** Reference choices are projections of the current authored DOM, never an ID allocator. */
   #referenceOption(widget: Element, option: WidgetOptionState): WidgetOptionState {
-    if(option.type !== "reference") return option
-    const ids = new Map<string, number>()
-    document.querySelectorAll("[id]").forEach(element => {
-      if(element.id) ids.set(element.id, (ids.get(element.id) ?? 0) + 1)
+    return widgetReferenceOption(widget, option, document.body, this.isWidget, document)
+  }
+
+  #permissionOption(widget: Element, name: string, raw: unknown) {
+    if(!isDeclarationMap(raw)) return null
+    const declaration = widgetOptionDeclaration(widget, name, {...raw, type: Boolean})
+    const option = widgetOptionState(name, declaration, false, this.#locale())
+    const attribute = option.attribute
+    if(option.hidden || !attribute || !/^[a-z_][a-z0-9_.-]*$/i.test(attribute)
+      || isUnsafeElementAttributeName(attribute) || isEditorOnlyElementAttribute(attribute)
+      || ["style", "class", "is", "id", "contenteditable"].includes(attribute.toLowerCase())) return null
+    return {...option, attribute, value: widget.hasAttribute(attribute)}
+  }
+
+  getPermissions(widget: Element): WidgetPermissionState[] {
+    if(!this.isWidget(widget) || !document.body.contains(widget)) return []
+    return Object.entries(widgetDeclarations(widget, "permissions")).flatMap(([name, raw]) => {
+      const option = this.#permissionOption(widget, name, raw)
+      if(!option) return []
+      const {label, description, disabled, disabledReason, readOnly, value} = option
+      return [{name, label, description, disabled, disabledReason, readOnly, value}]
     })
-    try {
-      const choices = Array.from(document.body.querySelectorAll(option.selector ?? "*")).flatMap(element => {
-        if(!this.isWidget(element) || !element.id || ids.get(element.id) !== 1 || option.excludeSelf !== false && element === widget) return []
-        const title = element.getAttribute("aria-label") || element.getAttribute("title") || element.localName
-        return [{value: element.id, label: `${title} #${element.id}`}]
-      })
-      return {...option, choices, ...(typeof option.value === "string" && option.value && !choices.some(choice => choice.value === option.value)
-        ? {referenceMissing: true} : {})}
+  }
+
+  setPermission(widget: Element, name: string, value: boolean) {
+    if(this.editor.isEditingLocked || this.editor.options.reader || !this.isWidget(widget)
+      || !document.body.contains(widget) || typeof value !== "boolean") return false
+    const declarations = widgetDeclarations(widget, "permissions")
+    const option = Object.hasOwn(declarations, name) ? this.#permissionOption(widget, name, declarations[name]) : null
+    if(!option || option.disabled || option.readOnly) return false
+    if(option.value !== value) {
+      const end = this.editor.doc.beginUndoGroup()
+      try { widget.toggleAttribute(option.attribute, value) }
+      finally { end() }
     }
-    catch {
-      return {...option, choices: [], disabled: true, disabledReason: "Invalid reference selector"}
-    }
+    this.editor.postSelectionPath()
+    return true
   }
 
   #sharingWidget(path: number[], localName: string, widgetId: string) {
@@ -729,11 +736,14 @@ export class WidgetFeature extends EditorFeature {
    * authored DOM. Property-only options are set on the instance. */
   setOption(widget: Element, name: string, value: WidgetOptionValue, notify = true) {
     if(this.editor.isEditingLocked || !document.body.contains(widget) || !this.isWidget(widget)) return false
-    const declarations = this.#declarations(widget, "options")
-    const declaration = this.#optionDeclaration(widget, name, declarations[name])
+    const declarations = widgetDeclarations(widget, "options")
+    if(!Object.hasOwn(declarations, name) && name.startsWith(effectOptionPrefix)) {
+      return this.#setEffect(widget, name.slice(effectOptionPrefix.length), value, notify)
+    }
+    const declaration = widgetOptionDeclaration(widget, name, declarations[name])
     if(!Object.hasOwn(declarations, name)) throw new TypeError(`The widget has no option '${name}'`)
     const option = this.#referenceOption(widget, widgetOptionState(name, declaration, value, this.#locale()))
-    if(option.hidden || option.disabled || option.readOnly || !this.#validOptionValue(option, value, widget)) return false
+    if(option.hidden || option.disabled || option.readOnly || !validWidgetOptionValue(option, value, widget)) return false
     if(option.attribute === null) {
       (widget as unknown as Record<string, unknown>)[name] = value
     }
@@ -754,27 +764,34 @@ export class WidgetFeature extends EditorFeature {
     return true
   }
 
-  #validOptionValue(option: WidgetOptionState, value: WidgetOptionValue, widget: Element): boolean {
-    if(value === null || value === "") return true
-    if(option.type === "boolean") return typeof value === "boolean"
-    if(option.type === "number") return typeof value === "number" && Number.isFinite(value)
-      && (option.control !== "duration" || value >= 0)
-      && (option.min === undefined || value >= option.min) && (option.max === undefined || value <= option.max)
-      && (!option.steps?.length || option.steps.includes(value))
-      && (option.control !== "duration" || !option.step || option.step <= 0
-        || Math.abs((value - (option.min ?? 0)) / option.step - Math.round((value - (option.min ?? 0)) / option.step)) < 1e-7)
-    if(option.type === "reference") return typeof value === "string" && Boolean(option.choices?.some(choice => choice.value === value))
-    if(option.type === "select") {
-      let retained: unknown = null
-      if(option.control === "tree") {
-        try { retained = (widget as unknown as Record<string, unknown>)[option.name] }
-        catch { return false }
+  #editableEffectAttribute(attribute: string) {
+    return !isUnsafeElementAttributeName(attribute) && !isEditorOnlyElementAttribute(attribute)
+      && !["style", "class", "is", "id", "contenteditable"].includes(attribute)
+  }
+
+  #setEffect(widget: Element, attribute: string, value: WidgetOptionValue, notify: boolean) {
+    if(this.editor.options.reader || !this.editor.allows("edit", widget) || !this.#editableEffectAttribute(attribute)
+      || !widgetEffectDeclarations(widget).has(attribute) || value !== null && typeof value !== "string") return false
+    if(value) {
+      const problem = validateWidgetEffect(document.body, widget, attribute, value, this.isWidget)
+      if(problem) {
+        let rejected = this.#rejectedEffects.get(widget)
+        if(!rejected) this.#rejectedEffects.set(widget, rejected = new Map())
+        rejected.set(attribute, value)
+        this.editor.postSelectionPath()
+        return false
       }
-      const valid = (item: unknown) => typeof item === "string" && (option.control === "tree"
-        ? Boolean(option.choices?.some(choice => choice.value === item)) || Array.isArray(retained) && retained.includes(item)
-        : !option.choices?.length || option.choices.some(choice => choice.value === item))
-      return option.multiple ? Array.isArray(value) && value.every(valid) : valid(value)
     }
+    this.#rejectedEffects.get(widget)?.delete(attribute)
+    if((value || null) !== widget.getAttribute(attribute)) {
+      const end = this.editor.doc.beginUndoGroup()
+      try {
+        if(value) widget.setAttribute(attribute, value)
+        else widget.removeAttribute(attribute)
+      }
+      finally { end() }
+    }
+    if(notify) this.editor.postSelectionPath()
     return true
   }
 
@@ -782,7 +799,7 @@ export class WidgetFeature extends EditorFeature {
    * keep the step open until they settle or time out. */
   async runAction(widget: Element, name: string, confirmed = false, files?: File[]) {
     if(this.editor.isEditingLocked || !document.body.contains(widget) || !this.isWidget(widget)) return false
-    const declarations = this.#declarations(widget, "actions")
+    const declarations = widgetDeclarations(widget, "actions")
     const declaration = declarations[name]
     if(!Object.hasOwn(declarations, name)) throw new TypeError(`The widget has no action '${name}'`)
     const method = (widget as unknown as Record<string, unknown>)[name]
@@ -841,7 +858,7 @@ export class WidgetFeature extends EditorFeature {
     const pending = {widget, cancel}
     const change = () => {
       const files = Array.from(picker.files ?? [])
-      const current = widgetActionState(name, this.#declarations(widget, "actions")[name], this.#locale())
+      const current = widgetActionState(name, widgetDeclarations(widget, "actions")[name], this.#locale())
       const valid = this.#pendingFileAction === pending && this.isEnabled && document.body.contains(widget)
         && widget.id === id && (widget as unknown as Record<string, unknown>)[name] === method
         && JSON.stringify(current.input) === JSON.stringify(action.input) && current.confirm === action.confirm
@@ -902,6 +919,10 @@ export class WidgetFeature extends EditorFeature {
     this.#observer = new Observer(this.#handleMutations)
     this.#observer.observe(document.body, {childList: true, subtree: true, attributeOldValue: true, attributeFilter: ["contenteditable"]})
     this.refresh()
+    this.#effects = mountWidgetEffects(document.body, {
+      supports: this.isWidget,
+      onChange: () => { if(this.#observingEffects) this.#queueOptionsRefresh() },
+    })
   }
 
   disable() {
@@ -911,6 +932,9 @@ export class WidgetFeature extends EditorFeature {
     this.#observer?.disconnect()
     this.#observer = null
     this.#observingReferences = false
+    this.#observingEffects = false
+    this.#effects?.destroy()
+    this.#effects = undefined
     this.#pendingFileAction?.cancel()
     document.body.querySelectorAll('[contenteditable=""]').forEach(element => this.#clearEditable(element))
     super.disable()

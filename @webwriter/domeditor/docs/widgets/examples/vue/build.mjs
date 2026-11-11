@@ -5,8 +5,10 @@ import {build} from "esbuild-wasm"
 import {compileVue} from "./compile.mjs"
 
 const directory = fileURLToPath(new URL(".", import.meta.url))
-const entryPoints = Object.fromEntries(["hello", "quiz"].flatMap(name => {
-  const source = name === "hello" ? "hello.js" : "ww-quiz.js"
+const target = process.argv[2]
+const names = target ? [target] : ["hello", "quiz"]
+const entryPoints = Object.fromEntries(names.flatMap(name => {
+  const source = name === "hello" ? "hello.js" : `ww-${name}.js`
   return existsSync(new URL(source, import.meta.url)) ? [[`ww-${name}`, source]] : []
 }))
 

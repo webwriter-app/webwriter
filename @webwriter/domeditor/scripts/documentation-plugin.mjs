@@ -1,10 +1,14 @@
 import {readFile, readdir} from "node:fs/promises"
 import {isAbsolute, relative, resolve} from "node:path"
 import {Marked, Renderer} from "marked"
+import {parseFragment, serializeOuter} from "parse5"
 import {createHighlighter} from "shiki"
 import {renderSiteHeader, renderSiteFooter} from "./site-header.mjs"
 
 const home = "/docs/widgets/index.md"
+const guideIndex = "/docs/widgets/guides/index.md"
+const guideSprite = "/docs/images/widgets/capability-icons.svg"
+const guideIconId = name => `widget-guide-icon-${name}`
 const libraries = [
   {value: "vanilla", label: "JS", icon: "javascript"},
   {value: "lit", label: "Lit", icon: "lit"},
@@ -15,6 +19,7 @@ const libraries = [
 ]
 const sourceExtensions = {react: "jsx", vue: "vue", angular: "ts", svelte: "svelte"}
 const sourcePattern = /\.(?:js|mjs|jsx|ts|tsx|vue|svelte)$/
+const exampleFallback = "The examples on this page currently use JS."
 const escapeHTML = value => String(value).replace(/[&<>"']/g, character => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 })[character])
@@ -26,7 +31,7 @@ function markdown(source, library = "lit") {
     .replace(/<!-- library:([\w-]+) -->\r?\n([\s\S]*?)<!-- \/library -->/g,
       (_match, variant, content) => variant === selected ? content : "")
   return variants.length && selected !== library
-    ? result.replace(/^(# .+)$/m, "$1\n\nThe examples on this page currently use JS.")
+    ? result.replace(/^(# .+)$/m, `$1\n\n${exampleFallback}`)
     : result
 }
 
@@ -36,7 +41,7 @@ function libraryURL(href, path, library, staticBuild = false) {
     && !["/README.md", "/packages.md"].includes(url.pathname)) return href
   const examples = "/docs/widgets/examples/"
   if(library !== "vanilla" && url.pathname.startsWith(examples)
-    && /^(?:0[1-6]-[\w-]+\.js|hello\.js|ww-quiz\.js|package\.json|quiz-tests\.js|quiz\.html)$/.test(url.pathname.slice(examples.length))) {
+    && /^(?:0[1-6]-[\w-]+\.js|hello\.js|ww-(?:quiz|ghost-disco)\.js|(?:ghost-disco-)?package\.json|(?:quiz|ghost-disco)(?:-tests\.js|\.html))$/.test(url.pathname.slice(examples.length))) {
     const name = url.pathname.slice(examples.length)
     url.pathname = `${examples}${library}/${sourceExtensions[library] && /^(?:0[1-6]-|hello\.js)/.test(name) ? name.replace(/\.js$/, `.${sourceExtensions[library]}`) : name}`
   }
@@ -72,8 +77,9 @@ async function embedExamples(source, {root, path, library, highlighter}) {
   return source.replace(pattern, () => examples[index++])
 }
 
-function renderMarkdown(source, {path, library, highlighter, staticBuild}) {
+function renderMarkdown(source, {path, library, highlighter, staticBuild, guideIcons, guide}) {
   const headings = new Map()
+  let omitTableHeader = path === home
   const parser = new Marked({renderer: {
     code({text, lang}) {
       const language = lang?.split(/\s/)[0] || "text"
@@ -88,9 +94,20 @@ function renderMarkdown(source, {path, library, highlighter, staticBuild}) {
       return staticBuild && new URL(href, "http://docs.local").searchParams.get("download") === "1"
         ? html.replace("<a ", '<a download ') : html
     },
+    table(token) {
+      const html = Renderer.prototype.table.call(this, token)
+      if(!omitTableHeader) return html
+      omitTableHeader = false
+      return html.replace(/<thead>[\s\S]*?<\/thead>\n/, "")
+    },
     html({text}) {
-      return text.replace(/\b(src|href)=(["'])(.*?)\2/g, (_match, attribute, quote, href) =>
-        `${attribute}=${quote}${escapeHTML(libraryURL(href.replaceAll("&amp;", "&"), path, library, staticBuild))}${quote}`)
+      return text.replace(/\b(src|href)=(["'])(.*?)\2/g, (_match, attribute, quote, href) => {
+        const url = libraryURL(href.replaceAll("&amp;", "&"), path, library, staticBuild)
+        const [asset, icon] = url.split("#")
+        const target = attribute === "href" && asset.startsWith(`${guideSprite}?`) && guideIcons.ids.has(icon)
+          ? `#${guideIconId(icon)}` : url
+        return `${attribute}=${quote}${escapeHTML(target)}${quote}`
+      })
     },
     heading({text, tokens, depth}) {
       const slug = text.toLowerCase().replace(/<[^>]*>/g, "")
@@ -101,7 +118,26 @@ function renderMarkdown(source, {path, library, highlighter, staticBuild}) {
     },
   }})
   // Repository Markdown is trusted; keep its authored HTML, including example iframes.
-  return parser.parse(source)
+  const tokens = parser.lexer(source)
+  if(guide) {
+    const [heading, ...blocks] = tokens.filter(token => token.type !== "space")
+    if(heading?.type === "heading" && heading.depth === 1) {
+      let lead
+      for(const block of blocks) {
+        if(block.type !== "paragraph") break
+        if(block.tokens.length === 1 && block.tokens[0].type === "image") {
+          if(!lead) break
+          const title = parser.parser([heading])
+          const text = parser.parser([lead])
+          const illustration = parser.parser([block])
+          const body = parser.parser(tokens.filter(token => token !== heading && token !== lead && token !== block))
+          return {intro: {title, text, illustration}, body}
+        }
+        if(!lead && block.text !== exampleFallback) lead = block
+      }
+    }
+  }
+  return {body: parser.parser(tokens)}
 }
 
 function pageLinks(source, path) {
@@ -117,34 +153,94 @@ function pageLinks(source, path) {
   return [...links.values()]
 }
 
-async function navigation(root) {
-  const read = async path => markdown(await readFile(resolve(root, `.${path}`), "utf8"))
-  const sections = pageLinks(await read(home), home)
-  return Promise.all(sections.map(async section => ({
-    ...section,
-    pages: section.path.endsWith("/index.md")
-      ? pageLinks(await read(section.path), section.path).filter(page =>
-        page.path !== section.path && page.path.startsWith(section.path.slice(0, -"index.md".length)))
-      : [],
-  })))
+function capabilityGuideGroups(source) {
+  const map = new Marked().lexer(source)
+    .filter(token => token.type === "html")
+    .flatMap(token => parseFragment(token.text).childNodes)
+    .find(node => node.tagName === "nav" && node.attrs.some(attr =>
+      attr.name === "class" && attr.value.split(/\s+/).includes("widget-capabilities")))
+  if(!map) return []
+  const descendants = (node, tag) => (node.childNodes ?? []).flatMap(child =>
+    child.tagName === tag ? [child] : descendants(child, tag))
+  return descendants(map, "ul").map(list => descendants(list, "a").flatMap(anchor => {
+    const href = anchor.attrs.find(attr => attr.name === "href")?.value
+    if(!href) return []
+    const url = new URL(href, `http://docs.local${home}`)
+    return url.origin === "http://docs.local" ? [url.pathname] : []
+  }))
 }
 
-function renderPage({source, path, sections, library, highlighter, missing = false, staticBuild = false,
+async function navigation(root) {
+  const read = async path => markdown(await readFile(resolve(root, `.${path}`), "utf8"))
+  const overview = await read(home)
+  const sections = pageLinks(overview, home)
+  const guideGroups = capabilityGuideGroups(overview)
+  return Promise.all(sections.map(async section => {
+    const pages = section.path.endsWith("/index.md")
+      ? pageLinks(await read(section.path), section.path).filter(page =>
+        page.path !== section.path && page.path.startsWith(section.path.slice(0, -"index.md".length)))
+      : []
+    if(section.path !== guideIndex || !guideGroups.length) return {...section, groups: [pages]}
+    const remaining = new Map(pages.map(page => [page.path, page]))
+    const groups = guideGroups.map(paths => paths.flatMap(path => {
+      const page = remaining.get(path)
+      if(!page) return []
+      remaining.delete(path)
+      return [page]
+    })).filter(group => group.length)
+    if(remaining.size) groups.push([...remaining.values()])
+    return {...section, groups}
+  }))
+}
+
+async function readGuideIcons(root) {
+  let source
+  try { source = await readFile(resolve(root, `.${guideSprite}`), "utf8") }
+  catch(error) {
+    if(error.code !== "ENOENT") throw error
+    return {markup: "", ids: new Set()}
+  }
+  const svg = parseFragment(source).childNodes.find(node => node.tagName === "svg")
+  const ids = new Set()
+  if(!svg) return {markup: "", ids}
+  for(const symbol of svg.childNodes.filter(node => node.tagName === "symbol")) {
+    const id = symbol.attrs.find(attr => attr.name === "id")
+    if(!id) continue
+    ids.add(id.value)
+    id.value = guideIconId(id.value)
+  }
+  svg.attrs.push({name: "width", value: "0"}, {name: "height", value: "0"},
+    {name: "aria-hidden", value: "true"}, {name: "style", value: "position:absolute"})
+  return {markup: serializeOuter(svg), ids}
+}
+
+function renderPage({source, path, sections, library, highlighter, guideIcons, missing = false, staticBuild = false,
   siteEntryURL = "/src/site-entry.ts", documentationURL = "/dev-server/documentation.js"}) {
   const title = new Marked().lexer(source).find(token => token.type === "heading" && token.depth === 1)?.text ?? "Documentation"
-  const pages = [{path: home, title: "Widgets"}, ...sections.flatMap(section => [section, ...section.pages])]
+  const pages = [{path: home, title: "Widgets"}, ...sections.flatMap(section => [section, ...section.groups.flat()])]
   const index = pages.findIndex(page => page.path === path)
   const section = sections.find(section => section.path.endsWith("/index.md")
     && path.startsWith(section.path.slice(0, -"index.md".length)))
   const href = value => escapeHTML(libraryURL(value, path, library, staticBuild))
-  const link = page => `<a href="${href(page.path)}"${page.path === path ? ' aria-current="page"' : ""}>${escapeHTML(page.title)}</a>`
+  const link = page => {
+    const guide = /^\/docs\/widgets\/guides\/([a-z\d-]+)\.md$/.exec(page.path)?.[1]
+    const icon = guideIcons.ids.has(guide)
+      ? `<svg aria-hidden="true" width="16" height="16"><use href="#${guideIconId(guide)}"></use></svg>`
+      : ""
+    return `<a href="${href(page.path)}"${icon ? ' class="guide-nav-link"' : ""}${page.path === path ? ' aria-current="page"' : ""}>${icon}${escapeHTML(page.title)}</a>`
+  }
   const menu = `<ul><li>${link({path: home, title: "Overview"})}</li>${sections.map(section =>
     section.path.endsWith("/index.md")
-      ? `<li class="nav-section">${link(section)}<ul>${section.pages.map(page => `<li>${link(page)}</li>`).join("")}</ul></li>`
+      ? `<li class="nav-section">${link(section)}${section.groups.map(group => `<ul>${group.map(page => `<li>${link(page)}</li>`).join("")}</ul>`).join("")}</li>`
       : `<li>${link(section)}</li>`,
   ).join("")}</ul>`
   const adjacent = (page, direction) => page ? `<a class="${direction.toLowerCase()}" href="${href(page.path)}"><span>${direction}</span>${escapeHTML(page.title)}</a>` : "<span></span>"
-  const breadcrumb = section && section.path !== path ? [section] : []
+  const breadcrumb = section && section.path !== path
+    ? `<nav class="breadcrumb" aria-label="Breadcrumb">${link(section)}</nav>` : ""
+  const guide = section?.path === guideIndex && path !== guideIndex && !missing
+  const {intro, body} = renderMarkdown(source, {path, library, highlighter, staticBuild, guideIcons, guide})
+  const guideIntro = intro
+    ? `<header class="guide-intro">${breadcrumb}${intro.title}<div class="guide-intro-content">${intro.text}${intro.illustration}</div></header>` : ""
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -154,10 +250,23 @@ function renderPage({source, path, sections, library, highlighter, missing = fal
     <link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="${staticBuild ? "/assets/docs" : "/dev-server"}/documentation.css">
     <link rel="stylesheet" href="${staticBuild ? "/assets/site-header.css" : "/src/site-header.css"}">
+    <script id="docs-site-entry" type="module" blocking="render" src="${escapeHTML(siteEntryURL)}"></script>
+    <script>
+      (() => {
+        const entry = document.getElementById("docs-site-entry")
+        if ("blocking" in entry) return
+        // In older browsers, reveal the shared chrome after its locale is ready.
+        const root = document.documentElement
+        root.classList.add("docs-localizing")
+        const reveal = () => root.classList.remove("docs-localizing")
+        entry.addEventListener("load", reveal, {once: true})
+        entry.addEventListener("error", reveal, {once: true})
+      })()
+    </script>
     <script type="module" src="${escapeHTML(documentationURL)}"></script>
-    <script type="module" src="${escapeHTML(siteEntryURL)}"></script>
   </head>
   <body class="site-layout">
+    ${guideIcons.markup}
     <a class="skip-link" href="#content">Skip to content</a>
     ${renderSiteHeader("/docs/")}
     <div class="docs-layout site-content">
@@ -174,8 +283,8 @@ function renderPage({source, path, sections, library, highlighter, missing = fal
       </aside>
       <div class="page" tabindex="0" role="region" aria-label="Documentation content">
         <details class="mobile-navigation"><summary>Browse documentation</summary><nav aria-label="Mobile documentation">${menu}</nav></details>
-        ${breadcrumb.length ? `<nav class="breadcrumb" aria-label="Breadcrumb">${breadcrumb.map(link).join('<span aria-hidden="true">/</span>')}</nav>` : ""}
-        <main id="content" tabindex="-1"><article>${renderMarkdown(source, {path, library, highlighter, staticBuild})}</article></main>
+        ${intro ? "" : breadcrumb}
+        <main id="content" tabindex="-1"><article${guide ? ' class="widget-guide"' : ""}>${guideIntro}${body}</article></main>
         ${!missing && index !== -1 ? `<nav class="page-navigation" aria-label="Page navigation">${adjacent(pages[index - 1], "Previous")}${adjacent(pages[index + 1], "Next")}</nav>` : ""}
         ${renderSiteFooter()}
       </div>
@@ -289,9 +398,9 @@ export function documentationPlugin() {
             source = "# Page not found\n\nChoose a page from the navigation or return to the [widget documentation](/docs/)."
             missing = true
           }
-          const codeHighlighter = await highlighter()
+          const [codeHighlighter, sections, guideIcons] = await Promise.all([highlighter(), navigation(root), readGuideIcons(root)])
           source = await embedExamples(source, {root, path, library, highlighter: codeHighlighter})
-          const html = renderPage({source, path, sections: await navigation(root), library, highlighter: codeHighlighter, missing})
+          const html = renderPage({source, path, sections, library, highlighter: codeHighlighter, guideIcons, missing})
           const body = await server.transformIndexHtml(url.pathname, html)
           response.writeHead(missing ? 404 : 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"})
           response.end(request.method === "HEAD" ? undefined : body)
@@ -308,16 +417,16 @@ export function documentationPlugin() {
       }
       const siteEntryURL = entryURL("site-entry")
       const documentationURL = entryURL("documentation")
-      const files = await filesIn(resolve(root, "docs"))
-      const sections = await navigation(root)
-      const codeHighlighter = await highlighter()
+      const [files, sections, codeHighlighter, guideIcons] = await Promise.all([
+        filesIn(resolve(root, "docs")), navigation(root), highlighter(), readGuideIcons(root),
+      ])
       const emit = (fileName, source) => this.emitFile({type: "asset", fileName, source})
       for(const file of [...files.filter(file => file.endsWith(".md")), resolve(root, "README.md"), resolve(root, "packages.md")]) {
         const path = `/${relative(root, file)}`
         const content = await readFile(file, "utf8")
         for(const {value: library} of libraries) {
           const source = await embedExamples(markdown(content, library), {root, path, library, highlighter: codeHighlighter})
-          const html = renderPage({source, path, sections, library, highlighter: codeHighlighter, staticBuild: true,
+          const html = renderPage({source, path, sections, library, highlighter: codeHighlighter, guideIcons, staticBuild: true,
             siteEntryURL, documentationURL})
           const output = new URL(libraryURL(path, path, library, true), "http://docs.local").pathname.slice(1)
           emit(output, html)

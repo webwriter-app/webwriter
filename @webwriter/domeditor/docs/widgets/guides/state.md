@@ -4,21 +4,21 @@ WebWriter offers several ways to organize your widget's state.
 
 ![A widget linked to properties, attributes, content, and data](../../images/widgets/state.svg)
 
-Use properties for temporary state. Use attributes for settings that authors should save, share, and undo.
+Use properties for temporary state and attributes for settings that authors should save, share, and undo. For example, a metronome can save its selected sound as an attribute and keep the visibility of its sound details in memory.
 
 <!-- library:vanilla -->
 ```js
-get answer() { return this.getAttribute("answer") ?? "false" }
-set answer(value) { this.setAttribute("answer", value) }
+get sound() { return this.getAttribute("sound") ?? "woodblock" }
+set sound(value) { this.setAttribute("sound", value) }
 ```
 
 Observe the attribute to update your display when a collaborator or undo changes it:
 
 ```js
-static observedAttributes = ["answer"]
+static observedAttributes = ["sound"]
 
-attributeChangedCallback() {
-  this.update()
+attributeChangedCallback(name, previous, current) {
+  if(previous !== current) this.update()
 }
 ```
 <!-- /library -->
@@ -26,11 +26,11 @@ attributeChangedCallback() {
 In your `LitElementWw` class, declare a reactive property and reflect its changes to an attribute:
 
 ```js
-static properties = {answer: {type: String, reflect: true}}
+static properties = {sound: {type: String, reflect: true}}
 
 constructor() {
   super()
-  this.answer = "false"
+  this.sound = "woodblock"
 }
 ```
 
@@ -38,71 +38,108 @@ Lit reads later attribute changes, including remote changes and undo, and update
 <!-- /library -->
 
 <!-- library:react -->
-Keep saved settings on the custom-element host. Its bridge reads the current `answer` attribute and passes it to the React component whenever the attribute changes, including collaboration and undo. Use `useState` for the temporary participant choice:
+Keep saved settings on the custom-element host. Its bridge reads the current `sound` attribute and passes it to the React component whenever the attribute changes, including collaboration and undo. Use `useState` for the visibility of the sound details:
 
 ```jsx
-function Quiz({answer, editing}) {
-  const [choice, setChoice] = useState("")
-  return <button disabled={editing} onClick={() => setChoice("false")}>False</button>
+function Metronome({sound = "woodblock"}) {
+  const [showDetails, setShowDetails] = useState(false)
+  return <>
+    <button aria-expanded={showDetails} onClick={() => setShowDetails(!showDetails)}>
+      Sound details
+    </button>
+    {showDetails && <p>Selected sound: {sound}</p>}
+  </>
 }
 ```
 
-The collaboration step reads persistent choices from the current data block and subscribes to the bridge with a hook. See [the state step](../tutorial/04-state.md) for the complete example.
+See the [tutorial’s state step](../tutorial/04-state.md) for a complete React host bridge.
 <!-- /library -->
 
 <!-- library:vue -->
-Keep saved settings on the custom-element host. The registration bridge reads its `answer` attribute and notifies the single-file component when it changes, including collaboration and undo. Use Vue refs for temporary state and computed values for feedback:
+Keep saved settings on the custom-element host. The registration bridge reads its `sound` attribute and notifies the single-file component when it changes, including collaboration and undo. Use a Vue ref for the visibility of the sound details:
 
 ```vue
 <script setup>
-import {computed, ref} from "vue"
-const choice = ref("")
-const answer = ref("false") // refreshed from the host by the complete bridge
-const message = computed(() => choice.value ? (choice.value === answer.value ? "Correct!" : "Try again.") : "")
+import {ref} from "vue"
+defineProps({sound: {type: String, default: "woodblock"}})
+const showDetails = ref(false)
 </script>
 <template>
-  <button @click="choice = 'false'">False</button>
-  <output aria-live="polite">{{message}}</output>
+  <button :aria-expanded="showDetails" @click="showDetails = !showDetails">Sound details</button>
+  <p v-if="showDetails">Selected sound: {{ sound }}</p>
 </template>
 ```
 
-The collaboration step reads persistent choices from the current data block. See [the state step](../tutorial/04-state.md) for the complete component and registration module.
+See the [tutorial’s state step](../tutorial/04-state.md) for a complete Vue component and registration module.
 <!-- /library -->
 
 <!-- library:angular -->
-Declare the saved setting as a decorated Angular input. Angular Elements maps the host's `answer` attribute to that input, so later attribute changes from collaboration or undo update the component. Keep the temporary choice on the component:
+Declare the saved setting as a decorated Angular input. Angular Elements maps the host's `sound` attribute to that input, so later attribute changes from collaboration or undo update the component. Keep the visibility of the sound details on the component:
 
 ```ts
-@Input() answer = "false"
-choice = ""
+@Input() sound = "woodblock"
+showDetails = false
 
-choose(value: string) {
-  if(!this.editing) this.choice = value
+toggleDetails() {
+  this.showDetails = !this.showDetails
 }
 ```
 
-The collaboration step reads persistent choices from the current data block. See [the state step](../tutorial/04-state.md) for the complete component and native host bridge.
+See the [tutorial’s state step](../tutorial/04-state.md) for a complete Angular component and native host bridge.
 <!-- /library -->
 
 <!-- library:svelte -->
-Declare the saved setting as a reflected custom-element prop. Use local Svelte state for the temporary choice:
+Declare the saved setting as a reflected custom-element prop. Use local Svelte state for the visibility of the sound details:
 
 ```svelte
 <svelte:options customElement={{
-  tag: "ww-quiz",
-  props: {answer: {type: "String", reflect: true}},
+  tag: "ww-metronome",
+  props: {sound: {type: "String", reflect: true}},
 }} />
 <script>
-  let {answer = "false"} = $props()
-  let choice = $state("")
+  let {sound = "woodblock"} = $props()
+  let showDetails = $state(false)
 </script>
 ```
 
-Later attribute changes update the component prop, including remote changes and undo. See [the state step](../tutorial/04-state.md) for the full example.
+Later attribute changes update the component prop, including remote changes and undo. See the [tutorial’s state step](../tutorial/04-state.md) for a complete Svelte example.
 <!-- /library -->
 
-A property that only reads an attribute does not save later property changes.
+Route changes to saved settings through the host attribute, whether the author changes them in your widget or in the editor.
 
-Keep authored text in light-DOM children. Use a [scoped data block](sharing.md) for persistent participant answers. Normal exports retain the block's authored defaults rather than participant answers.
+Keep authored text in light-DOM children. Use a [scoped data block](sharing.md) for persistent participant data. Normal exports retain the block's authored defaults.
 
 To check settings, save and reopen the document. The widget should restore its settings from the DOM without relying on an earlier instance.
+
+## Options, actions, and undo
+
+An editor option is a convenient way to edit an authored setting; an action is a named operation the editor can invoke. Both belong in static metadata on the registered custom-element class. Keep the setting in an attribute so the editor can observe and record it. A property getter can provide a default without writing an attribute until the author changes the value.
+
+This metronome uses `tempo` as its authored setting. Its play/pause state and beat counter are temporary properties. The editor option writes the `tempo` attribute, and the action resets that same attribute. Undo and redo therefore work through the ordinary DOM attribute change.
+
+```js
+static options = {
+  tempo: {
+    type: "number",
+    label: {_: "Tempo"},
+    min: 40,
+    max: 240,
+    step: 1,
+  },
+}
+
+static actions = {
+  resetTempo: {label: {_: "Reset tempo"}},
+}
+
+get tempo() { return Number(this.getAttribute("tempo") ?? 120) }
+set tempo(value) { this.setAttribute("tempo", String(value)) }
+
+resetTempo() { this.tempo = 120 }
+```
+
+The widget updates its beat interval when `tempo` changes, including after an editor option change, undo, redo, or collaboration update. Start the metronome, change **Tempo** in its drawer, then select **Reset tempo**. The preview uses the standalone drawer with the same option and action declarations WebWriter reads in the editor.
+
+<iframe title="Metronome with tempo option and reset action" src="../examples/preview.html?guide=state" width="100%" height="260" loading="lazy"></iframe>
+
+[Open the metronome preview](../examples/preview.html?guide=state) · [View the example source](../examples/guide-state.js) · [Options and actions reference](../reference/options-actions.md)

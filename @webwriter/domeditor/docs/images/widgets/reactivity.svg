@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">A color picker updates a linked swatch</title>
+  <desc id="desc">An arrow connects the selected blue chip in a color picker to a blue swatch in another widget.</desc>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="38" y="65" width="106" height="94" rx="5"/>
+    <rect x="218" y="65" width="104" height="94" rx="5"/>
+    <path d="M55 86h54M235 86h54"/>
+    <rect x="55" y="103" width="72" height="34" rx="3" fill="#4263a8"/>
+    <rect x="235" y="103" width="70" height="34" rx="3" fill="#4263a8"/>
+  </g>
+  <path d="M156 120h47m-9-9 9 9-9 9" fill="none" stroke="#29a3dd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

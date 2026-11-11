@@ -9,7 +9,7 @@ import {emptyProofreadingState, emptyVersionHistoryState} from "../editor-bridge
 import {emptyDocumentHeadState} from "../document-head"
 import {formatShortcut} from "../app-settings"
 import type {DistributionConfig, DistributionItem} from "../distribution.js"
-import type {DistributionSelectionState} from "./distribution-controls"
+import type {DistributionControls, DistributionSelectionState} from "./distribution-controls"
 
 it("shows recoverable document actions from Review and keeps close separate from discard", async () => {
   const toolbox = await mountToolbox()
@@ -885,6 +885,48 @@ describe("toolbox", () => {
     expect(controls[2].disabled).toBe(true)
     expect(toolbox.shadowRoot!.querySelector("element-style-editor, .widget-sharing, .specialized-widget-primary")).toBeNull()
     expect(toolbox.activeTool).toBe("Distribute")
+  })
+
+  it("places widget permissions under element Edit and keeps them out of the widget drawer", async () => {
+    const toolbox = await mountToolbox()
+    const local: DistributionConfig = {version: 1, scope: "individual", permissions: [], add: [], items: []}
+    toolbox.elementSelected = true
+    toolbox.elementAttributes = {path: [0], localName: "my-widget", namespaceURI: "http://www.w3.org/1999/xhtml", name: "My widget", attributes: {}}
+    toolbox.widgetOptions = {path: [0], localName: "my-widget", options: [
+      {name: "title", label: "Activity title", attribute: "activity-title", type: "string", value: ""},
+    ], actions: []}
+    toolbox.distribution = {identity: "widget", local, effective: local, widgetPermissions: [
+      {name: "allowRetry", label: "Allow retry", value: false},
+      {name: "allowHints", label: "Allow hints", value: true, disabled: true},
+    ]}
+    toolbox.distributionGeneral = toolbox.distribution
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.textContent).toContain("Activity title")
+    expect(toolbox.shadowRoot!.textContent).not.toContain("Allow retry")
+
+    toolbox.selectTool("Distribute")
+    await toolbox.updateComplete
+    const general = toolbox.shadowRoot!.querySelector<DistributionControls>("distribution-controls[general]")!
+    const controls = toolbox.shadowRoot!.querySelector<DistributionControls>('distribution-controls[view="permissions"]')!
+    await Promise.all([general.updateComplete, controls.updateComplete])
+    expect(general.shadowRoot!.textContent).not.toContain("Allow retry")
+    const group = controls.shadowRoot!.querySelector('[aria-label="Widget editing permissions"]')!
+    expect(group.previousElementSibling?.getAttribute("data-permission")).toBe("edit")
+    expect(group.nextElementSibling?.getAttribute("data-permission")).toBe("move")
+    const [retry, hints] = group.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
+    expect(retry.disabled).toBe(false)
+    expect(hints.checked).toBe(true)
+    expect(hints.disabled).toBe(true)
+    const change = vi.fn()
+    toolbox.addEventListener("widget-permission-change", change)
+    retry.click()
+    expect(change.mock.calls[0][0].detail).toEqual({target: "widget", name: "allowRetry", value: true})
+
+    toolbox.distribution = {...toolbox.distribution, local: {...local, view: false}}
+    await toolbox.updateComplete
+    await controls.updateComplete
+    expect(retry.disabled).toBe(true)
   })
 
   it.each([

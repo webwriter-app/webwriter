@@ -21,6 +21,7 @@ const entries = {
   canvas: {globalName: "canvasReader", contents: 'export {mountCanvasReader as mount} from "./src/canvas-viewer.js"'},
   imageMap: {file: "./src/image-map-reader-runtime.ts"},
   scopedRegistry: {file: "./src/scoped-custom-element-registry.js"},
+  widgetEffects: {globalName: "widgetEffectsRuntime", contents: 'export {mountWidgetEffects as mount} from "./src/widget-effects.js"'},
 }
 
 /** Embed self-contained scripts in exported HTML without resolving imports there. */

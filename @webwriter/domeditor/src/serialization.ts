@@ -25,7 +25,7 @@ const legacyScopedRegistryPolyfillURL = "https://cdn.jsdelivr.net/npm/@webcompon
 const serializedReaderScriptIds = [
   "webwriter-figure-layout", "webwriter-attribution-reader", "webwriter-image-map-popovers",
   "webwriter-canvas-viewer", "webwriter-document-viewer", "webwriter-layout-print",
-  "webwriter-distribution-reader",
+  "webwriter-distribution-reader", "webwriter-widget-effects",
 ]
 
 /** Retire generated export runtimes before rebuilding them or editing a saved document. */
@@ -151,6 +151,14 @@ export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWri
   }
   const tags = new Set<string>()
   visitSerializableElements(documentElement, distribution, element => tags.add(element.localName))
+  if([...tags].some(tag => tag.includes("-")) || permissions.has("insert")) {
+    const script = owner.createElement("script")
+    script.id = "webwriter-widget-effects"
+    script.type = "module"
+    script.textContent = `${readerRuntimeSources.widgetEffects}widgetEffectsRuntime.mount(document.body);`
+      .replace(/<\/script/gi, "<\\/script")
+    head.append(script)
+  }
   documentElement.querySelectorAll('style[id="webwriter-widget-sizing"]').forEach(style => style.remove())
   const widgetSizing = documentWidgetStyleSource(packageWidgetSchemaDefinitions(packages))
   if(widgetSizing) {

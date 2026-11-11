@@ -1,0 +1,27 @@
+{
+  "name": "@example/ghost-disco-lit",
+  "version": "1.0.0",
+  "description": "A tiny dance floor for a ghost.",
+  "keywords": [
+    "webwriter-widget"
+  ],
+  "exports": {
+    "./widgets/ww-ghost-disco.js": "./ww-ghost-disco.js",
+    "./snippets/ghost-disco.html": "./ghost-disco.html",
+    "./tests/ghost-disco.js": "./ghost-disco-tests.js"
+  },
+  "editingConfig": {
+    "./widgets/ww-ghost-disco": {
+      "label": "Ghost Disco",
+      "content": "p+",
+      "sharedData": true
+    },
+    "./snippets/ghost-disco": {
+      "label": "Ghost Disco with invitation"
+    }
+  },
+  "dependencies": {
+    "@webwriter/lit": "^3.0.0",
+    "lit": "^3.3.2"
+  }
+}

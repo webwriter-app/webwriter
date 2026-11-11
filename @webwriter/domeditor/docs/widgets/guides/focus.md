@@ -1,14 +1,14 @@
-# Handle focus, selection and input
+# Handle selection & input
 
 Use native buttons, inputs, and labels in the shadow DOM. They already support keyboard interaction.
 
 ![Tab advances focus between widget controls](../../images/widgets/focus.svg)
 
-If focusing the widget should focus a control, implement `focus()`:
+If focusing the widget should focus a control, implement `focus()`. For example, a soundboard can direct focus to its first sound button:
 
 ```js
 focus(options) {
-  this.shadowRoot.querySelector("button")?.focus(options)
+  this.shadowRoot.querySelector("button[data-sound]")?.focus(options)
 }
 ```
 

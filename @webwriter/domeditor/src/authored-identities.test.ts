@@ -47,4 +47,21 @@ describe("authored element identities", () => {
     expect(copiedShape.id).not.toBe("shape")
     expect(template.content.querySelector("use")?.getAttribute("href")).toBe(`#${copiedShape.id}`)
   })
+
+  it("rebases copied signal links only for declared effect attributes and sources in the fragment", () => {
+    customElements.define("copy-effect-target", class extends HTMLElement {
+      static effects = {effect: {connect() {}}, secondary: {connect() {}}}
+    })
+    document.body.innerHTML = '<copy-effect-source id="sensor:one"></copy-effect-source><copy-effect-source id="outside"></copy-effect-source>'
+    const template = document.createElement("template")
+    template.innerHTML = '<copy-effect-source id="sensor:one"></copy-effect-source>'
+      + '<copy-effect-target effect=" #sensor\\:one[ celsius ] " secondary="#outside[celsius]" title="#sensor\\:one[celsius]"></copy-effect-target>'
+    remapPastedAuthoredIds(template.content, document, undefined, element => element.localName.startsWith("copy-effect-"))
+    const source = template.content.firstElementChild!
+    const target = source.nextElementSibling!
+    expect(source.id).not.toBe("sensor:one")
+    expect(target.getAttribute("effect")).toBe(` #${source.id}[ celsius ] `)
+    expect(target.getAttribute("secondary")).toBe("#outside[celsius]")
+    expect(target.getAttribute("title")).toBe("#sensor\\:one[celsius]")
+  })
 })

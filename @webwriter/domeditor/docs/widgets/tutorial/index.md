@@ -1,6 +1,10 @@
-# Build a quiz widget
+# Build Ghost Disco
 
-This tutorial takes you through implementing a small true-or-false quiz.
+Give a ghost its own dance floor. In this tutorial, the author writes the invitation and chooses the lighting. Readers can make the ghost float or twirl, and two participants can share the same dance floor.
+
+<iframe title="Finished Ghost Disco" src="../examples/preview.html?example=ghost-disco&amp;step=6" width="100%" height="360"></iframe>
+
+[Open Ghost Disco in its own page](../examples/preview.html?example=ghost-disco&step=6)
 
 <!-- library:vanilla -->
 It uses `HTMLElement`, so you need no library or build step.
@@ -27,11 +31,11 @@ Start with the [quick start](../introduction/quick-start.md) if you have not loa
 | Step | Result |
 |---|---|
 | [1. Set up the widget](01-setup.md) | A widget that loads in WebWriter. |
-| [2. Render the interface](02-rendering.md) | A question, answer buttons, and feedback area. |
-| [3. Add editable content](03-content.md) | An authored question displayed through a slot. |
-| [4. Add interactions and state](04-state.md) | Answer checking and a saved correct-answer setting. |
+| [2. Render the interface](02-rendering.md) | A dance floor, a ghost, and two move buttons. |
+| [3. Add editable content](03-content.md) | An invitation authors can edit in the document. |
+| [4. Add interactions and state](04-state.md) | Reader-selected moves and lighting saved with the document. |
 | [5. Expose options and actions](05-options.md) | Author controls in the Widget drawer. |
-| [6. Support collaboration](06-collaboration.md) | Answers in a scoped data block. |
+| [6. Support collaboration](06-collaboration.md) | A dance move that can sync across participants. |
 | [7. Test and publish](07-testing-publishing.md) | A test module and a distributable widget. |
 
 Each step includes an expandable complete script and an embedded preview. Run `npm start` in `domeditor` and browse [the documentation](../index.md) to follow along. Markdown viewers that disable iframes can use the standalone preview links.

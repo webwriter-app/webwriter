@@ -6,11 +6,12 @@
     "access": "public"
   },
   "module": "index.js",
+  "types": "index.ts",
   "browser": "index.js",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
   "scripts": {
-    "prepublishOnly": "esbuild ./index.ts --bundle --target=es2022 --format=esm --outfile=index.js --external:lit",
+    "prepublishOnly": "esbuild ./index.ts --bundle --target=es2022 --format=esm --outfile=index.js --external:lit --external:@lit-labs/signals",
     "test": "node --test index.test.js"
   },
   "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60",
@@ -21,5 +22,8 @@
     "esbuild": "^0.25.4",
     "@happy-dom/global-registrator": "~20.8.9"
   },
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@lit-labs/signals": "0.3.0"
+  }
 }

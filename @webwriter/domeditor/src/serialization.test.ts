@@ -4,6 +4,22 @@ import {appendSerializedAssets, restoreOriginalResourceURLs, serializeDoctype} f
 import type {WebWriterPackage} from "./packages"
 import {parse} from "es-module-lexer"
 
+it.each(["", "ww-canvas", "ww-slides", "ww-board"])("embeds the package-independent widget effects runtime for layout '%s'", async layout => {
+  const root = new DOMParser().parseFromString(`<body class="${layout}"><demo-widget></demo-widget></body>`, "text/html")
+  const body = root.body.innerHTML
+  appendSerializedAssets(root, [])
+  appendSerializedAssets(root, [])
+  const script = root.querySelector<HTMLScriptElement>("#webwriter-widget-effects")!
+  expect(script).toBeTruthy()
+  expect(script.textContent).toContain("widgetEffectsRuntime.mount(document.body)")
+  expect(script.textContent).not.toContain("import {")
+  expect((await parse(script.textContent!))[0]).toHaveLength(0)
+  expect(root.body.innerHTML).toBe(body)
+  root.body.className = "ww-board"
+  appendSerializedAssets(root, [])
+  expect(root.querySelectorAll("#webwriter-widget-effects")).toHaveLength(1)
+})
+
 it.each(["canvas", "board"])("embeds portable %s print support once and removes it after conversion", async mode => {
   const root = new DOMParser().parseFromString(`<body class="ww-${mode}"><p>Content</p></body>`, "text/html")
   const content = root.body.innerHTML

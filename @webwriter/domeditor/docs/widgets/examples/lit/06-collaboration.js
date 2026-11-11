@@ -1,7 +1,7 @@
 import {LitElementWw} from "@webwriter/lit"
 import {html, css} from "lit"
 
-class WwQuiz extends LitElementWw {
+export class WwQuiz extends LitElementWw {
   static formAssociated = true
   static properties = {
     answer: {type: String, reflect: true},
@@ -112,8 +112,8 @@ class WwQuiz extends LitElementWw {
     return html`
       <slot><p>Add a question.</p></slot>
       <div class="controls" ?hidden=${editing}>
-        <button type="button" value="true" ?disabled=${!ready || this.formDisabled} @click=${() => this.choose("true")}>True</button>
-        <button type="button" value="false" ?disabled=${!ready || this.formDisabled} @click=${() => this.choose("false")}>False</button>
+        <button type="button" value="true" aria-pressed=${this.choice === "true"} ?disabled=${!ready || this.formDisabled} @click=${() => this.choose("true")}>True</button>
+        <button type="button" value="false" aria-pressed=${this.choice === "false"} ?disabled=${!ready || this.formDisabled} @click=${() => this.choose("false")}>False</button>
       </div>
       <p class="author-hint" ?hidden=${!editing}>Edit the question and correct answer, then use Preview.</p>
       <output aria-live="polite">${result}</output>`

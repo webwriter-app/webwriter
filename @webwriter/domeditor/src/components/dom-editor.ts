@@ -20,7 +20,7 @@ import {LiveSessionRecovery, listRecoveredSessions, readRecoveredSession, delete
 import {deleteDocumentRecovery, discardedDocumentRecoveryIds, listDocumentRecoveries, markDocumentRecoveryDiscarded, readDocumentRecovery, writeDocumentRecovery, type DocumentRecovery} from "../document-recovery"
 import type {DistributionConfig, DistributionItem} from "../distribution.js"
 import {emptyDistributionConfig} from "../distribution.js"
-import type {DistributionInsertDrop} from "./distribution-controls"
+import type {DistributionInsertDrop, WidgetPermissionChange} from "./distribution-controls"
 import type {FloatInfo} from "./float-info"
 import type {DOMEditor} from "../domeditor"
 import type {LiveWidgetAggregateInput} from "../widget-aggregate"
@@ -7296,6 +7296,18 @@ export class DomEditor extends LitElement {
     void this.writeDistributionConfig(state, event.detail.config)
   }
 
+  private handleWidgetPermissionChange = async (event: CustomEvent<WidgetPermissionChange>) => {
+    const state = this.distributionSelection
+    const detail = event.detail
+    if(!state?.path || this.distributionPending || detail?.target !== state.identity
+      || typeof detail.name !== "string" || typeof detail.value !== "boolean") return
+    const frame = this.frameRevision
+    await this.distributionWriteQueue
+    if(frame !== this.frameRevision || this.distributionSelection?.identity !== state.identity) return
+    const applied = await this.execute({type: "setWidgetPermission", path: state.path, identity: state.identity, name: detail.name, value: detail.value})
+    if(applied === false && frame === this.frameRevision) this.refreshDistributionState(state.identity)
+  }
+
   private writeDistributionConfig(state: DistributionSelection, config: DistributionConfig | null) {
     if(!this.distributionAcceptedStates.has(state.identity)) this.distributionAcceptedStates.set(state.identity, state)
     const revision = ++this.distributionWriteRevision
@@ -9673,6 +9685,7 @@ export class DomEditor extends LitElement {
         .distributionPending=${this.distributionPending}
         .distributionInsertDragActive=${Boolean(this.ribbonDrag)}
         @distribution-config-change=${this.handleDistributionConfigChange}
+        @widget-permission-change=${this.handleWidgetPermissionChange}
         @distribution-insert-drop=${this.handleDistributionInsertDrop}
         .selectionPath=${this.selectionPath}
         .elementSelected=${this.nodeSelection}

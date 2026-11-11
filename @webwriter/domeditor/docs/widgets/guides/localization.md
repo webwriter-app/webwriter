@@ -1,6 +1,6 @@
 # Localize a widget
 
-Widgets should follow the document's language.
+Widgets should follow the document's language. For example, a transcript widget can translate its download button and editor labels.
 
 ![Document language maps to translated widget text](../../images/widgets/localization.svg)
 
@@ -10,7 +10,7 @@ Read the closest `lang` attribute, including one set on the widget itself:
 ```js
 const locale = this.closest("[lang]")?.getAttribute("lang") || "en"
 const language = locale.toLowerCase().split("-")[0]
-const checkLabel = language === "de" ? "Prüfen" : "Check"
+const downloadLabel = language === "de" ? "Herunterladen" : "Download"
 ```
 
 Update labels when the widget's or an ancestor's language changes. Pair any language observer with `disconnect()` when the widget disconnects.
@@ -22,8 +22,8 @@ Update labels when the widget's or an ancestor's language changes. Pair any lang
 ```js
 render() {
   const language = this.lang.toLowerCase().split("-")[0]
-  const checkLabel = language === "de" ? "Prüfen" : "Check"
-  return html`<button>${checkLabel}</button>`
+  const downloadLabel = language === "de" ? "Herunterladen" : "Download"
+  return html`<button>${downloadLabel}</button>`
 }
 ```
 
@@ -34,7 +34,7 @@ Use localized labels for editor options and actions:
 
 ```js
 static options = {
-  answer: {type: String, label: {_: "Answer", de: "Antwort"}},
+  speaker: {type: String, label: {_: "Speaker", de: "Sprechername"}},
 }
 ```
 

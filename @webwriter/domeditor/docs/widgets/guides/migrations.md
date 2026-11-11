@@ -2,14 +2,18 @@
 
 Export `./migrate.js` to update older widget HTML when it is pasted, dropped, or inserted from a snippet. The migration runs in a sandbox, outside the live document.
 
-![The old solution attribute becomes answer while child content is preserved](../../images/widgets/migrations.svg)
+![The old lang-code attribute becomes term-lang while child content is preserved](../../images/widgets/migrations.svg)
+
+For example, a glossary widget can rename the attribute that stores a term’s language while preserving the authored definition.
 
 ```js
 document.addEventListener("migrate", event => {
   const widget = event.target
-  if(widget.localName !== "ww-quiz" || !widget.hasAttribute("solution")) return
-  widget.setAttribute("answer", widget.getAttribute("solution"))
-  widget.removeAttribute("solution")
+  if(widget.localName !== "ww-glossary" || !widget.hasAttribute("lang-code")) return
+  if(!widget.hasAttribute("term-lang")) {
+    widget.setAttribute("term-lang", widget.getAttribute("lang-code"))
+  }
+  widget.removeAttribute("lang-code")
 })
 ```
 

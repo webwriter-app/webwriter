@@ -1,4 +1,14 @@
 import {LitElement, adoptStyles, type PropertyDeclaration} from "lit"
+import {SignalWatcher} from "@lit-labs/signals"
+
+export * from "@lit-labs/signals"
+
+export {WidgetDrawer, type WidgetStorageDestination} from "./widget-drawer"
+export {renderWidgetOptionField, renderWidgetOptions} from "./widget-option-controls"
+export {widgetOptionControlStyles} from "./widget-option-controls.styles"
+export * from "./widget-options"
+export {BrowserWidgetResultStorage, HttpWidgetResultStorage, WidgetResultConflict, widgetResultEndpoint} from "./widget-result-storage"
+export type {WidgetResult, WidgetResultStorage, WidgetResultType, StoredWidgetResult} from "./widget-result-storage"
 
 export type LocalizedText = string | Record<string, string>
 
@@ -28,6 +38,11 @@ interface BaseOptionDeclaration<TypeHint=any> extends PropertyDeclaration<TypeHi
 
 export interface BooleanOptionDeclaration extends BaseOptionDeclaration<BooleanConstructor | "boolean"> {
   control?: "checkbox" | "switch"
+}
+
+/** A boolean widget capability shown under Edit in element distribution permissions. */
+export interface PermissionDeclaration extends Pick<BooleanOptionDeclaration, "label" | "description" | "hidden" | "disabled" | "disabledReason" | "readOnly"> {
+  attribute?: string
 }
 
 interface InputOptionDeclaration<TypeHint=any> extends BaseOptionDeclaration<TypeHint> {
@@ -151,16 +166,18 @@ const registries = new WeakMap<typeof LitElementWw, CustomElementRegistry>()
 
 /** Optional WebWriter conveniences for Lit widgets. The authored DOM remains
  * authoritative; only registry, readiness, and notification state are retained. */
-export class LitElementWw extends LitElement {
+export class LitElementWw extends SignalWatcher(LitElement) {
   static scopedElements: Record<string, CustomElementConstructor> = {}
   static readonly options: Record<string, OptionDeclaration> = {}
   static readonly actions: Record<string, ActionDeclaration> = {}
+  declare static readonly permissions?: Record<string, PermissionDeclaration>
   static readonly optionGroups: Record<string, OptionGroupDeclaration> = {}
   static readonly dataType: string | undefined = undefined
 
   /** Per-instance editor declarations, including empty maps, override static maps. */
   declare readonly options?: Record<string, OptionDeclaration>
   declare readonly actions?: Record<string, ActionDeclaration>
+  declare readonly permissions?: Record<string, PermissionDeclaration>
   declare readonly optionGroups?: Record<string, OptionGroupDeclaration>
   protected localize?: {getLocale: () => string, setLocale: (locale: string) => Promise<void>}
 
@@ -191,6 +208,13 @@ export class LitElementWw extends LitElement {
 
   get editable() { return this.isContentEditable }
 
+  /** Empty opts into local storage. A URL supplies the initial remote destination. */
+  get standalone() { return this.getAttribute("standalone") }
+  set standalone(value: string | null) {
+    if(value === null) this.removeAttribute("standalone")
+    else this.setAttribute("standalone", value)
+  }
+
   /** Includes explicit lang="", which stops inheritance. Inherited values are
    * never reflected onto the widget. Setting null removes an authored value. */
   get lang(): string { return this.closest("[lang]")?.getAttribute("lang") ?? "" }
@@ -200,12 +224,13 @@ export class LitElementWw extends LitElement {
   }
 
   static get observedAttributes() {
-    return [...new Set([...super.observedAttributes, "contenteditable", "lang", "shared", "id"])]
+    return [...new Set([...super.observedAttributes, "contenteditable", "lang", "shared", "id", "standalone"])]
   }
 
   attributeChangedCallback(name: string, oldValue: string | null, value: string | null) {
     super.attributeChangedCallback(name, oldValue, value)
     if(oldValue === value) return
+    if(name === "standalone") this.requestUpdate("standalone", oldValue)
     if(name === "lang" || name === "contenteditable") this.#contextChanged()
     if(name === "shared" || name === "id") {
       this.#readyBlock = null
@@ -326,6 +351,11 @@ export class LitElementWw extends LitElement {
   #dataEvent = (event: Event) => {
     const block = this.#dataContainer()
     if(!this.isConnected || !block || event.target !== block || !this.#scoped(block)) return
+    if(event.type === "datarelease") {
+      this.#block = undefined
+      this.#syncData()
+      return
+    }
     const detail = (event as CustomEvent<{mode?: WidgetDataMode, message?: string}>).detail
     this.#managed = true
     this.#block = block
@@ -378,7 +408,7 @@ export class LitElementWw extends LitElement {
     followers.widgets.add(this)
     this.#language = undefined
     this.#contextChanged()
-    for(const type of ["datapending", "datachange", "dataerror"]) this.addEventListener(type, this.#dataEvent)
+    for(const type of ["datapending", "datachange", "dataerror", "datarelease"]) this.addEventListener(type, this.#dataEvent)
     this.#contentObserver.observe(this, {childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["type", "src", "slot"]})
     this.renderRoot.addEventListener("slotchange", this.#slotChanged)
     this.#block = undefined
@@ -387,7 +417,7 @@ export class LitElementWw extends LitElement {
 
   disconnectedCallback() {
     this.#contentObserver.disconnect()
-    for(const type of ["datapending", "datachange", "dataerror"]) this.removeEventListener(type, this.#dataEvent)
+    for(const type of ["datapending", "datachange", "dataerror", "datarelease"]) this.removeEventListener(type, this.#dataEvent)
     this.renderRoot?.removeEventListener("slotchange", this.#slotChanged)
     this.#readyBlock = null
     if(this.#observedDocument) {

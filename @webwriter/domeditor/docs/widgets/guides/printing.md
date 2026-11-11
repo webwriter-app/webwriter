@@ -1,16 +1,16 @@
 # Support printing
 
-Sometimes, authors want a printed version of a web document. Keep the question visible and provide a paper alternative to interactive controls.
+Keep the information readers need visible in print and provide a paper alternative when they would otherwise need to interact with the widget. For example, an observation log can show space for handwritten notes in place of its entry controls.
 
-![Interactive controls become a question and a written-answer line on paper](../../images/widgets/printing.svg)
+![An observation log provides space for handwritten notes on paper](../../images/widgets/printing.svg)
 
 ```css
 /* In the widget's shadow styles */
-.paper-answer { display: none; }
+.paper-notes { display: none; }
 
 @media print {
-  .controls, output { display: none; }
-  .paper-answer {
+  .entry-controls { display: none; }
+  .paper-notes {
     display: block;
     min-block-size: 3rem;
     border-block-end: 1px solid currentColor;
@@ -18,6 +18,6 @@ Sometimes, authors want a printed version of a web document. Keep the question v
 }
 ```
 
-Add a `.paper-answer` element inside the shadow DOM. If CSS is insufficient, listen for the window's `beforeprint` and `afterprint` events, and remove those listeners when the widget disconnects.
+Add a `.paper-notes` element with a visible label such as “Observations” inside the shadow DOM. If CSS is insufficient, listen for the window's `beforeprint` and `afterprint` events, and remove those listeners when the widget disconnects.
 
 Use print preview to check that text, borders, and page breaks remain readable. For a widget that cannot be represented on paper, show a short explanation.

@@ -1,94 +1,26 @@
 # 2. Render the interface
 
-<!-- library:vanilla -->
-The interface needs a question, two buttons, and an output. The [complete script](#complete-script) also includes basic styles.
+Build the dance floor inside the widget’s shadow root. Include the invitation, the ghost, and two native buttons named **Float** and **Twirl**. An `output` with `aria-live="polite"` will announce the current move when we wire up the buttons.
 
-Replace the shadow template:
+Start with Moonlight colors and let the controls wrap when the widget is narrow. The ghost emoji is decorative because the buttons and output describe the interaction in text.
 
-```js
-this.attachShadow({mode: "open"}).innerHTML = `
-  <p>The Moon is a star.</p>
-  <div class="controls">
-    <button type="button" value="true">True</button>
-    <button type="button" value="false">False</button>
-  </div>
-  <output aria-live="polite"></output>`
-```
+Replace the previous source with this step’s complete script. For Vue, replace the component and registration module and keep the component import set to `./ww-ghost-disco.vue`. Rebuild compiled versions before refreshing the local package.
 
+[Open the preview](../examples/preview.html?example=ghost-disco&step=2)
 
+<iframe title="Ghost Disco · Render the interface" src="../examples/preview.html?example=ghost-disco&amp;step=2" width="100%" height="360" loading="lazy"></iframe>
 
-Keep controls in shadow DOM so they do not become authored content. Use native buttons for keyboard support. The buttons do nothing yet.
-<!-- /library -->
-
-<!-- library:lit -->
-The interface needs a question, two buttons, and an output. The [complete script](#complete-script) also includes basic styles.
-
-
-Replace `render()` with this template. Lit creates and updates the shadow DOM for you:
-
-```js
-render() {
-  return html`
-    <p>The Moon is a star.</p>
-    <div class="controls">
-      <button type="button" value="true">True</button>
-      <button type="button" value="false">False</button>
-    </div>
-    <output aria-live="polite"></output>`
-}
-```
-
-Define shadow styles through `static styles = css` and a CSS template. Import `LitElementWw` from `@webwriter/lit`, and import `html` and `css` from `lit`; the complete script includes a starting stylesheet.
-
-
-Keep controls in shadow DOM so they do not become authored content. Use native buttons for keyboard support. The buttons do nothing yet.
-<!-- /library -->
-
-<!-- library:react -->
-<!-- include:../examples/react/02-rendering.md -->
-
-Keep controls in shadow DOM so they do not become authored content. Use native buttons for keyboard support. The buttons do nothing yet.
-
-After editing the source, run `npm run build` before refreshing your local package. The embedded preview builds its imports automatically.
-<!-- /library -->
-
-<!-- library:vue -->
-<!-- include:../examples/vue/02-rendering.md -->
-
-Keep controls in shadow DOM so they do not become authored content. Use native buttons for keyboard support. The buttons do nothing yet.
-
-Replace `ww-quiz.vue` with this step’s complete component and `ww-quiz.js` with its registration module. Keep the component import in the registration module set to `./ww-quiz.vue`. After editing either file, run `npm run build` before refreshing your local package. The embedded preview compiles them automatically.
-<!-- /library -->
-
-<!-- library:angular -->
-<!-- include:../examples/angular/02-rendering.md -->
-
-Keep controls in shadow DOM so they do not become authored content. Use native buttons for keyboard support. The buttons do nothing yet.
-
-After editing your source, run `npm run build` before refreshing the local package. The embedded preview compiles it automatically.
-<!-- /library -->
-
-<!-- library:svelte -->
-<!-- include:../examples/svelte/02-rendering.md -->
-
-Keep controls in shadow DOM so they do not become authored content. Use native buttons for keyboard support. The buttons do nothing yet.
-
-After editing your source, run `npm run build` before refreshing the local package. The embedded preview compiles it automatically.
-<!-- /library -->
+Next: [3. Add editable content](03-content.md).
 
 <details id="complete-script">
 <summary>Complete script</summary>
 
-<!-- script:../examples/02-rendering.js -->
+<!-- script:../examples/02-disco-rendering.js -->
 
 <!-- library:vue -->
-**Registration module**
+**Vue registration module**
 
-<!-- script:../examples/vue/02-rendering.js -->
+<!-- script:../examples/vue/02-disco-rendering.js -->
 <!-- /library -->
 
 </details>
-
-<iframe title="Step 2: question and controls" src="../examples/preview.html?step=2" width="100%" height="210" loading="lazy"></iframe>
-
-Next: [add editable content](03-content.md).

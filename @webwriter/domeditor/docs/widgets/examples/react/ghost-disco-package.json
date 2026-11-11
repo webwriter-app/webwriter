@@ -1,0 +1,40 @@
+{
+  "name": "@example/ghost-disco-react",
+  "version": "1.0.0",
+  "description": "A Ghost Disco widget built with React from the widget tutorial.",
+  "keywords": [
+    "webwriter-widget",
+    "widget-practical",
+    "widget-lang-en"
+  ],
+  "exports": {
+    "./widgets/ww-ghost-disco.js": "./dist/ww-ghost-disco.js",
+    "./snippets/ghost-disco.html": "./ghost-disco.html",
+    "./tests/ghost-disco.js": "./ghost-disco-tests.js"
+  },
+  "editingConfig": {
+    "./widgets/ww-ghost-disco": {
+      "label": "Ghost Disco",
+      "content": "p+",
+      "sharedData": true
+    },
+    "./snippets/ghost-disco": {
+      "label": "Ghost Disco with invitation"
+    }
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "files": [
+    "dist/ww-ghost-disco.js",
+    "ghost-disco.html",
+    "ghost-disco-tests.js"
+  ],
+  "scripts": {
+    "build": "node build.mjs ghost-disco"
+  },
+  "devDependencies": {
+    "esbuild-wasm": "^0.25.12"
+  }
+}
