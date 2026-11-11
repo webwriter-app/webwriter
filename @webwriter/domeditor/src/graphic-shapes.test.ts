@@ -852,7 +852,7 @@ describe("native SVG shape presets", () => {
     after.values.forEach((value, index) => expect(value).toBeCloseTo(index === after.values.length - 1 ? 37 : 18, 3))
   })
 
-  it.each(["cylinder", "cube", "folded-corner", "ribbon-up", "ribbon-down", "magnetic-disk", "direct-access-storage", "sequential-access-storage"] as const)("retains saved %s paths and upgrades their fill when edited", type => {
+  it.each(["cylinder", "cube", "folded-corner", "ribbon-up", "ribbon-down", "magnetic-disk", "direct-access-storage"] as const)("retains saved %s paths and upgrades their fill when edited", type => {
     const definition = graphicShapePresets[type]
     const values = definition.adjustments.map(adjustment => (adjustment.min + adjustment.max) / 2)
     let index = 0
@@ -872,6 +872,52 @@ describe("native SVG shape presets", () => {
     expect(element.getAttribute("fill-rule")).toBe("nonzero")
     expect(readGraphicPreset(element)?.type).toBe(type)
     expect(readGraphicPreset(element)!.values[0]).toBeCloseTo(values[0], 3)
+  })
+
+  it("joins the tape to the reel in one outline throughout a Tail height drag", () => {
+    const type = "sequential-access-storage"
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("d", graphicPresetPath(type, bounds))
+    const {min, max, default: initial} = graphicShapePresets[type].adjustments[0]
+    expect(initial).toBeCloseTo(45 * (1 - Math.SQRT1_2))
+    for(const [draggedHeight, height] of [[initial, initial], [25, 25], [90, max], [0, min]]) {
+      const target = {x: bounds.x + bounds.width, y: bounds.y + (90 - draggedHeight) * bounds.height / 100}
+      expect(adjustGraphicPreset(element, readGraphicPreset(element)!, "adjust-tail", target)).toBe(true)
+      const state = readGraphicPreset(element)!
+      expect(state.type).toBe(type)
+      expect(state.values[0]).toBeCloseTo(height, 7)
+      const path = element.getAttribute("d")!
+      expect(path.match(/[MALZ]/g)).toEqual(["M", "A", "A", "A", "L", "L", "Z"])
+      const [join, end, bottom] = Array.from(path.matchAll(/[AL] ([^ALZ]+)/g), ([, points]) => points.match(/[^ ]+/g)!.slice(-2).map(Number)).slice(-3)
+      const rx = bounds.width / 2, ry = bounds.height * .45
+      expect(((join[0] - bounds.x - rx) / rx) ** 2 + ((join[1] - bounds.y - ry) / ry) ** 2).toBeCloseTo(1, 7)
+      expect(join[0]).toBeLessThan(end[0])
+      expect(join[1]).toBe(end[1])
+      expect(end[0]).toBe(bottom[0])
+      expect(bottom[1]).toBeCloseTo(bounds.y + 2 * ry, 7)
+      const [handle] = graphicPresetHandles(state)
+      expect(handle.point.x).toBeCloseTo(end[0], 7)
+      expect(handle.point.y).toBeCloseTo(end[1], 7)
+    }
+  })
+
+  it.each([
+    ["M 45 90 L 100 90 L 100 80 L 75 80", 10],
+    ["M 75 25 L 100 25 L 100 90 L 45 90", 30],
+  ] as const)("recognizes saved tape contours and upgrades them on edit", (tail, height) => {
+    const type = "sequential-access-storage"
+    const path = `M 0 45 C 0 20.1465 20.1465 0 45 0 C 69.8535 0 90 20.1465 90 45 C 90 69.8535 69.8535 90 45 90 C 20.1465 90 0 69.8535 0 45 Z ${tail}`
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("d", path)
+    const state = readGraphicPreset(element)!
+    expect(state.type).toBe(type)
+    expect(state.values[0]).toBeCloseTo(height, 7)
+    expect(element.getAttribute("d")).toBe(path)
+    const reflection = {horizontal: true, vertical: true}
+    writeGraphicPreset(element, {...state, reflection}, bounds)
+    expectSamePresetPath(element.getAttribute("d")!, graphicPresetPath(type, bounds, [height], reflection))
+    expect(readGraphicPreset(element)?.reflection).toEqual(reflection)
+    expect(readGraphicPreset(element)?.values[0]).toBeCloseTo(height, 7)
   })
 
   it("keeps the intentional cutouts in frames, donuts and prohibited signs", () => {

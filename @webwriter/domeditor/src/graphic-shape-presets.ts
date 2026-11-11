@@ -390,6 +390,14 @@ export const legacyCalloutPresets: Record<string, {definition: GraphicShapePrese
   "line-callout-2": {definition: base("Line callout 2", "Callouts", ([p]) => `M 30 0 L 100 0 L 100 75 L 30 75 Z M 28 15 L 18 15 L ${p} 100`, [poi("tail", "Leader endpoint", 5, 0, 25, p => ({x:p,y:100}))]), upgrade: ([p]) => [p,100,0]},
 }
 
+const tapeTailHeight = poi("tail", "Tail height", 45 * (1 - Math.SQRT1_2), 4, 30, height => ({x:100,y:90-height}), "y")
+export const legacySequentialStoragePreset = {
+  definition: base("Sequential access storage", "Flowchart", ([height]) =>
+    `${ellipse(45,45,45,45)} M 45 90 L 100 90 L 100 ${90-height} L 75 ${90-height}`,
+    [poi("tail", "Tail height", 10, 0, 90, height => ({x:100,y:90-height}), "y")]),
+  upgrade: ([height]: number[]) => [Math.max(tapeTailHeight.min, Math.min(tapeTailHeight.max, height))],
+}
+
 const originalGraphicShapePresets = {
   "straight-arrow": {...base("Straight arrow", "Lines", ([p]) => `M 0 0 L 100 100 M ${100-p} 100 L 100 100 L 100 ${100-p}`, [poi("head", "Arrowhead size", 22, 8, 40, p => ({x:100-p,y:100}))]), open:true},
   "double-arrow": {...base("Double arrow", "Lines", ([p]) => `M 0 0 L 100 100 M ${100-p} 100 L 100 100 L 100 ${100-p} M 0 ${p} L 0 0 L ${p} 0`, [poi("head", "Arrowhead size", 22, 8, 40, p => ({x:p,y:0}))]), open:true},
@@ -518,7 +526,12 @@ const originalGraphicShapePresets = {
   "delay": base("Delay", "Flowchart", ([r]) =>
     `M 0 0 L ${100-r} 0 C ${100-r/3} 0 100 25 100 50 C 100 75 ${100-r/3} 100 ${100-r} 100 L 0 100 Z`,
     [poi("curve", "End curvature", 38, 0, 100, p => ({x:100-p,y:0}))]),
-  "sequential-access-storage": base("Sequential access storage", "Flowchart", ([t]) => `${ellipse(45,45,45,45)} M 45 90 L 100 90 L 100 ${90-t} L 75 ${90-t}`, [poi("tail", "Tail height", 10, 0, 90, p => ({x:100,y:90-p}), "y")]),
+  "sequential-access-storage": base("Sequential access storage", "Flowchart", ([height]) => {
+    // Follow the reel from its bottom tangent to the upper edge of the tape.
+    const y = 90 - height
+    const x = 50 + 50 * Math.sqrt(1 - ((y - 45) / 45) ** 2)
+    return `M 50 90 A 50 45 0 0 1 0 45 A 50 45 0 0 1 50 0 A 50 45 0 0 1 ${x} ${y} L 100 ${y} L 100 90 Z`
+  }, [tapeTailHeight]),
   "magnetic-disk": base("Magnetic disk", "Flowchart", ([d]) => cylinderPath(d), [poi("depth", "Cap depth", 15, 0, 30, p => ({x:0,y:p}), "y")]),
   "direct-access-storage": base("Direct access storage", "Flowchart", ([d]) => turn(cylinderPath(d), 1), [poi("depth", "Cap depth", 15, 0, 30, p => ({x:100-p,y:0}))]),
   "display": base("Display", "Flowchart", ([d]) => `M ${d} 0 L 80 0 C 100 0 100 100 80 100 L ${d} 100 L 0 50 Z`, [poi("point", "Point depth", 20, 0, 80, p => ({x:p,y:0}))]),
