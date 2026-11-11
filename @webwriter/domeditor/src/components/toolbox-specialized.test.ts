@@ -732,8 +732,11 @@ describe("specialized element toolbox", () => {
       const row = graphicStyles.querySelector<HTMLElement>(`[data-property="${property}"]`)!
       const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>('.specialized-choice-group button'))
       expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(labels)
-      expect(buttons.every(button => button.querySelector("svg") && !button.textContent!.trim())).toBe(true)
-      expect(new Set(buttons.map(button => button.querySelector("svg")!.outerHTML)).size).toBe(buttons.length)
+      expect(buttons.map(button => button.textContent!.trim())).toEqual(property === "paint-order" ? ["Normal", "", ""] : ["", ""])
+      const icons = Array.from(row.querySelectorAll(".specialized-choice-group svg"))
+      expect(icons).toHaveLength(2)
+      expect(new Set(icons.map(icon => icon.outerHTML)).size).toBe(icons.length)
+      expect(row.querySelector("svg.icon-tabler-check")).toBeNull()
       expect(buttons.find(button => button.getAttribute("aria-pressed") === "true")?.getAttribute("aria-label")).toBe(selected)
       buttons[0].click()
       expect(changes.mock.calls.at(-1)![0].detail).toMatchObject({property, mutation: {value}})
@@ -838,8 +841,8 @@ describe("specialized element toolbox", () => {
     const toolbox = await mountElement("demo-widget")
     toolbox.widgetOptions = {
       path: [0], localName: "demo-widget", actions: [], options: [
-        {name: "density", type: "select", label: "Density", attribute: "density", value: "comfortable", choices: [
-          {value: "comfortable", label: "Comfortable"}, {value: "compact", label: "Compact"},
+        {name: "direction", type: "select", label: "Direction", attribute: "direction", value: "ascending", choices: [
+          {value: "ascending", label: "Ascending"}, {value: "descending", label: "Descending"},
         ]},
         {name: "theme", type: "select", label: "Theme", attribute: "theme", value: "a", choices: Array.from({length: 9}, (_, index) => ({value: String.fromCharCode(97 + index), label: `Choice ${index + 1}`}))},
         {name: "tags", type: "select", label: "Tags", attribute: "tags", value: ["a"], multiple: true, choices: [
@@ -849,15 +852,18 @@ describe("specialized element toolbox", () => {
     } satisfies WidgetOptionsState
     await toolbox.updateComplete
     const primary = toolbox.shadowRoot!.querySelector<HTMLElement>(".specialized-widget-primary")!
-    expect(primary.querySelector('[aria-labelledby="widget-label-density"]')?.querySelectorAll("button")).toHaveLength(2)
+    const buttons = Array.from(primary.querySelectorAll<HTMLButtonElement>('[aria-labelledby="widget-label-direction"] button'))
+    expect(buttons.map(button => button.textContent!.trim())).toEqual(["Ascending", "Descending"])
+    expect(buttons.every(button => button.childElementCount === 0)).toBe(true)
+    expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["true", "false"])
     const combos = Array.from(primary.querySelectorAll<HTMLElement>("style-combobox")) as Array<HTMLElement & {multiple: boolean, values: readonly string[]}>
     expect(combos).toHaveLength(2)
     expect(combos.map(combo => combo.multiple)).toEqual([false, true])
     expect(combos[1].values).toEqual(["a"])
     const changes = vi.fn()
     toolbox.addEventListener("widget-option-change", changes)
-    primary.querySelector<HTMLButtonElement>('[aria-labelledby="widget-label-density"] button[aria-pressed="true"]')!.click()
-    expect(changes.mock.calls[0][0].detail).toEqual({name: "density", value: "comfortable"})
+    buttons[1].click()
+    expect(changes.mock.calls[0][0].detail).toEqual({name: "direction", value: "descending"})
   })
 })
 

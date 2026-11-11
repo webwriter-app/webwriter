@@ -21,7 +21,7 @@ import {documentThemeProperties} from "../document-theme-options"
 import {defaultCaptionEnumeration} from "../caption-enumeration"
 import type {SelectionPathItem, SelectedElementTypeState, ElementSelectionType} from "../editor-bridge"
 import {emptyProofreadingState, type ProofreadingAction, type ProofreadingState} from "../editor-bridge"
-import {captionIconSource, floatNoneIconSource, ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
+import {captionIconSource, floatNoneIconSource, renderRibbonOption, ribbonIcon} from "../ribbon-icons"
 import {EditingControls} from "./editing-controls"
 import {contextDrawerPolicy} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
@@ -701,6 +701,7 @@ export class DomEditorToolbox extends EditingControls {
     .specialized-widget-primary {font: .68rem/1.2 system-ui, sans-serif;}
     .specialized-widget-primary .widget-options {min-width: 0;}
     .specialized-options .develop-field, .specialized-widget-primary .develop-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center;}
+    .develop-field:has(> .widget-option-choices, > .widget-option-segmented) {grid-template-columns: 3.65rem minmax(0, 1fr); column-gap: .2rem;}
     .specialized-widget-primary input:not([type="checkbox"], [type="radio"]), .specialized-widget-primary select {height: 1.7rem; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent; font: inherit;}
     .specialized-widget-primary .widget-option-group .develop-field,
     .specialized-widget-primary .develop-field:has(> .widget-option-tree) {
@@ -718,6 +719,8 @@ export class DomEditorToolbox extends EditingControls {
     .specialized-choice-group button {min-height: 1.6rem; padding: .15rem .2rem; font: .6rem system-ui, sans-serif;}
     .specialized-choice-group button {display: flex; align-items: center; justify-content: center; gap: .2rem;}
     .specialized-choice-group svg {width: 1rem; height: 1rem; display: block;}
+    :is(.widget-option-choices, .widget-option-segmented, .media-attribute > .specialized-choice-group) {--choice-column-size: auto;}
+    .widget-option-choices button {padding-inline: .1rem;}
     .list-indent {grid-column: 1 / -1; width: 100%; margin-bottom: .4rem;}
     .list-indent button {justify-content: space-between; padding-inline: .5rem; font-size: .68rem;}
     .media-toolbox-controls .media-attribute style-combobox {width: 100%;}
@@ -1066,7 +1069,7 @@ export class DomEditorToolbox extends EditingControls {
           @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
           @click=${() => this.dispatchEvent(new CustomEvent("media-attribute-change", {
             detail: {type, attribute: option.name, value: item.value || null}, bubbles: true, composed: true,
-          }))}><span aria-hidden="true">${ribbonOptionIcon(option.name, item.value)}</span></button>`)}
+          }))}>${renderRibbonOption(option.name, item.value, item.label)}</button>`)}
       </div>
     </div>`
   }
@@ -1094,13 +1097,13 @@ export class DomEditorToolbox extends EditingControls {
     const columns = Math.min(4, Math.ceil(option.choices.length / (option.choices.length > 4 ? 2 : 1)))
     return html`<div class="develop-field" title=${option.description ?? ""}>
       ${fieldLabel}
-      <div class="specialized-choice-group" ?data-default=${option.value === null} style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`widget-label-${fieldScope}${option.name}`}>
+      <div class="specialized-choice-group widget-option-choices" ?data-default=${option.value === null} style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`widget-label-${fieldScope}${option.name}`}>
         ${option.choices.map((choice, index) => html`<button type="button"
           ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((option.choices!.length - 1) / columns) * columns}
           title=${choice.description ?? choice.label} aria-label=${choice.label}
           aria-pressed=${option.value === choice.value}
           @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
-          @click=${() => dispatch(option.name, choice.value)}><span aria-hidden="true">${ribbonOptionIcon(option.name, choice.value)}</span>${choice.label}</button>`)}
+          @click=${() => dispatch(option.name, choice.value)}>${choice.label}</button>`)}
       </div>
     </div>`
   }

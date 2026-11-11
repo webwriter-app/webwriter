@@ -572,7 +572,6 @@ export const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparen
 
 export const ribbonIcon = (label: string) => unsafeSVG(icons[label] ?? fallbackIcon)
 
-/** Inline glyphs for compact option groups; labels remain on each button. */
 const optionIcons: Record<string, Record<string, string>> = {
   "text-align": {left: alignLeft, center: alignCenter, right: alignRight, justify: alignJustified},
   "text-align-last": {auto: alignLeft, left: alignLeft, center: alignCenter, right: alignRight, justify: alignJustified},
@@ -589,20 +588,26 @@ const optionIcons: Record<string, Record<string, string>> = {
   "list-style-position": {inside: alignBoxCenterMiddle, outside: alignBoxLeftMiddle},
   "hyphens": {manual: hyphensManual, auto: hyphensAuto, none: hyphensNone},
   "object-fit": {fill: arrowsMaximize, contain: rectangle, cover: crop, none: photo, "scale-down": arrowsMinimize},
-  "image-rendering": {auto: check, smooth: blur, "high-quality": photo, "crisp-edges": scan, pixelated: layoutGrid},
+  "image-rendering": {smooth: blur, "high-quality": photo, "crisp-edges": scan, pixelated: layoutGrid},
   "math-style": {normal: math, compact: arrowsMinimize},
   "math-shift": {normal: math, compact: arrowsMinimize},
   "fill-rule": {nonzero: polygon, evenodd: layersUnion},
-  "paint-order": {normal: check, "stroke fill markers": paintOrderStrokeFirst, "fill stroke markers": paintOrderFillFirst},
+  "paint-order": {"stroke fill markers": paintOrderStrokeFirst, "fill stroke markers": paintOrderFillFirst},
   "vector-effect": {none: arrowsMaximize, "non-scaling-stroke": lock},
   "break-inside": {auto: pageBreak, avoid: link, "avoid-page": file, "avoid-column": columns3},
-  loading: {"": check, eager: bolt, lazy: clock},
-  decoding: {"": check, auto: check, sync: bolt, async: clock},
-  preload: {"": check, none: eyeOff, metadata: fileDescription, auto: download},
-  dir: {"": check, auto: check, ltr: arrowRight, rtl: arrowLeft},
+  loading: {eager: bolt, lazy: clock},
+  decoding: {sync: bolt, async: clock},
+  preload: {none: eyeOff, metadata: fileDescription, auto: download},
+  dir: {ltr: arrowRight, rtl: arrowLeft},
 }
 
-export const ribbonOptionIcon = (property: string, value: string) => unsafeSVG(optionIcons[property]?.[value]
-  ?? ({auto: check, normal: check, none: eyeOff, manual: pencil, left: arrowLeft, right: arrowRight,
-    top: arrowUp, bottom: arrowDown, show: eye, hide: eyeOff, avoid: link, page: pageBreak,
-    column: columns3, always: check, all: check, inherit: layersUnion} as Record<string, string>)[value] ?? check)
+const optionValueIcons: Record<string, string> = {
+  none: eyeOff, manual: pencil, left: arrowLeft, right: arrowRight, top: arrowUp, bottom: arrowDown,
+  show: eye, hide: eyeOff, avoid: link, page: pageBreak, column: columns3, inherit: layersUnion,
+}
+
+export function renderRibbonOption(property: string, value: string, label: string) {
+  const propertyIcons = Object.hasOwn(optionIcons, property) ? optionIcons[property] : undefined
+  if(propertyIcons && Object.hasOwn(propertyIcons, value)) return unsafeSVG(propertyIcons[value])
+  return Object.hasOwn(optionValueIcons, value) ? unsafeSVG(optionValueIcons[value]) : label
+}
