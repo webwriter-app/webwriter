@@ -1,25 +1,27 @@
-# Styling
+# B5. Design tokens
 
-Put widget UI and its styles in shadow DOM. Render authored children through slots. Export a separate stylesheet when styles must apply to light DOM or document-level content.
+Put the widget interface and its styles in [shadow DOM](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_shadow_DOM). Show authored child content through slots. Export a separate stylesheet for styles that apply to light DOM or to the document.
 
 | Hook | Meaning |
 |---|---|
 | `:host` | The widget element. |
-| `:host([contenteditable])` | The editor's usual editing presentation; see [editing mode](../guides/editing.md) for authored false values. |
-| `::slotted(…)` | Assigned light-DOM elements. |
-| `part` / `::part(…)` | Widget-defined styling API. Parts do not automatically create editor controls. |
+| `:host([contenteditable])` | A widget with the `contenteditable` attribute. [Support editing](../guides/editing.md) describes how to handle `contenteditable="false"`. |
+| `::slotted(…)` | Light DOM elements that the browser assigns to a slot. |
+| [`part` / `::part(…)`](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Shadow_parts) | Named parts that a document stylesheet can style. Declare controls separately. |
 | `@media print` | Printed presentation. |
-| `@container` | Layout based on allocated space. |
+| [`@container`](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Containment/Container_queries) | Layout based on allocated space. |
 
-The base theme provides these sizing properties. Widgets can use them in their own host styles:
+[Follow the theme](../guides/theming.md) describes document fonts, accent colors, and named parts.
+
+The base theme supplies these properties. A widget can use them in its host styles.
 
 | Property | Default | Purpose |
 |---|---|---|
 | `--ww-page-max` | `2160px` | Maximum page content width, excluding gutters. |
 | `--ww-prose-max` | `45rem` | Normal reading width. |
 | `--ww-page-gutter` | `clamp(1rem, 2vw, 2rem)` | Responsive page gutters. |
-| `--ww-widget-max` | Falls back to prose width. | Per-widget maximum; `none` allows available page width. |
+| `--ww-widget-max` | Uses the prose width by default. | Maximum width of one widget. `none` permits the available page width. |
 
-Block widgets should fit their parent and allow wrapping. Use `min-height` and `max-height` to bound their natural height. Inline widgets choose their own inline formatting. See [responsive layout](../guides/responsiveness.md) for recommended widths and a starting stylesheet.
+Let the content of a block widget wrap to fit its parent. Set `min-height` and `max-height` to limit its height. Inline widgets set their own inline styles. The [responsive layout guide](../guides/responsiveness.md) gives recommended widths and a stylesheet example.
 
-WebWriter keeps transient editor presentation outside authored content. It filters legacy `◆` classes from collaboration and saved HTML. Use authored classes, widget parts, or CSS custom properties for styles that should persist. Keep temporary widget UI state in the widget's shadow DOM.
+Use authored classes, widget parts, or [CSS custom properties](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Cascading_variables/Using_custom_properties) for styles that the document must keep. Keep temporary interface state in the widget's shadow DOM.

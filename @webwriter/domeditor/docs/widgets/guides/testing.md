@@ -1,75 +1,25 @@
-# Test, debug and optimize
+# Test and debug
 
-Open the **Developer console** to inspect package warnings, the selected element, and document HTML. Refresh a package manually or enable **Auto-reload** while changing its built files.
+Package tests can check widget content and interactions in a document. The authoring tool can also show the widget's HTML and package warnings. These checks help identify problems before publication.
 
 ![A widget under a magnifying glass with a passing check](../../images/widgets/testing.svg)
 
-For each widget, check:
+Open the **Developer console** to examine package warnings, the selected element, and document HTML. Refresh the package when you change its built files. For automatic refresh, enable **Auto-reload**.
 
-- Settings and authored content survive saving and reopening.
-- Attribute changes made elsewhere update the display.
-- Undo and redo restore authored changes.
-- Keyboard input, narrow layouts, preview, and printing work.
-- Shared data initializes before writes and updates from another participant.
+Do these checks for each widget.
 
-Expose test modules through `./tests/<name>.js` or `./tests/<name>.*`. Run them from the developer console's **Tests** tab. Each module runs in an isolated frame with a 60-second limit.
+- Save the document. Open it again. Make sure that the widget keeps the settings and authored content.
+- Change an attribute from outside the widget. Check the display.
+- Use undo and redo. Check the authored content.
+- Test keyboard input, narrow layouts, preview, and printing.
+- Wait for shared data before you write to it. Check that updates from other participants appear.
 
-For example, test that a unit converter recalculates when an author changes the saved target unit and restores the prior output on undo. For a minimal test without a test-runner dependency, see the [tutorial's test module](../tutorial/07-testing-publishing.md). For Mocha, `@webwriter/build/test` exports `getMochaConfig()` with the reporting hooks already set up.
+Export test modules as `./tests/<name>.js` or `./tests/<name>.*`. Run the modules from **Tests** in the **Developer console**. Each module runs in a separate frame with a time limit of 60 seconds.
 
-See the [test reporting reference](../reference/build-test.md#test-reporting) for other runners.
+To test a unit converter, change the saved target unit. Check that the widget calculates the new output. Use undo. Check that the widget restores the previous output. The [tutorial test module](../tutorial/07-testing-publishing.md) has a test without a test-runner dependency. For [Mocha](https://mochajs.org/getting-started/), `getMochaConfig()` from `@webwriter/build/test` supplies the reporting hooks.
 
-## Optimize the code bundle
+The [test reporting reference](../reference/build-test.md#test-reporting) gives details for other test runners.
 
-Use `import()` to load large optional features on demand. Offline HTML normally embeds the targets of those imports so they can run without a network connection. If a widget’s saved settings limit which features a reader can use, implement `static offlineImports(element)` to embed just those features and their dependencies.
+## Widget test cases
 
-![A full bundle with four code blocks shrinks to a smaller bundle with one block](../../images/widgets/optimize-code-bundle.svg)
-
-### Put optional features behind lazy imports
-
-Give the optional features their own loader module. Each `import()` uses a literal module specifier. In this example, the widget entry is `widgets/ww-simulation.js` and the loaders are in `simulations/loaders.js`.
-
-```js
-// simulations/loaders.js
-export const loaders = {
-  orbits: () => import("./orbits.js"),
-  circuits: () => import("./circuits.js"),
-}
-```
-
-### Select imports from the saved widget
-
-Use the same selection rule for loading the feature and exporting the widget. WebWriter calls the hook synchronously with a detached copy of the saved element. Read its attributes or light-DOM children without modifying them.
-
-```js
-// widgets/ww-simulation.js
-import {loaders} from "../simulations/loaders.js"
-
-const simulationType = element => element.getAttribute("type") ?? "orbits"
-
-class WwSimulation extends HTMLElement {
-  static offlineImports(element) {
-    const type = simulationType(element)
-    return [{
-      importer: "../simulations/loaders.js",
-      keep: Object.hasOwn(loaders, type) ? [`./${type}.js`] : [],
-    }]
-  }
-
-  async loadSimulation() {
-    const type = simulationType(this)
-    if (Object.hasOwn(loaders, type)) return loaders[type]()
-  }
-}
-
-customElements.define("ww-simulation", WwSimulation)
-```
-
-`importer` names the file containing the `import()` calls, relative to the published widget entry. Each `keep` value matches the specifier in one of those calls, so `./orbits.js` is relative to `loaders.js`. Check that your published output preserves the loader module and its dynamic imports. Code already inlined by your build is part of the module that contains it.
-
-WebWriter combines selections across widget instances and insertable templates. If the saved document has one Orbits widget and one Circuits widget, it embeds both simulations. If readers can switch modes in a single widget, include all modes they can reach offline. Return `keep: "*"` when they need the entire catalog. See the [runtime interface](../reference/runtime.md#offline-imports) for the full contract.
-
-### Verify the offline export
-
-1. Load the built widget in WebWriter. Configure one variant and set a value or checkpoint you can check after reopening.
-2. Save as **Offline HTML**. Open the file directly in a browser with networking disabled. Confirm that the selected variant starts and restores the saved state and settings.
-3. Compare the export size with a document that includes every variant. If the widget can request a variant excluded from the file, handle the rejected import (`OfflineImportError`) with a message that explains its offline availability.
+## Checks after saving and opening

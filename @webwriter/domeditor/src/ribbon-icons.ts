@@ -1,4 +1,13 @@
 import floatLeft from "@tabler/icons/outline/float-left.svg?raw"
+import mouse from "@tabler/icons/outline/mouse.svg?raw"
+import fileImport from "@tabler/icons/outline/file-import.svg?raw"
+import devices from "@tabler/icons/outline/devices.svg?raw"
+import activity from "@tabler/icons/outline/activity.svg?raw"
+import users from "@tabler/icons/outline/users.svg?raw"
+import packages from "@tabler/icons/outline/packages.svg?raw"
+import flask from "@tabler/icons/outline/flask.svg?raw"
+import history from "@tabler/icons/outline/history.svg?raw"
+import externalLink from "@tabler/icons/outline/external-link.svg?raw"
 import messageCircle from "@tabler/icons/outline/message-circle.svg?raw"
 import circleSquare from "@tabler/icons/outline/circle-square.svg?raw"
 import floatNone from "@tabler/icons/outline/float-none.svg?raw"
@@ -503,6 +512,18 @@ const icons: Record<string, string> = {
   KeywordConcept: squareDot,
   KeywordInformation: infoSquare,
   KeywordContext: squareAsterisk,
+  KeywordPointer: mouse,
+  KeywordKeyboard: keyboard,
+  KeywordConvertTo: fileExport,
+  KeywordConvertFrom: fileImport,
+  KeywordResponsive: devices,
+  KeywordReactive: activity,
+  KeywordDistributable: users,
+  KeywordDynamicLoading: bolt,
+  KeywordSharedDependencies: packages,
+  KeywordTestable: flask,
+  KeywordMigration: history,
+  KeywordStandalone: externalLink,
   EducationEarlyChildhood: horseToy,
   EducationSchool: backpack,
   EducationHigher: school,

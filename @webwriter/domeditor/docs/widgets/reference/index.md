@@ -1,16 +1,24 @@
 # Reference
 
-These pages describe the widget interface supported by DOMEditor. For instructions on a task, use the [guides](../guides/index.md).
+This reference describes the widget interface. The [guides](../guides/index.md) give instructions for specific tasks.
 
-| Page | Contents |
-|---|---|
-| [Editing configuration](editing-configuration.md) | Every supported configuration field and its default. |
-| [Runtime interface](runtime.md) | Custom elements, lifecycle, editing mode, and Lit helpers. |
-| [Options and actions](options-actions.md) | Declarations, controls, element permissions, attribute conversion, and undo. |
-| [Standalone widget drawer](standalone.md) | Embed settings, actions, file conversions, and result storage. |
-| [Data and events](data.md) | Data blocks, sharing modes, merging, and notifications. |
-| [Aggregated View](aggregated-view.md) | Declarations, response shapes, and custom renderers. |
-| [Content expressions](content-expressions.md) | Groups, sequences, choices, and repetition. |
-| [Styling](styling.md) | Host sizing, shadow styles, and editing presentation. |
-| [Distribution](distribution.md) | Manifest fields, exports, dependencies, and discovery. |
-| [Build and test](build-test.md) | Commands, flags, and test reporting. |
+## A. Package interface
+
+- [A1. Package manifest](distribution.md) lists manifest fields, exports, dependencies, and discovery rules.
+- [A2. Widget keywords](keywords.md) lists feature badges and the syntax for manifest `keywords`.
+- [A3. Editing configuration](editing-configuration.md) lists configuration fields and default values.
+- [A4. Content expressions](content-expressions.md) describes groups, sequences, choices, and repetition.
+
+## B. Runtime interface
+
+- [B1. Runtime interface](runtime.md) describes custom elements, lifecycle, and editing mode.
+- [B2. Options and actions](options-actions.md) describes declarations, controls, element permissions, attribute conversion, and undo.
+- [B3. Aggregated View](aggregated-view.md) describes declarations, response shapes, and custom renderers.
+- [B4. Data and events](data.md) describes data blocks, sharing modes, data merge rules, and events.
+- [B5. Design tokens](styling.md) describes widget sizes, shadow DOM styles, and styles for editing.
+- [B6. Standalone storage](standalone.md) describes browser and HTTP result storage for standalone widgets.
+
+## C. Tooling
+
+- [C1. @webwriter/build](build-test.md) lists commands, flags, and test reporting requirements.
+- [C2. @webwriter/lit](lit.md) describes `LitElementWw`, signals, and the standalone widget drawer.

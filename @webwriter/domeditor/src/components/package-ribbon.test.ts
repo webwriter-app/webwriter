@@ -1161,7 +1161,7 @@ describe("package ribbon controls", () => {
     pkg.keywords = [
       "webwriter-widget", "widget-practical", "widget-lang-de-AT", "widget-lang-gd-GB", "widget-online-use",
       "isced2011-1", "isced2011-2", "isced2011-3", "iscedf2013-05", "iscedf2013-0612",
-      "historical-map", "local-history", "teacher-made",
+      "historical-map", "local-history", "teacher-made", "widget-convertible-to-image/png", "widget-reactive", "widget-themeable",
     ]
     ribbon.packages = [pkg]
     ribbon.installedPackages = [pkg]
@@ -1204,18 +1204,23 @@ describe("package ribbon controls", () => {
     expect(details.textContent).toContain("Natural sciences")
     expect(details.textContent).not.toContain("License")
     expect(details.textContent).not.toContain("Contents")
-    expect(details.textContent).not.toContain("webwriter-widget")
+    expect(details.querySelector('.details-keyword[data-kind="widget"]')?.textContent?.trim()).toBe("Widget")
+    expect(details.textContent).toContain("Converts to image/png")
+    expect(details.textContent).toContain("Reactive")
+    const themeBadge = details.querySelector('.details-keyword[data-kind="display"]')!
+    expect(themeBadge.textContent?.trim()).toBe("Themeable")
+    expect(themeBadge.querySelector(".icon-tabler-palette")).not.toBeNull()
     const badges = Array.from(details.querySelectorAll<HTMLElement>(".details-keyword"))
     expect(badges.map(badge => badge.dataset.kind)).toEqual([
-      "type", "language", "field", "field", "online", "level", "level", "custom", "custom", "custom",
+      "type", "language", "field", "field", "online", "level", "level", "widget", "conversion", "state", "display", "custom", "custom", "custom",
     ])
     expect(badges[1].textContent).toContain("German")
     const languageCount = badges[1].querySelector("span[title]")
     expect(languageCount?.textContent).toBe("+1")
     expect(languageCount?.getAttribute("title")).toBe("Scottish Gaelic")
-    expect(badges[9].textContent?.trim()).toBe("teacher-made")
-    expect(badges[9].querySelector("svg")).toBeNull()
-    for(const icon of ["backpack", "microscope", "cpu", "help-square", "language", "wifi"]) {
+    expect(badges.at(-1)?.textContent?.trim()).toBe("teacher-made")
+    expect(badges.at(-1)?.querySelector("svg")).toBeNull()
+    for(const icon of ["backpack", "microscope", "cpu", "help-square", "language", "wifi", "package", "file-export", "activity"]) {
       expect(details.querySelector(`.icon-tabler-${icon}`)).not.toBeNull()
     }
   })

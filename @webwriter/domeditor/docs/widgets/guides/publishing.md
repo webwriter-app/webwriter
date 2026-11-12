@@ -1,26 +1,31 @@
 # Publish a widget
 
-Before publishing, load the widget from a local folder and complete the [widget checks](testing.md).
+Publication makes a widget available for installation in an authoring tool. The browser-ready custom element can also run on another site. An embedded widget can save reader results in the browser or at a configured endpoint.
 
 ![A widget package uploaded to a registry shelf](../../images/widgets/publishing.svg)
 
 ## Package and publish
 
-1. Set a scoped package name, a SemVer version, and the `webwriter-widget` keyword.
+Before publication, load the widget from a local folder. Do the [widget checks](testing.md).
+
+1. Set a [scoped package name](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages/), a SemVer version, and the `webwriter-widget` keyword.
 2. Export `./widgets/<tag-name>.js` or `./widgets/<tag-name>.*`. The script must define the same tag.
-3. Build if your source needs compilation: `npx @webwriter/build`.
-4. Run `npm pack --dry-run` and check that scripts, styles, assets, and configuration are included. The published embed pins a package version; include every module, asset, and runtime dependency it needs, and declare dependencies in the manifest.
-5. Sign in to npm and run `npm publish --access public`.
+3. If the source requires compilation, run `npx @webwriter/build`.
+4. Run [`npm pack --dry-run`](https://docs.npmjs.com/cli/v11/commands/npm-pack/).
+5. Make sure that the package includes all scripts, styles, files, and configuration that the widget uses.
+6. Declare the runtime dependencies in the package manifest.
+7. Sign in to npm.
+8. Run [`npm publish --access public`](https://docs.npmjs.com/cli/v11/commands/npm-publish/).
 
-For example, an origami viewer can publish a `./widgets/ww-origami-viewer.*` export and include its fold diagrams in the package. Add a short `README.md`, a description, author information, and a license so authors can understand your widget. After publishing, search for the widget in WebWriter and insert it into a fresh document.
+An origami viewer, for example, can export `./widgets/ww-origami-viewer.*` and include its fold diagrams in the package. Add a short `README.md`, a description, author information, and a license. After publication, find the widget in the authoring tool. Insert the widget into a new document.
 
-For updates, increase the version and provide a [migration](migrations.md) when saved content needs to change. See [distribution metadata](../reference/distribution.md) for export conventions and discovery keywords.
+For each update, increase the package version. Add a [migration](migrations.md) if the saved content must change. See the [package manifest reference](../reference/distribution.md) for the export format and discovery keywords.
 
 ## Embed on another site
 
-Load the widget’s browser-ready module on the host page and insert its custom element. For example, a field journal can keep a short note in an inert JSON data block. In a standalone page, `WidgetDrawer` can save that data to this browser or to an HTTP endpoint. Each embed needs a stable, unique `id` so browser storage can find its result again after reload or when the embed moves.
+Load the widget's browser-ready module on the host page. Insert the custom element. In this example, a field journal stores a note in a JSON data block. The `WidgetDrawer` can save the note in the browser or send it to an HTTP endpoint. Give each embedded widget a stable, unique `id`. Browser storage uses this ID to find the result when the page loads again.
 
-Bundle the widget’s dependencies into browser-ready modules. If the module retains bare imports such as `@webwriter/lit`, load an import map that resolves them before loading the widget.
+Bundle the widget's dependencies into browser-ready modules. If the module uses bare imports such as `@webwriter/lit`, define them in an [import map](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script/type/importmap). Load the import map before the widget. Use a fixed package version in the embed.
 
 ```html
 <script type="module" src="./widgets/ww-field-journal.js"></script>
@@ -29,7 +34,7 @@ Bundle the widget’s dependencies into browser-ready modules. If the module ret
 </ww-field-journal>
 ```
 
-The widget reads and writes through `LitElementWw`'s data lifecycle, and places the real drawer in its scoped registry:
+The widget uses the data methods from `LitElementWw`. It registers the drawer in its scoped registry.
 
 ```js
 import {LitElementWw, WidgetDrawer} from "@webwriter/lit"
@@ -66,10 +71,16 @@ class WwFieldJournal extends LitElementWw {
 customElements.define("ww-field-journal", WwFieldJournal)
 ```
 
-Write a note and reload the preview to see it restored from this browser.
+Write a note. Reload the preview. Make sure that the browser restores the note.
 
 [Open the standalone preview](../examples/preview.html?guide=publishing) · [View the example source](../examples/guide-publishing.js)
 
 <iframe title="Standalone field journal" src="../examples/preview.html?guide=publishing" width="100%" height="360" loading="lazy"></iframe>
 
-An empty `standalone` value selects browser storage. To start with a remote destination, set it to the endpoint URL instead. The drawer restores the destination's saved result; it does not copy data when switching destinations. For endpoint request and concurrency requirements, see [standalone result storage](../reference/standalone.md#http-endpoint). Browser storage belongs to the current browser profile and is not a substitute for an authenticated server when results must follow a learner across devices.
+An empty `standalone` value selects browser storage. To use a remote destination, set `standalone` to the endpoint URL. When the reader changes destinations, the drawer restores the result for the new destination. The saved result stays in its original destination. See [standalone storage](../reference/standalone.md#http-endpoint) for the endpoint requirements.
+
+Browser storage applies to the current browser profile. Use an authenticated server if the same reader needs access to results on different devices.
+
+## Package checks before release
+
+## Storage destinations for embedded widgets

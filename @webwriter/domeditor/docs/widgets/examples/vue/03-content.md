@@ -1,4 +1,4 @@
-Put authored question content in the light DOM and project it with a native slot in the Vue template:
+Keep the question in the light DOM. Use a native slot in the Vue template to display the question.
 
 ~~~vue
 <template>
@@ -13,4 +13,4 @@ Put authored question content in the light DOM and project it with a native slot
 </template>
 ~~~
 
-The fallback paragraph appears when no authored question is present. The build uses Vue custom-element compilation so the slot remains a native shadow-DOM slot.
+The slot displays its default paragraph when the widget has no question. Vue custom-element compilation keeps the slot in the shadow DOM.

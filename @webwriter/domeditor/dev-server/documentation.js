@@ -1,7 +1,7 @@
 import {fixedPopupPosition} from "../src/components/popup-position.ts"
 
 // Share the sidebar position across documentation pages in this browser tab.
-const sidebar = document.querySelector("aside")
+const sidebar = document.querySelector(".documentation-sections")
 const sidebarScrollKey = "webwriter-docs-sidebar-scroll"
 if(sidebar) {
   try {
@@ -15,6 +15,28 @@ if(sidebar) {
     catch { /* Browser storage may be disabled. */ }
   }, {passive: true})
 }
+
+let headingCopyAttempt = 0
+let headingCopyTimer, activeHeadingStatus, lastHeadingCopyMessage
+document.querySelector("main article")?.addEventListener("click", async event => {
+  if(event.defaultPrevented || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+  const link = event.target.closest("a.docs-heading-link")
+  const status = link?.previousElementSibling
+  if(!status) return
+  const attempt = ++headingCopyAttempt
+  clearTimeout(headingCopyTimer)
+  if(activeHeadingStatus) activeHeadingStatus.textContent = ""
+  activeHeadingStatus = status
+  // The fragment link handles the URL, scroll, and history as usual.
+  let message = "Link copied"
+  try { await navigator.clipboard.writeText(link.href) }
+  catch { message = "Couldn’t copy link" }
+  if(attempt !== headingCopyAttempt) return
+  // Keep repeated announcements distinct for screen readers.
+  lastHeadingCopyMessage = message === lastHeadingCopyMessage ? `${message}\u00a0` : message
+  status.textContent = lastHeadingCopyMessage
+  headingCopyTimer = setTimeout(() => { status.textContent = "" }, 2000)
+})
 
 const library = document.querySelector('select[name="library"]')
 library?.addEventListener("change", () => {
@@ -65,8 +87,6 @@ const capabilities = document.querySelector(".widget-capabilities")
 const guidePreview = capabilities?.querySelector(".widget-capabilities-preview")
 if(guidePreview) {
   const core = capabilities.querySelector(".widget-capabilities-core")
-  const image = guidePreview.querySelector("img")
-  const excerpt = guidePreview.querySelector("p")
   const nativePopover = typeof guidePreview.showPopover === "function"
   const hoverAvailable = matchMedia("(hover: hover)")
   let activeLink, hoveredLink, focusedLink, hideTimer
@@ -106,8 +126,14 @@ if(guidePreview) {
     if(!hoverAvailable.matches) return
     clearTimeout(hideTimer)
     if(link === activeLink) return
-    image.src = link.querySelector("template").content.querySelector("img").getAttribute("src")
-    excerpt.textContent = document.getElementById(link.getAttribute("aria-describedby")).textContent
+    const content = link.querySelector("template")?.content.cloneNode(true)
+    const image = content?.querySelector("img")
+    const description = document.getElementById(link.getAttribute("aria-describedby"))?.cloneNode(true)
+    if(!image || !description) return
+    description.removeAttribute("id")
+    description.removeAttribute("class")
+    image.after(description)
+    guidePreview.replaceChildren(content)
     activeLink = link
     if(guidePreview.hidden) {
       guidePreview.hidden = false

@@ -1,4 +1,4 @@
-A Vue single-file component keeps its setup logic, template, and styles together. This first step needs only a template:
+A Vue single-file component contains the setup logic, template, and styles. This step uses only a template.
 
 ~~~vue
 <template>
@@ -6,7 +6,7 @@ A Vue single-file component keeps its setup logic, template, and styles together
 </template>
 ~~~
 
-The registration module imports the component and registers it as ww-quiz:
+The registration module imports the component. It registers the component as `ww-quiz`.
 
 ~~~js
 import {defineCustomElement} from "vue/dist/vue.runtime.esm-browser.js"

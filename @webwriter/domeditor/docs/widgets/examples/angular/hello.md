@@ -1,4 +1,4 @@
-Angular Elements turns an Angular component into a browser custom element. This TypeScript example uses a native `<slot>` so authored children stay in the widget’s light DOM. `ViewEncapsulation.ShadowDom` keeps the component view and styles in the shadow root. The browser build uses Angular’s runtime compiler.
+Angular Elements makes an Angular component a custom element. This TypeScript example uses a native `<slot>`. The widget's child elements stay in the light DOM. `ViewEncapsulation.ShadowDom` keeps the view and styles in the shadow root. The browser build uses the Angular runtime compiler.
 
 ```ts
 import "@angular/compiler"

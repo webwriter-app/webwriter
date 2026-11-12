@@ -1,12 +1,12 @@
 # Make layouts responsive
 
-A widget can receive less space than the browser window. Design block widgets for widths from **300px to 2100px**.
-
-Set `min-height` to the space the widget needs to stay usable and `max-height` to limit how tall it can grow. Let the content determine the height within those bounds, and keep overflowing content reachable by scrolling.
+A responsive widget changes its layout to fit the available space. It can move content into one column when the space is narrow or use more columns when space permits. Its controls stay available when the content scrolls.
 
 ![Widget columns reflow into a stack at narrow widths](../../images/widgets/responsiveness.svg)
 
-For a block widget, start with these host styles and adjust the height limits to suit its content:
+Design block widgets for widths from **300px to 2100px**. Set [`min-height`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/min-height) to the minimum height for access to the controls. Set `max-height` to limit the height. Let the content set the height within these limits. Use scrolling to give readers access to content outside the view.
+
+Use these host styles for a block widget. Change the height limits to suit the content.
 
 ```css
 :host {
@@ -19,6 +19,10 @@ For a block widget, start with these host styles and adjust the height limits to
 }
 ```
 
-Use container queries for layouts that need columns at wider allocations. For example, a weather dashboard can put current conditions and the forecast side by side when there is room, then stack them in a narrow column. Apply the query to a descendant inside the shadow DOM. Use `minmax(0, 1fr)` for flexible grid columns and allow long text to wrap.
+Use a [container query](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Containment/Container_queries) to add columns when more space is available. A weather display can show current conditions and the forecast side by side in a wide container. It can put them in one column in a narrow container. Apply the query to a descendant in the shadow DOM. Use [`minmax(0, 1fr)`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/minmax) for flexible columns. Let long text wrap.
 
-Test at 300px, 2100px, and several widths in between. Check nested widgets and browser zoom too. Controls should remain readable without horizontal overflow, and content should stay reachable when the widget reaches its maximum height.
+Test at 300px, 2100px, and intermediate widths. Test nested widgets. Test different browser zoom levels. Make sure that controls stay readable without horizontal scrolling. Check access to the content at the maximum widget height.
+
+## Layout at different widths
+
+## Overflow and nested widgets

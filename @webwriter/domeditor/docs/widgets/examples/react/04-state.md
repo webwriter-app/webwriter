@@ -1,4 +1,4 @@
-Add answer and contenteditable to observedAttributes, and let a React state hook keep the selected choice. The answer remains an HTML attribute on the custom element, so WebWriter can save and synchronize it. The React view does not own or rewrite the question in the light DOM.
+Add `answer` and `contenteditable` to `observedAttributes`. Use a React state hook for the reader's choice. The authoring tool can save and share the `answer` HTML attribute. The question stays in the light DOM.
 
 ~~~jsx
 static observedAttributes = ["answer", "contenteditable"]
@@ -10,4 +10,4 @@ function ReactQuiz({answer, editing}) {
 }
 ~~~
 
-04-state.jsx also hides the answer buttons while the editor is active and displays the author hint.
+In edit mode, the widget in `04-state.jsx` hides the answer buttons and shows the text for authors.

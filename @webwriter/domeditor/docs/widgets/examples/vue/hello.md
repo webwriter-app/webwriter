@@ -1,6 +1,6 @@
-The Vue quick start is a single-file component. Its native slot projects authored light-DOM content through the custom element’s shadow root.
+The Vue quick start uses a [single-file component](https://vuejs.org/guide/scaling-up/sfc.html). The native slot displays the widget's child content in the shadow root. The child content stays in the light DOM.
 
-Add Vue to the widget package:
+Add Vue to the widget package.
 
 ~~~json
 {
@@ -10,7 +10,7 @@ Add Vue to the widget package:
 }
 ~~~
 
-Save the template as hello.vue:
+Save the template as `hello.vue`.
 
 ~~~vue
 <template>
@@ -18,7 +18,7 @@ Save the template as hello.vue:
 </template>
 ~~~
 
-The small registration module turns the component into a browser custom element:
+The registration module makes the component a [custom element](https://vuejs.org/guide/extras/web-components.html#building-custom-elements-with-vue).
 
 ~~~js
 import {defineCustomElement} from "vue/dist/vue.runtime.esm-browser.js"
@@ -28,4 +28,4 @@ const WwHello = defineCustomElement(VueHello)
 customElements.define("ww-hello", WwHello)
 ~~~
 
-The build compiles the .vue file, including its native slot, then bundles Vue for browser use.
+The build compiles the `.vue` file with its native slot. It bundles Vue for the browser.

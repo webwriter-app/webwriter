@@ -1,10 +1,12 @@
-# Options and actions
+# B2. Options and actions
 
-A Lit widget can render these same controls in a [standalone drawer](standalone.md) when embedded outside WebWriter.
+The authoring tool uses option and action declarations to show controls for a widget. An embedded Lit widget can use the same declarations in a [standalone drawer](lit.md#standalone-widget-drawer).
 
-Declare option groups, options, actions, and permissions on the class or instance. Instance declarations take precedence over the matching class declaration, including an explicitly supplied empty map. Getters can provide dynamic declarations; if something outside a getter changes their result, dispatch a bubbling `optionschange` event from the widget host so the editor rereads them.
+Declare option groups, options, actions, and permissions on the class or instance. An instance declaration has priority over the matching class declaration. This also applies to an empty map.
 
-Legacy `dynamicOptions` declarations are accepted as an alias for `options`. When both declare the same name, `options` takes precedence.
+A getter can return declarations that change. When a change affects the result, dispatch a [bubbling](https://developer.mozilla.org/en-US/docs/Web/API/Event/bubbles) `optionschange` event from the widget host. This tells the authoring tool to read the declarations again.
+
+`dynamicOptions` is a legacy alias for `options`. When both declare the same name, `options` has priority.
 
 ```js
 static optionGroups = {
@@ -53,35 +55,39 @@ refreshOptions() {
 | Field | Type | Default / meaning |
 |---|---|---|
 | `type` | Constructor or type string | `String` / `"string"`. See supported types below. |
-| `attribute` | `string` or `false` | Uses the matching Lit property's attribute mapping when available, otherwise the lowercased option name. `false` writes a property only. An explicit option value takes precedence. |
-| `label` | `LocalizedText` | Title-cased option name. |
+| `attribute` | `string` or `false` | An explicit declaration has priority. The default is the matching Lit property's [attribute mapping](https://lit.dev/docs/components/properties/#setting-the-attribute-name), or the lowercase option name if there is no mapping. `false` writes only the property. |
+| `label` | `LocalizedText` | Option name in title case. |
 | `description`, `placeholder` | `LocalizedText` | No description or placeholder. |
-| `group` | `string` | No group. Matches an ID in `optionGroups`; options and actions can share groups. |
-| `hidden`, `disabled`, `readOnly` | `boolean` | `false`; controls visibility or editing availability. |
+| `group` | `string` | No group. Matches an ID in `optionGroups`. Options and actions can use the same group. |
+| `hidden`, `disabled`, `readOnly` | `boolean` | `false`. These fields control visibility and access to the control. |
 | `disabledReason` | `LocalizedText` | No explanation shown for a disabled option. |
-| `control` | `"checkbox"`, `"switch"`, `"select"`, `"radio"`, `"segmented"`, `"input"`, `"range"`, `"duration"`, or `"tree"` | Chosen from the option type by default. Controls presentation independently of value type. `radio` and `segmented` are for a single choice. `duration` and `tree` are specialized controls described below. |
-| `unit` | `string` | No unit label. Display only; does not convert the stored value. |
-| `steps` | `number[]` | No discrete values; for a number range with nonuniform choices. |
-| `multiline` | `boolean` | `false`; multiline string input. |
-| `min`, `max`, `step` | `number` | Unset; input constraints. |
-| `pattern` | `string` | Unset; input pattern. |
-| `minlength`, `maxlength` | `number` | Unset; text length constraints. |
-| `swatches` | `string[]` | Unset; suggested colors. |
-| `multiple` | `boolean` | `false`; multiple select values. |
-| `options` | Leaf or branch entries | Choices for `select`: leaves have `value: string`, optional `label` and `description` as `LocalizedText`. A tree also accepts branches with optional `label` and recursive `children`. A missing leaf label uses the value. |
-| `selector`, `excludeSelf` | `string`, `boolean` | For `reference`: `selector` defaults to `"*"`; `excludeSelf` defaults to `true`. |
+| `control` | `"checkbox"`, `"switch"`, `"select"`, `"radio"`, `"segmented"`, `"input"`, `"range"`, `"duration"`, or `"tree"` | The default depends on the option type. This field selects the control and keeps the value type the same. `radio` and `segmented` show one choice. See [Specialized options](#specialized-options) for `duration` and `tree`. |
+| `unit` | `string` | No unit label. The label applies to the display only. |
+| `steps` | `number[]` | No list of values. Use this field for a number range with unequal intervals. |
+| `multiline` | `boolean` | `false`. Permits string input on multiple lines. |
+| `min`, `max`, `step` | `number` | No numeric input limits. |
+| `pattern` | `string` | No input pattern. |
+| `minlength`, `maxlength` | `number` | No text length limits. |
+| `swatches` | `string[]` | No suggested colors. |
+| `multiple` | `boolean` | `false`. Permits more than one value in a selection. |
+| `options` | Leaf or branch entries | Lists choices for `select`. A leaf has `value: string` and can have a `label` and `description` as `LocalizedText`. A tree also accepts branches with an optional `label` and recursive `children`. A leaf without a label shows its value. |
+| `selector`, `excludeSelf` | `string`, `boolean` | Apply to `reference`. The default [selector](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Selectors/Selectors_and_combinators) is `"*"`. The default for `excludeSelf` is `true`. |
 
 Supported constructors are `Boolean`, `String`, `Number`, `Object`, and `Array`. Supported type strings are `boolean`, `string`, `number`, `date`, `datetime-local`, `email`, `password`, `tel`, `time`, `url`, `color`, `select`, `reference`, `object`, and `array`.
 
-The inspector reuses the edit/style toolbox's value and choice pickers, color palette, action buttons, and segmented and switch styling. `control: "input"` keeps a native number field. Duration, text, date/time, range, radio, and tree inputs use native controls styled to match. These presentation choices do not change stored values or action arguments.
+For a number option, `control: "input"` shows a standard number field. The choice of control keeps the stored value format and action arguments the same.
 
 ### Specialized options
 
-Options describe editor controls; the widget still supplies the matching property. With Lit, declare a duration property as `Number`, a tree selection as `Array`, and a reference as `String` in `static properties`, using the same reflected attribute names as the options.
+The widget supplies a property for each option. With Lit, declare duration properties as `Number` in `static properties`. Declare tree selections as `Array`. Declare references as `String`. Use the same reflected attribute names as the options.
 
-`duration` is a control hint for a number stored in seconds; it is not an option type. Declare it with `type: Number` or `type: "number"` and `control: "duration"`. The editor accepts seconds, `M:SS` (optionally fractional), and `H:MM:SS` (optionally fractional), and displays a duration without wrapping at 24 hours. `min`, `max`, and `step` are also in seconds. Malformed and negative values are rejected; `null` or a blank value resets the option.
+The `duration` control stores a number in seconds. Use `control: "duration"` with `type: Number` or `type: "number"`. The control accepts seconds, `M:SS`, or `H:MM:SS`, with or without fractional seconds. It can display durations of 24 hours or more.
 
-`tree` is a control hint for a multiple `select`; it is not an option type. Declare `type: "select"`, `multiple: true`, and `control: "tree"`. Entries are recursive, with leaves using `value` and optional `label` or `description`, and branches using optional `label` and `children`. Only leaf values are stored as a JSON string array. Branches have no stored value; their checked or indeterminate state is derived from descendant leaves. If a leaf value appears more than once, only its first occurrence is used. Unknown IDs already stored in the value are retained when known leaves are toggled. The editor uses native `details` and checkboxes. Trees are limited to depth 8 and 1,000 entries.
+`min`, `max`, and `step` also use seconds. The control rejects invalid and negative values. `null` or a blank value resets the option.
+
+The `tree` control uses `type: "select"` and `multiple: true`. A leaf has a `value` and can have a `label` or `description`. A branch has `children` and can have a `label`. A tree can have up to eight levels and 1,000 entries.
+
+The control stores only leaf values, as a JSON array of strings. A branch shows the selection state of its leaves. If a leaf value occurs more than once, the control uses the first occurrence. The control keeps unknown stored IDs when the user changes a known selection.
 
 ```js
 static options = {
@@ -99,7 +105,9 @@ static options = {
 }
 ```
 
-`reference` is an option type that selects an existing installed widget by its `id`. Its candidate query is `selector`, which defaults to `"*"`; `excludeSelf` defaults to `true`. Candidates are installed widgets in the current authored body. IDs must be unique across the current document, and the editor does not create IDs while listing candidates. It does not search another document or a shadow root. Labels use `aria-label`, then `title`, then the tag name, and always append `#ID`. A missing or invalid current ID is shown and remains stored until the user clears or replaces it. Candidate IDs are revalidated against the current DOM when selected.
+`reference` selects an installed widget by its `id`. The control lists installed widgets in the current document body that match `selector`. The default selector is `"*"`. With `excludeSelf: true`, the list excludes the widget that has the option. This is the default. Each candidate must have a unique ID in the document.
+
+The control uses `aria-label`, `title`, or the tag name, in that order. It adds `#ID` to each label. The control shows a missing or invalid current ID and keeps it until the user clears or replaces it. The authoring tool checks a candidate again when the user selects it.
 
 ```js
 static options = {
@@ -110,7 +118,9 @@ static options = {
 }
 ```
 
-File-input actions declare `input: {type: "file", accept?: string, multiple?: boolean}`. The native chooser is hosted in the editor shadow appendix. The widget method always receives a `File[]`, including when `multiple` is false. `accept` guides the chooser but does not validate file contents; parsing and validation belong to the widget. Canceling the chooser does not call the method or create an undo step. Files are transient input and are not serialized into options, the bridge, shared DOM, or history. Before invoking the method, the runtime rechecks that the original widget is connected and that the action is still declared, available, and confirmed. DOM changes made by the method use the existing async undo grouping behavior. Actions without an `input` declaration keep their existing no-argument call.
+File input actions declare `input: {type: "file", accept?: string, multiple?: boolean}`. The method receives a `File[]` even when `multiple` is false. [`accept`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/accept) controls which files the chooser shows. Check the contents in the widget.
+
+If the user selects **Cancel**, the chooser closes without calling the method or adding an undo step. The files are temporary input. Before the method runs, the authoring tool checks that the widget is still connected. The authoring tool also checks the action declaration, its availability, and confirmation. Changes to the DOM use the action's standard undo behavior. An action without `input` receives no arguments.
 
 ```js
 static actions = {
@@ -128,23 +138,29 @@ async importData(files) {
 }
 ```
 
-Before committing an option, the editor checks its current `hidden`, `disabled`, and `readOnly` state, then validates the value against the current type, bounds, discrete number steps, and choices. `null` and an empty string remain valid reset values. If a declaration getter throws, the editor fails safely. Events originating inside widget shadow DOM are ignored; dispatch `optionschange` from the widget host when the editor should reread dynamic declarations.
+Before a write, the authoring tool checks `hidden`, `disabled`, and `readOnly`. It checks the value against the current type, limits, number steps, and choices. `null` and an empty string are valid reset values. If a declaration getter throws an error, the authoring tool rejects the write.
 
-True booleans become empty attributes; false removes them. Objects, arrays, and multiple selections use JSON. Other values become strings. `null` and an empty string remove the attribute. An `attribute: false` option is temporary instance state and is not saved. Option values keep the existing storage and serialization behavior.
+The authoring tool reads `optionschange` from the widget host. Dispatch the event there when the authoring tool must read the declarations again.
 
-The editor reads the current property value to display an option. Make the property reflect the attribute, or supply a getter. Option attributes cannot be `style`, `class`, `is`, editor-only attributes, event handlers, or unsafe URLs.
+The authoring tool writes an empty attribute for a true boolean. A false boolean removes the attribute. Objects, arrays, and multiple selections use JSON. The authoring tool converts other values to strings. `null` and an empty string remove the attribute. An option with `attribute: false` has temporary instance state.
 
-Declare Lit reactivity separately in `static properties`, including metadata such as `reflect`, `state`, and `converter`. When an option omits `attribute`, the editor uses the matching Lit property declaration's custom attribute name or `attribute: false`; a Lit `state: true` property is also treated as property-only. WebWriter reads `static options`, `static actions`, and `static optionGroups`; `@webwriter/lit` no longer exports option or action decorators. The declared input hints `autocapitalize`, `spellcheck`, `autocomplete`, and `inputmode` are currently not forwarded to drawer controls.
+The authoring tool reads the current property value to display an option. Make the property reflect the attribute or supply a getter. The authoring tool rejects `style`, `class`, `is`, authoring-only attributes, event handlers, and unsafe URLs as option attributes.
+
+[Options and actions in Lit](lit.md#options-and-actions-in-lit) describes reactive properties and attribute mapping. Drawer controls ignore the input hints `autocapitalize`, `spellcheck`, `autocomplete`, and `inputmode`.
 
 ## Option groups
 
-`optionGroups` is a record keyed by group ID. Each group can declare `label` and `description` as `LocalizedText`, plus `collapsible`, `collapsed`, and `advanced` booleans. Options and actions retain their declaration order; ungrouped items appear first, followed by groups in `optionGroups` declaration order. A `group` ID without matching metadata is still shown, using the ID as its label. Empty groups are hidden. `advanced: true` makes a group collapsible and initially closed; otherwise `collapsed` sets its initial state when the group is collapsible.
+`optionGroups` is a record that uses group IDs as keys. A group can have a `label` and `description` as `LocalizedText`. It can also have `collapsible`, `collapsed`, and `advanced` booleans.
 
-Visibility and availability describe the widget UI; they do not enforce learner permissions or authorize changes to the document.
+The drawer shows ungrouped items first. It then shows groups in `optionGroups` declaration order. Options and actions keep their declaration order within each group. If a group has no matching declaration, the drawer shows its ID as the label. The drawer hides empty groups.
+
+`advanced: true` makes a group collapsible and closes it initially. For other collapsible groups, `collapsed` sets the initial state.
+
+Visibility and availability control the widget interface only. Use participant permissions for document editing rights.
 
 ## Element permissions
 
-Declare `permissions` on the class or instance, keyed by boolean property name. The editor puts the checkboxes under **Distribute → selected element permissions → Edit**. They can be toggled independently of **Edit** and are disabled when the element is hidden from participants. They do not appear in the normal widget options or the standalone drawer.
+Declare `permissions` on the class or instance. Use the boolean property names as keys. The authoring tool shows the checkboxes under **Distribute → selected element permissions → Edit**. Each checkbox works independently of **Edit**. If the element is hidden from participants, the authoring tool disables these checkboxes. The checkboxes appear only in the element permissions controls.
 
 ```js
 class QuizWidget extends LitElementWw {
@@ -166,15 +182,17 @@ class QuizWidget extends LitElementWw {
 }
 ```
 
-A checked permission is stored as an empty attribute on the widget; unchecking removes it. By default, the editor uses the matching Lit property's attribute name or the lowercased property name if the widget has no Lit declaration. If permission metadata specifies an `attribute`, it must match the attribute the widget reads. Property-only permissions are unsupported.
+A selected permission adds an empty attribute to the widget. Clearing the permission removes the attribute. The default attribute name comes from the matching Lit property. If there is no Lit declaration, the authoring tool uses the lowercase property name. If the declaration specifies `attribute`, use the same attribute in the widget. Each permission requires an attribute.
 
-Permission metadata supports `label` and `description` as `LocalizedText`, plus `hidden`, `disabled`, `disabledReason`, and `readOnly`. The widget reads the boolean to decide which interactions to offer. These flags do not grant document editing rights or authenticate network access.
+A permission can have a `label` and `description` as `LocalizedText`. It can also have `hidden`, `disabled`, `disabledReason`, and `readOnly`. The widget reads the boolean to select which interactions to show. Manage document editing rights and network access separately.
 
 ## Action declaration
 
-Actions support `label` and `description` as `LocalizedText`. The default label is the title-cased method name. `group` assigns the action to an option group. `hidden` and `disabled` control its availability. For a disabled action, `disabledReason` supplies the button's tooltip. To add an icon, set `icon` to an existing ribbon icon name. `intent` is `"default"` or `"danger"`. `confirm` supplies a `LocalizedText` prompt shown by the UI before execution. Optional `input` currently supports the file chooser described above.
+Actions support `label` and `description` as `LocalizedText`. The default label is the method name in title case. The `group` field assigns the action to an option group. The `hidden` and `disabled` fields control availability. The `disabledReason` field supplies the tooltip for a disabled action. Set `icon` to a supported ribbon icon name.
 
-Give adjacent actions the same `buttonGroup` string to join their buttons in the inspector. Each option group lays out its buttons separately and skips hidden actions. A single visible action renders as a standalone button.
+`intent` is `"default"` or `"danger"`. `confirm` supplies a `LocalizedText` prompt before the action runs. The optional `input` declaration opens a file chooser.
+
+Give adjacent actions the same `buttonGroup` string to join their buttons. Each option group shows its buttons separately. The drawer omits hidden actions. A group with one visible action shows one button.
 
 ```js
 static actions = {
@@ -184,6 +202,8 @@ static actions = {
 }
 ```
 
-A method of the same name must exist. Confirmation is handled by the UI, and the runtime requires a confirmed invocation and rechecks that the action is currently available before running it. Its DOM changes form one undo step. A returned promise keeps the group open until it settles, for up to ten seconds; the timeout does not cancel the method. A second action on that widget is rejected while one is running. The runtime exposes busy state and errors for the UI to render. `LitElementWw` also declares `placeholder`, which the drawer does not currently use.
+Supply a method with the same name. The authoring tool checks the current availability of the action before it runs. If the action requires confirmation, the authoring tool asks the user first. Changes to the DOM form one undo step.
+
+A returned promise keeps the undo group open until it settles or ten seconds pass. The method can continue after that limit. The authoring tool rejects a second action on the same widget while the first action runs.
 
 See [localized text](editing-configuration.md) for locale matching.

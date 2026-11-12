@@ -42,7 +42,7 @@ async function fixture() {
     `${fence}js`, 'const message = "hello"', fence, "", `${fence}made-up-language`,
     '<script>alert("unsafe")</script>', fence, "",
     '<details id="complete-script">', '<summary>Complete script</summary>', "",
-    '<!-- script:../examples/04-state.js -->', "", '</details>', "",
+    '**State module**', "", '<!-- script:../examples/04-state.js -->', "", '</details>', "",
   ].join("\n")
   writeFileSync(join(sectionOne, "first.md"), firstPage)
   writeFileSync(join(sectionOne, "second.md"), `# Second page\n\nA second page.\n`)
@@ -105,7 +105,7 @@ it("embeds the selected library's complete script in a highlighted disclosure", 
     expect(response.status).toBe(200)
     const disclosure = response.body.match(/<details id="complete-script">([\s\S]*?)<\/details>/)?.[1]
     expect(disclosure).toContain('<summary>Complete script</summary>')
-    expect(disclosure).toContain('class="shiki')
+    expect(disclosure).toMatch(/<figure class="code-snippet"><figcaption class="code-snippet-label">State module<\/figcaption>\s*<pre class="shiki[\s\S]*?<\/pre>\s*<\/figure>/)
     expect(disclosure).toContain(`'${library}'`)
     expect(disclosure).not.toContain('<!-- script:')
   }
@@ -143,7 +143,8 @@ it("renders linked sections, adjacent page navigation, frontmatter, headings, an
   expect(pageNavigation).toBeDefined()
   expect(pageNavigation).toContain('<a class="previous" href="/docs/widgets/basics/index.md?library=lit">')
   expect(pageNavigation).toContain('<a class="next" href="/docs/widgets/basics/second.md?library=lit">')
-  expect(response.body).toContain('<h2 id="a-heading">A heading!</h2>')
+  expect(response.body).toContain('<h2 id="a-heading" class="docs-heading" aria-label="A heading!">')
+  expect(response.body).toContain('<a class="docs-heading-link" href="#a-heading" aria-label="Copy link to A heading!">#</a>A heading!</h2>')
   expect(response.body).not.toContain("draft: true")
   expect(response.body).toContain('<iframe src="/docs/widgets/basics/lit-example.html?library=lit" title="Lit example" loading="lazy"></iframe>')
   expect(response.body).toContain('<a href="/docs/widgets/basics/example.js?library=lit">Example source</a>')
@@ -156,7 +157,8 @@ it("renders linked sections, adjacent page navigation, frontmatter, headings, an
   expect(header).not.toContain('library-switch')
   const sidebar = response.body.match(/<aside>[\s\S]*?<\/aside>/)?.[0] ?? ""
   expect(sidebar).toContain('class="library-switch"')
-  expect(sidebar.indexOf('class="library-switch"')).toBeLessThan(sidebar.indexOf('aria-label="Documentation"'))
+  expect(sidebar.indexOf('class="library-switch"')).toBeLessThan(sidebar.indexOf('>Overview</a>'))
+  expect(sidebar.indexOf('>Overview</a>')).toBeLessThan(sidebar.indexOf('class="documentation-sections"'))
   expect(response.body).not.toContain('class="docs-toolbar"')
   expect(response.body.match(/<select\b/g)).toHaveLength(1)
   expect(response.body).toContain('<body class="site-layout">')
@@ -177,8 +179,8 @@ it("selects the requested library, renders only its conditional content, and rew
   expect(response.body).not.toContain('<iframe src="./example.html"')
   const select = response.body.match(/<select\b[^>]*>[\s\S]*?<\/select>/)?.[0]
   expect(select).toContain('name="library"')
-  expect(select).toContain('aria-label="Rendering library"')
-  expect(response.body).toContain("Rendering library")
+  expect(select).toContain('aria-labelledby="library-label"')
+  expect(response.body).toContain('<label id="library-label" for="library">Library</label>')
   expect(select).toContain('<option value="vanilla">')
   expect(select).toContain('<option value="lit" selected')
   expect(select).toContain('<selectedcontent></selectedcontent>')
@@ -193,31 +195,90 @@ it("selects the requested library, renders only its conditional content, and rew
   expect(response.body).toContain('href="https://example.com/guide?q=1#part"')
 })
 
-it("places standalone pages before sections in menus and adjacent navigation", async () => {
+it("links the library picker label and orders Library, Overview, and Quick start before the other pages", async () => {
   const {base} = await fixture()
   const docs = join(directory, "docs/widgets")
   mkdirSync(join(docs, "introduction"))
   writeFileSync(join(docs, "introduction/widgets.md"), "# What is a widget?\n")
+  writeFileSync(join(docs, "introduction/library.md"), "# Library\n\nWidgets are Web Components.\n")
   writeFileSync(join(docs, "introduction/quick-start.md"), "# Quick start\n")
-  writeFileSync(join(docs, "index.md"), "# Widgets\n\n- [What is a widget?](introduction/widgets.md)\n- [Quick start](introduction/quick-start.md)\n- [Basics](basics/index.md)\n")
+  for(const name of ["tutorial", "guides", "reference"]) {
+    const index = join(docs, name, "index.md")
+    mkdirSync(join(docs, name), {recursive: true})
+    writeFileSync(index, `# ${name}\n`)
+  }
+  writeFileSync(join(docs, "index.md"), "# Widgets\n\n- [What is a widget?](introduction/widgets.md)\n- [Library](introduction/library.md)\n- [Quick start](introduction/quick-start.md)\n- [Basics](basics/index.md)\n")
 
-  const paths = ["/docs/widgets/index.md", "/docs/widgets/introduction/widgets.md",
-    "/docs/widgets/introduction/quick-start.md", "/docs/widgets/basics/index.md"]
+  const libraryPage = "/docs/widgets/introduction/library.md"
+  const introPages = [libraryPage, "/docs/widgets/index.md", "/docs/widgets/introduction/quick-start.md"]
+  const paths = [...introPages, "/docs/widgets/introduction/widgets.md", "/docs/widgets/basics/index.md"]
+  const query = "?library=vue"
   for(const [index, path] of paths.entries()) {
-    const response = await get(base, path + "?library=lit")
+    const response = await get(base, path + query)
     expect(response.status).toBe(200)
+    const notice = '<div class="docs-intro-note" role="note">This documentation is for developers. It is available only in English.</div>'
+    if(introPages.includes(path)) {
+      expect(response.body).toContain(`<main id="content" tabindex="-1">${notice}<article><h1`)
+    }
+    else expect(response.body).not.toContain(notice)
     for(const label of ["Documentation", "Mobile documentation"]) {
       const menu = response.body.match(new RegExp(`<nav aria-label="${label}">([\\s\\S]*?)<\\/nav>`))?.[1]
-      expect(menu).toMatch(/>Overview<\/a><\/li><li><a[^>]*>What is a widget\?<\/a><\/li><li><a[^>]*>Quick start<\/a><\/li><li class="nav-section">/)
+      expect(menu).toMatch(/>What is a widget\?<\/a><div class="nav-section">/)
+      if(label === "Documentation") {
+        const current = path === libraryPage ? ' aria-current="page"' : ""
+        expect(menu).toContain(`<a href="${libraryPage + query}" id="library-label"${current}>Library</a>`)
+        expect(menu).toContain('<select id="library" name="library" aria-labelledby="library-label">')
+        expect(menu).toMatch(/<form class="library-switch"[\s\S]*?<\/form>\s*<ul class="nav-intro-row"><li><a[^>]*>Overview<\/a><\/li><li><a[^>]*>Quick start<\/a><\/li><\/ul>/)
+        expect(menu).toMatch(/<div class="documentation-sections"[^>]*><a[^>]*>What is a widget\?<\/a>/)
+      }
+      else expect(menu).not.toMatch(/nav-intro-row|library-switch/)
+      expect(menu.match(/>Library<\/a>/g) ?? []).toHaveLength(label === "Documentation" ? 1 : 0)
     }
     const adjacent = response.body.match(/<nav class="page-navigation"[^>]*>([\s\S]*?)<\/nav>/)?.[1]
-    if(index > 0) expect(adjacent).toContain(`<a class="previous" href="${paths[index - 1]}?library=lit">`)
-    if(index < paths.length - 1) expect(adjacent).toContain(`<a class="next" href="${paths[index + 1]}?library=lit">`)
-    if(index === 1 || index === 2) {
+    if(index > 0) expect(adjacent).toContain(`<a class="previous" href="${paths[index - 1] + query}">`)
+    else expect(adjacent).not.toContain('class="previous"')
+    if(index < paths.length - 1) expect(adjacent).toContain(`<a class="next" href="${paths[index + 1] + query}">`)
+    if(path.startsWith("/docs/widgets/introduction/")) {
       const breadcrumb = response.body.match(/<nav class="breadcrumb"[^>]*>([\s\S]*?)<\/nav>/)?.[1]
       expect(breadcrumb).toBeUndefined()
     }
   }
+
+  const notice = '<div class="docs-intro-note" role="note">This documentation is for developers. It is available only in English.</div>'
+  for(const path of ["/docs/widgets/tutorial/index.md", "/docs/widgets/guides/index.md", "/docs/widgets/reference/index.md"]) {
+    const response = await get(base, path + query)
+    expect(response.status).toBe(200)
+    expect(response.body).toContain(`<main id="content" tabindex="-1">${notice}<article><h1`)
+  }
+
+})
+
+it("nests reference pages under named sections and follows their order for adjacent links", async () => {
+  const {base} = await fixture()
+  const docs = join(directory, "docs/widgets")
+  const reference = join(docs, "reference")
+  mkdirSync(reference)
+  writeFileSync(join(docs, "index.md"), "# Widgets\n\n- [Reference](reference/index.md)\n")
+  const groups = [
+    ["A. Package interface", "distribution", "Distribution"],
+    ["B. Class interface", "runtime", "Runtime interface"],
+    ["C. Element interface", "data", "Data and events"],
+    ["D. Tooling", "build-test", "Build and test"],
+  ]
+  writeFileSync(join(reference, "index.md"), "# Reference\n\n" + groups.map(([name, path, title]) =>
+    `## ${name}\n\n- [${title}](${path}.md)\n`).join("\n"))
+  for(const [, path, title] of groups) writeFileSync(join(reference, `${path}.md`), `# ${title}\n`)
+
+  const {body} = await get(base, "/docs/widgets/reference/runtime.md?library=vue")
+  const menus = [...body.matchAll(/<nav aria-label="(?:Documentation|Mobile documentation)">([\s\S]*?)<\/nav>/g)]
+  expect(menus).toHaveLength(2)
+  for(const [, menu] of menus) {
+    expect([...menu.matchAll(/<div class="nav-subsection"><div class="nav-heading"[^>]*><span>([^<]+)<\/span><\/div><ul aria-label="([^"]+)"><li><a href="([^"]+)"/g)]
+      .map(([, title, label, href]) => [title, label, href])).toEqual(groups.map(([title, path]) =>
+      [title, title, `/docs/widgets/reference/${path}.md?library=vue`]))
+  }
+  expect(body).toContain('class="previous" href="/docs/widgets/reference/distribution.md?library=vue"')
+  expect(body).toContain('class="next" href="/docs/widgets/reference/data.md?library=vue"')
 })
 
 it("defaults missing and unsupported library choices to Lit", async () => {
@@ -292,6 +353,40 @@ it("renders framework-specific Markdown when it is available and keeps shared pa
     const shared = await get(base, `/docs/widgets/advanced/third.md?library=${library}`)
     expect(shared.body).not.toContain("The examples on this page currently use JS.")
   }
+})
+
+it("labels optional framework prose and keeps shared text and examples outside the note", async () => {
+  const {base} = await fixture()
+  writeFileSync(join(directory, "docs/widgets/basics/second.md"), `# Setup
+
+Shared instructions.
+
+<!-- library:vue optional -->
+Save the [source](./first.md) as \`component.vue\`.
+
+**\`registration.js\`**
+
+\`\`\`js
+export const registration = true
+\`\`\`
+<!-- /library -->
+
+Continue with the shared steps.
+`)
+
+  const vue = await get(base, "/docs/widgets/basics/second.md?library=vue")
+  const note = vue.body.match(/<div class="library-note"[\s\S]*?<\/div>/)?.[0]
+  expect(note).toContain('data-library="vue" role="note"')
+  expect(note).toContain('<img src="/dev-server/icons/vue.svg" alt="" width="16" height="16">Vue')
+  expect(note).toContain('<a href="/docs/widgets/basics/first.md?library=vue">source</a> as <code>component.vue</code>')
+  expect(note).not.toMatch(/Shared instructions|shared steps|<pre|registration\.js/)
+  expect(vue.body).toMatch(/<\/div>\s*<figure class="code-snippet"><figcaption class="code-snippet-label"><code>registration\.js<\/code><\/figcaption>\s*<pre/)
+  expect(vue.body).not.toContain("currently use JS")
+
+  const lit = await get(base, "/docs/widgets/basics/second.md?library=lit")
+  expect(lit.body).toContain("Shared instructions.")
+  expect(lit.body).toContain("Continue with the shared steps.")
+  expect(lit.body).not.toMatch(/library-note|currently use JS|registration\.js|component\.vue/)
 })
 
 it("includes only the selected framework explanation and resolves its source links", async () => {
@@ -376,8 +471,19 @@ it("renders the root README with heading anchors and strips frontmatter", async 
   const response = await get(base, "/README.md")
   expect(response.status).toBe(200)
   expect(response.body).toContain("<title>Project README · WebWriter documentation</title>")
-  expect(response.body).toContain('<h2 id="getting-started">Getting started</h2>')
+  expect(response.body).toContain('<h2 id="getting-started" class="docs-heading" aria-label="Getting started">')
+  expect(response.body).toContain('href="#getting-started" aria-label="Copy link to Getting started">#</a>Getting started</h2>')
   expect(response.body).not.toContain("private: true")
+})
+
+it("gives repeated headings distinct fragments and keeps formatted heading labels readable", async () => {
+  const {base} = await fixture()
+  writeFileSync(join(directory, "docs/widgets/basics/second.md"), "# Configure `<widget>` &amp; save\n\n## Café\n\n## Café\n\n## Café-1\n")
+  const {body} = await get(base, "/docs/widgets/basics/second.md?library=vue")
+  expect(body).toContain('aria-label="Configure &lt;widget&gt; &amp; save"')
+  expect(body).toContain('aria-label="Copy link to Configure &lt;widget&gt; &amp; save">#</a>Configure <code>&lt;widget&gt;</code> &amp; save</h1>')
+  expect([...body.matchAll(/<h2 id="([^"]+)"/g)].map(match => match[1])).toEqual(["café", "café-1", "café-1-1"])
+  expect([...body.matchAll(/href="#(caf[^"]+)"/g)].map(match => match[1])).toEqual(["caf%C3%A9", "caf%C3%A9-1", "caf%C3%A9-1-1"])
 })
 
 it("returns a rendered 404 for a missing documentation page", async () => {
@@ -407,7 +513,7 @@ it("serves section directories and redirects the slashless route", async () => {
   expect(redirect.headers.get("location")).toBe("/docs/widgets/basics/")
   const page = await get(base, "/docs/widgets/basics/")
   expect(page.status).toBe(200)
-  expect(page.body).toContain("<title>Basics · WebWriter documentation</title>")
+  expect(page.body).toContain("<title>Basics · Widget documentation</title>")
   expect(page.body).toContain('href="/docs/widgets/basics/first.md?library=lit"')
 })
 
@@ -452,7 +558,7 @@ it("reads changed Markdown and navigation on later requests", async () => {
   writeFileSync(join(directory, "docs/widgets/basics/first.md"), "# Renamed page\n")
   writeFileSync(join(directory, "docs/widgets/basics/index.md"), "# Basics\n\n- [Renamed page](./first.md)\n")
   const second = await get(base, "/docs/widgets/basics/first.md")
-  expect(second.body).toContain("<title>Renamed page · WebWriter documentation</title>")
+  expect(second.body).toContain("<title>Renamed page · Widget documentation</title>")
   expect(second.body).toContain('href="/docs/widgets/basics/first.md?library=lit" aria-current="page">Renamed page</a>')
   expect(second.body).toContain("Renamed page")
   expect(second.body).not.toContain("First page")
@@ -486,7 +592,8 @@ An example in JavaScript.
   expect(illustrated.status).toBe(200)
   const [, intro, body] = illustrated.body.match(/<article class="widget-guide"><header class="guide-intro">([\s\S]*?)<\/header>([\s\S]*?)<\/article>/)!
   expect(intro).toContain('<nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/widgets/guides/index.md?library=vue">Guides</a>')
-  expect(intro).toContain('<h1 id="illustrated-guide">Illustrated guide</h1>')
+  expect(intro).toContain('<div class="guide-intro-content"><div class="guide-intro-text"><h1 id="illustrated-guide" class="docs-heading"')
+  expect(intro).toContain('href="#illustrated-guide" aria-label="Copy link to Illustrated guide">#</a>Illustrated guide</h1>')
   expect(intro).toContain('<p>A <strong>lead</strong> with a <a href="/docs/widgets/guides/text.md?library=vue">link</a>.</p>')
   expect(intro).toContain('<img src="./opening.svg" alt="Opening illustration">')
   expect(intro).not.toContain("A second paragraph")
@@ -501,7 +608,26 @@ An example in JavaScript.
   expect(text.body).toMatch(/<nav class="breadcrumb"[^>]*>[\s\S]*?<\/nav>\s*<main/)
 })
 
-it("groups illustrated guides in both menus and omits only the overview's first table header", async () => {
+it("renders guide keyword badges from the shared package keyword data", async () => {
+  const {base} = await fixture()
+  const guides = join(directory, "docs/widgets/guides")
+  mkdirSync(guides)
+  writeFileSync(join(directory, "docs/widgets/index.md"), "# Widgets\n\n[Guides](guides/index.md)\n")
+  writeFileSync(join(guides, "index.md"), "# Guides\n\n[Convert & import/export](conversions.md)\n")
+  writeFileSync(join(guides, "conversions.md"), "# Convert & import/export\n\nConvert widget content.\n\n![Diagram](./opening.svg)\n")
+
+  const {body} = await get(base, "/docs/widgets/guides/conversions.md?library=vue")
+  expect(body).toContain('href="/src/package-keywords.css"')
+  const badges = body.match(/<ul class="details-keywords guide-keywords"[\s\S]*?<\/ul>/)?.[0]
+  expect(badges).toContain('data-kind="conversion" href="/docs/widgets/reference/keywords.md?library=vue#values-in-keyword-forms"')
+  expect(badges).toContain('title="widget-convertible-to-[media/type | &lt;element-name&gt;]"')
+  expect(badges).toContain("icon-tabler-file-export")
+  expect(badges).toContain("icon-tabler-file-import")
+  expect(body).toContain('</nav><ul class="details-keywords guide-keywords"')
+  expect(body).toContain('</ul></div><div class="guide-intro-content"><div class="guide-intro-text">')
+})
+
+it("renders overview info boxes, groups illustrated guides, and keeps authored table headers", async () => {
   const {base} = await fixture()
   const docs = join(directory, "docs/widgets")
   mkdirSync(join(docs, "guides"))
@@ -512,47 +638,72 @@ it("groups illustrated guides in both menus and omits only the overview's first 
     .map(guide => `<symbol id="${guide}" viewBox="0 0 24 24"><path d="M1 1h5"/></symbol>`).join("")}</svg>`)
   writeFileSync(join(docs, "index.md"), `# Widget documentation
 
-| Page or section | Contents |
-|---|---|
-| [Guides](guides/index.md) | Widget guides. |
+> [!INFO]
+>
+> This documentation is intended for developers. It is available only in English.
 
-| Other header |
+> An ordinary quotation.
+
+[Guides](guides/index.md) give instructions for widget features.
+
+| Example header |
 |---|
-| Other row |
+| Example row |
 
-<nav class="widget-capabilities">
+<nav class="widget-capabilities" aria-labelledby="what-widgets-can-do">
   <h4>Authoring</h4>
-  <ul><li><a href="guides/content.md"><svg><use href="../images/widgets/capability-icons.svg#content"></use></svg>Content</a></li><li><a href="guides/focus.md">Focus</a></li></ul>
+  <ul><li><a href="guides/content.md" aria-describedby="content-preview"><svg><use href="../images/widgets/capability-icons.svg#content"></use></svg><template><img src="../images/widgets/content.svg" alt=""></template><span>Short label</span></a><p id="content-preview" class="widget-capabilities-summary">Short description.</p></li><li><a href="guides/focus.md">Focus</a></li></ul>
   <h4>Participation</h4>
   <ul><li><a href="guides/state.md">State</a></li></ul>
 </nav>
 `)
   writeFileSync(join(docs, "guides/index.md"), `# Guides
 
-| Guide |
-|---|
-| [State](state.md) |
-| [Printing](printing.md) |
-| [Focus](focus.md) |
-| [Content](content.md) |
+<!-- widget-capabilities -->
+
+[Printing](printing.md)
 `)
   for(const guide of guideNames) {
     writeFileSync(join(docs, `guides/${guide}.md`), `# ${guide}\n`)
   }
+  writeFileSync(join(docs, "guides/content.md"), `# Nest content
+
+Use a [slot](focus.md) to display **authored content**. Authors can edit that content in place.
+
+![Content diagram](./opening.svg)
+
+This second paragraph belongs to the guide body.
+`)
 
   const overview = await get(base, "/docs/widgets/?library=vue")
+  expect(overview.body).toContain('>Widget documentation</h1>\n<div class="docs-info" role="note">\n<p>This documentation is intended for developers. It is available only in English.</p>\n</div>')
+  expect(overview.body).toContain('<blockquote>\n<p>An ordinary quotation.</p>\n</blockquote>')
   const tables = [...overview.body.matchAll(/<table>[\s\S]*?<\/table>/g)].map(match => match[0])
-  expect(tables).toHaveLength(2)
-  expect(tables[0]).not.toContain("<thead>")
-  expect(tables[0]).toContain('href="/docs/widgets/guides/index.md?library=vue"')
-  expect(tables[1]).toContain("<th>Other header</th>")
+  expect(tables).toHaveLength(1)
+  expect(tables[0]).toContain("<th>Example header</th>")
+  expect(overview.body).toContain('<p><a href="/docs/widgets/guides/index.md?library=vue">Guides</a> give instructions for widget features.</p>')
   expect(overview.body).toContain('<script id="docs-site-entry" type="module" blocking="render" src="/src/site-entry.ts">')
   expect(overview.body).toContain('<article>')
   expect(overview.body.split("<article>")[1]).toContain('<use href="#widget-guide-icon-content">')
   expect(overview.body).toContain('<symbol id="widget-guide-icon-content"')
   expect(overview.body).not.toContain('capability-icons.svg?library=vue')
   const guides = await get(base, "/docs/widgets/guides/index.md?library=vue")
-  expect(guides.body).toContain("<th>Guide</th>")
+  expect(guides.body).not.toMatch(/<table>|<h2[^>]*>What widgets can do/)
+  expect(guides.body).toContain('<nav class="widget-capabilities" aria-labelledby="guides">')
+  expect(guides.body).toContain('class="nav-index-link" aria-current="page">Guides</a>')
+  expect(overview.body).toContain('class="nav-index-link" aria-current="page">Overview</a>')
+  for(const page of [overview, guides]) {
+    const map = page.body.match(/<nav class="widget-capabilities"[\s\S]*?<\/nav>/)?.[0]
+    expect(map).toContain('href="/docs/widgets/guides/content.md?library=vue"')
+    expect(map).toContain('src="/docs/images/widgets/content.svg?library=vue"')
+    expect(map).toContain('Use a slot to display <strong>authored content</strong>. Authors can edit that content in place.')
+    expect(map).toContain('</template><span>Nest content</span></a>')
+    expect(map).not.toMatch(/Short label|Short description|This second paragraph/)
+    expect(map).toMatch(/<template><img[^>]*><ul[^>]*>.*?<span class="details-keyword" data-kind="content">[\s\S]*?Has content[\s\S]*?<\/template>/)
+  }
+  expect(overview.body).toContain('<h4 id="authoring" class="docs-heading"')
+  expect(guides.body).toContain('<h2 id="authoring" class="docs-heading"')
+  expect(guides.body).toContain('href="#authoring" aria-label="Copy link to Authoring">#</a>Authoring</h2>')
 
   const state = await get(base, "/docs/widgets/guides/state.md?library=vue")
   const menus = [...state.body.matchAll(/<nav aria-label="(?:Documentation|Mobile documentation)">([\s\S]*?)<\/nav>/g)]
@@ -562,10 +713,30 @@ it("groups illustrated guides in both menus and omits only the overview's first 
     expect(groups.map(([, group]) => [...group.matchAll(/href="#widget-guide-icon-([a-z-]+)"/g)]
       .map(([, guide]) => guide))).toEqual([["content", "focus"], ["state"], ["printing"]])
     expect(menu).toContain('class="guide-nav-link" aria-current="page"><svg aria-hidden="true"')
+    expect(menu).toContain('</svg>Nest content</a>')
+    expect(menu).not.toContain('class="nav-index-link"')
     expect(menu).not.toMatch(/Authoring|Participation/)
   }
   expect(state.body).toContain('class="previous" href="/docs/widgets/guides/focus.md?library=vue"')
   expect(state.body).toContain('class="next" href="/docs/widgets/guides/printing.md?library=vue"')
+})
+
+it("renders an npm package banner as a native link with a decorative package icon", async () => {
+  const {base} = await fixture()
+  writeFileSync(join(directory, "docs/widgets/basics/second.md"), `# Build
+
+> [!NPM]
+>
+> [View \`@webwriter/build\` on npm](https://www.npmjs.com/package/@webwriter/build)
+
+Build the exports.
+`)
+  const {body} = await get(base, "/docs/widgets/basics/second.md?library=vue")
+  expect(body).toContain('>Build</h1>\n<a class="docs-package-banner" href="https://www.npmjs.com/package/@webwriter/build">')
+  expect(body).toContain('<span class="docs-package-banner-icon" aria-hidden="true"><svg')
+  expect(body).toContain('icon-tabler-package')
+  expect(body).toContain('<span>View <code>@webwriter/build</code> on npm</span></a>')
+  expect(body).not.toContain("[!NPM]")
 })
 
 it("emits static documentation variants, navigation, assets, and original example downloads", async () => {
@@ -589,7 +760,8 @@ it("emits static documentation variants, navigation, assets, and original exampl
   for(const library of ["lit", "vanilla", "react", "vue", "angular", "svelte"]) {
     const suffix = library === "lit" ? "" : `.${library}`
     const page = emitted.get(`docs/widgets/basics/first${suffix}.html`)
-    expect(page).toContain('<title>First page · WebWriter documentation</title>')
+    expect(page).toContain('<title>First page · Widget documentation</title>')
+    expect(page).toContain('href="#a-heading" aria-label="Copy link to A heading!"')
     expect(page).toContain(`href="/docs/widgets/basics/second${suffix}.html?step=2&library=${library}#setup"`)
     expect(page).toContain(`data-href="/docs/widgets/basics/first.react.html?library=react"`)
     const breadcrumb = page.match(/<nav class="breadcrumb"[^>]*>([\s\S]*?)<\/nav>/)?.[1]
@@ -597,6 +769,8 @@ it("emits static documentation variants, navigation, assets, and original exampl
     expect(page).toContain('href="/gallery/">Widgets</a>')
     expect(page).toContain('href="/editor/">Open WebWriter')
     expect(page).toContain('href="/assets/docs/documentation.css"')
+    const noteIcon = library === "lit" ? "lit" : "javascript"
+    expect(page).toContain(`<span class="library-note-label"><img src="/assets/docs/icons/${noteIcon}.svg" alt="" width="16" height="16">`)
     expect(page).toContain('href="/assets/site-header.css"')
     expect(page).toContain('src="/assets/documentation-e5f6g7h8.js"')
     expect(page).toContain('src="/assets/site-entry-a1b2c3d4.js"')
@@ -613,5 +787,6 @@ it("emits static documentation variants, navigation, assets, and original exampl
   expect(emitted.get("docs/widgets/examples/react/04-state.jsx").toString()).toBe("export const state = 'react'")
   expect(emitted.get("docs/images/diagram.svg").toString()).toContain('id="diagram"')
   expect(emitted.get("assets/docs/documentation.css").toString()).toContain('color: black')
+  expect(emitted.get("assets/docs/package-keywords.css").toString()).toContain(".details-keyword")
   expect(emitted.get("assets/docs/icons/react.svg").toString()).toContain('id="react"')
 })

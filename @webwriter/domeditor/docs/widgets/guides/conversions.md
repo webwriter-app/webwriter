@@ -1,14 +1,16 @@
 # Convert & import/export
 
-Use `convertFrom` for the formats your widget can read and `convertTo` for the formats it can produce. A native tag like `ul` exchanges authored DOM. A file extension like `.json` or media type like `text/plain` exchanges a file.
+A widget can convert HTML content to an interactive element. It can also convert its content to native HTML. The widget can import and export files in the formats it declares.
 
 ![A widget exchanges content with a native HTML list and with files](../../images/widgets/conversions.svg)
 
-Authors can use the Widget drawer in the Edit ribbon or click the element icon in the toolbox to find available commands. When a native element can become an installed widget, the widget's button in the Packages drawer has a dotted underline.
+Use `convertFrom` to specify the formats that the widget can read. Use `convertTo` to specify the formats that it can write. Use tag names for HTML conversions. Use file extensions or [media types](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/MIME_types) for file conversions.
+
+The authoring tool shows available conversions for the selected element. Authors can open the Widget drawer or select the element icon to find them. A dotted underline in the Packages drawer identifies an installed widget that can accept the selected element.
 
 ## Convert between a native list and a packing checklist
 
-The packing checklist below stores a native list of items in its light DOM. When converting a selected list, the editor gives `loadList` a detached copy and inserts the populated widget in the list's place. When converting back, `toList` returns a detached copy of the widget's list. The editor replaces the source in one undo step.
+The packing checklist keeps a native list in its light DOM. The authoring tool passes a detached copy of the selected list to `loadList`. It replaces the selected list with the widget. The `toList` method returns a detached copy of the widget's list. The authoring tool can undo the replacement in one step.
 
 ```js
 class PackingChecklist extends HTMLElement {
@@ -27,11 +29,11 @@ class PackingChecklist extends HTMLElement {
 customElements.define("ww-packing-checklist", PackingChecklist)
 ```
 
-Declare `"content": "ul"` in the widget's [editing configuration](../reference/editing-configuration.md) if authors should edit the list in place. To export several siblings, return a `DocumentFragment` with one or more elements of the declared tag. For example, a timeline can return a fragment of `details` elements.
+Declare `"content": "ul"` in the [editing configuration](../reference/editing-configuration.md) to let authors edit the list in place. To export adjacent elements, return a [`DocumentFragment`](https://developer.mozilla.org/en-US/docs/Web/API/DocumentFragment) with elements of the declared tag. A timeline, for example, can return `details` elements.
 
 ## Add file formats to the same maps
 
-Replace the two maps in the example with these declarations, then add the methods below inside the class.
+Replace the two maps with the declarations that follow. Add the methods to the class.
 
 ```js
 static convertFrom = {ul: "loadList", ".json": "importJson"}
@@ -59,10 +61,16 @@ exportText() {
 }
 ```
 
-The import accepts a file such as `packing-list.json` containing `["Water bottle", "Notebook", "Rain jacket"]`. It reads and validates the file before returning a function. The editor calls that function synchronously in one undo step if the widget still has the authored content it had when the import began.
+A file such as `packing-list.json` can contain `["Water bottle", "Notebook", "Rain jacket"]`. The import method reads the file. It checks the data before it returns a function. The authoring tool runs that function synchronously if the authored content has not changed. The authoring tool can undo the import in one step.
 
-Use an extension key when the filename identifies the format. For example, `".json": "importJson"` lets the checklist offer JSON import even if the file has no reported media type. The editor uses the key to filter the chooser and match the selected file. Your handler validates the actual contents. For exports, name the returned file with the declared extension or set its media type to the declared type. The editor handles the download.
+Use a file extension as the key if the filename identifies the format. For example, `".json": "importJson"` permits import when the file has no media type. The authoring tool uses the key to filter the file chooser and identify the file. Check the file contents in the import handler.
 
-To make these file formats discoverable from package metadata, declare `"importFormats": [".json"]` and `"exportFormats": ["text/plain"]` in the widget's editing config. The lists advertise the formats. The runtime methods implement them. [Editing configuration reference](../reference/editing-configuration.md#advertise-file-formats)
+For an export, use the declared extension in the filename or set the declared media type. The authoring tool downloads the file.
 
-See the [runtime reference](../reference/runtime.md#conversions) for return values and how instance declarations override class declarations.
+Declare `"importFormats": [".json"]` and `"exportFormats": ["text/plain"]` in the widget's editing configuration. The configuration lists the file formats. The runtime methods do the conversions. See the [editing configuration reference](../reference/editing-configuration.md#advertise-file-formats).
+
+The [runtime reference](../reference/runtime.md#conversions) lists return values and gives the order of precedence for instance and class declarations.
+
+## Supported conversion types
+
+## Validation of imported files

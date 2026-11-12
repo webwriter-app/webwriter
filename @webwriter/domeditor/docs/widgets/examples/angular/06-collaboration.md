@@ -1,4 +1,6 @@
-Store the player’s choice in the current direct child JSON data block. The custom-element wrapper records binding events on the host so readiness is available even if Angular has not initialized the component yet. The component accepts events only when they target the current block. A synchronous `shared` attribute callback invalidates readiness before new binding events arrive; the observer then refreshes the view without clearing a newer result. The wrapper also exposes `answer` from its HTML attribute, including the default value.
+Store the reader's choice in the JSON data block. This block is a direct child of the widget. The custom element records data events on the host element before Angular starts the component. Accept events only from the current block. A change to `shared` makes the widget wait for new data. The observer updates the view.
+
+The host element reads `answer` from the HTML attribute. It uses the default value when the attribute is missing.
 
 ```ts
 get block() {
@@ -21,4 +23,6 @@ set answer(value) {
 }
 ```
 
-The full TypeScript implementation is in [06-collaboration.ts](./06-collaboration.ts), the authored sample in [quiz.html](./quiz.html), and the browser test in [quiz-tests.js](./quiz-tests.js). Build the browser package with `npm run build` from this directory; it bundles Angular and emits `dist/ww-quiz.js` and `dist/ww-hello.js`.
+The TypeScript source is in [06-collaboration.ts](./06-collaboration.ts). The document sample is in [quiz.html](./quiz.html). The browser test is in [quiz-tests.js](./quiz-tests.js).
+
+Run `npm run build` from this directory. The build bundles Angular and creates `dist/ww-quiz.js` and `dist/ww-hello.js`.

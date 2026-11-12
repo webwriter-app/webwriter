@@ -1,4 +1,4 @@
-Declare the public tag in `<svelte:options>`. The compiler generates and registers the custom-element constructor for this component.
+Declare the public tag name in `<svelte:options>`. The compiler creates and registers the custom-element constructor.
 
 ```svelte
 <svelte:options customElement={{ tag: "ww-quiz" }} />

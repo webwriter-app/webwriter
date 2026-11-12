@@ -1,4 +1,4 @@
-Expose `answer` as a component input so Angular Elements maps the HTML attribute to the component property. Keep the player’s choice in component state, and read `isContentEditable` from the host before accepting a click. A small observer refreshes the view when the editor changes `contenteditable` on the host.
+Declare `answer` as a component input. Angular Elements maps the HTML attribute to the component property. Keep the reader's choice in component state. Read `isContentEditable` on the host element before you accept a click. An observer updates the view when `contenteditable` changes on the host element.
 
 ```ts
 @Input() answer: string = "false"
@@ -10,4 +10,4 @@ choose(value: string): void {
 }
 ```
 
-The full version, including typed fields and cleanup, is [04-state.ts](./04-state.ts).
+The complete source is [04-state.ts](./04-state.ts).

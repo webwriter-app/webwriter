@@ -1,4 +1,4 @@
-Use a Vue ref for the player’s temporary choice. Read editability from the host’s browser property, so contenteditable="false" correctly means preview mode:
+Use a Vue ref for the reader's temporary choice. Read `isContentEditable` on the host element. The widget uses preview mode when the host has `contenteditable="false"`.
 
 ~~~vue
 <script setup>
@@ -37,4 +37,4 @@ onBeforeUnmount(() => host?.removeEventListener("quizrefresh", refresh))
 </template>
 ~~~
 
-The paired registration module exposes the native answer attribute and notifies the component when answer or editability changes.
+The registration module supplies the `answer` attribute. It sends a notification to the component when the answer or edit state changes.

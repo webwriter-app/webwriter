@@ -1,4 +1,4 @@
-The template describes the question, answer buttons, and live output directly. The style block is compiled into the custom element’s shadow root:
+The template contains the question, answer buttons, and output. The build puts the styles in the custom element's shadow root.
 
 ~~~vue
 <template>
@@ -19,4 +19,4 @@ button { font: inherit; padding: .5rem .9rem; }
 </style>
 ~~~
 
-The paired registration module imports this component and passes it to defineCustomElement.
+The registration module imports the component. It passes the component to `defineCustomElement`.

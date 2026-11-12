@@ -1,9 +1,8 @@
-# Aggregated View
+# B3. Aggregated View
 
-Widgets can declare how their participant data is shown together in the live
-editor. Put the declaration on the custom-element class as `static aggregate`.
-A declaration can be one configuration, a readonly list of configurations, or
-a synchronous function receiving the current context and returning either form:
+The authoring tool can show participant data from a widget in an Aggregated View. Declare `static aggregate` on the [custom element](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements) class.
+
+The declaration can be one configuration or a read-only list of configurations. It can also be a synchronous function that receives the current context and returns either form.
 
 ```ts
 static aggregate = {
@@ -15,25 +14,15 @@ static aggregate = {
 }
 ```
 
-For function declarations, the context contains the current widget and response
-snapshots, described below.
+For a function declaration, the context contains the current widget and response snapshots.
 
 ## Multiple views
 
-Each configuration may include an optional `id`. IDs must be unique, nonempty
-strings of at most 128 characters. Without an ID, the shape name is used, so
-repeated shapes need explicit IDs. A list can contain up to 50 configurations;
-unsupported future shapes are skipped so supported entries remain available.
-An empty list, or a declaration containing only unsupported shapes, has no
-aggregate view. A single configuration remains fully compatible with existing
-widgets.
+Each configuration can have an `id`. Use a unique string of 1 to 128 characters for each ID. A configuration with no ID uses its shape name. Give repeated shapes explicit IDs.
 
-The first supported configuration is selected by default. A requested view ID
-selects its matching configuration; an unknown ID falls back to the first
-supported configuration. Each option uses `title` as its display name, falling
-back to the shape name when no title is provided. The renderer can discover the
-full option list independently of resolving the selected view, so a malformed
-configuration does not hide the other choices.
+A list can contain up to 50 configurations. The authoring tool skips unsupported shapes. The authoring tool needs at least one supported configuration to show an Aggregated View. An existing widget can continue to use one configuration.
+
+The authoring tool selects the first supported configuration by default. A view ID selects its configuration. If the authoring tool cannot find the ID, it selects the first supported configuration. A view uses `title` as its display name. If the configuration has no title, the view uses the shape name. Other choices remain available if one configuration is invalid.
 
 ```ts
 static aggregate = [
@@ -55,7 +44,7 @@ static aggregate = [
 ] as const
 ```
 
-The context provided to declaration functions contains:
+The context for declaration functions contains these fields.
 
 | Field | Contents |
 |---|---|
@@ -65,44 +54,31 @@ The context provided to declaration functions contains:
 | `missing` | Number of participant snapshots that are pending, unavailable, invalid, or cannot be assigned to a response scope. |
 | `reference` | The explicitly configured reference value, when one is provided. |
 
-The context and its snapshots are read-only. A sample's `data` contains its
-`status`, `format`, `mode`, optional `scopeId`, and raw `text`. JSON text is
-parsed to `unknown` before it is placed in `value`; XML remains a raw string.
-The `value(data, sample)` extractor receives each sample's parsed value and
-returns the value used by the shape. For XML, provide an extractor to parse or
-otherwise convert the raw string. Non-distance shapes need an extracted value
-when their input is XML. If an extractor returns `undefined`, that sample is
-omitted and its learners are added to `missing`.
+The context and its snapshots are read-only. A sample's `data` contains its `status`, `format`, `mode`, optional `scopeId`, and raw `text`. The authoring tool parses [JSON](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON) into `value` with the type `unknown`. For XML, `value` is the raw string.
+
+The `value(data, sample)` extractor receives the sample's value. It returns the value for the shape. For XML input in shapes other than `distancemap`, provide an extractor that converts the string. If the extractor returns `undefined`, the view omits that sample. The participants for that sample add to `missing`.
 
 ## Shapes
 
-Every configuration can set a `title`, a `value(data, sample)` extractor, and
-an explicit `reference` in the extracted value's format. Without `value`, the
-parsed JSON value (or raw XML string) is used. A reference is never inferred
-from widget defaults or from participant answers.
+Each configuration can set a `title` and a `value(data, sample)` extractor. It can also set an explicit `reference` in the same format as the extracted value. Without an extractor, the view uses the parsed JSON or the raw XML string. Supply a reference explicitly when the view needs one.
 
 | Shape | Configuration | Accepted extracted values and display |
 |---|---|---|
 | `selection` | `items: [{id, label}, ...]` | A scalar item ID or an array of item IDs. Shows the distribution of selected items. |
 | `ordering` | `items: [{id, label}, ...]` | An ordered array of item IDs. Shows submitted orderings against the declared items. |
-| `number` | Optional `bins` | Finite numbers. Shows their distribution; `bins` controls the number of bins. |
+| `number` | Optional `bins` | Finite numbers. Shows the distribution of the numbers. `bins` sets the number of bins. |
 | `text` | None | Strings. Shows submitted text and word frequencies. |
-| `spatial` | `bounds: {width, height}`, optional `columns` and `rows` | A point `{x, y}` or an array of points. Coordinates are interpreted within the declared bounds and shown as a spatial distribution. `columns` and `rows` control its grid. |
-| `distancemap` | Optional `distance(a, b)` or `distances` matrix | Numeric feature vectors are compared with Euclidean distance by default. Supply a distance function for another metric, or a symmetric distance matrix in sample order. When neither is supplied, values use the default structural distance. The view supports up to 300 independent responses. |
+| `spatial` | `bounds: {width, height}`, optional `columns` and `rows` | A point `{x, y}` or an array of points. Shows a spatial distribution within the declared bounds. `columns` and `rows` set the grid. |
+| `distancemap` | Optional `distance(a, b)` or `distances` matrix | Uses Euclidean distance for numeric feature vectors by default. For other values, the default is structural distance. Supply a distance function or a symmetric distance matrix to change the metric. The view supports up to 300 independent responses. |
 | `custom` | `element: "tag-name"` | Creates the named custom element and assigns the read-only aggregate context to its `aggregate` property. |
 
-For a distance matrix, provide one row and column per sample, in the order of
-`context.samples`. The matrix must be square, symmetric, finite, non-negative,
-and have a zero diagonal. A custom distance function receives pairs of
-extracted sample values.
-Distance maps with more than 300 independent responses fall back to the
-thumbnail wall.
+For a distance matrix, supply one row and one column per sample in `context.samples` order. Use a square and symmetric matrix. Use only finite, non-negative values. Put zeros on the diagonal.
+
+A custom distance function receives pairs of extracted sample values. For more than 300 independent responses, the authoring tool shows participant thumbnails.
 
 ## Quiz example
 
-This quiz records a choice in its JSON data block. Its correct answer is an
-authored `answer` attribute, so the aggregate uses that value as an explicit
-reference rather than treating participant defaults as the answer:
+This quiz records a choice in its JSON data block. The authored `answer` attribute gives the correct answer. The configuration uses it as the explicit reference.
 
 ```js
 class WwQuiz extends HTMLElement {
@@ -126,14 +102,11 @@ class WwQuiz extends HTMLElement {
 </ww-quiz>
 ```
 
-With no `shared` attribute, each learner has an independent answer. See
-[data and events](data.md) for the data-block and scope contract.
+With no `shared` attribute, each participant has an independent answer. [Data and events](data.md) describes the data block and its scopes.
 
 ## Custom renderer
 
-The custom element must be registered in the widget's scoped registry or in the
-global registry. With `LitElementWw`, register it through `static scopedElements`
-so it is available in that widget's registry:
+Register the custom element in the widget's [scoped registry](https://developer.mozilla.org/en-US/docs/Web/API/CustomElementRegistry/CustomElementRegistry) or in the global registry. With [`LitElementWw`](lit.md#litelementww), use `static scopedElements` to register it in the widget's registry.
 
 ```js
 import {LitElementWw} from "@webwriter/lit";
@@ -158,6 +131,4 @@ class WwQuiz extends LitElementWw {
 }
 ```
 
-The runtime assigns `aggregate` before connecting the renderer. Treat it as
-read-only; render from the supplied snapshot and do not write aggregate results
-back to the widget's data block.
+The authoring tool sets `aggregate` before it connects the renderer. The snapshot is read-only. Use it as input to the renderer only.

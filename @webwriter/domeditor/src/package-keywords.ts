@@ -1,25 +1,39 @@
+import widgetKeywords from "./widget-keywords.json"
+
 export type PackageKeywordPresentation = {
-  kind: "type" | "language" | "field" | "online" | "level" | "custom"
+  kind: "type" | "language" | "field" | "online" | "level" | "custom" | "editing" | "input"
+    | "content" | "conversion" | "display" | "state" | "participation" | "dependency" | "development" | "discovery" | "widget"
   label: string
   icon?: string
   additionalLanguages?: string[]
 }
 
-const onlineLabels = {
-  "widget-online": "Online only",
-  "widget-online-edit": "Online when editing",
-  "widget-online-use": "Online when using",
-}
-
 type Badge = {label: string, icon: string}
+const widgetBadges = widgetKeywords.badges as Record<string, Badge & {kind: PackageKeywordPresentation["kind"]}>
+const onlineKeywords = ["widget-online", "widget-online-edit", "widget-online-use"]
+const migrationPrefix = "widget-migrates-from-"
+const conversionPrefixes = ["widget-convertible-to-", "widget-convertible-from-"]
+const elementName = /^[a-z][a-z0-9_.-]*$/
+const mediaType = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$/
+const semver = /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){2}(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 
-const widgetTypes: Record<string, Badge> = {
-  "widget-presentational": {label: "Presentation", icon: "KeywordPresentation"},
-  "widget-practical": {label: "Practice", icon: "KeywordPractice"},
-  "widget-simulational": {label: "Simulation", icon: "KeywordSimulation"},
-  "widget-conceptual": {label: "Concept", icon: "KeywordConcept"},
-  "widget-informational": {label: "Information", icon: "KeywordInformation"},
-  "widget-contextual": {label: "Context", icon: "KeywordContext"},
+function widgetBadge(keyword: string, normalized: string): PackageKeywordPresentation | undefined {
+  const prefix = conversionPrefixes.find(prefix => normalized.startsWith(prefix))
+  let key = normalized, value = ""
+  if(prefix) {
+    key = prefix
+    value = normalized.slice(prefix.length)
+    if(!elementName.test(value) && !mediaType.test(value)) return
+  }
+  else if(normalized.startsWith(migrationPrefix)) {
+    key = migrationPrefix
+    value = keyword.slice(migrationPrefix.length)
+    const version = semver.exec(value)
+    if(!version || version[1]?.split(".").some(part => /^0\d+$/.test(part))) return
+  }
+  if(!Object.hasOwn(widgetBadges, key)) return
+  const {kind, label, icon} = widgetBadges[key]
+  return {kind, label: value ? `${label} ${value}` : label, icon}
 }
 
 const educationLevels: Record<string, Badge> = {
@@ -120,6 +134,7 @@ export function packageKeywordPresentations(
 ): PackageKeywordPresentation[] {
   const normalizedKeywords = new Set<string>()
   const types: PackageKeywordPresentation[] = []
+  const features: PackageKeywordPresentation[] = []
   const languages: string[] = []
   const additionalLanguages: string[] = []
   const seenLanguages = new Set<string>()
@@ -130,14 +145,10 @@ export function packageKeywordPresentations(
 
   for(const keyword of keywords) {
     const normalized = keyword.toLowerCase()
-    if(normalizedKeywords.has(normalized)) continue
-    normalizedKeywords.add(normalized)
-    if(normalized === "webwriter-widget" || Object.hasOwn(onlineLabels, normalized)) continue
-
-    if(Object.hasOwn(widgetTypes, normalized)) {
-      types.push({kind: "type", ...widgetTypes[normalized]})
-      continue
-    }
+    const identity = normalized.startsWith(migrationPrefix) ? migrationPrefix + keyword.slice(migrationPrefix.length) : normalized
+    if(normalizedKeywords.has(identity)) continue
+    normalizedKeywords.add(identity)
+    if(onlineKeywords.includes(normalized)) continue
 
     if(normalized.startsWith(languagePrefix) && normalized.length > languagePrefix.length) {
       const language = baseLanguage(normalized.slice(languagePrefix.length))
@@ -146,6 +157,12 @@ export function packageKeywordPresentations(
       const label = languageName(language, locale) ?? naturalName(language)
       const group = preferredLanguages.has(language) ? languages : additionalLanguages
       group.push(label)
+      continue
+    }
+
+    const badge = widgetBadge(keyword, normalized)
+    if(badge && normalized !== languagePrefix) {
+      (badge.kind === "type" ? types : features).push(badge)
       continue
     }
 
@@ -175,14 +192,13 @@ export function packageKeywordPresentations(
   }
 
   const fieldCodes = coreFields.every(field => fields.has(field)) ? ["all"] : [...fields].sort()
-  const online = (Object.keys(onlineLabels) as (keyof typeof onlineLabels)[])
-    .find(keyword => normalizedKeywords.has(keyword))
+  const online = onlineKeywords.find(keyword => normalizedKeywords.has(keyword))
   const badges = [...types]
   if(languages.length || additionalLanguages.length) {
-    badges.push({kind: "language", label: languages.join(", "), icon: "KeywordLanguage", additionalLanguages})
+    badges.push({kind: "language", label: languages.join(", "), icon: widgetBadges[languagePrefix].icon, additionalLanguages})
   }
   for(const code of fieldCodes) badges.push({kind: "field", ...educationFields[code]})
-  if(online) badges.push({kind: "online", label: onlineLabels[online], icon: "KeywordOnline"})
+  if(online) badges.push(widgetBadge(online, online)!)
   for(const level of [...levels].sort()) badges.push({kind: "level", ...educationLevels[level]})
-  return badges.concat(custom)
+  return badges.concat(features, custom)
 }

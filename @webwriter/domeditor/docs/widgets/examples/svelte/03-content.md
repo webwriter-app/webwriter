@@ -1,7 +1,7 @@
-Use the native default `<slot>` for the authored question. This leaves question nodes in the document’s light DOM, where the editor and collaboration layer can continue to observe them.
+Use the native default `<slot>` for the question. The question stays in the light DOM. Authors and collaborators can edit it in the document.
 
 ```svelte
 <slot><p>Add a question.</p></slot>
 ```
 
-The fallback appears only when there is no authored question. See [03-content.svelte](./03-content.svelte).
+The slot displays its default question when the widget has no question. See [03-content.svelte](./03-content.svelte).

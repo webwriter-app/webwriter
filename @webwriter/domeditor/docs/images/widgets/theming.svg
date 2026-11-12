@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="168" viewBox="0 28 360 168" role="img" aria-labelledby="title desc">
+  <title id="title">A timeline widget follows the document theme</title>
+  <desc id="desc">A document theme supplies a color palette and typography to a timeline widget, whose milestone dots use the theme colors.</desc>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="18" y="42" width="148" height="140" rx="4"/>
+    <path d="M34 78h116"/>
+    <path d="M34 158h54"/>
+    <rect x="198" y="42" width="144" height="140" rx="4"/>
+    <path d="M224 112h92"/>
+    <path d="M246 112v-18M278 112v18M310 112v-18"/>
+  </g>
+  <text x="92" y="68" text-anchor="middle" fill="#0f2f48" font-family="system-ui, sans-serif" font-size="14" font-weight="650">Document theme</text>
+  <rect x="34" y="94" width="22" height="20" rx="3" fill="#065986"/>
+  <rect x="64" y="94" width="22" height="20" rx="3" fill="#ed8b35"/>
+  <rect x="94" y="94" width="22" height="20" rx="3" fill="#7b61a8"/>
+  <rect x="124" y="94" width="22" height="20" rx="3" fill="#62a884"/>
+  <text x="34" y="143" fill="#0f2f48" font-family="Georgia, serif" font-size="19" font-weight="600">Aa</text>
+  <path d="M173 112h18m-7-7 7 7-7 7" fill="none" stroke="#065986" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="270" y="68" text-anchor="middle" fill="#0f2f48" font-family="system-ui, sans-serif" font-size="14" font-weight="650">Timeline</text>
+  <circle cx="246" cy="112" r="8" fill="#065986"/>
+  <circle cx="278" cy="112" r="8" fill="#ed8b35"/>
+  <circle cx="310" cy="112" r="8" fill="#7b61a8"/>
+</svg>

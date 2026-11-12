@@ -1,11 +1,11 @@
 # Localize a widget
 
-Widgets should follow the document's language. For example, a transcript widget can translate its download button and editor labels.
+A widget can use its own language setting or the language of the document. It can update the text when the language changes. The authoring tool can translate option and action labels while the saved values stay the same.
 
 ![Document language maps to translated widget text](../../images/widgets/localization.svg)
 
 <!-- library:vanilla -->
-Read the closest `lang` attribute, including one set on the widget itself:
+Read the nearest [`lang`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/lang) attribute on the widget or one of its ancestors.
 
 ```js
 const locale = this.closest("[lang]")?.getAttribute("lang") || "en"
@@ -13,11 +13,11 @@ const language = locale.toLowerCase().split("-")[0]
 const downloadLabel = language === "de" ? "Herunterladen" : "Download"
 ```
 
-Update labels when the widget's or an ancestor's language changes. Pair any language observer with `disconnect()` when the widget disconnects.
+Update labels when the language changes on the widget or an ancestor. Call `disconnect()` on the language observer when the widget disconnects.
 
 <!-- /library -->
 <!-- library:lit -->
-`LitElementWw` provides a reactive `lang` property that follows the nearest ancestor's language unless explicitly set on the widget. Read it in `render()`:
+`LitElementWw` provides a reactive `lang` property. It uses the widget's `lang` value if one exists. Otherwise, it uses the language of the nearest ancestor with a language setting. Read `lang` in `render()`.
 
 ```js
 render() {
@@ -27,10 +27,10 @@ render() {
 }
 ```
 
-Import `html` from `lit`. The base updates the template when effective language changes and cleans up its observers on disconnection. For a configured `@lit/localize` project, assign its `{getLocale, setLocale}` functions to `this.localize` in the constructor.
+Import `html` from `lit`. The base class updates the template when the language changes. In a project that uses [`@lit/localize`](https://lit.dev/docs/localization/overview/), set `this.localize` to `{getLocale, setLocale}` in the constructor.
 <!-- /library -->
 
-Use localized labels for editor options and actions:
+Use translated labels for the options and actions in the authoring tool.
 
 ```js
 static options = {
@@ -38,6 +38,12 @@ static options = {
 }
 ```
 
-`LocalizedText` supports an exact locale, a language, and an `_` fallback. Do not translate stored option values or attribute names.
+`LocalizedText` supports a locale, a language, and an `_` fallback. Keep the same option values and attribute names in all languages.
 
-For a project configured with `@lit/localize`, run `npx @webwriter/build localize` and rebuild. The command also supports snippet and metadata translations. See [build commands](../reference/build-test.md).
+<!-- library:lit optional -->
+For a project that uses `@lit/localize`, run `npx @webwriter/build localize`. Build the widget again. The command can also translate snippets and metadata. See the [build commands](../reference/build-test.md).
+<!-- /library -->
+
+## Language selection and fallback
+
+## Checks after a language change

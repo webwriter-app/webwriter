@@ -1,4 +1,4 @@
-This complete React quick start defines ww-hello and projects its authored content through a slot. Add React and React DOM to the package:
+This example defines the custom element `ww-hello`. A slot displays the widget's child content. Add React and React DOM to the package.
 
 ~~~json
 {
@@ -9,7 +9,7 @@ This complete React quick start defines ww-hello and projects its authored conte
 }
 ~~~
 
-The source in hello.jsx uses the same shadow-root lifecycle as the tutorial widget:
+The source in `hello.jsx` [starts React](https://react.dev/reference/react-dom/client/createRoot) in the shadow root.
 
 ~~~jsx
 this.attachShadow({mode: "open"})
@@ -19,6 +19,6 @@ this.root = createRoot(this.mount)
 this.root.render(<p>Hello, <slot>world</slot>!</p>)
 ~~~
 
-On removal it calls root.unmount(); reconnecting creates a fresh root. The default slot leaves authored light-DOM text untouched.
+The custom element calls [`root.unmount()`](https://react.dev/reference/react-dom/client/createRoot#root-unmount) when it disconnects. It creates a new React root when it connects again. The child text stays in the light DOM.
 
-Bundle React and React DOM with the supplied build script before loading the package. The build compiles JSX and bundles its dependencies into a browser-ready module.
+Run the build script before you load the package. The build compiles JSX and bundles React and React DOM into a browser module.
