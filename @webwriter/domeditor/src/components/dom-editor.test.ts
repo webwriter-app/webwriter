@@ -6216,6 +6216,35 @@ describe("DomEditor.execute()", () => {
     expect(execute.mock.calls.filter(([action]) => action.type === "getStyleState").length).toBeGreaterThanOrEqual(3)
   })
 
+  it("styles the selected media figure through the regular Style drawer", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const figure = {
+      target: {localName: "figure", namespaceURI: "http://www.w3.org/1999/xhtml"},
+      inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"},
+    }
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type === "getStyleState") return figure
+    })
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool(null)
+    toolbox.selectTool("Edit")
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}, {path: [0], name: "Figure"}], nodeSelected: true}},
+      source: editorWindow,
+    }))
+    await (editor as any).refreshElementStyleState()
+    await editor.updateComplete
+    await vi.waitFor(() => expect(toolbox.elementStyle.target?.localName).toBe("figure"))
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[label="Style"]')!
+    expect(drawer.querySelector('[aria-label="Style target"]')).toBeNull()
+    const control = drawer.querySelector<HTMLElement>("element-style-editor")!
+    control.dispatchEvent(new CustomEvent("element-style-change", {
+      detail: {styles: {"background-color": "green"}}, bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "setStyle", styles: {"background-color": "green"}, topLevel: true})
+  })
+
   it("keeps the popup content Style target through the bridge and sends a scoped preset", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {

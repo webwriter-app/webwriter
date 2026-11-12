@@ -343,7 +343,8 @@ describe("captions", () => {
     expect(target.style.width).toBe("")
     expect(target.style.maxWidth).toBe("")
     expect(target.style.height).toBe("auto")
-    expect(target.style.color).toBe("red")
+    expect(figure.style.color).toBe("red")
+    expect(target.style.color).toBe("")
     expect(Array.from(target.childNodes)).toEqual(children)
     editor.doc.syncFromDOM()
     const captioned = editor.toHTML(true)
@@ -381,7 +382,8 @@ describe("captions", () => {
     expect(editor.features.manipulation.styleTarget).toBe(figure)
     expect(figure.classList.contains("ww-float-left")).toBe(true)
     expect(figure.style.float).toBe("left")
-    expect(paragraph.style.color).toBe("red")
+    expect(figure.style.color).toBe("red")
+    expect(paragraph.style.color).toBe("")
     expect(editor.features.manipulation.getCaptionPosition()).toBe("below")
     setCaption("none")
     expect($.selectedElement).toBe(paragraph)
@@ -5308,6 +5310,81 @@ describe("setBlockType()", () => {
   })
 })
 describe("setStyle()", () => {
+  it.each([
+    '<audio controls></audio>',
+    '<video controls></video>',
+    '<picture><img src="photo.png"></picture>',
+    '<svg viewBox="0 0 10 10"><rect width="10" height="10"></rect></svg>',
+    '<p>Text</p>',
+    '<demo-widget data-value="7"></demo-widget>',
+  ])("moves decoration to the whole figure when captioning %s", html => {
+    document.body.innerHTML = html
+    const content = document.body.firstElementChild!
+    content.setAttribute("style", "border-radius: 8px !important; box-shadow: 1px 1px 3px black; height: 90px")
+    const children = Array.from(content.childNodes)
+    $.selectElement(content)
+    expect(editor.features.manipulation.setCaption("below")).toBe(true)
+    const figure = document.querySelector("figure")!
+    const {getStyleState, setStyle, resetStyle} = editor.features.manipulation.actions
+    expect(getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe("figure")
+    expect(figure.style.borderRadius).toBe("8px")
+    expect(figure.style.getPropertyPriority("border-radius")).toBe("important")
+    expect(content.getAttribute("style")).toBe("height: 90px;")
+
+    setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "red", "border-radius": "12px"}})
+    expect(figure.style.backgroundColor).toBe("red")
+    expect(figure.style.borderRadius).toBe("12px")
+    resetStyle({type: "resetStyle", topLevel: true})
+    expect(figure.hasAttribute("style")).toBe(false)
+    expect(content.getAttribute("style")).toBe("height: 90px;")
+    expect(figure.firstElementChild).toBe(content)
+    expect(Array.from(content.childNodes)).toEqual(children)
+  })
+
+  it("reads and adopts legacy frame decoration on an explicit figure style edit", () => {
+    document.body.innerHTML = '<section><figure style="background-color: blue"><div style="background-color: red; border-radius: 8px; width: 160px"><p>Text</p><!--keep--></div><figcaption>Caption</figcaption></figure></section>'
+    const figure = document.querySelector("figure")!, content = figure.firstElementChild!
+    const paragraph = content.querySelector("p")!
+    $.move(paragraph.firstChild!, 1)
+    const {getStyleState, setStyle} = editor.features.manipulation.actions
+    const state = getStyleState({type: "getStyleState", topLevel: true, properties: ["border-radius", "background-color", "clip-path"]})
+    expect(state.target?.localName).toBe("figure")
+    expect(state.inline["border-radius"].value).toBe("8px")
+    expect(state.inline["background-color"].value).toBe("blue")
+    expect(content.getAttribute("style")).toContain("border-radius")
+    setStyle({type: "setStyle", topLevel: true, styles: {"clip-path": "inset(5%)"}})
+    expect(figure.style.clipPath).toBe("inset(5%)")
+    expect(figure.style.borderRadius).toBe("8px")
+    expect(figure.style.backgroundColor).toBe("blue")
+    expect(content.getAttribute("style")).toBe("width: 160px;")
+    expect(paragraph.textContent).toBe("Text")
+    expect(content.lastChild?.nodeType).toBe(Node.COMMENT_NODE)
+  })
+
+  it("resets the figure without restyling multiple independently authored children", () => {
+    document.body.innerHTML = '<figure style="background-color: blue"><p style="color:red">One</p><!--keep--><aside style="border:1px solid">Two</aside><figcaption>Caption</figcaption></figure>'
+    const figure = document.querySelector("figure")!, aside = figure.querySelector("aside")!
+    const markup = figure.innerHTML
+    $.selectElement(aside)
+    const {getStyleState, resetStyle} = editor.features.manipulation.actions
+    expect(getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe("figure")
+    expect(resetStyle({type: "resetStyle", topLevel: true})).toBe(true)
+    expect(figure.hasAttribute("style")).toBe(false)
+    expect(figure.innerHTML).toBe(markup)
+  })
+
+  it("can reset a figure whose legacy decoration is entirely on its content", () => {
+    document.body.innerHTML = '<figure><video controls style="padding:8px; width:180px"></video><figcaption>Caption</figcaption></figure>'
+    const figure = document.querySelector("figure")!, player = figure.querySelector("video")!
+    editor.features.selection.captureElement(player)
+    const {getStyleState, resetStyle} = editor.features.manipulation.actions
+    expect(getStyleState({type: "getStyleState", topLevel: true}).hasInlineStyles).toBe(true)
+    expect(resetStyle({type: "resetStyle", topLevel: true})).toBe(true)
+    expect(figure.hasAttribute("style")).toBe(false)
+    expect(player.style.padding).toBe("")
+    expect(player.style.width).toBe("180px")
+  })
+
   it.each(["picture", "video"])("crops selected %s figure content without changing its caption, sources or siblings", media => {
     document.body.innerHTML = `<figure data-keep="yes"><!--keep--><${media}><!--source--><source src="movie.mp4" srcset="large.png 2x">${media === "picture" ? '<img src="small.png">' : 'Fallback'}</${media}><figcaption>Caption</figcaption></figure><p>Other</p>`
     const figure = document.querySelector("figure")!
@@ -5745,6 +5822,7 @@ describe("setStyle()", () => {
     document.body.innerHTML = `<slide-widget><details open><summary style="color: teal">Table</summary><!--keep--><section>${content}<p>Other content</p></section></details></slide-widget>`
     const details = document.querySelector("details")!, summary = details.querySelector("summary")!
     const target = details.querySelector<HTMLElement>(tag)!
+    const styleTarget = target.closest("figure") ?? target
     if(tag === "img") $.selectElement(target)
     else editor.features.selection.captureElement(target)
     editor.doc.syncFromDOM()
@@ -5753,13 +5831,14 @@ describe("setStyle()", () => {
     const {actions} = editor.features.manipulation
     const state = () => actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["filter"]})
 
-    expect(state().target?.localName).toBe(tag)
+    expect(state().target?.localName).toBe(styleTarget.localName)
     actions.setStyle({type: "setStyle", topLevel: true, styles: {filter: "grayscale(1)"}})
 
     expect(state().inline.filter?.value).toBe("grayscale(1)")
-    expect(target.style.filter).toBe("grayscale(1)")
+    expect(styleTarget.style.filter).toBe("grayscale(1)")
+    if(styleTarget !== target) expect(target).not.toHaveAttribute("style")
     expect(details).not.toHaveAttribute("style")
-    expect(target.parentElement).not.toHaveAttribute("style")
+    expect(styleTarget.parentElement).not.toHaveAttribute("style")
     expect(document.querySelector("slide-widget")).not.toHaveAttribute("style")
     expect(summary.getAttribute("style")).toBe("color: teal")
     expect(details.querySelector("p")).not.toHaveAttribute("style")

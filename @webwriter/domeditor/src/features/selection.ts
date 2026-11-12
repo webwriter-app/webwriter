@@ -1811,7 +1811,8 @@ export class SelectionFeature extends EditorFeature {
       this.#refreshHoverGeometry()
     },
     hoverStyleTarget: ({hovered, topLevel}: {type: "hoverStyleTarget", hovered: boolean, topLevel?: boolean}) => {
-      this.showStyleTargetHover(hovered ? topLevel ? this.editor.features.manipulation.topLevelStyleTarget : this.editor.features.manipulation.styleTarget : null)
+      const manipulation = this.editor.features.manipulation
+      this.showStyleTargetHover(!hovered ? null : topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget)
     },
   } as const
 

@@ -76,6 +76,8 @@ const websiteBorderBox = (style: CSSStyleDeclaration, {size, sides}: typeof webs
   return {extra, size: value.endsWith("px") ? parseFloat(value) + extra : NaN}
 }
 
+const figureDecorationProperty = /^(?:(?:background|border(?!-(?:collapse|spacing)$)|outline|padding)(?:-|$)|(?:box-shadow|color|opacity|filter|backdrop-filter)$)/
+
 /** CSSOM exposes values for shorthand-expanded longhands. Read the original
  * declaration names from the reflected style attribute to distinguish those
  * values from longhands the author declared directly. */
@@ -2187,6 +2189,7 @@ export class ManipulationFeature extends EditorFeature {
       else if(position === "none") {
         if(target.localName !== "figure") return false
         const figure = target
+        const singleContent = captionedFigureContent(figure)
         const content = Array.from(figure.children).find(child => child.localName !== "figcaption")
         for(const caption of Array.from(figure.children).filter(child => child.localName === "figcaption")) {
           if(!caption.hasChildNodes()) caption.remove()
@@ -2198,6 +2201,7 @@ export class ManipulationFeature extends EditorFeature {
           }
         }
         if(content) this.transferFigurePlacement(figure, content)
+        if(singleContent) this.transferFigureDecoration(figure, singleContent)
         const nodes = Array.from(figure.childNodes)
         figure.replaceWith(...nodes)
         target = content ?? (nodes.find(node => node instanceof Element) as Element | undefined) ?? null
@@ -2211,8 +2215,11 @@ export class ManipulationFeature extends EditorFeature {
           this.transferFigurePlacement(content, figure)
           target = figure
         }
-        const caption = this.directFigureCaption(target as HTMLElement) ?? document.createElement("figcaption")
+        const existingCaption = this.directFigureCaption(target as HTMLElement)
+        const caption = existingCaption ?? document.createElement("figcaption")
         position === "above" ? target.prepend(caption) : target.append(caption)
+        const content = !existingCaption && captionedFigureContent(target)
+        if(content) this.transferFigureDecoration(content, target)
         focusCaption = caption
       }
       if(focusCaption) {
@@ -2257,12 +2264,30 @@ export class ManipulationFeature extends EditorFeature {
     if(!from.classList.length) from.removeAttribute("class")
   }
 
+  /** A box preset decorates the figure. Intrinsic sizing and crop belong to
+   * the content. */
+  private transferFigureDecoration(from: Element, to: Element) {
+    const source = this.inlineStyleOf(from), destination = this.inlineStyleOf(to)
+    if(!source || !destination) return false
+    const properties = Array.from(source).filter(property => figureDecorationProperty.test(property))
+    for(const property of properties) {
+      if(!destination.getPropertyValue(property)) {
+        destination.setProperty(property, source.getPropertyValue(property), source.getPropertyPriority(property))
+      }
+      source.removeProperty(property)
+    }
+    if(properties.length && !source.length) from.removeAttribute("style")
+    return properties.length > 0
+  }
+
   addFigureCaption(position: "before" | "after") {
     const figure = this.activeFigure()
     if(!figure || this.directFigureCaption(figure)) return false
     const caption = document.createElement("figcaption")
     if(!this.editor.schema.hasFigureContent(Array.from(figure.childNodes))) return false
     position === "before" ? figure.prepend(caption) : figure.append(caption)
+    const content = captionedFigureContent(figure)
+    if(content) this.transferFigureDecoration(content, figure)
     this.editor.features.head.ensureCaptionEnumeration()
     this.editor.features.selection.clearSelectedSection(figure)
     $.move(caption)
@@ -2690,6 +2715,8 @@ export class ManipulationFeature extends EditorFeature {
       ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot()
     if(!this.editor.features.selection.isCaptureSelection && $.isGapSelection && $.anchor === root) return null
     let target = this.styleTarget
+    const figure = target.closest("figure:not([is])")
+    if(figure && root.contains(figure)) return figure
     if(["toggle", "content"].includes(popupElementRole(target) ?? "")) return target
     if(target.matches("details:not([is])")) return target
     // A selected image inside a disclosure has its own effects. Styling
@@ -2878,8 +2905,9 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Returns authored declarations and the requested computed values without
    * retaining or exposing a live CSSStyleDeclaration across the editor bridge. */
-  private stylePropertyTarget(target: Element, name: string) {
+  private stylePropertyTarget(target: Element, name: string, wholeFigure = false) {
     if(themeAccentProperties.includes(name) && (target === document.documentElement || target === document.body || isDocumentRoot(target))) return document.documentElement
+    if(wholeFigure && target.matches("figure:not([is])")) return target
     if(target.matches("figure:not([is])") && target.querySelector(":scope > figcaption")
       && ["rotate", "scale", "translate", "transform", "transform-origin"].includes(name)) {
       return captionedFigureContent(target)
@@ -2895,7 +2923,7 @@ export class ManipulationFeature extends EditorFeature {
     return target.localName === "picture" ? target.querySelector(":scope > img") : target
   }
 
-  getStyleState(properties: string[] = [], target: Element | null = this.styleTarget, includeSelection = true): ElementStyleState {
+  getStyleState(properties: string[] = [], target: Element | null = this.styleTarget, includeSelection = true, wholeFigure = false): ElementStyleState {
     const cells = includeSelection && this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
     if(includeSelection && (cells.length || $.isMultiElementSelection)) {
       return this.getElementsStyleState(properties, cells.length ? cells : $.selectedElements)
@@ -2914,12 +2942,16 @@ export class ManipulationFeature extends EditorFeature {
     }
 
     const inline: Record<string, ElementStyleDeclaration> = {}
-    for(let index = 0; index < style.length; index++) {
-      const name = style.item(index)
-      inline[name] = {
-        value: style.getPropertyValue(name),
-        priority: style.getPropertyPriority(name) === "important"? "important": "",
-      }
+    const content = wholeFigure ? captionedFigureContent(target) : null
+    const legacy = this.inlineStyleOf(content)
+    const legacyProperties = legacy ? Array.from(legacy).filter(name => figureDecorationProperty.test(name)) : []
+    const readInline = (name: string, source: CSSStyleDeclaration) => ({
+      value: source.getPropertyValue(name),
+      priority: source.getPropertyPriority(name) === "important" ? "important" as const : "" as const,
+    })
+    if(legacy) for(const name of legacyProperties) inline[name] = readInline(name, legacy)
+    for(const name of Array.from(style)) {
+      inline[name] = readInline(name, style)
     }
     const declarationsByTarget = new Map<Element, Map<string, {value: string, priority: "" | "important"}>>()
     const declarationsFor = (element: Element) => {
@@ -2930,12 +2962,12 @@ export class ManipulationFeature extends EditorFeature {
       }
       return declarations
     }
-    const authoredProperties = [...declarationsFor(target).keys()]
+    const authoredProperties = [...new Set([...legacyProperties, ...declarationsFor(target).keys()])]
     const requested = Array.from(new Set(properties.filter(name => typeof name === "string" && name.trim())))
     // CSSOM may enumerate border sides rather than the aggregate control's
     // property. Read requested shorthand values from the same inline style.
     for(const name of requested) {
-      const propertyTarget = this.stylePropertyTarget(target, name)
+      const propertyTarget = this.stylePropertyTarget(target, name, wholeFigure)
       const propertyStyle = propertyTarget ? this.inlineStyleOf(propertyTarget) : null
       const value = propertyStyle?.getPropertyValue(name) ?? ""
       const authoredValue = propertyTarget
@@ -2947,10 +2979,11 @@ export class ManipulationFeature extends EditorFeature {
         priority: authoredValue.priority,
       }
       else if(value) inline[name] = {value, priority: propertyStyle?.getPropertyPriority(name) === "important" ? "important" : ""}
+      else if(legacy && figureDecorationProperty.test(name) && legacy.getPropertyValue(name)) inline[name] = readInline(name, legacy)
     }
     const computedStyle = getComputedStyle(target)
     const computed = Object.fromEntries(requested.map(name => {
-      const propertyTarget = this.stylePropertyTarget(target, name)
+      const propertyTarget = this.stylePropertyTarget(target, name, wholeFigure)
       return [name, propertyTarget === target ? computedStyle.getPropertyValue(name)
         : propertyTarget ? getComputedStyle(propertyTarget).getPropertyValue(name) : ""]
     }))
@@ -3000,7 +3033,7 @@ export class ManipulationFeature extends EditorFeature {
         ...(isDocumentRoot(target) || target === document.body || target === document.documentElement && documentLayoutMode() === "document"
           ? {documentRoot: true as const} : {})},
       inline,
-      hasInlineStyles: target.hasAttribute("style"),
+      hasInlineStyles: target.hasAttribute("style") || legacyProperties.length > 0,
       authoredProperties,
       computed,
       context: {display: computedStyle.display, parentDisplay, positioning: this.editor.features.canvas.active || this.editor.features.slides.active,
@@ -3009,9 +3042,9 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
-  private getElementsStyleState(properties: string[] = [], elements: Element[]) {
+  private getElementsStyleState(properties: string[] = [], elements: Element[], wholeFigure = false) {
     if(!elements.length) return this.getStyleState(properties, null, false)
-    const styles = elements.map(element => this.getStyleState(properties, element, false))
+    const styles = elements.map(element => this.getStyleState(properties, element, false, wholeFigure))
     const target = styles[0].target
     const grouping = $.isMultiElementSelection ? $.selectedElements : elements.length === 1 ? elements : []
     return {...styles[0], target: target && {...target, spatialGrouping: this.editor.features.transformation.groupingState(grouping)},
@@ -3158,7 +3191,7 @@ export class ManipulationFeature extends EditorFeature {
     return true
   }
 
-  private resetStyleAttributes(elements: Element[]) {
+  private resetStyleAttributes(elements: Element[], wholeFigure = false) {
     if(this.editor.isEditingLocked) return false
     const root = getDocumentRoot()
     const end = this.editor.doc.beginUndoGroup()
@@ -3166,8 +3199,10 @@ export class ManipulationFeature extends EditorFeature {
       let changed = false
       for(const element of elements) {
         const target = this.documentStyleTarget(element)
-        if(target.isConnected && (root.contains(target) || target === document.documentElement && documentLayoutMode() === "document")
-          && target.hasAttribute("style")) {
+        if(!target.isConnected || !(root.contains(target) || target === document.documentElement && documentLayoutMode() === "document")) continue
+        const content = wholeFigure ? captionedFigureContent(target) : null
+        if(content) changed = this.transferFigureDecoration(content, target) || changed
+        if(target.hasAttribute("style")) {
           target.removeAttribute("style")
           changed = true
         }
@@ -4249,7 +4284,7 @@ export class ManipulationFeature extends EditorFeature {
         throw new TypeError("Style-state property names must be strings")
       }
       return topLevel && !this.editor.features.table.hasCellSelection
-        ? this.getElementsStyleState(properties, this.topLevelStyleTargets) : this.getStyleState(properties)
+        ? this.getElementsStyleState(properties, this.topLevelStyleTargets, true) : this.getStyleState(properties)
     },
     setStyle: ({styles, topLevel}: {type: "setStyle", styles: Record<string, ElementStyleMutation>, topLevel?: boolean}) => {
       if(topLevel && !this.editor.features.table.hasCellSelection) {
@@ -4258,7 +4293,7 @@ export class ManipulationFeature extends EditorFeature {
         const entries = this.validateElementStyles(styles)
         const end = this.editor.doc.beginUndoGroup()
         try {
-          for(const target of targets) this.applyElementStyleEntries(this.documentStyleTarget(target), entries)
+          for(const target of targets) this.applyElementStyleEntries(this.documentStyleTarget(target), entries, true)
         }
         finally { end() }
       }
@@ -4287,7 +4322,7 @@ export class ManipulationFeature extends EditorFeature {
       const cells = this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
       const targets = topLevel && !cells.length ? this.topLevelStyleTargets
         : cells.length ? cells : $.isMultiElementSelection ? $.selectedElements : [this.styleTarget]
-      return this.resetStyleAttributes(targets.filter((target): target is Element => target instanceof Element))
+      return this.resetStyleAttributes(targets, topLevel && !cells.length)
     },
     setBlockStyle: ({styles}: {type: "setBlockStyle", styles: Record<string, ElementStyleMutation>}) => {
       this.setBlockStyle(styles)
@@ -5408,7 +5443,7 @@ export class ManipulationFeature extends EditorFeature {
     return this.withNormalization(() => this.applyElementStyleEntries(target, entries))
   }
 
-  private applyElementStyleEntries(element: Element, entries: ValidatedStyleEntry[]) {
+  private applyElementStyleEntries(element: Element, entries: ValidatedStyleEntry[], wholeFigure = false) {
     if(!element.isConnected || !(getDocumentRoot().contains(element)
       || element === document.documentElement && documentLayoutMode() === "document") || this.editor.isEditingLocked) return false
     if((element === document.documentElement || element === document.body || isDocumentRoot(element))
@@ -5425,7 +5460,7 @@ export class ManipulationFeature extends EditorFeature {
     const targets = new Map<Element, ValidatedStyleEntry[]>()
     const add = (target: Element, entry: ValidatedStyleEntry) => targets.set(target, [...(targets.get(target) ?? []), entry])
     for(const entry of this.allowedElementStyles(element, entries)) {
-      const target = this.stylePropertyTarget(element, entry.name)
+      const target = this.stylePropertyTarget(element, entry.name, wholeFigure)
       if(target) add(target, entry)
       // Whole-table paint and cell spacing must reach cells, whose theme or
       // authored declarations otherwise hide the table's background and text.
@@ -5437,7 +5472,8 @@ export class ManipulationFeature extends EditorFeature {
         }
       }
     }
-    let changed = false
+    const content = wholeFigure && targets.has(element) ? captionedFigureContent(element) : null
+    let changed = content ? this.transferFigureDecoration(content, element) : false
     for(const [target, declarations] of targets) {
       const crop = declarations.find(entry => entry.name === "object-view-box")
       const layout = crop && (target instanceof HTMLImageElement || target instanceof HTMLVideoElement)
