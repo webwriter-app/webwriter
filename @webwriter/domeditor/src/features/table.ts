@@ -4,7 +4,7 @@ import {EditorFeature} from "."
 import {popupContentAncestor} from "../element-names"
 import {isAuthoredMutation} from "../editor-artifacts"
 import type {Transaction} from "yjs"
-import {$, fixedClientX, authoredClassValue, captureRangeIdentity, cloneWithoutEditorMarkers, createStylesheet, focusEditorWindow, getInertDocument, isAppendixInteraction, modifierKeyDown, plainTextFromDOM, removeEditorMarker} from "../utility"
+import {$, atomicEditingContainer, caretRect, fixedClientX, authoredClassValue, captureRangeIdentity, cloneWithoutEditorMarkers, createStylesheet, focusEditorWindow, getInertDocument, isAppendixInteraction, isAtomicEditingElement, isOutOfFlow, modifierKeyDown, nodeEdgeRect, plainTextFromDOM, removeEditorMarker} from "../utility"
 import {
   buildTableMap,
   normalizeTableStructure,
@@ -1420,7 +1420,95 @@ export class TableFeature extends EditorFeature {
     this.editor.features.selection.isInDragSelection = false
   }
 
+  private cellEdgePoint(cell: HTMLTableCellElement, end: boolean) {
+    const hasLayout = (node: Node) => nodeEdgeRect(node, end ? "last" : "first").height > 0
+    const boundary = (node: Node): SelectionPoint | null => {
+      if(node instanceof Text) {
+        if(!node.length || !hasLayout(node)) return null
+        return {node, offset: end ? node.length : 0}
+      }
+      if(!(node instanceof Element) || isOutOfFlow(node)) return null
+      const style = getComputedStyle(node)
+      if(style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse") return null
+      if(node !== cell && (node.matches("br, table, [contenteditable=false]")
+        || isAtomicEditingElement(node, this.editor.schema))) {
+        if(!hasLayout(node)) return null
+        const parent = node.parentNode!
+        const index = Array.from(parent.childNodes).indexOf(node)
+        return {node: parent, offset: index + (end && node.localName !== "br" ? 1 : 0)}
+      }
+      const children = Array.from(node.childNodes)
+      if(end) children.reverse()
+      for(const child of children) {
+        const point = boundary(child)
+        if(point) return point
+      }
+      if(node === cell || (style.display !== "inline" && hasLayout(node))) {
+        return {node, offset: end ? node.childNodes.length : 0}
+      }
+      return null
+    }
+    return boundary(cell)
+  }
+
+  private navigateCaretVertically(event: KeyboardEvent) {
+    const selection = document.getSelection()
+    if(event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey
+      || !selection?.isCollapsed || !selection.anchorNode) return false
+    if(typeof Range.prototype.getClientRects !== "function" || typeof Range.prototype.getBoundingClientRect !== "function") return false
+    const {anchorNode, anchorOffset} = selection
+    const cell = this.pasteTargetCell
+    if(!cell || !cell.contains(anchorNode) || cell.closest('[contenteditable="false"]')
+      || atomicEditingContainer(anchorNode, this.editor.schema)) return false
+    const table = tableForNode(cell)
+    if(!table) return false
+    const map = buildTableMap(table)
+    const current = placementForCell(map, cell)
+    if(!current || map.limited) return false
+    const down = event.key === "ArrowDown"
+    const neighbors = map.matrix[down ? current.row + current.rowSpan : current.row - 1]
+      ?.slice(current.column, current.column + current.columnSpan)
+    if(!neighbors?.length) return false
+    const edge = this.cellEdgePoint(cell, down)
+    if(!edge) return false
+    const caret = caretRect(anchorNode, anchorOffset)
+    const edgeRect = caretRect(edge.node, edge.offset)
+    // Inline formatting can change the rect height on one line. The caret
+    // and the edge should share vertical space even when their tops differ.
+    if(caret.bottom <= edgeRect.top || caret.top >= edgeRect.bottom) return false
+    const candidates = [...new Set(neighbors.flatMap(placement => placement ? [placement.cell] : []))]
+    const target = candidates.find(candidate => {
+      const rect = candidate.getBoundingClientRect()
+      return caret.left >= rect.left && caret.left < rect.right
+    }) ?? candidates[0]
+    if(!target?.isConnected || tableForNode(target) !== table || target.closest('[contenteditable="false"]')) return false
+    const destination = this.cellEdgePoint(target, !down)
+    if(!destination) return false
+    const targetRect = target.getBoundingClientRect()
+    if(!targetRect.width || !targetRect.height) return false
+    const line = caretRect(destination.node, destination.offset)
+    const x = Math.max(targetRect.left + 1, Math.min(caret.left, targetRect.right - 1))
+    const y = line.top + line.height / 2
+    const legacyHit = typeof document.caretPositionFromPoint !== "function" ? document.caretRangeFromPoint?.(x, y) : null
+    const hit = legacyHit ? {node: legacyHit.startContainer, offset: legacyHit.startOffset}
+      : typeof document.caretPositionFromPoint === "function"
+        ? $.pointFromCoords(x, y, target, this.editor.schema, undefined, target)
+        : null
+    const hitElement = hit?.node instanceof Element ? hit.node : hit?.node.parentElement
+    const point = hit && cellForNode(hit.node) === target
+      && !hitElement?.closest('[contenteditable="false"]')
+      && !popupContentAncestor(hit.node) && !atomicEditingContainer(hit.node, this.editor.schema)
+      ? hit : destination
+    $.move(point.node, point.offset)
+    this.editor.features.selection.processSelection()
+    this.editor.postSelectionPath()
+    return true
+  }
+
   private navigateCells(event: KeyboardEvent) {
+    if(!this.hasCellSelection && !event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      return this.navigateCaretVertically(event)
+    }
     if(event.key === "Tab") {
       const currentCell = this.hasCellSelection ? this.focusCell : cellForNode($.anchor)
       const table = tableForNode(currentCell)

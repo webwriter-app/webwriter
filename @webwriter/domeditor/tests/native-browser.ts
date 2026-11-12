@@ -11170,6 +11170,58 @@ await check("graphic imports open host pickers synchronously and retry across th
   finally { frame.remove() }
 })
 
+await check("table caret arrows follow visual lines and columns", async () => {
+  const table = document.createElement("table")
+  table.style.cssText = "width:340px;table-layout:fixed;font:16px/24px monospace"
+  table.innerHTML = `<thead><tr><th>Header</th><th>Top row</th></tr></thead>
+    <tbody><tr><td rowspan="2">Spanning cell</td><td><span id="wrapped-cell">First line words that wrap across several lines in this cell</span></td></tr>
+    <tr><td id="below-cell">Bottom row</td></tr></tbody>`
+  fixture.append(table)
+  const tableEditor = new DOMEditor()
+  try {
+    const top = table.querySelector("thead tr")!.lastElementChild!
+    const wrapped = table.querySelector("#wrapped-cell")!.firstChild as Text
+    const below = table.querySelector("#below-cell")!
+    const press = (key: string, options?: KeyboardEventInit) => {
+      const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true, ...options})
+      tableEditor.features.table.activeListeners.keydown(event)
+      return event.defaultPrevented
+    }
+    const first = caretRect(wrapped, 3)
+    const last = caretRect(wrapped, wrapped.length - 3)
+    assert(last.top > first.bottom, "test text did not wrap")
+
+    $.move(wrapped, 3)
+    assert(!press("ArrowDown"), "ArrowDown interrupted movement within a wrapped cell")
+    assert(!press("ArrowUp", {altKey: true}), "modified ArrowUp was intercepted")
+    assert(!press("ArrowUp", {ctrlKey: true}), "Control+ArrowUp was intercepted")
+    assert(!press("ArrowUp", {isComposing: true}), "ArrowUp was intercepted during composition")
+    $.selectRange(wrapped, 1, wrapped, 3)
+    assert(!press("ArrowUp"), "ArrowUp intercepted a text range")
+    $.move(wrapped, 3)
+    assert(press("ArrowUp") && top.contains($.anchor), "first visual line did not move to the cell above")
+    assert(Math.abs(caretRect($.anchor!, $.anchorOffset).left - first.left) < 12,
+      "ArrowUp lost the caret's horizontal position")
+
+    $.move(wrapped, wrapped.length - 3)
+    assert(!press("ArrowUp"), "ArrowUp interrupted movement within a wrapped cell")
+    assert(press("ArrowDown") && below.contains($.anchor), "last visual line did not move to the cell below")
+    assert(!press("ArrowDown"), "ArrowDown at the last table row was intercepted")
+    assert(press("ArrowUp") && wrapped.parentElement!.contains($.anchor), "ArrowUp did not return to the wrapped cell")
+    assert(caretRect($.anchor!, $.anchorOffset).top === last.top, "ArrowUp did not enter the last visual line")
+
+    const replacement = document.createElement("td")
+    replacement.innerHTML = "<p><br></p>"
+    below.replaceWith(replacement)
+    assert(press("ArrowDown") && replacement.contains($.anchor), "ArrowDown did not use the live empty cell")
+
+    const spanning = table.querySelector("td[rowspan]")!
+    $.move(spanning.firstChild!, 2)
+    assert(!press("ArrowDown"), "ArrowDown treated a continuation of the same rowspan as a new cell")
+  }
+  finally {table.remove(); tableEditor.destroy()}
+})
+
 await check("table commands complete across the real iframe bridge", async () => {
   const liveTable = document.createElement("table")
   liveTable.innerHTML = '<tbody><tr><td rowspan="2">A</td><td>B</td></tr><tr></tr></tbody>'
