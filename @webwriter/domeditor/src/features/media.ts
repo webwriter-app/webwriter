@@ -2646,6 +2646,16 @@ export class MediaFeature extends EditorFeature {
       || (attribute && !element.matches("video")) || (!replace && !isEmptyMedia(element)) || sourceEditingBlocked(element, this.editor.schema)) return false
     const direct = !attribute && !isGraphicImage(element) ? platformMediaURL(source) : null
     const embed = !attribute && !direct && !isGraphicImage(element) ? platformEmbedURL(source) : null
+    const populatedIframe = element.matches("iframe") && Boolean(element.hasAttribute("src") || element.hasAttribute("srcdoc"))
+    let fullscreenVideoEmbed = false
+    if(embed) {
+      const input = new URL(source)
+      const host = input.hostname.toLowerCase().replace(/^www\./, "")
+      fullscreenVideoEmbed = host === "youtube.com" || host === "m.youtube.com" || host === "youtu.be"
+        || host === "youtube-nocookie.com" || host === "vimeo.com" || host === "player.vimeo.com"
+        || host === "instagram.com" && /^\/(?:reel|tv)\/[\w-]+\/?$/.test(input.pathname)
+        || host === "tiktok.com" && /^\/@[^/]+\/video\/\d+\/?$/.test(input.pathname)
+    }
     if(embed || direct) {
       const type = direct?.type ?? "iframe"
       if(!(element.localName === type || type === "picture" && element.matches("img"))) {
@@ -2667,6 +2677,7 @@ export class MediaFeature extends EditorFeature {
       }
       source = direct?.url ?? embed!
     }
+    if(fullscreenVideoEmbed && !populatedIframe && element.matches("iframe")) element.setAttribute("allowfullscreen", "")
     const target = mediaSourceTarget(element)
     const change = (element: Element, target: Element) => {
       if(!attribute && element.matches("picture, img") && target.getAttribute("src") !== source) this.clearImageHeight(element, target)

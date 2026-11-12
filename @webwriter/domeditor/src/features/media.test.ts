@@ -87,6 +87,7 @@ describe("media editing", () => {
     const frame = document.querySelector("iframe")!
     expect(frame.getAttribute("src")).toBe("https://www.youtube.com/embed/M7lc1UVf-VE")
     expect(frame.getAttribute("title")).toBe("Lesson")
+    expect(frame.hasAttribute("allowfullscreen")).toBe(true)
     expect(document.querySelector("section")!.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
     expect(document.querySelector("p")!.textContent).toBe("After")
     const after = editor.toHTML(true)
@@ -113,6 +114,31 @@ describe("media editing", () => {
     $.selectElement(document.querySelector("video")!)
     editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "https://vimeo.com/123456"})
     expect(document.querySelector("iframe")?.getAttribute("src")).toBe("https://player.vimeo.com/video/123456")
+  })
+
+  it.each([
+    "https://www.instagram.com/reel/ABC-123/",
+    "https://www.instagram.com/tv/ABC-123/",
+    "https://www.tiktok.com/@person/video/6718335390845095173",
+  ])("defaults fullscreen on a recognized social video embed: %s", url => {
+    document.body.innerHTML = "<iframe></iframe>"
+    $.selectElement(document.querySelector("iframe")!)
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: url})
+    expect(document.querySelector("iframe")?.hasAttribute("allowfullscreen")).toBe(true)
+  })
+
+  it("preserves an author's fullscreen choice when changing a populated iframe source", () => {
+    document.body.innerHTML = '<iframe src="https://example.com/old" title="Lesson"></iframe>'
+    $.selectElement(document.querySelector("iframe")!)
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "https://youtu.be/M7lc1UVf-VE"})
+    expect(document.querySelector("iframe")?.hasAttribute("allowfullscreen")).toBe(false)
+  })
+
+  it("does not default fullscreen for ambiguous archive embeds", () => {
+    document.body.innerHTML = "<iframe></iframe>"
+    $.selectElement(document.querySelector("iframe")!)
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "https://archive.org/details/example"})
+    expect(document.querySelector("iframe")?.hasAttribute("allowfullscreen")).toBe(false)
   })
 
   it.each([
@@ -143,6 +169,7 @@ describe("media editing", () => {
       placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
     }
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
+    expect(frame.hasAttribute("allowfullscreen")).toBe(false)
     const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
     const preview = new DOMParser().parseFromString(previewFrameHTML(saved.cloneNode(true) as Document, {
       bridgeNonce: "test", hostOrigin: location.origin, frameOrigin: "https://editor.example", packages: [],
