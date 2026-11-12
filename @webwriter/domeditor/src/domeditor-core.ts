@@ -69,9 +69,17 @@ import {getSectionOption, isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
 import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
 import {elementAttributeState} from "./element-attributes"
-import {parse as parseModule} from "es-module-lexer/js"
 import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
 import {runtimeDocumentBaseURL} from "./document-base-url"
+
+async function hasOfflineModuleImports(source: string) {
+  // The standalone reader cannot export offline packages.
+  if(import.meta.env.MODE !== "reader") {
+    const {parse} = await import("es-module-lexer/js")
+    return parse(source)[0].length > 0
+  }
+  throw new Error("Offline export is unavailable in this editing session")
+}
 
 const editorStylesheet = createStylesheet(editorStyleString + "\n" + listMarkerStyleString)
 trackPresentationStyles(document, editorStylesheet)
@@ -1594,7 +1602,7 @@ export class DOMEditor {
     }
     const offlineImports = this.features.widget.offlineImports(root, widgetEntries)
     const {js, css} = await bundleOfflineModules(urls, plan.map, base, offlineImports)
-    if(parseModule(js)[0].length) throw new Error("Offline package bundle contains unresolved module imports")
+    if(await hasOfflineModuleImports(js)) throw new Error("Offline package bundle contains unresolved module imports")
     const first = scripts[0].script
     const bundle = documentElement.ownerDocument.createElement("script")
     bundle.type = "module"
@@ -1759,8 +1767,7 @@ export class DOMEditor {
       const source = original ? await (await this.fetchResource(original)).text() : script.textContent ?? ""
       const type = script.type.trim().toLowerCase()
       if(!type || type === "module" || /^(?:text|application)\/(?:java|ecma)script$/.test(type)) {
-        const [imports] = parseModule(source)
-        if(imports.length) throw new Error("Offline export cannot bundle this module dependency graph. Use HTML format for this document.")
+        if(await hasOfflineModuleImports(source)) throw new Error("Offline export cannot bundle this module dependency graph. Use HTML format for this document.")
       }
       if(!original) return
       script.setAttribute(originalURLAttribute("src"), original)

@@ -145,7 +145,7 @@ describe("CSS-only Slides layout", () => {
       : surface === "body" ? document.body : document.documentElement
     vi.spyOn(two, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 1280, 720))
     const pointer = (type: string, x: number, y: number) => (type === "pointerdown" ? origin : document.body).dispatchEvent(new PointerEvent(type, {
-      bubbles: true, cancelable: true, button: 0, pointerId: 5, clientX: x, clientY: y,
+      bubbles: true, cancelable: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerId: 5, clientX: x, clientY: y,
     }))
     pointer("pointerdown", 0, 0)
     pointer("pointermove", 100, 100)
@@ -182,9 +182,9 @@ describe("CSS-only Slides layout", () => {
     const item = one.querySelector("p")!
     vi.spyOn(item, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 60, 60))
     const pointer = (type: string, x: number) => document.body.dispatchEvent(new PointerEvent(type, {
-      bubbles: true, cancelable: true, button: 0, pointerId: 5, clientX: x, clientY: x,
+      bubbles: true, cancelable: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerId: 5, clientX: x, clientY: x,
     }))
-    one.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 5}))
+    one.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, buttons: 1, pointerId: 5}))
     pointer("pointermove", 100)
     expect(editor.appendix.querySelector('[part~="box-selection-preview"]')).not.toBeNull()
     if(operation === "remove") one.remove()
