@@ -359,7 +359,7 @@ describe("CommentFeature highlights and threads", () => {
 
   it("represents element comments and replies with one appendix bubble without text highlighting", () => {
     const highlights = {set: vi.fn(), delete: vi.fn()}
-    vi.stubGlobal("CSS", {...globalThis.CSS, highlights})
+    vi.stubGlobal("CSS", Object.assign(Object.create(CSS), {highlights}))
     vi.stubGlobal("Highlight", class {})
     const target = setContent("<aside><custom-note>note</custom-note><p>More</p></aside>")
     bounds(target)
@@ -516,7 +516,7 @@ describe("CommentFeature highlights and threads", () => {
       }
     }
     const highlights = {set: vi.fn(), delete: vi.fn()}
-    vi.stubGlobal("CSS", {...globalThis.CSS, highlights})
+    vi.stubGlobal("CSS", Object.assign(Object.create(CSS), {highlights}))
     vi.stubGlobal("Highlight", TestHighlight)
     const paragraph = setContent("<p>abcd</p>")
     selectTextOffsets(paragraph, 1, 3)
