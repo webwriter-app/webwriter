@@ -8680,6 +8680,7 @@ describe("DomEditor.execute()", () => {
     vi.stubGlobal("Worker", ReplayTestWorker)
     const {editor} = await mountEditor()
     const host = editor as any
+    const openReplay = vi.spyOn(host as {openLiveReplay(event?: Event): Promise<unknown>}, "openLiveReplay")
     const authored = host.editorDocument?.documentElement.outerHTML
     const recorder = new IncrementalPreviewRecorder("<p>First</p>")
     const encode = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))
@@ -8697,7 +8698,8 @@ describe("DomEditor.execute()", () => {
       await editor.updateComplete
       await openRibbon.updateComplete
       openRibbon.shadowRoot!.querySelector<HTMLButtonElement>('.reader-replay-open')!.click()
-      await vi.waitFor(() => expect(host.replayActive).toBe(true))
+      expect(openReplay).toHaveBeenCalledOnce()
+      await openReplay.mock.results[0].value
       expect(host.replayActive).toBe(true)
       expect(host.replaySelectedLearner).toBe("ada")
       expect(host.liveSession).toBeNull()
