@@ -3281,28 +3281,44 @@ describe("transform controls and geometry", () => {
     expect(hasPresentationState(document.body, "transform-scaling-nwse")).toBe(false)
   })
 
-  it.each(["audio", "video"])("Shift-resizes a captioned %s figure in layout", tag => {
-    document.body.innerHTML = `<figure style="max-height:120px"><${tag} controls></${tag}><!--keep--><figcaption>Keep caption</figcaption></figure>`
+  it.each([
+    {tag: "audio", captioned: false}, {tag: "audio", captioned: true},
+    {tag: "video", captioned: false}, {tag: "video", captioned: true},
+  ])("Shift-resizes a $tag player in layout (captioned=$captioned)", ({tag, captioned}) => {
+    document.body.innerHTML = captioned
+      ? `<figure style="max-height:120px"><${tag} controls></${tag}><!--keep--><figcaption>Keep caption</figcaption></figure>`
+      : `<${tag} controls></${tag}>`
     const player = document.querySelector<HTMLMediaElement>(tag)!
-    const figure = document.querySelector("figure")!
+    const target = captioned ? document.querySelector("figure")! : player
     const playerHeight = tag === "video" ? 100 : 54
+    if(tag === "video") Object.defineProperties(player, {videoWidth: {value: 200}, videoHeight: {value: 100}})
     mockRect(player, {width: 200, height: playerHeight})
-    mockRect(figure, {width: 220, height: playerHeight + 32})
-    captureNode(player)
-    expect(feature.target).toBe(figure)
+    if(captioned) mockRect(target, {width: 220, height: playerHeight + 32})
+    if(captioned) captureNode(player)
+    else selectNode(target)
+    expect(feature.target).toBe(target)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.hidden = false
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
-    movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 160, clientY: 130, shiftKey: true, altKey: true}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 160, clientY: 130, shiftKey: true, altKey: true}))
 
-    expect(parseFloat(figure.style.width)).toBeLessThan(220)
-    expect(figure.style.getPropertyValue("scale") || "").toBe("")
-    expect(figure.style.maxHeight).toBe("none")
-    expect(player.hasAttribute("style")).toBe(false)
-    expect(figure.querySelector("figcaption")?.textContent).toBe("Keep caption")
+    if(captioned) expect(parseFloat(target.style.width)).toBeLessThan(220)
+    else {
+      expect(parseFloat(player.style.width)).toBeLessThan(200)
+      expect(parseFloat(player.style.width)).toBeGreaterThanOrEqual(tag === "video" ? 140 : 100)
+      expect(player.style.height).toBe("auto")
+      expect(player.style.getPropertyValue("aspect-ratio") || "").toMatch(tag === "video" ? /^auto 2(?: \/ 1)?$/ : /^$/)
+    }
+    expect(player.style.getPropertyValue("scale") || "").toBe("")
+    expect(target.style.getPropertyValue("scale") || "").toBe("")
+    if(captioned) {
+      expect(target.style.maxHeight).toBe("none")
+      expect(player.hasAttribute("style")).toBe(false)
+      expect(target.querySelector("figcaption")?.textContent).toBe("Keep caption")
+    }
     document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
     expect(player.hasAttribute("style")).toBe(false)
-    expect(figure.style.maxHeight).toBe("120px")
+    expect(target.style.maxHeight).toBe(captioned ? "120px" : "")
   })
 
   it("resizes the wrapper of a mixed media figure without scaling its player", () => {

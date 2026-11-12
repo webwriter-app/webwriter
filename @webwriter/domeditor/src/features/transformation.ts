@@ -65,6 +65,7 @@ type Gesture = {
   moved: boolean
   captured: boolean
   image?: GestureStyles & {parent: Element | null}
+  player?: {target: HTMLMediaElement, size: {cssWidth: number, cssHeight: number}}
   figureContent?: Element | null
   canvas?: {initial: string | null, written: string | null, x: number, y: number, width: number, height: number}
   crop?: {target: HTMLImageElement | HTMLVideoElement, parent: Element | null, width: number, height: number, matrix: DOMMatrix, insets: number[], edges: number[], sourceStyle: CSSStyleDeclaration}
@@ -95,6 +96,7 @@ type Gesture = {
  * Top/left handles keep the opposite edge fixed by adjusting offsets.
  * Ctrl/Cmd resizes about the center;
  * Shift preserves image proportions and stretches ordinary boxes with CSS scale.
+ * Native players resize in layout so their controls keep their proportions.
  * Alt unsnaps.
  * SVG canvases crop their viewport by default; Alt resizes their contents.
  * Native images and videos expose opposite crop corners that adjust CSS insets.
@@ -1552,6 +1554,7 @@ export class TransformationFeature extends EditorFeature {
     const content = captionedFigureContent(target)
     const rotationTarget = mode === "rotate" && content && this.#canTransform(content) ? content : null
     if(mode === "rotate" && target.matches("figure:not([is])") && target.querySelector(":scope > figcaption") && !rotationTarget) return false
+    const player = mode === "scale" ? this.#resizePlayer(target) : null
     const image = rotationTarget
       ?? (mode === "scale" && target.localName === "picture" ? this.editor.features.media.transformMediaFor(target) : null)
     const imageStyle = document.createElement("div").style
@@ -1564,6 +1567,7 @@ export class TransformationFeature extends EditorFeature {
       matrix, parentMatrix: this.#matrix(renderedParentElement(rotationTarget ?? target)), rotate: this.#angle(getComputedStyle(rotationTarget ?? target).getPropertyValue("rotate")), scale: this.#scale(style.getPropertyValue("scale")),
       initial, written: new Map(), moved: false,
       image: image && this.#canTransform(image) ? {target: image, parent: image.parentElement, initial: imageStyle, written: new Map()} : undefined,
+      player: player ? {target: player, size: this.#size(player)} : undefined,
       figureContent: mode === "scale" && target.matches(figureSelector) ? this.#figureResizeContent(target) : undefined,
       canvas: mode === "scale" ? this.#canvasViewport(target) : undefined,
       crop: media && insets && cropBox ? {target: media, parent: media.parentElement, width: cropBox.width, height: cropBox.height,
@@ -1676,6 +1680,7 @@ export class TransformationFeature extends EditorFeature {
       || gesture.canvas && gesture.target.getAttribute("viewBox") !== gesture.canvas.written
       || gesture.figureContent !== undefined && (this.#figureResizeContent(gesture.target) !== gesture.figureContent
         || !gesture.target.matches(figureSelector))
+      || gesture.mode === "scale" && this.#resizePlayer(gesture.target) !== (gesture.player?.target ?? null)
       || gesture.image && ((gesture.mode === "rotate" ? captionedFigureContent(gesture.target) !== gesture.image.target
         : this.editor.features.media.transformMediaFor(gesture.target) !== gesture.image.target) || gesture.image.parent !== gesture.image.target.parentElement
         || [...gesture.image.written].some(([key, last]) => gesture.image!.target.style.getPropertyValue(key) !== last.value
@@ -1688,6 +1693,10 @@ export class TransformationFeature extends EditorFeature {
       return false
     }
     return true
+  }
+
+  #resizePlayer(target: Element) {
+    return target instanceof HTMLMediaElement && !target.hasAttribute("is") ? target : null
   }
 
   #figureResizeBounds(figure: Element, axis: "width" | "height", style: CSSStyleDeclaration) {
@@ -1967,7 +1976,8 @@ export class TransformationFeature extends EditorFeature {
     const target = gesture.target
     const freeform = this.#isFreeformItem(target)
     const text = !freeform && this.#isTextContainer(target)
-    const image = Boolean(gesture.image || target instanceof HTMLImageElement && !target.hasAttribute("is"))
+    const player = gesture.player
+    const image = !player && Boolean(gesture.image || target instanceof HTMLImageElement && !target.hasAttribute("is"))
     const direction = gesture.handle.dataset.resizeDirection ?? gesture.handle.id.replace("◆transform-overlay-scale-", "")
     if(text && !direction.includes("left") && !direction.includes("right")) return
     const delta = this.#vector(gesture.matrix.inverse(), event.clientX - gesture.x, event.clientY - gesture.y)
@@ -1997,7 +2007,7 @@ export class TransformationFeature extends EditorFeature {
     else if(x) dw = Math.max(dw, minDelta)
     const crop = gesture.canvas && !event.altKey
     const figure = target.matches(figureSelector)
-    const scaleInsteadOfResize = event.shiftKey && !crop && !text && !image && !figure
+    const scaleInsteadOfResize = event.shiftKey && !crop && !text && !image && !player && !figure
     setPresentationState(document.body, `transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
     const popup = target.closest("[popover]")
     const insidePopup = Boolean(popup && popup !== target && popupElementRole(popup) === "content")
@@ -2060,7 +2070,27 @@ export class TransformationFeature extends EditorFeature {
       }
       if(y) this.#write("max-height", `${Math.max(0, gesture.cssHeight + dh)}px`)
     }
-    if(figure) {
+    if(player) {
+      const {target: media, size} = player
+      const video = media instanceof HTMLVideoElement
+      const ratio = video && media.videoWidth && media.videoHeight ? media.videoWidth / media.videoHeight
+        : size.cssWidth > 0 && size.cssHeight > 0 ? size.cssWidth / size.cssHeight : 2
+      const verticalWidthDelta = dh * ratio
+      const widthDelta = video && y && (!x || Math.abs(verticalWidthDelta) > Math.abs(dw)) ? verticalWidthDelta : dw
+      if(x || video && y) {
+        const playerStyle = getComputedStyle(media)
+        const minPlayerWidth = Math.max(media instanceof HTMLAudioElement && media.controls ? 100 : 1,
+          pixelSize(playerStyle.minWidth) ?? 0, video ? ratio * (pixelSize(playerStyle.minHeight) ?? 0) : 0)
+        const width = Math.max(minPlayerWidth, size.cssWidth + widthDelta)
+        this.#write("width", `${width}px`)
+        if(gesture.initial.maxWidth) this.#write("max-width", "")
+        this.#write("height", "auto")
+        this.#write("max-height", "none")
+        if(video) this.#write("aspect-ratio", `auto ${ratio}`)
+        resizeFlowWidth(width)
+      }
+    }
+    else if(figure) {
       if(x) {
         const {min, max} = this.#figureResizeBounds(target, "width", style)
         const width = Math.max(1, min, Math.min(max, gesture.cssWidth + dw))
