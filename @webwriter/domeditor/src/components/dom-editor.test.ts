@@ -7992,6 +7992,11 @@ describe("DomEditor.execute()", () => {
   it.each(["Open", "New"])("returns to editing when %s replaces a document in Preview", async action => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
+    const initializeFrame = host.initializeEditorFrame.bind(host)
+    vi.spyOn(host as {initializeEditorFrame(frame: HTMLIFrameElement): void}, "initializeEditorFrame").mockImplementation(frame => {
+      if(frame === host.editorIframe()) wirePackageLoadCompletion(frame.contentWindow!)
+      initializeFrame(frame)
+    })
     const root = editor.shadowRoot!
     const ribbon = root.querySelector<AppRibbon>("app-ribbon")!
     iframe.contentDocument!.body.innerHTML = "<p>Previous lesson</p>"
@@ -8029,9 +8034,8 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     const replacement = root.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
     expect(replacement).not.toBe(iframe)
-    wirePackageLoadCompletion(replacement.contentWindow!)
-    replacement.dispatchEvent(new Event("load"))
     await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
+    await editor.updateComplete
     expect(root.querySelector("iframe.preview-frame")).toBeNull()
     expect(replacement.hidden).toBe(false)
     expect(replacement.inert).toBe(false)
