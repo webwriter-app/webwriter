@@ -79,6 +79,7 @@ export class TableFeature extends EditorFeature {
   private anchorCell: HTMLTableCellElement | null = null
   private focusCell: HTMLTableCellElement | null = null
   private pasteLifecycle = 0
+  private dragPointerId: number | null = null
   private pendingCell: HTMLTableCellElement | null = null
   private pointerSelecting = false
   private textDragAnchor: SelectionPoint | null = null
@@ -213,8 +214,7 @@ export class TableFeature extends EditorFeature {
     this.observer?.disconnect()
     this.observer = null
     this.clearCellSelection(false)
-    this.stopResize()
-    this.setResizeHover(null)
+    this.endPointerDrag()
     super.disable()
   }
 
@@ -503,10 +503,7 @@ export class TableFeature extends EditorFeature {
     const hadSelection = this.hasCellSelection || Boolean(this.anchorCell || this.focusCell)
     this.anchorCell = null
     this.focusCell = null
-    this.pendingCell = null
-    this.pointerSelecting = false
-    this.textDragAnchor = null
-    this.pendingResize = null
+    if(!this.resize) this.clearPointerDrag()
     this.clearCellMarkers()
     if(post && hadSelection) this.editor.postSelectionPath()
   }
@@ -1363,14 +1360,23 @@ export class TableFeature extends EditorFeature {
     else this.editor.postSelectionPath()
   }
 
-  finishResize = () => {
-    this.stopResize()
+  private clearPointerDrag() {
+    this.dragPointerId = null
     this.pendingCell = null
     this.pointerSelecting = false
     this.textDragAnchor = null
     this.pendingResize = null
-    this.editor.features.selection.isInDragSelection = false
+  }
+
+  private endPointerDrag() {
+    this.clearPointerDrag()
+    this.stopResize()
     this.setResizeHover(null)
+  }
+
+  finishResize = () => {
+    this.endPointerDrag()
+    this.editor.features.selection.isInDragSelection = false
   }
 
   private navigateCells(event: KeyboardEvent) {
@@ -1457,6 +1463,21 @@ export class TableFeature extends EditorFeature {
 
   captureListeners = {
     scroll: () => { if(this.gapNeedsScrollRefresh) this.scheduleGaps() },
+    contextmenu: () => { if(this.dragPointerId !== null) this.endPointerDrag() },
+    pointermove: (event: PointerEvent) => {
+      if(this.dragPointerId === event.pointerId && !(event.buttons & 1)) this.endPointerDrag()
+    },
+    pointerup: (event: PointerEvent) => {
+      if(this.dragPointerId !== event.pointerId) return
+      if(this.resize || this.pointerSelecting) event.preventDefault()
+      this.endPointerDrag()
+    },
+    pointercancel: (event: PointerEvent) => {
+      if(this.dragPointerId === event.pointerId) this.endPointerDrag()
+    },
+    lostpointercapture: (event: PointerEvent) => {
+      if(this.dragPointerId === event.pointerId) this.endPointerDrag()
+    },
   }
 
   passiveListeners = {
@@ -1475,9 +1496,12 @@ export class TableFeature extends EditorFeature {
   activeListeners = {
     click: (event: MouseEvent) => this.insertAtGap(event),
     pointerdown: (event: PointerEvent) => {
+      if(event.button !== 0 || event.pointerType === "touch" && event.isPrimary === false) return
+      if(this.dragPointerId !== null) {
+        if(this.dragPointerId !== event.pointerId) return
+        this.endPointerDrag()
+      }
       if(popupContentAncestor(event.target instanceof Node ? event.target : null)) {
-        this.pendingCell = null
-        this.pointerSelecting = false
         this.setResizeHover(null)
         this.clearCellSelection(false)
         return
@@ -1504,19 +1528,21 @@ export class TableFeature extends EditorFeature {
         event.preventDefault()
         event.stopImmediatePropagation()
         this.selectCells(this.anchorCell!, cell)
+        this.dragPointerId = event.pointerId
         this.pendingCell = this.anchorCell
         this.pointerSelecting = true
         return
       }
       if(!resizeArmed) this.setResizeHover(null)
       this.clearCellSelection(false)
+      this.dragPointerId = event.pointerId
       this.pendingCell = cell
       if(resizeArmed && edge) {
         this.pendingResize = {edge, startX: event.clientX, startY: event.clientY}
       }
     },
     pointermove: (event: PointerEvent) => {
-      if(isAppendixInteraction(event)) return
+      if(isAppendixInteraction(event) || this.dragPointerId !== null && this.dragPointerId !== event.pointerId) return
       if(this.updateResize(event)) {
         event.preventDefault()
         event.stopImmediatePropagation()
@@ -1573,22 +1599,6 @@ export class TableFeature extends EditorFeature {
       const edge = cell ? this.resizeEdge(event, cell) : null
       this.setResizeHover(edge)
     },
-    pointerup: (event: PointerEvent) => {
-      if(this.resize) {
-        event.preventDefault()
-        this.stopResize()
-      }
-      else if(isAppendixInteraction(event)) return
-      else if(this.pointerSelecting) {
-        event.preventDefault()
-      }
-      this.pendingCell = null
-      this.pointerSelecting = false
-      this.textDragAnchor = null
-      this.pendingResize = null
-      this.setResizeHover(null)
-    },
-    pointercancel: this.finishResize,
     keydown: (event: KeyboardEvent) => {
       if(isAppendixInteraction(event)) return
       if((event.key === "Backspace" || event.key === "Delete") && this.hasCellSelection) {

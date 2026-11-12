@@ -641,7 +641,7 @@ describe("table cell selection", () => {
 
     first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 10, clientY: 15, bubbles: true, cancelable: true}))
     caretPosition = {offsetNode: firstText, offset: 1, getClientRect: () => rectangle}
-    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
 
     expect(editor.features.table.hasCellSelection).toBe(false)
     expect($.anchor).toBe(firstText)
@@ -650,12 +650,12 @@ describe("table cell selection", () => {
     expect($.focusOffset).toBe(1)
 
     caretPosition = {offsetNode: lastText, offset: 1, getClientRect: () => rectangle}
-    last.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
+    last.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
 
     expect(editor.features.table.selectedCells).toHaveLength(4)
 
     caretPosition = {offsetNode: firstText, offset: 1, getClientRect: () => rectangle}
-    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
 
     expect(editor.features.table.hasCellSelection).toBe(false)
     expect($.anchor).toBe(firstText)
@@ -663,7 +663,7 @@ describe("table cell selection", () => {
     expect($.focus).toBe(firstText)
     expect($.focusOffset).toBe(1)
 
-    last.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
+    last.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
     Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: originalCaretPositionFromPoint})
 
@@ -688,12 +688,12 @@ describe("table cell selection", () => {
     const onMarks = (event: Event) => marks.push((event as CustomEvent).detail.canMark)
     try {
       first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 10, clientY: 15, bubbles: true, cancelable: true}))
-      last.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
+      last.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
       expect(editor.features.table.hasCellSelection).toBe(true)
       window.addEventListener(selectionChangeEvent, onSelection)
       window.addEventListener(markStateChangeEvent, onMarks)
       point = {...point, offset: 4}
-      first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+      first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
       document.dispatchEvent(new Event("selectionchange"))
       document.dispatchEvent(new PointerEvent("pointerup", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
       expect(window.getSelection()?.toString()).toBe("lph")
@@ -710,6 +710,44 @@ describe("table cell selection", () => {
     }
   })
 
+  it.each([1, 2])("ignores button %s at a cell edge even when pointerup is lost", button => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    const [first, second] = cells()
+    first.getBoundingClientRect = () => new DOMRect(0, 0, 100, 30)
+    const point = {pointerId: 9, pointerType: "mouse", isPrimary: true, clientY: 15, bubbles: true, cancelable: true}
+    first.dispatchEvent(new PointerEvent("pointermove", {...point, clientX: 100}))
+    expect(hasPresentationState(document.body, "table-column-edge")).toBe(true)
+
+    const down = new PointerEvent("pointerdown", {...point, button, buttons: button === 1 ? 4 : 2, clientX: 100})
+    first.dispatchEvent(down)
+    second.dispatchEvent(new PointerEvent("pointermove", {...point, clientX: 140}))
+
+    expect(down.defaultPrevented).toBe(false)
+    expect(editor.features.table.selectedCells).toEqual([])
+    expect(hasPresentationState(document.body, "table-column-resize")).toBe(false)
+    expect(first.style.width).toBe("")
+  })
+
+  it.each(["pointermove", "pointercancel", "lostpointercapture", "contextmenu"])("ends the table gesture on %s without extending the selection", eventType => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td><td>C</td></tr></tbody></table>"
+    const [first, second, third] = cells()
+    const point = {pointerId: 9, pointerType: "mouse", isPrimary: true, clientY: 15, bubbles: true, cancelable: true}
+    const restoreCaretPosition = mockCaretPosition(first.firstChild!)
+    try {
+      first.dispatchEvent(new PointerEvent("pointerdown", {...point, buttons: 1, clientX: 50}))
+      third.dispatchEvent(new PointerEvent("pointermove", {...point, pointerId: 10, buttons: 1, clientX: 250}))
+      document.dispatchEvent(new PointerEvent("pointercancel", {...point, pointerId: 10}))
+      expect(editor.features.table.selectedCells).toEqual([])
+
+      second.dispatchEvent(new PointerEvent("pointermove", {...point, buttons: 1, clientX: 150}))
+      expect(editor.features.table.selectedCells).toEqual([first, second])
+      third.dispatchEvent(new PointerEvent(eventType, {...point, clientX: 250}))
+      third.dispatchEvent(new PointerEvent("pointermove", {...point, buttons: 1, clientX: 250}))
+      expect(editor.features.table.selectedCells).toEqual([first, second])
+    }
+    finally { restoreCaretPosition() }
+  })
+
   it.each([1, 2, 3])("collapses a non-text drag from cell %s back to its anchor", focusIndex => {
     document.body.innerHTML = "<table><tbody><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table>"
     const tableCells = cells()
@@ -719,17 +757,17 @@ describe("table cell selection", () => {
     const restoreCaretPosition = mockCaretPosition(first)
 
     first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
-    second.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
+    second.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
     expect(editor.features.table.selectedCells).toEqual(expanded)
 
-    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
     expect(editor.features.table.selectedCells).toEqual([first])
     expect(Array.from(presentationStateElements(document, "table-cell-selected"))).toEqual([first])
 
-    second.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
+    second.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
     expect(editor.features.table.selectedCells).toEqual(expanded)
 
-    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
@@ -791,7 +829,7 @@ describe("table cell selection", () => {
     const restoreCaretPosition = mockCaretPosition(origin.firstChild!)
 
     origin.dispatchEvent(new PointerEvent("pointerdown", {clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
-    origin.dispatchEvent(new PointerEvent("pointermove", {clientX: 350, clientY: 110, bubbles: true, cancelable: true}))
+    origin.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 350, clientY: 110, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 350, clientY: 110, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
@@ -1198,7 +1236,7 @@ describe("table cell selection", () => {
 
     first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
     first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
-    document.dispatchEvent(new PointerEvent("pointermove", {clientX: 130, clientY: 15, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 130, clientY: 15, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 130, clientY: 15, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
@@ -1218,7 +1256,7 @@ describe("table cell selection", () => {
 
     first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
     first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
-    document.dispatchEvent(new PointerEvent("pointermove", {clientX: 120, clientY: 15, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 120, clientY: 15, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 120, clientY: 15, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
@@ -1233,8 +1271,8 @@ describe("table cell selection", () => {
     try {
       first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
       first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true}))
-      document.dispatchEvent(new PointerEvent("pointermove", {clientX: 120, clientY: 15, bubbles: true}))
-      document.dispatchEvent(new PointerEvent("pointermove", {clientX: 135, clientY: 15, bubbles: true}))
+      document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 120, clientY: 15, bubbles: true}))
+      document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 135, clientY: 15, bubbles: true}))
       expect(first.style.width).toBe("")
       document.dispatchEvent(new PointerEvent("pointerup", {clientX: 135, clientY: 15, bubbles: true}))
       expect(first.style.width).toBe("135px")
@@ -1258,7 +1296,7 @@ describe("table cell selection", () => {
     try {
       first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
       first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true}))
-      document.dispatchEvent(new PointerEvent("pointermove", {clientX: 120, clientY: 15, bubbles: true}))
+      document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 120, clientY: 15, bubbles: true}))
       processSelection.mockClear()
       document.dispatchEvent(new Event("selectionchange"))
       expect(processSelection).not.toHaveBeenCalled()
@@ -1294,7 +1332,7 @@ describe("table cell selection", () => {
     const selection = vi.spyOn(editor.features.selection, "processSelection")
     try {
       const pointer = (type: string, clientX: number, target: EventTarget = document) =>
-        target.dispatchEvent(new PointerEvent(type, {clientX, clientY: 15, bubbles: true, cancelable: true}))
+        target.dispatchEvent(new PointerEvent(type, {buttons: type === "pointerup" ? 0 : 1, clientX, clientY: 15, bubbles: true, cancelable: true}))
       pointer("pointermove", 100, first)
       pointer("pointerdown", 100, first)
       pointer("pointermove", 120)
@@ -1359,7 +1397,7 @@ describe("table cell selection", () => {
       first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
       first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true}))
       for(const clientX of [120, 140, 160]) {
-        document.dispatchEvent(new PointerEvent("pointermove", {clientX, clientY: 15, bubbles: true}))
+        document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX, clientY: 15, bubbles: true}))
         editor.doc.syncFromDOM()
         if(clientX === 120) await new Promise(resolve => setTimeout(resolve, 550))
       }
@@ -1402,13 +1440,13 @@ describe("table cell selection", () => {
     try {
       first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
       first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true}))
-      document.dispatchEvent(new PointerEvent("pointermove", {clientX: 120, clientY: 15, bubbles: true}))
+      document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 120, clientY: 15, bubbles: true}))
       editor.doc.syncFromDOM()
       if(end === "disable") editor.features.table.disable()
       else if(end === "blur") window.dispatchEvent(new Event("blur"))
       else if(end === "removed cell") {
         first.remove()
-        document.dispatchEvent(new PointerEvent("pointermove", {clientX: 140, clientY: 15, bubbles: true}))
+        document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 140, clientY: 15, bubbles: true}))
       }
       else document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
       const after = editor.toHTML(true)
@@ -1439,7 +1477,7 @@ describe("table cell selection", () => {
     const restoreCaretPosition = mockCaretPosition(first.firstChild!)
 
     first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
-    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 70, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 70, clientY: 15, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 70, clientY: 15, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
@@ -1457,7 +1495,7 @@ describe("table cell selection", () => {
 
     first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
     first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
-    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 102, clientY: 16, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 102, clientY: 16, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 102, clientY: 16, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
