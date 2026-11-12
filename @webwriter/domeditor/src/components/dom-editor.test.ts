@@ -69,7 +69,7 @@ import * as liveRecovery from "../live-session-recovery"
 import {createReplayWorkerHandler, type ReplayWorkerRequest, type ReplayWorkerResponse} from "../live-session-replay-worker"
 import type {LiveSessionOverlay} from "./live-session-overlay"
 import type {LiveSessionControls} from "./live-session-controls"
-import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, formatShortcut, loadAppSettings, loadDocumentSettings} from "../app-settings"
+import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, formatShortcut, loadAppSettings, loadDocumentSettings, type AppSettings} from "../app-settings"
 import * as recentDocumentStorage from "../recent-documents"
 import * as documentRecoveryStorage from "../document-recovery"
 
@@ -2229,7 +2229,7 @@ describe("DomEditor iframe setup", () => {
       expect(button.title).toContain(formatShortcut(ribbon.settings.shortcuts[`toolbox.${tool.toLowerCase()}`]))
     }
 
-    const settings = {...ribbon.settings, shortcuts: {...ribbon.settings.shortcuts, "toolbox.review": "Alt+9"}}
+    const settings: AppSettings = {...ribbon.settings, shortcuts: {...ribbon.settings.shortcuts, "toolbox.review": "Alt+9"}}
     ribbon.dispatchEvent(new CustomEvent("app-settings-change", {detail: settings, bubbles: true, composed: true}))
     await editor.updateComplete
     press("9", "Digit9", false)
@@ -10444,7 +10444,7 @@ describe("DomEditor.execute()", () => {
       [], [expect.objectContaining({name: "Paragraph", path: [1, 2]})],
     ])
     expect(breadcrumb.shadowRoot!.querySelector('[aria-label="Show Widget tree"]')).toBeNull()
-    const block = live.body.querySelector("script[slot=data]")!
+    const block = live.body.querySelector<HTMLScriptElement>("script[slot=data]")!
     expect(block.textContent).toBe('{"choice":""}')
 
     block.type = "text/javascript"

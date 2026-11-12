@@ -25,14 +25,14 @@ describe("shared Style combobox", () => {
 
     await combo.focusAndOpen()
 
-    expect(combo.open).toBe(true)
+    expect(combo.hasAttribute("popup-open")).toBe(true)
     expect(combo.shadowRoot!.activeElement).toBe(input)
     expect(input.selectionStart).toBe(0)
     expect(input.selectionEnd).toBe(input.value.length)
     expect(input.title).toBe(`Value (${formatShortcut(combo.shortcut)})`)
     expect(combo.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.title).toBe(input.title)
     await combo.focusAndOpen()
-    expect(combo.open).toBe(true)
+    expect(combo.hasAttribute("popup-open")).toBe(true)
   })
 
   it("does not focus or open when disabled or disconnected", async () => {
@@ -40,11 +40,11 @@ describe("shared Style combobox", () => {
     combo.disabled = true
     await combo.updateComplete
     await combo.focusAndOpen()
-    expect(combo.open).toBe(false)
+    expect(combo.hasAttribute("popup-open")).toBe(false)
     combo.remove()
     combo.disabled = false
     await combo.focusAndOpen()
-    expect(combo.open).toBe(false)
+    expect(combo.hasAttribute("popup-open")).toBe(false)
   })
 
   it("edits custom numerical values and retains all named presets while typing", async () => {
