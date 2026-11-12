@@ -611,7 +611,7 @@ export class MathFeature extends EditorFeature {
     }
     const range = this.editRange()
     if(!range) return false
-    const fences = !range.collapsed || command.startsWith("delete:") ? this.fenceRows(range) : []
+    const fences = !range.collapsed && !command.startsWith("delete:") ? this.fenceRows(range) : []
     let result = false
     if(command.startsWith("mathml:")) {
       if(fragment) result = this.insertNodes(range, Array.from(fragment.childNodes).map(node => document.importNode(node, true)))
@@ -707,12 +707,10 @@ export class MathFeature extends EditorFeature {
       const container = range.startContainer
       if(container instanceof Text && container.parentElement && plainToken(container.parentElement)) {
         range.deleteContents()
-        $.move(range.startContainer, range.startOffset)
         return true
       }
       if(isRow(container)) {
         range.deleteContents()
-        $.move(container, range.startOffset)
         return true
       }
       if(isMath(container) && mathArity[container.localName] === container.children.length
@@ -721,7 +719,6 @@ export class MathFeature extends EditorFeature {
         container.childNodes[range.startOffset].replaceWith(slot)
         range.setStart(slot, 0)
         range.collapse(true)
-        $.move(slot, 0)
         return true
       }
     }
@@ -771,14 +768,14 @@ export class MathFeature extends EditorFeature {
     }
   }
 
-  private insertNodes(range: Range, nodes: Node[]): boolean {
+  private insertNodes(range: Range, nodes: Node[], moveCaret = true): boolean {
     if(!nodes.length || !this.removeRange(range)) return false
     const point = this.insertionPoint(range)
     if(!point || !isRow(point[0])) return false
     const [parent, offset] = point
     const reference = parent.childNodes[offset] ?? null
     nodes.forEach(node => parent.insertBefore(node, reference))
-    $.move(...after(nodes.at(-1)!))
+    if(moveCaret) $.move(...after(nodes.at(-1)!))
     return true
   }
 
@@ -801,7 +798,9 @@ export class MathFeature extends EditorFeature {
       else tokens.push(mathElement(name, character === "-" ? "−" : character))
     }
     if(styles) tokens.forEach(token => this.writeFormatting(token, styles))
-    if(!this.insertNodes(range, tokens)) return false
+    // Moving the selection can flush pending mutations to Yjs. Group the
+    // fences before moving the caret so the edit publishes in one step.
+    if(!this.insertNodes(range, tokens, false)) return false
     let group: Element | undefined
     for(const token of tokens) group = this.groupTypedFence(token)
     if(this.spelling) this.input?.recordInput(tokens)
@@ -853,18 +852,21 @@ export class MathFeature extends EditorFeature {
 
   /** Only anonymous fence rows touched by a removal may be dissolved.
    * Attributed wrappers and fixed-arity argument boundaries stay in place. */
-  private repairFences(rows: Element[]) {
+  private repairFences(rows: Element[], caret?: Point) {
     const broken = rows.filter(row => row.isConnected && !fencedRow(row) && row.parentElement && isRow(row.parentElement)
       && Array.from(row.attributes).every(attribute => attribute.name === "class" && !authoredClassValue(attribute.value)))
-    if(!broken.length) return
+    if(!broken.length) {
+      if(caret) $.move(...caret)
+      return
+    }
     const selection = document.getSelection()
     const remember = (node: Node | null, offset: number) => {
       const next = node?.childNodes[offset], previous = node?.childNodes[offset - 1]
       return (): Point | null => next?.isConnected ? before(next) : previous?.isConnected ? after(previous)
         : node?.isConnected ? [node, Math.min(offset, node instanceof Text ? node.length : node.childNodes.length)] : null
     }
-    const anchor = remember(selection?.anchorNode ?? null, selection?.anchorOffset ?? 0)
-    const focus = remember(selection?.focusNode ?? null, selection?.focusOffset ?? 0)
+    const anchor = caret ? remember(...caret) : remember(selection?.anchorNode ?? null, selection?.anchorOffset ?? 0)
+    const focus = caret ? anchor : remember(selection?.focusNode ?? null, selection?.focusOffset ?? 0)
     const parents = new Map<Element, Set<Node>>()
     for(const row of broken) {
       const parent = row.parentElement!
@@ -880,7 +882,8 @@ export class MathFeature extends EditorFeature {
       this.groupTypedFence(close, affected)
     }
     const start = anchor(), end = focus()
-    if(start && end) selection?.setBaseAndExtent(...fencePoint(start), ...fencePoint(end))
+    if(caret && start) $.move(...fencePoint(start))
+    else if(start && end) selection?.setBaseAndExtent(...fencePoint(start), ...fencePoint(end))
   }
 
   private insertStructure(range: Range, name: string, select = true, replace = false, onTarget?: (target: Element) => void): boolean {
@@ -983,13 +986,19 @@ export class MathFeature extends EditorFeature {
   }
 
   private delete(range: Range, backward: boolean): boolean {
-    if(!range.collapsed) return this.removeRange(range)
+    if(!range.collapsed) {
+      const fences = this.fenceRows(range)
+      if(!this.removeRange(range)) return false
+      this.repairFences(fences, [range.startContainer, range.startOffset])
+      return true
+    }
     const node = range.startContainer
     const offset = range.startOffset
     if(node instanceof Text && node.parentElement && plainToken(node.parentElement)) {
       const length = backward ? [...node.data.slice(0, offset)].at(-1)?.length ?? 0 : [...node.data.slice(offset)][0]?.length ?? 0
       if(length) {
         const start = backward ? offset - length : offset
+        const fences = length === node.length ? this.fenceRows(range) : []
         node.deleteData(start, length)
         if(!node.length && node.parentElement!.childNodes.length === 1) {
           const token = node.parentElement!
@@ -997,7 +1006,7 @@ export class MathFeature extends EditorFeature {
           if(isRow(parent)) {
             const point = before(token)
             token.remove()
-            $.move(...point)
+            this.repairFences(fences, point)
           }
           else {
             const row = mathElement("mrow")
@@ -1044,11 +1053,7 @@ export class MathFeature extends EditorFeature {
         const token = (backward ? group.lastElementChild : group.firstElementChild)!
         if(token.childNodes.length !== 1 || !(token.firstChild instanceof Text)) return false
         $.move(token.firstChild, backward ? token.firstChild.length : 0)
-        const inner = document.getSelection()!.getRangeAt(0)
-        const fences = this.fenceRows(inner)
-        const result = this.delete(inner, backward)
-        if(result) this.repairFences(fences)
-        return result
+        return this.delete(document.getSelection()!.getRangeAt(0), backward)
       }
       if(plainToken(candidate) && candidate.firstChild instanceof Text && candidate.textContent) {
         $.move(candidate.firstChild, backward ? candidate.firstChild.length : 0)
@@ -1457,7 +1462,10 @@ export class MathFeature extends EditorFeature {
     event.clipboardData.setData("text/plain", range.toString())
     if(cut) {
       const fences = this.fenceRows(range)
-      if(this.removeRange(range)) { this.repairFences(fences); this.changed() }
+      if(this.removeRange(range)) {
+        this.repairFences(fences, [range.startContainer, range.startOffset])
+        this.changed()
+      }
     }
   }
 
