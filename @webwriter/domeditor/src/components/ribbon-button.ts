@@ -1,11 +1,12 @@
 import {dropdownContentStyles, sharingLinkStyles, switchInputStyles} from "./dropdown-content.styles"
 import {editorInteractionStyles, packageUpdateStyles} from "./editing-controls.styles"
-import {LitElement, css, html, nothing, type TemplateResult} from "lit"
+import {LitElement, css, html, nothing, unsafeCSS, type TemplateResult} from "lit"
 import {keyed} from "lit/directives/keyed.js"
 import { ribbonIcon } from "../ribbon-icons"
 import {createAnchorPositioner} from "../anchor-positioning.js"
 import {popupAnchorCSS} from "./popup-position"
 import type {PackageKeywordPresentation} from "../package-keywords"
+import packageKeywordStyles from "../package-keywords.css?raw"
 import "./qr-code"
 import {isWidgetConversionAction, type RibbonMenu, type RibbonMenuButton, type RibbonMenuGroup} from "./ribbon-menu"
 import {ribbonElementInsertionAction, ribbonElementTag, ribbonInsertionAction, startElementDrag, startRibbonInsertionDrag} from "./insertion-menu"
@@ -65,7 +66,7 @@ export class RibbonButton extends LitElement {
     notificationVisible: {state: true},
   }
 
-  static styles = css`
+  static styles = [unsafeCSS(packageKeywordStyles), css`
     ${editorInteractionStyles}
     :host([variant="package"][developer-package]) .button-label-text { font-style: italic; }
     :host([icon-only]) .button-label { display: none; }
@@ -801,36 +802,6 @@ export class RibbonButton extends LitElement {
     .details dl { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.55rem; margin: 0; }
     .details dt { color: #667085; font-weight: 600; }
     .details dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-    .details-keywords {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      margin-top: 0.4rem;
-      font-size: 0.9em;
-    }
-    .details-keyword {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      min-width: 0;
-      min-height: 18px;
-      padding: 0 4px;
-      border: 1px solid currentColor;
-      border-radius: 5px;
-      background: hsl(240 5.9% 90%);
-    }
-    .details-keyword[data-kind="type"] { background: hsl(34.3 100% 91.8%); }
-    .details-keyword[data-kind="language"] { background: hsl(0 93.3% 94.1%); }
-    .details-keyword[data-kind="field"] { background: #fff; }
-    .details-keyword[data-kind="online"] { background: hsl(214.3 94.6% 92.7%); }
-    .details-keyword[data-kind="level"] { background: hsl(140.6 84.2% 92.5%); }
-    .details-keyword-icon {
-      display: inline-flex;
-      flex: 0 0 16px;
-      height: 16px;
-    }
-    .details-keyword-icon svg { display: block; width: 100%; height: 100%; }
-
     :host([variant="package"]) {
       grid-column: span 2;
       min-width: 0;
@@ -1136,7 +1107,7 @@ export class RibbonButton extends LitElement {
       color: #1e4f87;
     }
 
-  `
+  `]
 
   label = "Placeholder"
   action = ""

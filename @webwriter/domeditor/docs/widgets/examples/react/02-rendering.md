@@ -1,4 +1,4 @@
-Keep the same custom-element class and replace its initial paragraph with a React render. The function component returns the quiz question, answer controls, and live output; the CSS is a string rendered into a style element inside the shadow root. The :host selector styles the widget boundary.
+Use the same custom-element class. Replace the first paragraph with a React view. The function component returns the quiz question, answer controls, and output. Put the CSS in a `style` element inside the shadow root. The `:host` selector applies styles to the widget element.
 
 ~~~jsx
 function ReactQuiz() {
@@ -14,4 +14,4 @@ function ReactQuiz() {
 }
 ~~~
 
-02-rendering.jsx is a complete standalone step and uses createRoot in the custom element lifecycle.
+The complete source is in `02-rendering.jsx`. The source uses `createRoot` when the custom element connects.

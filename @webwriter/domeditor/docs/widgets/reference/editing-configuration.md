@@ -1,8 +1,8 @@
-# Editing configuration
+# A3. Editing configuration
 
-Declare `editingConfig` in `package.json`, or export `./editing-config.json`. The inline configuration is deep-merged over the external file and takes precedence.
+Declare `editingConfig` in [`package.json`](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/) or export `./editing-config.json`. The authoring tool merges object fields recursively. Inline values have priority over values from the external file.
 
-Keys identify exports, with or without an extension. `.` supplies package metadata.
+A key identifies an export with or without its extension. The key `.` supplies package metadata.
 
 ```json
 {
@@ -15,26 +15,26 @@ Keys identify exports, with or without an extension. `.` supplies package metada
 
 | Option | Type | Default | Effect |
 |---|---|---|---|
-| `label` | `LocalizedText` | Title-cased member name, omitting the widget's first dash-separated part. | Insertion label; on `.`, package label. |
-| `description` | `LocalizedText` | None. | Member description; on `.`, package description. |
+| `label` | `LocalizedText` | Member name in title case. For a widget, this omits the part before the first hyphen. | Label in the insertion menu. On `.`, this is the package label. |
+| `description` | `LocalizedText` | None. | Member description. On `.`, this is the package description. |
 | `uninsertable` | `boolean` | `false` | Hides the member from the insertion menu. |
-| `group` | `string` | `"flow"` for block widgets. | Space-separated content groups. An explicit value replaces the default group; `widget` or `widgetinline` is always added. |
-| `inline` | `boolean` | `false` | Makes a phrasing widget in `widgetinline`, without automatically adding `flow`. |
-| `content` | `string` | None; atomic. | [Content expression](content-expressions.md) for editable light-DOM children. |
+| `group` | `string` | `"flow"` for block widgets. | Content groups separated by spaces. An explicit value replaces the default group. The authoring tool always adds `widget` or `widgetinline`. |
+| `inline` | `boolean` | `false` | Makes a [phrasing](https://developer.mozilla.org/en-US/docs/Web/HTML/Guides/Content_categories#phrasing_content) widget in `widgetinline`, without automatically adding `flow`. |
+| `content` | `string` | None. The authoring tool treats the widget as one unit. | [Content expression](content-expressions.md) for editable light DOM children. |
 | `isolating` | `boolean` | `true` | Prevents editing from splitting or joining across the widget boundary. |
-| `marks` | `string` | `"_"` | Allowed formatting marks: space-separated names, `""` for none, or `"_"` for all. |
-| `propagateEvents` | `string[]` | `[]` | Shadow-DOM event types editor features may handle, for example `["keydown"]`. |
+| `marks` | `string` | `"_"` | Permitted formatting marks. Use names separated by spaces, `""` for none, or `"_"` for all. |
+| `propagateEvents` | `string[]` | `[]` | Types of shadow DOM events that the authoring tool can handle, for example `["keydown"]`. |
 | `sharedData` | `boolean` | `false` | Enables [scoped data](data.md) in a direct `script[slot="data"]` child. |
-| `importFormats` | `string[]` | `[]` | Advertises file format keys implemented by the widget's `convertFrom` handlers. |
-| `exportFormats` | `string[]` | `[]` | Advertises file format keys implemented by the widget's `convertTo` handlers. |
+| `importFormats` | `string[]` | `[]` | File format keys that the widget's `convertFrom` handlers support. |
+| `exportFormats` | `string[]` | `[]` | File format keys that the widget's `convertTo` handlers support. |
 
-`LocalizedText` is a string or a locale map such as `{"en": "Answer", "de": "Antwort", "_": "Answer"}`. Matching tries the exact locale, its language, then `_`.
+`LocalizedText` is a string or a locale map such as `{"en": "Answer", "de": "Antwort", "_": "Answer"}`. The authoring tool tries the exact locale first. It then tries the language. It uses `_` as the default.
 
-Marks use element names such as `b`, `i`, `a`, and `span` for text styles. Configuration describes editing behavior; it does not replace or normalize the current document into a separate model.
+Marks use element names such as `b`, `i`, `a`, and `span` for text styles. The configuration controls how authors edit the current document.
 
 ## Advertise file formats
 
-Put `importFormats` and `exportFormats` on the widget's export entry. Package tools can read these declarations before loading the widget. Use a literal file extension such as `.js` or `.h5p`, or a concrete media type such as `text/javascript`. Use the same keys in the corresponding [runtime conversion map](runtime.md#conversions). An extension key lets a package advertise support even when a file has no reported media type.
+Declare `importFormats` and `exportFormats` in the widget's export entry. Package tools can read these fields before they load the widget. Use a file extension such as `.js` or `.h5p`, or a [media type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/MIME_types) such as `text/javascript`. Use the same keys in the matching [runtime conversion map](runtime.md#conversions). An extension can identify the format when a file has no media type.
 
 ```json
 {

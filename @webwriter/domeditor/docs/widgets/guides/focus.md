@@ -1,10 +1,12 @@
 # Handle selection & input
 
-Use native buttons, inputs, and labels in the shadow DOM. They already support keyboard interaction.
+A widget can move keyboard focus to its controls. It can specify which input events the authoring tool must receive. It can also move the caret to the authored content.
 
 ![Tab advances focus between widget controls](../../images/widgets/focus.svg)
 
-If focusing the widget should focus a control, implement `focus()`. For example, a soundboard can direct focus to its first sound button:
+Use native buttons, inputs, and labels in the shadow DOM to get standard keyboard behavior.
+
+Implement [`focus()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/focus) to move focus from the widget to a control. In this example, a soundboard moves focus to its first sound button.
 
 ```js
 focus(options) {
@@ -12,13 +14,13 @@ focus(options) {
 }
 ```
 
-Keep focus visible with `:focus-visible`. Use an `<output aria-live="polite">` for feedback that should be announced after an interaction.
+Use [`:focus-visible`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Selectors/:focus-visible) to show which control has focus. Use [`<output aria-live="polite">`](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Attributes/aria-live) for feedback that an assistive technology must announce.
 
-Events inside the widget's shadow DOM are ignored by editor features by default. If the editor should handle a particular event type, opt in with `propagateEvents`, for example `["keydown"]`. Check shortcuts while using inputs so typing does not trigger unwanted editor commands.
+The authoring tool ignores input events from the widget's shadow DOM by default. List the required event types in `propagateEvents`, for example `["keydown"]`. Test the keyboard shortcuts in widget inputs. Make sure that typing causes only the intended actions.
 
 ## Move the document selection
 
-Focusing the widget host captures it for interaction. When the directly focused host is blurred, the editor releases capture and selects the widget as an element. A widget can then use the native Selection API to move the document selection elsewhere; the editor follows that selection. For example, a widget whose host is directly focused can move the caret to an authored text node:
+When the widget host has direct focus, the authoring tool lets the widget handle input. When that host loses focus, the authoring tool selects the widget element. The widget can then use the native [Selection API](https://developer.mozilla.org/en-US/docs/Web/API/Selection) to change the document selection. This example moves the caret to an authored text node.
 
 ```js
 this.blur()
@@ -26,8 +28,12 @@ const selection = this.ownerDocument.getSelection()
 selection?.setPosition(textNode, 0)
 ```
 
-Resolve `textNode` from the current document before using it, since document edits can replace or remove nodes. The blur must happen before setting the selection. This direct-host contract requires a focusable host; an overridden `focus()` that delegates to a shadow control does not focus the host directly.
+Get `textNode` from the current document. Edits can replace or remove a node. Move focus away from the host before you set the selection. For this operation, the host must accept focus directly.
 
-While a widget owns focus, the editor ignores incidental selection changes from its shadow controls. It can still follow selections in the authored children of a contentful widget. A shadow control's selection can appear as a position beside the widget, so moving a document selection outside the widget while it remains focused is not a reliable way to release capture.
+The authoring tool can follow selections in authored children while the widget has focus. To move the document selection outside the widget, first move focus away from the host.
 
-Test Tab, Shift+Tab, Enter, and Space in editing and preview. Update existing controls rather than rebuilding the shadow DOM after every interaction, so focus is retained.
+Test Tab, Shift+Tab, Enter, and Space in edit mode and in preview. Update the existing controls to keep their focus.
+
+## Keyboard focus order
+
+## Pointer and touch input

@@ -1,6 +1,6 @@
-# Data and events
+# B4. Data and events
 
-Scoped data requires `sharedData: true` in the widget's editing configuration and one direct child block:
+Scoped data requires `sharedData: true` in the widget's editing configuration. The widget has one [data block](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script#embedding_data_in_html) as a direct child.
 
 ```html
 <ww-quiz id="quiz-a" shared>
@@ -13,38 +13,38 @@ Scoped data requires `sharedData: true` in the widget's editing configuration an
 | `type` | Exactly `application/json` or `application/xml`. |
 | `slot` | `data`. |
 | `src` | Must be absent. |
-| Widget `id` | Stable identity; WebWriter assigns one when missing. Copies receive fresh identities. |
-| Widget `shared` | Absent: individual; empty: everyone; `group`: server-assigned group. Other values, including `false`, are invalid. |
-| `textContent` | Read the current snapshot; assign a complete serialized value to update it. |
+| Widget `id` | A stable identifier. The authoring tool assigns an ID if the widget has none. Copies receive new IDs. |
+| Widget `shared` | No attribute selects individual data. An empty value selects shared data for everyone. `group` selects a group that the server assigns. Other values, including `false`, are invalid. |
+| [`textContent`](https://developer.mozilla.org/en-US/docs/Web/API/Node/textContent) | Contains the current snapshot. Assign a complete serialized value to update it. |
 
-Wait for the initial `datachange` before writing. Scope changes retain the old scope and load the destination's existing state or authored defaults, without copying answers.
+Wait for the initial `datachange` event before you write data. A scope change keeps data in the old scope. The destination loads its own data or the authored defaults.
 
-The [Aggregated View interface](aggregated-view.md) turns ready participant snapshots into independent samples for aggregate views. Shared group samples use the resolver's `scopeId`.
+The [Aggregated View interface](aggregated-view.md) uses available participant snapshots as independent samples. A sample for a shared group uses the `scopeId` that the connection supplies.
 
 ## Events
 
-These events originate on the data block and bubble through the widget. Filter by the current direct block so nested widget events are not mistaken for your own.
+These events start at the data block and [bubble](https://developer.mozilla.org/en-US/docs/Web/API/Event/bubbles) through the widget. Process only events from the widget's current direct data block.
 
 | Event | `detail` | Meaning |
 |---|---|---|
-| `datarequest` | — | Dispatch as a bubbling, cancelable event on the current direct data block to receive its current state. The runtime prevents the default when it owns the block. |
-| `datapending` | `{mode: "individual" \| "all" \| "group"}` | A new binding is resolving. Fires before its initial `datachange`, including after a sharing or grouping scope change. |
-| `datachange` | `{mode: "individual" \| "all" \| "group", scopeId?: string}` | Initial state or an accepted local/remote snapshot has been installed. `scopeId` is present when the connection supplies it. Render without writing back. |
-| `dataerror` | `{message: string}` | Invalid data, mode, or a connection failure. Invalid writes do not replace the accepted persisted state. |
-| `datapersistence` | `{state: "pending" \| "saved" \| "error", message?: string}` | Offline save status. `saved` follows a committed IndexedDB transaction; `datachange` alone does not mean the change has been saved. A late `datarequest` also replays this status. |
+| `datarequest` | — | Request the current state with a bubbling, cancelable event on the current direct data block. The authoring tool prevents the default action when it manages the block. |
+| `datapending` | `{mode: "individual" \| "all" \| "group"}` | A scope is loading. The event occurs before its first `datachange`, including after a change to the sharing or group scope. |
+| `datachange` | `{mode: "individual" \| "all" \| "group", scopeId?: string}` | The initial data or an accepted local or remote snapshot is ready. The event includes `scopeId` when the connection supplies it. Update the display without writing data. |
+| `dataerror` | `{message: string}` | Reports invalid data, an invalid mode, or a connection failure. An invalid write leaves the last accepted data in storage. |
+| `datapersistence` | `{state: "pending" \| "saved" \| "error", message?: string}` | Reports the offline save status. Use `saved` to confirm a save. A `datarequest` after initialization also returns this status. |
 
 ## Merge and persistence
 
-JSON object fields merge recursively. Arrays, strings, numbers, booleans, and null are atomic values. Conflicting writes converge; numeric assignments do not implement an additive counter. An empty JSON block starts as `{}`.
+JSON object fields merge recursively. Arrays, strings, numbers, booleans, and null are atomic values. When writes conflict, the participants get the same result. A numeric assignment sets a value. Use a different mechanism for a counter that adds concurrent changes. An empty JSON block starts as `{}`.
 
-XML must be well formed. Root attributes merge separately; child lists are atomic replacements. Namespaces, comments, and processing instructions are preserved. Data must be representable inside an HTML script block.
+Use well-formed XML. Root attributes merge separately. A change to the child list replaces the complete list. The authoring tool keeps namespaces, comments, and processing instructions. Store only data that can go in an HTML script block.
 
-Participant data is stored separately from the shared document body and participates in undo and redo. Normal HTML exports and clipboard copies keep authored defaults. Explicit current-state snapshots are available through `editor.toHTML(false, true, "current")` or `editor.serializeHTML(false, "current")`.
+The authoring tool stores participant data separately from the shared document body. Changes to participant data support undo and redo. Standard HTML exports and clipboard copies keep the authored defaults. An export with the current state includes participant data.
 
-Offline scopes use one IndexedDB connection per editor. Incremental binary Yjs updates are batched within an event-loop turn, with periodic atomic checkpoints to bound replay. Existing localStorage snapshots are merged and removed only after their migration commits. Individual scopes retain their document/widget/user identity; group scopes still require a server resolver.
+Offline data for an individual scope belongs to a specific document, widget, and participant. Group scopes require a server connection.
 
-Initial restoration finishes before authored defaults are installed. A restoration error reports `datapersistence: error` and leaves the scope pending rather than replacing unread stored answers. Failed writes remain queued and retry with a bounded backoff, or immediately through an explicit flush. A failed scope does not prevent other scopes from saving. If IndexedDB is unavailable entirely, editing can continue in memory and reports an error instead of claiming persistence.
+The authoring tool checks for stored data before it uses authored defaults. If a read fails, the scope stays pending. The authoring tool reports `datapersistence` with `state: "error"`. A save can fail for one scope while other scopes continue to save.
 
-Editor integrations can await `editor.doc.widgetData.whenReady()` for offline restoration. After `editor.doc.syncFromDOM()`, await `editor.doc.widgetData.flushPersistence()` to wait for offline transaction completion; it rejects on failures. These methods do not acknowledge server saves. Explicitly flush before an orderly document close; asynchronous browser shutdown cannot guarantee that queued writes finish. Transaction completion is the browser's commit acknowledgement, not a promise against every power-loss or storage-eviction scenario.
+If offline storage is unavailable, participants can continue to edit data in memory. The authoring tool reports a storage error. Wait for `datapersistence` with `state: "saved"` to confirm that an offline write has finished.
 
-Grouping rules live in a direct `ww-grouping` processing instruction containing encoded JSON. Treat it as opaque metadata; the server assigns participants from its trusted roster. See [sharing](../guides/sharing.md) and [runtime setup](../../../README.md#scoped-widget-data).
+The server assigns participants to groups. The [sharing guide](../guides/sharing.md) describes the available scopes.

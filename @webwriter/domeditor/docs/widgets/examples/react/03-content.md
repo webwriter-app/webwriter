@@ -1,7 +1,7 @@
-Replace the hard-coded question with a native slot in the React render. The document’s question stays in the widget’s authored light DOM and is projected into the shadow root; the fallback appears only when no question was supplied.
+Replace the fixed question with a native slot in the React view. The slot displays the question in the shadow root. The question stays in the light DOM. The slot displays its default text when the widget has no question.
 
 ~~~jsx
 <slot><p>Add a question.</p></slot>
 ~~~
 
-03-content.jsx is the complete standalone widget for this step. It keeps the answer controls and styling in the shadow root.
+The complete widget is in `03-content.jsx`. It keeps the answer controls and styles in the shadow root.

@@ -1,11 +1,11 @@
 # Support editing
 
-Authors configure widgets, and readers interact with the finished document. A map marker widget can let authors set the location and let readers show or hide its coordinates.
+A widget can change its controls when the authoring tool changes the document mode. In edit mode, authors can use controls to change the content or settings. In read mode, readers can see the content and use its interactive controls.
 
 ![Pencil editing interface beside reader controls](../../images/widgets/editing.svg)
 
 <!-- library:vanilla -->
-Use `this.isContentEditable` to distinguish the two views.
+Use [`this.isContentEditable`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/isContentEditable) to identify the mode.
 
 ```css
 /* In the widget's shadow styles */
@@ -13,13 +13,13 @@ Use `this.isContentEditable` to distinguish the two views.
 :host(:not([contenteditable])) .author-hint { display: none; }
 ```
 
-These selectors suit the editor's runtime empty `contenteditable` attribute. If your widget permits authored `contenteditable="false"`, use `isContentEditable` in script to handle that value too.
+These selectors check for the presence of the [`contenteditable`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/contenteditable) attribute. If the widget accepts `contenteditable="false"`, use `isContentEditable` in the script to check the mode.
 
-Observe `contenteditable` if changing mode requires a script update. Expose simple author settings through [options and actions](../reference/options-actions.md), which WebWriter displays in the Widget drawer.
+Observe `contenteditable` if a change of mode requires a script update. Declare [options and actions](../reference/options-actions.md) for author settings. The authoring tool shows these controls in the Widget drawer.
 
 <!-- /library -->
 <!-- library:lit -->
-Use `this.editable` in your `LitElementWw` template and interaction handlers. The base requests an update when the widget or an ancestor changes editing mode:
+Use `this.editable` in your `LitElementWw` template and input handlers. The base class requests an update when the edit mode changes on the widget or an ancestor.
 
 ```js
 toggleCoordinates() {
@@ -38,7 +38,11 @@ render() {
 }
 ```
 
-Import `html` from `lit` and declare `showCoordinates` as local reactive state. Expose simple author settings through [options and actions](../reference/options-actions.md), which WebWriter displays in the Widget drawer.
+Import `html` from `lit`. Declare `showCoordinates` as [local reactive state](https://lit.dev/docs/components/properties/#internal-reactive-state). Declare [options and actions](../reference/options-actions.md) for author settings. The authoring tool shows these controls in the Widget drawer.
 <!-- /library -->
 
-Keep widget controls in shadow DOM and use the runtime editability signal described above. WebWriter tracks its own selection and hover state in memory. Test both modes using **Preview**, and save and reopen the document to check the resulting state.
+Keep the widget controls in the [shadow DOM](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_shadow_DOM). Use the edit mode property for your library. Test both modes in **Preview**. Save the document. Open the document again. Check that the widget shows the saved content.
+
+## Controls in edit mode
+
+## Checks in read mode

@@ -1,4 +1,4 @@
-Svelte’s custom-element mode compiles this component into a browser custom element. The default slot displays authored light-DOM children while Svelte keeps the component view and styles inside its shadow root.
+Svelte compiles this component into a custom element. The default slot displays the child content. The child content stays in the light DOM. The view and styles stay in the shadow root.
 
 ```svelte
 <svelte:options customElement={{ tag: "ww-hello" }} />
@@ -6,4 +6,4 @@ Svelte’s custom-element mode compiles this component into a browser custom ele
 <p>Hello, <slot>world</slot>!</p>
 ```
 
-See the [Svelte custom elements documentation](https://svelte.dev/docs/svelte/custom-elements) and the full source in [hello.svelte](./hello.svelte).
+See the [Svelte custom elements documentation](https://svelte.dev/docs/svelte/custom-elements) and the complete source in [hello.svelte](./hello.svelte).

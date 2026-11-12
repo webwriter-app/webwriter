@@ -1,11 +1,11 @@
-# Content expressions
+# A4. Content expressions
 
-`editingConfig.content` describes editable light-DOM children. Omitting it makes the widget atomic to the editor.
+`editingConfig.content` describes which light DOM children authors can edit. Without a content expression, the authoring tool treats the widget as one unit.
 
 | Expression | Meaning | Example |
 |---|---|---|
 | Node name | One element of that type. | `p`, `ww-option` |
-| Group name | One member of the group. | `flow`, `phrasing`, `heading`, `widget`, `widgetinline` |
+| Group name | One member of the group. | [`flow`, `phrasing`, `heading`](https://developer.mozilla.org/en-US/docs/Web/HTML/Guides/Content_categories), `widget`, `widgetinline` |
 | `a b` | Sequence. | `p ww-option` |
 | `a \| b` | Choice. | `p \| ul` |
 | `(…)` | Grouping. | `(p \| ul)+` |
@@ -16,7 +16,7 @@
 | `{n,}` | At least n. | `ww-option{2,}` |
 | `{n,m}` | Between n and m. | `ww-option{2,6}` |
 
-Custom groups come from a widget's space-separated `group` setting. Referenced node names and groups must exist. Finite repetition bounds are limited to 1000.
+A widget declares custom groups in its `group` setting. Separate the group names with spaces. Use only node names and groups that exist. The largest finite repetition limit is 1,000.
 
 ```json
 {
@@ -25,4 +25,4 @@ Custom groups come from a widget's space-separated `group` setting. Referenced n
 }
 ```
 
-Inert widget data blocks and children explicitly marked `contenteditable="false"` are allowed independently of the expression. Existing valid DOM remains the document state; do not rebuild unrelated content to force it into an expected shape.
+A widget can contain inert data blocks and children with [`contenteditable="false"`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/contenteditable) in addition to the content in the expression. Keep unrelated document content unchanged.

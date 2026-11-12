@@ -1,4 +1,4 @@
-Keep WebWriter metadata and the reset action on the generated custom-element class. The Vue component owns the view and temporary choice state.
+Declare the options and the reset action on the custom-element class. The Vue component displays the question and keeps the reader's temporary choice.
 
 ~~~js
 const options = {
@@ -24,4 +24,4 @@ class WwQuiz extends VueQuizElement {
 }
 ~~~
 
-The answer accessor stays on the native host. It is not declared as a Vue prop, so Vue does not install a conflicting property descriptor.
+Keep the `answer` accessor on the host element. This prevents Vue from creating a second accessor for the same property.

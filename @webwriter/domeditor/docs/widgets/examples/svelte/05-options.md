@@ -1,4 +1,4 @@
-Svelte’s custom-element prop declaration maps attributes to component props. Use `customElement.extend` to attach WebWriter option and action metadata to the generated custom-element class, and to expose an action method before the inner component mounts.
+Svelte maps the custom element's attributes to component props. Use `customElement.extend` to declare options and actions on the custom-element class. The action method is available before the component mounts.
 
 ```js
 extend: Base => class extends Base {
@@ -11,4 +11,4 @@ extend: Base => class extends Base {
 }
 ```
 
-The widget source is [05-options.svelte](./05-options.svelte). The package entry [ww-quiz.js](./ww-quiz.js) imports the final component, whose declared tag self-registers.
+The complete source is [05-options.svelte](./05-options.svelte). The package entry module [ww-quiz.js](./ww-quiz.js) imports the component. The component registers its custom element.

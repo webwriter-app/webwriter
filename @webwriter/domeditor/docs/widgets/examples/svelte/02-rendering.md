@@ -1,4 +1,4 @@
-Write the rendered controls directly in the component and scope the widget styles in its shadow root. The size tokens let the widget fit the editor’s prose column or an explicitly wider widget area.
+Put the controls in the component. Keep the styles in its shadow root. The size tokens let the widget fit the document column or a larger area.
 
 ```svelte
 <p>The Moon is a star.</p>
@@ -9,4 +9,4 @@ Write the rendered controls directly in the component and scope the widget style
 <output aria-live="polite"></output>
 ```
 
-The complete responsive component is [02-rendering.svelte](./02-rendering.svelte).
+The complete component is [02-rendering.svelte](./02-rendering.svelte).

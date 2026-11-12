@@ -1,4 +1,6 @@
-Move the selected answer into the direct JSON data block. The custom-element class listens on itself, accepts datachange and dataerror only from its current direct data block, and removes both listeners when disconnected. A light-DOM observer invalidates readiness when that block is replaced. React subscribes to a small host revision with useSyncExternalStore; each render reads the current direct block and its latest textContent, so accepted remote snapshots update the displayed answer without writing during rendering. The host installs its data listeners before mounting React, and the hook checks the current snapshot when its subscription starts.
+Store the selected answer in the JSON data block. This block is a direct child of the widget. Listen for `datachange` and `dataerror` on the custom element. Accept events only from the current block. Remove the listeners when the element disconnects. The observer makes the widget wait for new data when the block changes.
+
+The custom element adds its data listeners before React mounts. React uses `useSyncExternalStore` to receive update notifications. The hook checks the current data when it subscribes. During rendering, React reads the latest `textContent` from the current block. This updates the answer when data changes.
 
 ~~~jsx
 // The host creates one stable subscription and snapshot function.
@@ -23,4 +25,4 @@ function ReactQuiz({host}) {
 }
 ~~~
 
-06-collaboration.jsx includes readiness gating, error display, shared change handling, and the final widget class. quiz.html provides the authored question and initial data block.
+The complete widget is in `06-collaboration.jsx`. It waits for data, shows errors, and updates the view when data changes. The `quiz.html` file contains the question and the initial data block.

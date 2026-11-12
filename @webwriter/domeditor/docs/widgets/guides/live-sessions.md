@@ -1,37 +1,30 @@
 # Support live sessions
 
-Let a host see how learners are using your widget, either as individual snapshots
-or as an aggregated view of their responses.
+A widget can give authors control over optional participant interactions in a live session. It can collect responses that participants submit from the reader. Hosts can see individual responses or compare them in an aggregated view.
 
 ![Three workshop votes feed a live tally](../../images/widgets/live-sessions.svg)
 
 ## Let authors choose what participants can do
 
-Declare `static permissions` to give the author control over an optional widget
-interaction. A workshop activity can offer a glossary that the author turns on
-or off for participants.
+Declare `static permissions` to give the author control over an optional interaction. For example, an author can give workshop participants access to a glossary.
 
 <iframe title="Workshop activity with an optional participant glossary" src="../examples/preview.html?guide=live-sessions" width="100%" height="360" loading="lazy"></iframe>
 
 [Open the participant controls demo](../examples/preview.html?guide=live-sessions) · [View the example source](../examples/guide-live-sessions.js)
 
-The demo's author checkbox simulates the setting by adding or removing
-`allow-glossary` on the widget. Open the glossary in the participant view, then
-uncheck **Allow glossary** to see it close and disappear.
+The author checkbox adds or removes `allow-glossary` on the widget. Open the glossary in the participant view. Clear **Allow glossary**. Make sure that the glossary closes and that the control disappears.
 
-1. Select the widget in the editor and open **Distribute**.
-2. Open the permissions drawer named for the selected widget. Under
-   **Permissions**, find **Allow glossary** just below **Edit** and toggle it.
-   The widget setting works independently of **Edit** and is unavailable when
-   **View** is off for the widget.
-3. Start a live session from **Preview** and join as a participant to check that
-   the glossary follows the setting.
+1. Select the widget in the authoring tool.
+2. Open **Distribute**.
+3. Open the permissions drawer for the selected widget.
+4. Under **Permissions**, select **Allow glossary** below **Edit**.
+5. Start a live session from **Preview**.
+6. Join the live session as a participant.
+7. Make sure that the glossary control is available.
 
-Key the declaration by boolean property name and name the corresponding HTML
-attribute. The editor adds an empty attribute when the checkbox is checked and
-removes it when unchecked. In the widget, reflect the property to the attribute
-and observe attribute changes so the participant view updates when the editor
-changes the markup.
+**Allow glossary** works independently of **Edit**. It is available when **View** is on.
+
+Use the Boolean property name as the key in the declaration. Specify the HTML attribute for that property. The authoring tool adds an empty attribute when the author selects the checkbox. It removes the attribute when the author clears the checkbox. Reflect the widget property to the attribute. Observe attribute changes to update the participant view.
 
 ```js
 static permissions = {
@@ -53,17 +46,13 @@ set allowGlossary(value) {
 }
 ```
 
-In `attributeChangedCallback()`, use `this.allowGlossary` to show or hide the
-glossary disclosure. In authored HTML, `<ww-workshop-glossary allow-glossary>`
-enables it. Use the [element permissions reference](../reference/options-actions.md#element-permissions)
-for the full declaration. These flags control the interactions the widget offers.
-WebWriter's distribution permissions govern document edits, and any service the
-widget calls must enforce its own authorization.
+In `attributeChangedCallback()`, use `this.allowGlossary` to set the visibility of the glossary. In authored HTML, `<ww-workshop-glossary allow-glossary>` enables it. See the [element permissions reference](../reference/options-actions.md#element-permissions).
+
+These flags control the interactions in the widget. The authoring tool sets the permissions for document edits. A service that the widget calls must do its own authorization checks.
 
 ## Save participant responses
 
-Store persistent participant data in a direct data block, and enable `sharedData: true` in
-the widget's [editing configuration](../reference/editing-configuration.md). For example, a workshop poll can store each participant’s vote for the next activity:
+Store participant data in a direct data block. Set `sharedData: true` in the [editing configuration](../reference/editing-configuration.md). A workshop poll, for example, can store each participant's vote in this block.
 
 ```html
 <ww-workshop-poll>
@@ -72,18 +61,11 @@ the widget's [editing configuration](../reference/editing-configuration.md). For
 </ww-workshop-poll>
 ```
 
-Leave `shared` absent when each participant should keep their own data. Use the
-[participant data guide](sharing.md) to choose a sharing mode and implement data
-handlers. Wait for ready data before writing, and render accepted changes without
-writing them back. Live sessions capture those changes, including remote updates
-and undo or redo; temporary properties and shadow DOM are not the aggregation
-interface.
+For separate data per participant, omit `shared`. Use the [participant data guide](sharing.md) to select a sharing scope. Set up the data handlers. Wait for the data to be ready before you write. Show accepted changes without writing them again. The poll's aggregated view reads the response data from the widget snapshot.
 
 ## Submit responses from the reader
 
-Set `static formAssociated = true` on the custom element class to include it in the reader's
-**Submit** action. An authored HTML form can group widgets with ordinary inputs
-for validation.
+Set `static formAssociated = true` on the custom element class to include the widget in **Submit**. An HTML form can group widgets and standard inputs for validation.
 
 ```html
 <form>
@@ -94,26 +76,15 @@ for validation.
 </form>
 ```
 
-Use `ElementInternals.setValidity()` to report invalid input, such as a missing
-required selection, and forward `reportValidity()` so the reader can show the validation message.
-For ordinary HTML forms, give the widget a `name` and publish its response with
-`ElementInternals.setFormValue()`. A widget that submits multiple values can pass `FormData`
-with one entry for each selected option.
+Use [`ElementInternals.setValidity()`](https://developer.mozilla.org/en-US/docs/Web/API/ElementInternals/setValidity) to report invalid input, such as a missing selection. Forward `reportValidity()` to let the reader show the validation message. For standard HTML forms, give the widget a `name`. Use [`ElementInternals.setFormValue()`](https://developer.mozilla.org/en-US/docs/Web/API/ElementInternals/setFormValue) to supply its response. For multiple values, pass [`FormData`](https://developer.mozilla.org/en-US/docs/Web/API/FormData) with one entry for each selected option.
 
-After the learner confirms, the reader adds the boolean `submitted` attribute
-and dispatches a non-bubbling `submit` event on each participating widget. A
-widget can use the event for immediate feedback or observe the attribute to
-show feedback when a snapshot is restored. Remove the attribute when the
-response changes. For the workshop poll, the submitted state can show a confirmation such as “Vote submitted.”
+When the participant confirms, the reader adds the Boolean `submitted` attribute. The reader also dispatches a non-bubbling `submit` event on each participating widget. Use the event to show immediate feedback. Observe the attribute to show feedback when the authoring tool restores a snapshot. Remove the attribute when the response changes. For example, the workshop poll can show “Vote submitted.”
 
-In a live session, the attribute travels with the learner's widget snapshot.
-Keep the response in the widget's data block so the host and replay can read it
-alongside the marker.
+The widget snapshot includes the `submitted` attribute. Keep the response in the data block so the host can read it during the session or in replay.
 
 ## Declare an aggregated view
 
-Add `static aggregate` to your widget class. Choose a shape and extract the
-value you want to compare. This declaration tallies the workshop poll votes:
+Add `static aggregate` to the widget class. Select a shape for the view. Specify the value to compare. This declaration counts the workshop poll votes.
 
 ```js
 static aggregate = {
@@ -127,32 +98,20 @@ static aggregate = {
 }
 ```
 
-Returning `undefined` from `value` omits samples without a selection. To highlight
-a comparison value, declare an optional `reference` explicitly. When `aggregate`
-is a function, it receives read-only snapshots, so it can adapt labels and the
-reference to the authored widget.
+Return `undefined` from `value` to omit a sample with no selection. Set `reference` to mark a comparison value. An `aggregate` function receives read-only snapshots. It can use them to set labels and the reference value.
 
-Return an array of configurations to offer several views of one widget. Give
-each configuration a `title` and a stable `id` (the shape name is the default ID).
-The host selects a view in the widget's live-session selector.
+Return an array of configurations to supply several views for a widget. Give each configuration a `title`. Give each configuration a stable `id`. If you omit the ID, the authoring tool uses the shape name. The host selects a view with the widget's live session selector.
 
-The [Aggregated View reference](../reference/aggregated-view.md) lists the seven
-shapes and their inputs. For widget-specific graphics, choose `custom` and
-register a separate rendering element that receives the aggregate context.
+The [Aggregated View reference](../reference/aggregated-view.md) lists the seven shapes and their inputs. Select `custom` for widget-specific graphics. Register a separate element that receives the aggregate context.
 
 ## Check the live view
 
-Start a live session from **Preview**, join as several learners, and submit
-different responses. The host can choose a declared aggregated view, **Thumbnail
-wall**, or an individual learner for each widget. Without a declaration, or if one fails,
-WebWriter shows learner thumbnails.
+Start a live session from **Preview**. Join the session as several participants. Submit a different response as each participant. The host can select a declared view, **Thumbnail wall**, or an individual participant. The authoring tool shows participant thumbnails if it has no declaration or the declaration fails.
 
-Check that changing the learner filter updates the chart and that replay shows
-the responses at the selected time. Also try missing responses, remote data
-changes, and undo or redo. Shared data contribute one response per shared
-scope rather than one duplicate per learner.
+Change the participant filter. Make sure that the chart shows the new selection. Select a time in replay. Check that replay shows the responses for that time. Test missing responses, remote data changes, undo, and redo. Shared data supply one response for each shared scope.
 
-Keep aggregate rendering read-only. WebWriter places its views in the shadow
-appendix, and aggregation does not change the widget's data, history, or exported
-HTML. For a custom renderer, check narrow containers and clean up observers and
-listeners when the renderer disconnects.
+Keep aggregate rendering read-only. Test a custom renderer in a narrow container. Disconnect its observers and remove its listeners when the renderer disconnects.
+
+## Participant permissions and controls
+
+## Response checks during replay

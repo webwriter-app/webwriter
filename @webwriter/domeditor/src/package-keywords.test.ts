@@ -1,5 +1,6 @@
 import {describe, expect, it, vi} from "vitest"
 import {packageKeywordPresentations} from "./package-keywords"
+import widgetKeywords from "./widget-keywords.json"
 
 describe("package keyword presentation", () => {
   it("orders legacy badges by category and preserves custom tag text", () => {
@@ -18,8 +19,34 @@ describe("package keyword presentation", () => {
       {kind: "field", label: "Natural sciences", icon: "EducationFieldSciences"},
       {kind: "online", label: "Online only", icon: "KeywordOnline"},
       {kind: "level", label: "Primary school", icon: "EducationSchool"},
+      {kind: "widget", label: "Widget", icon: "Packages"},
       {kind: "custom", label: "historical-map"},
       {kind: "custom", label: "Practice"},
+    ])
+  })
+
+  it("recognizes every fixed widget keyword with its label, icon, and color category", () => {
+    for(const [keyword, badge] of Object.entries(widgetKeywords.badges)) {
+      if("pattern" in badge) continue
+      const {kind, label, icon} = badge
+      expect(packageKeywordPresentations([keyword], "en"), keyword).toEqual([{kind, label, icon}])
+    }
+  })
+
+  it("labels conversion formats and migration versions without losing their values", () => {
+    expect(packageKeywordPresentations([
+      "widget-convertible-to-image/SVG+xml", "widget-convertible-to-image/svg+xml",
+      "widget-convertible-from-ww-list", "widget-migrates-from-1.2.3-RC.1+Build.02",
+      "widget-migrates-from-1.2.3-rc.1+build.02", "widget-migrates-from-1.2.3-01",
+      "widget-convertible-from-", "widget-convertible-to-<b>",
+    ], "en")).toEqual([
+      {kind: "conversion", label: "Converts to image/svg+xml", icon: "KeywordConvertTo"},
+      {kind: "conversion", label: "Converts from ww-list", icon: "KeywordConvertFrom"},
+      {kind: "development", label: "Migrates from 1.2.3-RC.1+Build.02", icon: "KeywordMigration"},
+      {kind: "development", label: "Migrates from 1.2.3-rc.1+build.02", icon: "KeywordMigration"},
+      {kind: "custom", label: "widget-migrates-from-1.2.3-01"},
+      {kind: "custom", label: "widget-convertible-from-"},
+      {kind: "custom", label: "widget-convertible-to-<b>"},
     ])
   })
 

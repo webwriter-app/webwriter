@@ -5,6 +5,7 @@ const query = new URLSearchParams(location.search)
 const libraries = {vanilla: "JS", lit: "Lit", react: "React", vue: "Vue", angular: "Angular", svelte: "Svelte"}
 const library = Object.hasOwn(libraries, query.get("library")) ? query.get("library") : "lit"
 const guideExamples = {
+  theming: () => import("./guide-theming.js"),
   reactivity: () => import("./guide-reactivity.js"),
   state: () => import("./guide-state.js"),
   "live-sessions": () => import("./guide-live-sessions.js"),

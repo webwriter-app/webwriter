@@ -1,6 +1,6 @@
-The final component keeps the current JSON data block in the authored DOM. Its Vue setup reads the current direct-child block for display and checks it again before every write. The registration class captures data events, accepts only events from that current block, and clears readiness when shared mode or the block changes.
+Keep the JSON data block in the document. The component reads the current direct child block to update the display. It checks the current block again before each write. The registration class accepts data events only from the current block. The widget waits for new data when `shared` or the block changes.
 
-The component uses useHost() to reach the widget and listens for the bridge’s view refresh event:
+The component uses `useHost()` to get the host element. It listens for an event from the host element to update the view.
 
 ~~~vue
 <script setup>
@@ -30,4 +30,4 @@ onBeforeUnmount(() => host?.removeEventListener("quizrefresh", refresh))
 </script>
 ~~~
 
-The registration module owns early data-event capture, native answer access, readiness invalidation, and listener/observer cleanup. See 06-collaboration.js for the complete bridge and 06-collaboration.vue for the complete component.
+The registration module in `06-collaboration.js` receives data events, supplies the `answer` property, and waits for new data when necessary. It removes the listeners and observer when the element disconnects. The component is in `06-collaboration.vue`.

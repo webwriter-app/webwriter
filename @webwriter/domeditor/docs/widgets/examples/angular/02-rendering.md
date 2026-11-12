@@ -1,4 +1,4 @@
-Put the quiz controls in the component template and scope their CSS with native Shadow DOM encapsulation. The max-width and padding use the same WebWriter widget sizing tokens as the other tutorial versions.
+Put the quiz controls in the component template. Use native shadow DOM encapsulation to limit the CSS to the component. The CSS uses document design tokens to set the maximum width and padding.
 
 ```ts
 template: `
@@ -12,4 +12,4 @@ styles: [":host { display: block; padding: 1rem; }"],
 encapsulation: ViewEncapsulation.ShadowDom,
 ```
 
-The complete responsive styles are in [02-rendering.ts](./02-rendering.ts).
+The complete styles are in [02-rendering.ts](./02-rendering.ts).

@@ -1,7 +1,7 @@
 import {fixedPopupPosition} from "../src/components/popup-position.ts"
 
 // Share the sidebar position across documentation pages in this browser tab.
-const sidebar = document.querySelector("aside")
+const sidebar = document.querySelector(".documentation-sections")
 const sidebarScrollKey = "webwriter-docs-sidebar-scroll"
 if(sidebar) {
   try {
@@ -15,6 +15,28 @@ if(sidebar) {
     catch { /* Browser storage may be disabled. */ }
   }, {passive: true})
 }
+
+let headingCopyAttempt = 0
+let headingCopyTimer, activeHeadingStatus, lastHeadingCopyMessage
+document.querySelector("main article")?.addEventListener("click", async event => {
+  if(event.defaultPrevented || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+  const link = event.target.closest("a.docs-heading-link")
+  const status = link?.previousElementSibling
+  if(!status) return
+  const attempt = ++headingCopyAttempt
+  clearTimeout(headingCopyTimer)
+  if(activeHeadingStatus) activeHeadingStatus.textContent = ""
+  activeHeadingStatus = status
+  // The fragment link handles the URL, scroll, and history as usual.
+  let message = "Link copied"
+  try { await navigator.clipboard.writeText(link.href) }
+  catch { message = "Couldn’t copy link" }
+  if(attempt !== headingCopyAttempt) return
+  // Keep repeated announcements distinct for screen readers.
+  lastHeadingCopyMessage = message === lastHeadingCopyMessage ? `${message}\u00a0` : message
+  status.textContent = lastHeadingCopyMessage
+  headingCopyTimer = setTimeout(() => { status.textContent = "" }, 2000)
+})
 
 const library = document.querySelector('select[name="library"]')
 library?.addEventListener("change", () => {
@@ -32,6 +54,59 @@ if(requestedOption?.dataset.href && requestedOption.value !== library.value) {
   const url = new URL(location.href)
   url.pathname = new URL(requestedOption.dataset.href, location.href).pathname
   location.replace(url)
+}
+
+// Keep the full source in one code block so it can still be copied after expansion.
+const samplePreviewLines = 10
+const canRevealSearchMatches = "onbeforematch" in HTMLElement.prototype
+for(const card of document.querySelectorAll("section.library-note[data-library]")) {
+  const [first, ...files] = card.querySelectorAll(":scope > .code-snippet")
+  const code = first?.querySelector("pre > code")
+  if(!code) continue
+
+  const targets = []
+  const id = `library-source-${card.dataset.library}`
+  const lines = [...code.querySelectorAll(":scope > .line")]
+  const lineCount = lines.length - Number(lines.at(-1)?.textContent === "")
+  if(lineCount > samplePreviewLines) {
+    const rest = document.createElement("span")
+    rest.className = "library-source-rest"
+    rest.id = `${id}-rest`
+    const nodes = [...code.childNodes]
+    rest.append(...nodes.slice(nodes.indexOf(lines[samplePreviewLines - 1]) + 1))
+    code.append(rest)
+    targets.push(rest)
+  }
+  if(files.length) {
+    const extraFiles = document.createElement("div")
+    extraFiles.id = `${id}-files`
+    extraFiles.append(...files)
+    card.append(extraFiles)
+    targets.push(extraFiles)
+  }
+  if(!targets.length) continue
+
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = "library-source-toggle"
+  button.setAttribute("aria-controls", targets.map(target => target.id).join(" "))
+  const setExpanded = expanded => {
+    for(const target of targets) {
+      if(expanded) target.removeAttribute("hidden")
+      else target.setAttribute("hidden", canRevealSearchMatches ? "until-found" : "")
+    }
+    button.setAttribute("aria-expanded", String(expanded))
+    button.textContent = expanded ? "Show less" : "Show more..."
+  }
+  button.addEventListener("click", () => {
+    const expanded = button.getAttribute("aria-expanded") === "false"
+    setExpanded(expanded)
+    if(expanded) code.parentElement.focus({preventScroll: true})
+    else button.scrollIntoView({block: "nearest"})
+  })
+  for(const target of targets) target.addEventListener("beforematch", () => setExpanded(true))
+  setExpanded(false)
+  card.append(button)
 }
 
 // Keep same-origin examples fitted to their content, including narrow layouts.
@@ -65,8 +140,6 @@ const capabilities = document.querySelector(".widget-capabilities")
 const guidePreview = capabilities?.querySelector(".widget-capabilities-preview")
 if(guidePreview) {
   const core = capabilities.querySelector(".widget-capabilities-core")
-  const image = guidePreview.querySelector("img")
-  const excerpt = guidePreview.querySelector("p")
   const nativePopover = typeof guidePreview.showPopover === "function"
   const hoverAvailable = matchMedia("(hover: hover)")
   let activeLink, hoveredLink, focusedLink, hideTimer
@@ -106,8 +179,14 @@ if(guidePreview) {
     if(!hoverAvailable.matches) return
     clearTimeout(hideTimer)
     if(link === activeLink) return
-    image.src = link.querySelector("template").content.querySelector("img").getAttribute("src")
-    excerpt.textContent = document.getElementById(link.getAttribute("aria-describedby")).textContent
+    const content = link.querySelector("template")?.content.cloneNode(true)
+    const image = content?.querySelector("img")
+    const description = document.getElementById(link.getAttribute("aria-describedby"))?.cloneNode(true)
+    if(!image || !description) return
+    description.removeAttribute("id")
+    description.removeAttribute("class")
+    image.after(description)
+    guidePreview.replaceChildren(content)
     activeLink = link
     if(guidePreview.hidden) {
       guidePreview.hidden = false

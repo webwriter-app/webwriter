@@ -1,21 +1,12 @@
 # Widgets
 
-Widgets are interactive multimedia elements that can be part of a web document. They are implemented as Web Components and distributed as npm packages.
+Widgets add interactive content to a web document. They are [Web Components](https://developer.mozilla.org/en-US/docs/Web/API/Web_components). An [npm package](https://docs.npmjs.com/about-packages-and-modules/) can contain one or more widgets.
 
-This documentation is intended for developers. Start with the widget basics and quick start, then follow the tutorial, solve a specific task with a guide, or look up an interface in the reference.
-
-Choose **JS**, **Lit**, **React**, **Vue**, **Angular**, or **Svelte** with the library selector. The widget interface, authored HTML, and CSS are independent of the rendering library. The quick start and tutorial include complete sources and live examples for all six choices.
-
-| Page or section | Contents |
-|---|---|
-| [Quick start](introduction/quick-start.md) | Create, insert, and modify a small widget. |
-| [Tutorial](tutorial/index.md) | Build Ghost Disco step by step, with code and working examples. |
-| [Guides](guides/index.md) | State, sharing, layout, accessibility, localization, testing, and publishing. |
-| [Reference](reference/index.md) | Editing configuration, runtime interfaces, options, events, styles, and distribution. |
+The [Library](introduction/library.md) page describes the six choices in the library selector. The widget interface, document HTML, and CSS use the same web standards for all six choices. The [Quick start](introduction/quick-start.md) shows how to add a widget to a document. The [Tutorial](tutorial/index.md) shows how to make a complete widget. Both include source code and a live preview for each library. The [Guides](guides/index.md) give instructions for specific widget features. The [Reference](reference/index.md) describes the package interface, runtime interface, and tools.
 
 ## What is a widget?
 
-From a technical view, a widget is an HTML custom element. Its class extends `HTMLElement`, directly or through a library such as Lit. It can use the web APIs available in the browser.
+A widget is an HTML [custom element](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements). Its class can extend [`HTMLElement`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement) directly or use a base class from a library such as [Lit](https://lit.dev/docs/components/defining/). A widget can use the web APIs that the browser supplies.
 
 ```html
 <ww-weather place="Utrecht">
@@ -23,11 +14,11 @@ From a technical view, a widget is an HTML custom element. Its class extends `HT
 </ww-weather>
 ```
 
-The tag name identifies the widget. Attributes hold settings, child nodes hold authored content, and the shadow DOM contains the widget's interface.
+The tag name identifies the widget. [Attributes](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes) can store settings. Child nodes can hold content from the author. The widget can use a [shadow DOM](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_shadow_DOM) for its user interface.
 
-A package can provide one or more widgets, plus snippets, styles, and tests. Packaging makes widgets discoverable and loadable in WebWriter.
+A widget package can also include HTML snippets, style sheets, and tests. The authoring tool uses the package to find and load the widgets.
 
-The live HTML DOM is the document. WebWriter observes changes to it, including changes made by widgets, collaborators, and undo or redo.
+The HTML document holds each widget and its saved settings. Widgets and authors can change this HTML. The authoring tool can undo or redo a change.
 
 ### What widgets can do
 
@@ -56,7 +47,7 @@ The live HTML DOM is the document. WebWriter observes changes to it, including c
             <template><img src="../images/widgets/editing.svg" alt=""></template>
             <span>Support editing</span>
           </a>
-          <p id="widget-guide-editing" class="widget-capabilities-summary">Show configuration to authors and interaction controls to readers.</p>
+          <p id="widget-guide-editing" class="widget-capabilities-summary">A widget can show different controls to authors and readers.</p>
         </li>
         <li>
           <a href="guides/focus.md" aria-describedby="widget-guide-focus">
@@ -64,7 +55,7 @@ The live HTML DOM is the document. WebWriter observes changes to it, including c
             <template><img src="../images/widgets/focus.svg" alt=""></template>
             <span>Handle selection &amp; input</span>
           </a>
-          <p id="widget-guide-focus" class="widget-capabilities-summary">Delegate focus to controls, handle keyboard input, and move document selection.</p>
+          <p id="widget-guide-focus" class="widget-capabilities-summary">A widget can move focus to a control and handle input from a keyboard.</p>
         </li>
         <li>
           <a href="guides/content.md" aria-describedby="widget-guide-content">
@@ -72,7 +63,7 @@ The live HTML DOM is the document. WebWriter observes changes to it, including c
             <template><img src="../images/widgets/content.svg" alt=""></template>
             <span>Nest content</span>
           </a>
-          <p id="widget-guide-content" class="widget-capabilities-summary">Use slots to display editable text and nested widgets from the light DOM.</p>
+          <p id="widget-guide-content" class="widget-capabilities-summary">Slots can show editable text and other widgets from the light DOM.</p>
         </li>
         <li>
           <a href="guides/conversions.md" aria-describedby="widget-guide-conversions">
@@ -80,7 +71,7 @@ The live HTML DOM is the document. WebWriter observes changes to it, including c
             <template><img src="../images/widgets/conversions.svg" alt=""></template>
             <span>Convert &amp; import/export</span>
           </a>
-          <p id="widget-guide-conversions" class="widget-capabilities-summary">Convert between widgets, native HTML, and file formats.</p>
+          <p id="widget-guide-conversions" class="widget-capabilities-summary">A widget can convert content to and from HTML or a file.</p>
         </li>
       </ul>
       <h4>Presentation</h4>
@@ -89,25 +80,33 @@ The live HTML DOM is the document. WebWriter observes changes to it, including c
           <a href="guides/responsiveness.md" aria-describedby="widget-guide-responsiveness">
             <svg aria-hidden="true" width="32" height="32"><use href="../images/widgets/capability-icons.svg#responsiveness"></use></svg>
             <template><img src="../images/widgets/responsiveness.svg" alt=""></template>
-            <span>Responsive layout</span>
+            <span>Make layouts responsive</span>
           </a>
-          <p id="widget-guide-responsiveness" class="widget-capabilities-summary">Reflow controls and content to fit the space the document gives the widget.</p>
+          <p id="widget-guide-responsiveness" class="widget-capabilities-summary">A widget can change its layout to fit the available space.</p>
+        </li>
+        <li>
+          <a href="guides/theming.md" aria-describedby="widget-guide-theming">
+            <svg aria-hidden="true" width="32" height="32"><use href="../images/widgets/capability-icons.svg#theming"></use></svg>
+            <template><img src="../images/widgets/theming.svg" alt=""></template>
+            <span>Follow the theme</span>
+          </a>
+          <p id="widget-guide-theming" class="widget-capabilities-summary">A widget can use the fonts and colors from the document theme.</p>
         </li>
         <li>
           <a href="guides/localization.md" aria-describedby="widget-guide-localization">
             <svg aria-hidden="true" width="32" height="32"><use href="../images/widgets/capability-icons.svg#localization"></use></svg>
             <template><img src="../images/widgets/localization.svg" alt=""></template>
-            <span>Localization</span>
+            <span>Localize a widget</span>
           </a>
-          <p id="widget-guide-localization" class="widget-capabilities-summary">Use the document’s language for widget text and labels.</p>
+          <p id="widget-guide-localization" class="widget-capabilities-summary">A widget can show its text in the document language.</p>
         </li>
         <li>
           <a href="guides/printing.md" aria-describedby="widget-guide-printing">
             <svg aria-hidden="true" width="32" height="32"><use href="../images/widgets/capability-icons.svg#printing"></use></svg>
             <template><img src="../images/widgets/printing.svg" alt=""></template>
-            <span>Printing</span>
+            <span>Support printing</span>
           </a>
-          <p id="widget-guide-printing" class="widget-capabilities-summary">Use print styles to turn interactive controls into a useful paper version.</p>
+          <p id="widget-guide-printing" class="widget-capabilities-summary">Print styles can show the widget content on paper or in a PDF.</p>
         </li>
       </ul>
     </div>
@@ -118,9 +117,25 @@ The live HTML DOM is the document. WebWriter observes changes to it, including c
           <a href="guides/state.md" aria-describedby="widget-guide-state">
             <svg aria-hidden="true" width="32" height="32"><use href="../images/widgets/capability-icons.svg#state"></use></svg>
             <template><img src="../images/widgets/state.svg" alt=""></template>
-            <span>State, options and actions</span>
+            <span>Manage state</span>
           </a>
-          <p id="widget-guide-state" class="widget-capabilities-summary">Choose where state lives and expose saved settings in the Widget drawer.</p>
+          <p id="widget-guide-state" class="widget-capabilities-summary">A widget can store its state and supply options and actions to the authoring tool.</p>
+        </li>
+        <li>
+          <a href="guides/sharing.md" aria-describedby="widget-guide-sharing">
+            <svg aria-hidden="true" width="32" height="32"><use href="../images/widgets/capability-icons.svg#sharing"></use></svg>
+            <template><img src="../images/widgets/sharing.svg" alt=""></template>
+            <span>Share participant data</span>
+          </a>
+          <p id="widget-guide-sharing" class="widget-capabilities-summary">A widget can store data for one participant, a group, or all participants.</p>
+        </li>
+        <li>
+          <a href="guides/live-sessions.md" aria-describedby="widget-guide-live-sessions">
+            <svg aria-hidden="true" width="32" height="32"><use href="../images/widgets/capability-icons.svg#live-sessions"></use></svg>
+            <template><img src="../images/widgets/live-sessions.svg" alt=""></template>
+            <span>Support live sessions</span>
+          </a>
+          <p id="widget-guide-live-sessions" class="widget-capabilities-summary">A widget can give participants controls and show their responses to the host.</p>
         </li>
         <li>
           <a href="guides/reactivity.md" aria-describedby="widget-guide-reactivity">
@@ -128,23 +143,7 @@ The live HTML DOM is the document. WebWriter observes changes to it, including c
             <template><img src="../images/widgets/reactivity.svg" alt=""></template>
             <span>Make data reactive</span>
           </a>
-          <p id="widget-guide-reactivity" class="widget-capabilities-summary">Connect widgets with signals so a source value updates another widget.</p>
-        </li>
-        <li>
-          <a href="guides/sharing.md" aria-describedby="widget-guide-sharing">
-            <svg aria-hidden="true" width="32" height="32"><use href="../images/widgets/capability-icons.svg#sharing"></use></svg>
-            <template><img src="../images/widgets/sharing.svg" alt=""></template>
-            <span>Shared responses</span>
-          </a>
-          <p id="widget-guide-sharing" class="widget-capabilities-summary">Keep participant data individual or share it with everyone or a group.</p>
-        </li>
-        <li>
-          <a href="guides/live-sessions.md" aria-describedby="widget-guide-live-sessions">
-            <svg aria-hidden="true" width="32" height="32"><use href="../images/widgets/capability-icons.svg#live-sessions"></use></svg>
-            <template><img src="../images/widgets/live-sessions.svg" alt=""></template>
-            <span>Live sessions and participant controls</span>
-          </a>
-          <p id="widget-guide-live-sessions" class="widget-capabilities-summary">Configure learner interactions and show individual or aggregated responses to the host.</p>
+          <p id="widget-guide-reactivity" class="widget-capabilities-summary">A signal can update one widget when a value changes in another widget.</p>
         </li>
       </ul>
       <h4>Build and distribution</h4>
@@ -153,41 +152,36 @@ The live HTML DOM is the document. WebWriter observes changes to it, including c
           <a href="guides/libraries.md" aria-describedby="widget-guide-libraries">
             <svg aria-hidden="true" width="32" height="32"><use href="../images/widgets/capability-icons.svg#libraries"></use></svg>
             <template><img src="../images/widgets/libraries.svg" alt=""></template>
-            <span>Libraries and assets</span>
+            <span>Manage dependencies</span>
           </a>
-          <p id="widget-guide-libraries" class="widget-capabilities-summary">Load dependencies, styles, and media alongside your custom element.</p>
+          <p id="widget-guide-libraries" class="widget-capabilities-summary">A widget can load libraries and assets as necessary. An offline document can include only the code it needs.</p>
         </li>
         <li>
           <a href="guides/testing.md" aria-describedby="widget-guide-testing">
             <svg aria-hidden="true" width="32" height="32"><use href="../images/widgets/capability-icons.svg#testing"></use></svg>
             <template><img src="../images/widgets/testing.svg" alt=""></template>
-            <span>Test, debug and optimize</span>
+            <span>Test and debug</span>
           </a>
-          <p id="widget-guide-testing" class="widget-capabilities-summary">Check widget behavior and include only the optional code a saved document needs offline.</p>
+          <p id="widget-guide-testing" class="widget-capabilities-summary">Package tests can help you find problems in a widget.</p>
         </li>
         <li>
           <a href="guides/migrations.md" aria-describedby="widget-guide-migrations">
             <svg aria-hidden="true" width="32" height="32"><use href="../images/widgets/capability-icons.svg#migrations"></use></svg>
             <template><img src="../images/widgets/migrations.svg" alt=""></template>
-            <span>Content migration</span>
+            <span>Migrate widget content</span>
           </a>
-          <p id="widget-guide-migrations" class="widget-capabilities-summary">Update older widget HTML while preserving authored content.</p>
+          <p id="widget-guide-migrations" class="widget-capabilities-summary">A migration can update widget HTML from an earlier version and keep the document content.</p>
         </li>
         <li>
           <a href="guides/publishing.md" aria-describedby="widget-guide-publishing">
             <svg aria-hidden="true" width="32" height="32"><use href="../images/widgets/capability-icons.svg#publishing"></use></svg>
             <template><img src="../images/widgets/publishing.svg" alt=""></template>
-            <span>Publishing</span>
+            <span>Publish a widget</span>
           </a>
-          <p id="widget-guide-publishing" class="widget-capabilities-summary">Publish a widget package or embed it on another site with result storage.</p>
+          <p id="widget-guide-publishing" class="widget-capabilities-summary">You can publish a widget package or embed the widget on a website.</p>
         </li>
       </ul>
     </div>
   </div>
-  <div class="widget-capabilities-preview" popover="manual" hidden aria-hidden="true">
-    <img alt="">
-    <p></p>
-  </div>
+  <div class="widget-capabilities-preview" popover="manual" hidden aria-hidden="true"></div>
 </nav>
-
-Next: [Quick start](introduction/quick-start.md).

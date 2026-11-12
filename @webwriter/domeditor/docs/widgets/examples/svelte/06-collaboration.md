@@ -1,4 +1,6 @@
-Keep player data in the current direct-child JSON script in the authored DOM. The class installed through `customElement.extend` captures data events before Svelte mounts, checks the current block before each write, and passes temporary display values to the component as unreflected props. Its synchronous `shared` callback invalidates readiness before a new binding reports itself ready. The host's mutation observer refreshes the display after DOM changes; its disconnect callback releases the observer and listeners.
+Keep reader data in the JSON data block. This block is a direct child of the widget. The class from `customElement.extend` records data events before Svelte mounts the component. Check the current block before each write. Pass temporary values to the component as props without attribute reflection.
+
+A change to `shared` makes the widget wait for new data. The observer updates the view when the DOM changes. The custom element removes the observer and the listeners when it disconnects.
 
 ```js
 this.onDataChange = event => {
@@ -9,4 +11,6 @@ this.onDataChange = event => {
 }
 ```
 
-The full widget is in [06-collaboration.svelte](./06-collaboration.svelte), with sample authored content in [quiz.html](./quiz.html) and a browser test in [quiz-tests.js](./quiz-tests.js). The package build bundles Svelte into `dist/ww-quiz.js` and `dist/ww-hello.js`.
+The complete widget is in [06-collaboration.svelte](./06-collaboration.svelte). The document sample is in [quiz.html](./quiz.html). The browser test is in [quiz-tests.js](./quiz-tests.js).
+
+The build bundles Svelte and creates `dist/ww-quiz.js` and `dist/ww-hello.js`.

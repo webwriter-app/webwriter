@@ -1,12 +1,12 @@
 # Make data reactive
 
-Connect widgets with signals when one widget needs to react to a value produced by another. The author saves the connection in HTML and the receiving widget updates as the source changes.
+A widget can publish read-only signals for other widgets in the same document. Authors can select a source and save the connection in the document. The receiving widget can change its display or operation when the value changes.
 
 ![A selected color flows from a color picker into a separate swatch](../../images/widgets/reactivity.svg)
 
 ## Publish a value
 
-A color picker can keep its current color in a private signal and expose a stable, read-only computed signal called `color`. Initialize both once per widget instance.
+A color picker can store its current color in a private signal. It can publish a stable, read-only [computed signal](https://lit.dev/docs/data/signals/) named `color`. Initialize both signals once for each widget instance.
 
 ```js
 import {computed, signal} from "@webwriter/lit"
@@ -19,11 +19,11 @@ class WwColorSource extends HTMLElement {
 }
 ```
 
-Call the setter from the color input's `input` handler. When source and receiver are built separately, use compatible dependencies and [shared dependency builds](libraries.md) so both use the same Signals implementation.
+Call the setter from the [color input](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/color)'s `input` handler. For separate builds, use compatible dependencies and [shared dependency builds](libraries.md). Both widgets must use the same Signals implementation.
 
 ## Connect a receiver
 
-Declare a `static effects` entry for the receiving attribute. Store the incoming signal and clear the reference when WebWriter aborts the connection. Reading both signals during `LitElementWw.render()` tracks changes to the connection and the color.
+Declare a `static effects` entry for the receiving attribute. Store the incoming signal. Clear the reference when the authoring tool ends the connection. Read both signals in `LitElementWw.render()` to detect changes to the connection and color.
 
 ```js
 import {LitElementWw, signal} from "@webwriter/lit"
@@ -49,19 +49,23 @@ class WwLinkedSwatch extends LitElementWw {
 }
 ```
 
-Register both custom elements and connect them in the authored document. In `#palette[color]`, `palette` is the source widget's unique ID and `color` is its public signal name.
+[Register both custom elements](https://developer.mozilla.org/en-US/docs/Web/API/CustomElementRegistry/define). Connect them in the authored HTML. In `#palette[color]`, `palette` is the source widget's unique ID. The public signal name is `color`.
 
 ```html
 <ww-color-source id="palette"></ww-color-source>
 <ww-linked-swatch color-from="#palette[color]"></ww-linked-swatch>
 ```
 
-In WebWriter, select the swatch and choose the color picker from the **Swatch color** option in the Widget drawer. Choose **Disconnected** to remove the link.
+Select the swatch in the authoring tool. Select the color picker in **Swatch color** in the Widget drawer. To remove the link, select **Disconnected**.
 
-Change the picker and watch the swatch update. Disconnect it, change the color again, then reconnect to read the latest value.
+Change the color in the picker. Make sure that the swatch changes. Disconnect the swatch. Change the color again. Reconnect the swatch. Make sure that it shows the current color.
 
 <iframe title="Reactive color picker and swatch" src="../examples/preview.html?guide=reactivity" width="100%" height="170" loading="lazy"></iframe>
 
 [Open the reactive color example](../examples/preview.html?guide=reactivity) · [Read the complete example source](../examples/guide-reactivity.js)
 
-Check that a missing source shows a useful fallback. WebWriter reconnects valid links when their endpoints become available and leaves circular links disconnected. See the [Signals reference](../reference/runtime.md#signals) for the connection and build contracts.
+Make sure that the widget shows a fallback value when the source is missing. The authoring tool restores valid connections when their sources become available. Circular connections stay disconnected. See the [Signals reference](../reference/runtime.md#signals).
+
+## Signal names and dependencies
+
+## Missing sources and circular connections

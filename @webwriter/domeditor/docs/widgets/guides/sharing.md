@@ -1,10 +1,10 @@
 # Share participant data
 
-Widgets can save participant data individually, for everyone, or for a group. A shared tally counter is one example.
+A widget can keep separate data for each participant or share data with a group or everyone. In a managed session, participants in the same scope can see one another's updates. Authors can select a scope for individual or group work.
 
 ![Two participants linked to one shared tally](../../images/widgets/sharing.svg)
 
-Set `sharedData: true` in the widget's [editing configuration](../reference/editing-configuration.md). Add one direct data block to the widget's authored HTML, for example in a snippet:
+Set `sharedData: true` in the [editing configuration](../reference/editing-configuration.md). Add one direct [data block](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script#embedding_data_in_html) to the authored HTML. A snippet can supply this block.
 
 ```html
 <ww-counter shared>
@@ -13,7 +13,9 @@ Set `sharedData: true` in the widget's [editing configuration](../reference/edit
 ```
 
 <!-- library:vanilla -->
-Listen for `datapending` and `datachange` on the widget. Dispatch a bubbling, cancelable `datarequest` on the current direct data block when the widget connects or replaces that block; the runtime replays its current pending, ready, or error state. `datapending` also fires when a sharing or grouping scope change starts resolving, and `datachange` signals that the accepted state is ready. Check that each event belongs to its current direct data block before reading it. Wait for `datachange` before writing; writes during initial connection can be discarded.
+Listen for `datapending` and `datachange` on the widget. When the widget connects or replaces the direct data block, dispatch a [bubbling, cancelable](https://developer.mozilla.org/en-US/docs/Web/API/Event/Event) `datarequest` on the current block. The runtime reports the current pending, ready, or error state.
+
+`datapending` also occurs when the scope starts to change. `datachange` shows that the accepted data is ready. Make sure that each event is for the current direct data block. Wait for `datachange` before you write. An early write can be lost.
 
 ```js
 const block = this.querySelector(':scope > script[slot="data"]')
@@ -24,11 +26,11 @@ if(block) {
 }
 ```
 
-Use this write in an interaction after initialization. Render accepted local changes and remote changes from `datachange`; do not write state back while rendering. Handle `dataerror` to show a useful message.
+Write from an interaction after the data is ready. Use `datachange` to show accepted local and remote changes. Keep the stored data unchanged when you render it. Use `dataerror` to show an error message.
 
 <!-- /library -->
 <!-- library:lit -->
-Use `LitElementWw`'s `dataPending`, `dataChanged`, and `dataError` methods to handle data updates. Wait for `this.dataReady` before writing through `this.data` from a user interaction. The base handles requests, event filtering, scope changes, and cleanup; the complete example below shows the hooks.
+Use the `dataPending`, `dataChanged`, and `dataError` methods from `LitElementWw` to handle data updates. Wait for `this.dataReady` before an interaction writes through `this.data`. The base class handles data requests and scope changes. The complete example shows the three methods.
 <!-- /library -->
 
 | Attribute | Scope |
@@ -37,13 +39,14 @@ Use `LitElementWw`'s `dataPending`, `dataChanged`, and `dataError` methods to ha
 | `shared` or `shared=""` | Everyone. |
 | `shared="group"` | The participant's server-assigned group. |
 
-Switching scope loads the destination scope’s existing data or the authored defaults. The **Share** control exposes grouping where a connected server provides a roster. Preserve any direct `ww-grouping` processing instruction when changing children.
+When the scope changes, the widget gets the saved data for that scope or the authored defaults. The **Share** control shows group options when the server supplies a participant list. Keep any direct `ww-grouping` processing instruction when you change child nodes.
 
-See the [data reference](../reference/data.md) and [working tutorial](../tutorial/06-collaboration.md). The [runtime configuration](../../../README.md#scoped-widget-data) explains server and offline persistence setup.
+The [data reference](../reference/data.md) describes the data interface. The [tutorial](../tutorial/06-collaboration.md) gives a complete example.
 
+<!-- library:lit optional -->
 ## Handler methods with LitElementWw
 
-`LitElementWw` supplies listeners, current-state requests, readiness tracking, and cleanup. Implement the hooks and write through `data` from an interaction:
+`LitElementWw` requests the current state and reports when the data is ready. Implement the data handlers. Use `data` to write changes from an interaction.
 
 ```js
 import {LitElementWw} from "@webwriter/lit"
@@ -87,7 +90,7 @@ class WwCounter extends LitElementWw {
 customElements.define("ww-counter", WwCounter)
 ```
 
-Use the normal `./widgets/ww-counter` package export with `sharedData: true` in its editing configuration, and authored defaults:
+Export `./widgets/ww-counter`. Set `sharedData: true` in its editing configuration. Specify the initial values in the authored HTML.
 
 ```html
 <ww-counter shared>
@@ -95,4 +98,9 @@ Use the normal `./widgets/ww-counter` package export with `sharedData: true` in 
 </ww-counter>
 ```
 
-Concurrent updates to `count` resolve to one assigned value. In standalone documents without a managed data runtime, the widget uses local authored data. Handlers receive a second `{block, mode}` argument when scope information is needed.
+Concurrent writes to `count` give one assigned value. In a standalone document with no managed data runtime, the widget uses local authored data. The second argument to a data handler is `{block, mode}`.
+<!-- /library -->
+
+## Selection of a sharing scope
+
+## Data readiness and error handling

@@ -1,6 +1,6 @@
 # 1. Set up the widget
 
-Create a local package for **Ghost Disco**. The widget is a custom element named `ww-ghost-disco`. At this step it only displays a placeholder.
+Create a [local package](https://docs.npmjs.com/about-packages-and-modules/) for **Ghost Disco**. The widget is a [custom element](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements) with the name `ww-ghost-disco`. This version displays a placeholder.
 
 <!-- library:vanilla -->
 Save the [complete script](#complete-script) as `ww-ghost-disco.js` in your package folder. Save this manifest as `package.json`.
@@ -18,7 +18,7 @@ Save the [complete script](#complete-script) as `ww-ghost-disco.js` in your pack
 }
 ```
 
-This version runs as browser JavaScript without a build step.
+The browser runs this JavaScript without a build step.
 <!-- /library -->
 
 <!-- library:lit -->
@@ -41,7 +41,7 @@ Save the [complete script](#complete-script) as `ww-ghost-disco.js` in your pack
 }
 ```
 
-This version runs as browser JavaScript without a build step.
+The browser runs this JavaScript without a build step.
 <!-- /library -->
 
 <!-- library:react -->
@@ -72,7 +72,7 @@ Save the [complete script](#complete-script) as `ww-ghost-disco.jsx` in your pac
 }
 ```
 
-Save [build.mjs](../examples/react/build.mjs) beside the manifest. Install the dependencies and build the widget.
+Save [build.mjs](../examples/react/build.mjs) beside the manifest. Install the dependencies. Then build the widget.
 
 ```sh
 npm install
@@ -108,9 +108,9 @@ Save the [complete script](#complete-script) as `ww-ghost-disco.vue` in your pac
 }
 ```
 
-Save the registration module from the same disclosure as `ww-ghost-disco.js` and change its component import to `./ww-ghost-disco.vue`.
+Save the registration module under **Complete script** as `ww-ghost-disco.js`. Change its component import to `./ww-ghost-disco.vue`.
 
-Save [build.mjs](../examples/vue/build.mjs) and [compile.mjs](../examples/vue/compile.mjs) beside the manifest. Install the dependencies and build the widget.
+Save [build.mjs](../examples/vue/build.mjs) and [compile.mjs](../examples/vue/compile.mjs) beside the manifest. Install the dependencies. Then build the widget.
 
 ```sh
 npm install
@@ -150,7 +150,7 @@ Save the [complete script](#complete-script) as `ww-ghost-disco.ts` in your pack
 }
 ```
 
-Save [build.mjs](../examples/angular/build.mjs) beside the manifest. Install the dependencies and build the widget.
+Save [build.mjs](../examples/angular/build.mjs) beside the manifest. Install the dependencies. Then build the widget.
 
 ```sh
 npm install
@@ -185,7 +185,7 @@ Save the [complete script](#complete-script) as `ww-ghost-disco.svelte` in your 
 }
 ```
 
-Save [build.mjs](../examples/svelte/build.mjs) beside the manifest. Install the dependencies and build the widget.
+Save [build.mjs](../examples/svelte/build.mjs) beside the manifest. Install the dependencies. Then build the widget.
 
 ```sh
 npm install
@@ -193,20 +193,20 @@ npm run build
 ```
 <!-- /library -->
 
-In WebWriter, open **Developer console → Add package → Add from local folder** and select the package folder. Insert the widget and check that it displays **Ghost Disco widget**.
+In WebWriter, open **Developer console → Add package → Add from local folder**. Select the package folder. Insert the widget. Make sure that the widget displays **Ghost Disco widget**.
 
 [Open the preview](../examples/preview.html?example=ghost-disco&step=1)
 
 <iframe title="Ghost Disco placeholder" src="../examples/preview.html?example=ghost-disco&amp;step=1" width="100%" height="360" loading="lazy"></iframe>
 
-Next: [2. Render the interface](02-rendering.md).
+Continue with [2. Render the interface](02-rendering.md).
 
 <details id="complete-script">
 <summary>Complete script</summary>
 
 <!-- script:../examples/01-disco-setup.js -->
 
-<!-- library:vue -->
+<!-- library:vue optional -->
 **Vue registration module**
 
 <!-- script:../examples/vue/01-disco-setup.js -->

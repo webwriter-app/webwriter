@@ -1,10 +1,10 @@
 # Nest content
 
-Widgets can contain authored text and other widgets.
+A widget can show text, HTML elements, and other widgets in its interface. Its editing configuration specifies which children authors can add and edit. The widget can respond to changes in its child elements.
 
 ![A nested widget and editable text inside an outer widget](../../images/widgets/content.svg)
 
-Keep authored content in the widget's light DOM and display it with a slot. For example, a callout widget can wrap a note and let authors edit its paragraphs in place:
+Keep authored content in the widget's light DOM. Use a [slot](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/slot) to show that content. This callout widget lets authors edit a note in the document.
 
 ```html
 <ww-callout><p>Bring a reusable water bottle.</p></ww-callout>
@@ -15,7 +15,7 @@ Keep authored content in the widget's light DOM and display it with a slot. For 
 <slot></slot>
 ```
 
-Declare which children the editor can insert and edit:
+Declare the child elements that authors can insert and edit.
 
 ```json
 {
@@ -25,6 +25,10 @@ Declare which children the editor can insert and edit:
 }
 ```
 
-Without `content`, the widget is atomic to the document editor. For nested widgets, use their tag names or groups in the [content expression](../reference/content-expressions.md). Use `uninsertable: true` for a child widget that should only appear through a parent or snippet.
+The authoring tool treats the widget as a single element if the configuration has no `content` entry. For nested widgets, specify their tag names or groups in the [content expression](../reference/content-expressions.md). Set `uninsertable: true` if authors can insert the child widget only through a parent or snippet.
 
-Use `slotchange` to react to assigned children and a `MutationObserver` when their contents matter. Disconnect observers when the widget disconnects. Inspect the current children before changing them, and preserve unfamiliar children, comments, and grouping metadata.
+Use [`slotchange`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLSlotElement/slotchange_event) to detect changes to slot assignments. Use a [`MutationObserver`](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver) to detect changes to the content of those children. Disconnect the observers when the widget disconnects. Examine the current children before you change them. Keep unfamiliar children, comments, and grouping metadata.
+
+## Allowed child elements
+
+## Changes to child content

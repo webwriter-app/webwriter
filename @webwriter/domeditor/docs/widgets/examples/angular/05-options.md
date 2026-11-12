@@ -1,4 +1,4 @@
-Describe editor-facing options and actions as static metadata on the registered custom-element constructor. The action method changes the same `answer` attribute that the option edits.
+Declare the options and actions on the registered custom-element constructor. The action method changes the `answer` attribute. The option also changes this attribute.
 
 ```ts
 class WwQuizElement extends AngularWwQuizElement {
@@ -18,4 +18,4 @@ class WwQuizElement extends AngularWwQuizElement {
 }
 ```
 
-The complete widget registration is in [05-options.ts](./05-options.ts).
+The complete registration code is in [05-options.ts](./05-options.ts).

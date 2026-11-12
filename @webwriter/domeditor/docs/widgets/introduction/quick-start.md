@@ -1,11 +1,11 @@
 # Quick start
 
-This tutorial creates a small widget and loads it into WebWriter. You need a text editor and WebWriter running in a browser that supports opening local folders, such as Chrome or Edge.
+This procedure shows how to make a small widget and add it to WebWriter. Use a text editor. Open WebWriter in a browser that can open local folders, such as Chrome or Edge.
 
 ## Step 1: Create the files
 
 <!-- library:vanilla -->
-Create a folder containing these two files:
+Make a folder for the widget. Add the two files below to the folder.
 
 **`package.json`**
 
@@ -35,7 +35,7 @@ if(!customElements.get("ww-hello")) customElements.define("ww-hello", WwHello)
 <!-- /library -->
 
 <!-- library:lit -->
-Create a folder containing these two files:
+Make a folder for the widget. Add the two files below to the folder.
 
 **`package.json`**
 
@@ -69,7 +69,7 @@ if(!customElements.get("ww-hello")) customElements.define("ww-hello", WwHello)
 <!-- /library -->
 
 <!-- library:react -->
-Create a widget folder with this manifest and a source file named `hello.jsx`.
+Make a folder for the widget. Add the [manifest](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/) and `hello.jsx` to the folder.
 
 **`package.json`**
 
@@ -102,7 +102,7 @@ Create a widget folder with this manifest and a source file named `hello.jsx`.
 
 <!-- script:../examples/hello.js -->
 
-Save [build.mjs](../examples/react/build.mjs) beside your source and manifest. React's npm entry modules use CommonJS, so bundle its dependencies before loading or refreshing the package:
+Save [build.mjs](../examples/react/build.mjs) in the widget folder. React's npm entry modules use CommonJS. In the widget folder, run these commands before you load or refresh the package.
 
 ```bash
 npm install
@@ -117,7 +117,7 @@ npm run build
 <!-- /library -->
 
 <!-- library:vue -->
-Create a widget folder with this manifest and a component named `hello.vue` and its registration module `hello.js`.
+Make a folder for the widget. Add the [manifest](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/), `hello.vue`, and `hello.js` to the folder.
 
 **`package.json`**
 
@@ -149,7 +149,9 @@ Create a widget folder with this manifest and a component named `hello.vue` and 
 
 <!-- script:../examples/vue/hello.js -->
 
-Save [build.mjs](../examples/vue/build.mjs) and [compile.mjs](../examples/vue/compile.mjs) beside your source and manifest. The compiler builds the single-file component and bundles Vue into the browser-ready export:
+Save [build.mjs](../examples/vue/build.mjs) and [compile.mjs](../examples/vue/compile.mjs) in the widget folder. The build compiles the component and bundles Vue into a module that the browser can load.
+
+In the widget folder, run these commands before you load or refresh the package.
 
 ```bash
 npm install
@@ -170,7 +172,7 @@ npm run build
 <!-- /library -->
 
 <!-- library:angular -->
-Create a widget folder with this manifest and a source file named `hello.ts`.
+Make a folder for the widget. Add the [manifest](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/) and `hello.ts` to the folder.
 
 **`package.json`**
 
@@ -207,7 +209,9 @@ Create a widget folder with this manifest and a source file named `hello.ts`.
 
 <!-- script:../examples/hello.js -->
 
-Save [build.mjs](../examples/angular/build.mjs) beside the source and manifest. It compiles the source into the browser-ready export in `dist/`. Run these commands in your widget folder before loading or refreshing the package:
+Save [build.mjs](../examples/angular/build.mjs) in the widget folder. The build puts the module for the browser in `dist/`.
+
+In the widget folder, run these commands before you load or refresh the package.
 
 ```bash
 npm install
@@ -222,7 +226,7 @@ npm run build
 <!-- /library -->
 
 <!-- library:svelte -->
-Create a widget folder with this manifest and a source file named `hello.svelte`.
+Make a folder for the widget. Add the [manifest](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/) and `hello.svelte` to the folder.
 
 **`package.json`**
 
@@ -254,7 +258,9 @@ Create a widget folder with this manifest and a source file named `hello.svelte`
 
 <!-- script:../examples/hello.js -->
 
-Save [build.mjs](../examples/svelte/build.mjs) beside the source and manifest. It compiles the source into the browser-ready export in `dist/`. Run these commands in your widget folder before loading or refreshing the package:
+Save [build.mjs](../examples/svelte/build.mjs) in the widget folder. The build puts the module for the browser in `dist/`.
+
+In the widget folder, run these commands before you load or refresh the package.
 
 ```bash
 npm install
@@ -270,14 +276,23 @@ npm run build
 
 ## Step 2: Insert the widget
 
-Open the **Developer console**, then choose **Add package → Add from local folder**. Select your folder. Insert **Hello** from the insertion menu. The widget should display “Hello, world!”.
+1. Open the **Developer console** in WebWriter.
+2. Select **Add package**.
+3. Select **Add from local folder**.
+4. Select the widget folder.
+5. Insert **Hello** from the insertion menu.
+6. Make sure that the widget shows “Hello, world!”.
 
 ## Step 3: Change the greeting
 
-Change `Hello` to `Welcome` in your source and save it. If your library needs a build step, run `npm run build` again. With **Auto-reload** enabled, WebWriter reloads the browser-ready widget. You can also refresh the package manually.
+1. Change `Hello` to `Welcome` in the source file.
+2. Save the file.
+3. If your library needs a build step, run [`npm run build`](https://docs.npmjs.com/cli/v11/commands/npm-run/) again.
 
-The example below shows the original greeting. Serve this repository with `npm start` to open its [standalone preview](../examples/hello.html).
+When **Auto-reload** is on, WebWriter loads the new widget code. You can also refresh the package manually.
+
+The example below shows the original greeting. To see the [standalone preview](../examples/hello.html) locally, start the development server with `npm start`.
 
 <iframe title="Hello widget" src="../examples/hello.html" width="100%" height="100" loading="lazy"></iframe>
 
-Next: [build a quiz widget](../tutorial/index.md).
+[Ghost Disco tutorial](../tutorial/index.md)

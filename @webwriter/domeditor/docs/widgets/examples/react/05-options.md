@@ -1,4 +1,4 @@
-Expose author controls on the element class. WebWriter reads the static options and actions maps, and invokes resetAnswer() for the action. The answer remains an HTML attribute so WebWriter can save and synchronize it.
+Declare the options and actions on the element class. The authoring tool calls `resetAnswer()` when the author selects the reset action. The answer stays in an HTML attribute. The authoring tool can save and share this attribute.
 
 ~~~jsx
 static options = {answer: {
@@ -13,4 +13,4 @@ static actions = {resetAnswer: {label: {_: "Reset correct answer"}}}
 resetAnswer() { this.setAttribute("answer", "false") }
 ~~~
 
-05-options.jsx is the complete self-contained source for the step; the React component uses a state hook for the current choice while the custom-element class exposes the widget contract.
+The complete source is in `05-options.jsx`. The React component uses a state hook for the reader's choice. The custom-element class supplies the widget interface.

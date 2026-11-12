@@ -1,0 +1,40 @@
+.details-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-block-start: .4rem;
+  font-size: .9em;
+}
+
+.details-keyword {
+  --keyword-background: hsl(240 5.9% 90%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  min-block-size: 18px;
+  padding-inline: 4px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  background: var(--keyword-background);
+  color: #172033;
+  color: contrast-color(var(--keyword-background));
+  overflow-wrap: anywhere;
+}
+
+.details-keyword:is([data-kind="field"], [data-kind="widget"]) { --keyword-background: #fff; }
+.details-keyword[data-kind="level"] { --keyword-background: hsl(140.6 84.2% 92.5%); }
+.details-keyword:is([data-kind="editing"], [data-kind="input"], [data-kind="content"], [data-kind="conversion"]) { --keyword-background: #ffe7d7; }
+.details-keyword:is([data-kind="language"], [data-kind="display"]) { --keyword-background: #dff2d9; }
+.details-keyword:is([data-kind="state"], [data-kind="participation"]) { --keyword-background: #ddecff; }
+.details-keyword:is([data-kind="online"], [data-kind="dependency"], [data-kind="development"], [data-kind="discovery"], [data-kind="type"]) { --keyword-background: #ede5ff; }
+
+.details-keyword-icon {
+  display: inline-flex;
+  flex: none;
+  inline-size: 16px;
+  block-size: 16px;
+}
+
+.details-keyword-icon svg { display: block; inline-size: 100%; block-size: 100%; }

@@ -1,6 +1,6 @@
 # 6. Support collaboration
 
-Move the reader’s selection into a direct [scoped data block](../guides/sharing.md). Set `sharedData: true` beside `content` in the widget’s editing configuration, then add an inert JSON script to the authored HTML.
+Store the selected move in a [scoped data block](../guides/sharing.md). Set `sharedData: true` beside `content` in the widget's editing configuration. Add the [JSON script](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script#embedding_data_in_html) as a direct child of the widget.
 
 ```html
 <ww-ghost-disco lighting="moonlight" shared>
@@ -9,26 +9,34 @@ Move the reader’s selection into a direct [scoped data block](../guides/sharin
 </ww-ghost-disco>
 ```
 
-With `shared` present, participants can share a dance move. Leave it out to give each participant their own selection. The lighting and invitation remain part of the authored document.
+Add the `shared` attribute to let participants share a move. For separate selections, use the widget without the `shared` attribute. The lighting and invitation stay in the document.
 
-Wait until the runtime delivers the initial snapshot. Read accepted updates and render the corresponding move. On a click, read the current block, update its `move` field, and write it back. Rendering only reads the snapshot. In Lit, `LitElementWw` supplies `dataReady`, `data`, and the data lifecycle methods. The other versions listen for the widget data events.
+Wait for the initial data before you enable the controls. Use the widget data events to update the display. Read the current data block when a reader selects a move. Change the `move` field. Write the updated data to the same block. During rendering, only read the data.
 
-Choose a move in either preview panel. Both ghosts should strike the same pose. These panels use the scoped-data runtime with an in-memory connection. Normal HTML exports retain the authored data default.
+<!-- library:lit optional -->
+`LitElementWw` supplies the `dataReady` and `data` properties. It also supplies methods for changes to the data.
+<!-- /library -->
 
-Replace the previous source with this step’s complete script. For Vue, replace the component and registration module and keep the component import set to `./ww-ghost-disco.vue`. Rebuild compiled versions before refreshing the local package.
+Select a move in either preview panel. Make sure that both ghosts show the same pose. An HTML export keeps the initial data from the document.
+
+Replace the previous source with the complete script for this step. If your package uses a build step, build it again. Then refresh the local package.
+
+<!-- library:vue optional -->
+Replace both the component and its registration module. Keep the component import set to `./ww-ghost-disco.vue`.
+<!-- /library -->
 
 [Open the preview](../examples/preview.html?example=ghost-disco&step=6)
 
 <iframe title="Ghost Disco · Support collaboration" src="../examples/preview.html?example=ghost-disco&amp;step=6" width="100%" height="360" loading="lazy"></iframe>
 
-Next: [7. Test and publish](07-testing-publishing.md).
+Continue with [7. Test and publish](07-testing-publishing.md).
 
 <details id="complete-script">
 <summary>Complete script</summary>
 
 <!-- script:../examples/06-disco-collaboration.js -->
 
-<!-- library:vue -->
+<!-- library:vue optional -->
 **Vue registration module**
 
 <!-- script:../examples/vue/06-disco-collaboration.js -->

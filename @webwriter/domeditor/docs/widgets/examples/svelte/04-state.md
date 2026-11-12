@@ -1,4 +1,4 @@
-Declare `answer` as a reflected string prop, then keep the player’s choice in Svelte state. The custom element reads the host’s `isContentEditable` property and watches that host attribute so the editor can switch the widget between authoring and preview behavior.
+Declare `answer` as a reflected string prop. Keep the reader's choice in Svelte state. Read `isContentEditable` on the host element. Update the view when `contenteditable` changes on the host element.
 
 ```svelte
 <svelte:options
