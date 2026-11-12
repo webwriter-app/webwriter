@@ -139,7 +139,6 @@ document.querySelectorAll("article iframe").forEach(frame => {
 const capabilities = document.querySelector(".widget-capabilities")
 const guidePreview = capabilities?.querySelector(".widget-capabilities-preview")
 if(guidePreview) {
-  const core = capabilities.querySelector(".widget-capabilities-core")
   const nativePopover = typeof guidePreview.showPopover === "function"
   const hoverAvailable = matchMedia("(hover: hover)")
   let activeLink, hoveredLink, focusedLink, hideTimer
@@ -162,15 +161,14 @@ if(guidePreview) {
       closePreview()
       return
     }
+    const margin = 8
+    const spaceAbove = bounds.top - margin
+    const spaceBelow = height - bounds.bottom - margin
+    // Keep enough room to see the illustration when the card is near the top edge.
+    const above = spaceAbove >= 128 || spaceAbove >= spaceBelow
+    guidePreview.style.maxBlockSize = `${Math.max(0, above ? spaceAbove : spaceBelow)}px`
     const popup = guidePreview.getBoundingClientRect()
-    const documentBounds = core.getBoundingClientRect()
-    // In the three-column map, open toward the document so other links stay reachable.
-    const beside = bounds.right <= documentBounds.left ? bounds.right + 4
-      : bounds.left >= documentBounds.right ? bounds.left - popup.width - 4
-        : undefined
-    const {left, top} = beside !== undefined && beside >= 8 && beside + popup.width <= width - 8
-      ? {left: beside, top: Math.max(8, Math.min(bounds.top, height - popup.height - 8))}
-      : fixedPopupPosition(bounds, popup, {width, height}, 8, 0)
+    const {left, top} = fixedPopupPosition(bounds, popup, {width, height}, margin, 0, above ? "above" : "below")
     guidePreview.style.left = `${left}px`
     guidePreview.style.top = `${top}px`
   }

@@ -38,14 +38,16 @@ export function fixedPopupPosition(
   viewport: {width: number, height: number},
   margin = 8,
   gap = 4,
+  preferredSide: "below" | "above" = "below",
 ): FixedPopupPosition {
   const left = Math.min(
     Math.max(margin, trigger.left),
     Math.max(margin, viewport.width - popup.width - margin),
   )
   const below = trigger.bottom + gap
-  const top = below + popup.height <= viewport.height - margin
-    ? below
-    : Math.max(margin, trigger.top - popup.height - gap)
+  const above = trigger.top - popup.height - gap
+  const fitsBelow = below + popup.height <= viewport.height - margin
+  const placeAbove = !fitsBelow || (preferredSide === "above" && above >= margin)
+  const top = placeAbove ? Math.max(margin, above) : below
   return {left, top}
 }
