@@ -76,6 +76,7 @@ export class TableFeature extends EditorFeature {
   private gapTable: HTMLTableElement | null = null
   private readonly gapAnchors = createAnchorPositioner()
   private gapNeedsScrollRefresh = false
+  private splitPreview = false
   private hoverTable: HTMLTableElement | null = null
   private gapControls: Array<{button: HTMLButtonElement, axis: "row" | "column", index: number, map: TableMap}> = []
   private anchorCell: HTMLTableCellElement | null = null
@@ -199,6 +200,7 @@ export class TableFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.pasteLifecycle++
+    this.splitPreview = false
     window.removeEventListener("blur", this.finishResize)
     window.removeEventListener("resize", this.scheduleGaps)
     document.removeEventListener("webwriter-canvas-zoom", this.scheduleGaps)
@@ -270,6 +272,9 @@ export class TableFeature extends EditorFeature {
       .◆table-gaps button:is(:hover, :focus-visible) span { display: block; }
       .◆table-gaps button[data-axis=column] span { left: 11px; top: 12px; width: 2px; height: var(--gap-length); }
       .◆table-gaps button[data-axis=row] span { left: 12px; top: 11px; height: 2px; width: var(--gap-length); }
+      .◆table-gaps button[data-split-preview] span { display: block; left: ${12 + tableGapOffset}px;
+        width: calc(var(--gap-length) - ${tableGapOffset}px); outline: 1px solid currentColor;
+        box-shadow: 0 0 0 2px white; }
     `)
     this.editor.appendix.adoptedStyleSheets = [...this.editor.appendix.adoptedStyleSheets, this.gapStylesheet]
     this.gapOverlay = document.createElement("div")
@@ -290,7 +295,9 @@ export class TableFeature extends EditorFeature {
   }
 
   private renderGaps() {
-    const table = this.pointerSelecting || this.resize ? null : this.editableTable(this.hoverTable) ? this.hoverTable : this.selectedTable
+    const selected = this.selectedTable
+    const table = this.pointerSelecting || this.resize ? null
+      : this.splitPreview ? selected : this.editableTable(this.hoverTable) ? this.hoverTable : selected
     if(!this.editableTable(table)) {
       this.hideGaps()
       return
@@ -372,6 +379,7 @@ export class TableFeature extends EditorFeature {
     overlay.hidden = false
     const left = anchored ? origin.x - rect.left : fixedClientX(origin.x)
     const topOffset = anchored ? origin.y - rect.top : origin.y
+    const split = this.splitPreview ? this.splitRow(map) : null
     let controlIndex = 0
     for(const axis of ["column", "row"] as const) {
       const count = axis === "column" ? map.width : map.rows.length
@@ -398,6 +406,7 @@ export class TableFeature extends EditorFeature {
         }
         Object.assign(control, {axis, index, map})
         control.button.dataset.axis = axis
+        control.button.toggleAttribute("data-split-preview", axis === "row" && index === split)
         control.button.setAttribute("aria-label", `Insert ${axis} ${index + 1}`)
         const x = axis === "column" ? position : -tableGapOffset
         const y = axis === "row" ? position : top - tableGapOffset
@@ -505,6 +514,7 @@ export class TableFeature extends EditorFeature {
 
   clearCellSelection(post = true) {
     const hadSelection = this.hasCellSelection || Boolean(this.anchorCell || this.focusCell)
+    this.hoverSplitTable(false)
     this.anchorCell = null
     this.focusCell = null
     if(!this.resize) this.clearPointerDrag()
@@ -518,6 +528,7 @@ export class TableFeature extends EditorFeature {
     if(!table || tableForNode(focus) !== table) return false
     const map = buildTableMap(table)
     if(!placementForCell(map, anchor) || !placementForCell(map, focus)) return false
+    if(anchor !== this.anchorCell || focus !== this.focusCell) this.hoverSplitTable(false)
     const enteringCellSelection = !this.hasCellSelection
     this.anchorCell = anchor
     this.focusCell = focus
@@ -598,6 +609,7 @@ export class TableFeature extends EditorFeature {
         const placement = placementForCell(map, cell)
         return Boolean(placement && (placement.rowSpan > 1 || placement.columnSpan > 1))
       }),
+      canSplitTable: this.splitRow(map) !== null,
       hasCaption: Boolean(map.table.caption),
       hasHeader,
       headerActive: hasHeader && (headerChange === null || headerChange === 0),
@@ -654,12 +666,19 @@ export class TableFeature extends EditorFeature {
     return table.isConnected
   }
 
-  private selectedPlacement(map: TableMap, prefer: "first" | "last") {
-    const rectangle = this.actionRectangle(map)
-    if(!rectangle) return null
-    const placements = placementsInRectangle(map, rectangle.top, rectangle.left, rectangle.bottom, rectangle.right)
-      .sort((a, b) => a.row - b.row || a.column - b.column)
-    return prefer === "first" ? placements[0] ?? null : placements.at(-1) ?? null
+  private splitRow(map: TableMap) {
+    if(map.limited || !this.editableTable(map.table)) return null
+    const rectangle = this.cellRectangle(map)
+    if(!rectangle || rectangle.top !== rectangle.bottom || rectangle.left !== 0 || rectangle.right !== map.width - 1) return null
+    return [rectangle.bottom + 1, rectangle.top].find(row => row > 0 && row < map.rows.length && !map.placements.some(placement =>
+      placement.row < row && placement.row + placement.rowSpan > row)) ?? null
+  }
+
+  private hoverSplitTable(hovered: boolean) {
+    if(this.splitPreview === hovered) return
+    this.splitPreview = hovered
+    if(!hovered) this.gapOverlay?.querySelector("[data-split-preview]")?.removeAttribute("data-split-preview")
+    this.scheduleGaps()
   }
 
   private insertRow(side: Extract<TableSide, "above" | "below">) {
@@ -800,20 +819,17 @@ export class TableFeature extends EditorFeature {
   }
 
   private splitTable() {
+    this.hoverSplitTable(false)
     const table = this.selectedTable
     if(!this.editableTable(table)) return
-    const current = buildTableMap(table)
-    const boundary = this.selectedPlacement(current, "first")
-    if(!boundary || boundary.row === 0 || current.placements.some(placement =>
-      placement.row < boundary.row && placement.row + placement.rowSpan > boundary.row)) return
+    const rowIndex = this.splitRow(buildTableMap(table))
+    if(rowIndex === null) return
     const map = this.normalizeTable(table)
-    const first = this.selectedPlacement(map, "first")
-    if(!first || first.row === 0) return
     const next = cloneWithoutEditorMarkers(table, false) as HTMLTableElement
     clearTableMarkers(next)
     next.removeAttribute("id")
     const sectionClones = new Map<Element, Element>()
-    map.rows.slice(first.row).forEach(row => {
+    map.rows.slice(rowIndex).forEach(row => {
       const parent = row.parentElement!
       if(parent === table) next.append(row)
       else {
@@ -1479,6 +1495,7 @@ export class TableFeature extends EditorFeature {
   }
 
   finishResize = () => {
+    this.hoverSplitTable(false)
     this.endPointerDrag()
     this.editor.features.selection.isInDragSelection = false
   }
@@ -1635,6 +1652,7 @@ export class TableFeature extends EditorFeature {
     mergeTableCells: ({}: {type: "mergeTableCells"}) => this.mergeCells(),
     splitTableCells: ({}: {type: "splitTableCells"}) => this.splitCells(),
     splitTable: ({}: {type: "splitTable"}) => this.splitTable(),
+    hoverSplitTable: ({hovered}: {type: "hoverSplitTable", hovered: boolean}) => this.hoverSplitTable(hovered),
     addTableCaption: ({}: {type: "addTableCaption"}) => this.addCaption(),
     toggleTableCaption: ({}: {type: "toggleTableCaption"}) => this.toggleCaption(),
     toggleTableHeader: ({}: {type: "toggleTableHeader"}) => this.toggleRowGroup("thead"),

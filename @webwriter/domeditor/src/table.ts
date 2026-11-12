@@ -28,6 +28,7 @@ export type TableSelectionState = {
   selectedCells: number
   canMerge: boolean
   canSplit: boolean
+  canSplitTable?: boolean
   hasCaption: boolean
   hasHeader: boolean
   headerActive?: boolean

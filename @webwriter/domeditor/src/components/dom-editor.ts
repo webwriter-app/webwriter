@@ -9427,6 +9427,10 @@ export class DomEditor extends LitElement {
       "media-type-change": this.handleMediaTypeChange.bind(this),
       "dialog-attribute-change": this.handleDialogAttributeChange.bind(this),
       "table-insert": this.handleTableInsert.bind(this),
+      "table-split-hover-change": (event: Event) => {
+        const hovered = (event as CustomEvent<{hovered: boolean}>).detail?.hovered
+        if(typeof hovered === "boolean") void this.execute({type: "hoverSplitTable", hovered}).catch(() => {})
+      },
       "layout-action": this.handleLayoutAction.bind(this),
       "table-style-change": this.handleTableStyleChange.bind(this),
       "graphic-parameter-change": this.handleGraphicParameterChange.bind(this),

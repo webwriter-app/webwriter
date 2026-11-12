@@ -166,6 +166,37 @@ describe("table controls", () => {
     }))
   })
 
+  it("enables Split table only when the current selection can split the table", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.table = {
+      ...semanticTableState,
+      active: true,
+      cellSelection: false,
+      rows: 2,
+      columns: 2,
+      selectedCells: 1,
+      canMerge: false,
+      canSplit: false,
+      canSplitTable: false,
+      hasCaption: false,
+    }
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const split = toolbox.shadowRoot!.querySelector<RibbonButton>('ribbon-button[action="table-split"]')!
+    const preview = vi.fn()
+    toolbox.addEventListener("table-split-hover-change", preview)
+    expect(split.disabled).toBe(true)
+    split.dispatchEvent(new PointerEvent("pointerenter"))
+    expect(preview).not.toHaveBeenCalled()
+    toolbox.table = {...toolbox.table, canSplitTable: true}
+    await toolbox.updateComplete
+    expect(split.disabled).toBe(false)
+    split.dispatchEvent(new PointerEvent("pointerenter"))
+    split.dispatchEvent(new PointerEvent("pointerleave"))
+    expect(preview.mock.calls.map(([event]) => event.detail.hovered)).toEqual([true, false])
+  })
+
   it("renders the shared Caption group reflecting native table caption position", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"

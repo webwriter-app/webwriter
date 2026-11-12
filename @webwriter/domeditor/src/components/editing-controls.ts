@@ -2431,6 +2431,9 @@ export abstract class EditingControls extends LitElement {
 
   protected renderTableStructureControls(showCaption = true, toolboxGrid = false) {
     const active = Boolean(this.table?.active)
+    const previewSplit = (hovered: boolean) => this.dispatchEvent(new CustomEvent("table-split-hover-change", {
+      detail: {hovered}, bubbles: true, composed: true,
+    }))
     const sections = html`
         <ribbon-button label="Header" action="table-header" icon="TableHeader" toggle .active=${this.table?.headerActive ?? this.table?.hasHeader ?? false}
           variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active || this.table?.canToggleHeader === false}></ribbon-button>
@@ -2443,7 +2446,8 @@ export abstract class EditingControls extends LitElement {
         <ribbon-button label="Column right" action="table-column-right" icon="TableColumnRight" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active}></ribbon-button>
         <ribbon-button label="Split cells" action="table-split-cells" icon="TableSplitCells" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!this.table?.canSplit}></ribbon-button>
         <ribbon-button label="Row below" action="table-row-below" icon="TableRowBelow" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Split table" action="table-split" icon="TableSplit" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Split table" action="table-split" icon="TableSplit" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active || !this.table?.canSplitTable}
+          @pointerenter=${() => { if(active && this.table?.canSplitTable) previewSplit(true) }} @pointerleave=${() => previewSplit(false)}></ribbon-button>
         <ribbon-button label="Merge cells" action="table-merge-cells" icon="TableMergeCells" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!this.table?.canMerge}></ribbon-button>
         ${showCaption ? html`
         <label class="table-caption-toggle">

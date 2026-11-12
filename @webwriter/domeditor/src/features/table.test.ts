@@ -1626,6 +1626,30 @@ describe("table gap controls", () => {
     })
   }
 
+  it("previews only the split edge and clears the outline on leave and selection change", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr><tr><td>E</td><td>F</td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    const rows = Array.from(table.rows)
+    mockTableGeometry(table, rows, rows.map(row => Array.from(row.cells)))
+    editor.features.table.selectCells(rows[1].cells[0], rows[1].cells[1])
+    const preview = () => editor.appendix.querySelector("[data-split-preview]")
+    const hover = (hovered: boolean) => editor.features.table.actions.hoverSplitTable({type: "hoverSplitTable", hovered})
+
+    hover(true)
+    await renderGaps(table)
+    expect(preview()).toHaveAttribute("aria-label", "Insert row 3")
+    expect(table.querySelector("[data-split-preview]")).toBeNull()
+    hover(false)
+    expect(preview()).toBeNull()
+
+    editor.features.table.selectCells(rows[2].cells[0], rows[2].cells[1])
+    hover(true)
+    await renderGaps(table)
+    expect(preview()).toHaveAttribute("aria-label", "Insert row 3")
+    editor.features.table.selectCells(rows[2].cells[0])
+    expect(preview()).toBeNull()
+  })
+
   it("renders row and column controls in the appendix with boundary geometry", async () => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>"
     const table = document.querySelector("table")!
@@ -2022,19 +2046,42 @@ describe("table actions", () => {
   it("splits a table at the selection without copying column definitions", () => {
     document.body.innerHTML = `<table class="data ◆table-marker"><colgroup class="columns ◆column-marker"><col><col></colgroup><thead><tr><th>A</th><th>B</th></tr></thead>
       <tbody class="rows ◆row-marker"><tr><td>C</td><td>D</td></tr><tr><td>E</td><td>F</td></tr></tbody></table>`
-    editor.features.table.selectCells(cells()[2])
+    editor.features.table.selectCells(cells()[2], cells()[3])
+    expect(editor.features.table.getState()?.canSplitTable).toBe(true)
 
     editor.features.table.actions.splitTable({type: "splitTable"})
 
     const tables = document.querySelectorAll("table")
     expect(tables).toHaveLength(2)
-    expect(tables[0].querySelectorAll("tr")).toHaveLength(1)
-    expect(tables[1].querySelectorAll("tr")).toHaveLength(2)
+    expect(tables[0].querySelectorAll("tr")).toHaveLength(2)
+    expect(tables[1].querySelectorAll("tr")).toHaveLength(1)
     expect(tables[1].querySelectorAll("col")).toHaveLength(0)
     expect(tables[1]).toHaveClass("data")
     expect(tables[1]).not.toHaveClass("◆table-marker")
     expect(tables[1].querySelector("tbody")).toHaveClass("rows")
     expect(tables[1].querySelector("tbody")).not.toHaveClass("◆row-marker")
+  })
+
+  it("makes the split-off header rows body rows and allows selecting them as a new header", () => {
+    document.body.innerHTML = '<table><thead id="original"><tr><th>A</th><th>B</th></tr><tr><th><demo-widget>C</demo-widget></th><th>D</th></tr><tr><th>E</th><th>F</th></tr></thead><tbody><tr><td>G</td><td>H</td></tr></tbody></table>'
+    const widget = document.querySelector("demo-widget")
+    editor.features.table.selectCells(cells()[0], cells()[1])
+
+    editor.features.table.actions.splitTable({type: "splitTable"})
+
+    const [first, second] = document.querySelectorAll("table")
+    expect(first.tHead?.textContent).toBe("AB")
+    expect(first.tHead?.id).toBe("original")
+    expect(second.tHead).toBeNull()
+    expect(Array.from(second.rows, row => row.textContent)).toEqual(["CD", "EF", "GH"])
+    expect(second.querySelectorAll("th, #original")).toHaveLength(0)
+    expect(second.querySelector("demo-widget")).toBe(widget)
+
+    editor.features.table.selectCells(second.rows[1].cells[1], second.rows[0].cells[0])
+    expect(editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})).toBe(true)
+    expect(Array.from(second.querySelectorAll("thead th"), cell => cell.textContent)).toEqual(["C", "D", "E", "F"])
+    expect(second.querySelector("demo-widget")).toBe(widget)
+    expect(editor.features.table.getState()?.headerActive).toBe(true)
   })
 
   it("requires a multi-cell selection to cover whole leading rows without crossing a rowspan", () => {
@@ -2051,6 +2098,26 @@ describe("table actions", () => {
     expect(editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})).toBe(true)
     expect(table.tHead?.querySelectorAll("tr")).toHaveLength(4)
     expect(table.querySelector("th[rowspan]")).toHaveAttribute("rowspan", "2")
+  })
+
+  it.each(["caret", "partial row", "two rows"] as const)("cannot split a table from a %s selection", kind => {
+    document.body.innerHTML = '<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>'
+    const [first, , , last] = cells()
+    if(kind === "caret") $.move(first.firstChild!, 0)
+    else editor.features.table.selectCells(first, kind === "two rows" ? last : first)
+    expect(editor.features.table.getState()?.canSplitTable).toBe(false)
+    editor.features.table.actions.splitTable({type: "splitTable"})
+    expect(document.querySelectorAll("table")).toHaveLength(1)
+    expect(cells()).toHaveLength(4)
+  })
+
+  it("splits above the last selected row when there is no row below it", () => {
+    document.body.innerHTML = '<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>'
+    const [, , first, last] = cells()
+    editor.features.table.selectCells(last, first)
+    expect(editor.features.table.getState()?.canSplitTable).toBe(true)
+    editor.features.table.actions.splitTable({type: "splitTable"})
+    expect(Array.from(document.querySelectorAll("table"), table => table.textContent)).toEqual(["AB", "CD"])
   })
 
   it("toggles a caption and applies cell border and background styles", () => {
@@ -2274,6 +2341,7 @@ describe("table clipboard and split regressions", () => {
     editor.features.table.selectCells(cells()[2])
     const markup = table.outerHTML
     const nodes = [...table.querySelectorAll("*")]
+    expect(editor.features.table.getState()?.canSplitTable).toBe(false)
     editor.features.table.actions.splitTable({type: "splitTable"})
     expect(document.querySelectorAll("table")).toHaveLength(1)
     expect(table.outerHTML).toBe(markup)
