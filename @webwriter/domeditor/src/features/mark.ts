@@ -767,6 +767,7 @@ export class MarkFeature extends EditorFeature {
 
   /** Reads the current selection and its ancestors afresh on every call. */
   getState(): MarkState {
+    if(this.editor.features.table.hasCellSelection) return {canMark: false, marks: []}
     const state = this.getUnrestrictedState()
     if(this.storedPopup || this.linkPopupToggle()) state.popupActive = true
     const allowed = this.svgContext() || this.editor.features.math.activeMath
@@ -2681,6 +2682,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   private getCaret(): MarkCaret | null {
+    if(this.editor.features.table.hasCellSelection) return null
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode || !selection.isCollapsed) return null
     if($.isGapSelection || $.isEmptyDocumentSelection) return null

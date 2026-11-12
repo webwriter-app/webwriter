@@ -514,12 +514,14 @@ export class TableFeature extends EditorFeature {
     if(!table || tableForNode(focus) !== table) return false
     const map = buildTableMap(table)
     if(!placementForCell(map, anchor) || !placementForCell(map, focus)) return false
+    const enteringCellSelection = !this.hasCellSelection
     this.anchorCell = anchor
     this.focusCell = focus
     $.move(anchor, 0)
     this.applyCellMarkers()
     this.editor.features.selection.processSelection()
     this.editor.postSelectionPath()
+    if(enteringCellSelection) this.editor.postMarkState()
     return true
   }
 

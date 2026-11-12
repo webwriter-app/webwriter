@@ -767,6 +767,24 @@ describe("table cell selection", () => {
     document.body.dispatchEvent(new CompositionEvent("compositionend", {bubbles: true}))
   })
 
+  it("publishes disabled text formatting while a cell rectangle is selected", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    const [first, second] = cells()
+    const markStates: Array<{canMark: boolean, canRemoveMarks?: boolean}> = []
+    const onMarks = (event: Event) => markStates.push((event as CustomEvent).detail)
+    window.addEventListener(markStateChangeEvent, onMarks)
+    try {
+      editor.features.table.selectCells(first, second)
+      expect(markStates.at(-1)).toMatchObject({canMark: false, canRemoveMarks: true})
+      expect(editor.features.mark.setStyleMark("font-size", "24px")).toBe(false)
+      editor.features.table.clearCellSelection(false)
+      $.move(first.firstChild!, 1)
+      editor.postMarkState()
+      expect(markStates.at(-1)?.canMark).toBe(true)
+    }
+    finally { window.removeEventListener(markStateChangeEvent, onMarks) }
+  })
+
   it.each(["pointermove", "pointercancel", "lostpointercapture", "contextmenu"])("ends the table gesture on %s without extending the selection", eventType => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td><td>C</td></tr></tbody></table>"
     const [first, second, third] = cells()

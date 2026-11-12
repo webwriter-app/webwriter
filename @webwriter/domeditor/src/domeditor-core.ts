@@ -1270,7 +1270,7 @@ export class DOMEditor {
     if(this.options.reader || this.features.selection.isInDragSelection) return
     if(this.features.transformation.deferTransformSelectionState("markStatePending")) return
     this.features.graphic.rememberTextSelection()
-    if(this.features.selection.selectedSectionElement) {
+    if(this.features.selection.selectedSectionElement || this.features.table.hasCellSelection) {
       this.postBridgeEvent(markStateChangeEvent, {
         canMark: false,
         canRemoveMarks: this.features.mark.canRemoveMarks,
