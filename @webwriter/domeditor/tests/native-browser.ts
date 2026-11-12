@@ -183,6 +183,41 @@ await check("table pictures keep their size in editing and preview", async () =>
   finally { frames.forEach(frame => frame.remove()) }
 })
 
+await check("table ribbon insertion after Shift+Enter keeps cell text", async () => {
+  const table = document.createElement("table")
+  table.innerHTML = "<tbody><tr><td>First line</td><td>Neighbor</td></tr></tbody>"
+  fixture.append(table)
+  const tableEditor = new DOMEditor()
+  try {
+    const [cell, neighbor] = Array.from(table.rows[0].cells)
+    $.move(cell.firstChild!, 10)
+    const press = new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true})
+    tableEditor.features.manipulation.activeListeners.keydown!(press)
+    assert(press.defaultPrevented && cell.querySelectorAll("br").length === 2, "Shift+Enter did not create a soft break")
+    tableEditor.features.manipulation.actions.insertElement({type: "insertElement", tag: "picture"})
+    assert(cell.querySelector("picture") && cell.querySelectorAll("br").length === 2
+      && cell.textContent === "First line" && neighbor.textContent === "Neighbor", "ribbon insertion changed authored cell content")
+    await layoutFrame()
+    const image = cell.querySelector("picture")!.getBoundingClientRect()
+    const text = caretRect(cell.firstChild!, 0)
+    assert(image.width > 0 && image.top >= text.bottom - 1, "inserted image did not render below the first line")
+  }
+  finally { table.remove(); tableEditor.destroy() }
+})
+
+await check("table paste strips marked Office placeholders", () => {
+  const tableEditor = new DOMEditor()
+  try {
+    const source = '<table><tr><td rowspan="2">A</td><td style="mso-cell-special:placeholder;width:0"><p><o:p>&nbsp;</o:p></p></td><td colspan="2">B</td></tr><tr><td style="mso-cell-special:placeholder">&nbsp;</td><td></td><td>C</td></tr></table>'
+    const {fragment} = tableEditor.parseHTMLFragment(source, true)
+    const table = fragment.querySelector("table")!
+    assert(table.rows[0].cells.length === 2 && table.rows[1].cells.length === 2, "Office placeholders left extra cells")
+    assert(table.rows[0].cells[0].rowSpan === 2 && table.rows[0].cells[1].colSpan === 2, "paste changed real cell spans")
+    assert(table.rows[1].cells[0].textContent === "" && table.rows[1].cells[1].textContent === "C", "paste changed a genuine blank cell")
+  }
+  finally { tableEditor.destroy() }
+})
+
 await check("converted list items support repeated Backspace without clicking", checkListDeletion)
 await check("Command deletion stops at visual and hard line boundaries", checkLineDeletion)
 await check("interrupted live sessions recover committed data locally", checkLiveSessionRecovery)
@@ -2121,6 +2156,80 @@ await check("Details chevrons stay beside wrapped summaries", async () => {
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("table columns start equal and empty rows keep their height while typing", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:600px;height:400px;max-width:none"
+  frame.srcdoc = `<!doctype html><style data-ww-theme="base">${defaultDocumentTheme.source}</style>
+    <style>#auto { table-layout: auto; width: 360px } #fixed { table-layout: fixed }</style>
+    <table id="equal"><thead><tr><th>Short</th><th>A considerably longer heading</th></tr></thead>
+      <tbody><tr><td></td><td></td></tr></tbody></table>
+    <table id="auto"><tr><td>Short</td><td>A considerably longer phrase</td></tr></table>
+    <table id="merged"><thead><tr><th colspan="2">Merged heading</th></tr></thead>
+      <tbody><tr><td>Short</td><td>Other</td></tr></tbody></table>
+    <table id="fixed"><thead><tr><th colspan="2">Merged heading</th></tr></thead>
+      <tbody><tr><td>Short</td><td>Other</td></tr></tbody></table>
+    <script type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script>`
+  fixture.append(frame)
+  try {
+    for(let attempt = 0; attempt < 200 && !frame.contentWindow?.editor; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    const editor = frame.contentWindow?.editor
+    assert(editor, `table layout editor failed: ${frame.contentWindow?.editorError}`)
+    const doc = frame.contentDocument!, view = frame.contentWindow!
+    const table = doc.querySelector<HTMLTableElement>("#equal")!, auto = doc.querySelector<HTMLTableElement>("#auto")!
+    const [heading, longHeading] = Array.from(table.rows[0].cells)
+    const [cell, otherCell] = Array.from(table.rows[1].cells)
+    const widthDifference = (target: HTMLTableElement) =>
+      Math.abs(target.rows[0].cells[0].getBoundingClientRect().width - target.rows[0].cells[1].getBoundingClientRect().width)
+    assert(view.getComputedStyle(table).tableLayout === "fixed" && widthDifference(table) < 1, "column widths followed content")
+    assert(view.getComputedStyle(auto).tableLayout === "auto" && widthDifference(auto) > 25
+      && Math.abs(auto.getBoundingClientRect().width - 360) < 1, "authored layout or width was overridden")
+
+    const emptyHeight = cell.getBoundingClientRect().height
+    const cellBox = cell.getBoundingClientRect()
+    const point = doc.caretRangeFromPoint(cellBox.left + 18, cellBox.top + cellBox.height / 2)
+    assert(point?.startContainer === cell && point.startOffset === 0, "empty cell has no native editing position")
+    view.focus()
+    doc.getSelection()!.collapse(cell, 0)
+    assert(doc.execCommand("insertText", false, "Text") && cell.textContent === "Text", "empty cell rejected typing")
+    doc.getSelection()!.collapse(otherCell, 0)
+    assert(doc.execCommand("insertText", false, "More text") && otherCell.textContent === "More text", "second empty cell rejected typing")
+    assert(Math.abs(cell.getBoundingClientRect().height - emptyHeight) < 0.25, "typing changed the empty row height")
+
+    const resizeColumn = (target: HTMLTableCellElement) => {
+      target.scrollIntoView({block: "nearest"})
+      const box = target.getBoundingClientRect()
+      const y = box.top + box.height / 2
+      target.dispatchEvent(new PointerEvent("pointermove", {clientX: box.right, clientY: y, bubbles: true, cancelable: true}))
+      target.dispatchEvent(new PointerEvent("pointerdown", {clientX: box.right, clientY: y, bubbles: true, cancelable: true}))
+      doc.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: box.right + 32, clientY: y, bubbles: true, cancelable: true}))
+      doc.dispatchEvent(new PointerEvent("pointerup", {clientX: box.right + 32, clientY: y, bubbles: true, cancelable: true}))
+      return target.getBoundingClientRect().width - box.width
+    }
+    assert(resizeColumn(heading) > 25 && heading.style.width && cell.style.width
+      && !longHeading.style.width, "dragging did not resize the default fixed-layout column")
+    assert(!table.style.tableLayout, "column resize rewrote the default layout mode")
+
+    editor!.doc.syncFromDOM()
+    editor!.doc.stopCapturing()
+    const merged = doc.querySelector<HTMLTableElement>("#merged")!
+    const mergedCell = merged.rows[1].cells[0]
+    const mergedDelta = resizeColumn(mergedCell)
+    assert(mergedDelta > 25 && merged.style.tableLayout === "auto" && mergedCell.style.width,
+      `dragging did not resize a single column under a merged header: ${mergedDelta}px, ${merged.style.cssText}, ${mergedCell.style.cssText}`)
+    editor!.doc.undo()
+    assert(!merged.style.tableLayout && !mergedCell.style.width, "undo did not restore the merged table's default layout")
+    editor!.doc.redo()
+    assert(merged.style.tableLayout === "auto" && mergedCell.style.width, "redo did not restore the merged table's column resize")
+
+    const fixed = doc.querySelector<HTMLTableElement>("#fixed")!
+    const fixedCell = fixed.rows[1].cells[0]
+    resizeColumn(fixedCell)
+    assert(fixedCell.style.width && !fixed.style.tableLayout && view.getComputedStyle(fixed).tableLayout === "fixed",
+      "dragging overrode an authored fixed layout")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("table presets respect whole-table and cell selections without changing layout", async () => {
   const {ElementStyleEditor} = await import("../src/components/element-style-editor")
   const controls = new ElementStyleEditor()
@@ -2147,6 +2256,12 @@ await check("table presets respect whole-table and cell selections without chang
       table.style.width = "100%"
       for(const cell of cells) cell.removeAttribute("style")
       cells[1].style.width = "40%"
+      cells[1].style.setProperty("padding", "3px 5px 7px 11px", "important")
+      cells[2].style.paddingInlineStart = "20px"
+      const padding = cells.map(cell => {
+        const computed = view.getComputedStyle(cell)
+        return [computed.paddingTop, computed.paddingRight, computed.paddingBottom, computed.paddingLeft].join()
+      })
       editor!.features.table.clearCellSelection(false)
       if(selection === "table") {
         const range = doc.createRange()
@@ -2169,13 +2284,20 @@ await check("table presets respect whole-table and cell selections without chang
           for(const cell of selected) {
             const computed = view.getComputedStyle(cell), box = cell.getBoundingClientRect(), tableBox = table.getBoundingClientRect()
             assert(computed.backgroundColor === expected, `${selection}: preset color is hidden by theme cell paint`)
-            assert(computed.display === "table-cell" && computed.paddingTop === "8px", `${selection}: preset broke cell layout or padding`)
+            assert(computed.display === "table-cell", `${selection}: preset broke cell layout`)
             assert(box.width > 0 && box.height > 0 && box.left >= tableBox.left - 1 && box.right <= tableBox.right + 1,
               `${selection}: cell escaped table bounds`)
             for(const property of ["margin", "position", "transform", "box-shadow", "border-radius"]) {
               assert(!cell.style.getPropertyValue(property), `${selection}: preset added cell ${property}`)
             }
           }
+          assert(cells.every((cell, index) => {
+            const computed = view.getComputedStyle(cell)
+            return [computed.paddingTop, computed.paddingRight, computed.paddingBottom, computed.paddingLeft].join() === padding[index]
+          }), `${selection}: preset changed cell padding`)
+          assert(!table.style.padding && !cells[0].style.padding
+            && cells[1].style.getPropertyPriority("padding") === "important" && cells[2].style.paddingInlineStart === "20px",
+            `${selection}: preset rewrote authored spacing`)
           assert(cells[1].style.width === "40%" && !cells[0].style.width && !cells[2].style.width, "preset changed authored cell sizing")
           assert(table.style.width === "100%" && !table.style.margin, "preset changed table sizing or margins")
           if(selection === "cell") assert(!cells[0].style.backgroundColor && !cells[2].style.backgroundColor && !table.style.backgroundColor,
@@ -6811,7 +6933,7 @@ await check("serialization keeps authored styles without triggering editor CSP v
     const violations: SecurityPolicyViolationEvent[] = []
     doc.addEventListener("securitypolicyviolation", event => { if(event.effectiveDirective === "style-src-elem") violations.push(event) })
 
-    const saved = [frameEditor.toHTML(), await frameEditor.serializeHTML(), await frameEditor.serializeRecoveryHTML()]
+    const saved = [frameEditor.toHTML(), await frameEditor.serializeHTML(), (await frameEditor.serializeRecoveryHTML())?.html]
     await layoutFrame()
     assert(!violations.length, `serialization caused ${violations.length} stylesheet CSP violations`)
     for(const html of saved) {
@@ -6943,19 +7065,24 @@ await check("uploaded videos survive installing and removing packages", async ()
     const packages = [...host.installedPackages]
     const pkg = {name: "@test/media-reload", version: "1.0.0", label: "Media reload", description: "",
       authors: [], keywords: [], links: {}, scripts: [], styles: [], members: []}
+    let previousSource = original
     for(const next of [[...packages, pkg], packages]) {
       const previousRevision = host.frameRevision
       await host.reloadEditor(next)
       assert(host.frameRevision === previousRevision + 1, "package change did not reload the editor iframe")
       const source = await readSource()
-      assert(source.startsWith("data:video/mp4;base64,"), "reloaded video retained an outgoing realm's object URL")
-      const saved = await (await fetch(source)).blob()
+      assert(source.startsWith("blob:") && source !== previousSource, "reloaded video did not get a fresh object URL")
+      previousSource = source
+      const exported = new DOMParser().parseFromString(await app!.execute({type: "serializeDocument"}) as string, "text/html")
+      const exportedSource = exported.querySelector("video")!.getAttribute("src")!
+      assert(exportedSource.startsWith("data:video/mp4;base64,"), "export did not inline the reloaded video")
+      const saved = await (await fetch(exportedSource)).blob()
       assert(saved.size === file.size && saved.type === file.type, "package reload lost video bytes or MIME type")
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error("reloaded video metadata timed out")), 4000)
         video.onloadedmetadata = () => {clearTimeout(timer); resolve()}
         video.onerror = () => {clearTimeout(timer); reject(new Error("reloaded video could not be decoded"))}
-        video.src = source
+        video.src = exportedSource
         video.load()
       })
       assert(video.videoWidth > 0 && video.videoHeight > 0 && video.duration > 0, "reloaded video is not playable")
@@ -7538,7 +7665,7 @@ await check("freeform box selections transform as a group", async () => {
       const left = Math.min(...before.map(rect => rect.left)) - 10, top = Math.min(...before.map(rect => rect.top)) - 10
       const right = Math.max(...before.map(rect => rect.right)) + 10, bottom = Math.max(...before.map(rect => rect.bottom)) + 10
       doc.body.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 91, button: 0, clientX: left, clientY: top}))
-      doc.body.dispatchEvent(new view.PointerEvent("pointermove", {bubbles: true, pointerId: 91, clientX: right, clientY: bottom}))
+      doc.body.dispatchEvent(new view.PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 91, clientX: right, clientY: bottom}))
       doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerId: 91, clientX: right, clientY: bottom}))
       await layoutFrame()
       assert(!feature.overlay.hasAttribute("visibility"), `${mode}: group controls are hidden`)
@@ -11165,6 +11292,58 @@ await check("graphic imports open host pickers synchronously and retry across th
   finally { frame.remove() }
 })
 
+await check("table caret arrows follow visual lines and columns", async () => {
+  const table = document.createElement("table")
+  table.style.cssText = "width:340px;table-layout:fixed;font:16px/24px monospace"
+  table.innerHTML = `<thead><tr><th>Header</th><th>Top row</th></tr></thead>
+    <tbody><tr><td rowspan="2">Spanning cell</td><td><span id="wrapped-cell">First line words that wrap across several lines in this cell</span></td></tr>
+    <tr><td id="below-cell">Bottom row</td></tr></tbody>`
+  fixture.append(table)
+  const tableEditor = new DOMEditor()
+  try {
+    const top = table.querySelector("thead tr")!.lastElementChild!
+    const wrapped = table.querySelector("#wrapped-cell")!.firstChild as Text
+    const below = table.querySelector("#below-cell")!
+    const press = (key: string, options?: KeyboardEventInit) => {
+      const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true, ...options})
+      tableEditor.features.table.activeListeners.keydown(event)
+      return event.defaultPrevented
+    }
+    const first = caretRect(wrapped, 3)
+    const last = caretRect(wrapped, wrapped.length - 3)
+    assert(last.top > first.bottom, "test text did not wrap")
+
+    $.move(wrapped, 3)
+    assert(!press("ArrowDown"), "ArrowDown interrupted movement within a wrapped cell")
+    assert(!press("ArrowUp", {altKey: true}), "modified ArrowUp was intercepted")
+    assert(!press("ArrowUp", {ctrlKey: true}), "Control+ArrowUp was intercepted")
+    assert(!press("ArrowUp", {isComposing: true}), "ArrowUp was intercepted during composition")
+    $.selectRange(wrapped, 1, wrapped, 3)
+    assert(!press("ArrowUp"), "ArrowUp intercepted a text range")
+    $.move(wrapped, 3)
+    assert(press("ArrowUp") && top.contains($.anchor), "first visual line did not move to the cell above")
+    assert(Math.abs(caretRect($.anchor!, $.anchorOffset).left - first.left) < 12,
+      "ArrowUp lost the caret's horizontal position")
+
+    $.move(wrapped, wrapped.length - 3)
+    assert(!press("ArrowUp"), "ArrowUp interrupted movement within a wrapped cell")
+    assert(press("ArrowDown") && below.contains($.anchor), "last visual line did not move to the cell below")
+    assert(!press("ArrowDown"), "ArrowDown at the last table row was intercepted")
+    assert(press("ArrowUp") && wrapped.parentElement!.contains($.anchor), "ArrowUp did not return to the wrapped cell")
+    assert(caretRect($.anchor!, $.anchorOffset).top === last.top, "ArrowUp did not enter the last visual line")
+
+    const replacement = document.createElement("td")
+    replacement.innerHTML = "<p><br></p>"
+    below.replaceWith(replacement)
+    assert(press("ArrowDown") && replacement.contains($.anchor), "ArrowDown did not use the live empty cell")
+
+    const spanning = table.querySelector("td[rowspan]")!
+    $.move(spanning.firstChild!, 2)
+    assert(!press("ArrowDown"), "ArrowDown treated a continuation of the same rowspan as a new cell")
+  }
+  finally {table.remove(); tableEditor.destroy()}
+})
+
 await check("table commands complete across the real iframe bridge", async () => {
   const liveTable = document.createElement("table")
   liveTable.innerHTML = '<tbody><tr><td rowspan="2">A</td><td>B</td></tr><tr></tr></tbody>'
@@ -12735,8 +12914,9 @@ await check("rotated figure captions flow upright and their transformation frame
           editor.features.selection.captureElement(figure)
           editor.features.transformation.updateInfo()
           const overlay = editor.features.transformation.overlay.getBoundingClientRect()
-          assert(Math.abs(overlay.left - box.left) < 1 && Math.abs(overlay.top - box.top) < 1
-            && Math.abs(overlay.width - box.width) < 1 && Math.abs(overlay.height - box.height) < 1, `${context}: frame is offset from the rotated content`)
+          const wrapper = figure.getBoundingClientRect()
+          assert(Math.abs(overlay.left - wrapper.left) < 1 && Math.abs(overlay.top - wrapper.top) < 1
+            && Math.abs(overlay.width - wrapper.width) < 1 && Math.abs(overlay.height - wrapper.height) < 1, `${context}: resize frame is offset from the figure`)
         }
       }
       image.setAttribute("style", authored!)
@@ -12803,6 +12983,75 @@ await check("captioned graphics retain their resized width and selection outline
       assert(graphic.parentElement === doc.body && Math.abs(unwrapped.left - original.left) < 1
         && Math.abs(unwrapped.width - original.width) < 1, "unwrapping changed the graphic placement")
     }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("captioned media reflows and resizes with native controls", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:560px;height:650px;border:0"
+  frame.srcdoc = `<!doctype html><figure style="width:260px;max-height:40px;background:#e4eef8">
+    <video controls src="/src/assets/layouts/document.mp4" style="width:400px;aspect-ratio:16 / 9;background:#222"></video>
+    <figcaption>A caption with enough words to reflow onto multiple lines at the resized player width.</figcaption>
+    </figure><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script>`
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && !view.editorError && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `media caption fixture failed: ${view.editorError}`)
+    const editor = view.editor!, doc = frame.contentDocument!
+    const theme = doc.createElement("style")
+    theme.textContent = defaultDocumentTheme.source
+    doc.head.append(theme)
+    const figure = doc.querySelector("figure")!, player = doc.querySelector("video")!, caption = doc.querySelector("figcaption")!
+    const playerStyle = player.getAttribute("style")
+    editor.features.selection.captureElement(player)
+    await layoutFrame()
+    const initialFigure = figure.getBoundingClientRect(), initialPlayer = player.getBoundingClientRect()
+    const captionBox = caption.getBoundingClientRect()
+    assert(initialPlayer.right <= initialFigure.right + 1 && captionBox.bottom <= initialFigure.bottom + 1,
+      `player and caption should fit the figure: figure=${initialFigure.height} player=${initialPlayer.height} caption=${captionBox.height}`)
+    const transform = editor.features.transformation
+    assert(transform.target === figure, "capturing the player targets its figure for resize")
+    const handle = transform.overlay.querySelector<HTMLElement>(".◆transform-overlay-scale:not([hidden])")!
+    assert(handle, "media resize handle is available")
+    const box = handle.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
+    const sign = handle.dataset.resizeDirection?.includes("left") ? 1 : -1
+    handle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once: true})
+    handle.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, clientX: x, clientY: y}))
+    transform.handleScaleDrag(new MouseEvent("mousemove", {buttons: 1, clientX: x + sign * 45, clientY: y - 10, shiftKey: true}))
+    await layoutFrame()
+    const resized = player.getBoundingClientRect(), resizedFigure = figure.getBoundingClientRect()
+    assert(resized.width < initialPlayer.width && Math.abs(resized.width / resized.height - 16 / 9) < .02,
+      `video preserves aspect ratio through resize: before=${initialPlayer.width} after=${resized.width}×${resized.height}`)
+    assert(!figure.style.scale && !player.style.scale && caption.getBoundingClientRect().bottom <= resizedFigure.bottom + 1,
+      "figure and caption reflow without scaling native controls")
+    const geometry = transform.boxGeometry(figure)
+    assert(Math.abs(geometry.height - resizedFigure.height) < 1, "outline geometry follows the resized figure")
+    assert(player.getAttribute("style") === playerStyle, "resizing does not replace the player's authored styles")
+    transform.handleScaleEnd()
+    const leading = doc.createElement("p")
+    leading.textContent = "Additional authored content before the player."
+    figure.prepend(leading)
+    figure.style.maxHeight = "40px"
+    await layoutFrame()
+    const mixed = figure.getBoundingClientRect()
+    assert(figure.firstElementChild === leading && leading.getBoundingClientRect().top >= mixed.top
+      && caption.getBoundingClientRect().bottom <= mixed.bottom + 1,
+      "the figure should also contain authored siblings before the player")
+    leading.remove()
+    player.removeAttribute("src")
+    player.style.width = "220px"
+    figure.style.width = "360px"
+    editor.features.selection.captureElement(player)
+    await layoutFrame()
+    const emptyFigure = figure.getBoundingClientRect(), emptyPlayer = player.getBoundingClientRect()
+    const grip = transform.overlay.querySelector<HTMLElement>(".◆transform-overlay-scale:not([hidden])")!
+    const corner = grip.getBoundingClientRect()
+    const cornerX = grip.dataset.resizeDirection?.includes("left") ? emptyFigure.left : emptyFigure.right
+    assert(emptyFigure.width > emptyPlayer.width + 10
+      && Math.abs(corner.left + corner.width / 2 - cornerX) < 12
+      && Math.abs(corner.top + corner.height / 2 - emptyFigure.bottom) < 12, "the empty player grip stays at the figure corner")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
@@ -12923,6 +13172,10 @@ await check("legacy bundled tables keep full width in editing, preview, and expo
       const wideRect = rendered.querySelector("#wide")!.getBoundingClientRect()
       const normalRect = rendered.querySelector("#normal")!.getBoundingClientRect()
       const prose = rendered.querySelector("#custom")!
+      const normal = rendered.querySelector<HTMLTableElement>("#normal")!
+      const [first, second] = Array.from(normal.rows[0].cells, cell => cell.getBoundingClientRect().width)
+      assert(rendered.defaultView!.getComputedStyle(normal).tableLayout === "fixed" && Math.abs(first - second) < 1,
+        `normal table did not distribute columns equally in ${mode}`)
       assert(Math.abs(wideRect.left - bodyRect.left - parseFloat(bodyStyle.paddingLeft)) < 2
         && Math.abs(wideRect.right - bodyRect.right + parseFloat(bodyStyle.paddingRight)) < 2,
         `full-width table did not reach both page gutters in ${mode}`)

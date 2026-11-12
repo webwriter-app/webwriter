@@ -1738,17 +1738,14 @@ export class GraphicFeature extends EditorFeature {
       }
       this.#finishPointer(event)
     },
-    pointercancel: event => {
-      if(this.#labelEditor && this.#labelEditor.pointerId !== undefined && this.#labelEditor.pointerId === event.pointerId) this.#labelEditor.pointerId = undefined
-      this.#cancelPointer(event)
-    },
+    pointercancel: event => this.#cancelPointer(event),
     lostpointercapture: event => {
       if(this.#stroke?.pointerId === event.pointerId) {
         // A quick release can lose capture before pointerup reaches this listener.
         if(event.buttons === 0) this.#finishStroke(event)
         else this.#cancelStroke()
       }
-      if(this.#path?.drag?.pointerId === event.pointerId) this.#cancelPath()
+      this.#cancelPointer(event)
     },
     wheel: event => this.#handleWheel(event),
     beforeinput: event => {
@@ -2962,6 +2959,9 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #cancelPointer(event?: PointerEvent) {
+    if(this.#labelEditor?.pointerId !== undefined && (!event || this.#labelEditor.pointerId === event.pointerId)) {
+      this.#labelEditor.pointerId = undefined
+    }
     if(this.#path && (!event || this.#path.drag?.pointerId === event.pointerId)) this.#cancelPath()
     if(this.#stroke && (!event || event.pointerId === this.#stroke.pointerId)) this.#cancelStroke()
     if(this.#pan) this.#cancelPan(event)

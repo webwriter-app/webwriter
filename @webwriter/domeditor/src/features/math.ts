@@ -53,7 +53,10 @@ export class MathFeature extends EditorFeature {
   private resizeObserver: ResizeObserver | null = null
   private observedRoot: Element | null = null
   private readonly handleResize = () => this.scheduleRefresh()
-  private readonly handleBlur = () => this.input?.suppress()
+  private readonly handleBlur = () => {
+    this.drag = null
+    this.input?.suppress()
+  }
   private marked = new Set<Element>()
   private frame: number | null = null
   private commandText: string | null = null
@@ -324,6 +327,19 @@ export class MathFeature extends EditorFeature {
       }
       this.deadPowerPoint = null
     },
+    contextmenu: () => { this.drag = null },
+    pointerup: event => {
+      if(!this.drag || this.drag.pointerId !== event.pointerId) return
+      this.drag = null
+      this.changed()
+    },
+    pointercancel: event => {
+      if(this.drag?.pointerId === event.pointerId) this.drag = null
+      this.setHovered(null)
+    },
+    pointermove: event => {
+      if(this.drag?.pointerId === event.pointerId && !(event.buttons & 1)) this.drag = null
+    },
     click: event => {
       if(event.button !== 0 || event.detail !== 2 || event.ctrlKey || event.metaKey
         || isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema)
@@ -429,8 +445,6 @@ export class MathFeature extends EditorFeature {
       else document.getSelection()?.extend(...this.nearestPoint(root, event.clientX, event.clientY))
       this.refresh()
     },
-    pointerup: () => { if(this.drag) { this.drag = null; this.changed() } },
-    pointercancel: () => { this.drag = null; this.setHovered(null) },
     selectionchange: () => { this.pendingStyles(); this.scheduleRefresh() },
   }
 
@@ -1379,6 +1393,7 @@ export class MathFeature extends EditorFeature {
 
   private pointerdown(event: PointerEvent) {
     if(event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || !(event.target instanceof Node)) return
+    if(this.drag?.root.isConnected && this.drag.pointerId !== event.pointerId || event.pointerType === "touch" && event.isPrimary === false) return
     const root = mathRoot(event.target)
     if(!root) return
     if(mathBoundaryPoint(root, event.clientX, event.clientY)) return

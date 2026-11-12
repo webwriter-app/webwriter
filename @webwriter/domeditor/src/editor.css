@@ -108,6 +108,17 @@ body > :last-child:not(:where(:state(ww-gap-after-selected))) {
   border-collapse: collapse;
 }
 
+@layer webwriter-theme {
+  :where(table:not([is])) {
+    table-layout: var(--ww-table-default-layout, fixed);
+    overflow-wrap: break-word;
+  }
+
+  :where(table:state(ww-table-resize-auto-layout)) {
+    --ww-table-default-layout: auto;
+  }
+}
+
 /* Show cell boundaries without changing the table's reading-mode geometry. */
 :where(td, th) {
   outline: 1px solid #aeb8c4;
@@ -210,6 +221,10 @@ audio {
 video {
   min-width: 175px;
   min-height: 70px;
+}
+
+:where(figure:not([is]):has(> figcaption)) > :is(audio, video):not([is]) {
+  min-width: min(175px, 100%);
 }
 
 :is(picture, img),
@@ -1403,6 +1418,14 @@ body:state(ww-transform-rotating), body:state(ww-transform-rotating) * {
   th
 ):empty::before {
   content: "\200B";
+}
+
+/* Keep an editable line in empty cells without increasing the row height. */
+:where(td, th):empty::before {
+  display: inline-block;
+  inline-size: 0;
+  block-size: 1lh;
+  vertical-align: top;
 }
 
 /* A low-priority caret fallback lets authored numbering supply the content. */

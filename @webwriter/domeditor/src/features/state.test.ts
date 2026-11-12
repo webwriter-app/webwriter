@@ -1025,31 +1025,39 @@ describe("StateFeature", () => {
     document.getSelection()!.setPosition(paragraph.firstChild!, 2)
     let snapshot: EditorStateSnapshot
     try {
-      snapshot = structuredClone(await editor.getActionHandler("snapshotState")({type: "snapshotState"})) as EditorStateSnapshot
+      snapshot = await editor.getActionHandler("snapshotState")({type: "snapshotState"}) as EditorStateSnapshot
       expect(document.querySelector("p")).toBe(paragraph)
     }
     finally { editor.destroy() }
     document.body.replaceChildren()
     const restored = new DOMEditor({initialState: snapshot})
     try {
-      expect(restored.toHTML(true)).toBe(`<p>Keep<!--comment--></p>${markup
+      const saved = new DOMParser().parseFromString(await restored.serializeHTML(), "text/html")
+      expect(saved.body.innerHTML).toBe(`<p>Keep<!--comment--></p>${markup
         .replaceAll("SOURCE", `data:video/mp4;base64,${btoa("local video")}`)
         .replaceAll("COVER", `data:image/png;base64,${btoa("cover")}`)}`)
       expect(document.getSelection()!.anchorNode).toBe(document.querySelector("p")!.firstChild)
       expect(document.getSelection()!.anchorOffset).toBe(2)
-      expect(restored.toHTML(true)).not.toContain("blob:")
+      expect(restored.toHTML(true)).toContain("blob:")
+      expect(restored.toHTML(true)).not.toContain(source)
+      expect(restored.toHTML(true)).not.toContain(cover)
     }
     finally { restored.destroy() }
   })
 
-  it("embeds blob sources created by a widget and rejects unreadable sources before reloading", async () => {
+  it("captures widget-owned blob sources and rejects unreadable sources before reloading", async () => {
     document.body.innerHTML = '<video-widget src="blob:https://editor.example/widget-video"></video-widget>'
     const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("widget video", {headers: {"content-type": "video/webm"}}))
     const editor = new DOMEditor()
     try {
-      await editor.getActionHandler("snapshotState")({type: "snapshotState"})
+      const snapshot = await editor.getActionHandler("snapshotState")({type: "snapshotState"}) as EditorStateSnapshot
       expect(fetch).toHaveBeenCalledWith("blob:https://editor.example/widget-video")
-      expect(document.querySelector("video-widget")!.getAttribute("src")).toBe(`data:video/webm;base64,${btoa("widget video")}`)
+      expect(snapshot.assets).toHaveLength(1)
+      expect(await snapshot.assets![0].blob.text()).toBe("widget video")
+      expect(document.querySelector("video-widget")!.getAttribute("src")).toBe("blob:https://editor.example/widget-video")
+      const recovery = await editor.serializeRecoveryHTML()
+      expect(recovery?.assets[0].blob).toBe(snapshot.assets![0].blob)
+      expect(fetch).toHaveBeenCalledOnce()
       document.querySelector("video-widget")!.setAttribute("src", "blob:https://editor.example/unreadable")
       fetch.mockRejectedValue(new Error("File not found"))
       await expect(editor.getActionHandler("snapshotState")({type: "snapshotState"})).rejects.toThrow("File not found")
@@ -1061,11 +1069,11 @@ describe("StateFeature", () => {
   it("captures current media when a source changes or nodes are added during snapshot preparation", async () => {
     const editor = new DOMEditor()
     const blob = new Blob(["old"], {type: "video/mp4"})
-    const source = editor.createMediaURL(blob)
+    const source = "blob:https://editor.example/old"
     const replacement = editor.createMediaURL(new Blob(["new"], {type: "video/mp4"}))
     document.body.innerHTML = `<video src="${source}"></video>`
-    let finish!: (buffer: ArrayBuffer) => void
-    vi.spyOn(blob, "arrayBuffer").mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    let finish!: (response: Response) => void
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise(resolve => { finish = resolve }))
     try {
       const pending = editor.getActionHandler("snapshotState")({type: "snapshotState"})
       await vi.waitFor(() => expect(finish).toBeDefined())
@@ -1073,14 +1081,17 @@ describe("StateFeature", () => {
       const audio = document.createElement("audio")
       audio.src = editor.createMediaURL(new Blob(["audio"], {type: "audio/mpeg"}))
       document.body.append(audio)
-      finish(new TextEncoder().encode("old").buffer)
+      finish(new Response(blob))
       const snapshot = await pending as EditorStateSnapshot
       const copy = new Y.Doc()
       try {
         Y.applyUpdate(copy, Uint8Array.from(snapshot.update))
-        expect(sharedDOMBody(copy).toString()).toContain(`data:video/mp4;base64,${btoa("new")}`)
-        expect(editor.toHTML(true)).toContain(`data:audio/mpeg;base64,${btoa("audio")}`)
-        expect(editor.toHTML(true)).not.toContain("blob:")
+        expect(sharedDOMBody(copy).toString()).toContain(replacement)
+        expect(snapshot.assets).toEqual(expect.arrayContaining([
+          expect.objectContaining({url: replacement}),
+          expect.objectContaining({url: audio.src}),
+        ]))
+        expect(editor.toHTML(true)).not.toContain("base64")
       }
       finally { copy.destroy() }
     }

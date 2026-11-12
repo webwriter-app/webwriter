@@ -200,7 +200,12 @@ export class MathCompletionInput {
       name.textContent = entry.name
       name.style.cssText = "color:#64748b;font:12px ui-monospace,monospace;white-space:nowrap;max-width:85px;overflow:hidden;text-overflow:ellipsis"
       option.append(preview, label, name)
-      option.addEventListener("pointerdown", event => { event.preventDefault(); event.stopPropagation(); this.accept(entry, pending) })
+      option.addEventListener("pointerdown", event => {
+        if(event.button !== 0) return
+        event.preventDefault()
+        event.stopPropagation()
+        this.accept(entry, pending)
+      })
       this.menu!.hidden = false
       return option
     }))

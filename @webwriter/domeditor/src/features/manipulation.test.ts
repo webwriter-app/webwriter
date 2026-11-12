@@ -23,6 +23,36 @@ import {replayHostDrag, selectionChangeEvent, type RibbonDropPosition, type Sele
 
 let editor: DOMEditor
 
+describe("table insertion placement", () => {
+  it("rejects ribbon and HTML insertion and drop inside a cell without changing the selection", () => {
+    document.body.innerHTML = "<table><tbody><tr><th><div><p>Keep</p></div></th></tr></tbody></table>"
+    const text = document.querySelector("th p")!.firstChild!
+    $.move(text, 2)
+    const original = document.body.innerHTML
+    const html = "<div><table><tbody><tr><td>New</td></tr></tbody></table></div>"
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "table"})
+    editor.features.manipulation.insertHTML(html)
+    const data = new DataTransfer()
+    data.setData("text/html", html)
+    document.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertFromDrop", dataTransfer: data, bubbles: true, cancelable: true}))
+
+    expect(document.body.innerHTML).toBe(original)
+    expect(document.getSelection()?.anchorNode).toBe(text)
+    expect(document.getSelection()?.anchorOffset).toBe(2)
+  })
+
+  it("rejects pasted fragments that contain nested tables at a document-level caret", () => {
+    document.body.innerHTML = "<p>Keep</p>"
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+    const data = new DataTransfer()
+    data.setData("text/html", "<table><tbody><tr><td><table><tbody><tr><td>New</td></tr></tbody></table></td></tr></tbody></table>")
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    expect(document.body.innerHTML).toBe("<p>Keep</p>")
+  })
+})
+
 describe("caption insertion content", () => {
   function loadCaption(tag: string) {
     document.body.innerHTML = tag === "figcaption"
@@ -343,7 +373,8 @@ describe("captions", () => {
     expect(target.style.width).toBe("")
     expect(target.style.maxWidth).toBe("")
     expect(target.style.height).toBe("auto")
-    expect(target.style.color).toBe("red")
+    expect(figure.style.color).toBe("red")
+    expect(target.style.color).toBe("")
     expect(Array.from(target.childNodes)).toEqual(children)
     editor.doc.syncFromDOM()
     const captioned = editor.toHTML(true)
@@ -381,7 +412,8 @@ describe("captions", () => {
     expect(editor.features.manipulation.styleTarget).toBe(figure)
     expect(figure.classList.contains("ww-float-left")).toBe(true)
     expect(figure.style.float).toBe("left")
-    expect(paragraph.style.color).toBe("red")
+    expect(figure.style.color).toBe("red")
+    expect(paragraph.style.color).toBe("")
     expect(editor.features.manipulation.getCaptionPosition()).toBe("below")
     setCaption("none")
     expect($.selectedElement).toBe(paragraph)
@@ -1132,16 +1164,19 @@ describe("insertable element placement and previews", () => {
     expect(copiedContent?.closest("td")).toBe(toggles[0].closest("td"))
   })
 
-  it.each(["td", "th"])("replaces cell content with a ribbon image in %s and supports undo", tag => {
-    document.body.innerHTML = `<table><tbody><tr><${tag} id="target"><p>Old text</p></${tag}><td>Keep</td></tr></tbody></table>`
+  it.each(["td", "th"])("inserts a ribbon image after the current paragraph in %s and supports undo", tag => {
+    document.body.innerHTML = `<table><tbody><tr><${tag} id="target"><p>First<br><em>Second</em></p><!--keep--><p>Last</p></${tag}><td>Keep</td></tr></tbody></table>`
     const cell = document.querySelector(`#target`)!
-    $.move(cell.querySelector("p")!.firstChild!, 2)
+    const paragraph = cell.querySelector("p")!
+    $.move(paragraph.querySelector("em")!.firstChild!, 2)
     editor.doc.syncFromDOM(); editor.doc.stopCapturing()
     const before = editor.toHTML(true)
     editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "picture"})
-    expect(cell.children).toHaveLength(1)
-    expect(cell.firstElementChild?.localName).toBe("picture")
-    expect(cell.textContent).not.toContain("Old text")
+    expect(Array.from(cell.children).map(child => child.localName)).toEqual(["p", "picture", "p"])
+    expect(cell.firstElementChild).toBe(paragraph)
+    expect(paragraph.innerHTML).toBe("First<br><em>Second</em>")
+    expect(cell.textContent).toBe("FirstSecondLast")
+    expect(cell.childNodes[2].nodeType).toBe(Node.COMMENT_NODE)
     expect(document.querySelectorAll("td, th")[1].textContent).toBe("Keep")
     editor.doc.syncFromDOM()
     const after = editor.toHTML(true)
@@ -1149,16 +1184,37 @@ describe("insertable element placement and previews", () => {
     editor.doc.redo(); expect(editor.toHTML(true)).toBe(after)
   })
 
-  it("does not add elements to an irregular cell or insert multiple elements", () => {
+  it("inserts at a live cell caret between native soft breaks", () => {
+    document.body.innerHTML = '<table><tbody><tr><td>A<br><br></td><td>Keep</td></tr></tbody></table>'
+    const cell = document.querySelector("td")!
+    $.move(cell, 2)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "picture"})
+    expect(Array.from(cell.childNodes).map(child => child.nodeName)).toEqual(["#text", "BR", "PICTURE", "BR"])
+    expect(cell.textContent).toBe("A")
+  })
+
+  it("inserts a single HTML element into a populated cell and guards multiple elements", () => {
     document.body.innerHTML = '<table><tbody><tr><td><p>One</p><p>Two</p></td></tr></tbody></table>'
     const cell = document.querySelector("td")!
     $.move(cell.firstElementChild!.firstChild!, 1)
     insert('<video></video>')
-    expect(cloneWithoutEditorMarkers(cell, true).innerHTML).toBe('<p>One</p><p>Two</p>')
-    cell.innerHTML = '<p>One</p>'
+    expect(Array.from(cell.children).map(child => child.localName)).toEqual(["p", "video", "p"])
     $.move(cell.firstElementChild!.firstChild!, 1)
     insert('<video></video><aside>Two</aside>')
-    expect(cloneWithoutEditorMarkers(cell, true).innerHTML).toBe('<p>One</p>')
+    expect(Array.from(cell.children).map(child => child.localName)).toEqual(["p", "video", "p"])
+  })
+
+  it.each(["media", "whole cell"] as const)("replaces an explicit %s selection in a cell", target => {
+    document.body.innerHTML = '<table><tbody><tr><td><p>Keep</p><video controls></video><!--keep--></td><td>Neighbor</td></tr></tbody></table>'
+    const cell = document.querySelector("td")!
+    if(target === "media") $.selectElement(cell.querySelector("video")!)
+    else editor.features.table.selectCells(cell)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "picture"})
+    expect(cell.querySelector("picture")).not.toBeNull()
+    expect(cell.querySelector("video")).toBeNull()
+    expect(cell.textContent).toBe(target === "media" ? "Keep" : "")
+    expect(cell.lastChild?.nodeType).toBe(Node.COMMENT_NODE)
+    expect(editor.features.table.hasCellSelection).toBe(false)
   })
 
   it.each(['class="ww-float-left"', 'style="float: right"', 'class="responsive"', 'class="hidden-float" style="float: left"'])('inherits full width past a float (%s)', float => {
@@ -5308,6 +5364,81 @@ describe("setBlockType()", () => {
   })
 })
 describe("setStyle()", () => {
+  it.each([
+    '<audio controls></audio>',
+    '<video controls></video>',
+    '<picture><img src="photo.png"></picture>',
+    '<svg viewBox="0 0 10 10"><rect width="10" height="10"></rect></svg>',
+    '<p>Text</p>',
+    '<demo-widget data-value="7"></demo-widget>',
+  ])("moves decoration to the whole figure when captioning %s", html => {
+    document.body.innerHTML = html
+    const content = document.body.firstElementChild!
+    content.setAttribute("style", "border-radius: 8px !important; box-shadow: 1px 1px 3px black; height: 90px")
+    const children = Array.from(content.childNodes)
+    $.selectElement(content)
+    expect(editor.features.manipulation.setCaption("below")).toBe(true)
+    const figure = document.querySelector("figure")!
+    const {getStyleState, setStyle, resetStyle} = editor.features.manipulation.actions
+    expect(getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe("figure")
+    expect(figure.style.borderRadius).toBe("8px")
+    expect(figure.style.getPropertyPriority("border-radius")).toBe("important")
+    expect(content.getAttribute("style")).toBe("height: 90px;")
+
+    setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "red", "border-radius": "12px"}})
+    expect(figure.style.backgroundColor).toBe("red")
+    expect(figure.style.borderRadius).toBe("12px")
+    resetStyle({type: "resetStyle", topLevel: true})
+    expect(figure.hasAttribute("style")).toBe(false)
+    expect(content.getAttribute("style")).toBe("height: 90px;")
+    expect(figure.firstElementChild).toBe(content)
+    expect(Array.from(content.childNodes)).toEqual(children)
+  })
+
+  it("reads and adopts legacy frame decoration on an explicit figure style edit", () => {
+    document.body.innerHTML = '<section><figure style="background-color: blue"><div style="background-color: red; border-radius: 8px; width: 160px"><p>Text</p><!--keep--></div><figcaption>Caption</figcaption></figure></section>'
+    const figure = document.querySelector("figure")!, content = figure.firstElementChild!
+    const paragraph = content.querySelector("p")!
+    $.move(paragraph.firstChild!, 1)
+    const {getStyleState, setStyle} = editor.features.manipulation.actions
+    const state = getStyleState({type: "getStyleState", topLevel: true, properties: ["border-radius", "background-color", "clip-path"]})
+    expect(state.target?.localName).toBe("figure")
+    expect(state.inline["border-radius"].value).toBe("8px")
+    expect(state.inline["background-color"].value).toBe("blue")
+    expect(content.getAttribute("style")).toContain("border-radius")
+    setStyle({type: "setStyle", topLevel: true, styles: {"clip-path": "inset(5%)"}})
+    expect(figure.style.clipPath).toBe("inset(5%)")
+    expect(figure.style.borderRadius).toBe("8px")
+    expect(figure.style.backgroundColor).toBe("blue")
+    expect(content.getAttribute("style")).toBe("width: 160px;")
+    expect(paragraph.textContent).toBe("Text")
+    expect(content.lastChild?.nodeType).toBe(Node.COMMENT_NODE)
+  })
+
+  it("resets the figure without restyling multiple independently authored children", () => {
+    document.body.innerHTML = '<figure style="background-color: blue"><p style="color:red">One</p><!--keep--><aside style="border:1px solid">Two</aside><figcaption>Caption</figcaption></figure>'
+    const figure = document.querySelector("figure")!, aside = figure.querySelector("aside")!
+    const markup = figure.innerHTML
+    $.selectElement(aside)
+    const {getStyleState, resetStyle} = editor.features.manipulation.actions
+    expect(getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe("figure")
+    expect(resetStyle({type: "resetStyle", topLevel: true})).toBe(true)
+    expect(figure.hasAttribute("style")).toBe(false)
+    expect(figure.innerHTML).toBe(markup)
+  })
+
+  it("can reset a figure whose legacy decoration is entirely on its content", () => {
+    document.body.innerHTML = '<figure><video controls style="padding:8px; width:180px"></video><figcaption>Caption</figcaption></figure>'
+    const figure = document.querySelector("figure")!, player = figure.querySelector("video")!
+    editor.features.selection.captureElement(player)
+    const {getStyleState, resetStyle} = editor.features.manipulation.actions
+    expect(getStyleState({type: "getStyleState", topLevel: true}).hasInlineStyles).toBe(true)
+    expect(resetStyle({type: "resetStyle", topLevel: true})).toBe(true)
+    expect(figure.hasAttribute("style")).toBe(false)
+    expect(player.style.padding).toBe("")
+    expect(player.style.width).toBe("180px")
+  })
+
   it.each(["picture", "video"])("crops selected %s figure content without changing its caption, sources or siblings", media => {
     document.body.innerHTML = `<figure data-keep="yes"><!--keep--><${media}><!--source--><source src="movie.mp4" srcset="large.png 2x">${media === "picture" ? '<img src="small.png">' : 'Fallback'}</${media}><figcaption>Caption</figcaption></figure><p>Other</p>`
     const figure = document.querySelector("figure")!
@@ -5745,6 +5876,7 @@ describe("setStyle()", () => {
     document.body.innerHTML = `<slide-widget><details open><summary style="color: teal">Table</summary><!--keep--><section>${content}<p>Other content</p></section></details></slide-widget>`
     const details = document.querySelector("details")!, summary = details.querySelector("summary")!
     const target = details.querySelector<HTMLElement>(tag)!
+    const styleTarget = target.closest("figure") ?? target
     if(tag === "img") $.selectElement(target)
     else editor.features.selection.captureElement(target)
     editor.doc.syncFromDOM()
@@ -5753,13 +5885,14 @@ describe("setStyle()", () => {
     const {actions} = editor.features.manipulation
     const state = () => actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["filter"]})
 
-    expect(state().target?.localName).toBe(tag)
+    expect(state().target?.localName).toBe(styleTarget.localName)
     actions.setStyle({type: "setStyle", topLevel: true, styles: {filter: "grayscale(1)"}})
 
     expect(state().inline.filter?.value).toBe("grayscale(1)")
-    expect(target.style.filter).toBe("grayscale(1)")
+    expect(styleTarget.style.filter).toBe("grayscale(1)")
+    if(styleTarget !== target) expect(target).not.toHaveAttribute("style")
     expect(details).not.toHaveAttribute("style")
-    expect(target.parentElement).not.toHaveAttribute("style")
+    expect(styleTarget.parentElement).not.toHaveAttribute("style")
     expect(document.querySelector("slide-widget")).not.toHaveAttribute("style")
     expect(summary.getAttribute("style")).toBe("color: teal")
     expect(details.querySelector("p")).not.toHaveAttribute("style")
@@ -6105,9 +6238,9 @@ describe("setStyle()", () => {
     expect(Array.from(cells, cell => cell.style.backgroundColor)).toEqual(["gold", "gold"])
   })
   it("scopes specialized cell styles to every selected cell of that type", () => {
-    document.body.innerHTML = '<table><tbody><tr><th>Heading</th><td style="vertical-align: top">one</td><td style="vertical-align: top">two</td><td>outside</td></tr></tbody></table>'
-    const cells = document.querySelectorAll("td")
-    editor.features.table.selectCells(cells[0], cells[1])
+    document.body.innerHTML = '<table><tbody><tr><td id="outer" style="vertical-align: bottom"><table id="nested"><tbody><tr><th>Heading</th><td style="vertical-align: top">one</td><td style="vertical-align: top">two</td><td>outside</td></tr></tbody></table></td></tr></tbody></table>'
+    const cells = document.querySelectorAll<HTMLTableCellElement>("#nested td")
+    editor.features.table.selectCells(document.querySelector("th")!, cells[1])
     const state = editor.features.manipulation.getSelectedElementTypes(["vertical-align"])
       .find(state => state.element.localName === "td")!
     expect(state.count).toBe(2)
@@ -6115,6 +6248,7 @@ describe("setStyle()", () => {
     editor.features.manipulation.actions.setSelectedElementStyles({type: "setSelectedElementStyles",
       selectionType: {localName: "td", namespaceURI: "http://www.w3.org/1999/xhtml"}, styles: {"vertical-align": "middle"}})
     expect(Array.from(cells, cell => cell.style.verticalAlign)).toEqual(["middle", "middle", ""])
+    expect(document.querySelector<HTMLTableCellElement>("#outer")!.style.verticalAlign).toBe("bottom")
     expect(document.querySelector("th")).not.toHaveAttribute("style")
     expect(document.querySelector("table")).not.toHaveAttribute("style")
   })
@@ -7625,6 +7759,25 @@ describe("unified content transfer", () => {
       await editor.features.manipulation.paste()
     }
     expectBodyToBe('<p><b>bold</b> <i>italic</i> <s>old</s>plain漢<a>link</a></p><picture><img src="photo.png"></picture>')
+  })
+
+  it("removes marked Office spacer cells from pasted tables while retaining real blanks and spans", () => {
+    document.body.innerHTML = "<p><br></p>"
+    const data = new DataTransfer()
+    data.setData("text/html", '<table><tbody><tr><td rowspan="2">First</td><td style="width:0;mso-cell-special:placeholder"><p><span>&nbsp;</span></p></td><td colspan="2">Merged</td></tr><tr><td style="MSO-CELL-SPECIAL : placeholder;"><o:p>&nbsp;</o:p></td><td></td><td>Last</td></tr></tbody></table>')
+    $.move(document.querySelector("p")!)
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
+    const table = document.querySelector("table")!
+    expect(Array.from(table.rows, row => Array.from(row.cells, cell => cell.textContent))).toEqual([["First", "Merged"], ["", "Last"]])
+    expect(table.rows[0].cells[0].rowSpan).toBe(2)
+    expect(table.rows[0].cells[1].colSpan).toBe(2)
+  })
+
+  it("keeps nonempty marked cells and keeps placeholders in explicit HTML edits", () => {
+    const html = '<table><tbody><tr><td style="mso-cell-special:placeholder"><p>&nbsp;</p></td><td style="mso-cell-special:placeholder"><p>Content</p></td></tr></tbody></table>'
+    expect(editor.parseHTMLFragment(html).fragment.querySelectorAll("td")).toHaveLength(2)
+    const transferred = editor.parseHTMLFragment(html, true).fragment
+    expect(Array.from(transferred.querySelectorAll("td"), cell => cell.textContent)).toEqual(["Content"])
   })
 
   it.each(excludedMarkNames)("strips imported <%s> marks while preserving nested content", name => {

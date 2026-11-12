@@ -3498,7 +3498,7 @@ describe("graphic editing", () => {
     expect(rectangle).toHaveAttribute("transform", `rotate(${expected} 800 450)`)
   })
 
-  it.each(["pointerup", "pointercancel"])("maps rotation previews through the graphic viewport and cleans up on %s", async outcome => {
+  it.each(["pointerup", "pointercancel", "lostpointercapture"])("maps rotation previews through the graphic viewport and cleans up on %s", async outcome => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
     const graphic = document.querySelector("svg")!
@@ -3557,7 +3557,7 @@ describe("graphic editing", () => {
     expect(presentationStateElements(document, "graphic-preview-source")).toHaveLength(0)
     expect((presentationStateElements(document, "graphic-manipulating")[0] ?? null)).toBeNull()
     expect(editor.doc.body.toString()).not.toContain("◆")
-    if(outcome === "pointercancel") expect(editor.toHTML(true)).toBe(before)
+    if(outcome !== "pointerup") expect(editor.toHTML(true)).toBe(before)
     else {
       expect(rectangle).toHaveAttribute("transform", "rotate(90 800 450)")
       await mutationsDelivered()

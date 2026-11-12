@@ -196,7 +196,24 @@ it("publishes document updates, owns only document shortcuts, and disconnects co
   expect(replica?.body?.textContent).toContain("Updated document")
   expect(updates.some(message => message.update instanceof Uint8Array && message.update.length > 0)).toBe(true)
 
-  const beforeMarker = updates.length
+  const authoredAudio = document.createElement("audio")
+  const authoredVideo = document.createElement("video")
+  authoredAudio.setAttribute("autoplay", "")
+  document.body.append(authoredAudio, authoredVideo)
+  const pauseAudio = vi.spyOn(authoredAudio, "pause").mockImplementation(() => {})
+  const pauseVideo = vi.spyOn(authoredVideo, "pause").mockImplementation(() => {})
+  window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
+    type: editorFrameControlMessage, bridgeNonce: nonce, command: "pause-authored-media", requestId: "pause-media",
+  }}))
+  expect(pauseAudio).toHaveBeenCalledOnce()
+  expect(pauseVideo).toHaveBeenCalledOnce()
+  expect(authoredAudio.hasAttribute("autoplay")).toBe(true)
+  expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({type: "editor-frame-response", requestId: "pause-media"}), origin)
+  authoredAudio.remove()
+  authoredVideo.remove()
+  await flushMutations()
+
+  const beforeMarker = postMessage.mock.calls.filter(([message]) => message.type === "editor-frame-update").length
   paragraph.classList.add("◆temporary-test-marker")
   await flushMutations()
   expect(postMessage.mock.calls.map(([message]) => message as {type?: string})

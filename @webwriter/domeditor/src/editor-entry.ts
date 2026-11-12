@@ -139,6 +139,12 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
       else editor.unlockEditing(previewEditingLock)
       if(data.requestId) post({type: "editor-frame-response", requestId: data.requestId})
     }
+    else if(data.command === "pause-authored-media") {
+      // Only the authored light DOM is in scope. Widget shadow roots remain
+      // private, and pause() does not alter authored autoplay attributes.
+      document.body.querySelectorAll<HTMLMediaElement>("audio, video").forEach(media => media.pause())
+      if(data.requestId) post({type: "editor-frame-response", requestId: data.requestId})
+    }
     else if(data.command === "focus") {
       if(editor.hasEditingLock(previewEditingLock)) return
       // A queued host pointerdown can arrive after an empty image opened

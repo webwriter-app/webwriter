@@ -28,8 +28,10 @@ export type TableSelectionState = {
   selectedCells: number
   canMerge: boolean
   canSplit: boolean
+  canSplitTable?: boolean
   hasCaption: boolean
   hasHeader: boolean
+  headerActive?: boolean
   hasFooter: boolean
   canToggleHeader?: boolean
   canToggleFooter?: boolean
@@ -50,6 +52,31 @@ export function cellForNode(node: Node | null) {
 export function tableRows(table: HTMLTableElement) {
   return Array.from(table.querySelectorAll<HTMLTableRowElement>("tr"))
     .filter(row => tableForNode(row) === table)
+}
+
+/** Office HTML can carry empty layout cells marked as placeholders. Remove
+ * them before transfer sanitization strips the Office style declaration. */
+export function stripOfficeTablePlaceholders(root: ParentNode) {
+  const placeholder = /(?:^|;)\s*mso-cell-special\s*:\s*placeholder\s*(?:!\s*important\s*)?(?:;|$)/i
+  const empty = (node: Node): boolean => node instanceof Text ? !node.data.trim()
+    : node instanceof HTMLElement && ["p", "span", "br", "o:p"].includes(node.localName)
+      && !node.matches("[id], [is], [contenteditable=false]")
+      && Array.from(node.childNodes).every(empty)
+
+  const visit = (container: ParentNode) => {
+    for(const element of container.children) {
+      if(!(element instanceof HTMLElement) || element.localName.includes("-") || element.hasAttribute("is")) continue
+      if(element instanceof HTMLTableRowElement) {
+        for(const cell of Array.from(element.cells)) {
+          if(cell.colSpan === 1 && cell.rowSpan === 1 && !cell.matches("[id], [is], [headers], [scope], [contenteditable=false]")
+            && placeholder.test(cell.getAttribute("style") ?? "") && Array.from(cell.childNodes).every(empty)) cell.remove()
+        }
+      }
+      if(element instanceof HTMLTemplateElement) visit(element.content)
+      visit(element)
+    }
+  }
+  visit(root)
 }
 
 const maximumColumnSpan = 1000
@@ -180,8 +207,19 @@ export function clearTableMarkers(root: ParentNode) {
   clearEditorMarkerClasses(root as Node)
 }
 
-/** Toggle the first and last row groups while preserving other authored table structure. */
-export function normalizeTableStructure(table: HTMLTableElement, header?: boolean, footer?: boolean) {
+export function setTableRowCellType(row: HTMLTableRowElement, tag: "td" | "th", changedCells?: Map<HTMLTableCellElement, HTMLTableCellElement>) {
+  for(const cell of Array.from(row.cells)) {
+    if(cell.localName === tag) continue
+    const replacement = row.ownerDocument.createElement(tag)
+    Array.from(cell.attributes).forEach(attribute => replacement.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value))
+    replacement.append(...Array.from(cell.childNodes))
+    cell.replaceWith(replacement)
+    changedCells?.set(cell, replacement)
+  }
+}
+
+/** Change the leading header rows or the final footer row. */
+export function normalizeTableStructure(table: HTMLTableElement, header?: number, footer?: boolean) {
   const changedCells = new Map<HTMLTableCellElement, HTMLTableCellElement>()
   const rows = tableRows(table)
   if(header === undefined && footer === undefined) return changedCells
@@ -215,8 +253,7 @@ export function normalizeTableStructure(table: HTMLTableElement, header?: boolea
     const target = name === "tbody" ? bodySection(row) : section(name, row)
     if(row.parentElement === target) return
     const previousParent = row.parentElement
-    if(name === "thead") target.prepend(row)
-    else if(name === "tfoot") target.append(row)
+    if(name === "thead" || name === "tfoot") target.append(row)
     else {
       const index = rows.indexOf(row)
       const next = rows.slice(index + 1).find(candidate => candidate.parentElement === target)
@@ -228,30 +265,30 @@ export function normalizeTableStructure(table: HTMLTableElement, header?: boolea
     if(previousParent && previousParent !== target && /^(thead|tbody|tfoot)$/.test(previousParent.localName)
       && previousParent.childNodes.length === 0) previousParent.remove()
   }
-  const setRowType = (row: HTMLTableRowElement, tag: "td" | "th") => {
-    Array.from(row.children).filter(child => child.matches(tableCellSelector)).forEach(child => {
-      const cell = child as HTMLTableCellElement
-      if(cell.localName === tag) return
-      const replacement = table.ownerDocument.createElement(tag)
-      Array.from(cell.attributes).forEach(attribute => replacement.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value))
-      replacement.append(...Array.from(cell.childNodes))
-      cell.replaceWith(replacement)
-      changedCells.set(cell, replacement)
-    })
-  }
   if(first && first === last) {
     const name = header ? "thead" : footer ? "tfoot" : "tbody"
     moveRow(first, name)
-    setRowType(first, name === "thead" ? "th" : "td")
+    setTableRowCellType(first, name === "thead" ? "th" : "td", changedCells)
   }
   else {
-    if(first && header !== undefined) {
-      moveRow(first, header ? "thead" : "tbody")
-      setRowType(first, header ? "th" : "td")
+    if(header) {
+      for(const row of rows.slice(0, header)) {
+        if(row.parentElement?.localName === "thead") continue
+        moveRow(row, "thead")
+        setTableRowCellType(row, "th", changedCells)
+      }
+    }
+    else if(header === 0 && table.tHead) {
+      const head = table.tHead
+      const body = table.ownerDocument.createElement("tbody")
+      Array.from(head.attributes).forEach(attribute => body.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value))
+      body.append(...Array.from(head.childNodes))
+      head.replaceWith(body)
+      for(const row of rows) if(row.parentElement === body) setTableRowCellType(row, "td", changedCells)
     }
     if(last && footer !== undefined) {
       moveRow(last, footer ? "tfoot" : "tbody")
-      setRowType(last, "td")
+      setTableRowCellType(last, "td", changedCells)
     }
   }
   return changedCells

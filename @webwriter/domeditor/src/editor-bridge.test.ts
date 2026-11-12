@@ -460,6 +460,10 @@ describe("editor bridge message guards", () => {
       },
     }
     expect(isSelectionChangeMessage(message)).toBe(true)
+    for(const canSplitTable of [true, false, "true"] as const) {
+      const table = {...message.detail.table, canSplitTable}
+      expect(isSelectionChangeMessage({...message, detail: {...message.detail, table}})).toBe(typeof canSplitTable === "boolean")
+    }
     for(const mode of ["select", "draw", "lines", "curves"] as const) {
       expect(isSelectionChangeMessage({...message, detail: {...message.detail, graphic: {...message.detail.graphic, mode}}})).toBe(true)
     }

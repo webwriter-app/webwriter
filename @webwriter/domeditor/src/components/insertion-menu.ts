@@ -184,12 +184,14 @@ export class InsertionMenu extends LitElement {
   }
 
   private chooseFromPointer(event: PointerEvent, item: InsertionMenuItem) {
+    if(event.button !== 0) return
     event.preventDefault()
     event.stopPropagation()
     this.choose(item)
   }
 
   private closeFromPointer(event: PointerEvent) {
+    if(event.button !== 0) return
     event.preventDefault()
     event.stopPropagation()
     this.close()

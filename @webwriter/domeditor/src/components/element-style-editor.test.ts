@@ -984,8 +984,11 @@ it("uses document accent colors for Style presets and color choices", async () =
   expect(editor.shadowRoot!.querySelector('[aria-label="Color #12ab34"]')).not.toBeNull()
 })
 
-it.each(["td", "th"])("keeps all %s presets limited to cell paint and padding", async localName => {
-  const editor = await mount([], {...state(), target: {localName, namespaceURI: "http://www.w3.org/1999/xhtml"}}, "compact")
+it.each(["table", "td", "th"])("preserves padding in all %s style presets", async localName => {
+  const editor = await mount([], {...state({
+    padding: {value: "20px 24px", priority: "important"},
+    "padding-inline-start": {value: "30px", priority: ""},
+  }), target: {localName, namespaceURI: "http://www.w3.org/1999/xhtml"}}, "compact")
   editor.showPresets = true
   await editor.updateComplete
   const changes: {styles: Record<string, {value: string}>}[] = []
@@ -994,10 +997,12 @@ it.each(["td", "th"])("keeps all %s presets limited to cell paint and padding", 
     for(const button of editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".style-gallery button")) {
       button.click()
       const styles = changes.at(-1)!.styles
-      expect(Object.keys(styles).sort()).toEqual(["background-color", "border-color", "border-style", "border-width", "color", "padding"])
-      expect(styles.padding.value).toBe("8px")
+      expect(Object.keys(styles).sort()).toEqual(localName === "table"
+        ? ["background-color", "border-color", "border-radius", "border-style", "border-width", "box-shadow", "color"]
+        : ["background-color", "border-color", "border-style", "border-width", "color"])
       expect(styles.color.value).toBe(page >= 2 ? "#ffffff" : "#2f3742")
-      expect(button.title).not.toContain("corners")
+      expect(button.title).not.toContain("padding")
+      if(localName !== "table") expect(button.title).not.toContain("corners")
     }
     if(page < 3) {
       editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Next style presets"]')!.click()

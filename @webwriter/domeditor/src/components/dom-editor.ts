@@ -17,7 +17,7 @@ import type {ReplayLrsProgress} from "../live-session-replay-lrs"
 import {LiveSessionReplayClient} from "../live-session-replay-client"
 import {isCssColor} from "../css-color"
 import {LiveSessionRecovery, listRecoveredSessions, readRecoveredSession, deleteRecoveredSession, type RecoveredSession} from "../live-session-recovery"
-import {deleteDocumentRecovery, discardedDocumentRecoveryIds, listDocumentRecoveries, markDocumentRecoveryDiscarded, readDocumentRecovery, writeDocumentRecovery, type DocumentRecovery} from "../document-recovery"
+import {deleteDocumentRecovery, discardedDocumentRecoveryIds, listDocumentRecoveries, markDocumentRecoveryDiscarded, readDocumentRecoverySnapshot, writeDocumentRecovery, type DocumentRecovery, type DocumentRecoverySnapshot} from "../document-recovery"
 import type {DistributionConfig, DistributionItem} from "../distribution.js"
 import {emptyDistributionConfig} from "../distribution.js"
 import type {DistributionInsertDrop, WidgetPermissionChange} from "./distribution-controls"
@@ -60,7 +60,7 @@ import type {DomEditorToolbox} from "./toolbox"
 import type {LayoutSelectionState} from "../layouts"
 import type { EditingAction } from "../domeditor"
 import {elementDragType, insertionMenuItems, ribbonElementInsertionAction, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
-import {isEditorStateUpdate, type EditorStateSnapshot} from "../editor-state"
+import {isDocumentBlobAsset, isEditorStateUpdate, type DocumentBlobAsset, type EditorStateSnapshot} from "../editor-state"
 import {copyEditorArtifactState, isAuthoredContentEditableMutation, isAuthoredMutation, isEditorOnlyNode, registerFrameArtifacts} from "../editor-artifacts"
 import {
   defaultPackageExportSource,
@@ -685,6 +685,7 @@ export class DomEditor extends LitElement {
     install: (pkg, previousName) => this.installDeveloperPackages([{pkg, previousName}]),
   })
   private frameState: EditorStateSnapshot | undefined
+  private readonly frameMediaAssets = new Map<string, Blob>()
   // Key the iframe by revision so old windows and their queued messages are retired.
   private frameRevision = 0
   private frameStarted = false
@@ -3071,6 +3072,10 @@ export class DomEditor extends LitElement {
       const lock = this.setPreviewEditingLocked(true)
       if(lock) await lock
       if(generation !== this.previewGeneration) return
+      if(this.editorOpaque) await this.requestFrameControl("pause-authored-media")
+      else this.editorIframe()?.contentDocument?.body.querySelectorAll<HTMLMediaElement>("audio, video")
+        .forEach(media => media.pause())
+      if(generation !== this.previewGeneration) return
       // Preview hides the editor iframe, so close any appendix capture UI and
       // release its device streams before the authored document is previewed.
       void this.execute({type: "cancelMediaCapture"}).catch(() => {
@@ -3969,7 +3974,19 @@ export class DomEditor extends LitElement {
         if(current()) this.documentRecoveryCheckpoint = null
       }
       else {
-        if(typeof source !== "string") throw new TypeError("The editor returned an invalid recovery snapshot")
+        let snapshot: DocumentRecoverySnapshot | string
+        if(typeof source === "string") snapshot = source
+        else {
+          if(!isRecord(source) || typeof source.html !== "string"
+            || !Array.isArray(source.assets) || !source.assets.every(isDocumentBlobAsset)) {
+            throw new TypeError("The editor returned an invalid recovery snapshot")
+          }
+          const assets = source.assets.map(asset => ({
+            url: asset.url, blob: this.frameMediaAssets.get(asset.url) ?? asset.blob,
+          }))
+          for(const {url, blob} of assets) this.frameMediaAssets.set(url, blob)
+          snapshot = {html: source.html, assets}
+        }
         if(!this.activeDocumentRecovery) {
           const claim = await this.claimDocumentRecovery(crypto.randomUUID())
           if(!claim) throw new Error("Could not claim the recovery draft")
@@ -3978,7 +3995,7 @@ export class DomEditor extends LitElement {
         }
         const active = this.activeDocumentRecovery
         const documentKey = this.documentSettingsId ? "source:" + this.documentSettingsId : active.documentKey
-        const saved = await writeDocumentRecovery({id: active.id, title: this.fileName || "Untitled document", updatedAt, documentKey}, source)
+        const saved = await writeDocumentRecovery({id: active.id, title: this.fileName || "Untitled document", updatedAt, documentKey}, snapshot)
         if(current()) {
           this.documentRecoveryCheckpoint = saved?.record ?? null
           if(saved) active.documentKey = saved.record.documentKey
@@ -4052,12 +4069,12 @@ export class DomEditor extends LitElement {
         if(!claim) throw new Error("This recovery draft is open in another tab")
         if(restore) {
           const latest = this.documentRecoveryCheckpoint?.id === id ? this.documentRecoveryCheckpoint : record
-          const source = await readDocumentRecovery(id)
+          const {html, assets} = await readDocumentRecoverySnapshot(id)
           if(!this.isConnected || revision !== this.documentChangeSequence || frame !== this.frameRevision) {
             throw new Error("The document changed while opening the recovery draft. Try again.")
           }
-          if(await this.reloadDocument(source, false, null, undefined, {
-            recovery: claim, discardRecovery, beforeSwitch: () => this.clearDocumentCollaboration(),
+          if(await this.reloadDocument(html, false, null, undefined, {
+            recovery: claim, discardRecovery, assets, beforeSwitch: () => this.clearDocumentCollaboration(),
           }) === false) return
           if(!this.isConnected) return
           claim.documentKey = latest.documentKey
@@ -4121,8 +4138,8 @@ export class DomEditor extends LitElement {
   }
 
   private async reloadDocument(htmlSource: string, isNewDocument = false, settingsId: string | null = null, accessibilityReviewEnabled?: boolean,
-    {recovery = null, discardRecovery = false, beforeSwitch}: {
-      recovery?: ActiveDocumentRecovery | null, discardRecovery?: boolean, beforeSwitch?: () => void,
+    {recovery = null, discardRecovery = false, assets = [], beforeSwitch}: {
+      recovery?: ActiveDocumentRecovery | null, discardRecovery?: boolean, assets?: DocumentBlobAsset[], beforeSwitch?: () => void,
     } = {}) {
     const parsed = new DOMParser().parseFromString(htmlSource, "text/html")
     const revision = this.documentChangeSequence
@@ -4148,6 +4165,11 @@ export class DomEditor extends LitElement {
       this.persistInstalledPackages()
     }
     this.resetEditorFrame(new Error("The editor iframe was reloaded for a document change"))
+    this.frameMediaAssets.clear()
+    if(assets.length) {
+      for(const {url, blob} of assets) this.frameMediaAssets.set(url, blob)
+      this.frameState = {update: new Uint8Array(), assets}
+    }
     this.documentHead = emptyDocumentHeadState()
     this.documentSettingsId = settingsId
     if(isNewDocument) this.accessibilityReviewEnabled = false
@@ -6287,6 +6309,9 @@ export class DomEditor extends LitElement {
     const shouldRefocus = this.isEditorFocused() || this.savedEditorSelection !== null
     this.resetEditorFrame(new Error("The editor iframe was reloaded for a package change"))
     this.frameState = snapshot
+    for(const {url, blob} of snapshot.assets ?? []) {
+      if(!this.frameMediaAssets.has(url)) this.frameMediaAssets.set(url, blob)
+    }
     this.installedPackages = nextPackages
     this.persistInstalledPackages()
     this.frameRevision++
@@ -8291,11 +8316,14 @@ export class DomEditor extends LitElement {
     }
     const topLevel = event.composedPath().includes(this.renderRoot.querySelector("dom-editor-toolbox")!)
       && this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Edit"
-    const scopedZoom = Object.hasOwn(styles, "zoom") && isElementSelectionType(detail.selectionType)
-      && isWebsiteType(detail.selectionType.localName)
-    if(detail.selectionType !== undefined && (!topLevel || scopedZoom)) {
-      if(!isElementSelectionType(detail.selectionType)) return
-      void this.execute({type: "setSelectedElementStyles", selectionType: detail.selectionType, styles})
+    const selectionType = detail.selectionType
+    const scopedStyle = isElementSelectionType(selectionType)
+      && (isWebsiteType(selectionType.localName) && Object.hasOwn(styles, "zoom")
+        || selectionType.namespaceURI === "http://www.w3.org/1999/xhtml" && ["td", "th"].includes(selectionType.localName)
+          && Object.keys(styles).every(name => name === "text-align" || name === "vertical-align"))
+    if(selectionType !== undefined && (!topLevel || scopedStyle)) {
+      if(!isElementSelectionType(selectionType)) return
+      void this.execute({type: "setSelectedElementStyles", selectionType, styles})
       return
     }
     const previousState = this.elementStyle
@@ -8459,6 +8487,7 @@ export class DomEditor extends LitElement {
             const state: EditorStateSnapshot | undefined = replica ? {
               update: Y.encodeStateAsUpdate(replica.doc),
               widgetDataDocumentId: replica.widgetDataDocumentId,
+              assets: [...this.frameMediaAssets].map(([url, blob]) => ({url, blob})),
             } : pendingState
             if(!state) {
               const latestDocument = this.snapshotEditorDocumentHTML()
@@ -8509,6 +8538,14 @@ export class DomEditor extends LitElement {
       return
     }
     if(this.handlePreviewMessage(event)) return
+    if(event.data?.type === "editor-media-asset") {
+      if(this.isEditorMessage(event) && isDocumentBlobAsset(event.data.asset)) {
+        const {url, blob} = event.data.asset
+        const previous = typeof event.data.previousURL === "string" ? this.frameMediaAssets.get(event.data.previousURL) : undefined
+        if(!this.frameMediaAssets.has(url)) this.frameMediaAssets.set(url, previous ?? blob)
+      }
+      return
+    }
     if(event.data?.type === "editor-frame-update") {
       if(!this.editorOpaque || !this.isEditorMessage(event) || !isEditorDocumentUpdate(event.data)
         || event.data.replicaId !== this.documentReplicaId || event.data.sequence <= this.documentReplicaSequence) return
@@ -9196,6 +9233,7 @@ export class DomEditor extends LitElement {
     this.authoredSnapshotCache = null
     this.editorWindow = null
     this.savedEditorSelection = null
+    this.frameMediaAssets.clear()
     this.previewActive = false
     this.previewDocumentHTML = null
     this.previewFramePending = false
@@ -9389,6 +9427,10 @@ export class DomEditor extends LitElement {
       "media-type-change": this.handleMediaTypeChange.bind(this),
       "dialog-attribute-change": this.handleDialogAttributeChange.bind(this),
       "table-insert": this.handleTableInsert.bind(this),
+      "table-split-hover-change": (event: Event) => {
+        const hovered = (event as CustomEvent<{hovered: boolean}>).detail?.hovered
+        if(typeof hovered === "boolean") void this.execute({type: "hoverSplitTable", hovered}).catch(() => {})
+      },
       "layout-action": this.handleLayoutAction.bind(this),
       "table-style-change": this.handleTableStyleChange.bind(this),
       "graphic-parameter-change": this.handleGraphicParameterChange.bind(this),

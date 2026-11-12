@@ -1,10 +1,11 @@
 // SHA-256 fingerprints (first 16 bytes) of stock theme CSS from 161b22fa
 // through a106bc0c (before Full width), the bundled layout examples,
-// and snapshots taken before the widget sizing, list marker and caption layout updates.
+// and snapshots taken before the widget sizing, list marker, caption layout, table layout, and figure resize updates.
 // Hash the complete stylesheet text after normalizing HTML line endings so
 // an authored edit anywhere in a theme prevents replacement.
 export const legacyDocumentThemeFingerprints = {
   base: [
+    "4f7917b67cd29f6e1fc562f8863efc22",
     "c902dd2e31ce65ddd81c38743881cf0f",
     "71d10b244b9c5e0be958a0297591f9f0",
     "7f966217467b7dd61290d415f7fe55ee",
@@ -40,8 +41,14 @@ export const legacyDocumentThemeFingerprints = {
     "58902096ea91f4b6a95467cae923e1d5",
     "3e34e2d0d484fa7ec10eef436e340416",
     "ec25109a34cc92a360daefa810ba130e",
+    "f3fffc689a69852530ad45f56a8e3f4e",
+    "cd9e2bf77091aa01e0302aeb4cff4e9c",
+    "aed631ac51420f7b9420fca37329b022",
+    "340c6e0ba38ec2435b75b660f17a0eb8",
+    "1f410e90521049174d49c17769767a9a",
   ],
   water: [
+    "cc67997fc403e58f477b44ad01b5f68b",
     "f4e39cd22fe2cc8e378b411a02fb8ffe",
     "63884e18992ba64304395a1b21322e75",
     "4e4e290a81e558ef0fcf66da32e04b75",
@@ -65,8 +72,14 @@ export const legacyDocumentThemeFingerprints = {
     "b4275fdabf6451fbcc3c449bee92140a",
     "c0baa8b8419e6a42069ce7f0b525ad21",
     "a6539459fae6c99cca69057dfad8803a",
+    "67c096000b23f21e18bfb6235234654b",
+    "4c1e3002e12af178fe00788ce7b829dd",
+    "c05b611bf603b452a13bf6785a347037",
+    "a895e929bbf302303915a867c3c8fbd5",
+    "f14845914943cb67d65c6ce7e6d285ab",
   ],
   simple: [
+    "1538c0c15e99c1a5894125234a3f3061",
     "3dbff23dc8aadc7b3d9b926c56c6ff7f",
     "82f53a717ca5a2665134fd0bba5e5d5b",
     "51715134d41efabe10cd36dbf30bb67e",
@@ -90,8 +103,14 @@ export const legacyDocumentThemeFingerprints = {
     "fcb33131a12d4d6509e45d1cd9318e2a",
     "2dba1bdd57bb9e612199cee68e9deb0f",
     "8a68589a073ae00427ee4cb3b89cdf55",
+    "088847c353818f068f52cf7c3698d196",
+    "887f1e93bf6655289823b5f3ecab1e41",
+    "13600e3848660dced9493af8389e58bf",
+    "d8471d69d58d8d4d6f4c491b7ed66445",
+    "ad6287b8f2c2fa9dcf4b2e2469532341",
   ],
   sakura: [
+    "f1c2fdf993435958f545d65ff1012551",
     "74c9e991e0d12c8d5954b65be75553ed",
     "92963c7146d9a15a42f7f71379e4fd0e",
     "7ec4e3cd87907a88f691d85341d5dd1a",
@@ -115,8 +134,14 @@ export const legacyDocumentThemeFingerprints = {
     "1492863a4189373eda0cc93345724333",
     "449c9f6d07768d03a6d35b5d9f336d05",
     "8cf0439f5daa205c897f03fda96355eb",
+    "a970fb0e0a202c1138920ee426330c4f",
+    "14283038758e85b7ca2a3ace326cbd8d",
+    "20a3ec7e0bb389b37c5cf3ebda7806c2",
+    "9c9420bf8c6e9147be886298101d80e4",
+    "c789a4029c7384145a018cc1f35f219f",
   ],
   pico: [
+    "41b3ddaf1c597ece591b363804ebb9ac",
     "68eb6012d22ea91c2b58867ccbe7b47d",
     "04af5cf91d82dadc2ccc67f674ecc118",
     "82441ee4708a5b3bab817b4736046b8b",
@@ -140,8 +165,14 @@ export const legacyDocumentThemeFingerprints = {
     "88c817bf864f7470cdf2f98d54ce2482",
     "5ecd79c6947d00d65c8dffef094abb5f",
     "926336f8466b9bf00dd4a3e64a06b287",
+    "5604a714d488e8f5745afd4c498ecde7",
+    "de097460e21f1bf16b8553f37c2cd23b",
+    "b8cbba8e9524793a08725388241eb3bb",
+    "520588981885e1445b8fc1a493c13077",
+    "72987cef2851d6411e83e04ac4f1e17b",
   ],
   holiday: [
+    "85996d7e1b826a54d9d6b435ca38a492",
     "e8e4ac3fee35e71c78378204577f740e",
     "a7a0aecae094be8fd2298bbbae727d0f",
     "a16f8b249c83faa5e2935600c4fda481",
@@ -165,5 +196,10 @@ export const legacyDocumentThemeFingerprints = {
     "0a0354221bcf54cee81bad89eef5c02f",
     "f7d6adb13063a99623382e14fd6e2eb6",
     "9c3c6807570b0dd111c1b8eb9496d3bd",
+    "1b3850111e332485d9facee41c15a53e",
+    "84afcc7f7c78f5b3db7b24631b5b945a",
+    "66806e1ac2617630797fa636994e6e48",
+    "77084ed1a384ffe20c8d868481601d52",
+    "fb85e91e25d50d4925f22dba6306ef01",
   ],
 }

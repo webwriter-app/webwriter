@@ -23,6 +23,7 @@ const spatialGroupRotation = "data-ww-group-rotation"
 type Mode = "move" | "scale" | "rotate" | "anchor" | "crop"
 const cropDirections = ["up-left", "down-right"] as const
 const pixelSize = (value: string) => value.endsWith("px") && Number.isFinite(parseFloat(value)) ? parseFloat(value) : undefined
+const figureSelector = "figure:not([is])"
 type StyleValue = {value: string, priority: string}
 type GestureStyles = {target: TransformElement, initial: CSSStyleDeclaration, written: Map<string, StyleValue>}
 type GroupMember = GestureStyles & {
@@ -64,8 +65,8 @@ type Gesture = {
   moved: boolean
   captured: boolean
   image?: GestureStyles & {parent: Element | null}
-  figureImage?: {cssWidth: number, cssHeight: number, width: number, height: number,
-    picture?: GestureStyles & {cssWidth: number, cssHeight: number}}
+  player?: {target: HTMLMediaElement, size: {cssWidth: number, cssHeight: number}}
+  figureContent?: Element | null
   canvas?: {initial: string | null, written: string | null, x: number, y: number, width: number, height: number}
   crop?: {target: HTMLImageElement | HTMLVideoElement, parent: Element | null, width: number, height: number, matrix: DOMMatrix, insets: number[], edges: number[], sourceStyle: CSSStyleDeclaration}
   endUndoGroup: () => void
@@ -94,8 +95,9 @@ type Gesture = {
  * Canvas and slide items also set dimensions so they can grow with the handles.
  * Top/left handles keep the opposite edge fixed by adjusting offsets.
  * Ctrl/Cmd resizes about the center;
- * Shift preserves image proportions and stretches other elements with CSS scale
- * instead of reflowing content; Alt unsnaps.
+ * Shift preserves image proportions and stretches ordinary boxes with CSS scale.
+ * Native players resize in layout so their controls keep their proportions.
+ * Alt unsnaps.
  * SVG canvases crop their viewport by default; Alt resizes their contents.
  * Native images and videos expose opposite crop corners that adjust CSS insets.
  * Rotate (absolute targets): drag about the center, snapping to 5 degrees
@@ -111,6 +113,7 @@ export class TransformationFeature extends EditorFeature {
   protected handlesAppendixInteractions = true
   protected handlesCapturedElementInteractions = true
   #target: TransformElement | null = null
+  #targetSource: Element | null = null
   #group: TransformElement[] = []
   #groupContext: HTMLButtonElement | null = null
   #groupPress: Element | null = null
@@ -517,12 +520,19 @@ export class TransformationFeature extends EditorFeature {
     this.#scheduleFrame()
   }
 
-  startTransform(element: Element, measure = true) {
+  #resizeTarget(element: Element) {
+    const figure = figureSelectionTarget(element)
+    return figure.matches(figureSelector) ? figure : element
+  }
+
+  startTransform(source: Element, measure = true) {
+    const element = this.#resizeTarget(source)
     if(!this.#canTransform(element) || this.editor.isEditingLocked) return
     if(this.#target !== element || this.#group.length) {
       this.clearTransform()
       this.#target = element
     }
+    this.#targetSource = source
     if(!hasPresentationState(element, "transform-target")) setPresentationState(element, "transform-target")
     this.overlay.removeAttribute("visibility")
     if(measure) this.updateInfo()
@@ -869,7 +879,7 @@ export class TransformationFeature extends EditorFeature {
   /** Border-box geometry shared by transform, selection and hover overlays.
    * Matrices may be shared only within one synchronous batch of layout reads. */
   boxGeometry(element: TransformElement, cropped = true, matrices = new WeakMap<Element, DOMMatrix>(), measuredRect?: DOMRect): BoxGeometry {
-    if(element.localName === "figure" && this.editor.features.layout.hasFigureFlow(element)) {
+    if(this.#gesture?.mode === "rotate" && this.#gesture.target === element && this.editor.features.layout.hasFigureFlow(element)) {
       const content = captionedFigureContent(element)
       if(content && this.#canTransform(content)) return this.boxGeometry(content, cropped, matrices)
     }
@@ -928,6 +938,12 @@ export class TransformationFeature extends EditorFeature {
   }
 
   updateInfo(measuredRect?: DOMRect) {
+    if(!this.#gesture && this.#targetSource && this.#resizeTarget(this.#targetSource) !== this.#target) {
+      const source = this.#targetSource
+      this.clearTransform()
+      if(source.isConnected) this.startTransform(source, false)
+      measuredRect = undefined
+    }
     const target = this.target
     if(!target) { if(this.#target) this.clearTransform(); return }
     if(this.#group.length) {
@@ -963,7 +979,7 @@ export class TransformationFeature extends EditorFeature {
     const media = this.editor.features.media.cropTargetFor(target)
     const crop = media ? getComputedStyle(media).getPropertyValue("object-view-box") : "none"
     const flowResize = this.#gesture?.mode === "scale" && this.#isTextContainer(target)
-    const anchored = !this.#isFreeformItem(target) && !floats.length && !captionedFigureContent(target) && (!crop || crop === "none")
+    const anchored = !this.#isFreeformItem(target) && !floats.length && (!crop || crop === "none")
       && (flowResize ? matrix.isIdentity : !this.#gesture && !this.boxTransformed(target, matrices))
     const style = getComputedStyle(target)
     const {float, zIndex} = style
@@ -1538,13 +1554,9 @@ export class TransformationFeature extends EditorFeature {
     const content = captionedFigureContent(target)
     const rotationTarget = mode === "rotate" && content && this.#canTransform(content) ? content : null
     if(mode === "rotate" && target.matches("figure:not([is])") && target.querySelector(":scope > figcaption") && !rotationTarget) return false
-    const figureImage = mode === "scale" ? this.#canvasFigureImage(target) : null
-    const picture = figureImage?.parentElement instanceof HTMLPictureElement ? figureImage.parentElement : null
-    if(figureImage && (!this.#canTransform(figureImage) || !this.editor.allows("style", figureImage))
-      || picture && !this.editor.allows("style", picture)) return false
-    const pictureStyle = picture ? document.createElement("div").style : null
-    if(pictureStyle && picture) pictureStyle.cssText = picture.style.cssText
-    const image = rotationTarget ?? figureImage ?? (mode === "scale" && target.localName === "picture" ? this.editor.features.media.transformMediaFor(target) : null)
+    const player = mode === "scale" ? this.#resizePlayer(target) : null
+    const image = rotationTarget
+      ?? (mode === "scale" && target.localName === "picture" ? this.editor.features.media.transformMediaFor(target) : null)
     const imageStyle = document.createElement("div").style
     imageStyle.cssText = image?.style.cssText ?? ""
     const endUndoGroup = this.editor.doc.beginUndoGroup()
@@ -1555,8 +1567,8 @@ export class TransformationFeature extends EditorFeature {
       matrix, parentMatrix: this.#matrix(renderedParentElement(rotationTarget ?? target)), rotate: this.#angle(getComputedStyle(rotationTarget ?? target).getPropertyValue("rotate")), scale: this.#scale(style.getPropertyValue("scale")),
       initial, written: new Map(), moved: false,
       image: image && this.#canTransform(image) ? {target: image, parent: image.parentElement, initial: imageStyle, written: new Map()} : undefined,
-      figureImage: figureImage ? {...this.#size(figureImage),
-        picture: picture && pictureStyle ? {target: picture, initial: pictureStyle, written: new Map(), ...this.#size(picture)} : undefined} : undefined,
+      player: player ? {target: player, size: this.#size(player)} : undefined,
+      figureContent: mode === "scale" && target.matches(figureSelector) ? this.#figureResizeContent(target) : undefined,
       canvas: mode === "scale" ? this.#canvasViewport(target) : undefined,
       crop: media && insets && cropBox ? {target: media, parent: media.parentElement, width: cropBox.width, height: cropBox.height,
         matrix: cropBox.matrix, insets, edges: [...insets], sourceStyle} : undefined,
@@ -1592,11 +1604,15 @@ export class TransformationFeature extends EditorFeature {
     return true
   }
 
-  #canvasFigureImage(target: Element) {
-    if(!this.editor.features.canvas.active || target.parentElement !== document.body
-      || !target.matches("figure:not([is]):has(> figcaption)")) return null
-    const image = this.editor.features.media.transformMediaFor(target)
-    return image instanceof HTMLImageElement ? image : null
+  #singleFigureChild(target: Element) {
+    if(target.querySelector(":scope > figcaption")) return captionedFigureContent(target)
+    return target.childElementCount === 1 && !Array.from(target.childNodes).some(node => node instanceof Text && node.data.trim())
+      ? target.firstElementChild : null
+  }
+
+  #figureResizeContent(target: Element) {
+    const content = this.#singleFigureChild(target)
+    return content instanceof HTMLPictureElement ? content.querySelector(":scope > img") ?? content : content
   }
 
   #canvasViewport(target: TransformElement) {
@@ -1631,20 +1647,19 @@ export class TransformationFeature extends EditorFeature {
   #validGesture() {
     const gesture = this.#gesture
     if(!gesture) return false
-    const picture = gesture.figureImage?.picture
     const properties = gesture.mode === "move" || gesture.mode === "anchor"
       ? ["position", "left", "right", "top", "bottom"]
       : gesture.mode === "rotate" ? ["position", "left", "right", "top", "bottom", "rotate"]
       : ["position", "left", "right", "top", "bottom", "width", "height", "max-width", "max-height", "scale", "aspect-ratio"]
     // Input can wait for a frame before the first write. A newer authored
     // placement or size must invalidate that input even when written is empty.
-    if((gesture.group?.members ?? [gesture, gesture.image, picture]).some(styles => styles && properties.some(key =>
+    if((gesture.group?.members ?? [gesture, gesture.image]).some(styles => styles && properties.some(key =>
       !styles.written.has(key) && (styles.target.style.getPropertyValue(key) !== styles.initial.getPropertyValue(key)
         || styles.target.style.getPropertyPriority(key) !== styles.initial.getPropertyPriority(key))))) {
       this.#finish(true)
       return false
     }
-    if(!(gesture.group?.members ?? [gesture, gesture.image, picture]).every(styles => !styles
+    if(!(gesture.group?.members ?? [gesture, gesture.image]).every(styles => !styles
       || this.editor.allows(gesture.mode === "move" ? "move" : "style", styles.target))) {
       this.#finish(true)
       return false
@@ -1663,10 +1678,10 @@ export class TransformationFeature extends EditorFeature {
           element.style.getPropertyValue(property) !== initial.getPropertyValue(property)
           || element.style.getPropertyPriority(property) !== initial.getPropertyPriority(property))))
       || gesture.canvas && gesture.target.getAttribute("viewBox") !== gesture.canvas.written
-      || picture && [...picture.written].some(([key, last]) => picture.target.style.getPropertyValue(key) !== last.value
-        || picture.target.style.getPropertyPriority(key) !== last.priority)
+      || gesture.figureContent !== undefined && (this.#figureResizeContent(gesture.target) !== gesture.figureContent
+        || !gesture.target.matches(figureSelector))
+      || gesture.mode === "scale" && this.#resizePlayer(gesture.target) !== (gesture.player?.target ?? null)
       || gesture.image && ((gesture.mode === "rotate" ? captionedFigureContent(gesture.target) !== gesture.image.target
-        : gesture.figureImage ? this.#canvasFigureImage(gesture.target) !== gesture.image.target
         : this.editor.features.media.transformMediaFor(gesture.target) !== gesture.image.target) || gesture.image.parent !== gesture.image.target.parentElement
         || [...gesture.image.written].some(([key, last]) => gesture.image!.target.style.getPropertyValue(key) !== last.value
           || gesture.image!.target.style.getPropertyPriority(key) !== last.priority))
@@ -1678,6 +1693,44 @@ export class TransformationFeature extends EditorFeature {
       return false
     }
     return true
+  }
+
+  #resizePlayer(target: Element) {
+    return target instanceof HTMLMediaElement && !target.hasAttribute("is") ? target : null
+  }
+
+  #figureResizeBounds(figure: Element, axis: "width" | "height", style: CSSStyleDeclaration) {
+    const content = this.#singleFigureChild(figure)
+    const sides = axis === "width" ? ["left", "right"] : ["top", "bottom"]
+    const sum = (style: CSSStyleDeclaration, property: string, suffix = "") =>
+      sides.reduce((total, side) => total + (pixelSize(style.getPropertyValue(`${property}-${side}${suffix}`)) ?? 0), 0)
+    const chrome = (style: CSSStyleDeclaration) => sum(style, "padding") + sum(style, "border", "-width")
+    let min = 0, max = Infinity
+    for(const child of figure.children) {
+      if(child.localName === "figcaption") continue
+      const childStyle = getComputedStyle(child)
+      if(childStyle.display === "none" || ["absolute", "fixed"].includes(childStyle.position)
+        && !this.editor.features.layout.hasFigureFlow(figure)) continue
+      const outer = (style.boxSizing === "border-box" ? chrome(style) : 0) + sum(childStyle, "margin")
+      const include = (box: CSSStyleDeclaration, outer: number) => {
+        const extras = outer + (box.boxSizing === "border-box" ? 0 : chrome(box))
+        min = Math.max(min, (pixelSize(box.getPropertyValue(`min-${axis}`)) ?? 0) + extras)
+        if(child === content) max = Math.min(max, (pixelSize(box.getPropertyValue(`max-${axis}`)) ?? Infinity) + extras)
+      }
+      include(childStyle, outer)
+      const image = child instanceof HTMLPictureElement ? child.querySelector(":scope > img") : null
+      if(image) {
+        const imageStyle = getComputedStyle(image)
+        include(imageStyle, outer + chrome(childStyle) + sum(imageStyle, "margin"))
+      }
+    }
+    if(axis === "height" && content) {
+      const caption = figure.querySelector<HTMLElement>(":scope > figcaption")
+      const captionSpace = caption ? this.#size(caption).height + sum(getComputedStyle(caption), "margin") : 0
+      min += captionSpace
+      max += captionSpace
+    }
+    return {min, max: Math.max(min, max)}
   }
 
   #write(property: string, value: string, priority = "", gesture: GestureStyles | null = this.#gesture) {
@@ -1692,7 +1745,7 @@ export class TransformationFeature extends EditorFeature {
 
   #resetWritten() {
     const gesture = this.#gesture!
-    for(const styles of gesture.group?.members ?? [gesture, gesture.image, gesture.figureImage?.picture]) if(styles) {
+    for(const styles of gesture.group?.members ?? [gesture, gesture.image]) if(styles) {
       for(const property of styles.written.keys()) this.#write(property, styles.initial.getPropertyValue(property), styles.initial.getPropertyPriority(property), styles)
     }
   }
@@ -1923,7 +1976,8 @@ export class TransformationFeature extends EditorFeature {
     const target = gesture.target
     const freeform = this.#isFreeformItem(target)
     const text = !freeform && this.#isTextContainer(target)
-    const image = Boolean(gesture.image || target instanceof HTMLImageElement && !target.hasAttribute("is"))
+    const player = gesture.player
+    const image = !player && Boolean(gesture.image || target instanceof HTMLImageElement && !target.hasAttribute("is"))
     const direction = gesture.handle.dataset.resizeDirection ?? gesture.handle.id.replace("◆transform-overlay-scale-", "")
     if(text && !direction.includes("left") && !direction.includes("right")) return
     const delta = this.#vector(gesture.matrix.inverse(), event.clientX - gesture.x, event.clientY - gesture.y)
@@ -1934,30 +1988,26 @@ export class TransformationFeature extends EditorFeature {
     const symmetric = modifierKeyDown(event)
     const centered = gesture.resizeCentered ?? false
     const round = this.getRoundingFunc(event)
-    const size = gesture.figureImage ?? gesture
+    const size = gesture
     const style = getComputedStyle(target)
     const {display, float, minWidth} = style
     const minimum = pixelSize(minWidth)
     // Use CSS widths here, since min-width follows box-sizing and the
     // pointer delta is in the element's untransformed coordinate system.
     const minDelta = (minimum ?? 0) - gesture.cssWidth
-    const figureImage = gesture.figureImage, picture = figureImage?.picture
-    const minDW = figureImage && gesture.image
-      ? Math.max(minDelta, (pixelSize(getComputedStyle(gesture.image.target).minWidth) ?? 0) - figureImage.cssWidth,
-        picture ? (pixelSize(getComputedStyle(picture.target).minWidth) ?? 0) - picture.cssWidth : -Infinity)
-      : minDelta
     let dw = x ? Math.max(1 - size.width, round(x * delta.x * (symmetric || centered ? 2 : 1))) : 0
     let dh = y ? Math.max(1 - size.height, round(y * delta.y * (symmetric ? 2 : 1))) : 0
     const proportional = image && event.shiftKey && size.width > 0 && size.height > 0
     if(proportional) {
       const requested = x && (!y || Math.abs(dw / size.width) >= Math.abs(dh / size.height)) ? dw / size.width : dh / size.height
-      const change = size.cssWidth > 0 ? Math.max(requested, minDW / size.cssWidth) : requested
+      const change = size.cssWidth > 0 ? Math.max(requested, minDelta / size.cssWidth) : requested
       dw = size.cssWidth * change
       dh = size.cssHeight * change
     }
-    else if(x) dw = Math.max(dw, minDW)
+    else if(x) dw = Math.max(dw, minDelta)
     const crop = gesture.canvas && !event.altKey
-    const scaleInsteadOfResize = event.shiftKey && !crop && !text && !image
+    const figure = target.matches(figureSelector)
+    const scaleInsteadOfResize = event.shiftKey && !crop && !text && !image && !player && !figure
     setPresentationState(document.body, `transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
     const popup = target.closest("[popover]")
     const insidePopup = Boolean(popup && popup !== target && popupElementRole(popup) === "content")
@@ -1966,6 +2016,17 @@ export class TransformationFeature extends EditorFeature {
     gesture.resizeMode = resizeMode
     if(gesture.canvas && !crop) this.#writeCanvasViewBox(gesture.canvas.initial)
     if(display === "inline" && target instanceof HTMLElement) this.#write("display", "inline-block")
+    const resizeFlowWidth = (width: number) => {
+      if(gesture.fullWidth) {
+        const full = gesture.fullWidth.threshold === null ? gesture.fullWidth.initial : width > gesture.fullWidth.threshold + .5
+        target.classList.toggle("ww-full-width", full)
+        gesture.fullWidth.written = full
+        this.#write("--ww-full-width-size", full ? `${width}px` : "")
+      }
+      if(floatSideFromStyles(gesture.fullWidth ? style.float : float, target.style, target.classList) !== "none") {
+        this.#write("--ww-float-size", `${width}px`)
+      }
+    }
     const resizeBox = () => {
       if(boardLayoutRole(target) === "column" && x) {
         this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
@@ -2001,15 +2062,7 @@ export class TransformationFeature extends EditorFeature {
       else if(boardLayoutRole(target) === "card" && y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       if(x) {
         const width = Math.max(0, gesture.cssWidth + dw)
-        if(gesture.fullWidth) {
-          const full = gesture.fullWidth.threshold === null ? gesture.fullWidth.initial : width > gesture.fullWidth.threshold + .5
-          target.classList.toggle("ww-full-width", full)
-          gesture.fullWidth.written = full
-          this.#write("--ww-full-width-size", full ? `${width}px` : "")
-        }
-        if(floatSideFromStyles(gesture.fullWidth ? style.float : float, target.style, target.classList) !== "none") {
-          this.#write("--ww-float-size", `${width}px`)
-        }
+        resizeFlowWidth(width)
         if(!image && !gesture.canvas && insidePopup) {
           this.#write("width", `${width}px`)
         }
@@ -2017,17 +2070,40 @@ export class TransformationFeature extends EditorFeature {
       }
       if(y) this.#write("max-height", `${Math.max(0, gesture.cssHeight + dh)}px`)
     }
-    if(figureImage && gesture.image) {
-      // Resize the media in layout so the caption can wrap at its own font size.
-      this.#resizeDimension(gesture.image, "width", size.cssWidth, dw)
-      this.#resizeDimension(gesture.image, "height", size.cssHeight, dh)
-      if(picture) {
-        this.#resizeDimension(picture, "width", picture.cssWidth, dw)
-        this.#resizeDimension(picture, "height", picture.cssHeight, dh)
+    if(player) {
+      const {target: media, size} = player
+      const video = media instanceof HTMLVideoElement
+      const ratio = video && media.videoWidth && media.videoHeight ? media.videoWidth / media.videoHeight
+        : size.cssWidth > 0 && size.cssHeight > 0 ? size.cssWidth / size.cssHeight : 2
+      const verticalWidthDelta = dh * ratio
+      const widthDelta = video && y && (!x || Math.abs(verticalWidthDelta) > Math.abs(dw)) ? verticalWidthDelta : dw
+      if(x || video && y) {
+        const playerStyle = getComputedStyle(media)
+        const minPlayerWidth = Math.max(media instanceof HTMLAudioElement && media.controls ? 100 : 1,
+          pixelSize(playerStyle.minWidth) ?? 0, video ? ratio * (pixelSize(playerStyle.minHeight) ?? 0) : 0)
+        const width = Math.max(minPlayerWidth, size.cssWidth + widthDelta)
+        this.#write("width", `${width}px`)
+        if(gesture.initial.maxWidth) this.#write("max-width", "")
+        this.#write("height", "auto")
+        this.#write("max-height", "none")
+        if(video) this.#write("aspect-ratio", `auto ${ratio}`)
+        resizeFlowWidth(width)
       }
-      this.#resizeDimension(gesture, "width", gesture.cssWidth, dw)
-      this.#write("height", "auto")
-      this.#write("max-height", "none")
+    }
+    else if(figure) {
+      if(x) {
+        const {min, max} = this.#figureResizeBounds(target, "width", style)
+        const width = Math.max(1, min, Math.min(max, gesture.cssWidth + dw))
+        resizeFlowWidth(width)
+        this.#write("width", `${width}px`)
+        this.#write("max-width", "")
+      }
+      if(y) {
+        const {min, max} = this.#figureResizeBounds(target, "height", style)
+        const height = Math.max(1, min, Math.min(max, gesture.cssHeight + dh))
+        this.#write("height", `${height}px`)
+        this.#write("max-height", "none")
+      }
     }
     else if(scaleInsteadOfResize) {
       this.#write("scale", `${gesture.scale[0] * (gesture.width + dw) / gesture.width} ${gesture.scale[1] * (gesture.height + dh) / gesture.height}`)
@@ -2210,7 +2286,7 @@ export class TransformationFeature extends EditorFeature {
       if(gesture.canvas && target.getAttribute("viewBox") === gesture.canvas.written) this.#writeCanvasViewBox(gesture.canvas.initial)
       // Revert only properties still owned by this gesture. Concurrent changes
       // to other properties, or to these same properties, remain authoritative.
-      for(const styles of gesture.group?.members ?? [gesture, gesture.image, gesture.figureImage?.picture]) if(styles) {
+      for(const styles of gesture.group?.members ?? [gesture, gesture.image]) if(styles) {
         for(const [key, last] of styles.written) {
           if(styles.target.style.getPropertyValue(key) === last.value && styles.target.style.getPropertyPriority(key) === last.priority) {
             const value = styles.initial.getPropertyValue(key)
@@ -2276,8 +2352,6 @@ export class TransformationFeature extends EditorFeature {
     for(const member of gesture.group?.members ?? []) if(!member.target.style.length) member.target.removeAttribute("style")
     if(!target.style.length) target.removeAttribute("style")
     if(gesture.image && !gesture.image.target.style.length) gesture.image.target.removeAttribute("style")
-    const picture = gesture.figureImage?.picture?.target
-    if(picture && !picture.style.length) picture.removeAttribute("style")
     if(gesture.crop && !gesture.crop.target.style.length) gesture.crop.target.removeAttribute("style")
     if(gesture.pointerId !== undefined && gesture.handle.hasPointerCapture?.(gesture.pointerId)) gesture.handle.releasePointerCapture(gesture.pointerId)
     clearPresentationState(document.body, "transform-moving", "transform-rotating", "transform-scaling-ew", "transform-scaling-ns", "transform-scaling-nwse", "transform-scaling-nesw")
@@ -2405,6 +2479,7 @@ export class TransformationFeature extends EditorFeature {
     const targets = new Set([...this.#group, ...(this.#target ? [this.#target] : []), ...presentationStateElements(document, "transform-target")])
     for(const target of targets) clearPresentationState(target, "transform-target")
     this.#target = null
+    this.#targetSource = null
     this.#group = []
     this.#clearGroupContext()
     this.#positionFlowControls(0, 0, [])

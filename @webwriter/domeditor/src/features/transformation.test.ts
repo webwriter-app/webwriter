@@ -3151,15 +3151,14 @@ describe("transform controls and geometry", () => {
     movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 220, clientY: 150}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3, clientX: 220, clientY: 150}))
 
-    expect(target.style.width).toBe("100px")
-    expect(target.style.maxWidth).toBe("120px")
-    expect(target.style.maxHeight).toBe("50px")
+    expect(target.style.width).toBe("120px")
+    expect(target.style.height).toBe("50px")
     expect(target.style.left).toBe("0px")
     expect(target.style.top).toBe("0px")
     expect(hasPresentationState(target, "transform-target")).toBe(true)
   })
 
-  it("cancels a captioned canvas picture resize when its image is replaced", () => {
+  it("resizes a canvas picture's figure and cancels when its image is replaced", () => {
     document.body.innerHTML = '<figure style="width:200px"><picture style="width:200px;height:100px"><img style="width:200px;height:100px"></picture><!--keep--><figcaption>Keep caption</figcaption></figure>'
     expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
     const figure = document.querySelector("figure")!, picture = figure.querySelector("picture")!, image = picture.querySelector("img")!
@@ -3169,7 +3168,9 @@ describe("transform controls and geometry", () => {
     const handle = feature.overlay.querySelector<HTMLElement>('[data-resize-direction="down-right"]')!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 224}))
     movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 400, clientY: 274, shiftKey: true, altKey: true}))
-    expect(image.style.width).toBe("300px")
+    expect(figure.style.width).toBe("300px")
+    expect(picture.style.width).toBe("200px")
+    expect(image.style.width).toBe("200px")
     expect(figure.style.getPropertyValue("scale")).toBe("")
 
     const replacement = document.createElement("img")
@@ -3226,11 +3227,14 @@ describe("transform controls and geometry", () => {
     expect(caret.style.top).toBe("35px")
   })
 
-  it.each([30, -20])("resizes an iframe vertically by %s pixels, preserving its DOM and undo/redo", async dy => {
+  it.each([30, -20])("resizes an iframe figure vertically by %s pixels, preserving its DOM and undo/redo", async dy => {
     document.body.innerHTML = '<figure><!--keep--><iframe title="Activity" height="180" src="about:blank"></iframe><figcaption>Keep caption</figcaption></figure>'
     const target = document.querySelector("iframe")!
+    const figure = document.querySelector("figure")!
     mockRect(target, {width: 320, height: 180})
+    mockRect(figure, {width: 320, height: 230})
     selectNode(target)
+    expect(feature.target).toBe(figure)
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     expect(target).toHaveAttribute("sandbox", "allow-scripts")
@@ -3243,8 +3247,8 @@ describe("transform controls and geometry", () => {
     await mutationsDelivered()
     editor.doc.syncFromDOM()
 
-    expect(target.getBoundingClientRect().height).toBe(180 + dy)
-    expect(target.style.height).toBe(`${180 + dy}px`)
+    expect(figure.style.height).toBe(`${230 + dy}px`)
+    expect(target.style.height).toBe("")
     expect(target.style.position).toBe("")
     expect(target.getAttribute("height")).toBe("180")
     expect(target.getAttribute("title")).toBe("Activity")
@@ -3252,7 +3256,7 @@ describe("transform controls and geometry", () => {
     expect(target.nextElementSibling!.textContent).toBe("Keep caption")
     const resized = editor.toHTML(true)
     expect(resized).not.toContain("◆")
-    expect(editor.doc.body.toString()).toContain(`height: ${180 + dy}px`)
+    expect(editor.doc.body.toString()).toContain(`height: ${230 + dy}px`)
     expect(editor.doc.body.toString()).not.toContain("◆")
     editor.doc.undo()
     expect(editor.toHTML(true)).toBe(original)
@@ -3277,6 +3281,88 @@ describe("transform controls and geometry", () => {
     expect(hasPresentationState(document.body, "transform-scaling-nwse")).toBe(false)
   })
 
+  it.each([
+    {tag: "audio", captioned: false}, {tag: "audio", captioned: true},
+    {tag: "video", captioned: false}, {tag: "video", captioned: true},
+  ])("Shift-resizes a $tag player in layout (captioned=$captioned)", ({tag, captioned}) => {
+    document.body.innerHTML = captioned
+      ? `<figure style="max-height:120px"><${tag} controls></${tag}><!--keep--><figcaption>Keep caption</figcaption></figure>`
+      : `<${tag} controls></${tag}>`
+    const player = document.querySelector<HTMLMediaElement>(tag)!
+    const target = captioned ? document.querySelector("figure")! : player
+    const playerHeight = tag === "video" ? 100 : 54
+    if(tag === "video") Object.defineProperties(player, {videoWidth: {value: 200}, videoHeight: {value: 100}})
+    mockRect(player, {width: 200, height: playerHeight})
+    if(captioned) mockRect(target, {width: 220, height: playerHeight + 32})
+    if(captioned) captureNode(player)
+    else selectNode(target)
+    expect(feature.target).toBe(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.hidden = false
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 160, clientY: 130, shiftKey: true, altKey: true}))
+
+    if(captioned) expect(parseFloat(target.style.width)).toBeLessThan(220)
+    else {
+      expect(parseFloat(player.style.width)).toBeLessThan(200)
+      expect(parseFloat(player.style.width)).toBeGreaterThanOrEqual(tag === "video" ? 140 : 100)
+      expect(player.style.height).toBe("auto")
+      expect(player.style.getPropertyValue("aspect-ratio") || "").toMatch(tag === "video" ? /^auto 2(?: \/ 1)?$/ : /^$/)
+    }
+    expect(player.style.getPropertyValue("scale") || "").toBe("")
+    expect(target.style.getPropertyValue("scale") || "").toBe("")
+    if(captioned) {
+      expect(target.style.maxHeight).toBe("none")
+      expect(player.hasAttribute("style")).toBe(false)
+      expect(target.querySelector("figcaption")?.textContent).toBe("Keep caption")
+    }
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    expect(player.hasAttribute("style")).toBe(false)
+    expect(target.style.maxHeight).toBe(captioned ? "120px" : "")
+  })
+
+  it("resizes the wrapper of a mixed media figure without scaling its player", () => {
+    document.body.innerHTML = '<figure><p>Leading content</p><!--keep--><audio controls></audio><figcaption>Caption</figcaption></figure>'
+    const figure = document.querySelector("figure")!, player = figure.querySelector("audio")!
+    const children = [...figure.childNodes]
+    mockRect(figure, {width: 260, height: 150})
+    selectNode(figure)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.hidden = false
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 160, clientY: 130, shiftKey: true, altKey: true}))
+
+    expect(parseFloat(figure.style.width)).toBeLessThan(260)
+    expect(figure.style.getPropertyValue("scale") || "").toBe("")
+    expect(player.hasAttribute("style")).toBe(false)
+    expect([...figure.childNodes]).toEqual(children)
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+  })
+
+  it.each([false, true])("clamps the figure to its child's bounds and box chrome (captioned=%s)", captioned => {
+    document.body.innerHTML = `<figure style="box-sizing:border-box; padding:10px; border:2px solid">
+      <div style="min-width:120px; max-width:260px; min-height:50px; max-height:140px; margin:4px; padding:3px; border:1px solid"></div>
+      ${captioned ? "<figcaption>Caption</figcaption>" : ""}</figure>`
+    const figure = document.querySelector("figure")!, child = figure.firstElementChild as HTMLElement
+    const original = child.getAttribute("style")
+    const caption = figure.querySelector("figcaption")
+    if(caption) mockRect(caption, {width: 200, height: 24})
+    mockRect(figure, {width: 220, height: 120})
+    captureNode(child)
+    expect(feature.target).toBe(figure)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.hidden = false
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 220, clientY: 120}))
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 10, clientY: 10, shiftKey: true, altKey: true}))
+    expect(figure.style.width).toBe("160px")
+    expect(figure.style.height).toBe(`${90 + (captioned ? 24 : 0)}px`)
+    movePointer(pointer("pointermove", {pointerId: 3, clientX: 600, clientY: 600, shiftKey: true, altKey: true}))
+    expect(figure.style.width).toBe("300px")
+    expect(figure.style.height).toBe(`${180 + (captioned ? 24 : 0)}px`)
+    expect(child.getAttribute("style")).toBe(original)
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+  })
+
   describe.each(["figure", "demo-widget"])("static %s resizing", tag => {
     it.each(["up-left", "up-right", "down-left", "down-right", "up-up", "right-right", "down-down", "left-left"])("keeps normal flow when dragging %s", direction => {
       const target = targetElement(tag)
@@ -3298,7 +3384,14 @@ describe("transform controls and geometry", () => {
         movePointer(pointer("pointermove", {pointerId: 3, clientX: 200 + dx, clientY: 150 + dy, ...modifiers}))
         expect(target.style.position).toBe(initialPosition)
         for(const property of ["left", "top", "right", "bottom"]) expect(target.style.getPropertyValue(property)).toBe("")
-        if(modifiers.shiftKey) expect(target.style.scale).not.toBe("")
+        if(tag === "figure") {
+          if(dx) expect(parseFloat(target.style.width)).toBeLessThan(100)
+          else expect(target.style.width).toBe("100px")
+          if(dy) expect(parseFloat(target.style.height)).toBeLessThan(50)
+          else expect(target.style.height).toBe("50px")
+          expect(target.style.getPropertyValue("scale") || "").toBe("")
+        }
+        else if(modifiers.shiftKey) expect(target.style.scale).not.toBe("")
         else {
           if(dx) expect(parseFloat(target.style.maxWidth)).toBeLessThan(100)
           else expect(target.style.maxWidth).toBe("")
@@ -3307,6 +3400,8 @@ describe("transform controls and geometry", () => {
         }
         document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
         expect(target.style.position).toBe(initialPosition)
+        expect(target.style.width).toBe("100px")
+        expect(target.style.height).toBe("50px")
         expect(target.style.maxWidth).toBe("")
         expect(target.style.maxHeight).toBe("")
         expect(hasPresentationState(document.body, "transform-scaling-ew") || hasPresentationState(document.body, "transform-scaling-ns") || hasPresentationState(document.body, "transform-scaling-nwse") || hasPresentationState(document.body, "transform-scaling-nesw")).toBe(false)
@@ -3338,10 +3433,10 @@ describe("transform controls and geometry", () => {
       expect(hasPresentationState(document.body, `transform-scaling-${dx === 13 ? "ns" : "ew"}`)).toBe(true)
       document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
 
-      expect(target.style.maxWidth).toBe(width)
-      expect(target.style.maxHeight).toBe(height)
-      expect(target.style.width).toBe("100px")
-      expect(target.style.height).toBe("50px")
+      expect(target.style.maxWidth).toBe(captured ? width : "")
+      expect(target.style.maxHeight).toBe(captured ? height : height ? "none" : "")
+      expect(target.style.width).toBe(captured ? "100px" : width || "100px")
+      expect(target.style.height).toBe(captured ? "50px" : height || "50px")
       expect(target.style.left).toBe("0px")
       expect(target.style.top).toBe("0px")
       expect(target.style.position).toBe("relative")
@@ -3362,7 +3457,7 @@ describe("transform controls and geometry", () => {
     {modifiers: {ctrlKey: true}, width: "130px", left: "0px", scale: ""},
     {modifiers: {shiftKey: true}, width: "", left: "0px", scale: "1.1 1"},
   ])("preserves resize modifiers at edges: $modifiers", ({modifiers, width, left, scale}) => {
-    const target = targetElement("figure")
+    const target = targetElement("div")
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
     mockRect(target)
     selectNode(target)

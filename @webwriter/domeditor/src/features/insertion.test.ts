@@ -31,6 +31,40 @@ beforeEach(() => {
 })
 
 describe("insertion menu", () => {
+  it("keeps the typed command when table insertion is rejected inside a cell", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td><div><p></p></div></td></tr></tbody></table>"
+    const paragraph = document.querySelector("td p")!
+    $.move(paragraph)
+    typeCommand()
+    typeText("table")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    menu.dispatchEvent(new CustomEvent("insertion-menu-select", {detail: {tag: "table"}}))
+    expect(paragraph.textContent).toBe("++table")
+    expect(document.querySelectorAll("table")).toHaveLength(1)
+    expect(menu.open).toBe(false)
+  })
+
+  it("ignores secondary presses on choices and the close button", async () => {
+    typeCommand()
+    typeText("formula")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    const item = menu.shadowRoot!.querySelector<HTMLButtonElement>(".item")!
+    const close = menu.shadowRoot!.querySelector<HTMLButtonElement>(".close")!
+    for(const button of [1, 2]) {
+      for(const target of [item, close]) {
+        const down = new PointerEvent("pointerdown", {button, bubbles: true, cancelable: true, composed: true})
+        target.dispatchEvent(down)
+        expect(down.defaultPrevented).toBe(false)
+        expect(menu.open).toBe(true)
+        expect(document.querySelector("math")).toBeNull()
+      }
+    }
+    item.click()
+    expect(document.querySelector("math")).not.toBeNull()
+  })
+
   it.each(["caption", "figcaption"])("inserts a formula without replacing an empty %s", async tag => {
     document.body.innerHTML = tag === "caption"
       ? '<table><caption></caption><tbody><tr><td>Cell</td></tr></tbody></table>'
@@ -300,7 +334,7 @@ describe("insertion menu", () => {
     await menu.updateComplete
 
     const item = menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")!
-    const pointerDown = new Event("pointerdown", {bubbles: true, cancelable: true})
+    const pointerDown = new PointerEvent("pointerdown", {bubbles: true, cancelable: true})
     item.dispatchEvent(pointerDown)
     item.click()
 

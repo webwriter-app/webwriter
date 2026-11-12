@@ -536,6 +536,7 @@ export const baseSchema = {
   },
   "td": {
     directlyInsertable: false,
+    excludedDescendant: "table:not([is])",
     content: {group: "flow", min: 0, max: Infinity}
   },
   "tfoot": {
@@ -544,6 +545,7 @@ export const baseSchema = {
   },
   "th": {
     directlyInsertable: false,
+    excludedDescendant: "table:not([is])",
     content: {group: "flow", min: 0, max: Infinity},
   },
   "thead": {

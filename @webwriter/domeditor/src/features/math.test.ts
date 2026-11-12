@@ -707,6 +707,26 @@ describe("DOM MathML editing", () => {
     expect(hasPresentationState(math, "math-editing")).toBe(false)
   })
 
+  it("ignores other pointers and releases a formula text drag when the primary button is gone", () => {
+    const math = load("<mi>x</mi>")
+    const prose = math.previousSibling!
+    vi.spyOn(math, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 80, 40))
+    const point = vi.spyOn($, "pointFromCoords").mockReturnValue({node: prose, offset: 0})
+    const down = {bubbles: true, cancelable: true, pointerId: 8, buttons: 1, clientX: 40, clientY: 50}
+    const move = {bubbles: true, cancelable: true, pointerId: 8, clientX: 10, clientY: 50}
+    try {
+      math.dispatchEvent(new PointerEvent("pointerdown", down))
+      document.dispatchEvent(new PointerEvent("pointerup", {...move, pointerId: 9}))
+      document.dispatchEvent(new PointerEvent("pointermove", {...move, buttons: 1}))
+      expect($.focus).toBe(prose)
+      point.mockReturnValue({node: prose, offset: 1})
+      document.dispatchEvent(new PointerEvent("pointermove", {...move, buttons: 2}))
+      document.dispatchEvent(new PointerEvent("pointermove", {...move, buttons: 1}))
+      expect($.focusOffset).toBe(0)
+    }
+    finally { point.mockRestore() }
+  })
+
   it("extends a text drag from an inline formula into surrounding prose", () => {
     const math = load("<mi>x</mi>")
     const prose = math.previousSibling!
@@ -714,7 +734,7 @@ describe("DOM MathML editing", () => {
     const point = vi.spyOn($, "pointFromCoords").mockReturnValue({node: prose, offset: 0})
     try {
       math.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 8, clientX: 40, clientY: 50}))
-      document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, pointerId: 8, clientX: 10, clientY: 50}))
+      document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, bubbles: true, cancelable: true, pointerId: 8, clientX: 10, clientY: 50}))
       document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 8}))
       expect(math.contains($.anchor)).toBe(true)
       expect($.focus).toBe(prose)
@@ -2721,6 +2741,12 @@ describe("formula input keyboard and autocomplete", () => {
     const math = await ready()
     type("alp")
     const option = menu()!.querySelector<HTMLElement>('[aria-label="Greek letter alpha: alpha"]')!
+    for(const button of [1, 2]) {
+      const down = new PointerEvent("pointerdown", {button, bubbles: true, composed: true, cancelable: true})
+      option.dispatchEvent(down)
+      expect(down.defaultPrevented).toBe(false)
+      expect(math.textContent).toBe("alp")
+    }
     const down = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true})
     option.dispatchEvent(down)
     expect(down.defaultPrevented).toBe(true)

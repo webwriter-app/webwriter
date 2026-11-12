@@ -972,9 +972,11 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   private renderUniversalStyleDrawer() {
-    const disabled = !this.elementStyle.target
+    const style = this.elementStyle
+    const disabled = !style.target
     const documentTarget = this.documentSelected || !this.selectedElementTypes.length && (this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body")
     const advancedProperties = ["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "opacity", "box-shadow", "filter"]
+    const selectionKey = JSON.stringify([this.elementAttributes?.path, style.target])
     const setProperties = this.resettableStyles
     const advancedCount = advancedProperties.filter(name => name === "border-width"
       ? ["border-width", "border-style", "border-color"].some(property => Object.hasOwn(setProperties, property))
@@ -987,16 +989,17 @@ export class DomEditorToolbox extends EditingControls {
         <button type="button" class="style-reset" slot="heading-action" title="Reset styles" aria-label="Reset styles"
           ?disabled=${disabled || (documentTarget
             ? !documentThemeProperties.some(name => this.elementStyle.inline[name] || this.documentThemeStyles[name])
-            : !(this.elementStyle.hasInlineStyles ?? Object.keys(this.elementStyle.inline).length > 0))}
-          @click=${() => {
-            this.dispatchEvent(new CustomEvent("element-style-reset", {detail: documentTarget ? {theme: true} : null, bubbles: true, composed: true}))
+            : !(style.hasInlineStyles ?? Object.keys(style.inline).length > 0))}
+          @click=${(event: Event) => {
+            event.currentTarget!.dispatchEvent(new CustomEvent("element-style-reset", {detail: documentTarget ? {theme: true} : null, bubbles: true, composed: true}))
           }}>${ribbonIcon("Restore")}Reset</button>
         ${documentTarget ? html`<document-theme-presets slot="heading-control" heading .state=${this.elementStyle}></document-theme-presets>
-          <document-theme-options .state=${this.elementStyle}></document-theme-options>` : html`<element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${[]} .state=${this.elementStyle}></element-style-editor>`}
+          <document-theme-options .state=${this.elementStyle}></document-theme-options>` : html`<element-style-editor mode="compact" orientation="vertical"
+            show-presets .selectionKey=${selectionKey} .propertyNames=${[]} .state=${style}></element-style-editor>`}
         ${this.renderElementLayoutControls()}
         ${!documentTarget ? html`<element-style-editor slot="more" mode="compact" orientation="vertical"
-          .selectionKey=${JSON.stringify([this.elementAttributes?.path, this.elementStyle.target])}
-          .propertyNames=${advancedProperties} .state=${this.elementStyle}></element-style-editor>` : nothing}
+          .selectionKey=${selectionKey}
+          .propertyNames=${advancedProperties} .state=${style}></element-style-editor>` : nothing}
       </ribbon-drawer>
     `
   }
@@ -1140,7 +1143,8 @@ export class DomEditorToolbox extends EditingControls {
           detail: {path: attributes.path}, bubbles: true, composed: true,
         }))}>${ribbonIcon("Delete")}Delete</button>
     </ribbon-drawer>`
-    let style = group && isWebsiteType(group.element.localName) ? group.style : this.elementStyle
+    let style = group && (isWebsiteType(group.element.localName) || ["td", "th"].includes(group.element.localName))
+      ? group.style : this.elementStyle
     const widgetOptions = group ? group.widget : this.widgetOptions
     const singleTarget = Boolean(group?.count === 1 && this.elementAttributes && attributes
       && (attributes.localName === this.elementAttributes.localName && attributes.namespaceURI === this.elementAttributes.namespaceURI

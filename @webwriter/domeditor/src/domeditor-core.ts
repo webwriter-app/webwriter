@@ -18,6 +18,7 @@ import { MediaFeature } from "./features/media"
 import { WidgetFeature } from "./features/widget"
 import { MigrationFeature } from "./features/migration"
 import { TableFeature } from "./features/table"
+import {stripOfficeTablePlaceholders} from "./table"
 import { LayoutFeature } from "./features/layout"
 import { GraphicFeature } from "./features/graphic"
 import { MathFeature } from "./features/math"
@@ -57,7 +58,7 @@ import {
   type VersionHistoryState,
 } from "./editor-bridge"
 import { getElementPresentation, isLineBreakElement, imageMapPopupImage, popupDisplayToggle, popupElementRole } from "./element-names"
-import type {EditorStateSnapshot} from "./editor-state"
+import type {DocumentBlobAsset, EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
 import listMarkerStyleString from "./document-list-markers.css?raw"
 import * as Y from "yjs"
@@ -68,9 +69,17 @@ import {getSectionOption, isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
 import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
 import {elementAttributeState} from "./element-attributes"
-import {parse as parseModule} from "es-module-lexer/js"
 import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
 import {runtimeDocumentBaseURL} from "./document-base-url"
+
+async function hasOfflineModuleImports(source: string) {
+  // The standalone reader cannot export offline packages.
+  if(import.meta.env.MODE !== "reader") {
+    const {parse} = await import("es-module-lexer/js")
+    return parse(source)[0].length > 0
+  }
+  throw new Error("Offline export is unavailable in this editing session")
+}
 
 const editorStylesheet = createStylesheet(editorStyleString + "\n" + listMarkerStyleString)
 trackPresentationStyles(document, editorStylesheet)
@@ -530,6 +539,8 @@ export class DOMEditor {
       throw error
     }
     try {
+      this.restoreMediaAssets(initialState?.assets ?? [])
+      if(!initialYDoc) this.restoreMediaURLs(document)
       if(!options.reader) this.features.proofreading.setAccessibilityReviewEnabled(options.accessibilityReviewEnabled === true)
       adoptStylesheet(document, editorStylesheet)
       if(options.reader) document.designMode = "off"
@@ -573,6 +584,7 @@ export class DOMEditor {
           ...(initialYDoc ? {ydoc: initialYDoc} : {}),
         })
       }
+      if(initialYDoc && this.restoreMediaURLs(document)) this.doc.syncFromDOM(this)
       if(!options.reader) this.#ensureDocumentContent()
       // Gecko inserts a bare <br> when designMode starts on an empty body.
       // Establish the default paragraph before enabling native editing.
@@ -722,22 +734,51 @@ export class DOMEditor {
 
   private handleLayoutResize = () => this.postSelectionPath()
 
-  // Retain sources for undo, clipboard copies and previews until teardown.
+  // Object URLs are scoped to this realm. Aliases retain the original references
+  // used by history and by the outgoing document when this frame was replaced.
   private readonly mediaBlobs = new Map<string, Blob>()
+  private readonly ownedMediaURLs = new Set<string>()
+  private readonly pendingMediaBlobs = new Map<string, Promise<Blob>>()
+  private readonly mediaURLs = new WeakMap<Blob, string>()
+  private readonly mediaAliases = new Map<string, string>()
+  private readonly canonicalMediaURLs = new Map<string, string>()
 
-  createMediaURL(blob: Blob) {
+  createMediaURL(blob: Blob, previousURL?: string) {
+    const existing = this.mediaURLs.get(blob)
+    if(existing) return existing
     const url = URL.createObjectURL(blob)
     this.mediaBlobs.set(url, blob)
+    this.ownedMediaURLs.add(url)
+    this.mediaURLs.set(blob, url)
+    if(this.options.documentReplicaId) this.postHostMessage({type: "editor-media-asset", asset: {url, blob}, previousURL})
     return url
   }
 
+  mediaSourceBlob(url: string) {
+    return this.mediaBlobs.get(this.mediaAliases.get(url) ?? url)
+  }
+
+  private readMediaBlob(url: string) {
+    const known = this.mediaSourceBlob(url)
+    if(known) return Promise.resolve(known)
+    let pending = this.pendingMediaBlobs.get(url)
+    if(!pending) {
+      pending = this.fetchResource(url).then(response => response.blob()).then(blob => {
+        if(!this.#destroyed) this.mediaBlobs.set(url, blob)
+        return blob
+      }).finally(() => this.pendingMediaBlobs.delete(url))
+      this.pendingMediaBlobs.set(url, pending)
+    }
+    return pending
+  }
+
   mediaSourceFilename(source: string) {
-    const blob = this.mediaBlobs.get(source)
+    const blob = this.mediaSourceBlob(source)
     return blob instanceof File ? blob.name : undefined
   }
 
   mediaSourceSize(source: string) {
-    const blob = this.mediaBlobs.get(source)
+    const blob = this.mediaSourceBlob(source)
     if(blob) return blob.size
     if(source.startsWith("data:")) {
       const comma = source.indexOf(",")
@@ -746,6 +787,50 @@ export class DOMEditor {
       if(source.slice(0, comma).endsWith(";base64")) return Math.floor(data.length * 3 / 4) - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0)
       try { return new TextEncoder().encode(decodeURIComponent(data)).length } catch { return }
     }
+  }
+
+  private restoreMediaAssets(assets: readonly DocumentBlobAsset[]) {
+    for(const {url, blob} of assets) {
+      const liveURL = this.createMediaURL(blob, url)
+      this.mediaAliases.set(url, liveURL)
+      if(!this.canonicalMediaURLs.has(liveURL)) this.canonicalMediaURLs.set(liveURL, url)
+    }
+  }
+
+  restoreMediaURLs(root: Document) {
+    let changed = false
+    if(this.mediaAliases.size) for(const attribute of this.blobSourceAttributes(root)) {
+      const next = attribute.value.replace(this.blobURLPattern(), url => this.mediaAliases.get(url) ?? url)
+      if(next === attribute.value) continue
+      attribute.value = next
+      changed = true
+    }
+    return changed
+  }
+
+  historyMediaHTML(html: string) {
+    return this.canonicalMediaURLs.size
+      ? html.replace(this.blobURLPattern(), url => this.canonicalMediaURLs.get(url) ?? url) : html
+  }
+
+  async snapshotMediaAssets(root: Document | Element, includeHistory = false) {
+    const assets = new Map<string, Blob>()
+    if(includeHistory) {
+      for(const [liveURL, alias] of this.canonicalMediaURLs) assets.set(alias, this.mediaBlobs.get(liveURL)!)
+      for(const [url, blob] of this.mediaBlobs) assets.set(url, blob)
+    }
+    // An authored or widget-owned source can change while a Blob is read.
+    // Recheck the live DOM before taking the Yjs snapshot.
+    let pending: string[]
+    do {
+      const urls = new Set(Array.from(this.blobSourceAttributes(root)).flatMap(attribute =>
+        attribute.value.match(this.blobURLPattern()) ?? []))
+      pending = [...urls].filter(url => !assets.has(url))
+      for(const url of pending) {
+        assets.set(url, await this.readMediaBlob(url))
+      }
+    } while(pending.length)
+    return [...assets].map(([url, blob]) => ({url, blob}))
   }
 
   destroy() {
@@ -769,8 +854,12 @@ export class DOMEditor {
         if(isHTMLDetailsElement(element)) restoreAuthoredDetailsState(element)
       })
     })
-    this.mediaBlobs.forEach((_, url) => attempt(() => URL.revokeObjectURL(url)))
+    this.ownedMediaURLs.forEach(url => attempt(() => URL.revokeObjectURL(url)))
+    this.ownedMediaURLs.clear()
     this.mediaBlobs.clear()
+    this.pendingMediaBlobs.clear()
+    this.mediaAliases.clear()
+    this.canonicalMediaURLs.clear()
     document.removeEventListener("input", this.#handleInput)
     document.removeEventListener("selectionchange", this.handleSelectionChange)
     document.removeEventListener("copy", this.#onCopy)
@@ -1190,7 +1279,7 @@ export class DOMEditor {
     if(this.options.reader || this.features.selection.isInDragSelection) return
     if(this.features.transformation.deferTransformSelectionState("markStatePending")) return
     this.features.graphic.rememberTextSelection()
-    if(this.features.selection.selectedSectionElement) {
+    if(this.features.selection.selectedSectionElement || this.features.table.hasCellSelection) {
       this.postBridgeEvent(markStateChangeEvent, {
         canMark: false,
         canRemoveMarks: this.features.mark.canRemoveMarks,
@@ -1442,47 +1531,50 @@ export class DOMEditor {
     if((!root.body.textContent?.trim() || documentLayoutMode(root.body) === "slides")
       && normalizePristineDocumentLayout({head: root.head.cloneNode(true) as HTMLHeadElement,
         body: root.body.cloneNode(true) as HTMLElement})) return null
-    // The editor restores its own runtime. Keep only the authored document,
-    // embedding object URLs before their originating frame can disappear.
-    const {documentElement} = root
-    await this.inlineBlobSources(documentElement)
-    return prepareWidgetGroupingsForSerialization(documentElement)(`${root.doctype}${documentElement.outerHTML}`)
+    const assets = await this.snapshotMediaAssets(root.documentElement)
+    const html = prepareWidgetGroupingsForSerialization(root.documentElement)(`${root.doctype}${root.documentElement.outerHTML}`)
+    return {html, assets}
   }
 
-  /** Embed transient media for saving or replacing the editor realm. */
+  private blobURLPattern() { return /blob:(?:https?:\/\/|file:\/\/|null\/|nodedata:)[^\s,"'<>\)#]+/g }
+
+  private *blobSourceAttributes(root: Document | DocumentFragment | Element) {
+    const elements = root.nodeType === Node.ELEMENT_NODE
+      ? [root as Element, ...Array.from(root.querySelectorAll("*"))]
+      : Array.from(root.querySelectorAll("*"))
+    for(const element of elements) {
+      if(element instanceof HTMLTemplateElement) elements.push(...element.content.querySelectorAll("*"))
+      for(const attribute of element.attributes) {
+        if(attribute.value.includes("blob:")
+          && ["src", "srcset", "href", "xlink:href", "data", "poster", "background", "style"].includes(attribute.name)) yield attribute
+      }
+    }
+  }
+
+  /** Embed transient media into a portable HTML or graphic export. */
   async inlineBlobSources(root: Document | DocumentFragment | Element) {
     const sources = new Map<string, Promise<string>>()
     let pending = true
     while(pending) {
       pending = false
-      const elements = root.nodeType === Node.ELEMENT_NODE
-        ? [root as Element, ...Array.from(root.querySelectorAll("*"))]
-        : Array.from(root.querySelectorAll("*"))
-      for(const element of elements) {
-        if(element instanceof HTMLTemplateElement) {
-          for(const child of element.content.querySelectorAll("*")) elements.push(child)
+      for(const attribute of this.blobSourceAttributes(root)) {
+        const element = attribute.ownerElement
+        if(!element) continue
+        const original = attribute.value
+        const urls = original.match(this.blobURLPattern())
+        if(!urls) continue
+        pending = true
+        let value = original
+        for(const url of urls) {
+          let source = sources.get(url)
+          if(!source) {
+            source = this.readMediaBlob(url).then(blob => this.blobDataURL(blob))
+            sources.set(url, source)
+          }
+          value = value.replaceAll(url, await source)
         }
-        for(const attribute of Array.from(element.attributes)) {
-          if(!["src", "srcset", "href", "xlink:href", "data", "poster"].includes(attribute.name)) continue
-          const original = attribute.value
-          const urls = original.match(/blob:[^\s,"'<>\)]+/g)
-          if(!urls) continue
-          pending = true
-          let value = original
-          for(const url of urls) {
-            let source = sources.get(url)
-            if(!source) {
-              const blob = this.mediaBlobs.get(url)
-              source = blob ? this.blobDataURL(blob) : this.resourceDataURL(url)
-              sources.set(url, source)
-            }
-            value = value.replaceAll(url, await source)
-          }
-          // Live DOM sources may be replaced while reading a large upload.
-          // Revisit current sources instead of overwriting concurrent edits.
-          if(element.getAttributeNS(attribute.namespaceURI, attribute.localName) === original) {
-            element.setAttributeNS(attribute.namespaceURI, attribute.name, value)
-          }
+        if(element.getAttributeNS(attribute.namespaceURI, attribute.localName) === original) {
+          element.setAttributeNS(attribute.namespaceURI, attribute.name, value)
         }
       }
     }
@@ -1510,7 +1602,7 @@ export class DOMEditor {
     }
     const offlineImports = this.features.widget.offlineImports(root, widgetEntries)
     const {js, css} = await bundleOfflineModules(urls, plan.map, base, offlineImports)
-    if(parseModule(js)[0].length) throw new Error("Offline package bundle contains unresolved module imports")
+    if(await hasOfflineModuleImports(js)) throw new Error("Offline package bundle contains unresolved module imports")
     const first = scripts[0].script
     const bundle = documentElement.ownerDocument.createElement("script")
     bundle.type = "module"
@@ -1675,8 +1767,7 @@ export class DOMEditor {
       const source = original ? await (await this.fetchResource(original)).text() : script.textContent ?? ""
       const type = script.type.trim().toLowerCase()
       if(!type || type === "module" || /^(?:text|application)\/(?:java|ecma)script$/.test(type)) {
-        const [imports] = parseModule(source)
-        if(imports.length) throw new Error("Offline export cannot bundle this module dependency graph. Use HTML format for this document.")
+        if(await hasOfflineModuleImports(source)) throw new Error("Offline export cannot bundle this module dependency graph. Use HTML format for this document.")
       }
       if(!original) return
       script.setAttribute(originalURLAttribute("src"), original)
@@ -1835,6 +1926,7 @@ export class DOMEditor {
    * edits retain authored structure and styles. */
   prepareHTMLFragment(fragment: DocumentFragment, transfer=false, repair=true) {
     hydrateWidgetGroupings(fragment)
+    if(transfer) stripOfficeTablePlaceholders(fragment)
     // Convert PRE after transfer sanitization so its whitespace styles survive.
     if(repair) this.schema.enforceMedia(fragment, false)
     this.clearEditingArtifacts(fragment)

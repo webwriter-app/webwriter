@@ -49,6 +49,53 @@ describe("paragraph content", () => {
   })
 })
 
+describe("table cell descendant restrictions", () => {
+  it.each(["td", "th"])("disallows native tables throughout authored <%s> content", tag => {
+    const schema = new Schema()
+    const cell = document.createElement(tag)
+    cell.innerHTML = "<div><section><p>Prose</p></section></div>"
+    const section = cell.querySelector("section")!
+    const table = document.createElement("table")
+    const wrapper = document.createElement("div")
+    wrapper.append(table.cloneNode())
+
+    expect(schema.findValidContentTypes(cell)).not.toContain("table")
+    expect(schema.findValidContentTypes(section)).not.toContain("table")
+    expect(schema.canInsert(cell, table, 0)).toBe(false)
+    expect(schema.canInsert(cell, wrapper, 0)).toBe(false)
+    expect(schema.canInsert(section, table, 0)).toBe(false)
+    expect(schema.canInsert(section, document.createElement("p"), 0)).toBe(true)
+    expect(schema.canInsert(document.body, table, 0)).toBe(true)
+  })
+
+  it("keeps atomic widget internals opaque and checks editable widget content", () => {
+    const schema = new Schema()
+    schema.extendWidgets([
+      {tagName: "atomic-widget"},
+      {tagName: "editable-widget", editingConfig: {content: "flow*"}},
+    ])
+    const cell = document.createElement("td")
+    for(const tag of ["atomic-widget", "editable-widget"]) {
+      const widget = document.createElement(tag)
+      widget.append(document.createElement("table"))
+      expect(schema.canInsert(cell, widget, 0)).toBe(tag === "atomic-widget")
+    }
+  })
+
+  it("detects a nested table in an insertion without rewriting an existing document", () => {
+    const schema = new Schema()
+    document.body.innerHTML = "<table><tbody><tr><td><div><!--keep--><table><tbody><tr><td>Nested</td></tr></tbody></table></div></td></tr></tbody></table>"
+    const original = document.body.innerHTML
+    const outer = document.querySelector("table")!
+    const cell = outer.querySelector("td")!
+    expect(schema.allowsPlacement(document.body, [outer])).toBe(false)
+    expect(schema.isContentValid(cell)).toBe(false)
+    schema.checkAndCorrect(document.body, true)
+    expect(document.body.innerHTML).toBe(original)
+    expect(document.querySelector("table")).toBe(outer)
+  })
+})
+
 describe("caption content", () => {
   it.each(["caption", "figcaption"])("allows phrasing content in <%s>", tag => {
     const schema = new Schema()
@@ -475,7 +522,7 @@ describe("table normalization", () => {
     table.innerHTML = '<!--table--><tbody id="records"><!--body--><tr><td>A</td></tr><!--between--><tr><td>B</td></tr></tbody>'
     const body = table.querySelector("tbody")!
     const last = table.querySelectorAll("tr")[1]
-    normalizeTableStructure(table, true, false)
+    normalizeTableStructure(table, 1, false)
     expect(table.querySelector("tbody")).toBe(body)
     expect(table.querySelector("tbody")).toHaveAttribute("id", "records")
     expect(table.querySelectorAll("tr")[1]).toBe(last)
@@ -519,7 +566,7 @@ describe("table normalization", () => {
   it("uses explicit header and footer flags and produces schema-valid parsed tables", () => {
     document.body.innerHTML = `<table role="grid"><tr><td>First</td></tr><tr><th>Last</th></tr></table>`
     const table = document.querySelector("table")!
-    normalizeTableStructure(table, true, false)
+    normalizeTableStructure(table, 1, false)
     expect(table.outerHTML).toBe(`<table role="grid"><thead><tr><th>First</th></tr></thead><tbody><tr><td>Last</td></tr></tbody></table>`)
     editor.schema.checkAndCorrect(table, true)
     expect(editor.schema.isContentValid(table)).toBe(true)

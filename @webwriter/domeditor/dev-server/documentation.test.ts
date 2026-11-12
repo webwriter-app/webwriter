@@ -195,22 +195,28 @@ it("previews guides on hover and focus and dismisses them without moving focus",
   const hover = new EventTarget()
   Object.assign(hover, {matches: true})
   vi.stubGlobal("matchMedia", () => hover)
-  vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 160, 40))
+  vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(1000)
   vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(800)
   const map = guideMap()
   const content = map.querySelector<HTMLAnchorElement>('a[href="guides/content.md"]')!
   const editing = map.querySelector<HTMLAnchorElement>('a[href="guides/editing.md"]')!
+  vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 240, 160, 40))
+  vi.spyOn(editing, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 80, 160, 40))
   content.querySelector("template")!.content.appendChild(Object.assign(document.createElement("ul"), {
     className: "details-keywords guide-keywords", innerHTML: '<li><span class="details-keyword">Has content</span></li>',
   }))
   document.getElementById(content.getAttribute("aria-describedby")!)!.innerHTML =
     'Use a <code>slot</code> to display authored content. Authors can edit that content in place.'
   const preview = map.querySelector<HTMLElement>(".widget-capabilities-preview")!
+  vi.spyOn(preview, "getBoundingClientRect").mockImplementation(() =>
+    new DOMRect(0, 0, 336, Math.min(320, parseFloat(preview.style.maxBlockSize))))
   Object.defineProperty(preview, "showPopover", {value: undefined})
   await import("./documentation.js")
 
   content.dispatchEvent(new PointerEvent("pointermove", {pointerType: "mouse"}))
   expect(preview.hidden).toBe(false)
+  expect(preview.style.maxBlockSize).toBe("232px")
+  expect(preview.style.top).toBe("8px")
   expect(preview.querySelector("p")?.textContent).toBe("Use a slot to display authored content. Authors can edit that content in place.")
   expect(preview.querySelector("p code")?.textContent).toBe("slot")
   expect(preview.lastElementChild?.textContent).toBe("Has content")
@@ -226,6 +232,7 @@ it("previews guides on hover and focus and dismisses them without moving focus",
 
   editing.focus()
   expect(preview.hidden).toBe(false)
+  expect(preview.style.top).toBe("120px")
   const editingSummary = document.getElementById(editing.getAttribute("aria-describedby")!)!
   expect(preview.querySelector("p")?.textContent).toBe(editingSummary.textContent)
   expect(preview.querySelector(".details-keyword")).toBeNull()

@@ -720,9 +720,11 @@ export class CanvasViewer {
   }
 
   startPan(event) {
+    if(this.panning || event.button !== 0 && event.button !== 1) return
     event.preventDefault()
     event.stopImmediatePropagation()
-    this.panning = {id: event.pointerId, start: {x: event.clientX, y: event.clientY}, camera: {...this.camera}}
+    this.panning = {id: event.pointerId, buttons: event.button === 1 ? 4 : 1,
+      start: {x: event.clientX, y: event.clientY}, camera: {...this.camera}}
     setPresentationState(document.body, "canvas-panning")
     this.updatePanSurface()
     try { this.slot.setPointerCapture(event.pointerId) } catch {}
@@ -731,6 +733,7 @@ export class CanvasViewer {
   movePan(event) {
     const pan = this.panning
     if(!pan || event.pointerId !== pan.id) return
+    if(!(event.buttons & pan.buttons)) { this.stopPan(); return }
     event.preventDefault()
     event.stopImmediatePropagation()
     this.camera.x = pan.camera.x + event.clientX - pan.start.x
@@ -912,8 +915,9 @@ export class CanvasViewer {
     this.onChange()
   }
 
-  stopPan() {
+  stopPan(pointerId) {
     const pan = this.panning
+    if(pointerId !== undefined && pan?.id !== pointerId) return
     this.panning = null
     try { if(pan && this.slot?.hasPointerCapture(pan.id)) this.slot.releasePointerCapture(pan.id) } catch {}
     clearPresentationState(this.body, "canvas-panning")
@@ -1120,8 +1124,8 @@ export function mountCanvasReader(loadSnapdom) {
     },
     pointermove: event => viewer.movePan(event),
     pointerup: event => viewer.endPan(event),
-    pointercancel: release,
-    lostpointercapture: release,
+    pointercancel: event => viewer.stopPan(event.pointerId),
+    lostpointercapture: event => viewer.stopPan(event.pointerId),
     wheel: event => { if(ownEvent(event) || viewer.continuesWheelPan(event) && onContent(event)) viewer.wheel(event) },
     keydown: event => {
       if(event.key === "Escape" && (hand || ownEvent(event))) setHand(false)

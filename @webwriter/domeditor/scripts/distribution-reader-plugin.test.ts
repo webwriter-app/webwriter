@@ -29,6 +29,7 @@ describe("distribution reader virtual sources", () => {
     expect(watchFile).toHaveBeenCalledWith(expect.stringMatching(/src\/features\/manipulation\.ts$/))
     expect(watchFile).not.toHaveBeenCalledWith(expect.stringMatching(/src\/(?:domeditor|serialization|app-settings)\.ts$/))
     expect(watchFile).not.toHaveBeenCalledWith(expect.stringMatching(/@webwriter\/lit\/index\.js$/))
+    expect(watchFile).not.toHaveBeenCalledWith(expect.stringMatching(/\/es-module-lexer\//))
     expect(sources.core.length).toBeGreaterThan(10_000)
     expect(Buffer.byteLength(sources.core)).toBeLessThan(1_800_000)
     expect(watchFile).toHaveBeenCalledWith(expect.stringMatching(/src\/distribution-reader\.ts$/))

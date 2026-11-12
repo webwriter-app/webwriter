@@ -87,6 +87,7 @@ describe("media editing", () => {
     const frame = document.querySelector("iframe")!
     expect(frame.getAttribute("src")).toBe("https://www.youtube.com/embed/M7lc1UVf-VE")
     expect(frame.getAttribute("title")).toBe("Lesson")
+    expect(frame.hasAttribute("allowfullscreen")).toBe(true)
     expect(document.querySelector("section")!.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
     expect(document.querySelector("p")!.textContent).toBe("After")
     const after = editor.toHTML(true)
@@ -113,6 +114,31 @@ describe("media editing", () => {
     $.selectElement(document.querySelector("video")!)
     editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "https://vimeo.com/123456"})
     expect(document.querySelector("iframe")?.getAttribute("src")).toBe("https://player.vimeo.com/video/123456")
+  })
+
+  it.each([
+    "https://www.instagram.com/reel/ABC-123/",
+    "https://www.instagram.com/tv/ABC-123/",
+    "https://www.tiktok.com/@person/video/6718335390845095173",
+  ])("defaults fullscreen on a recognized social video embed: %s", url => {
+    document.body.innerHTML = "<iframe></iframe>"
+    $.selectElement(document.querySelector("iframe")!)
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: url})
+    expect(document.querySelector("iframe")?.hasAttribute("allowfullscreen")).toBe(true)
+  })
+
+  it("preserves an author's fullscreen choice when changing a populated iframe source", () => {
+    document.body.innerHTML = '<iframe src="https://example.com/old" title="Lesson"></iframe>'
+    $.selectElement(document.querySelector("iframe")!)
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "https://youtu.be/M7lc1UVf-VE"})
+    expect(document.querySelector("iframe")?.hasAttribute("allowfullscreen")).toBe(false)
+  })
+
+  it("does not default fullscreen for ambiguous archive embeds", () => {
+    document.body.innerHTML = "<iframe></iframe>"
+    $.selectElement(document.querySelector("iframe")!)
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "https://archive.org/details/example"})
+    expect(document.querySelector("iframe")?.hasAttribute("allowfullscreen")).toBe(false)
   })
 
   it.each([
@@ -143,6 +169,7 @@ describe("media editing", () => {
       placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
     }
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
+    expect(frame.hasAttribute("allowfullscreen")).toBe(false)
     const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
     const preview = new DOMParser().parseFromString(previewFrameHTML(saved.cloneNode(true) as Document, {
       bridgeNonce: "test", hostOrigin: location.origin, frameOrigin: "https://editor.example", packages: [],
@@ -2066,7 +2093,7 @@ describe("media editing", () => {
 
     expect(editor.features.media.actions.startImageMapDrawing({type: "startImageMapDrawing", shape: "rect"})).toBe(true)
     svg.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: 20, clientY: 30}))
-    svg.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 60, clientY: 50}))
+    svg.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, bubbles: true, clientX: 60, clientY: 50}))
     svg.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: 60, clientY: 50}))
 
     expect(editor.features.media.actions.startImageMapDrawing({type: "startImageMapDrawing", shape: "circle"})).toBe(true)
@@ -2305,7 +2332,7 @@ describe("media editing", () => {
     const {root} = editor.features.media.imageMapOverlay
     const svg = root.querySelector("svg")!
     const pointer = (type: string, x: number, y: number, target: Element = svg) =>
-      target.dispatchEvent(new PointerEvent(type, {bubbles:true, button:0, clientX:x, clientY:y}))
+      target.dispatchEvent(new PointerEvent(type, {bubbles:true, button:0, buttons:type === "pointerup" ? 0 : 1, clientX:x, clientY:y}))
 
     expect(editor.features.media.actions.startImageMapDrawing({type:"startImageMapDrawing", shape:"circle"})).toBe(true)
     pointer("pointerdown", 80, 20)
@@ -2598,9 +2625,30 @@ describe("media editing", () => {
     up(shape === "circle" ? 45 : 55, shape === "circle" ? 25 : 55)
     expect(document.querySelector("area")!.getAttribute("coords")).toBe(resized)
     down(overlay.root.querySelector(".hotspot")!, 20, 20)
-    svg.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 35, clientY: 35}))
+    svg.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, bubbles: true, clientX: 35, clientY: 35}))
     svg.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
     expect(document.querySelector("area")!.getAttribute("coords")).toBe(resized)
+  })
+
+  it.each(["pointermove", "lostpointercapture"])("abandons an image hotspot drag on %s without saving it", eventType => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,40,40"></map>'
+    const image = document.querySelector("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    editor.features.selection.captureElement(image)
+    editor.features.media["refresh"]()
+    const {root} = editor.features.media.imageMapOverlay
+    const svg = root.querySelector("svg")!
+    const area = document.querySelector("area")!
+    const point = {pointerId: 5, bubbles: true, clientX: 25, clientY: 25}
+    root.querySelector(".hotspot")!.dispatchEvent(new PointerEvent("pointerdown", {...point, buttons: 1}))
+    svg.dispatchEvent(new PointerEvent("pointerup", {...point, pointerId: 6, clientX: 50}))
+    expect(area).toHaveAttribute("coords", "10,10,40,40")
+    svg.dispatchEvent(new PointerEvent("pointermove", {...point, buttons: 1, clientX: 50}))
+    expect(root.querySelector("rect.hotspot")).toHaveAttribute("x", "35")
+    svg.dispatchEvent(new PointerEvent(eventType, {...point, clientX: 70}))
+    svg.dispatchEvent(new PointerEvent("pointerup", {...point, clientX: 70}))
+    expect(area).toHaveAttribute("coords", "10,10,40,40")
+    expect(root.querySelector("rect.hotspot")).toHaveAttribute("x", "10")
   })
 
   it("drawing adds a map and deleting the last hotspot unlinks all its images", () => {
@@ -2729,6 +2777,17 @@ describe("media editing", () => {
     shield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
     expect($.selectedElement).toBe(contentFrame)
     expect(editor.features.selection.isCaptureSelection).toBe(true)
+  })
+
+  it("keeps secondary presses on empty media from activating its editor", () => {
+    document.body.innerHTML = '<video controls></video>'
+    const video = document.querySelector("video")!
+    for(const button of [1, 2]) {
+      const down = new PointerEvent("pointerdown", {button, bubbles: true, cancelable: true})
+      video.dispatchEvent(down)
+      expect(down.defaultPrevented).toBe(false)
+      expect(editor.features.selection.captureSelectedElement).toBeNull()
+    }
   })
 
   it.each(['<iframe></iframe>', '<iframe srcdoc=""></iframe>', '<audio controls=""></audio>', '<video controls=""></video>'])(

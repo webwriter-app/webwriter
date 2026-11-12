@@ -1977,7 +1977,8 @@ export class ElementStyleEditor extends LitElement {
     const shadow = this.galleryPage % 2 === 1 ? "0 4px 8px #0003" : "none"
     const cellTarget = ["td", "th"].includes(this.state.target?.localName ?? "")
     const popupPartTarget = Boolean(this.state.target?.popupRole)
-    const preserveSpacing = popupPartTarget || Boolean(this.state.target?.boardRole)
+    const preserveSpacing = cellTarget || this.state.target?.localName === "table"
+      || popupPartTarget || Boolean(this.state.target?.boardRole)
     const saturated = this.galleryPage >= 2
     const columns = [1, 3, 4, 9, 5, 7, 6, 8]
     const palette = getComputedStyle(this)

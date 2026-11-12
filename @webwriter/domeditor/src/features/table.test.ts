@@ -641,7 +641,7 @@ describe("table cell selection", () => {
 
     first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 10, clientY: 15, bubbles: true, cancelable: true}))
     caretPosition = {offsetNode: firstText, offset: 1, getClientRect: () => rectangle}
-    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
 
     expect(editor.features.table.hasCellSelection).toBe(false)
     expect($.anchor).toBe(firstText)
@@ -650,12 +650,12 @@ describe("table cell selection", () => {
     expect($.focusOffset).toBe(1)
 
     caretPosition = {offsetNode: lastText, offset: 1, getClientRect: () => rectangle}
-    last.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
+    last.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
 
     expect(editor.features.table.selectedCells).toHaveLength(4)
 
     caretPosition = {offsetNode: firstText, offset: 1, getClientRect: () => rectangle}
-    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
 
     expect(editor.features.table.hasCellSelection).toBe(false)
     expect($.anchor).toBe(firstText)
@@ -663,7 +663,7 @@ describe("table cell selection", () => {
     expect($.focus).toBe(firstText)
     expect($.focusOffset).toBe(1)
 
-    last.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
+    last.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
     Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: originalCaretPositionFromPoint})
 
@@ -688,12 +688,12 @@ describe("table cell selection", () => {
     const onMarks = (event: Event) => marks.push((event as CustomEvent).detail.canMark)
     try {
       first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 10, clientY: 15, bubbles: true, cancelable: true}))
-      last.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
+      last.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
       expect(editor.features.table.hasCellSelection).toBe(true)
       window.addEventListener(selectionChangeEvent, onSelection)
       window.addEventListener(markStateChangeEvent, onMarks)
       point = {...point, offset: 4}
-      first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+      first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
       document.dispatchEvent(new Event("selectionchange"))
       document.dispatchEvent(new PointerEvent("pointerup", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
       expect(window.getSelection()?.toString()).toBe("lph")
@@ -710,6 +710,101 @@ describe("table cell selection", () => {
     }
   })
 
+  it.each([1, 2])("ignores button %s at a cell edge even when pointerup is lost", button => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    const [first, second] = cells()
+    first.getBoundingClientRect = () => new DOMRect(0, 0, 100, 30)
+    const point = {pointerId: 9, pointerType: "mouse", isPrimary: true, clientY: 15, bubbles: true, cancelable: true}
+    first.dispatchEvent(new PointerEvent("pointermove", {...point, clientX: 100}))
+    expect(hasPresentationState(document.body, "table-column-edge")).toBe(true)
+
+    const down = new PointerEvent("pointerdown", {...point, button, buttons: button === 1 ? 4 : 2, clientX: 100})
+    first.dispatchEvent(down)
+    second.dispatchEvent(new PointerEvent("pointermove", {...point, clientX: 140}))
+
+    expect(down.defaultPrevented).toBe(false)
+    expect(editor.features.table.selectedCells).toEqual([])
+    expect(hasPresentationState(document.body, "table-column-resize")).toBe(false)
+    expect(first.style.width).toBe("")
+  })
+
+  it.each(["<strong>First</strong>", ""])("replaces only the top-left cell on typing into a reversed selection (%s)", content => {
+    document.body.innerHTML = `<table><tbody><tr><td id="first">${content}</td><td>Second</td></tr><tr><td>Third</td><td>Fourth</td></tr></tbody></table>`
+    editor.doc.syncFromDOM()
+    const before = editor.toHTML(true)
+    const [first, second, third, fourth] = cells()
+    editor.features.table.selectCells(fourth, first)
+
+    const input = new InputEvent("beforeinput", {inputType: "insertText", data: "é", cancelable: true, bubbles: true})
+    document.body.dispatchEvent(input)
+
+    expect(input.defaultPrevented).toBe(true)
+    expect(editor.features.table.selectedCells).toEqual([])
+    expect(cells()).toEqual([first, second, third, fourth])
+    expect(cells().map(cell => cell.textContent)).toEqual(["é", "Second", "Third", "Fourth"])
+    expect($.anchor).toBe(first.firstChild)
+    expect($.anchorOffset).toBe(1)
+    expect(hasPresentationState(document.body, "table-cell-selection")).toBe(false)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(cells()[0].textContent).toBe("é")
+  })
+
+  it("targets the top-left cell contents when native composition starts", () => {
+    document.body.innerHTML = "<table><tbody><tr><td><strong>First</strong></td><td>Second</td></tr></tbody></table>"
+    const [first, second] = cells()
+    editor.features.table.selectCells(second, first)
+    const start = new CompositionEvent("compositionstart", {bubbles: true, cancelable: true})
+    document.body.dispatchEvent(start)
+
+    expect(start.defaultPrevented).toBe(false)
+    expect(editor.features.table.hasCellSelection).toBe(false)
+    expect(document.getSelection()!.toString()).toBe("First")
+    expect(first.contains($.anchor)).toBe(true)
+    expect(first.contains($.focus)).toBe(true)
+    expect(second.textContent).toBe("Second")
+    document.body.dispatchEvent(new CompositionEvent("compositionend", {bubbles: true}))
+  })
+
+  it("publishes disabled text formatting while a cell rectangle is selected", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    const [first, second] = cells()
+    const markStates: Array<{canMark: boolean, canRemoveMarks?: boolean}> = []
+    const onMarks = (event: Event) => markStates.push((event as CustomEvent).detail)
+    window.addEventListener(markStateChangeEvent, onMarks)
+    try {
+      editor.features.table.selectCells(first, second)
+      expect(markStates.at(-1)).toMatchObject({canMark: false, canRemoveMarks: true})
+      expect(editor.features.mark.setStyleMark("font-size", "24px")).toBe(false)
+      editor.features.table.clearCellSelection(false)
+      $.move(first.firstChild!, 1)
+      editor.postMarkState()
+      expect(markStates.at(-1)?.canMark).toBe(true)
+    }
+    finally { window.removeEventListener(markStateChangeEvent, onMarks) }
+  })
+
+  it.each(["pointermove", "pointercancel", "lostpointercapture", "contextmenu"])("ends the table gesture on %s without extending the selection", eventType => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td><td>C</td></tr></tbody></table>"
+    const [first, second, third] = cells()
+    const point = {pointerId: 9, pointerType: "mouse", isPrimary: true, clientY: 15, bubbles: true, cancelable: true}
+    const restoreCaretPosition = mockCaretPosition(first.firstChild!)
+    try {
+      first.dispatchEvent(new PointerEvent("pointerdown", {...point, buttons: 1, clientX: 50}))
+      third.dispatchEvent(new PointerEvent("pointermove", {...point, pointerId: 10, buttons: 1, clientX: 250}))
+      document.dispatchEvent(new PointerEvent("pointercancel", {...point, pointerId: 10}))
+      expect(editor.features.table.selectedCells).toEqual([])
+
+      second.dispatchEvent(new PointerEvent("pointermove", {...point, buttons: 1, clientX: 150}))
+      expect(editor.features.table.selectedCells).toEqual([first, second])
+      third.dispatchEvent(new PointerEvent(eventType, {...point, clientX: 250}))
+      third.dispatchEvent(new PointerEvent("pointermove", {...point, buttons: 1, clientX: 250}))
+      expect(editor.features.table.selectedCells).toEqual([first, second])
+    }
+    finally { restoreCaretPosition() }
+  })
+
   it.each([1, 2, 3])("collapses a non-text drag from cell %s back to its anchor", focusIndex => {
     document.body.innerHTML = "<table><tbody><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table>"
     const tableCells = cells()
@@ -719,17 +814,17 @@ describe("table cell selection", () => {
     const restoreCaretPosition = mockCaretPosition(first)
 
     first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
-    second.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
+    second.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
     expect(editor.features.table.selectedCells).toEqual(expanded)
 
-    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
     expect(editor.features.table.selectedCells).toEqual([first])
     expect(Array.from(presentationStateElements(document, "table-cell-selected"))).toEqual([first])
 
-    second.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
+    second.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
     expect(editor.features.table.selectedCells).toEqual(expanded)
 
-    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
@@ -791,7 +886,7 @@ describe("table cell selection", () => {
     const restoreCaretPosition = mockCaretPosition(origin.firstChild!)
 
     origin.dispatchEvent(new PointerEvent("pointerdown", {clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
-    origin.dispatchEvent(new PointerEvent("pointermove", {clientX: 350, clientY: 110, bubbles: true, cancelable: true}))
+    origin.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 350, clientY: 110, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 350, clientY: 110, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
@@ -1116,6 +1211,31 @@ describe("table cell selection", () => {
     expect(cells().map(cell => cell.textContent)).toEqual(["1", "2", "3", "4"])
   })
 
+  it("rejects table clipboard contents that would put a nested table inside a cell", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>Original</td></tr></tbody></table>"
+    editor.features.table.selectCells(cells()[0])
+    const data = new DataTransfer()
+    data.setData("text/html", '<meta name="webwriter-clipboard" content="1"><table><tbody><tr><td><div><table><tbody><tr><td>Nested</td></tr></tbody></table></div></td><td>Other</td></tr></tbody></table>')
+
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    expect(document.querySelectorAll("table")).toHaveLength(1)
+    expect(cells().map(cell => cell.textContent)).toEqual(["Original"])
+  })
+
+  it("pastes an opaque widget without unpacking its table into the target cell", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>Original</td></tr></tbody></table>"
+    const cell = cells()[0]
+    editor.features.table.selectCells(cell)
+    const data = new DataTransfer()
+    data.setData("text/html", '<meta name="webwriter-clipboard" content="1"><demo-widget><table><tbody><tr><td>Private</td></tr></tbody></table></demo-widget>')
+
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    expect(cell.firstElementChild?.localName).toBe("demo-widget")
+    expect(cell.querySelector("demo-widget table td")?.textContent).toBe("Private")
+  })
+
   it.each(["caret", "element"])("replaces the contents of a %s-targeted cell with pasted HTML and supports undo", kind => {
     document.body.innerHTML = '<table><tbody><tr><th title="keep"><p>Old</p></th><td>Other</td></tr></tbody></table>'
     const [cell, other] = cells()
@@ -1198,7 +1318,7 @@ describe("table cell selection", () => {
 
     first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
     first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
-    document.dispatchEvent(new PointerEvent("pointermove", {clientX: 130, clientY: 15, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 130, clientY: 15, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 130, clientY: 15, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
@@ -1218,7 +1338,7 @@ describe("table cell selection", () => {
 
     first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
     first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
-    document.dispatchEvent(new PointerEvent("pointermove", {clientX: 120, clientY: 15, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 120, clientY: 15, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 120, clientY: 15, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
@@ -1233,8 +1353,8 @@ describe("table cell selection", () => {
     try {
       first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
       first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true}))
-      document.dispatchEvent(new PointerEvent("pointermove", {clientX: 120, clientY: 15, bubbles: true}))
-      document.dispatchEvent(new PointerEvent("pointermove", {clientX: 135, clientY: 15, bubbles: true}))
+      document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 120, clientY: 15, bubbles: true}))
+      document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 135, clientY: 15, bubbles: true}))
       expect(first.style.width).toBe("")
       document.dispatchEvent(new PointerEvent("pointerup", {clientX: 135, clientY: 15, bubbles: true}))
       expect(first.style.width).toBe("135px")
@@ -1258,7 +1378,7 @@ describe("table cell selection", () => {
     try {
       first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
       first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true}))
-      document.dispatchEvent(new PointerEvent("pointermove", {clientX: 120, clientY: 15, bubbles: true}))
+      document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 120, clientY: 15, bubbles: true}))
       processSelection.mockClear()
       document.dispatchEvent(new Event("selectionchange"))
       expect(processSelection).not.toHaveBeenCalled()
@@ -1294,7 +1414,7 @@ describe("table cell selection", () => {
     const selection = vi.spyOn(editor.features.selection, "processSelection")
     try {
       const pointer = (type: string, clientX: number, target: EventTarget = document) =>
-        target.dispatchEvent(new PointerEvent(type, {clientX, clientY: 15, bubbles: true, cancelable: true}))
+        target.dispatchEvent(new PointerEvent(type, {buttons: type === "pointerup" ? 0 : 1, clientX, clientY: 15, bubbles: true, cancelable: true}))
       pointer("pointermove", 100, first)
       pointer("pointerdown", 100, first)
       pointer("pointermove", 120)
@@ -1359,7 +1479,7 @@ describe("table cell selection", () => {
       first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
       first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true}))
       for(const clientX of [120, 140, 160]) {
-        document.dispatchEvent(new PointerEvent("pointermove", {clientX, clientY: 15, bubbles: true}))
+        document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX, clientY: 15, bubbles: true}))
         editor.doc.syncFromDOM()
         if(clientX === 120) await new Promise(resolve => setTimeout(resolve, 550))
       }
@@ -1402,13 +1522,13 @@ describe("table cell selection", () => {
     try {
       first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
       first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true}))
-      document.dispatchEvent(new PointerEvent("pointermove", {clientX: 120, clientY: 15, bubbles: true}))
+      document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 120, clientY: 15, bubbles: true}))
       editor.doc.syncFromDOM()
       if(end === "disable") editor.features.table.disable()
       else if(end === "blur") window.dispatchEvent(new Event("blur"))
       else if(end === "removed cell") {
         first.remove()
-        document.dispatchEvent(new PointerEvent("pointermove", {clientX: 140, clientY: 15, bubbles: true}))
+        document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 140, clientY: 15, bubbles: true}))
       }
       else document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
       const after = editor.toHTML(true)
@@ -1439,7 +1559,7 @@ describe("table cell selection", () => {
     const restoreCaretPosition = mockCaretPosition(first.firstChild!)
 
     first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
-    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 70, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 70, clientY: 15, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 70, clientY: 15, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
@@ -1457,7 +1577,7 @@ describe("table cell selection", () => {
 
     first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
     first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
-    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 102, clientY: 16, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 102, clientY: 16, bubbles: true, cancelable: true}))
     document.dispatchEvent(new PointerEvent("pointerup", {clientX: 102, clientY: 16, bubbles: true, cancelable: true}))
     restoreCaretPosition()
 
@@ -1505,6 +1625,30 @@ describe("table gap controls", () => {
       })
     })
   }
+
+  it("previews only the split edge and clears the outline on leave and selection change", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr><tr><td>E</td><td>F</td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    const rows = Array.from(table.rows)
+    mockTableGeometry(table, rows, rows.map(row => Array.from(row.cells)))
+    editor.features.table.selectCells(rows[1].cells[0], rows[1].cells[1])
+    const preview = () => editor.appendix.querySelector("[data-split-preview]")
+    const hover = (hovered: boolean) => editor.features.table.actions.hoverSplitTable({type: "hoverSplitTable", hovered})
+
+    hover(true)
+    await renderGaps(table)
+    expect(preview()).toHaveAttribute("aria-label", "Insert row 3")
+    expect(table.querySelector("[data-split-preview]")).toBeNull()
+    hover(false)
+    expect(preview()).toBeNull()
+
+    editor.features.table.selectCells(rows[2].cells[0], rows[2].cells[1])
+    hover(true)
+    await renderGaps(table)
+    expect(preview()).toHaveAttribute("aria-label", "Insert row 3")
+    editor.features.table.selectCells(rows[2].cells[0])
+    expect(preview()).toBeNull()
+  })
 
   it("renders row and column controls in the appendix with boundary geometry", async () => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>"
@@ -1669,6 +1813,24 @@ describe("table gap controls", () => {
     expect(count()).toBe(expected)
   })
 
+  it.each(["gap", "command"] as const)("inserts a body row below a header-only table through the %s", async source => {
+    document.body.innerHTML = '<table><thead><tr><th scope="col">A</th><th scope="col">B</th></tr></thead></table>'
+    const table = document.querySelector("table")!
+    const header = table.querySelector<HTMLTableRowElement>("thead > tr")!
+    if(source === "gap") {
+      mockTableGeometry(table, [header], [Array.from(header.cells)])
+      const buttons = await renderGaps(table)
+      Array.from(buttons).find(button => button.getAttribute("aria-label") === "Insert row 2")!
+        .dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
+    }
+    else {
+      editor.features.table.selectCells(header.cells[0])
+      editor.features.table.actions.insertTableRow({type: "insertTableRow", side: "below"})
+    }
+    expect(Array.from(table.querySelectorAll("thead > tr"))).toEqual([header])
+    expect(Array.from(table.querySelectorAll("tbody > tr > td"), cell => cell.outerHTML)).toEqual(["<td></td>", "<td></td>"])
+  })
+
   it("inserts through a colspan and keeps the merged cell spanning the new column", async () => {
     document.body.innerHTML = "<table><tbody><tr><td colspan='2'>A</td></tr><tr><td>B</td><td>C</td></tr></tbody></table>"
     const table = document.querySelector("table")!
@@ -1805,20 +1967,35 @@ describe("table actions", () => {
     expect(originalCell).toHaveAttribute("role", "cell")
   })
 
-  it.each([
-    {group: "thead", side: "below", selected: 0},
-    {group: "tfoot", side: "above", selected: 2},
-  ] as const)("inserts $side inside a multi-row $group at the selected boundary", ({group, side, selected}) => {
-    document.body.innerHTML = `<table><${group} id="keep"><tr><th>A</th></tr><tr><th>B</th></tr><tr><th>C</th></tr></${group}></table>`
-    const rowGroup = document.querySelector(group)!
-    const originalRows = Array.from(rowGroup.children)
-    editor.features.table.selectCells(cells()[selected])
+  it.each(["above", "below"] as const)("adds a body row from Row %s inside a multi-row header", side => {
+    document.body.innerHTML = '<table><thead id="keep"><tr><th>A</th></tr><tr><th>B</th></tr><tr><th>C</th></tr></thead><tbody><tr><td>D</td></tr></tbody></table>'
+    const head = document.querySelector("thead")!
+    const originalRows = Array.from(head.children)
+    editor.features.table.selectCells(cells()[1])
 
     editor.features.table.actions.insertTableRow({type: "insertTableRow", side})
 
+    expect(Array.from(head.children)).toEqual(originalRows)
+    const body = document.querySelector("tbody")!
+    expect(Array.from(body.children, row => row.textContent)).toEqual(["", "D"])
+    expect(body.querySelector("tr")!.cells[0].localName).toBe("td")
+    expect(editor.features.table.getState()).toMatchObject({hasHeader: true, headerActive: false, canToggleHeader: true})
+    expect(editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})).toBe(true)
+    expect(Array.from(head.querySelectorAll("th"))).toHaveLength(4)
+    expect(body.textContent).toBe("D")
+  })
+
+  it("inserts inside a multi-row footer at the selected boundary", () => {
+    document.body.innerHTML = '<table><tfoot id="keep"><tr><th>A</th></tr><tr><th>B</th></tr><tr><th>C</th></tr></tfoot></table>'
+    const rowGroup = document.querySelector("tfoot")!
+    const originalRows = Array.from(rowGroup.children)
+    editor.features.table.selectCells(cells()[2])
+
+    editor.features.table.actions.insertTableRow({type: "insertTableRow", side: "above"})
+
     const rows = Array.from(rowGroup.children)
     expect(rows).toHaveLength(4)
-    const boundary = side === "below" ? selected + 1 : selected
+    const boundary = 2
     expect(rows.slice(0, boundary)).toEqual(originalRows.slice(0, boundary))
     expect(rows.slice(boundary + 1)).toEqual(originalRows.slice(boundary))
     expect(rows[boundary].querySelector("th")).not.toBeNull()
@@ -1869,19 +2046,78 @@ describe("table actions", () => {
   it("splits a table at the selection without copying column definitions", () => {
     document.body.innerHTML = `<table class="data ◆table-marker"><colgroup class="columns ◆column-marker"><col><col></colgroup><thead><tr><th>A</th><th>B</th></tr></thead>
       <tbody class="rows ◆row-marker"><tr><td>C</td><td>D</td></tr><tr><td>E</td><td>F</td></tr></tbody></table>`
-    editor.features.table.selectCells(cells()[2])
+    editor.features.table.selectCells(cells()[2], cells()[3])
+    expect(editor.features.table.getState()?.canSplitTable).toBe(true)
 
     editor.features.table.actions.splitTable({type: "splitTable"})
 
     const tables = document.querySelectorAll("table")
     expect(tables).toHaveLength(2)
-    expect(tables[0].querySelectorAll("tr")).toHaveLength(1)
-    expect(tables[1].querySelectorAll("tr")).toHaveLength(2)
+    expect(tables[0].querySelectorAll("tr")).toHaveLength(2)
+    expect(tables[1].querySelectorAll("tr")).toHaveLength(1)
     expect(tables[1].querySelectorAll("col")).toHaveLength(0)
     expect(tables[1]).toHaveClass("data")
     expect(tables[1]).not.toHaveClass("◆table-marker")
     expect(tables[1].querySelector("tbody")).toHaveClass("rows")
     expect(tables[1].querySelector("tbody")).not.toHaveClass("◆row-marker")
+  })
+
+  it("makes the split-off header rows body rows and allows selecting them as a new header", () => {
+    document.body.innerHTML = '<table><thead id="original"><tr><th>A</th><th>B</th></tr><tr><th><demo-widget>C</demo-widget></th><th>D</th></tr><tr><th>E</th><th>F</th></tr></thead><tbody><tr><td>G</td><td>H</td></tr></tbody></table>'
+    const widget = document.querySelector("demo-widget")
+    editor.features.table.selectCells(cells()[0], cells()[1])
+
+    editor.features.table.actions.splitTable({type: "splitTable"})
+
+    const [first, second] = document.querySelectorAll("table")
+    expect(first.tHead?.textContent).toBe("AB")
+    expect(first.tHead?.id).toBe("original")
+    expect(second.tHead).toBeNull()
+    expect(Array.from(second.rows, row => row.textContent)).toEqual(["CD", "EF", "GH"])
+    expect(second.querySelectorAll("th, #original")).toHaveLength(0)
+    expect(second.querySelector("demo-widget")).toBe(widget)
+
+    editor.features.table.selectCells(second.rows[1].cells[1], second.rows[0].cells[0])
+    expect(editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})).toBe(true)
+    expect(Array.from(second.querySelectorAll("thead th"), cell => cell.textContent)).toEqual(["C", "D", "E", "F"])
+    expect(second.querySelector("demo-widget")).toBe(widget)
+    expect(editor.features.table.getState()?.headerActive).toBe(true)
+  })
+
+  it("requires a multi-cell selection to cover whole leading rows without crossing a rowspan", () => {
+    document.body.innerHTML = '<table><thead><tr><th>A</th><th>B</th><th>C</th></tr></thead><tbody><tr><td>D</td><td>E</td><td>F</td></tr><tr><td rowspan="2">G</td><td>H</td><td>I</td></tr><tr><td>J</td><td>K</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    const original = editor.toHTML(true)
+    for(const [anchor, focus] of [[table.rows[1].cells[0], table.rows[1].cells[1]], [table.rows[2].cells[1], table.rows[3].cells[1]]]) {
+      editor.features.table.selectCells(anchor, focus)
+      expect(editor.features.table.getState()?.canToggleHeader).toBe(false)
+      expect(editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})).toBe(false)
+      expect(editor.toHTML(true)).toBe(original)
+    }
+    editor.features.table.selectCells(table.rows[1].cells[0], table.rows[3].cells[1])
+    expect(editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})).toBe(true)
+    expect(table.tHead?.querySelectorAll("tr")).toHaveLength(4)
+    expect(table.querySelector("th[rowspan]")).toHaveAttribute("rowspan", "2")
+  })
+
+  it.each(["caret", "partial row", "two rows"] as const)("cannot split a table from a %s selection", kind => {
+    document.body.innerHTML = '<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>'
+    const [first, , , last] = cells()
+    if(kind === "caret") $.move(first.firstChild!, 0)
+    else editor.features.table.selectCells(first, kind === "two rows" ? last : first)
+    expect(editor.features.table.getState()?.canSplitTable).toBe(false)
+    editor.features.table.actions.splitTable({type: "splitTable"})
+    expect(document.querySelectorAll("table")).toHaveLength(1)
+    expect(cells()).toHaveLength(4)
+  })
+
+  it("splits above the last selected row when there is no row below it", () => {
+    document.body.innerHTML = '<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>'
+    const [, , first, last] = cells()
+    editor.features.table.selectCells(last, first)
+    expect(editor.features.table.getState()?.canSplitTable).toBe(true)
+    editor.features.table.actions.splitTable({type: "splitTable"})
+    expect(Array.from(document.querySelectorAll("table"), table => table.textContent)).toEqual(["AB", "CD"])
   })
 
   it("toggles a caption and applies cell border and background styles", () => {
@@ -1922,7 +2158,7 @@ describe("table actions", () => {
     expect(window.getSelection()?.toString()).toBe("lph")
   })
 
-  it("toggles the first and last rows regardless of which cells are selected", () => {
+  it("keeps single-cell shortcuts for the first header and last footer rows", () => {
     document.body.innerHTML = '<table><tbody><tr><td id="name"><strong>A</strong></td></tr><tr><td><demo-widget>B</demo-widget></td></tr><tr><td>C</td></tr></tbody></table>'
     const widget = document.querySelector("demo-widget")
     editor.features.table.selectCells(cells()[1])
@@ -1933,6 +2169,7 @@ describe("table actions", () => {
     expect(editor.features.table.actions.toggleTableFooter({type: "toggleTableFooter"})).toBe(true)
     expect(document.querySelector("tfoot td")?.textContent).toBe("C")
     expect(editor.features.table.getState()).toMatchObject({hasHeader: true, hasFooter: true})
+    editor.features.table.selectCells(cells()[0])
     editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})
     editor.features.table.actions.toggleTableFooter({type: "toggleTableFooter"})
     expect(document.querySelector("thead, tfoot, th")).toBeNull()
@@ -2104,6 +2341,7 @@ describe("table clipboard and split regressions", () => {
     editor.features.table.selectCells(cells()[2])
     const markup = table.outerHTML
     const nodes = [...table.querySelectorAll("*")]
+    expect(editor.features.table.getState()?.canSplitTable).toBe(false)
     editor.features.table.actions.splitTable({type: "splitTable"})
     expect(document.querySelectorAll("table")).toHaveLength(1)
     expect(table.outerHTML).toBe(markup)

@@ -1,4 +1,4 @@
-import {deleteDocumentRecovery, listDocumentRecoveries, readDocumentRecovery, writeDocumentRecovery} from "../src/document-recovery"
+import {deleteDocumentRecovery, listDocumentBlobAssets, listDocumentRecoveries, readDocumentBlobAssets, readDocumentRecovery, readDocumentRecoverySnapshot, writeDocumentBlobAssets, writeDocumentRecovery} from "../src/document-recovery"
 
 async function seedLegacyRecoveries(id: string, html: string) {
   return new Promise<boolean>((resolve, reject) => {
@@ -85,9 +85,73 @@ export async function checkDocumentRecovery() {
     if(await readDocumentRecovery(second.id) !== html) throw new Error("Replacing another draft removed shared media")
     const remaining = (await listDocumentRecoveries()).filter(item => item.documentKey === first.documentKey)
     if(remaining.map(item => item.id).join(",") !== replacement.id) throw new Error("More than one checkpoint was kept for the same document")
+    await checkBinaryRecovery(id)
   }
   finally {
     await Promise.all([first.id, second.id, replacement.id, ...(seeded ? [id + "-old", id + "-latest", id + "-unidentified"] : [])]
       .map(draftId => deleteDocumentRecovery(draftId)))
+  }
+}
+
+function countStoredBlobs() {
+  return new Promise<number>((resolve, reject) => {
+    const request = indexedDB.open("webwriter-document-recovery")
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const db = request.result
+      const tx = db.transaction("blobs", "readonly")
+      const count = tx.objectStore("blobs").count()
+      tx.onabort = () => { db.close(); reject(tx.error) }
+      tx.oncomplete = () => { db.close(); resolve(count.result) }
+    }
+  })
+}
+
+async function checkBinaryRecovery(id: string) {
+  const record = {id: id + "-binary", title: "Binary recovery", updatedAt: 1, documentKey: "binary:" + id}
+  const replacement = {...record, id: record.id + "-replacement", updatedAt: 3}
+  const fontOwner = "font:" + id
+  const url = "blob:" + location.origin + "/" + id
+  const secondURL = url + "-second"
+  const bytes = [new Uint8Array(1024 * 1024), id]
+  const video = new Blob(bytes, {type: "video/mp4"})
+  const attachment = new File(bytes, "attachment.bin", {type: "application/octet-stream", lastModified: 100})
+  const font = new File(bytes, "font.woff2", {type: "font/woff2", lastModified: 200})
+  const html = `<video src="${url}"></video><a href="${secondURL}" download="attachment.bin">Attachment</a>`
+  const snapshot = {html, assets: [{url, blob: video}, {url: secondURL, blob: attachment}]}
+  const initialCount = await countStoredBlobs()
+  try {
+    await Promise.all([
+      writeDocumentRecovery(record, snapshot),
+      writeDocumentBlobAssets(fontOwner, [{url: font.name, blob: font}]),
+    ])
+    await writeDocumentRecovery({...record, updatedAt: 2}, snapshot)
+    if(await countStoredBlobs() !== initialCount + 1) throw new Error("Equal bytes were stored more than once across snapshots and file types")
+    const stale = await writeDocumentRecovery(record, {html, assets: [{url, blob: new Blob(["stale bytes"])}]})
+    if(stale !== null || await countStoredBlobs() !== initialCount + 1) throw new Error("An older write published stale blobs")
+    const latest = await writeDocumentRecovery(replacement, snapshot)
+    if(latest?.replacedIds.join(",") !== record.id) throw new Error("The new recovery did not replace the previous blob owner")
+    const recovered = await readDocumentRecoverySnapshot(replacement.id)
+    const [recoveredVideo, recoveredAttachment] = recovered.assets
+    if(recovered.html !== html || recovered.assets.length !== 2
+      || recoveredVideo.url !== url || recoveredVideo.blob.type !== video.type || recoveredVideo.blob.size !== video.size
+      || await recoveredVideo.blob.slice(-id.length).text() !== id
+      || recoveredAttachment.url !== secondURL || !(recoveredAttachment.blob instanceof File)
+      || recoveredAttachment.blob.type !== attachment.type || recoveredAttachment.blob.name !== attachment.name
+      || recoveredAttachment.blob.lastModified !== attachment.lastModified) throw new Error("Recovery lost asset bytes or reference metadata")
+
+    const fontOwners = await listDocumentBlobAssets(fontOwner)
+    if(fontOwners.length !== 1 || fontOwners[0].owner !== fontOwner || fontOwners[0].assets[0]?.url !== font.name
+      || (await listDocumentBlobAssets(record.documentKey)).length) throw new Error("Asset listing crossed owner namespaces")
+    await deleteDocumentRecovery(replacement.id)
+    const [storedFont] = await readDocumentBlobAssets(fontOwner)
+    if(!(storedFont?.blob instanceof File) || storedFont.blob.name !== font.name || storedFont.blob.type !== font.type
+      || storedFont.blob.lastModified !== font.lastModified || await storedFont.blob.slice(-id.length).text() !== id
+      || await countStoredBlobs() !== initialCount + 1) throw new Error("Removing a recovery removed another owner's file")
+    await writeDocumentBlobAssets(fontOwner, [])
+    if(await countStoredBlobs() !== initialCount) throw new Error("The last owner did not release its blob")
+  }
+  finally {
+    await Promise.all([deleteDocumentRecovery(record.id), deleteDocumentRecovery(replacement.id), writeDocumentBlobAssets(fontOwner, [])])
   }
 }
