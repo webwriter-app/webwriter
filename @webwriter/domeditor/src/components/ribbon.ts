@@ -69,6 +69,7 @@ export type LiveLearnerRibbonItem = {
   color: string
   connected: boolean
   enabled: boolean
+  submitted?: boolean
 }
 
 type PackageSearchResult = {pkg: WebWriterPackage, members: PackageMember[], match?: PackageMember}
@@ -935,9 +936,39 @@ export class AppRibbon extends EditingControls {
     }
 
     .learner-toggle .learner-avatar {
+      position: relative;
       width: 1.1rem;
       height: 1.1rem;
       flex-shrink: 0;
+    }
+
+    .learner-submitted {
+      position: absolute;
+      top: -0.24rem;
+      right: -0.24rem;
+      box-sizing: border-box;
+      display: grid;
+      place-items: center;
+      width: 0.75rem;
+      height: 0.75rem;
+      border: 1px solid white;
+      border-radius: 50%;
+      background: #15803d;
+      color: white;
+    }
+
+    .learner-submitted svg {
+      width: 0.56rem;
+      height: 0.56rem;
+      stroke-width: 3;
+    }
+
+    @media (forced-colors: active) {
+      .learner-submitted {
+        background: ButtonFace;
+        border-color: ButtonText;
+        color: ButtonText;
+      }
     }
 
     .learner-toggle[aria-pressed="false"] {
@@ -3392,15 +3423,18 @@ export class AppRibbon extends EditingControls {
                 type="button"
                 data-learner-id=${learner.id}
                 aria-pressed=${learner.enabled}
-                aria-label=${this.replayActive ? `${learner.name}, recorded participant` : `${learner.name}, ${learner.connected ? "connected" : "disconnected"}`}
-                title=${this.replayActive ? learner.name : learner.connected ? `${learner.name} is connected` : `${learner.name} was connected`}
+                aria-label=${`${learner.name}, ${this.replayActive ? "recorded participant" : learner.connected ? "connected" : "disconnected"}${learner.submitted ? ", submitted an answer" : ""}`}
+                title=${`${this.replayActive ? learner.name : learner.connected ? `${learner.name} is connected` : `${learner.name} was connected`}${learner.submitted ? ". Submitted an answer" : ""}`}
                 @click=${() => this.dispatchEvent(new CustomEvent("live-learner-toggle", {
                   detail: {id: learner.id, enabled: !learner.enabled},
                   bubbles: true,
                   composed: true,
                 }))}
               >
-                <span class="learner-avatar" style=${styleMap({"--learner-color": safeCssColor(learner.color)})} aria-hidden="true">${learner.initials}</span>
+                <span class="learner-avatar" style=${styleMap({"--learner-color": safeCssColor(learner.color)})} aria-hidden="true">
+                  ${learner.initials}
+                  ${learner.submitted ? html`<span class="learner-submitted">${ribbonIcon("Accept")}</span>` : nothing}
+                </span>
                 <span class="learner-toggle-name">${learner.name}</span>
                 ${this.replayActive ? nothing : html`<span class="learner-connection" ?data-connected=${learner.connected} aria-hidden="true"></span>`}
               </button>

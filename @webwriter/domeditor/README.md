@@ -1,12 +1,16 @@
 # DOMEditor development server
 
-Run the editor and its localhost backend together:
+Use an up-to-date Node.js 22 release and run `bun install --frozen-lockfile` from
+the repository root. From this package directory, run the editor and its
+localhost backend together:
 
 ```sh
 npm start
 ```
 
 Open the landing page at `http://127.0.0.1:1234/`, the editor at `http://127.0.0.1:1234/editor/`, or the documentation at `http://127.0.0.1:1234/docs/`.
+
+The [standalone quiz demo](http://127.0.0.1:1234/dev-server/standalone-quiz/) runs outside the editor and has quizzes configured for browser and HTTP result storage.
 
 The server listens on `http://127.0.0.1:1234` and refuses non-loopback bind addresses. It has no authentication and must never be exposed to a network. The editor probes `/api/session`, automatically signs in to this no-auth development session, and uses server documents and server-managed AI providers by default. Click **Local dev** in the ribbon to open the admin dashboard, or visit `http://127.0.0.1:1234/admin`.
 
@@ -119,7 +123,7 @@ A server document link contains its full API document URL, for example `?open=ht
 
 ## Widget documentation
 
-Start with the [widget documentation](docs/widgets/index.md) for an introduction, quick start, quiz tutorial, guides, and interface reference.
+Start with the [widget documentation](docs/widgets/index.md) for an introduction, quick start, Ghost Disco tutorial, guides, and interface reference.
 
 With `npm start`, browse [Widget documentation](http://127.0.0.1:1234/docs/) for section navigation, syntax highlighting, and live tutorial examples in JS, Lit, React, Vue, Angular, and Svelte. The library selector keeps the choice across pages. Markdown changes reload the page automatically. The same `/docs/` route is available with `npm run start:frontend` on its printed local URL.
 

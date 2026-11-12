@@ -24,7 +24,7 @@ it("opens the font-size picker on shortcut activation and forwards its native to
   await picker.updateComplete
 
   const input = picker.shadowRoot!.querySelector<HTMLInputElement>("input")!
-  expect(picker.open).toBe(true)
+  expect(picker.shadowRoot!.querySelector<HTMLButtonElement>("[role=combobox]")!.getAttribute("aria-expanded")).toBe("true")
   expect(picker.shadowRoot!.activeElement).toBe(input)
   expect(input.title).toBe(`Font size (${formatShortcut(combo.shortcut)})`)
   expect(picker.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.title).toBe(input.title)

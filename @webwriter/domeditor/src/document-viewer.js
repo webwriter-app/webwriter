@@ -5,6 +5,31 @@ const blocked = body => !body || body.classList.contains("ww-canvas") || body.cl
     && body.firstElementChild.getAttribute("role")?.toLowerCase().split(/\s+/).includes("document")
 
 const custom = element => element.localName.includes("-") || element.hasAttribute("is")
+
+function submissionControls(body, onUndefined) {
+  const owners = new Map()
+  for(const form of body.querySelectorAll("form")) {
+    for(const element of form.elements) owners.set(element, form)
+  }
+  const controls = []
+  const visit = element => {
+    const widget = custom(element)
+    const native = element.matches("input:not([type=button],[type=submit],[type=reset],[type=image],[type=hidden]), select, textarea")
+    const form = owners.get(element)
+    if(!element.matches(":disabled") && (native && (form || element.name)
+      || widget && element.constructor.formAssociated)) {
+      controls.push({element, form, widget})
+    }
+    if(widget) {
+      if(!element.matches(":defined") && element.localName.includes("-")) onUndefined?.(element.localName)
+      return
+    }
+    for(const child of element.children) visit(child)
+  }
+  for(const element of body.children) visit(element)
+  return controls
+}
+
 /** Reference metadata is authored CSL data; href alone supplies its identity. */
 export function parseReference(value) {
   try {
@@ -119,10 +144,16 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     .◆document-reader-control a:focus-visible, .◆document-reader-control button:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
     .◆document-reader-control a:hover { color: #334155; }
     .◆document-reader-control button:hover { background: rgb(15 23 42 / .75); }
-    .◆document-reader-feedback { position: fixed; z-index: 1001; width: max-content; max-width: calc(100vw - 16px); box-sizing: border-box; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 4px; background: white; color: #334155; font: 12px/1.4 system-ui; pointer-events: none; }
-    .◆document-reader-feedback::after { content: ""; position: absolute; left: calc(var(--arrow-position, 50%) - 3px); bottom: -4px; width: 6px; height: 6px; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; background: white; transform: rotate(45deg); }
+    :is(.◆document-reader-feedback, .◆document-submit-confirmation) { position: fixed; z-index: 1001; width: max-content; max-width: calc(100vw - 16px); box-sizing: border-box; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 4px; background: white; color: #334155; font: 12px/1.4 system-ui; pointer-events: none; }
+    :is(.◆document-reader-feedback, .◆document-submit-confirmation)::after { content: ""; position: absolute; left: calc(var(--arrow-position, 50%) - 3px); bottom: -4px; width: 6px; height: 6px; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; background: white; transform: rotate(45deg); }
     .◆document-reader-feedback[data-below]::after { top: -4px; bottom: auto; transform: rotate(225deg); }
-    .◆document-reader-feedback[hidden] { display: none; }
+    :is(.◆document-reader-feedback, .◆document-submit-confirmation)[hidden] { display: none; }
+    .◆document-submit-confirmation { inset: auto; margin: 0; padding: 10px 12px; overflow: visible; pointer-events: auto; }
+    .◆document-submit-confirmation p { margin: 0 0 8px; }
+    .◆document-submit-confirmation div { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+    .◆document-submit-confirmation button { padding: 4px 9px; border: 1px solid #cbd5e1; border-radius: 4px; background: white; color: inherit; font: inherit; cursor: pointer; }
+    .◆document-submit-confirmation button:last-child { background: #334155; border-color: #334155; color: white; }
+    .◆document-submit-confirmation button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
     .◆document-pane { position: fixed; right: 20px; bottom: 20px; z-index: 1000; display: flex; align-items: center; justify-content: flex-end; gap: 8px; overflow: visible; color: #94a3b8; font: 12px/1.5 system-ui; text-align: right; }
     .◆document-pane[hidden] { display: none; }
     .◆document-pane a { color: inherit; }
@@ -130,6 +161,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     .◆document-brand img { width: 18px; height: 22px; object-fit: contain; filter: grayscale(1); opacity: .5; }
     .◆document-brand:hover img { filter: none; opacity: 1; }
     .◆document-pane-actions { display: flex; flex: none; gap: 4px; }
+    .◆document-pane-actions:dir(rtl) [name=submit] { order: -1; }
     .◆document-pane button { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
     .◆document-pane button:hover { color: #334155; }
     .◆document-pane button:disabled { opacity: .5; cursor: wait; }
@@ -151,7 +183,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     .◆document-references li { margin-block: 12px; overflow-wrap: anywhere; }
     .◆document-references p { margin-block: 4px; }
     .◆document-references pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
-    @media print { .◆document-reader-control, .◆document-reader-feedback, .◆document-pane, .◆document-references { display: none !important; } }
+    @media print { .◆document-reader-control, .◆document-reader-feedback, .◆document-submit-confirmation, .◆document-pane, .◆document-references { display: none !important; } }
   `
   appendix.append(style)
   // Appendix styles cannot reach authored fullscreen content. A disposable
@@ -353,6 +385,119 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     if(referencesPanel.hidden) openReferences(); else closeReferences()
   })
   referencesButton.setAttribute("aria-expanded", "false")
+  const submitButton = iconButton("submit", t("Submit"), "M10 14l11-11M21 3l-6 18l-4-8l-8-4z", () => {
+    if(submitButton.hidden || confirmationOpen() || !validateAnswers()) return
+    confirmation.hidden = false
+    if(nativePopover) confirmation.showPopover({source: submitButton})
+    submitButton.setAttribute("aria-expanded", "true")
+    positionConfirmation()
+    cancelSubmit.focus({preventScroll: true})
+  })
+  submitButton.hidden = true
+  submitButton.setAttribute("aria-expanded", "false")
+  submitButton.setAttribute("aria-haspopup", "dialog")
+  const confirmation = document.createElement("div")
+  confirmation.id = "ww-reader-submit-confirmation"
+  confirmation.className = "◆document-submit-confirmation"
+  confirmation.hidden = true
+  confirmation.setAttribute("role", "dialog")
+  confirmation.setAttribute("aria-labelledby", "ww-reader-submit-question")
+  submitButton.setAttribute("aria-controls", confirmation.id)
+  const nativePopover = typeof confirmation.showPopover === "function"
+  if(nativePopover) confirmation.setAttribute("popover", "auto")
+  const question = document.createElement("p")
+  question.id = "ww-reader-submit-question"
+  question.textContent = t("Submit your answers?")
+  const confirmationActions = document.createElement("div")
+  const cancelSubmit = document.createElement("button"), confirmSubmit = document.createElement("button")
+  cancelSubmit.type = confirmSubmit.type = "button"
+  cancelSubmit.textContent = t("Cancel")
+  confirmSubmit.textContent = t("Submit")
+  confirmationActions.append(cancelSubmit, confirmSubmit)
+  confirmation.append(question, confirmationActions)
+  appendix.append(confirmation)
+  const confirmationOpen = () => !confirmation.hidden && (!nativePopover || confirmation.matches(":popover-open"))
+  const closeConfirmation = (restoreFocus = false) => {
+    if(nativePopover && confirmationOpen()) confirmation.hidePopover()
+    confirmation.hidden = true
+    submitButton.setAttribute("aria-expanded", "false")
+    positioner?.release(confirmation)
+    if(restoreFocus && !submitButton.hidden) submitButton.focus({preventScroll: true})
+  }
+  const positionConfirmation = () => {
+    if(!confirmationOpen()) return
+    const rect = submitButton.getBoundingClientRect()
+    if(positioner && globalThis.CSS?.supports("position-area: top span-left")) {
+      positioner.bind(confirmation, submitButton, "position-area:top span-left;justify-self:end;align-self:end;margin:0 0 8px;")
+      positioner.refresh()
+    }
+    else {
+      const width = confirmation.getBoundingClientRect().width
+      const left = Math.max(8, rect.right - width)
+      confirmation.style.left = `${left - fixedGutterOffset()}px`
+      confirmation.style.bottom = `${window.innerHeight - rect.top + 8}px`
+    }
+    const bubble = confirmation.getBoundingClientRect()
+    const arrow = Math.max(6, Math.min(bubble.width - 6, rect.left + rect.width / 2 - bubble.left))
+    confirmation.style.setProperty("--arrow-position", `${arrow}px`)
+  }
+  const dismissConfirmation = event => {
+    if(confirmationOpen() && !event.composedPath().some(node => node === confirmation || node === submitButton)) closeConfirmation()
+  }
+  const escapeConfirmation = event => {
+    if(event.key === "Escape" && confirmationOpen()) { event.preventDefault(); closeConfirmation(true) }
+  }
+  if(!nativePopover) {
+    document.addEventListener("pointerdown", dismissConfirmation, true)
+    document.addEventListener("keydown", escapeConfirmation)
+  }
+  confirmation.addEventListener("toggle", event => { if(event.newState === "closed" && !confirmationOpen()) closeConfirmation() })
+  cancelSubmit.addEventListener("click", () => closeConfirmation(true))
+  const pendingDefinitions = new Set()
+  const watchDefinition = name => {
+    if(pendingDefinitions.has(name) || !window.customElements || window.customElements.get(name)) return
+    pendingDefinitions.add(name)
+    void window.customElements.whenDefined(name).then(() => {
+      pendingDefinitions.delete(name)
+      if(!destroyed) refreshSubmitButton()
+    }, () => {})
+  }
+  const refreshSubmitButton = () => {
+    submitButton.hidden = !submissionControls(body, watchDefinition).some(({widget}) => widget)
+    if(submitButton.hidden) closeConfirmation()
+    schedule()
+  }
+  const validateAnswers = () => {
+    const controls = submissionControls(body)
+    const widgets = controls.filter(({widget}) => widget).map(({element}) => element)
+    if(!widgets.length) {
+      refreshSubmitButton()
+      return null
+    }
+    const invalid = controls.find(({element}) => element.matches(":invalid")
+      || element.willValidate && element.validity?.valid === false)
+    if(invalid) {
+      closeConfirmation()
+      const {element, form} = invalid
+      element.scrollIntoView?.({block: "center", inline: "nearest"})
+      if(typeof element.reportValidity === "function") element.reportValidity()
+      else if(form) form.reportValidity()
+      else element.focus({preventScroll: true})
+      return null
+    }
+    return widgets
+  }
+  confirmSubmit.addEventListener("click", () => {
+    if(!confirmationOpen()) return
+    const widgets = validateAnswers()
+    if(!widgets) return
+    closeConfirmation(true)
+    for(const widget of widgets) {
+      if(!widget.isConnected || !body.contains(widget)) continue
+      widget.toggleAttribute("submitted", true)
+      widget.dispatchEvent(new SubmitEvent("submit"))
+    }
+  })
   const copy = async format => {
     try {
       updateReferences()
@@ -458,9 +603,11 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     const edge = Math.min(window.innerWidth - 20, pageRight)
     const width = Math.min(360, edge - right - 20)
     pane.style.right = `${window.innerWidth - edge - offset}px`
-    pane.style.width = `${Math.max(0, width)}px`
-    pane.hidden = width < 116 || Boolean(document.fullscreenElement)
+    pane.style.width = `${Math.max(submitButton.hidden ? 0 : 128, width)}px`
+    pane.hidden = (width < 116 && submitButton.hidden) || Boolean(document.fullscreenElement)
     if(pane.hidden) closeReuse()
+    if(pane.hidden) closeConfirmation()
+    else positionConfirmation()
     if(!reuse.hidden) {
       const rect = metadata.getBoundingClientRect()
       reuse.style.setProperty("--reuse-arrow", `${rect.left + rect.width / 2 - pane.getBoundingClientRect().left}px`)
@@ -702,8 +849,11 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     }
     observe(body)
   }
-  const observer = new MutationObserver(() => {
+  const observer = new MutationObserver(records => {
     if(document.body !== body || blocked(body)) { destroy(); return }
+    if(records.some(record => record.type === "childList"
+      ? [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1)
+      : ["id", "is", "name", "disabled", "type", "form"].includes(record.attributeName))) refreshSubmitButton()
     refreshObserved()
     schedule()
   })
@@ -730,8 +880,11 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     document.removeEventListener("pointerover", onPointer, true)
     document.removeEventListener("pointerout", onPointerOut, true)
     window.removeEventListener("blur", onBlur)
+    document.removeEventListener("pointerdown", dismissConfirmation, true)
+    document.removeEventListener("keydown", escapeConfirmation)
     clearInterval(modeTimer)
     hideFeedback(); feedback.remove()
+    closeConfirmation(); confirmation.remove()
     pane.remove()
     referencesPanel.remove()
     for(const [url, timer] of downloadURLs) { clearTimeout(timer); URL.revokeObjectURL(url) }
@@ -744,7 +897,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     positioner?.destroy()
     controls.clear(); style.remove()
   }
-  observer.observe(document.documentElement, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["id", "class", "style", "role", "is", "name", "content", "rel", "href", "title", "data-reference", "data-reference-locator"]})
+  observer.observe(document.documentElement, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["id", "class", "style", "role", "is", "name", "content", "rel", "href", "title", "data-reference", "data-reference-locator", "disabled", "type", "form"]})
   window.addEventListener("resize", onLayout)
   window.addEventListener("scroll", onLayout, true)
   document.addEventListener("fullscreenchange", onLayout)
@@ -754,6 +907,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
   window.addEventListener("blur", onBlur)
   refreshObserved()
   update()
+  refreshSubmitButton()
   const result = {destroy}
   activeReaders.set(body, result)
   return result

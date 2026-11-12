@@ -1,16 +1,15 @@
 # Share participant data
 
-Widgets can save answers per participant, for everyone, or for a group.
+Widgets can save participant data individually, for everyone, or for a group. A shared tally counter is one example.
 
-![Two participants linked to shared answers](../../images/widgets/sharing.svg)
+![Two participants linked to one shared tally](../../images/widgets/sharing.svg)
 
 Set `sharedData: true` in the widget's [editing configuration](../reference/editing-configuration.md). Add one direct data block to the widget's authored HTML, for example in a snippet:
 
 ```html
-<ww-quiz shared>
-  <p>The Moon is a star.</p>
-  <script type="application/json" slot="data">{"choice":""}</script>
-</ww-quiz>
+<ww-counter shared>
+  <script type="application/json" slot="data">{"count":0}</script>
+</ww-counter>
 ```
 
 <!-- library:vanilla -->
@@ -20,7 +19,8 @@ Listen for `datapending` and `datachange` on the widget. Dispatch a bubbling, ca
 const block = this.querySelector(':scope > script[slot="data"]')
 if(block) {
   const state = JSON.parse(block.textContent)
-  block.textContent = JSON.stringify({...state, choice: "false"})
+  const count = typeof state.count === "number" ? state.count : 0
+  block.textContent = JSON.stringify({...state, count: count + 1})
 }
 ```
 
@@ -37,7 +37,7 @@ Use `LitElementWw`'s `dataPending`, `dataChanged`, and `dataError` methods to ha
 | `shared` or `shared=""` | Everyone. |
 | `shared="group"` | The participant's server-assigned group. |
 
-Switching scope loads its existing state or the authored defaults. It does not copy answers. The **Share** control exposes grouping where a connected server provides a roster. Preserve any direct `ww-grouping` processing instruction when changing children.
+Switching scope loads the destination scope’s existing data or the authored defaults. The **Share** control exposes grouping where a connected server provides a roster. Preserve any direct `ww-grouping` processing instruction when changing children.
 
 See the [data reference](../reference/data.md) and [working tutorial](../tutorial/06-collaboration.md). The [runtime configuration](../../../README.md#scoped-widget-data) explains server and offline persistence setup.
 
@@ -95,4 +95,4 @@ Use the normal `./widgets/ww-counter` package export with `sharedData: true` in 
 </ww-counter>
 ```
 
-This example assigns a new numeric value; it is not an additive distributed counter. In standalone documents without a managed data runtime, the same widget uses local authored data. Handlers receive a second `{block, mode}` argument when scope information is needed.
+Concurrent updates to `count` resolve to one assigned value. In standalone documents without a managed data runtime, the widget uses local authored data. Handlers receive a second `{block, mode}` argument when scope information is needed.

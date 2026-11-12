@@ -1,7 +1,7 @@
 import type {LiveSession, LiveSessionFeedback, LiveSessionLearner, LiveSessionLearnerState, LiveSessionPreviewDependencies, LiveSessionStep} from "./live-session"
 import {clearEditorArtifacts} from "./editor-artifacts"
 import {serializeDoctype} from "./serialization-primitives"
-import {applyPreviewUpdate, validLiveSessionWidgetEvent} from "./live-session-permissions.js"
+import {applyPreviewUpdate, validLiveSessionAnswers, validLiveSessionWidgetEvent} from "./live-session-permissions.js"
 import {isCssColor} from "./css-color"
 import * as Y from "yjs"
 
@@ -21,7 +21,7 @@ export type LiveSessionReplay = {
 
 // The on-disk representation shares widget snapshots and uses short event keys.
 // Playback continues to consume ordinary LiveSessionStep objects.
-const stepKeys: Record<string, string> = {id: "i", time: "t", learner: "l", kind: "k", cursor: "c", pointer: "p", click: "a", scroll: "s", regions: "r", html: "h", htmlCheckpoint: "q", htmlUpdate: "u", widgets: "w", analytics: "x"}
+const stepKeys: Record<string, string> = {id: "i", time: "t", learner: "l", kind: "k", cursor: "c", pointer: "p", click: "a", scroll: "s", regions: "r", html: "h", htmlCheckpoint: "q", htmlUpdate: "u", widgets: "w", analytics: "x", answers: "n"}
 const longStepKeys = Object.fromEntries(Object.entries(stepKeys).map(([long, short]) => [short, long]))
 const maxReplayBytes = 64 * 1024 * 1024
 const maxReplayIndexBytes = 8 * 1024 * 1024
@@ -495,10 +495,11 @@ export function parseLiveSessionReplay(source: string, validation?: ReplayValida
   try {
     for(const step of value.steps) {
       if(!record(step) || typeof step.id !== "string" || !step.id || step.id.length > 256 || ids.has(step.id)
-        || !time(step.time) || !["document", "cursor", "pointer", "click", "scroll", "widget"].includes(step.kind)
+        || !time(step.time) || !["document", "cursor", "pointer", "click", "scroll", "widget", "submission"].includes(step.kind)
         || step.learner !== undefined && (typeof step.learner !== "string" || !learners.has(step.learner))
         || step.html !== undefined && typeof step.html !== "string"
         || step.analytics !== undefined && (step.kind !== "widget" || !validLiveSessionWidgetEvent(step.analytics))
+        || (step.kind === "submission" ? !step.learner || !validLiveSessionAnswers(step.answers) : step.answers !== undefined)
         || step.cursor !== undefined && !point(step.cursor) || step.pointer !== undefined && !point(step.pointer)
         || step.click !== undefined && !point(step.click)
         || step.scroll !== undefined && (!record(step.scroll) || !finite(step.scroll.top)

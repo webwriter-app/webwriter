@@ -1,7 +1,16 @@
 // @vitest-environment happy-dom
+import {existsSync, readFileSync} from "node:fs"
+import {resolve} from "node:path"
 import {afterEach, beforeEach, expect, it, vi} from "vitest"
 
 const key = "webwriter-docs-sidebar-scroll"
+const widgetDocs = resolve("docs/widgets")
+const overview = readFileSync(resolve(widgetDocs, "index.md"), "utf8")
+
+function guideMap() {
+  document.body.innerHTML = overview.match(/<nav class="widget-capabilities"[\s\S]*?<\/nav>/)![0]
+  return document.querySelector<HTMLElement>(".widget-capabilities")!
+}
 
 beforeEach(() => {
   vi.resetModules()
@@ -12,6 +21,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  vi.useRealTimers()
   document.body.innerHTML = ""
   sessionStorage.clear()
 })
@@ -74,4 +85,60 @@ it("opens the requested static library variant from an existing query link", asy
     expect(replace.mock.calls[0][0].href).toBe("https://example.test/docs/widgets/index.vue.html?library=vue#widgets")
   }
   finally { vi.unstubAllGlobals() }
+})
+
+it("gives every widget guide a direct link, a distinct icon, and an illustrated preview", () => {
+  const map = guideMap()
+  const links = [...map.querySelectorAll("a")]
+  const guideIndex = readFileSync(resolve(widgetDocs, "guides/index.md"), "utf8")
+  const indexOrder = [...guideIndex.matchAll(/^\| \[[^\n]+\]\(([\w-]+\.md)\)/gm)].map(([, path]) => `guides/${path}`)
+  expect(links.map(link => link.getAttribute("href"))).toEqual(indexOrder)
+  const icons = new Set<string>()
+  for(const link of links) {
+    expect(existsSync(resolve(widgetDocs, link.getAttribute("href")!))).toBe(true)
+    expect(link.textContent?.trim()).toBeTruthy()
+    expect(document.getElementById(link.getAttribute("aria-describedby")!)?.textContent?.trim()).toBeTruthy()
+    const icon = link.querySelector('svg[aria-hidden="true"] use')!.getAttribute("href")!
+    const [sprite, id] = icon.split("#")
+    expect(readFileSync(resolve(widgetDocs, sprite), "utf8")).toContain(`<symbol id="${id}"`)
+    icons.add(icon)
+    expect(link.querySelector("img")).toBeNull()
+    const illustration = link.querySelector("template")!.content.querySelector("img")!.getAttribute("src")!
+    expect(existsSync(resolve(widgetDocs, illustration))).toBe(true)
+  }
+  expect(icons.size).toBe(indexOrder.length)
+})
+
+it("previews guides on hover and focus and dismisses them without moving focus", async () => {
+  vi.useFakeTimers()
+  const hover = new EventTarget()
+  Object.assign(hover, {matches: true})
+  vi.stubGlobal("matchMedia", () => hover)
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 160, 40))
+  vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(800)
+  const map = guideMap()
+  const content = map.querySelector<HTMLAnchorElement>('a[href="guides/content.md"]')!
+  const editing = map.querySelector<HTMLAnchorElement>('a[href="guides/editing.md"]')!
+  const preview = map.querySelector<HTMLElement>(".widget-capabilities-preview")!
+  Object.defineProperty(preview, "showPopover", {value: undefined})
+  await import("./documentation.js")
+
+  content.dispatchEvent(new PointerEvent("pointermove", {pointerType: "mouse"}))
+  expect(preview.hidden).toBe(false)
+  expect(preview.textContent).toContain("Use slots")
+  expect(preview.querySelector("img")?.getAttribute("src")).toBe("../images/widgets/content.svg")
+  content.dispatchEvent(new PointerEvent("pointerleave"))
+  preview.dispatchEvent(new PointerEvent("pointerenter"))
+  await vi.advanceTimersByTimeAsync(200)
+  expect(preview.hidden).toBe(false)
+  preview.dispatchEvent(new PointerEvent("pointerleave"))
+  await vi.advanceTimersByTimeAsync(200)
+  expect(preview.hidden).toBe(true)
+
+  editing.focus()
+  expect(preview.hidden).toBe(false)
+  expect(preview.textContent).toContain("Show configuration")
+  document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape"}))
+  expect(preview.hidden).toBe(true)
+  expect(document.activeElement).toBe(editing)
 })

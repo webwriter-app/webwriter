@@ -357,6 +357,11 @@ await check("standalone live learners exchange private peer activity and feedbac
     lin.publish({kind: "document", html: "<p>Lin secret</p>"})
     await wait(() => host.steps.length === 2, "host did not receive both learner updates")
     assert(!JSON.stringify(ada.steps).includes("Lin secret") && !JSON.stringify(lin.steps).includes("Ada secret"), "learner data leaked to another learner")
+    const widget = {id: "quiz", html: '<x-quiz id="quiz" submitted=""></x-quiz>'}
+    ada.publish({kind: "widget", widgets: [widget]})
+    await wait(() => host.steps.some(step => step.kind === "widget" && step.learner === "ada" && step.widgets?.[0]?.html === widget.html),
+      "host did not receive the learner's submission marker")
+    assert(!lin.steps.some(step => step.widgets?.some(snapshot => snapshot.id === "quiz")), "the widget state reached another learner")
     lin.publish({kind: "document", html: "<p>forbidden</p>"})
     await new Promise(resolve => setTimeout(resolve, 500))
     assert(!host.steps.some(step => step.html?.includes("forbidden")), "host accepted a forbidden learner change")
@@ -364,7 +369,8 @@ await check("standalone live learners exchange private peer activity and feedbac
     await wait(() => ada!.feedback.length === 1, "Ada did not receive feedback")
     assert(lin.feedback.length === 0, "private feedback leaked to another learner")
     assert(signaling.length > 0 && !JSON.stringify(signaling).includes("Ada secret") && !JSON.stringify(signaling).includes("Lin secret")
-      && !JSON.stringify(signaling).includes("Private feedback") && !JSON.stringify(signaling).includes("<p>Lesson</p>"), "session data appeared in signaling")
+      && !JSON.stringify(signaling).includes("Private feedback")
+      && !JSON.stringify(signaling).includes("<p>Lesson</p>"), "session data appeared in signaling")
     const uninvited = new LiveSession({id, role: "learner", serverUrl, peer: {hostPublicKey: identity.publicKey, secret: "z".repeat(32)}, learner: {id: "uninvited", name: "Uninvited", color: "red"}})
     try {
       await new Promise(resolve => setTimeout(resolve, 1500))
@@ -392,6 +398,32 @@ await check("standalone live learners exchange private peer activity and feedbac
     await wait(() => ada!.status === "stopped" && lin!.status === "stopped", "learners did not receive the host's stop message")
   }
   finally { ada?.destroy(); lin?.destroy(); host.destroy(); WebSocket.prototype.send = send }
+})
+
+await check("reader submission validates native forms and anchors confirmation at narrow widths", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:320px;height:420px"
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow!, doc = frame.contentDocument!
+    const source = new URL("./reader-submission.ts", import.meta.url).href
+    await new Promise<void>((resolve, reject) => {
+      const script = doc.createElement("script")
+      const timeout = setTimeout(() => reject(new Error("Reader submission check timed out")), 15000)
+      view.addEventListener("reader-submission-result", event => {
+        clearTimeout(timeout)
+        const error = (event as CustomEvent<string | undefined>).detail
+        if(error) reject(new Error(error))
+        else resolve()
+      }, {once: true})
+      script.type = "module"
+      script.textContent = `import {checkReaderSubmission} from ${JSON.stringify(source)};
+        checkReaderSubmission().then(() => dispatchEvent(new CustomEvent("reader-submission-result")),
+          error => dispatchEvent(new CustomEvent("reader-submission-result", {detail: error.stack || String(error)})));`
+      doc.head.append(script)
+    })
+  }
+  finally { frame.remove() }
 })
 
 await check("standalone live learners join through a peer invitation", async () => {

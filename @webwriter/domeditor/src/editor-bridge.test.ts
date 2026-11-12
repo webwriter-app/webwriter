@@ -41,6 +41,16 @@ function expectAllRejected(guard: MessageGuard, values: unknown[]) {
 }
 
 describe("editor bridge message guards", () => {
+  it("accepts only boolean widget permissions on the distribution target", () => {
+    const permission = {name: "allowRetry", label: "Allow retry", value: true}
+    const message = (widgetPermissions: unknown) => ({type: selectionChangeEvent, detail: {path: [],
+      distribution: {path: [0], identity: "widget", local: null, effective: null, widgetPermissions},
+    }})
+    expect(isSelectionChangeMessage(message([permission]))).toBe(true)
+    expectAllRejected(isSelectionChangeMessage, [message({}), message([{...permission, value: "true"}]),
+      message([{...permission, disabled: "false"}]), message([{...permission, label: null}])])
+  })
+
   it("validates undo and redo availability", () => {
     const message = {type: undoStateChangeEvent, detail: {canUndo: true, canRedo: false}}
     expect(isUndoStateChangeMessage(message)).toBe(true)

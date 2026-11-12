@@ -1,7 +1,7 @@
 import {normalizeURLInput} from "../url-input.js"
 import {LitElement, css, html, nothing} from "lit"
 import {tokenize} from "@csstools/css-tokenizer"
-import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
+import {renderRibbonOption, ribbonIcon} from "../ribbon-icons"
 import {choiceGroupStyles} from "./choice-group.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {boxStylePresets, colorHex, themeColorColumns as borderColorColumns, themeColorCSS} from "../css-color"
@@ -249,6 +249,7 @@ export class ElementStyleEditor extends LitElement {
     .effect-control.compact-row > .field-label {flex: none;}
     ${choiceGroupStyles}
     .specialized-choice-group {flex: 1;}
+    .specialized-input > .specialized-choice-group {--choice-column-size: auto;}
     .specialized-choice-group button {min-height: 1.6rem; padding: .15rem .2rem; font: inherit; font-size: .6rem;}
     .specialized-choice-group button span {display: flex; justify-content: center;}
     .specialized-choice-group svg {width: 1rem; height: 1rem; display: block;}
@@ -1573,13 +1574,15 @@ export class ElementStyleEditor extends LitElement {
       ? Math.min(6, definition.values!.length)
       : Math.min(4, Math.ceil(definition.values!.length / (definition.values!.length > 4 ? 2 : 1)))
     return html`<div class="specialized-choice-group" ?data-default=${!this.declaration(definition.name)} style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`style-label-${definition.name}`}>
-      ${definition.values!.map((value, index) => html`<button type="button"
-        ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((definition.values!.length - 1) / columns) * columns}
-        aria-pressed=${current === value}
-        title=${textChoices[definition.name]?.[value] ?? value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")}
-        aria-label=${textChoices[definition.name]?.[value] ?? value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")}
-        @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
-        @click=${() => this.commitValue(definition.name, value)}><span aria-hidden="true">${ribbonOptionIcon(definition.name, value)}</span></button>`)}
+      ${definition.values!.map((value, index) => {
+        const label = textChoices[definition.name]?.[value] ?? value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")
+        return html`<button type="button"
+          ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((definition.values!.length - 1) / columns) * columns}
+          aria-pressed=${current === value}
+          title=${label} aria-label=${label}
+          @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+          @click=${() => this.commitValue(definition.name, value)}>${renderRibbonOption(definition.name, value, label)}</button>`
+      })}
     </div>`
   }
 
@@ -1615,7 +1618,7 @@ export class ElementStyleEditor extends LitElement {
           if(remaining.includes(value) && this.shadowRoot?.activeElement === event.currentTarget) {
             this.renderRoot.querySelector<HTMLButtonElement>(`#compact-${name}`)?.focus()
           }
-        }}>${value === "none" ? html`<span aria-hidden="true">${ribbonOptionIcon(name, value)}</span>`
+        }}>${value === "none" ? html`<span aria-hidden="true">${renderRibbonOption(name, value, label)}</span>`
           : html`<ol class="marker-preview" ?data-symbolic=${["disc", "circle", "square"].includes(value)} style=${`list-style-type: ${value}`} aria-hidden="true"><li></li></ol>`}</button>`
     }
     return html`<div class="compact-value marker-control" @keydown=${(event: KeyboardEvent) => {

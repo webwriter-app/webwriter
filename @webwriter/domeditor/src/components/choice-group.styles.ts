@@ -5,7 +5,7 @@ export const choiceGroupStyles = css`
   .choice-group,
   .specialized-choice-group {
     display: grid;
-    grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr));
+    grid-template-columns: repeat(var(--choice-columns), minmax(0, var(--choice-column-size, 1fr)));
     gap: 1px;
     padding: 0;
     background: #f7f7f7;
@@ -25,6 +25,7 @@ export const choiceGroupStyles = css`
     box-shadow: 0 0 0 1px #c5ccd5;
     background: #f7f7f7;
     color: inherit;
+    overflow-wrap: anywhere;
     cursor: pointer;
   }
 

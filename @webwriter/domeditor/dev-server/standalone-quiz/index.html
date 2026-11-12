@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Standalone quiz demo</title>
+    <link rel="stylesheet" href="./quiz.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Standalone quiz demo</h1>
+        <p>Open <strong>Widget settings</strong> to change the correct answer, run a reset action, or import and export a quiz result.</p>
+        <p><a href="./sample-result.json" download>Download a sample result</a> to try <strong>Import .json</strong>.</p>
+      </header>
+      <div class="quizzes">
+        <section aria-labelledby="browser-title">
+          <h2 id="browser-title">Browser storage</h2>
+          <p>This quiz saves in the current browser.</p>
+          <ww-standalone-quiz id="browser-quiz" standalone answer="false">
+            <p>The Moon is a star.</p>
+            <script type="application/json" slot="data">{"choice":""}</script>
+          </ww-standalone-quiz>
+        </section>
+        <section aria-labelledby="http-title">
+          <h2 id="http-title">HTTP storage</h2>
+          <p>This quiz saves on the local dev server until it restarts.</p>
+          <ww-standalone-quiz id="http-quiz" standalone="/api/demos/standalone-quiz/result" answer="false">
+            <p>The Moon is a star.</p>
+            <script type="application/json" slot="data">{"choice":""}</script>
+          </ww-standalone-quiz>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="./quiz.js"></script>
+  </body>
+</html>

@@ -19,7 +19,7 @@ declare module '*?raw' {
 }
 
 declare module 'virtual:reader-runtime-sources' {
-  const sources: Record<"figure" | "print" | "document" | "attribution" | "canvas" | "imageMap" | "scopedRegistry", string>
+  const sources: Record<"figure" | "print" | "document" | "attribution" | "canvas" | "imageMap" | "scopedRegistry" | "widgetEffects", string>
   export default sources
 }
 

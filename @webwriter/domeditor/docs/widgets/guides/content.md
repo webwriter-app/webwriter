@@ -1,13 +1,13 @@
-# Nest widgets and editable content
+# Nest content
 
 Widgets can contain authored text and other widgets.
 
 ![A nested widget and editable text inside an outer widget](../../images/widgets/content.svg)
 
-Keep authored content in the widget's light DOM and display it with a slot:
+Keep authored content in the widget's light DOM and display it with a slot. For example, a callout widget can wrap a note and let authors edit its paragraphs in place:
 
 ```html
-<ww-quiz><p>The Moon is a star.</p></ww-quiz>
+<ww-callout><p>Bring a reusable water bottle.</p></ww-callout>
 ```
 
 ```html
@@ -20,7 +20,7 @@ Declare which children the editor can insert and edit:
 ```json
 {
   "editingConfig": {
-    "./widgets/ww-quiz": {"content": "p+", "marks": "b i"}
+    "./widgets/ww-callout": {"content": "p+", "marks": "b i"}
   }
 }
 ```

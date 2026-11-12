@@ -20,7 +20,9 @@ describe("live replay capture", () => {
     try {
       learner.publish({kind: "document", htmlCheckpoint: encode(recorder.checkpoint())})
       learner.publish({kind: "document", htmlUpdate: encode(recorder.capture("<p>Changed 😀</p>")!),
-        widgets: [{id: "quiz", html: '<x-widget id="quiz" class="authored"><!--keep--></x-widget>'}]})
+        widgets: [{id: "quiz", html: '<x-widget id="quiz" class="authored" submitted=""><!--keep--></x-widget>'}]})
+      // Retain the earlier answer message format when opening existing replays.
+      learner.publish({kind: "submission", answers: [["choice", "a"], ["choice", "b"]]})
       host.sendFeedback("ada", "Good work")
       expect(() => captureLiveSessionReplay(host, 1, 2)).toThrow("concluded")
       host.stop()
@@ -31,7 +33,8 @@ describe("live replay capture", () => {
       expect(saved.baseHTML).toContain('<p class="authored">Original</p><!--keep--><x-widget></x-widget>')
       expect(saved.baseHTML).not.toContain("◆")
       expect(saved.baseHTML).not.toContain("bootstrap()")
-      expect(saved.steps[1].widgets[0].html).toBe('<x-widget id="quiz" class="authored"><!--keep--></x-widget>')
+      expect(saved.steps[1].widgets[0].html).toBe('<x-widget id="quiz" class="authored" submitted=""><!--keep--></x-widget>')
+      expect(saved.steps[2]).toMatchObject({kind: "submission", learner: "ada", answers: [["choice", "a"], ["choice", "b"]]})
       expect(saved.learners).toEqual([expect.objectContaining({id: "ada", connected: false})])
       expect(saved.feedback).toEqual([expect.objectContaining({participant: "ada", text: "Good work"})])
       expect(JSON.stringify(saved)).not.toContain("a".repeat(32))

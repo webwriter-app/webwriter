@@ -11,7 +11,7 @@ PORT ?= 8080
 # Set BASIC_USER and BASIC_PASS in your shell (or .env) to enable basic auth in the container
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev build preview test schema sync docker-build docker-run docker-serve docker-stop clean
+.PHONY: help install dev build preview test sync docker-build docker-run docker-serve docker-stop clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -19,29 +19,20 @@ help: ## Show this help
 install: ## Install dependencies (bun)
 	bun install
 
-dev: ## Run the dev server and tests (preparestatic + localization run first)
-	bun run start
+dev: ## Run the DOM editor dev server
+	npm run --workspace @webwriter/domeditor start
 
-build: ## Build the editor (@webwriter/core) for production
-	bun run build
+build: ## Build the DOM editor for production
+	npm run --workspace @webwriter/domeditor build
 
-preview: ## Build and serve the built files locally
-	bun run devbuild
+preview: ## Serve the DOM editor build locally
+	npm run --workspace @webwriter/domeditor preview
 
-test: ## Run the test suite once
-	bun run test
-
-schema: ## Regenerate webwriterpackage.json from the zod schema
-	bun run generate-jsonschema
-
-localize: ## Extract new translatable strings
-	bun run extract-localization
-
-localize-build: ## Build localization output
-	bun run build-localization
+test: ## Run the DOM editor test suite once
+	npm run --workspace @webwriter/domeditor vitest -- run
 
 sync: ## Run the local y-websocket sync server on :1234
-	bun run start-local-sync
+	HOST=localhost PORT=1234 npm exec --offline --workspace @webwriter/domeditor -- y-websocket-server
 
 docker-build: ## Build the production Docker image (caddy + static files)
 	docker build \

@@ -4,7 +4,7 @@ import * as decoding from "lib0/decoding"
 
 const MAX_UPDATE_SIZE = 8 * 1024 * 1024
 const learnerIdPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
-const stepKinds = new Set(["document", "cursor", "pointer", "click", "scroll", "widget"])
+const stepKinds = new Set(["document", "cursor", "pointer", "click", "scroll", "widget", "submission"])
 const mapNames = {
   meta: "live-session-meta",
   learners: "live-session-learners",
@@ -14,6 +14,11 @@ const mapNames = {
 
 const isRecord = value => Boolean(value) && typeof value === "object" && !Array.isArray(value)
 const isFiniteNumber = value => typeof value === "number" && Number.isFinite(value)
+
+export const validLiveSessionAnswers = value => Array.isArray(value) && value.length <= 1024
+  && value.every(entry => Array.isArray(entry) && entry.length === 2
+    && typeof entry[0] === "string" && entry[0].length > 0 && typeof entry[1] === "string")
+  && new TextEncoder().encode(JSON.stringify(value)).length <= 64 * 1024
 
 const validIRI = value => {
   if(typeof value !== "string" || value.length > 2048 || /[\s\u0000-\u001f]/u.test(value)) return false
@@ -121,9 +126,10 @@ const validStep = (value, learnerId) => isRecord(value)
   && (value.regions === undefined || Array.isArray(value.regions))
   && (value.widgets === undefined || Array.isArray(value.widgets))
   && (value.analytics === undefined || value.kind === "widget" && validLiveSessionWidgetEvent(value.analytics))
+  && (value.kind === "submission" ? validLiveSessionAnswers(value.answers) : value.answers === undefined)
 
 /** Validate a learner-authored Yjs update without mutating the live document. */
-export function acceptLearnerUpdate(doc, update, learnerId, validateDocument) {
+export function acceptLearnerUpdate(doc, update, learnerId, validateDocument, allowSubmissions = true) {
   if(!doc?.store || typeof doc.getMap !== "function" || !(update instanceof Uint8Array)
     || update.byteLength === 0 || update.byteLength > MAX_UPDATE_SIZE
     || typeof learnerId !== "string" || !learnerIdPattern.test(learnerId)) return false
@@ -155,7 +161,7 @@ export function acceptLearnerUpdate(doc, update, learnerId, validateDocument) {
         for(const part of event.changes.delta) {
           if(part.delete) accepted = false
           if(part.insert) {
-            if(!part.insert.every(step => validStep(step, learnerId))) accepted = false
+            if(!part.insert.every(step => validStep(step, learnerId) && (allowSubmissions || step.kind !== "submission"))) accepted = false
           }
         }
       }

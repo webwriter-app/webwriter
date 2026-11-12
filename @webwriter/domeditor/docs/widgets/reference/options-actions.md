@@ -1,6 +1,8 @@
 # Options and actions
 
-Declare option groups, options, and actions on the class or instance. Instance declarations take precedence over the matching class declaration, including an explicitly supplied empty map. Getters can provide dynamic declarations; if something outside a getter changes their result, dispatch a bubbling `optionschange` event from the widget host so the editor rereads them.
+A Lit widget can render these same controls in a [standalone drawer](standalone.md) when embedded outside WebWriter.
+
+Declare option groups, options, actions, and permissions on the class or instance. Instance declarations take precedence over the matching class declaration, including an explicitly supplied empty map. Getters can provide dynamic declarations; if something outside a getter changes their result, dispatch a bubbling `optionschange` event from the widget host so the editor rereads them.
 
 Legacy `dynamicOptions` declarations are accepted as an alias for `options`. When both declare the same name, `options` takes precedence.
 
@@ -139,6 +141,34 @@ Declare Lit reactivity separately in `static properties`, including metadata suc
 `optionGroups` is a record keyed by group ID. Each group can declare `label` and `description` as `LocalizedText`, plus `collapsible`, `collapsed`, and `advanced` booleans. Options and actions retain their declaration order; ungrouped items appear first, followed by groups in `optionGroups` declaration order. A `group` ID without matching metadata is still shown, using the ID as its label. Empty groups are hidden. `advanced: true` makes a group collapsible and initially closed; otherwise `collapsed` sets its initial state when the group is collapsible.
 
 Visibility and availability describe the widget UI; they do not enforce learner permissions or authorize changes to the document.
+
+## Element permissions
+
+Declare `permissions` on the class or instance, keyed by boolean property name. The editor puts the checkboxes under **Distribute → selected element permissions → Edit**. They can be toggled independently of **Edit** and are disabled when the element is hidden from participants. They do not appear in the normal widget options or the standalone drawer.
+
+```js
+class QuizWidget extends LitElementWw {
+  static properties = {
+    allowHints: {type: Boolean, attribute: "allow-hints", reflect: true},
+  }
+
+  static permissions = {
+    allowHints: {
+      label: {_: "Allow hints"},
+      description: {_: "Let learners reveal a hint."},
+    },
+  }
+
+  constructor() {
+    super()
+    this.allowHints = false
+  }
+}
+```
+
+A checked permission is stored as an empty attribute on the widget; unchecking removes it. By default, the editor uses the matching Lit property's attribute name or the lowercased property name if the widget has no Lit declaration. If permission metadata specifies an `attribute`, it must match the attribute the widget reads. Property-only permissions are unsupported.
+
+Permission metadata supports `label` and `description` as `LocalizedText`, plus `hidden`, `disabled`, `disabledReason`, and `readOnly`. The widget reads the boolean to decide which interactions to offer. These flags do not grant document editing rights or authenticate network access.
 
 ## Action declaration
 

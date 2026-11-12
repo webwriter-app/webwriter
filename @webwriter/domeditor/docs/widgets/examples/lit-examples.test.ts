@@ -65,6 +65,52 @@ describe("Lit quiz example", () => {
     expect(widget.shadowRoot!.querySelector("button")!.disabled).toBe(false)
   })
 
+  it("exposes the current answer as a native form value", async () => {
+    const {widget, block} = createWidget()
+    widget.setAttribute("name", "answer")
+    widget.setAttribute("required", "")
+    await render(widget)
+
+    expect((widget as HTMLElement & {formValue: string | null}).formValue).toBeNull()
+    block.textContent = '{"choice":"true"}'
+    datachange(block)
+    await render(widget)
+
+    expect((widget as HTMLElement & {formValue: string | null}).formValue).toBe("true")
+    expect((widget as HTMLElement & {reportValidity: () => boolean}).reportValidity()).toBe(true)
+  })
+
+  it("shows feedback from the submission attribute and clears it when the answer changes", async () => {
+    const {widget, block} = createWidget()
+    widget.setAttribute("feedback-on-submit", "")
+    block.textContent = '{"choice":"false"}'
+    datachange(block)
+    await render(widget)
+    expect(output(widget)).toBe("")
+
+    widget.toggleAttribute("submitted", true)
+    await render(widget)
+    expect(output(widget)).toBe("Correct!")
+
+    block.textContent = '{"choice":"true"}'
+    datachange(block)
+    await render(widget)
+    expect(output(widget)).toBe("")
+    expect(widget.hasAttribute("submitted")).toBe(false)
+  })
+
+  it("keeps the submission attribute when the initial answer is restored", async () => {
+    const {widget, block} = createWidget()
+    widget.setAttribute("feedback-on-submit", "")
+    widget.setAttribute("submitted", "")
+    block.textContent = '{"choice":"false"}'
+    datachange(block)
+    await render(widget)
+
+    expect(widget.hasAttribute("submitted")).toBe(true)
+    expect(output(widget)).toBe("Correct!")
+  })
+
   it("ignores nested and stale datachange events", async () => {
     const {widget, block} = createWidget()
     const nested = document.createElement("script")

@@ -92,7 +92,7 @@ export default defineConfig(({mode}) => {
       // data even when running the standalone frontend development server.
       fs: {deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "**/.webwriter-dev/**", ...privatePaths]},
     },
-    publicDir: "../../static",
+    publicDir: "static-assets",
     resolve: {
       dedupe: ["yjs"],
     },

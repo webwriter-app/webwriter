@@ -1,11 +1,19 @@
 import {defaultDocumentTheme} from "../src/document-themes"
 import editorStyle from "../src/editor.css?raw"
-import widgetTemplate from "../../core/model/templates/presets/lit/widgets/webwriter-widget.ts?raw"
 
 // Browser measurements complement the stylesheet checks in document-themes.test.ts.
 // This fixture deliberately needs no catalog downloads or editor services.
 const widgetStyle = `
-  ${widgetTemplate.match(/static styles = css`([\s\S]*?)`/)![1]}
+  :host {
+    display: block;
+    box-sizing: border-box;
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-inline-size: var(--ww-prose-max, 45rem);
+    margin-inline: auto;
+    block-size: auto;
+    container-type: inline-size;
+  }
   * { box-sizing: border-box; }
   .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   .layout > * { min-inline-size: 0; padding: 1rem; background: #e0f2fe; overflow-wrap: anywhere; }

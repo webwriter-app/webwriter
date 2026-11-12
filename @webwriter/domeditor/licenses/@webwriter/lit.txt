@@ -1,0 +1,2 @@
+The @webwriter/lit package manifest lists Frederic Salmen as its author and declares the MIT License.
+https://opensource.org/license/mit

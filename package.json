@@ -6,30 +6,6 @@
     "type": "git",
     "url": "https://github.com/salmenf/webwriter.git"
   },
-  "devDependencies": {
-    "@happy-dom/global-registrator": "~20.8.9",
-    "@lezer/generator": "^1.7.3",
-    "@tabler/icons": "^3.30.0",
-    "@testing-library/dom": "^10.4.1",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/user-event": "^14.6.1",
-    "@types/semver": "^7.3.13",
-    "@vitest/coverage-v8": "4.1.11",
-    "@wagnerflo/cc-icons": "^1.2.1",
-    "bootstrap-icons": "^1.10.3",
-    "deepl-node": "^1.13.0",
-    "fs-extra": "^11.2.0",
-    "http-server": "^14.1.1",
-    "tsx": "^4.9.3",
-    "typescript": "^5.7.2",
-    "vite": "^8.0.3",
-    "vite-plugin-pwa": "^1.0.0",
-    "vite-plugin-wasm": "^3.6.0",
-    "vitest": "^4.1.11",
-    "xliff": "^6.2.1",
-    "zod-to-json-schema": "^3.23.0",
-    "happy-dom": "~20.8.9"
-  },
   "description": "Web-based authoring tool for explorables",
   "keywords": [
     "edtech",
@@ -42,51 +18,11 @@
     "interactive"
   ],
   "license": "UNLICENSED",
-  "packageManager": "^bun@1.2.16",
-  "scripts": {
-    "start": "bun vite -- @webwriter/core & vitest",
-    "test": "vitest run --printConsoleTrace=true --silent=false",
-    "start-local-sync": "HOST=localhost PORT=1234 bunx y-websocket",
-    "preparestatic": "bun run ./scripts/preparestatic.js",
-    "generate-jsonschema": "tsx ./scripts/generatejsonschema.js --tsconfig ./@webwriter/core/tsconfig.json",
-    "extract-localization": "lit-localize extract --config ./@webwriter/core/lit-localize.json",
-    "build-localization": "lit-localize build --config ./@webwriter/core/lit-localize.json",
-    "autolocalize": "bun run --env-file=./.env ./scripts/autolocalize.js",
-    "prestart": "bun run preparestatic && bun run build-localization",
-    "dev-docs": "bundle exec jekyll serve -s ./docs",
-    "prebuild": "bun install && bun run prestart",
-    "build": "bun run vite -- build @webwriter/core",
-    "devbuild": "bun run build && http-server ./@webwriter/core/dist",
-    "start-site": "astro dev",
-    "prebuild-site": "bun run installpackages",
-    "build-site": "astro build",
-    "preview-site": "astro preview",
-    "start-backend": "./pocketbase serve",
-    "installpackages": "bun run scripts/installpackages",
-    "localize-explorables": "bun run --env-file=../../.env scripts/localizeexplorables",
-    "vite": "vite",
-    "astro": "astro"
-  },
+  "packageManager": "bun@1.2.17",
   "workspaces": [
-    "@webwriter/*"
+    "@webwriter/build",
+    "@webwriter/domeditor",
+    "@webwriter/lit"
   ],
-  "overrides": {
-    "prosemirror-model": "^1.25.4",
-    "prosemirror-state": "^1.4.4",
-    "prosemirror-view": "1.39.2",
-    "lit": "^3.3.1"
-  },
-  "dependencies": {
-    "@y/websocket-server": "^0.1.1",
-    "loro-adaptors": "^0.6.1",
-    "loro-crdt": "^1.10.8",
-    "loro-mirror": "^2.1.0",
-    "loro-protocol": "^0.3.0",
-    "loro-websocket": "^0.6.2",
-    "signal-polyfill": "^0.2.2",
-    "signal-utils": "^0.21.1",
-    "y-webrtc": "^10.3.0",
-    "y-websocket": "^3.0.0",
-    "yjs": "^13.6.29"
-  }
+  "private": true
 }

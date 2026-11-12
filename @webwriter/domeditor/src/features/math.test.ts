@@ -2290,10 +2290,20 @@ describe("formula input keyboard and autocomplete", () => {
     const nodes = Array.from(row.childNodes)
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
-    type(pair[1])
+    const publishedChildCounts = new Set<number>()
+    const recordPublishedFence = () => {
+      const sharedRow = sharedDOMBody(editor.doc.doc).querySelector("mrow")
+      if(sharedRow instanceof Y.XmlElement && sharedRow.toString().includes(pair[1])) publishedChildCounts.add(sharedRow.length)
+    }
+    editor.doc.doc.on("afterTransaction", recordPublishedFence)
+    try {
+      type(pair[1])
+      editor.doc.syncFromDOM()
+    }
+    finally { editor.doc.doc.off("afterTransaction", recordPublishedFence) }
+    expect(publishedChildCounts).toEqual(new Set([1]))
     expect(Array.from(row.firstElementChild!.childNodes).slice(0, 2)).toEqual(nodes)
     expect(document.getSelection()!.anchorNode).toBe(row)
-    editor.doc.syncFromDOM()
     editor.doc.undo()
     expect(document.querySelector("math")!.textContent).toBe(`${pair[0]}x`)
     editor.doc.redo()
@@ -2462,13 +2472,23 @@ describe("formula input keyboard and autocomplete", () => {
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     const original = clean()
-    if(input === "keyboard") key("Backspace")
-    else if(input === "virtual") command("keyboard:delete:backward")
-    else document.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "deleteContentBackward"}))
+    const publishedChildCounts = new Set<number>()
+    const recordPublishedDeletion = () => {
+      const sharedRow = sharedDOMBody(editor.doc.doc).querySelector("mrow")
+      if(sharedRow instanceof Y.XmlElement && !sharedRow.toString().includes(")")) publishedChildCounts.add(sharedRow.length)
+    }
+    editor.doc.doc.on("afterTransaction", recordPublishedDeletion)
+    try {
+      if(input === "keyboard") key("Backspace")
+      else if(input === "virtual") command("keyboard:delete:backward")
+      else document.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "deleteContentBackward"}))
+      editor.doc.syncFromDOM()
+    }
+    finally { editor.doc.doc.off("afterTransaction", recordPublishedDeletion) }
+    expect(publishedChildCounts).toEqual(new Set([2]))
     expect(math.textContent).toBe("(1")
     expect(document.getSelection()!.isCollapsed).toBe(true)
     const deleted = clean()
-    editor.doc.syncFromDOM()
     expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
     editor.doc.undo()
     expect(clean()).toBe(original)
@@ -2500,6 +2520,9 @@ describe("formula input keyboard and autocomplete", () => {
     const original = clean()
     $.move(first.lastChild!.firstChild!, 1)
     key("Backspace")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const afterBackspace = clean()
     $.move(second.firstChild!.firstChild!, 0)
     key("Delete")
     const repaired = clean()
@@ -2507,7 +2530,11 @@ describe("formula input keyboard and autocomplete", () => {
     const shared = sharedDOMBody(editor.doc.doc).toString()
     expect(shared).not.toContain("◆")
     editor.doc.undo()
+    expect(clean()).toBe(afterBackspace)
+    editor.doc.undo()
     expect(clean()).toBe(original)
+    editor.doc.redo()
+    expect(clean()).toBe(afterBackspace)
     editor.doc.redo()
     expect(clean()).toBe(repaired)
     const group = document.querySelector("math > mrow > mrow")!
@@ -2819,8 +2846,18 @@ describe("formula input keyboard and autocomplete", () => {
     type(name)
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
-    key("Enter")
-    editor.doc.syncFromDOM()
+    let publishedEmptyRow = false
+    const recordPublishedCompletion = () => {
+      const sharedRow = sharedDOMBody(editor.doc.doc).querySelector("mrow")
+      if(sharedRow instanceof Y.XmlElement && !sharedRow.length) publishedEmptyRow = true
+    }
+    editor.doc.doc.on("afterTransaction", recordPublishedCompletion)
+    try {
+      key("Enter")
+      editor.doc.syncFromDOM()
+    }
+    finally { editor.doc.doc.off("afterTransaction", recordPublishedCompletion) }
+    expect(publishedEmptyRow).toBe(false)
     expect(math.textContent).toBe(name === "alpha" ? "α" : "")
     if(name === "sqrt") expect(math.querySelector("msqrt > mrow")!.childNodes).toHaveLength(0)
     editor.doc.undo()

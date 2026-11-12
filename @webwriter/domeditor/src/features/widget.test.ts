@@ -9,7 +9,7 @@ import {$, isWidgetShadowInteraction} from "../utility"
 import {isDataBlockType, stripActiveContent} from "../active-content"
 import {isWidgetOptionsState} from "../widget-options"
 import {effectiveDistribution} from "../distribution-dom"
-import type {ActionDeclaration, OptionDeclaration} from "../../../lit/index"
+import type {ActionDeclaration, OptionDeclaration, PermissionDeclaration} from "../../../lit/index"
 
 class OptionsWidget extends HTMLElement {
   static options = {
@@ -39,6 +39,7 @@ class LitOptionsWidget extends LitElement {
     explicit: {type: String, attribute: "lit-name", reflect: true},
     localOnly: {type: String, attribute: false},
     stateOnly: {state: true},
+    allowRetry: {type: Boolean, attribute: "allow-retry", reflect: true},
   }
   static options = {
     fooBar: {type: String},
@@ -46,6 +47,12 @@ class LitOptionsWidget extends LitElement {
     localOnly: {type: String},
     stateOnly: {type: String},
   }
+  static permissions = {
+    allowRetry: {label: {_: "Allow retry", de: "Erneut versuchen"}},
+    hidden: {hidden: true},
+    localOnly: {},
+  } satisfies Record<string, PermissionDeclaration>
+  declare allowRetry: boolean
   declare fooBar: string
   declare explicit: string
   localOnly = "local"
@@ -467,6 +474,83 @@ describe("widget editing config", () => {
 })
 
 describe("widget options", () => {
+  it("authors declared effect attributes through the options panel and rejects circular edits", () => {
+    customElements.define("demo-effect-options", class extends HTMLElement {
+      static effects = {
+        effect: {label: {_: "Primary input"}, connect() {}},
+        "effect-secondary": {label: {_: "Secondary input"}, connect() {}},
+      }
+      signals = {output: {get: () => 1}}
+    })
+    editor.schema.extendWidgets([{tagName: "demo-effect-options"}])
+    document.body.innerHTML = '<demo-effect-options id="a"></demo-effect-options><demo-effect-options id="b"></demo-effect-options>'
+    const a = document.getElementById("a")!
+    const b = document.getElementById("b")!
+    const feature = editor.features.widget
+    const state = (widget: Element) => feature.getOptionsState([widget])!
+    expect(isWidgetOptionsState(state(a))).toBe(true)
+    expect(state(a).options).toMatchObject([
+      {name: "effect:effect", label: "Primary input", choices: expect.arrayContaining([expect.objectContaining({value: "#b[output]"})])},
+      {name: "effect:effect-secondary", label: "Secondary input"},
+    ])
+    $.selectElement(a, false)
+    expect(feature.actions.setSelectedWidgetOption({type: "setSelectedWidgetOption",
+      selectionType: {localName: a.localName, namespaceURI: a.namespaceURI, id: "a"},
+      name: "effect:effect-secondary", value: "#b[output]",
+    })).toBe(true)
+    expect(sharedHTML()).toContain('effect-secondary="#b[output]"')
+    expect(editor.toHTML(true)).toContain('effect-secondary="#b[output]"')
+    expect(feature.setOption(b, "effect:effect", "#a[output]")).toBe(false)
+    expect(state(b).options[0].description).toBe("Circular signal connection: b → a → b")
+    expect(b.hasAttribute("effect")).toBe(false)
+    editor.doc.undo()
+    expect(document.getElementById("a")?.hasAttribute("effect-secondary")).toBe(false)
+    editor.doc.redo()
+    expect(document.getElementById("a")?.getAttribute("effect-secondary")).toBe("#b[output]")
+  })
+
+  it("projects widget permissions only for the distribution target and authors their boolean attributes", async () => {
+    document.body.innerHTML = '<demo-lit-options id="activity"><em>Prompt</em></demo-lit-options>'
+    const widget = document.querySelector("demo-lit-options") as LitOptionsWidget
+    await widget.updateComplete
+    const distribution = editor.features.distribution
+    const state = () => distribution.getState(widget)!
+    const set = (value: boolean) => distribution.actions.setWidgetPermission({
+      type: "setWidgetPermission", path: [0], identity: state().identity, name: "allowRetry", value,
+    })
+    expect(state().widgetPermissions).toEqual([expect.objectContaining({name: "allowRetry", label: "Allow retry", value: false})])
+    expect(distribution.getState(widget.firstElementChild!)?.widgetPermissions).toBeUndefined()
+    expect(editor.features.widget.getOptionsState([widget])?.options.some(option => option.name === "allowRetry")).toBe(false)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(set(true)).toBe(true)
+    await widget.updateComplete
+    expect(widget.allowRetry).toBe(true)
+    expect(state().widgetPermissions?.[0].value).toBe(true)
+    expect(editor.toHTML(true)).toContain('allow-retry=""')
+    expect(sharedHTML()).toContain('allow-retry=""')
+    editor.doc.undo()
+    expect(editor.toHTML(true)).not.toContain("allow-retry")
+    editor.doc.redo()
+    expect(widget.hasAttribute("allow-retry")).toBe(true)
+    expect(set(false)).toBe(true)
+    expect(widget.hasAttribute("allow-retry")).toBe(false)
+
+    Object.defineProperty(widget, "permissions", {configurable: true, value: {allowRetry: {disabled: true}}})
+    expect(set(true)).toBe(false)
+    Object.defineProperty(widget, "permissions", {value: {}})
+    expect(state().widgetPermissions).toBeUndefined()
+    expect(set(true)).toBe(false)
+
+    const {identity} = state()
+    const replacement = document.createElement("demo-lit-options")
+    widget.replaceWith(replacement)
+    expect(distribution.actions.setWidgetPermission({
+      type: "setWidgetPermission", path: [0], identity, name: "allowRetry", value: true,
+    })).toBe(false)
+    expect(replacement.hasAttribute("allow-retry")).toBe(false)
+  })
+
   it("reports selected widgets even without optional dynamic declarations", () => {
     document.body.innerHTML = "<demo-plain><p>Nested content</p></demo-plain>"
     const widget = document.querySelector("demo-plain")!

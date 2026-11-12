@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -8,7 +8,7 @@ import { appVersionPlugin } from './app-version.mjs'
 const tempDirs: string[] = []
 
 async function makeFixture() {
-  const root = await mkdtemp(path.join(tmpdir(), 'webwriter-app-version-'))
+  const root = await mkdtemp(path.join(await realpath(tmpdir()), 'webwriter-app-version-'))
   tempDirs.push(root)
   await mkdir(path.join(root, 'src'))
   await writeFile(
@@ -66,7 +66,7 @@ describe('appVersionPlugin', () => {
         emptyOutDir: true,
         outDir,
         rollupOptions: { input: path.join(root, 'src/main.js') },
-        watch: { clearScreen: false },
+        watch: { clearScreen: false, chokidar: { usePolling: true } },
       },
     })
 
@@ -94,6 +94,9 @@ describe('appVersionPlugin', () => {
       const entry = path.join(root, 'src/main.js')
       const secondBuild = nextBuild()
       await writeFile(entry, "import version from 'virtual:app-version'; console.log(version, 'updated');")
+      // The polling watcher can miss rewrites within the same timestamp second.
+      const nextTimestamp = Date.now() / 1000 + 2
+      await utimes(entry, nextTimestamp, nextTimestamp)
       await secondBuild
 
       const secondMarker = JSON.parse(await readFile(path.join(outDir, 'version.json'), 'utf8'))
@@ -115,7 +118,7 @@ describe('appVersionPlugin', () => {
       configFile: false,
       root,
       plugins: [appVersionPlugin()],
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, ws: false },
     })
 
     try {

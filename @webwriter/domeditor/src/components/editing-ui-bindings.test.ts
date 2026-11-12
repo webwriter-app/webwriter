@@ -24,6 +24,7 @@ const properties = (): EditingUIProperties => ({
   sectionType: "section",
   sectionActive: false,
   sectionSelected: false,
+  inputLinkKind: null,
   marks: [],
   allowedMarks: null,
   markStyles: {},

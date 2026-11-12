@@ -1,8 +1,8 @@
-# Support editing and viewing
+# Support editing
 
-Authors configure widgets; users interact with the finished document.
+Authors configure widgets, and readers interact with the finished document. A map marker widget can let authors set the location and let readers show or hide its coordinates.
 
-![Pencil editing interface beside learner answer interface](../../images/widgets/editing.svg)
+![Pencil editing interface beside reader controls](../../images/widgets/editing.svg)
 
 <!-- library:vanilla -->
 Use `this.isContentEditable` to distinguish the two views.
@@ -22,20 +22,23 @@ Observe `contenteditable` if changing mode requires a script update. Expose simp
 Use `this.editable` in your `LitElementWw` template and interaction handlers. The base requests an update when the widget or an ancestor changes editing mode:
 
 ```js
-choose(value) {
+toggleCoordinates() {
   if(this.editable) return
-  this.choice = value
+  this.showCoordinates = !this.showCoordinates
 }
 
 render() {
   return html`
     <slot></slot>
-    <button ?hidden=${this.editable} @click=${() => this.choose("false")}>False</button>
-    <p ?hidden=${!this.editable}>Edit the question, then use Preview.</p>`
+    <button ?hidden=${this.editable} @click=${this.toggleCoordinates}>
+      ${this.showCoordinates ? "Hide coordinates" : "Show coordinates"}
+    </button>
+    <p ?hidden=${this.editable || !this.showCoordinates}>${this.coordinates}</p>
+    <p ?hidden=${!this.editable}>Set the location, then use Preview.</p>`
 }
 ```
 
-Import `html` from `lit`. Expose simple author settings through [options and actions](../reference/options-actions.md), which WebWriter displays in the Widget drawer.
+Import `html` from `lit` and declare `showCoordinates` as local reactive state. Expose simple author settings through [options and actions](../reference/options-actions.md), which WebWriter displays in the Widget drawer.
 <!-- /library -->
 
 Keep widget controls in shadow DOM and use the runtime editability signal described above. WebWriter tracks its own selection and hover state in memory. Test both modes using **Preview**, and save and reopen the document to check the resulting state.

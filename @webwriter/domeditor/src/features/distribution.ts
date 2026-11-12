@@ -7,10 +7,12 @@ import {supportsDistribution, validateDistributionConfig, type DistributionConfi
 import {elementAttributeTargetId} from "../element-attributes"
 import {observePrivateDistributionRegions} from "../distribution-presentation"
 import {nodeAtPath, pathFromNode} from "../utility"
+import type {WidgetPermissionState} from "../widget-options"
 
 export type DistributionSelection = ReturnType<typeof getDistributionSelection> & {
   path: number[] | null
   identity: string
+  widgetPermissions?: WidgetPermissionState[]
 }
 
 /** Authored session policy. Reading selection state never changes the document. */
@@ -37,12 +39,23 @@ export class DistributionFeature extends EditorFeature {
 
   getState(element: Element | null): DistributionSelection | null {
     if(!element || !supportsDistribution(element.localName, element.namespaceURI)) return null
+    const widgetPermissions = this.editor.features.widget.getPermissions(element)
     return {...getDistributionSelection(element),
       path: element === document.documentElement ? null : pathFromNode(document.body, element),
-      identity: elementAttributeTargetId(element)}
+      identity: elementAttributeTargetId(element),
+      ...(widgetPermissions.length ? {widgetPermissions} : {})}
   }
 
   actions = {
+    setWidgetPermission: ({path, identity, name, value}: {
+      type: "setWidgetPermission", path: number[], identity: string, name: string, value: boolean,
+    }) => {
+      const element = nodeAtPath(document.body, path)
+      if(!(element instanceof Element) || !element.isConnected || elementAttributeTargetId(element) !== identity) return false
+      const {local, effective, hiddenByAncestor, error} = getDistributionSelection(element)
+      if(error || hiddenByAncestor || (local ?? effective)?.view === false) return false
+      return this.editor.features.widget.setPermission(element, name, value)
+    },
     getDistributionInsertionItems: ({}: {type: "getDistributionInsertionItems"}) => [
       ...insertionMenuItems.filter(item => item.tag).map(item => ({id: `element:${item.tag}`, label: item.name,
         html: this.editor.features.manipulation.ribbonElement(item.tag!).outerHTML})),

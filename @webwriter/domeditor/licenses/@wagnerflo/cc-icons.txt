@@ -1,0 +1,8 @@
+Creative Commons Web Fonts by Ricardo Barros
+https://github.com/cc-icons/cc-icons
+
+The project and documentation are licensed under CC BY 4.0.
+https://creativecommons.org/licenses/by/4.0/
+
+The source code is licensed under the MIT License.
+https://opensource.org/license/mit

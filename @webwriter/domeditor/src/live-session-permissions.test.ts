@@ -34,6 +34,17 @@ const updateFrom = (edit: (doc: Y.Doc) => void) => {
 }
 
 describe("acceptLearnerUpdate", () => {
+  it("accepts text submissions on private connections and rejects them on shared connections", () => {
+    const submit = (answers: unknown) => updateFrom(doc => {
+      maps(doc).steps.push([{id: "attempt", time: 2, learner: "ada", kind: "submission", answers}])
+    })
+    const good = submit([["choice", "a"], ["choice", "b"]])
+    expect(acceptLearnerUpdate(good.target, good.update, "ada")).toBe(true)
+    expect(acceptLearnerUpdate(good.target, good.update, "ada", undefined, false)).toBe(false)
+    const bad = submit([["choice", {value: "a"}]])
+    expect(acceptLearnerUpdate(bad.target, bad.update, "ada")).toBe(false)
+  })
+
   it("accepts bounded package events and rejects malformed analytics at the peer boundary", () => {
     const analytics = {profile: "https://example.org/profile/v1", verb: {id: "https://example.org/verb/used"}, widget: {tag: "demo-widget", path: [0]}}
     const update = (event: unknown, kind = "widget") => updateFrom(doc => maps(doc).steps.push([{id: "custom", time: 2, learner: "ada", kind, analytics: event}]))

@@ -21,6 +21,7 @@ const projectRoot = resolve(serverDirectory, "..")
 const defaultDataDirectory = join(projectRoot, ".webwriter-dev")
 const maximumBodySize = 25 * 1024 * 1024
 const maximumWebSocketPayload = 8 * 1024 * 1024
+const quizResultPath = "/api/demos/standalone-quiz/result"
 const loopbackHosts = new Set(["127.0.0.1", "::1", "localhost"])
 // ws exports the server by name from its ES module wrapper; its CommonJS entry attaches it to the default export.
 const WebSocketServer = WebSocketPackage.WebSocketServer ?? WebSocketPackage.default?.WebSocketServer ?? WebSocketPackage.default?.Server
@@ -42,17 +43,22 @@ const json = (response, status, value, headers = {}) => {
 
 const apiError = (response, status, message) => json(response, status, {error: {message}})
 
-const readJSON = async request => {
+const readBody = async (request, limit = maximumBodySize) => {
   const chunks = []
   let length = 0
   for await (const chunk of request) {
     length += chunk.length
-    if(length > maximumBodySize) throw Object.assign(new Error("Request body is too large"), {status: 413})
+    if(length > limit) throw Object.assign(new Error("Request body is too large"), {status: 413})
     chunks.push(chunk)
   }
-  if(!chunks.length) return {}
+  return Buffer.concat(chunks, length)
+}
+
+const readJSON = async request => {
+  const body = await readBody(request)
+  if(!body.length) return {}
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"))
+    return JSON.parse(body.toString("utf8"))
   }
   catch {
     throw Object.assign(new Error("Request body must be valid JSON"), {status: 400})
@@ -346,6 +352,7 @@ export async function createDevServer(options = {}) {
   const widgetGroupingDirectory = join(dataDirectory, "widget-grouping")
   const fetchImplementation = options.fetch ?? globalThis.fetch
   const gitSnapshots = new Map()
+  let quizResult
   const loadGitPackage = options.fetchGitPackage ?? fetchGitPackage
   // The VPN-facing proxy serves dist; source files and HMR stay local-only.
   const useVite = !privateTesting && options.vite !== false
@@ -603,7 +610,7 @@ export async function createDevServer(options = {}) {
           const syncType = decoding.readVarUint(decoder)
           const distribution = liveSessionTokens.get(request.liveRoom)?.distribution
           if(syncType !== 0 && (syncType > 2 || !acceptLearnerUpdate(shared, decoding.readVarUint8Array(decoder), request.liveLearner,
-            distribution?.configured ? distribution.validate : undefined))) {
+            distribution?.configured ? distribution.validate : undefined, false))) {
             throw new Error("Forbidden live update")
           }
         }
@@ -659,6 +666,7 @@ export async function createDevServer(options = {}) {
     try { url = new URL(request.url || "/", appOrigin ?? requestOrigin(request)) }
     catch { return apiError(response, 400, "Invalid request URL") }
     const path = url.pathname
+    if(privateTesting && path === quizResultPath) return apiError(response, 404, "API endpoint not found")
     const origin = appOrigin ?? backendOrigin()
     const method = request.method === "OPTIONS" ? request.headers["access-control-request-method"] : request.method
     // Frames need scoped widget services and immutable package resources. All
@@ -707,6 +715,42 @@ export async function createDevServer(options = {}) {
     }
 
     try {
+      if(path === quizResultPath) {
+        if(request.method === "GET") {
+          if(!quizResult) return apiError(response, 404, "No demo result has been saved")
+          response.writeHead(200, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json; charset=utf-8",
+            "Content-Length": quizResult.body.length,
+            ETag: quizResult.revision,
+          })
+          return response.end(quizResult.body)
+        }
+        if(request.method !== "PUT") {
+          response.setHeader("Allow", "GET, PUT")
+          return apiError(response, 405, "Use GET or PUT for the demo result")
+        }
+        if(request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+          return apiError(response, 415, "Send an application/json quiz result")
+        }
+        const body = await readBody(request, 8192)
+        let result
+        try { result = JSON.parse(body.toString("utf8")) }
+        catch { return apiError(response, 400, "Send a valid JSON quiz result") }
+        if(!isRecord(result) || Object.keys(result).length !== 1 || !["", "true", "false"].includes(result.choice)) {
+          return apiError(response, 400, 'Send a quiz result with a choice of "", "true", or "false"')
+        }
+        const match = request.headers["if-match"]
+        const create = request.headers["if-none-match"]
+        if(quizResult ? match !== quizResult.revision || create !== undefined : match !== undefined || create !== "*") {
+          return apiError(response, 412, "The demo result has changed")
+        }
+        const status = quizResult ? 204 : 201
+        quizResult = {body, revision: `"${randomUUID()}"`}
+        response.writeHead(status, {"Cache-Control": "no-store", ETag: quizResult.revision})
+        return response.end()
+      }
+
       const liveDocument = /^\/api\/live-sessions\/([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/.exec(path)
       if(liveDocument && request.method === "PUT") {
         const {token, hostKey, html} = await readJSON(request)

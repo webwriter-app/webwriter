@@ -66,7 +66,7 @@ describe("connectLiveLearner", () => {
       host.stop()
       await flushMicrotasks()
       expect(document.querySelector("x-card")).toBe(card)
-      expect(document.body.shadowRoot?.querySelector('[role="status"]')?.textContent).toContain("Session ended")
+      expect(document.body.shadowRoot?.querySelector('.◆live-session-ended[role="status"]')?.textContent).toContain("Session ended")
     }
     finally { disconnect(); host.destroy(); learner.destroy() }
   })
@@ -139,11 +139,11 @@ describe("connectLiveLearner", () => {
       expect(document.title).toBe("Late")
       const authored = document.querySelector("p")!
       const bodyHTML = document.body.innerHTML
-      expect(document.body.shadowRoot?.querySelector("[role=status]") ?? null).toBeNull()
+      expect(document.body.shadowRoot?.querySelector(".◆live-session-ended") ?? null).toBeNull()
       host.stop()
       await flushMicrotasks()
       const shadow = document.body.shadowRoot
-      const notice = shadow?.querySelector("[role=status]")
+      const notice = shadow?.querySelector(".◆live-session-ended[role=status]")
       expect(notice ?? null).not.toBeNull()
       expect(notice?.getAttribute("aria-live")).toBe("polite")
       expect(notice?.getAttribute("aria-atomic")).toBe("true")

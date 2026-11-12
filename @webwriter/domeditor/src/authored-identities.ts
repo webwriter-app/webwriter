@@ -1,3 +1,5 @@
+import {isWidgetHost, parseWidgetEffectReference, widgetEffectDeclarations, widgetSignals} from "./widget-effects"
+
 const svgShapeNames = new Set([
   "a", "circle", "ellipse", "foreignObject", "g", "image", "line", "path", "polygon", "polyline", "rect", "text", "use",
 ])
@@ -71,16 +73,34 @@ function needsAuthoredId(element: Element) {
 
 /** Rebase IDs that collide with the destination before the incoming nodes and
  * their references lose their shared fragment boundary. */
-export function remapPastedAuthoredIds(fragment: DocumentFragment | Element, destination: Document, replacing?: Element) {
+export function remapPastedAuthoredIds(fragment: DocumentFragment | Element, destination: Document, replacing?: Element,
+  isWidget?: (element: Element) => boolean) {
   const elements = Array.from(fragment.querySelectorAll("[id]"))
   if((fragment as Node).nodeType === 1 && (fragment as Element).id) elements.unshift(fragment as Element)
   const counts = new Map<string, number>()
   for(const element of elements) counts.set(element.id, (counts.get(element.id) ?? 0) + 1)
+  const effects: {attribute: Attr, reference: NonNullable<ReturnType<typeof parseWidgetEffectReference>>}[] = []
+  const effectSources = new Set<string>()
+  if(isWidget) {
+    for(const element of elementsIn(fragment)) {
+      if(!isWidgetHost(element) || !isWidget(element) || inWidget(element)) continue
+      for(const name of widgetEffectDeclarations(element, destination.defaultView?.customElements).keys()) {
+        const attribute = element.getAttributeNode(name)
+        const reference = attribute && parseWidgetEffectReference(attribute.value)
+        if(!attribute || !reference) continue
+        effects.push({attribute, reference})
+        effectSources.add(reference.id)
+      }
+    }
+  }
   const replacements = new Map<string, string>()
   for(const element of elements) {
     const id = element.id
     const existing = id && destination.getElementById(id)
-    if(!existing || counts.get(id) !== 1 || replacing?.contains(existing) || !needsAuthoredId(element) || inWidget(element)) continue
+    if(!existing || counts.get(id) !== 1 || replacing?.contains(existing) || inWidget(element)) continue
+    const signalSource = isWidget?.(element) && (effectSources.has(id)
+      || existing.localName === element.localName && widgetSignals(existing).size > 0)
+    if(!needsAuthoredId(element) && !signalSource) continue
     let replacement: string
     do { replacement = `ww-${crypto.randomUUID()}` }
     while(destination.getElementById(replacement) || counts.has(replacement))
@@ -89,6 +109,10 @@ export function remapPastedAuthoredIds(fragment: DocumentFragment | Element, des
     replacements.set(id, replacement)
   }
   if(replacements.size) for(const element of elementsIn(fragment)) if(!inWidget(element)) rewriteReferences(element, replacements)
+  for(const {attribute, reference} of effects) {
+    const replacement = replacements.get(reference.id)
+    if(replacement) attribute.value = `${attribute.value.slice(0, reference.idStart)}#${replacement}${attribute.value.slice(reference.idEnd)}`
+  }
 }
 
 function stableId(element: Element, occupied: Set<string>) {

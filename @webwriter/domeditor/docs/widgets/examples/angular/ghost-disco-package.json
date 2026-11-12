@@ -1,0 +1,44 @@
+{
+  "name": "@example/ghost-disco-angular",
+  "version": "1.0.0",
+  "description": "An interactive ghost dance party widget.",
+  "keywords": [
+    "webwriter-widget",
+    "widget-practical",
+    "widget-lang-en"
+  ],
+  "exports": {
+    "./widgets/ww-ghost-disco.js": "./dist/ww-ghost-disco.js",
+    "./snippets/ghost-disco.html": "./ghost-disco.html",
+    "./tests/ghost-disco.js": "./ghost-disco-tests.js"
+  },
+  "scripts": {
+    "build": "node build.mjs ghost-disco"
+  },
+  "editingConfig": {
+    "./widgets/ww-ghost-disco": {
+      "label": "Ghost Disco",
+      "content": "p+",
+      "sharedData": true
+    },
+    "./snippets/ghost-disco": {
+      "label": "Ghost Disco with invitation"
+    }
+  },
+  "dependencies": {
+    "@angular/compiler": "^22.2.2",
+    "@angular/core": "^22.2.2",
+    "@angular/elements": "^22.2.2",
+    "@angular/platform-browser": "^22.2.2",
+    "rxjs": "^7.8.2",
+    "@angular/common": "^22.2.2"
+  },
+  "devDependencies": {
+    "esbuild-wasm": "^0.25.12"
+  },
+  "files": [
+    "dist/ww-ghost-disco.js",
+    "ghost-disco.html",
+    "ghost-disco-tests.js"
+  ]
+}

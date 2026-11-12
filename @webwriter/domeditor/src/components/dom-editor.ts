@@ -20,7 +20,7 @@ import {LiveSessionRecovery, listRecoveredSessions, readRecoveredSession, delete
 import {deleteDocumentRecovery, discardedDocumentRecoveryIds, listDocumentRecoveries, markDocumentRecoveryDiscarded, readDocumentRecovery, writeDocumentRecovery, type DocumentRecovery} from "../document-recovery"
 import type {DistributionConfig, DistributionItem} from "../distribution.js"
 import {emptyDistributionConfig} from "../distribution.js"
-import type {DistributionInsertDrop} from "./distribution-controls"
+import type {DistributionInsertDrop, WidgetPermissionChange} from "./distribution-controls"
 import type {FloatInfo} from "./float-info"
 import type {DOMEditor} from "../domeditor"
 import type {LiveWidgetAggregateInput} from "../widget-aggregate"
@@ -1693,6 +1693,11 @@ export class DomEditor extends LitElement {
       this.liveFeedback = this.replayFeedback.filter(message => message.time <= time)
     }
     if(!this.replayActive) this.liveStatesAtStep = this.statesAtLiveStep(this.liveStreamStep)
+    const learners = this.liveLearners.map(learner => {
+      const submitted = this.livePreview.hasSubmittedWidget(this.ownerDocument, this.liveStatesAtStep.get(learner.id)?.widgets)
+      return submitted === Boolean(learner.submitted) ? learner : {...learner, submitted}
+    })
+    if(learners.some((learner, index) => learner !== this.liveLearners[index])) this.liveLearners = learners
     if(this.replayActive) {
       const html = this.replaySelectedLearner ? this.liveStatesAtStep.get(this.replaySelectedLearner)?.html ?? this.replayBaseHTML : this.replayBaseHTML
       if(html !== this.replayRenderedHTML) {
@@ -7291,6 +7296,18 @@ export class DomEditor extends LitElement {
     void this.writeDistributionConfig(state, event.detail.config)
   }
 
+  private handleWidgetPermissionChange = async (event: CustomEvent<WidgetPermissionChange>) => {
+    const state = this.distributionSelection
+    const detail = event.detail
+    if(!state?.path || this.distributionPending || detail?.target !== state.identity
+      || typeof detail.name !== "string" || typeof detail.value !== "boolean") return
+    const frame = this.frameRevision
+    await this.distributionWriteQueue
+    if(frame !== this.frameRevision || this.distributionSelection?.identity !== state.identity) return
+    const applied = await this.execute({type: "setWidgetPermission", path: state.path, identity: state.identity, name: detail.name, value: detail.value})
+    if(applied === false && frame === this.frameRevision) this.refreshDistributionState(state.identity)
+  }
+
   private writeDistributionConfig(state: DistributionSelection, config: DistributionConfig | null) {
     if(!this.distributionAcceptedStates.has(state.identity)) this.distributionAcceptedStates.set(state.identity, state)
     const revision = ++this.distributionWriteRevision
@@ -8438,10 +8455,11 @@ export class DomEditor extends LitElement {
           this.editorShellRevision = this.frameRevision
           if(restartedShell) {
             const replica = this.documentReplica
+            const pendingState = this.editorDocument ? undefined : this.frameState
             const state: EditorStateSnapshot | undefined = replica ? {
               update: Y.encodeStateAsUpdate(replica.doc),
               widgetDataDocumentId: replica.widgetDataDocumentId,
-            } : this.frameState
+            } : pendingState
             if(!state) {
               const latestDocument = this.snapshotEditorDocumentHTML()
               if(latestDocument !== null) this.frameDocumentHTML = latestDocument
@@ -9668,6 +9686,7 @@ export class DomEditor extends LitElement {
         .distributionPending=${this.distributionPending}
         .distributionInsertDragActive=${Boolean(this.ribbonDrag)}
         @distribution-config-change=${this.handleDistributionConfigChange}
+        @widget-permission-change=${this.handleWidgetPermissionChange}
         @distribution-insert-drop=${this.handleDistributionInsertDrop}
         .selectionPath=${this.selectionPath}
         .elementSelected=${this.nodeSelection}

@@ -459,11 +459,12 @@ describe("development server", () => {
         VITE_APP_ORIGIN: "", VITE_EDITOR_ORIGIN: "", OPENAI_API_KEY: "", WEBWRITER_TEST_STATIC_ROUTES: "1"},
       stdio: entry === "backend" ? ["ignore", "pipe", "pipe"] : ["ignore", "pipe", "pipe", "ipc"],
     })
-    const stopped = new Promise(resolve => child.once("exit", (code, signal) => resolve({code, signal})))
+    const stopped = new Promise(resolve => child.once("close", (code, signal) => resolve({code, signal})))
+    let stderr = ""
+    child.stderr.on("data", chunk => { stderr += chunk.toString() })
     try {
       baseUrl = await new Promise((resolve, reject) => {
         let output = ""
-        let stderr = ""
         const timer = setTimeout(() => reject(new Error("Development CLI did not start")), 5000)
         child.once("error", error => { clearTimeout(timer); reject(error) })
         child.once("exit", code => {
@@ -475,7 +476,6 @@ describe("development server", () => {
           const address = /development server: (http:\/\/127\.0\.0\.1:\d+)/.exec(output)
           if(address) { clearTimeout(timer); resolve(address[1]) }
         })
-        child.stderr.on("data", chunk => { stderr += chunk.toString() })
       })
       const relative = dataDirectory.slice(projectRoot.length)
       for(const path of [`/${relative}/providers.json`, `/${relative}/providers.json?raw`, `/@fs${dataDirectory}/providers.json?raw`]) {
@@ -489,6 +489,7 @@ describe("development server", () => {
       else child.send("close")
       const exit = await stopped
       expect(exit).toEqual({code: 0, signal: null})
+      if(entry === "backend") expect(stderr).not.toContain("Yjs was already imported")
       await disconnected
     }
     finally {

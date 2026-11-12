@@ -1,0 +1,29 @@
+:root {
+  font: 1rem/1.5 system-ui, sans-serif;
+  color: #1f2937;
+  background: #f8fafc;
+}
+
+body { margin: 0; }
+main {
+  max-inline-size: 58rem;
+  margin-inline: auto;
+  padding: clamp(1rem, 4vw, 3rem);
+}
+
+header { max-inline-size: 44rem; margin-block-end: 2rem; }
+h1, h2 { line-height: 1.2; }
+h1 { margin-block: 0 .65rem; font-size: clamp(1.7rem, 4vw, 2.4rem); }
+h2 { margin-block: 0 .35rem; font-size: 1.2rem; }
+p { margin-block: 0 .75rem; }
+a { color: #245a9c; text-underline-offset: .16em; }
+a:focus-visible { outline: 2px solid #245a9c; outline-offset: 3px; }
+
+.quizzes {
+  display: grid;
+  gap: clamp(1rem, 3vw, 1.5rem);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  align-items: start;
+}
+
+ww-standalone-quiz { display: block; }

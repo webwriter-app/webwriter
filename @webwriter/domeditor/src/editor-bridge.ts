@@ -1165,7 +1165,12 @@ function isDistributionSelection(value: unknown): boolean {
   if(!isRecord(value) || typeof value.identity !== "string"
     || !(value.path === null || Array.isArray(value.path) && value.path.every(isNonnegativeInteger))
     || !(value.hiddenByAncestor === undefined || typeof value.hiddenByAncestor === "boolean")
-    || !(value.error === undefined || typeof value.error === "string")) return false
+    || !(value.error === undefined || typeof value.error === "string")
+    || !(value.widgetPermissions === undefined || Array.isArray(value.widgetPermissions) && value.widgetPermissions.every(permission =>
+      isRecord(permission) && typeof permission.name === "string" && typeof permission.label === "string"
+      && typeof permission.value === "boolean"
+      && [permission.description, permission.disabledReason].every(text => text === undefined || typeof text === "string")
+      && [permission.disabled, permission.readOnly].every(flag => flag === undefined || typeof flag === "boolean")))) return false
   try {
     for(const config of [value.local, value.effective]) if(config !== null) validateDistributionConfig(config)
     return true

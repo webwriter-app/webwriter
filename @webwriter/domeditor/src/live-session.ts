@@ -9,7 +9,8 @@ import type {WebWriterPackage} from "./packages"
 import type {WidgetDataSnapshot} from "./widget-aggregate"
 
 export type LiveSessionRole = "host" | "learner"
-export type LiveSessionStepKind = "document" | "cursor" | "pointer" | "click" | "scroll" | "widget"
+export type LiveSessionStepKind = "document" | "cursor" | "pointer" | "click" | "scroll" | "widget" | "submission"
+export type LiveSessionAnswers = [name: string, value: string][]
 
 export type LiveSessionLearner = {
   id: string
@@ -71,6 +72,8 @@ export type LiveSessionStep = {
   htmlUpdate?: string
   widgets?: LiveSessionWidgetState[]
   analytics?: LiveSessionWidgetEvent
+  /** Earlier clients sent answers separately. Readers now record submission on widgets. */
+  answers?: LiveSessionAnswers
 }
 
 export type LiveSessionStepInput = Omit<LiveSessionStep, "id" | "time" | "learner"> & {learner?: string}

@@ -6,7 +6,8 @@ These pages describe the widget interface supported by DOMEditor. For instructio
 |---|---|
 | [Editing configuration](editing-configuration.md) | Every supported configuration field and its default. |
 | [Runtime interface](runtime.md) | Custom elements, lifecycle, editing mode, and Lit helpers. |
-| [Options and actions](options-actions.md) | Declarations, controls, attribute conversion, and undo. |
+| [Options and actions](options-actions.md) | Declarations, controls, element permissions, attribute conversion, and undo. |
+| [Standalone widget drawer](standalone.md) | Embed settings, actions, file conversions, and result storage. |
 | [Data and events](data.md) | Data blocks, sharing modes, merging, and notifications. |
 | [Aggregated View](aggregated-view.md) | Declarations, response shapes, and custom renderers. |
 | [Content expressions](content-expressions.md) | Groups, sequences, choices, and repetition. |

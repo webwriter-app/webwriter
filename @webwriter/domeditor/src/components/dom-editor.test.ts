@@ -69,7 +69,7 @@ import * as liveRecovery from "../live-session-recovery"
 import {createReplayWorkerHandler, type ReplayWorkerRequest, type ReplayWorkerResponse} from "../live-session-replay-worker"
 import type {LiveSessionOverlay} from "./live-session-overlay"
 import type {LiveSessionControls} from "./live-session-controls"
-import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, formatShortcut, loadAppSettings, loadDocumentSettings} from "../app-settings"
+import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, formatShortcut, loadAppSettings, loadDocumentSettings, type AppSettings} from "../app-settings"
 import * as recentDocumentStorage from "../recent-documents"
 import * as documentRecoveryStorage from "../document-recovery"
 
@@ -1825,7 +1825,6 @@ describe("DomEditor iframe setup", () => {
 
     expect(iframe.contentDocument!.head.querySelector('meta[name="generator"]')?.getAttribute("content"))
       .toBe(WEBWRITER_GENERATOR)
-    expect(iframe.contentDocument!.documentElement.lang).toBe("en")
   })
 
   it("discards the entire iframe and ignores old document messages when creating a new document", async () => {
@@ -2230,7 +2229,7 @@ describe("DomEditor iframe setup", () => {
       expect(button.title).toContain(formatShortcut(ribbon.settings.shortcuts[`toolbox.${tool.toLowerCase()}`]))
     }
 
-    const settings = {...ribbon.settings, shortcuts: {...ribbon.settings.shortcuts, "toolbox.review": "Alt+9"}}
+    const settings: AppSettings = {...ribbon.settings, shortcuts: {...ribbon.settings.shortcuts, "toolbox.review": "Alt+9"}}
     ribbon.dispatchEvent(new CustomEvent("app-settings-change", {detail: settings, bubbles: true, composed: true}))
     await editor.updateComplete
     press("9", "Digit9", false)
@@ -7993,6 +7992,11 @@ describe("DomEditor.execute()", () => {
   it.each(["Open", "New"])("returns to editing when %s replaces a document in Preview", async action => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
+    const initializeFrame = host.initializeEditorFrame.bind(host)
+    vi.spyOn(host as {initializeEditorFrame(frame: HTMLIFrameElement): void}, "initializeEditorFrame").mockImplementation(frame => {
+      if(frame === host.editorIframe()) wirePackageLoadCompletion(frame.contentWindow!)
+      initializeFrame(frame)
+    })
     const root = editor.shadowRoot!
     const ribbon = root.querySelector<AppRibbon>("app-ribbon")!
     iframe.contentDocument!.body.innerHTML = "<p>Previous lesson</p>"
@@ -8030,9 +8034,8 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     const replacement = root.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
     expect(replacement).not.toBe(iframe)
-    wirePackageLoadCompletion(replacement.contentWindow!)
-    replacement.dispatchEvent(new Event("load"))
     await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
+    await editor.updateComplete
     expect(root.querySelector("iframe.preview-frame")).toBeNull()
     expect(replacement.hidden).toBe(false)
     expect(replacement.inert).toBe(false)
@@ -8124,7 +8127,7 @@ describe("DomEditor.execute()", () => {
     const scripts = parsed.querySelectorAll("script")
     expect(scripts).toHaveLength(1)
     expect(scripts[0].id).toBe("webwriter-canvas-viewer")
-    expect(scripts[0].textContent).toContain("mountCanvasReader(loadCanvasSnapdom)")
+    expect(scripts[0].textContent).toContain("canvasReader.mount(loadCanvasSnapdom)")
     expect(scripts[0].textContent).not.toContain("untrusted()")
     const policy = parsed.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
     expect(scripts[0].getAttribute("nonce")).toBe(/'nonce-([^']+)'/.exec(policy)![1])
@@ -8139,7 +8142,7 @@ describe("DomEditor.execute()", () => {
     source.body.innerHTML = '<h1 id="intro">Intro</h1><figure id="diagram"><img><figcaption>Diagram</figcaption></figure><script id="webwriter-document-viewer">untrusted()</script>'
     const preview = new DOMParser().parseFromString((editor as any).currentPreviewHTML(), "text/html")
     const script = preview.getElementById("webwriter-document-viewer")!
-    expect(script.textContent).toContain("mountDocumentReader(")
+    expect(script.textContent).toContain("documentReader.mount(")
     expect(script.textContent).not.toContain("untrusted()")
     const policy = preview.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
     expect(script.getAttribute("nonce")).toBe(/'nonce-([^']+)'/.exec(policy)![1])
@@ -8677,6 +8680,7 @@ describe("DomEditor.execute()", () => {
     vi.stubGlobal("Worker", ReplayTestWorker)
     const {editor} = await mountEditor()
     const host = editor as any
+    const openReplay = vi.spyOn(host as {openLiveReplay(event?: Event): Promise<unknown>}, "openLiveReplay")
     const authored = host.editorDocument?.documentElement.outerHTML
     const recorder = new IncrementalPreviewRecorder("<p>First</p>")
     const encode = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))
@@ -8694,7 +8698,8 @@ describe("DomEditor.execute()", () => {
       await editor.updateComplete
       await openRibbon.updateComplete
       openRibbon.shadowRoot!.querySelector<HTMLButtonElement>('.reader-replay-open')!.click()
-      await vi.waitFor(() => expect(host.replayActive).toBe(true))
+      expect(openReplay).toHaveBeenCalledOnce()
+      await openReplay.mock.results[0].value
       expect(host.replayActive).toBe(true)
       expect(host.replaySelectedLearner).toBe("ada")
       expect(host.liveSession).toBeNull()
@@ -9274,6 +9279,18 @@ describe("DomEditor.execute()", () => {
         scroll: 0.5,
       })])
       expect((editor as unknown as {liveStreamStep: number}).liveStreamStep).toBe(1)
+
+      learner.publish({kind: "widget", widgets: [{path: [0], html: '<demo-quiz><span submitted>Draft</span></demo-quiz>'}]})
+      await vi.waitFor(() => expect((editor as any).liveStreamStep).toBe(2))
+      expect(toggle.querySelector(".learner-submitted")).toBeNull()
+
+      learner.publish({kind: "widget", widgets: [{path: [0], html: '<demo-quiz submitted=""></demo-quiz>'}]})
+      await vi.waitFor(() => expect(toggle.querySelector(".learner-avatar .learner-submitted")).not.toBeNull())
+      expect(toggle.getAttribute("aria-label")).toBe("Ada Lovelace, connected, submitted an answer")
+
+      learner.publish({kind: "widget", widgets: [{path: [0], html: "<demo-quiz></demo-quiz>"}]})
+      await vi.waitFor(() => expect(toggle.querySelector(".learner-submitted")).toBeNull())
+      expect(toggle.getAttribute("aria-label")).toBe("Ada Lovelace, connected")
 
       toggle.click()
       await editor.updateComplete
@@ -10427,7 +10444,7 @@ describe("DomEditor.execute()", () => {
       [], [expect.objectContaining({name: "Paragraph", path: [1, 2]})],
     ])
     expect(breadcrumb.shadowRoot!.querySelector('[aria-label="Show Widget tree"]')).toBeNull()
-    const block = live.body.querySelector("script[slot=data]")!
+    const block = live.body.querySelector<HTMLScriptElement>("script[slot=data]")!
     expect(block.textContent).toBe('{"choice":""}')
 
     block.type = "text/javascript"

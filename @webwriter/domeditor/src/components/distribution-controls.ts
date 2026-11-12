@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing } from "lit"
+import {live} from "lit/directives/live.js"
 import {ribbonIcon} from "../ribbon-icons"
 import {getElementPresentation} from "../element-names"
 import {graphicShapeDragType, readGraphicShapeDrag} from "../graphic"
@@ -12,6 +13,7 @@ import {
   type DistributionItem,
   type DistributionPermission,
 } from "../distribution.js"
+import type {WidgetPermissionState} from "../widget-options"
 
 export interface DistributionSelectionState {
   identity: string
@@ -19,9 +21,11 @@ export interface DistributionSelectionState {
   effective: DistributionConfig | null
   hiddenByAncestor?: boolean
   error?: string
+  widgetPermissions?: WidgetPermissionState[]
 }
 
 export type DistributionInsertDrop = {target: string, general: boolean, action?: string, token?: string}
+export type WidgetPermissionChange = {target: string, name: string, value: boolean}
 
 const permissionLabels: Record<DistributionPermission, string> = {
   edit: "Edit",
@@ -138,6 +142,11 @@ export class DistributionControls extends LitElement {
     :host([compact]) .permission {grid-template-columns: 0.8rem minmax(0, 1fr) 0.8rem; gap: 0.4rem; min-height: 1.15rem; padding: 0.1rem 0.35rem;}
     :host([compact]) .permission-icon, :host([compact]) .permission-icon svg {width: 0.8rem; height: 0.8rem;}
     :host([compact]) .permission input[type="checkbox"] {width: 0.8rem; height: 0.8rem;}
+    :host .widget-permission, :host([compact]) .widget-permission {grid-template-columns: minmax(0, 1fr) auto;}
+    .widget-permission > span {overflow-wrap: anywhere;}
+    @media (pointer: coarse) {
+      :host([compact]) .widget-permission {min-block-size: 2.75rem;}
+    }
     .grouping {display: grid; grid-template-columns: minmax(0, 1fr) auto; min-width: 0; min-height: 1.65rem; border: 1px solid #c5ccd5; border-radius: 4px; background: #fff; color: #153d61; overflow: hidden;}
     .grouping[aria-disabled="true"] {opacity: 0.5; filter: grayscale(1);}
     .grouping-all {align-self: stretch; min-height: 1.65rem; padding: 0.1rem 0.5rem; border: 0; border-left: 1px solid #c5ccd5; border-radius: 0; background: transparent; color: inherit;}
@@ -530,8 +539,32 @@ export class DistributionControls extends LitElement {
     </div>`
   }
 
+  private renderWidgetPermissions() {
+    const state = this.state
+    if(this.general || !state?.widgetPermissions?.length) return nothing
+    return html`<div class="nested-permissions" role="group" aria-label="Widget editing permissions">
+      ${state.widgetPermissions.map(permission => {
+        const disabled = this.permissionFieldsDisabled || permission.disabled || permission.readOnly
+        return html`<div class="permission-card">
+          <label class="permission widget-permission" title=${(disabled && permission.disabledReason || permission.description) ?? ""}>
+            <span>${permission.label}</span>
+            <input type="checkbox" .checked=${live(permission.value)} ?disabled=${disabled}
+              @change=${(event: Event) => {
+                if(disabled || this.permissionFieldsDisabled || this.state?.identity !== state.identity) return
+                this.dispatchEvent(new CustomEvent<WidgetPermissionChange>("widget-permission-change", {
+                  detail: {target: state.identity, name: permission.name, value: (event.currentTarget as HTMLInputElement).checked},
+                  bubbles: true, composed: true,
+                }))
+              }} />
+          </label>
+        </div>`
+      })}
+    </div>`
+  }
+
   private renderPermissions() {
-    const cards = distributionPermissions.map(permission => this.renderPermission(permission))
+    const cards = distributionPermissions.map(permission => html`${this.renderPermission(permission)}
+      ${permission === "edit" ? this.renderWidgetPermissions() : nothing}`)
     return html`<div class="permissions">
       ${this.general ? cards : html`<div class="permission-card" data-permission="view">
         <label class="permission" title=${this.state?.hiddenByAncestor ? "An ancestor is hidden from participants" : "Include this element in live sessions"}>

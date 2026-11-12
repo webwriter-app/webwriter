@@ -14,11 +14,10 @@ service exclusively on its VPN interface; there is no public listener.
 ## Docker Compose (recommended)
 
 On a dedicated, VPN-connected **Linux Docker host**, install Docker Engine and
-Compose v2.20+ (or a newer Compose release). Clone the full WebWriter repository:
-the frontend needs the repository's shared `static/` assets, CSS themes in
-`@webwriter/core/`, and `@webwriter/lit/` widget base library, as well as
-`@webwriter/domeditor/`. No host Node.js, npm, nginx, or Git installation is needed
-for this option. Docker needs outbound access to download images and npm packages.
+Compose v2.20+ (or a newer Compose release). Clone the full WebWriter repository
+to include `@webwriter/domeditor/` and the `@webwriter/lit/` widget base library.
+No host Node.js, npm, nginx, or Git installation is needed for this option.
+Docker needs outbound access to download images and npm packages.
 
 Prepare the VPN access rules, two DNS names, and a browser-trusted certificate
 described below. Place `fullchain.pem` and `privkey.pem` in a directory on the

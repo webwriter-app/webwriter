@@ -222,17 +222,17 @@ describe("element attribute editor", () => {
       .toEqual(["Tiny 50", "Small 100", "Medium 200", "Large 400", "Huge 800"])
   })
 
-  it("renders expanded short enumerations as accessible icon button groups", async () => {
+  it("renders expanded short enumerations as accessible labeled buttons", async () => {
     const editor = await mount("ol", {type: "a"})
     editor.expanded = true
     await editor.updateComplete
     const group = editor.shadowRoot!.querySelector<HTMLElement>('[role="group"][aria-labelledby="attribute-label-type"]')!
     const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
     expect(buttons).toHaveLength(6)
-    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual([
+    expect(buttons.map(button => button.textContent!.trim())).toEqual([
       "Default", "1, 2, 3", "a, b, c", "A, B, C", "i, ii, iii", "I, II, III",
     ])
-    expect(buttons.every(button => button.querySelector("svg"))).toBe(true)
+    expect(group.querySelector("svg")).toBeNull()
     expect(buttons.find(button => button.getAttribute("aria-pressed") === "true")?.getAttribute("aria-label")).toBe("a, b, c")
     expect(group.hasAttribute("data-default")).toBe(false)
   })

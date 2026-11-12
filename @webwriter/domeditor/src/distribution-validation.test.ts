@@ -50,6 +50,17 @@ const fixture = (target: string, config: DistributionConfig): PolicyFixture => (
 const emptyRoot = '<html id="root"><head></head><body></body></html>'
 
 describe("validateDistributionChange", () => {
+  it("accepts a widget submission in a view-only region and limits it to the boolean attribute", () => {
+    const draft = '<x-quiz id="quiz" answer="true"></x-quiz><p>Text</p>'
+    const submitted = draft.replace('answer="true"', 'answer="true" submitted=""')
+    const configs = [rootConfig()]
+    expect(validate(draft, submitted, configs)).toBe(true)
+    expect(validate(submitted, draft, configs)).toBe(true)
+    expect(validate(draft, submitted.replace('submitted=""', 'submitted="answer"'), configs)).toBe(false)
+    expect(validate(draft, submitted.replace('answer="true"', 'answer="false"'), configs)).toBe(false)
+    expect(validate(draft, draft.replace("<p>", "<p submitted>"), configs)).toBe(false)
+  })
+
   it("denies edits by default and permits inherited text changes where configured", () => {
     const before = '<html id="root"><head></head><body><p>Hello</p></body></html>'
     const after = '<html id="root"><head></head><body><p>Goodbye</p></body></html>'

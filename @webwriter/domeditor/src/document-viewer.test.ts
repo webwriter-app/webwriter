@@ -14,6 +14,85 @@ const fullscreenDescriptor = Object.getOwnPropertyDescriptor(document, "fullscre
 const originalHead = document.head.innerHTML
 const printDescriptor = Object.getOwnPropertyDescriptor(window, "print")
 
+describe("reader answer submission", () => {
+  customElements.define("reader-answer-test", class extends HTMLElement {
+    static formAssociated = true
+  })
+
+  it("validates in document order and marks the widget only after confirmation", () => {
+    document.body.innerHTML = '<form><input name="name" required><input name="later" required><reader-answer-test></reader-answer-test></form>'
+    const [first, later] = Array.from(document.querySelectorAll("input"))
+    const scrollFirst = vi.spyOn(first, "scrollIntoView")
+    const scrollLater = vi.spyOn(later, "scrollIntoView")
+    const widget = document.querySelector("reader-answer-test")!
+    reader = mountDocumentReader()!
+    const appendix = document.body.shadowRoot!
+    const submit = appendix.querySelector<HTMLButtonElement>('[name="submit"]')!
+    const dialog = appendix.querySelector<HTMLElement>(".◆document-submit-confirmation")!
+    const [cancel, confirm] = Array.from(dialog.querySelectorAll("button"))
+    expect(submit.hidden).toBe(false)
+    expect(submit.parentElement?.lastElementChild).toBe(submit)
+    submit.click()
+    expect(scrollFirst).toHaveBeenCalledOnce()
+    expect(scrollLater).not.toHaveBeenCalled()
+    expect(dialog.hidden).toBe(true)
+    first.value = "Ada"
+    later.value = "First draft"
+    submit.click()
+    expect(dialog.hidden).toBe(false)
+    expect(widget.hasAttribute("submitted")).toBe(false)
+    cancel.click()
+    expect(widget.hasAttribute("submitted")).toBe(false)
+    submit.click()
+    later.value = ""
+    confirm.click()
+    expect(scrollLater).toHaveBeenCalledOnce()
+    expect(widget.hasAttribute("submitted")).toBe(false)
+    later.value = "Final answer"
+    submit.click()
+    confirm.click()
+    expect(widget.getAttribute("submitted")).toBe("")
+    expect(first.hasAttribute("submitted")).toBe(false)
+    expect(dialog.hidden).toBe(true)
+  })
+
+  it("notifies each participating widget locally only after confirmation", () => {
+    document.body.innerHTML = '<form><reader-answer-test name="a"></reader-answer-test><reader-other-test></reader-other-test></form><reader-answer-test name="b"></reader-answer-test>'
+    const widgets = [...document.querySelectorAll("reader-answer-test")]
+    const events = vi.fn((event: Event) => expect((event.target as Element).hasAttribute("submitted")).toBe(true))
+    const other = vi.fn()
+    widgets.forEach(widget => widget.addEventListener("submit", events))
+    document.querySelector("reader-other-test")!.addEventListener("submit", other)
+    document.querySelector("form")!.addEventListener("submit", other)
+    reader = mountDocumentReader()!
+    const appendix = document.body.shadowRoot!
+    const submit = appendix.querySelector<HTMLButtonElement>('[name="submit"]')!
+    const [cancel, confirm] = appendix.querySelectorAll<HTMLButtonElement>(".◆document-submit-confirmation button")
+    expect(submit.hidden).toBe(false)
+    submit.click()
+    cancel.click()
+    expect(events).not.toHaveBeenCalled()
+    submit.click()
+    confirm.click()
+    expect(events.mock.calls.map(([event]) => event.target)).toEqual(widgets)
+    expect(events.mock.calls.every(([event]) => event instanceof SubmitEvent && !event.bubbles)).toBe(true)
+    expect(other).not.toHaveBeenCalled()
+  })
+
+  it("reveals Submit when a widget is added and hides it when removed", async () => {
+    reader = mountDocumentReader()!
+    const submit = document.body.shadowRoot!.querySelector<HTMLButtonElement>('[name="submit"]')!
+    expect(submit.hidden).toBe(true)
+    const widget = document.createElement("reader-answer-test")
+    document.body.append(widget)
+    await settle()
+    expect(submit.hidden).toBe(false)
+    widget.remove()
+    await settle()
+    expect(submit.hidden).toBe(true)
+  })
+})
+
 beforeEach(() => {
   document.designMode = "off"
   if(fullscreenDescriptor) Object.defineProperty(document, "fullscreenEnabled", fullscreenDescriptor)

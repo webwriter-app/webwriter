@@ -19,6 +19,6 @@ For a block widget, start with these host styles and adjust the height limits to
 }
 ```
 
-Use container queries for layouts that need columns at wider allocations. Apply the query to a descendant inside the shadow DOM. Use `minmax(0, 1fr)` for flexible grid columns and allow long text to wrap.
+Use container queries for layouts that need columns at wider allocations. For example, a weather dashboard can put current conditions and the forecast side by side when there is room, then stack them in a narrow column. Apply the query to a descendant inside the shadow DOM. Use `minmax(0, 1fr)` for flexible grid columns and allow long text to wrap.
 
 Test at 300px, 2100px, and several widths in between. Check nested widgets and browser zoom too. Controls should remain readable without horizontal overflow, and content should stay reachable when the widget reaches its maximum height.

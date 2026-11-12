@@ -3442,7 +3442,7 @@ export class ManipulationFeature extends EditorFeature {
         if(invoker.style.getPropertyValue("anchor-name").trim() === `--${id}`) invoker.style.setProperty("anchor-name", `--${replacement}`)
       })
     }
-    remapPastedAuthoredIds(fragment, document)
+    remapPastedAuthoredIds(fragment, document, undefined, this.editor.features.widget.isWidget)
     this.selectCapturedElementForInsertion()
     if(this.insertLayoutPaste(fragment)) return
     if(this.insertListPaste(fragment)) return true

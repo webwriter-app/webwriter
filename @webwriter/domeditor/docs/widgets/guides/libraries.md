@@ -67,12 +67,12 @@ Declare both `@webwriter/lit` and `lit` in `dependencies`. Register third-party 
 
 Render widget UI in shadow DOM.
 
-Export document-level widget CSS separately. An export such as `./widgets/ww-quiz.*` loads the matching script and stylesheet. Include any theme required by your component library.
+Export document-level widget CSS separately. For example, an illustrated field guide can use `./widgets/ww-field-guide.*` to load its script and matching stylesheet. Include any theme required by your component library.
 
 For static files served beside your module, use a module-relative URL:
 
 ```js
-const imageUrl = new URL("./moon.svg", import.meta.url).href
+const imageUrl = new URL("./fern.svg", import.meta.url).href
 ```
 
 Include the file in the published package. Check preview and saved HTML; arbitrary network requests made by a widget are outside automatic offline bundling. See [distribution](../reference/distribution.md).

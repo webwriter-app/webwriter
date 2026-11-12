@@ -11,8 +11,10 @@ A widget script defines the custom element named by its export, for example `./w
 | `attributeChangedCallback(name, oldValue, value)` | React to local, remote, and undo changes. |
 | `isContentEditable` | Whether the widget is currently editable. |
 | `focus(options?)` | Optionally delegate focus to an internal control. |
+| `standalone` attribute | Opts an embed into its [standalone drawer](standalone.md). An empty value defaults to browser storage, and a URL selects an HTTP endpoint. |
 | `static options` / `options` | [Option declarations](options-actions.md) for the Widget drawer. |
 | `static actions` / `actions` | [Action declarations](options-actions.md); methods have matching names. |
+| `static effects` / `effects`, `signals` | [Reactive links](#signals) between authored widgets. |
 | `static convertFrom` / `convertFrom`, `static convertTo` / `convertTo` | [DOM conversions and file import or export](../guides/conversions.md). |
 | `static aggregate` | [Aggregated View](aggregated-view.md) declaration for aggregate views. |
 | `static offlineImports(element)` | [Select optional dynamic imports](#offline-imports) for Offline HTML. |
@@ -20,6 +22,80 @@ A widget script defines the custom element named by its export, for example `./w
 WebWriter gives installed widgets a persistent `id` if missing. It adds `contenteditable=""` while editing if the widget has no `contenteditable` attribute. The empty value on installed widgets is temporary and is excluded from saved and shared HTML. Explicit values such as `contenteditable="false"` are preserved.
 
 Shadow-DOM events are ignored by editor features unless `propagateEvents` opts in. Deliberate widget changes to authored DOM are still observed and synchronized.
+
+## Signals
+
+Widgets can publish reactive values to other widgets with Signals. `@webwriter/lit` re-exports Lit Signals, including `SignalWatcher`, `signal`, `computed`, `watch`, and signal-aware `html`. When building widgets separately, use compatible dependency versions and `@webwriter/build --shared-dependencies` so widgets resolve to the same polyfill instance. With another bundler, keep `@webwriter/lit`, Lit Signals, and the polyfill external.
+
+Declare one entry in `static effects` for each supported lowercase effect attribute. Each declaration requires a `connect(signal, lifetime)` callback and may include a localized `label` and `description`. WebWriter calls it with the subscribing widget as `this` and passes an `AbortSignal` for the connection lifetime. In the example, the subscriber clears its source when the lifetime ends.
+
+The publisher's `signals` object maps public names to read-only computed signals. Keep those instances stable. An effect attribute value uses CSS selector syntax, such as `#sensor[celsius]`. The ID identifies a unique source in the authored document. The bracketed identifier names the public signal in `source.signals`. WebWriter leaves unresolved or circular links in the HTML and reconnects them when their endpoints and dependencies permit.
+
+`LitElementWw` tracks signals read with `.get()` in `render()` and schedules an update when they change. The display uses this to format the converter's Fahrenheit output. To update a single binding, pass the signal directly to the helper's `html` template.
+
+```html
+<ww-temperature-sensor id="sensor"></ww-temperature-sensor>
+<ww-fahrenheit-converter id="converter" effect="#sensor[celsius]"></ww-fahrenheit-converter>
+<ww-temperature-display effect="#converter[fahrenheit]"></ww-temperature-display>
+```
+
+```js
+import {LitElementWw, computed, html, signal} from "@webwriter/lit"
+
+class WwTemperatureSensor extends HTMLElement {
+  #temperature = signal(20)
+  signals = {celsius: computed(() => this.#temperature.get())}
+
+  set celsius(value) {
+    this.#temperature.set(value)
+  }
+}
+
+class WwFahrenheitConverter extends HTMLElement {
+  #input = signal(null)
+  signals = {
+    fahrenheit: computed(() => {
+      const celsius = this.#input.get()?.get()
+      return celsius == null ? null : celsius * 1.8 + 32
+    })
+  }
+
+  static effects = {
+    effect: {
+      label: {en: "Temperature sensor"},
+      connect(source, lifetime) {
+        this.#input.set(source)
+        lifetime.addEventListener("abort", () => this.#input.set(null), {once: true})
+      }
+    }
+  }
+}
+
+class WwTemperatureDisplay extends LitElementWw {
+  #input = signal(null)
+
+  render() {
+    const value = this.#input.get()?.get()
+    return html`<output>${value == null ? "—" : `${value} °F`}</output>`
+  }
+
+  static effects = {
+    effect: {
+      label: {en: "Temperature reading"},
+      connect(source, lifetime) {
+        this.#input.set(source)
+        lifetime.addEventListener("abort", () => this.#input.set(null), {once: true})
+      }
+    }
+  }
+}
+
+customElements.define("ww-temperature-sensor", WwTemperatureSensor)
+customElements.define("ww-fahrenheit-converter", WwFahrenheitConverter)
+customElements.define("ww-temperature-display", WwTemperatureDisplay)
+```
+
+Keep derived outputs in computed signals. A watcher that writes upstream can create a feedback loop outside the declared connections.
 
 ## Offline imports
 
@@ -36,7 +112,7 @@ static offlineImports(element) {
 
 WebWriter bundles selected imports and their dependencies normally. Calls excluded by the hook reject with an error named `OfflineImportError` in the standalone file. Static imports and dynamic imports from importers without rules follow the ordinary bundling behavior.
 
-See [Optimize the code bundle](../guides/optimize-code-bundle.md) for a loader example and offline verification steps.
+See [Test, debug and optimize](../guides/testing.md#optimize-the-code-bundle) for a loader example and offline verification steps.
 
 ## Conversions
 
@@ -57,6 +133,7 @@ Import from `@webwriter/lit`. Call `super` when overriding its lifecycle callbac
 
 | Member | Purpose |
 |---|---|
+| `standalone` | Reflected attribute value, or `null` when absent. Render a `WidgetDrawer` explicitly to expose the controls. |
 | `editable` | Getter for `isContentEditable`; updates when the widget or an ancestor changes editing mode. |
 | `lang` | Reactive language, following the nearest ancestor unless explicitly set. |
 | `static scopedElements` | Map of tag names to component classes in a native registry shared by instances of that concrete widget class. |

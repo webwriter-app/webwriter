@@ -3,7 +3,7 @@ import {LitElement, css, html, nothing} from "lit"
 import "./style-combobox"
 import {isMediaType, mediaAttributeOptions} from "../media"
 import {documentLanguageName, orderedLanguageOptions} from "../language-suggestions"
-import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
+import {renderRibbonOption, ribbonIcon} from "../ribbon-icons"
 import {choiceGroupStyles} from "./choice-group.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {
@@ -433,7 +433,7 @@ export class ElementAttributeEditor extends LitElement {
             aria-label=${item.label} title=${item.label} aria-pressed=${value === item.value}
             ?disabled=${this.disabled || !editability.editable}
             @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
-            @click=${() => this.dispatchAttribute(option.name, item.value || null)}>${ribbonOptionIcon(option.name, item.value)}</button>`)}
+            @click=${() => this.dispatchAttribute(option.name, item.value || null)}>${renderRibbonOption(option.name, item.value, item.label)}</button>`)}
         </div>
       </div>`
     }

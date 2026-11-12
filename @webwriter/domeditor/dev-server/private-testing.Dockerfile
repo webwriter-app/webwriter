@@ -2,20 +2,16 @@
 FROM node:24-bookworm-slim AS dependencies
 WORKDIR /app/@webwriter/domeditor
 COPY @webwriter/domeditor/package.json ./
+COPY @webwriter/lit/package.json @webwriter/lit/index.js /app/@webwriter/lit/
 # This package has no npm lockfile. Keep the generated lock throughout the build
 # so the runtime dependencies match the frontend's resolved installation.
 # Vite's optional esbuild peer conflicts with the editor's explicit esbuild
 # version. Install the declared versions, as in the existing Bun workspace.
-RUN npm install --legacy-peer-deps --include=dev --no-audit --no-fund
+# Pack the local Lit widget runtime so its peer resolves from this installation.
+RUN npm install --save-dev --install-links --legacy-peer-deps --include=dev --no-audit --no-fund ../lit
 
 FROM dependencies AS frontend
 COPY @webwriter/domeditor/ ./
-COPY static/ /app/static/
-COPY @webwriter/core/model/schemas/resource/themes/ /app/@webwriter/core/model/schemas/resource/themes/
-COPY @webwriter/lit/package.json @webwriter/lit/index.js /app/@webwriter/lit/
-# Documentation examples import this existing workspace package. Pack it into
-# node_modules so its Lit peer resolves from the editor's installation.
-RUN npm install --no-save --install-links --legacy-peer-deps --no-audit --no-fund ../lit
 ARG VITE_APP_ORIGIN
 ARG VITE_EDITOR_ORIGIN
 RUN test -n "$VITE_APP_ORIGIN" && test -n "$VITE_EDITOR_ORIGIN" && npm run build
