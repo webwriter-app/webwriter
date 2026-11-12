@@ -96,7 +96,8 @@ describe("file attachments on paste and drop", () => {
     expect(paste.defaultPrevented).toBe(true)
     await vi.waitFor(() => expect(paragraph.querySelectorAll("a[download]")).toHaveLength(2))
     expect(paragraph.textContent).toBe("Before worksheet.pdf data.csvafter")
-    expect(paragraph.querySelector("a")?.getAttribute("href")).toBe("data:application/octet-stream;base64,d29yaw==")
+    expect(paragraph.querySelector("a")?.getAttribute("href")).toMatch(/^blob:/)
+    expect(await editor.mediaSourceBlob(paragraph.querySelector("a")!.href)?.text()).toBe("work")
   })
 
   it("waits for the large-file decision before inserting a drop at its own caret", async () => {
@@ -107,7 +108,6 @@ describe("file attachments on paste and drop", () => {
     range.setStart(second.firstChild!, 5)
     range.collapse(true)
     vi.spyOn(editor.features.manipulation as unknown as {dropRange: () => Range}, "dropRange").mockReturnValue(range)
-    vi.spyOn(editor, "blobDataURL").mockResolvedValue("data:application/octet-stream;base64,AA==")
     const post = vi.spyOn(editor, "postHostMessage")
     const files = new DataTransfer()
     files.items.add(new File([new Uint8Array(5_000_001)], "notes.pdf", {type: "application/pdf"}))

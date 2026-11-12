@@ -1,3 +1,5 @@
+import {listDocumentBlobAssets, writeDocumentBlobAssets} from "./document-recovery"
+
 export type FontFileHandle = {
   readonly name: string
   readonly kind?: string
@@ -10,6 +12,7 @@ export type StoredFontFile = {id: string, name: string, handle?: FontFileHandle,
 
 const databaseName = "webwriter-fonts"
 const storeName = "files"
+const fontBlobOwner = "font:"
 
 function isFile(value: unknown): value is File {
   return typeof File !== "undefined" && value instanceof File
@@ -64,7 +67,7 @@ export async function readFontFiles(indexedDatabase = globalThis.indexedDB): Pro
   const database = await openDatabase(indexedDatabase)
   if(!database) return []
   try {
-    return await new Promise<StoredFontFile[]>(resolve => {
+    const records = await new Promise<StoredFontFile[]>(resolve => {
       let settled = false
       const finish = (records: StoredFontFile[]) => {
         if(settled) return
@@ -81,6 +84,31 @@ export async function readFontFiles(indexedDatabase = globalThis.indexedDB): Pro
         finish([])
       }
     })
+    let stored
+    try { stored = await listDocumentBlobAssets(fontBlobOwner, indexedDatabase) }
+    catch { return records }
+    const files = new Map(stored.flatMap(({owner, assets}) => assets.flatMap(({url: name, blob}) =>
+      isFile(blob) ? [[owner.slice(fontBlobOwner.length), {id: owner.slice(fontBlobOwner.length), name, file: blob}] as const] : [])))
+    for(const record of records) {
+      if(!record.file) continue
+      try {
+        if(!files.has(record.id)) {
+          await writeDocumentBlobAssets(fontBlobOwner + record.id, [{url: record.name, blob: record.file}], indexedDatabase)
+        }
+        // Leave a concurrently saved handle intact.
+        await new Promise<void>((resolve, reject) => {
+          const tx = database.transaction(storeName, "readwrite")
+          const store = tx.objectStore(storeName)
+          const request = store.get(record.id)
+          request.onsuccess = () => { if(isFile(request.result?.file)) store.delete(record.id) }
+          tx.oncomplete = () => resolve()
+          tx.onabort = tx.onerror = () => reject(tx.error)
+        })
+      }
+      catch { /* Keep the legacy file available if migration is interrupted. */ }
+    }
+    return [...records.map(record => files.get(record.id) ?? record),
+      ...[...files.values()].filter(file => !records.some(record => record.id === file.id))]
   }
   finally {
     database.close()
@@ -90,6 +118,10 @@ export async function readFontFiles(indexedDatabase = globalThis.indexedDB): Pro
 /** Saves either a structured-cloneable file handle or a File from an input control. */
 export async function saveFontFile(record: StoredFontFile, indexedDatabase = globalThis.indexedDB): Promise<void> {
   if(!isStoredFontFile(record)) throw new TypeError("Invalid imported font record")
+  if(record.file && !record.handle) {
+    await writeDocumentBlobAssets(fontBlobOwner + record.id, [{url: record.name, blob: record.file}], indexedDatabase)
+    return
+  }
   const database = await openDatabase(indexedDatabase)
   if(!database) throw new Error("IndexedDB is unavailable for imported font storage")
   try {

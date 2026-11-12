@@ -1,6 +1,15 @@
+export type DocumentBlobAsset = {url: string, blob: Blob}
+
+export function isDocumentBlobAsset(value: unknown): value is DocumentBlobAsset {
+  if(!value || typeof value !== "object") return false
+  const {url, blob} = value as Partial<DocumentBlobAsset>
+  return typeof url === "string" && url.startsWith("blob:") && blob instanceof Blob
+}
+
 /** A realm-independent snapshot used while replacing the editor iframe. */
 export type EditorStateSnapshot = {
   update: Uint8Array | number[]
+  assets?: DocumentBlobAsset[]
   /** Last update published to the host when the frame captured this state. */
   replicaSequence?: number
   /** Offline scoped-data identity, retained when the editor iframe is replaced. */

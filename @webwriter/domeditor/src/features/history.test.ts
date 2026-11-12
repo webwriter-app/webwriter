@@ -150,6 +150,29 @@ describe("history selection restoration", () => {
 })
 
 describe("collaborative version history", () => {
+  it("rebinds historical Blob URLs after an editor reload", async () => {
+    const file = new File(["old attachment"], "notes.bin", {type: "application/octet-stream"})
+    const oldURL = editor.createMediaURL(file)
+    document.body.innerHTML = `<p><a download="notes.bin" href="${oldURL}">Notes</a></p>`
+    const history = editor.features.history.actions
+    const checkpoint = history.getVersionHistory({type: "getVersionHistory"}).currentCheckpointId!
+    document.querySelector("a")!.setAttribute("href", editor.createMediaURL(new Blob(["updated attachment"])))
+    const current = history.getVersionHistory({type: "getVersionHistory"}).currentCheckpointId
+    const snapshot = await editor.features.state.actions.snapshotState({type: "snapshotState"})
+
+    editor.destroy()
+    document.body.replaceChildren()
+    editor = new DOMEditor({initialState: snapshot})
+    const restored = editor.features.history.actions
+    expect(restored.getVersionHistory({type: "getVersionHistory"}).currentCheckpointId).toBe(current)
+    restored.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: checkpoint})
+    const restoredURL = document.querySelector("a")!.getAttribute("href")!
+    expect(restoredURL).not.toBe(oldURL)
+    expect(await editor.mediaSourceBlob(restoredURL)?.text()).toBe("old attachment")
+    restored.clearVersionPreview({type: "clearVersionPreview"})
+    expect(await editor.mediaSourceBlob(document.querySelector("a")!.getAttribute("href")!)?.text()).toBe("updated attachment")
+  })
+
   it("shares inline media across checkpoints and restores the exact bytes after a snapshot reload", () => {
     const attachment = "data:application/octet-stream;base64," + "ABCD".repeat(4096)
     const replacement = "data:application/octet-stream;base64," + "EFGH".repeat(4096)

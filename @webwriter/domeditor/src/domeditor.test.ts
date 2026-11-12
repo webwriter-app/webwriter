@@ -57,11 +57,28 @@ describe("document recovery serialization", () => {
     try {
       expect(await editor.serializeRecoveryHTML()).toBeNull()
       document.body.innerHTML = '<!--authored--><custom-widget value="one"></custom-widget><img src="data:image/png;base64,AQID"><p class="◆editor-only">Temporary</p>'
-      const source = await editor.serializeRecoveryHTML()
+      const {html: source, assets} = (await editor.serializeRecoveryHTML())!
       expect(source).toContain("<!--authored-->")
       expect(source).toContain('<custom-widget value="one"></custom-widget>')
       expect(source).toContain("data:image/png;base64,AQID")
       expect(source).not.toContain("Temporary")
+      expect(assets).toEqual([])
+    }
+    finally { editor.destroy(); document.body.replaceChildren() }
+  })
+
+  it("captures one binary handle for repeated local media references", async () => {
+    const editor = new DOMEditor()
+    try {
+      const file = new File(["media"], "sample.mp4", {type: "video/mp4"})
+      const url = editor.createMediaURL(file)
+      expect(editor.createMediaURL(file)).toBe(url)
+      document.body.innerHTML = `<video src="${url}"></video><a href="${url}" download>Copy</a>`
+      const encode = vi.spyOn(editor, "blobDataURL")
+      const snapshot = (await editor.serializeRecoveryHTML())!
+      expect(snapshot.html).toContain(`src="${url}"`)
+      expect(snapshot.assets).toEqual([{url, blob: file}])
+      expect(encode).not.toHaveBeenCalled()
     }
     finally { editor.destroy(); document.body.replaceChildren() }
   })

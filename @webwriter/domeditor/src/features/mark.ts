@@ -1192,13 +1192,17 @@ export class MarkFeature extends EditorFeature {
       const media = this.attachmentMedia().find(candidate => candidate.id === source.mediaId)
       if(!media) throw new Error("The media source is no longer available.")
       try {
-        const response = await fetch(media.source, {signal: AbortSignal.timeout(10_000)})
-        if(!response.ok) throw new Error()
-        if(/^https?:/.test(media.source) && /^attachment(?:\s*;|\s*$)/i.test(response.headers.get("Content-Disposition") ?? "")) {
-          href = media.source
-          await response.body?.cancel()
+        const local = this.editor.mediaSourceBlob(media.source)
+        if(local) file = local
+        else {
+          const response = await fetch(media.source, {signal: AbortSignal.timeout(10_000)})
+          if(!response.ok) throw new Error()
+          if(/^https?:/.test(media.source) && /^attachment(?:\s*;|\s*$)/i.test(response.headers.get("Content-Disposition") ?? "")) {
+            href = media.source
+            await response.body?.cancel()
+          }
+          file = href ? new Blob() : await response.blob()
         }
-        file = href ? new Blob() : await response.blob()
       }
       catch(error) {
         throw new Error("Could not read the media for download. If you have the file, attach it directly.")
@@ -1209,7 +1213,8 @@ export class MarkFeature extends EditorFeature {
     else throw new TypeError("Choose a file or media source.")
     if(!href) {
       if(!await this.confirmLargeAttachments([{name: filename, size: file.size}])) return false
-      href = await this.attachmentFileHref(file)
+      validate()
+      href = this.attachmentFileHref(file)
     }
     const {context, anchor} = validate()
     this.attachmentRequest = null
@@ -1247,21 +1252,21 @@ export class MarkFeature extends EditorFeature {
 
   private attachmentFileHref(file: Blob) {
     // Treat even HTML and SVG files as bytes in a download.
-    return this.editor.blobDataURL(file.slice(0, file.size, "application/octet-stream"))
+    return this.editor.createMediaURL(file.type === "application/octet-stream"
+      ? file : file.slice(0, file.size, "application/octet-stream"))
   }
 
   async createAttachmentFragment(files: File[]) {
     if(!await this.confirmLargeAttachments(files)) return null
-    const hrefs = await Promise.all(files.map(file => this.attachmentFileHref(file)))
     const fragment = document.createDocumentFragment()
-    files.forEach((file, index) => {
+    for(const [index, file] of files.entries()) {
       const link = document.createElement("a")
-      link.href = hrefs[index]
+      link.href = this.attachmentFileHref(file)
       link.download = file.name
       link.textContent = file.name
       if(index) fragment.append(" ")
       fragment.append(link)
-    })
+    }
     return fragment
   }
 

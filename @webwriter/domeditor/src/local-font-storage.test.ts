@@ -1,6 +1,16 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it, vi} from "vitest"
+import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {readFontFiles, saveFontFile, type FontFileHandle, type StoredFontFile} from "./local-font-storage"
+
+const blobStorage = vi.hoisted(() => new Map<string, {url: string, blob: Blob}[]>())
+vi.mock("./document-recovery", () => ({
+  listDocumentBlobAssets: async (prefix: string) => [...blobStorage].filter(([owner]) => owner.startsWith(prefix))
+    .map(([owner, assets]) => ({owner, assets})),
+  writeDocumentBlobAssets: async (owner: string, assets: {url: string, blob: Blob}[], factory?: IDBFactory) => {
+    if(!factory) throw new Error("IndexedDB is unavailable")
+    blobStorage.set(owner, assets)
+  },
+}))
 
 const file = (name = "Display.woff2") => new File(["font data"], name, {type: "font/woff2"})
 const handle = (name = "Display.woff2"): FontFileHandle => ({name, kind: "file", getFile: async() => file(name)})
@@ -24,6 +34,15 @@ function memoryDatabase(initial: unknown[] = []) {
             queueMicrotask(() => request.onsuccess?.())
             return request
           },
+          get: (id: string) => {
+            const request: {result: unknown, onsuccess?: () => void} = {result: values.get(id)}
+            queueMicrotask(() => {
+              request.onsuccess?.()
+              transaction.oncomplete?.()
+            })
+            return request
+          },
+          delete: (id: string) => values.delete(id),
           put: (record: StoredFontFile) => {
             values.set(record.id, record)
             queueMicrotask(() => transaction.oncomplete?.())
@@ -42,6 +61,7 @@ function memoryDatabase(initial: unknown[] = []) {
 }
 
 afterEach(() => vi.unstubAllGlobals())
+beforeEach(() => blobStorage.clear())
 
 describe("local font storage", () => {
   it("stores and reads both file handles and File input imports", async() => {
@@ -53,7 +73,9 @@ describe("local font storage", () => {
 
     const loaded = await readFontFiles(storage.factory)
     expect(loaded).toEqual([handleRecord, fileRecord])
-    expect(storage.close).toHaveBeenCalledTimes(3)
+    expect(storage.close).toHaveBeenCalledTimes(2)
+    expect(storage.values.has(fileRecord.id)).toBe(false)
+    expect(blobStorage.get("font:input-font")).toEqual([{url: fileRecord.name, blob: fileRecord.file}])
   })
 
   it("filters malformed IndexedDB records", async() => {
@@ -66,6 +88,8 @@ describe("local font storage", () => {
     ])
 
     await expect(readFontFiles(storage.factory)).resolves.toEqual([{id: "valid", name: "Display.woff2", file: expect.any(File)}])
+    expect(storage.values.has("valid")).toBe(false)
+    expect(blobStorage.has("font:valid")).toBe(true)
     expect(storage.close).toHaveBeenCalledOnce()
   })
 
@@ -111,7 +135,7 @@ describe("local font storage", () => {
       return request
     }} as unknown as IDBFactory
 
-    await expect(saveFontFile({id: "font", name: "Display.woff2", file: file()}, factory)).rejects.toBe(failure)
+    await expect(saveFontFile({id: "font", name: "Display.woff2", handle: handle()}, factory)).rejects.toBe(failure)
     expect(db.close).toHaveBeenCalledOnce()
   })
 })

@@ -534,7 +534,7 @@ export class HistoryFeature extends EditorFeature {
   /** Checkpoints hold the authored document without the runtime assets
    * added for detached copies, which the live editor must not load. */
   #source() {
-    return this.editor.toHTML(false, false)
+    return this.editor.historyMediaHTML(this.editor.toHTML(false, false))
   }
 
   #packSource(source: string, newAssets?: Map<string, string>): CheckpointSource {
@@ -606,6 +606,7 @@ export class HistoryFeature extends EditorFeature {
 
   #applySource(source: string) {
     const restored = new DOMParser().parseFromString(source, "text/html")
+    this.editor.restoreMediaURLs(restored)
     this.#replaceAttributes(document.documentElement, restored.documentElement)
     this.#replaceAttributes(document.body, restored.body)
     document.body.replaceChildren(...Array.from(restored.body.childNodes, node => document.importNode(node, true)))

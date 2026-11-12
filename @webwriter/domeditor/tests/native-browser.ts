@@ -6811,7 +6811,7 @@ await check("serialization keeps authored styles without triggering editor CSP v
     const violations: SecurityPolicyViolationEvent[] = []
     doc.addEventListener("securitypolicyviolation", event => { if(event.effectiveDirective === "style-src-elem") violations.push(event) })
 
-    const saved = [frameEditor.toHTML(), await frameEditor.serializeHTML(), await frameEditor.serializeRecoveryHTML()]
+    const saved = [frameEditor.toHTML(), await frameEditor.serializeHTML(), (await frameEditor.serializeRecoveryHTML())?.html]
     await layoutFrame()
     assert(!violations.length, `serialization caused ${violations.length} stylesheet CSP violations`)
     for(const html of saved) {
@@ -6943,19 +6943,24 @@ await check("uploaded videos survive installing and removing packages", async ()
     const packages = [...host.installedPackages]
     const pkg = {name: "@test/media-reload", version: "1.0.0", label: "Media reload", description: "",
       authors: [], keywords: [], links: {}, scripts: [], styles: [], members: []}
+    let previousSource = original
     for(const next of [[...packages, pkg], packages]) {
       const previousRevision = host.frameRevision
       await host.reloadEditor(next)
       assert(host.frameRevision === previousRevision + 1, "package change did not reload the editor iframe")
       const source = await readSource()
-      assert(source.startsWith("data:video/mp4;base64,"), "reloaded video retained an outgoing realm's object URL")
-      const saved = await (await fetch(source)).blob()
+      assert(source.startsWith("blob:") && source !== previousSource, "reloaded video did not get a fresh object URL")
+      previousSource = source
+      const exported = new DOMParser().parseFromString(await app!.execute({type: "serializeDocument"}) as string, "text/html")
+      const exportedSource = exported.querySelector("video")!.getAttribute("src")!
+      assert(exportedSource.startsWith("data:video/mp4;base64,"), "export did not inline the reloaded video")
+      const saved = await (await fetch(exportedSource)).blob()
       assert(saved.size === file.size && saved.type === file.type, "package reload lost video bytes or MIME type")
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error("reloaded video metadata timed out")), 4000)
         video.onloadedmetadata = () => {clearTimeout(timer); resolve()}
         video.onerror = () => {clearTimeout(timer); reject(new Error("reloaded video could not be decoded"))}
-        video.src = source
+        video.src = exportedSource
         video.load()
       })
       assert(video.videoWidth > 0 && video.videoHeight > 0 && video.duration > 0, "reloaded video is not playable")

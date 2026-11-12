@@ -57,7 +57,7 @@ import {
   type VersionHistoryState,
 } from "./editor-bridge"
 import { getElementPresentation, isLineBreakElement, imageMapPopupImage, popupDisplayToggle, popupElementRole } from "./element-names"
-import type {EditorStateSnapshot} from "./editor-state"
+import type {DocumentBlobAsset, EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
 import listMarkerStyleString from "./document-list-markers.css?raw"
 import * as Y from "yjs"
@@ -530,6 +530,8 @@ export class DOMEditor {
       throw error
     }
     try {
+      this.restoreMediaAssets(initialState?.assets ?? [])
+      if(!initialYDoc) this.restoreMediaURLs(document)
       if(!options.reader) this.features.proofreading.setAccessibilityReviewEnabled(options.accessibilityReviewEnabled === true)
       adoptStylesheet(document, editorStylesheet)
       if(options.reader) document.designMode = "off"
@@ -573,6 +575,7 @@ export class DOMEditor {
           ...(initialYDoc ? {ydoc: initialYDoc} : {}),
         })
       }
+      if(initialYDoc && this.restoreMediaURLs(document)) this.doc.syncFromDOM(this)
       if(!options.reader) this.#ensureDocumentContent()
       // Gecko inserts a bare <br> when designMode starts on an empty body.
       // Establish the default paragraph before enabling native editing.
@@ -722,22 +725,51 @@ export class DOMEditor {
 
   private handleLayoutResize = () => this.postSelectionPath()
 
-  // Retain sources for undo, clipboard copies and previews until teardown.
+  // Object URLs are scoped to this realm. Aliases retain the original references
+  // used by history and by the outgoing document when this frame was replaced.
   private readonly mediaBlobs = new Map<string, Blob>()
+  private readonly ownedMediaURLs = new Set<string>()
+  private readonly pendingMediaBlobs = new Map<string, Promise<Blob>>()
+  private readonly mediaURLs = new WeakMap<Blob, string>()
+  private readonly mediaAliases = new Map<string, string>()
+  private readonly canonicalMediaURLs = new Map<string, string>()
 
-  createMediaURL(blob: Blob) {
+  createMediaURL(blob: Blob, previousURL?: string) {
+    const existing = this.mediaURLs.get(blob)
+    if(existing) return existing
     const url = URL.createObjectURL(blob)
     this.mediaBlobs.set(url, blob)
+    this.ownedMediaURLs.add(url)
+    this.mediaURLs.set(blob, url)
+    if(this.options.documentReplicaId) this.postHostMessage({type: "editor-media-asset", asset: {url, blob}, previousURL})
     return url
   }
 
+  mediaSourceBlob(url: string) {
+    return this.mediaBlobs.get(this.mediaAliases.get(url) ?? url)
+  }
+
+  private readMediaBlob(url: string) {
+    const known = this.mediaSourceBlob(url)
+    if(known) return Promise.resolve(known)
+    let pending = this.pendingMediaBlobs.get(url)
+    if(!pending) {
+      pending = this.fetchResource(url).then(response => response.blob()).then(blob => {
+        if(!this.#destroyed) this.mediaBlobs.set(url, blob)
+        return blob
+      }).finally(() => this.pendingMediaBlobs.delete(url))
+      this.pendingMediaBlobs.set(url, pending)
+    }
+    return pending
+  }
+
   mediaSourceFilename(source: string) {
-    const blob = this.mediaBlobs.get(source)
+    const blob = this.mediaSourceBlob(source)
     return blob instanceof File ? blob.name : undefined
   }
 
   mediaSourceSize(source: string) {
-    const blob = this.mediaBlobs.get(source)
+    const blob = this.mediaSourceBlob(source)
     if(blob) return blob.size
     if(source.startsWith("data:")) {
       const comma = source.indexOf(",")
@@ -746,6 +778,50 @@ export class DOMEditor {
       if(source.slice(0, comma).endsWith(";base64")) return Math.floor(data.length * 3 / 4) - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0)
       try { return new TextEncoder().encode(decodeURIComponent(data)).length } catch { return }
     }
+  }
+
+  private restoreMediaAssets(assets: readonly DocumentBlobAsset[]) {
+    for(const {url, blob} of assets) {
+      const liveURL = this.createMediaURL(blob, url)
+      this.mediaAliases.set(url, liveURL)
+      if(!this.canonicalMediaURLs.has(liveURL)) this.canonicalMediaURLs.set(liveURL, url)
+    }
+  }
+
+  restoreMediaURLs(root: Document) {
+    let changed = false
+    if(this.mediaAliases.size) for(const attribute of this.blobSourceAttributes(root)) {
+      const next = attribute.value.replace(this.blobURLPattern(), url => this.mediaAliases.get(url) ?? url)
+      if(next === attribute.value) continue
+      attribute.value = next
+      changed = true
+    }
+    return changed
+  }
+
+  historyMediaHTML(html: string) {
+    return this.canonicalMediaURLs.size
+      ? html.replace(this.blobURLPattern(), url => this.canonicalMediaURLs.get(url) ?? url) : html
+  }
+
+  async snapshotMediaAssets(root: Document | Element, includeHistory = false) {
+    const assets = new Map<string, Blob>()
+    if(includeHistory) {
+      for(const [liveURL, alias] of this.canonicalMediaURLs) assets.set(alias, this.mediaBlobs.get(liveURL)!)
+      for(const [url, blob] of this.mediaBlobs) assets.set(url, blob)
+    }
+    // An authored or widget-owned source can change while a Blob is read.
+    // Recheck the live DOM before taking the Yjs snapshot.
+    let pending: string[]
+    do {
+      const urls = new Set(Array.from(this.blobSourceAttributes(root)).flatMap(attribute =>
+        attribute.value.match(this.blobURLPattern()) ?? []))
+      pending = [...urls].filter(url => !assets.has(url))
+      for(const url of pending) {
+        assets.set(url, await this.readMediaBlob(url))
+      }
+    } while(pending.length)
+    return [...assets].map(([url, blob]) => ({url, blob}))
   }
 
   destroy() {
@@ -769,8 +845,12 @@ export class DOMEditor {
         if(isHTMLDetailsElement(element)) restoreAuthoredDetailsState(element)
       })
     })
-    this.mediaBlobs.forEach((_, url) => attempt(() => URL.revokeObjectURL(url)))
+    this.ownedMediaURLs.forEach(url => attempt(() => URL.revokeObjectURL(url)))
+    this.ownedMediaURLs.clear()
     this.mediaBlobs.clear()
+    this.pendingMediaBlobs.clear()
+    this.mediaAliases.clear()
+    this.canonicalMediaURLs.clear()
     document.removeEventListener("input", this.#handleInput)
     document.removeEventListener("selectionchange", this.handleSelectionChange)
     document.removeEventListener("copy", this.#onCopy)
@@ -1442,47 +1522,50 @@ export class DOMEditor {
     if((!root.body.textContent?.trim() || documentLayoutMode(root.body) === "slides")
       && normalizePristineDocumentLayout({head: root.head.cloneNode(true) as HTMLHeadElement,
         body: root.body.cloneNode(true) as HTMLElement})) return null
-    // The editor restores its own runtime. Keep only the authored document,
-    // embedding object URLs before their originating frame can disappear.
-    const {documentElement} = root
-    await this.inlineBlobSources(documentElement)
-    return prepareWidgetGroupingsForSerialization(documentElement)(`${root.doctype}${documentElement.outerHTML}`)
+    const assets = await this.snapshotMediaAssets(root.documentElement)
+    const html = prepareWidgetGroupingsForSerialization(root.documentElement)(`${root.doctype}${root.documentElement.outerHTML}`)
+    return {html, assets}
   }
 
-  /** Embed transient media for saving or replacing the editor realm. */
+  private blobURLPattern() { return /blob:(?:https?:\/\/|file:\/\/|null\/|nodedata:)[^\s,"'<>\)#]+/g }
+
+  private *blobSourceAttributes(root: Document | DocumentFragment | Element) {
+    const elements = root.nodeType === Node.ELEMENT_NODE
+      ? [root as Element, ...Array.from(root.querySelectorAll("*"))]
+      : Array.from(root.querySelectorAll("*"))
+    for(const element of elements) {
+      if(element instanceof HTMLTemplateElement) elements.push(...element.content.querySelectorAll("*"))
+      for(const attribute of element.attributes) {
+        if(attribute.value.includes("blob:")
+          && ["src", "srcset", "href", "xlink:href", "data", "poster", "background", "style"].includes(attribute.name)) yield attribute
+      }
+    }
+  }
+
+  /** Embed transient media into a portable HTML or graphic export. */
   async inlineBlobSources(root: Document | DocumentFragment | Element) {
     const sources = new Map<string, Promise<string>>()
     let pending = true
     while(pending) {
       pending = false
-      const elements = root.nodeType === Node.ELEMENT_NODE
-        ? [root as Element, ...Array.from(root.querySelectorAll("*"))]
-        : Array.from(root.querySelectorAll("*"))
-      for(const element of elements) {
-        if(element instanceof HTMLTemplateElement) {
-          for(const child of element.content.querySelectorAll("*")) elements.push(child)
+      for(const attribute of this.blobSourceAttributes(root)) {
+        const element = attribute.ownerElement
+        if(!element) continue
+        const original = attribute.value
+        const urls = original.match(this.blobURLPattern())
+        if(!urls) continue
+        pending = true
+        let value = original
+        for(const url of urls) {
+          let source = sources.get(url)
+          if(!source) {
+            source = this.readMediaBlob(url).then(blob => this.blobDataURL(blob))
+            sources.set(url, source)
+          }
+          value = value.replaceAll(url, await source)
         }
-        for(const attribute of Array.from(element.attributes)) {
-          if(!["src", "srcset", "href", "xlink:href", "data", "poster"].includes(attribute.name)) continue
-          const original = attribute.value
-          const urls = original.match(/blob:[^\s,"'<>\)]+/g)
-          if(!urls) continue
-          pending = true
-          let value = original
-          for(const url of urls) {
-            let source = sources.get(url)
-            if(!source) {
-              const blob = this.mediaBlobs.get(url)
-              source = blob ? this.blobDataURL(blob) : this.resourceDataURL(url)
-              sources.set(url, source)
-            }
-            value = value.replaceAll(url, await source)
-          }
-          // Live DOM sources may be replaced while reading a large upload.
-          // Revisit current sources instead of overwriting concurrent edits.
-          if(element.getAttributeNS(attribute.namespaceURI, attribute.localName) === original) {
-            element.setAttributeNS(attribute.namespaceURI, attribute.name, value)
-          }
+        if(element.getAttributeNS(attribute.namespaceURI, attribute.localName) === original) {
+          element.setAttributeNS(attribute.namespaceURI, attribute.name, value)
         }
       }
     }

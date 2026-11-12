@@ -1941,11 +1941,12 @@ describe("attachment marks", () => {
     expect(anchor.innerHTML).toBe("<em>these</em> files")
     expect(anchor.download).toBe("worksheet.bin")
     expect(feature.getAttachmentState()).toMatchObject({filename: "worksheet.bin"})
-    expect(anchor.getAttribute("href")).toBe("data:application/octet-stream;base64,AP+A")
+    expect(anchor.getAttribute("href")).toMatch(/^blob:/)
     expect(paragraph.innerHTML).toContain("<!--keep--> after")
     expect(feature.getLinkState()).toBeNull()
     const exported = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
-    expect(exported.querySelector("a[download]")?.outerHTML).toBe(anchor.outerHTML)
+    expect(exported.querySelector("a[download]")?.outerHTML).toBe(
+      anchor.outerHTML.replace(anchor.getAttribute("href")!, "data:application/octet-stream;base64,AP+A"))
   })
 
   it("inserts a filename at a caret and edits the resulting link in place", async () => {
@@ -2004,7 +2005,8 @@ describe("attachment marks", () => {
     await feature.attach(state.identity, {mediaId: state.media[0].id})
     expect(String(fetch.mock.calls[0][0])).toBe("https://cdn.example/large.png")
     expect(paragraph.querySelector("a")?.download).toBe("large.png")
-    expect(paragraph.querySelector("a")?.getAttribute("href")).toBe("data:application/octet-stream;base64,aW1hZ2UgYnl0ZXM=")
+    expect(paragraph.querySelector("a")?.getAttribute("href")).toMatch(/^blob:/)
+    expect(await editor.mediaSourceBlob(paragraph.querySelector("a")!.href)?.text()).toBe("image bytes")
     expect(image.getAttribute("src")).toBe("/fallback.png")
   })
 
@@ -2020,14 +2022,14 @@ describe("attachment marks", () => {
   it("waits for confirmation before embedding a large file and leaves the document alone on cancellation", async () => {
     const paragraph = setContent("<p>Download</p>")
     const post = vi.spyOn(editor, "postHostMessage")
-    const encode = vi.spyOn(editor, "blobDataURL").mockResolvedValue("data:application/octet-stream;base64,AA==")
+    const createURL = vi.spyOn(editor, "createMediaURL")
     selectText(paragraph.firstChild as Text)
     const {identity} = feature.activateAttachment()!
     const file = new File([new Uint8Array(5_000_001)], "large.bin")
     const first = feature.attach(identity, {file})
     const message = post.mock.calls.find(([event]) => "type" in event && event.type === "editor-attachment-confirmation")![0] as {id: string, files: object[]}
     expect(message.files).toEqual([{name: "large.bin", size: 5_000_001}])
-    expect(encode).not.toHaveBeenCalled()
+    expect(createURL).not.toHaveBeenCalled()
     expect(paragraph.querySelector("a[download]")).toBeNull()
     feature.actions.resolveAttachmentConfirmation({type: "resolveAttachmentConfirmation", id: message.id, confirmed: false})
     await expect(first).resolves.toBe(false)
