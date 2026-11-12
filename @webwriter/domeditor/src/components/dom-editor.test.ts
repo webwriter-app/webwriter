@@ -8127,7 +8127,7 @@ describe("DomEditor.execute()", () => {
     const scripts = parsed.querySelectorAll("script")
     expect(scripts).toHaveLength(1)
     expect(scripts[0].id).toBe("webwriter-canvas-viewer")
-    expect(scripts[0].textContent).toContain("mountCanvasReader(loadCanvasSnapdom)")
+    expect(scripts[0].textContent).toContain("canvasReader.mount(loadCanvasSnapdom)")
     expect(scripts[0].textContent).not.toContain("untrusted()")
     const policy = parsed.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
     expect(scripts[0].getAttribute("nonce")).toBe(/'nonce-([^']+)'/.exec(policy)![1])
@@ -8142,7 +8142,7 @@ describe("DomEditor.execute()", () => {
     source.body.innerHTML = '<h1 id="intro">Intro</h1><figure id="diagram"><img><figcaption>Diagram</figcaption></figure><script id="webwriter-document-viewer">untrusted()</script>'
     const preview = new DOMParser().parseFromString((editor as any).currentPreviewHTML(), "text/html")
     const script = preview.getElementById("webwriter-document-viewer")!
-    expect(script.textContent).toContain("mountDocumentReader(")
+    expect(script.textContent).toContain("documentReader.mount(")
     expect(script.textContent).not.toContain("untrusted()")
     const policy = preview.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
     expect(script.getAttribute("nonce")).toBe(/'nonce-([^']+)'/.exec(policy)![1])

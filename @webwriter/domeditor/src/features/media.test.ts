@@ -2375,8 +2375,8 @@ describe("media editing", () => {
     document.querySelector("area")!.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
     expect(show).toHaveBeenCalled()
     expect(editor.toHTML(true)).toContain('<strong>Arbitrary</strong> content')
-    expect(editor.toHTML()).toContain('document.addEventListener("pointerover", handle)')
-    expect(editor.toHTML(false, false)).not.toContain('document.addEventListener("pointerover", handle)')
+    expect(editor.toHTML()).toContain('id="webwriter-image-map-popovers"')
+    expect(editor.toHTML(false, false)).not.toContain('id="webwriter-image-map-popovers"')
   })
 
   it("undoes and redoes hotspot popover creation as authored DOM", async () => {

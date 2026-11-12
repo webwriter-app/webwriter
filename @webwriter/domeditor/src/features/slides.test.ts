@@ -352,8 +352,8 @@ describe("CSS-only Slides layout", () => {
     const [closed, nested, authored, widget] = document.querySelectorAll("details")
     const check = () => {
       // Happy DOM does not resolve `inherit` inside the theme's @layer, so
-      // verify its exact rule alongside the concrete parent and author styles.
-      expect(defaultDocumentTheme.source).toContain("details:not([is]) { background-color: inherit; }")
+      // verify the bundled rule alongside the concrete parent and author styles.
+      expect(defaultDocumentTheme.source).toMatch(/details:not\(\[is\]\)\s*\{\s*background-color:\s*inherit\s*;?\s*\}/)
       expect(getComputedStyle(document.body).backgroundColor).toBe("rgb(240, 248, 255)")
       expect(getComputedStyle(nested.parentElement!).backgroundColor).toBe("rgb(232, 240, 254)")
       expect(closed.style.backgroundColor).toBe("")
