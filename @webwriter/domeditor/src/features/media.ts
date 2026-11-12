@@ -712,6 +712,7 @@ class ImageMapOverlay {
   private readonly shapeAreas = new WeakMap<Element, HTMLAreaElement>()
   private readonly handleVertices = new WeakMap<Element, number>()
   private session: ImageMapDrawingSession | null = null
+  private dragPointerId: number | null = null
   private startPoint: [number, number] | null = null
   private currentPoint: [number, number] | null = null
   private polygonPoints: Array<[number, number]> = []
@@ -740,7 +741,8 @@ class ImageMapOverlay {
     svg.addEventListener("pointermove", this.handlePointerMove)
     svg.addEventListener("pointerup", this.handlePointerUp)
     svg.addEventListener("click", this.handleClick)
-    svg.addEventListener("pointercancel", () => this.cancelDrawing())
+    svg.addEventListener("pointercancel", this.handlePointerCancel)
+    svg.addEventListener("lostpointercapture", this.handlePointerCancel)
     svg.addEventListener("dblclick", event => {
       if(this.session?.shape !== "poly") return
       event.preventDefault()
@@ -847,7 +849,7 @@ class ImageMapOverlay {
   }
 
   private handlePointerDown = (event: PointerEvent) => {
-    if(event.button !== 0) return
+    if(event.button !== 0 || this.dragPointerId !== null || event.pointerType === "touch" && event.isPrimary === false) return
     if(!this.session && this.element.hasAttribute("data-editing")) {
       const target = event.target instanceof Element ? event.target : null
       const area = target ? this.shapeAreas.get(target) : null
@@ -862,7 +864,7 @@ class ImageMapOverlay {
       this.drag = {image: this.image!, map: this.map!, area, expected: stateAttributes(area), geometry,
         start: [0, 0], coords, next: coords, vertex: this.handleVertices.get(target!) ?? null}
       this.drag.start = this.pointForEvent(event)!
-      ;(event.currentTarget as SVGSVGElement).setPointerCapture?.(event.pointerId)
+      this.captureDrag(event)
       this.renderAreas(geometry)
       return
     }
@@ -872,11 +874,27 @@ class ImageMapOverlay {
     event.preventDefault()
     this.startPoint = point
     this.currentPoint = point
-    ;(event.currentTarget as SVGSVGElement).setPointerCapture?.(event.pointerId)
+    this.captureDrag(event)
     this.renderPreview()
   }
 
   private handlePointerMove = (event: PointerEvent) => {
+    if(event.pointerId !== this.dragPointerId) return
+    if(!(event.buttons & 1)) { this.cancelDrawing(); return }
+    this.updateDrag(event)
+  }
+
+  private captureDrag(event: PointerEvent) {
+    this.dragPointerId = event.pointerId
+    try { (event.currentTarget as SVGSVGElement).setPointerCapture?.(event.pointerId) }
+    catch { /* The pointer may have already been released. */ }
+  }
+
+  private handlePointerCancel = (event: PointerEvent) => {
+    if(event.pointerId === this.dragPointerId) this.cancelDrawing()
+  }
+
+  private updateDrag(event: PointerEvent) {
     if(this.drag) {
       const {coords, start, vertex, area} = this.drag
       const circle = area.getAttribute("shape")?.toLowerCase() === "circle"
@@ -907,8 +925,10 @@ class ImageMapOverlay {
   }
 
   private handlePointerUp = (event: PointerEvent) => {
+    if(event.pointerId !== this.dragPointerId) return
+    this.dragPointerId = null
     if(this.drag) {
-      this.handlePointerMove(event)
+      this.updateDrag(event)
       const drag = this.drag
       this.drag = null
       if(this.image === drag.image && this.map === drag.map && drag.image.isConnected
@@ -980,6 +1000,10 @@ class ImageMapOverlay {
   }
 
   private clearDrawing() {
+    const pointerId = this.dragPointerId
+    this.dragPointerId = null
+    const svg = this.root.querySelector<SVGSVGElement>("svg")!
+    if(pointerId !== null && svg.hasPointerCapture?.(pointerId)) svg.releasePointerCapture(pointerId)
     this.session = null
     this.drag = null
     this.startPoint = null
@@ -1041,7 +1065,11 @@ class ImageMapOverlay {
           const current = this.image ? imageMapGeometry(this.image) : null
           if(current) this.renderAreas(current)
         }
-        control.addEventListener("pointerdown", event => { event.stopPropagation(); select() })
+        control.addEventListener("pointerdown", event => {
+          if(event.button !== 0) return
+          event.stopPropagation()
+          select()
+        })
         control.addEventListener("focusin", select)
         control.querySelector<HTMLButtonElement>(".link")!.addEventListener("click", event => {
           event.preventDefault()
@@ -1680,6 +1708,7 @@ export class MediaFeature extends EditorFeature {
   activeListeners = {
     click: (event: MouseEvent) => this.popovers.handleEvent(event),
     pointerdown: (event: PointerEvent) => {
+      if(event.button !== 0) return
       const target = event.target instanceof Node ? mediaContainerForNode(event.target) : null
       if(!target || !isEmptyMedia(target)) return
       event.preventDefault()

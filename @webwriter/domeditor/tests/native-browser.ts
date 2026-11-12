@@ -7543,7 +7543,7 @@ await check("freeform box selections transform as a group", async () => {
       const left = Math.min(...before.map(rect => rect.left)) - 10, top = Math.min(...before.map(rect => rect.top)) - 10
       const right = Math.max(...before.map(rect => rect.right)) + 10, bottom = Math.max(...before.map(rect => rect.bottom)) + 10
       doc.body.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 91, button: 0, clientX: left, clientY: top}))
-      doc.body.dispatchEvent(new view.PointerEvent("pointermove", {bubbles: true, pointerId: 91, clientX: right, clientY: bottom}))
+      doc.body.dispatchEvent(new view.PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 91, clientX: right, clientY: bottom}))
       doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerId: 91, clientX: right, clientY: bottom}))
       await layoutFrame()
       assert(!feature.overlay.hasAttribute("visibility"), `${mode}: group controls are hidden`)

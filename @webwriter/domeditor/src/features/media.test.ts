@@ -2093,7 +2093,7 @@ describe("media editing", () => {
 
     expect(editor.features.media.actions.startImageMapDrawing({type: "startImageMapDrawing", shape: "rect"})).toBe(true)
     svg.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: 20, clientY: 30}))
-    svg.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 60, clientY: 50}))
+    svg.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, bubbles: true, clientX: 60, clientY: 50}))
     svg.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: 60, clientY: 50}))
 
     expect(editor.features.media.actions.startImageMapDrawing({type: "startImageMapDrawing", shape: "circle"})).toBe(true)
@@ -2332,7 +2332,7 @@ describe("media editing", () => {
     const {root} = editor.features.media.imageMapOverlay
     const svg = root.querySelector("svg")!
     const pointer = (type: string, x: number, y: number, target: Element = svg) =>
-      target.dispatchEvent(new PointerEvent(type, {bubbles:true, button:0, clientX:x, clientY:y}))
+      target.dispatchEvent(new PointerEvent(type, {bubbles:true, button:0, buttons:type === "pointerup" ? 0 : 1, clientX:x, clientY:y}))
 
     expect(editor.features.media.actions.startImageMapDrawing({type:"startImageMapDrawing", shape:"circle"})).toBe(true)
     pointer("pointerdown", 80, 20)
@@ -2625,9 +2625,30 @@ describe("media editing", () => {
     up(shape === "circle" ? 45 : 55, shape === "circle" ? 25 : 55)
     expect(document.querySelector("area")!.getAttribute("coords")).toBe(resized)
     down(overlay.root.querySelector(".hotspot")!, 20, 20)
-    svg.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 35, clientY: 35}))
+    svg.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, bubbles: true, clientX: 35, clientY: 35}))
     svg.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
     expect(document.querySelector("area")!.getAttribute("coords")).toBe(resized)
+  })
+
+  it.each(["pointermove", "lostpointercapture"])("abandons an image hotspot drag on %s without saving it", eventType => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,40,40"></map>'
+    const image = document.querySelector("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    editor.features.selection.captureElement(image)
+    editor.features.media["refresh"]()
+    const {root} = editor.features.media.imageMapOverlay
+    const svg = root.querySelector("svg")!
+    const area = document.querySelector("area")!
+    const point = {pointerId: 5, bubbles: true, clientX: 25, clientY: 25}
+    root.querySelector(".hotspot")!.dispatchEvent(new PointerEvent("pointerdown", {...point, buttons: 1}))
+    svg.dispatchEvent(new PointerEvent("pointerup", {...point, pointerId: 6, clientX: 50}))
+    expect(area).toHaveAttribute("coords", "10,10,40,40")
+    svg.dispatchEvent(new PointerEvent("pointermove", {...point, buttons: 1, clientX: 50}))
+    expect(root.querySelector("rect.hotspot")).toHaveAttribute("x", "35")
+    svg.dispatchEvent(new PointerEvent(eventType, {...point, clientX: 70}))
+    svg.dispatchEvent(new PointerEvent("pointerup", {...point, clientX: 70}))
+    expect(area).toHaveAttribute("coords", "10,10,40,40")
+    expect(root.querySelector("rect.hotspot")).toHaveAttribute("x", "10")
   })
 
   it("drawing adds a map and deleting the last hotspot unlinks all its images", () => {
@@ -2756,6 +2777,17 @@ describe("media editing", () => {
     shield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
     expect($.selectedElement).toBe(contentFrame)
     expect(editor.features.selection.isCaptureSelection).toBe(true)
+  })
+
+  it("keeps secondary presses on empty media from activating its editor", () => {
+    document.body.innerHTML = '<video controls></video>'
+    const video = document.querySelector("video")!
+    for(const button of [1, 2]) {
+      const down = new PointerEvent("pointerdown", {button, bubbles: true, cancelable: true})
+      video.dispatchEvent(down)
+      expect(down.defaultPrevented).toBe(false)
+      expect(editor.features.selection.captureSelectedElement).toBeNull()
+    }
   })
 
   it.each(['<iframe></iframe>', '<iframe srcdoc=""></iframe>', '<audio controls=""></audio>', '<video controls=""></video>'])(

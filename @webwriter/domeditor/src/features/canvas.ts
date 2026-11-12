@@ -483,8 +483,8 @@ export class CanvasFeature extends EditorFeature {
     click: this.preventBackgroundSelection,
     pointermove: event => this.viewer?.movePan(event),
     pointerup: event => this.viewer?.endPan(event),
-    pointercancel: () => this.stopPan(),
-    lostpointercapture: () => this.stopPan(),
+    pointercancel: event => this.viewer?.stopPan(event.pointerId),
+    lostpointercapture: event => this.viewer?.stopPan(event.pointerId),
     wheel: event => { this.handleWheel(event) },
     keydown: event => {
       if(!this.active) return

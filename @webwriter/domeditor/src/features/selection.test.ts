@@ -2029,7 +2029,8 @@ describe("canvas and slide box selection", () => {
   }
 
   function pointer(type: string, x: number, y: number, target: Element) {
-    const event = new PointerEvent(type, {bubbles: true, cancelable: true, button: 0, pointerId: 1, clientX: x, clientY: y})
+    const event = new PointerEvent(type, {bubbles: true, cancelable: true, button: 0, buttons: type === "pointerup" ? 0 : 1,
+      pointerId: 1, clientX: x, clientY: y})
     target.dispatchEvent(event)
     return event
   }
@@ -2265,7 +2266,7 @@ describe("contentful widgets", () => {
     // document-level hit test may instead return the outer widget boundary.
     document.getSelection()!.setBaseAndExtent(text, backward ? 4 : 1, text, backward ? 1 : 4)
     caret.mockReturnValue({offsetNode: widget, offset: 0, getClientRect: () => rect})
-    paragraph.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, pointerId: 12, clientX: 30, clientY: 10}))
+    paragraph.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, buttons: 1, pointerId: 12, clientX: 30, clientY: 10}))
     const selectstart = new Event("selectstart", {bubbles: true, cancelable: true})
     paragraph.dispatchEvent(selectstart)
     expect(selectstart.defaultPrevented).toBe(false)
@@ -2289,7 +2290,7 @@ describe("contentful widgets", () => {
     vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 2, getClientRect: () => rect})
     paragraph.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, pointerId: 13, clientX: 20, clientY: 30}))
     document.getSelection()!.setBaseAndExtent(text, 2, title.firstChild!, 1)
-    title.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, pointerId: 13, clientX: 20, clientY: 5}))
+    title.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, buttons: 1, pointerId: 13, clientX: 20, clientY: 5}))
     title.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, pointerId: 13, clientX: 20, clientY: 5}))
     expect($.anchor).toBe(text)
     expect($.focus).toBe(title.firstChild)
@@ -5692,7 +5693,8 @@ describe("selection invariants", () => {
   })
 
   function pointer(target: EventTarget, type: string, x: number, y: number, options: MouseEventInit = {}) {
-    const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, clientX: x, clientY: y, ...options})
+    const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true,
+      buttons: type === "pointerdown" || type === "pointermove" ? 1 : 0, clientX: x, clientY: y, ...options})
     target.dispatchEvent(event)
     return event
   }
@@ -6001,7 +6003,8 @@ describe("selection invariants", () => {
 
     function touch(target: EventTarget, type: string, x = 20, y = 30, pointerId = 7) {
       const event = new PointerEvent(type, {bubbles: true, composed: true, cancelable: true,
-        button: 0, pointerType: "touch", isPrimary: pointerId === 7, pointerId, clientX: x, clientY: y})
+        button: 0, buttons: type === "pointerdown" || type === "pointermove" ? 1 : 0,
+        pointerType: "touch", isPrimary: pointerId === 7, pointerId, clientX: x, clientY: y})
       target.dispatchEvent(event)
       return event
     }
@@ -6385,7 +6388,7 @@ describe("selection invariants", () => {
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
-  it.each(["pointerup", "pointercancel"])("captures paragraph drags on the body and releases on %s", ending => {
+  it.each(["pointerup", "pointercancel", "pointermove", "contextmenu"])("captures paragraph drags on the body and releases on %s", ending => {
     const paragraph = textDocument()
     const last = document.querySelectorAll("p")[1]
     const hit = hitTest()
@@ -6399,7 +6402,7 @@ describe("selection invariants", () => {
     expect(capture).toHaveBeenCalledWith(7)
     expect(paragraphCapture).not.toHaveBeenCalled()
     hit.mockReturnValue({offsetNode: last.firstChild!, offset: 3} as unknown as CaretPosition)
-    document.body.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 7, clientX: 30, clientY: 25}))
+    document.body.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, bubbles: true, pointerId: 7, clientX: 30, clientY: 25}))
     expect($.anchor).toBe(paragraph.firstChild)
     expect($.anchorOffset).toBe(2)
     expect($.focus).toBe(last.firstChild)

@@ -1461,6 +1461,7 @@ export class SelectionFeature extends EditorFeature {
       })
     },
     contextmenu: event => {
+      if(this.#drag || this.#boxDrag) this.#endDrag()
       if(isAppendixInteraction(event) && !isTextFieldInteraction(event)) event.preventDefault()
     },
     // Preserve the pointer stream for editor selection instead of browser
@@ -1488,6 +1489,8 @@ export class SelectionFeature extends EditorFeature {
     },
     pointermove: event => {
       this.#handleKeyState(event)
+      const drag = this.#boxDrag ?? this.#drag
+      if(drag && drag.pointerId === event.pointerId && !(event.buttons & 1)) this.#finishDrag(event)
       if(this.#drag && this.#drag.pointerId === event.pointerId) {
         this.#updatePointerHover(document.elementFromPoint(event.clientX, event.clientY))
       }

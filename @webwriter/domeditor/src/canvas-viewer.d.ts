@@ -41,7 +41,7 @@ export class CanvasViewer {
   startPan(event: PointerEvent): void
   movePan(event: PointerEvent): void
   endPan(event: PointerEvent): void
-  stopPan(): void
+  stopPan(pointerId?: number): void
   updatePanSurface(): void
   continuesWheelPan(event: WheelEvent): boolean
   stopWheelPan(): void
