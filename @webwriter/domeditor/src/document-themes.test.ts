@@ -194,6 +194,12 @@ describe("document themes", () => {
       expect(theme.source).toContain(":has(> svg:first-child + figcaption:last-child, > figcaption:first-child + svg:last-child)) {\n      min-inline-size: min-content;")
     }
   })
+  it("defaults native tables to equal-width columns in bundled themes", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toMatch(/:where\(table:not\(\[is\]\)\)\s*\{\s*width: 100%;\s*table-layout: var\(--ww-table-default-layout, fixed\);/)
+    }
+  })
+
   it("shares table picture sizing with editing and standalone documents", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain(":where(td, th) picture {\n    display: inline-block;\n    width: 100%;\n    height: auto;\n  }")

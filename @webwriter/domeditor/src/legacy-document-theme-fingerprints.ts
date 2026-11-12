@@ -1,6 +1,6 @@
 // SHA-256 fingerprints (first 16 bytes) of stock theme CSS from 161b22fa
 // through a106bc0c (before Full width), the bundled layout examples,
-// and snapshots taken before the widget sizing, list marker, caption layout, and figure resize updates.
+// and snapshots taken before the widget sizing, list marker, caption layout, table layout, and figure resize updates.
 // Hash the complete stylesheet text after normalizing HTML line endings so
 // an authored edit anywhere in a theme prevents replacement.
 export const legacyDocumentThemeFingerprints = {

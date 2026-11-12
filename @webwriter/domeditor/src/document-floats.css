@@ -366,6 +366,13 @@
     }
   }
 
+  /* Distribute unspecified column widths evenly in editing and reading mode. */
+  :where(table:not([is])) {
+    width: 100%;
+    table-layout: var(--ww-table-default-layout, fixed);
+    overflow-wrap: break-word;
+  }
+
   /* Share sizing between modes and let cells align narrower pictures. */
   :where(td, th) picture {
     display: inline-block;

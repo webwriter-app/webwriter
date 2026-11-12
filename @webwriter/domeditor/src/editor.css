@@ -108,6 +108,17 @@ body > :last-child:not(:where(:state(ww-gap-after-selected))) {
   border-collapse: collapse;
 }
 
+@layer webwriter-theme {
+  :where(table:not([is])) {
+    table-layout: var(--ww-table-default-layout, fixed);
+    overflow-wrap: break-word;
+  }
+
+  :where(table:state(ww-table-resize-auto-layout)) {
+    --ww-table-default-layout: auto;
+  }
+}
+
 /* Show cell boundaries without changing the table's reading-mode geometry. */
 :where(td, th) {
   outline: 1px solid #aeb8c4;

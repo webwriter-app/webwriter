@@ -27,7 +27,8 @@ type TableSide = "above" | "below" | "left" | "right"
 type TableCellStyle = "background-color" | "border-color" | "border-style" | "border-width"
 type TableResizeEdge = {table: HTMLTableElement, column: number}
 type SelectionPoint = {node: Node, offset: number}
-type CellResize = {width: number, previousStyle?: string | null, writtenStyle: string | null, externallyStyled?: boolean}
+type ResizeStyle = {previousStyle?: string | null, writtenStyle: string | null, externallyStyled?: boolean}
+type CellResize = ResizeStyle & {width: number}
 
 const resizeDragThreshold = 4
 const tableGapOffset = 8
@@ -97,6 +98,8 @@ export class TableFeature extends EditorFeature {
     table: HTMLTableElement
     column: number
     cells: Map<HTMLTableCellElement, CellResize>
+    checkedLayout?: boolean
+    tableStyle?: ResizeStyle
     startX: number
     startWidth: number
     endUndoGroup: () => void
@@ -1237,12 +1240,18 @@ export class TableFeature extends EditorFeature {
   isResizeStyleBatch(records: MutationRecord[]) {
     const resize = this.resize
     return Boolean(resize && !resize.ending && records.every(record => {
-      if(record.attributeName === "style" && !record.attributeNamespace && record.target instanceof HTMLTableCellElement) {
-        const cell = resize.cells.get(record.target)
-        if(cell && cell.previousStyle === record.oldValue && cell.writtenStyle === record.target.getAttribute("style")) return true
+      if(record.attributeName === "style" && !record.attributeNamespace && record.target instanceof Element) {
+        const style = this.resizeStyleFor(record.target)
+        if(style && style.previousStyle === record.oldValue && style.writtenStyle === record.target.getAttribute("style")) return true
       }
       return !document.head.contains(record.target) && !isAuthoredMutation(record)
     }))
+  }
+
+  private resizeStyleFor(element: Element) {
+    const resize = this.resize
+    return resize && (element === resize.table ? resize.tableStyle
+      : element instanceof HTMLTableCellElement ? resize.cells.get(element) : undefined)
   }
 
   private resizeSelectionIsStable() {
@@ -1277,8 +1286,8 @@ export class TableFeature extends EditorFeature {
     const resize = this.resize
     if(!resize || !this.resizeSelectionIsStable()) return false
     return this.editor.doc.isLocalStyleOnlySync(transaction, element => {
-      const cell = element instanceof HTMLTableCellElement && resize.cells.get(element)
-      return Boolean(cell && !cell.externallyStyled && cell.writtenStyle === element.getAttribute("style"))
+      const style = this.resizeStyleFor(element)
+      return Boolean(style && !style.externallyStyled && style.writtenStyle === element.getAttribute("style"))
     })
   }
 
@@ -1360,13 +1369,34 @@ export class TableFeature extends EditorFeature {
     return true
   }
 
+  private defaultFixedLayout(table: HTMLTableElement) {
+    if(table.style.tableLayout || getComputedStyle(table).tableLayout !== "fixed") return false
+    // The low-priority editor rule probes whether the fixed layout is the
+    // default. Authored table-layout declarations retain their cascade.
+    setPresentationState(table, "table-resize-auto-layout")
+    try { return getComputedStyle(table).tableLayout === "auto" }
+    finally { clearPresentationState(table, "table-resize-auto-layout") }
+  }
+
   private applyPendingResize() {
     const resize = this.resize
     const clientX = this.pendingResizeX
     this.pendingResizeX = null
     if(!resize || resize.ending || clientX === null) return false
-    if(!this.editableTable(resize.table) || [...resize.cells.keys()].some(cell => tableForNode(cell) !== resize.table)) {
-      return false
+    const {table, cells} = resize
+    const targets = [...cells.keys()]
+    if(!this.editableTable(table) || targets.some(cell => tableForNode(cell) !== table)) return false
+    if(!resize.checkedLayout) {
+      resize.checkedLayout = true
+      const firstRow = table.rows[0]
+      const widthCell = targets.find(cell => cell.parentElement === firstRow)
+      // Fixed layout takes cell widths from the first row. Use auto layout
+      // when that row cannot size this column independently.
+      if(widthCell?.colSpan !== 1 && targets.some(cell => cell.colSpan === 1) && this.defaultFixedLayout(table)) {
+        const previousStyle = table.getAttribute("style")
+        table.style.tableLayout = "auto"
+        resize.tableStyle = {previousStyle, writtenStyle: table.getAttribute("style")}
+      }
     }
     const delta = Math.max(24, resize.startWidth + clientX - resize.startX) - resize.startWidth
     for(const [cell, state] of resize.cells) {

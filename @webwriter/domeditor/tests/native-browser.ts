@@ -13050,6 +13050,10 @@ await check("legacy bundled tables keep full width in editing, preview, and expo
       const wideRect = rendered.querySelector("#wide")!.getBoundingClientRect()
       const normalRect = rendered.querySelector("#normal")!.getBoundingClientRect()
       const prose = rendered.querySelector("#custom")!
+      const normal = rendered.querySelector<HTMLTableElement>("#normal")!
+      const [first, second] = Array.from(normal.rows[0].cells, cell => cell.getBoundingClientRect().width)
+      assert(rendered.defaultView!.getComputedStyle(normal).tableLayout === "fixed" && Math.abs(first - second) < 1,
+        `normal table did not distribute columns equally in ${mode}`)
       assert(Math.abs(wideRect.left - bodyRect.left - parseFloat(bodyStyle.paddingLeft)) < 2
         && Math.abs(wideRect.right - bodyRect.right + parseFloat(bodyStyle.paddingRight)) < 2,
         `full-width table did not reach both page gutters in ${mode}`)
