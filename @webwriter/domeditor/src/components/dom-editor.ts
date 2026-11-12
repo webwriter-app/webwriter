@@ -8455,10 +8455,11 @@ export class DomEditor extends LitElement {
           this.editorShellRevision = this.frameRevision
           if(restartedShell) {
             const replica = this.documentReplica
+            const pendingState = this.editorDocument ? undefined : this.frameState
             const state: EditorStateSnapshot | undefined = replica ? {
               update: Y.encodeStateAsUpdate(replica.doc),
               widgetDataDocumentId: replica.widgetDataDocumentId,
-            } : this.frameState
+            } : pendingState
             if(!state) {
               const latestDocument = this.snapshotEditorDocumentHTML()
               if(latestDocument !== null) this.frameDocumentHTML = latestDocument
