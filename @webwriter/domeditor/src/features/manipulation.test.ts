@@ -23,6 +23,36 @@ import {replayHostDrag, selectionChangeEvent, type RibbonDropPosition, type Sele
 
 let editor: DOMEditor
 
+describe("table insertion placement", () => {
+  it("rejects ribbon and HTML insertion and drop inside a cell without changing the selection", () => {
+    document.body.innerHTML = "<table><tbody><tr><th><div><p>Keep</p></div></th></tr></tbody></table>"
+    const text = document.querySelector("th p")!.firstChild!
+    $.move(text, 2)
+    const original = document.body.innerHTML
+    const html = "<div><table><tbody><tr><td>New</td></tr></tbody></table></div>"
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "table"})
+    editor.features.manipulation.insertHTML(html)
+    const data = new DataTransfer()
+    data.setData("text/html", html)
+    document.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertFromDrop", dataTransfer: data, bubbles: true, cancelable: true}))
+
+    expect(document.body.innerHTML).toBe(original)
+    expect(document.getSelection()?.anchorNode).toBe(text)
+    expect(document.getSelection()?.anchorOffset).toBe(2)
+  })
+
+  it("rejects pasted fragments that contain nested tables at a document-level caret", () => {
+    document.body.innerHTML = "<p>Keep</p>"
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+    const data = new DataTransfer()
+    data.setData("text/html", "<table><tbody><tr><td><table><tbody><tr><td>New</td></tr></tbody></table></td></tr></tbody></table>")
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    expect(document.body.innerHTML).toBe("<p>Keep</p>")
+  })
+})
+
 describe("caption insertion content", () => {
   function loadCaption(tag: string) {
     document.body.innerHTML = tag === "figcaption"

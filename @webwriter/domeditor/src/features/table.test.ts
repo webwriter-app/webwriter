@@ -1211,6 +1211,31 @@ describe("table cell selection", () => {
     expect(cells().map(cell => cell.textContent)).toEqual(["1", "2", "3", "4"])
   })
 
+  it("rejects table clipboard contents that would put a nested table inside a cell", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>Original</td></tr></tbody></table>"
+    editor.features.table.selectCells(cells()[0])
+    const data = new DataTransfer()
+    data.setData("text/html", '<meta name="webwriter-clipboard" content="1"><table><tbody><tr><td><div><table><tbody><tr><td>Nested</td></tr></tbody></table></div></td><td>Other</td></tr></tbody></table>')
+
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    expect(document.querySelectorAll("table")).toHaveLength(1)
+    expect(cells().map(cell => cell.textContent)).toEqual(["Original"])
+  })
+
+  it("pastes an opaque widget without unpacking its table into the target cell", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>Original</td></tr></tbody></table>"
+    const cell = cells()[0]
+    editor.features.table.selectCells(cell)
+    const data = new DataTransfer()
+    data.setData("text/html", '<meta name="webwriter-clipboard" content="1"><demo-widget><table><tbody><tr><td>Private</td></tr></tbody></table></demo-widget>')
+
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    expect(cell.firstElementChild?.localName).toBe("demo-widget")
+    expect(cell.querySelector("demo-widget table td")?.textContent).toBe("Private")
+  })
+
   it.each(["caret", "element"])("replaces the contents of a %s-targeted cell with pasted HTML and supports undo", kind => {
     document.body.innerHTML = '<table><tbody><tr><th title="keep"><p>Old</p></th><td>Other</td></tr></tbody></table>'
     const [cell, other] = cells()

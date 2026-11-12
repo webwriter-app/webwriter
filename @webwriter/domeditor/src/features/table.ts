@@ -619,6 +619,7 @@ export class TableFeature extends EditorFeature {
     if(this.editor.features.manipulation.convertInsertion("table")) return
     const table = createTable(rows, columns)
     this.editor.features.manipulation.insert(table, 0, false, (this.editor.features.canvas.active || this.editor.features.slides.active) || undefined)
+    if(!table.isConnected) return false
     while(table.isConnected && table.parentElement && !this.editor.schema.isContentValid(table.parentElement)) {
       const parent = table.parentElement
       $.selectElement(table)
@@ -1014,7 +1015,12 @@ export class TableFeature extends EditorFeature {
   private clipboardMatrix(html: string, plain: string) {
     if(html) {
       const {fragment} = this.editor.parseHTMLFragment(html, true)
-      const table = fragment.querySelector<HTMLTableElement>("table")
+      const table = Array.from(fragment.querySelectorAll<HTMLTableElement>("table:not([is])")).find(candidate => {
+        for(let ancestor = candidate.parentNode; ancestor; ancestor = ancestor.parentNode) {
+          if(isAtomicEditingElement(ancestor, this.editor.schema)) return false
+        }
+        return true
+      })
       if(table) {
         const map = buildTableMap(table)
         return map.matrix.map(row => Array.from({length: map.width}, (_, column) => {
@@ -1054,6 +1060,7 @@ export class TableFeature extends EditorFeature {
   private pasteMatrix(matrix: Node[][][]) {
     const table = this.selectedTable
     if(!table || !matrix.length || !matrix.some(row => row.length)) return false
+    if(matrix.some(row => row.some(content => !this.editor.schema.allowsPlacement("td", content)))) return false
     let map = this.normalizeTable(table)
     const target = this.pasteTargetCell
     const placement = target && placementForCell(map, target)

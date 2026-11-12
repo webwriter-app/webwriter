@@ -913,6 +913,7 @@ export class ManipulationFeature extends EditorFeature {
 
   placeFloat(element: Element, container: Element, side: "left" | "right" | "none", placement: "before" | "after" = "before") {
     if(this.editor.isEditingLocked || !container.isConnected || element !== container && this.floatContainer(container, element) !== container) return false
+    if(element.parentElement !== container.parentElement && !this.editor.schema.allowsPlacement(container.parentElement, [element])) return false
     if(element !== container) container[placement](element)
     return this.setFloat(element, side)
   }
@@ -1450,7 +1451,7 @@ export class ManipulationFeature extends EditorFeature {
     const root = getDocumentRoot()
     const point = pointAtDrop()
     if(!point || !getDocumentRoot().contains(point.node)) return null
-    if(source && !this.allowsCaptionInsertion([source], point.node)) return null
+    if(source && !this.allowsInsertionAt([source], point.node)) return null
     const range = document.createRange()
     if(source?.contains(point.node)) return null
     if(source?.localName === "li") {
@@ -1680,7 +1681,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!selection?.rangeCount || this.editor.isEditingLocked) return false
     const range = selection.getRangeAt(0).cloneRange()
     const root = getDocumentRoot()
-    if(!this.allowsCaptionInsertion([document.createElement(tag)], range.startContainer)) return true
+    if(!this.allowsInsertionAt([document.createElement(tag)], range.startContainer)) return true
     if($.excludedFlowElements.length && !$.selectedElement && !this.editor.features.selection.captureSelectedElement) return true
     if(!root.contains(range.startContainer) || !root.contains(range.endContainer)
       || atomicEditingContainer(range.startContainer, this.editor.schema)
@@ -1964,7 +1965,7 @@ export class ManipulationFeature extends EditorFeature {
 
   private createRibbonElement(tag: string) {
     const element = this.ribbonElement(tag)
-    if(!this.allowsCaptionInsertion([element])) return
+    if(!this.allowsInsertionAt([element])) return
     if(this.commandPlacement && this.insertIntoCell(element)) return
     if(this.convertInsertion(tag)) return
     if(tag === "table") this.editor.features.table.actions.insertTable({type: "insertTable", rows: 2, columns: 2})
@@ -3517,6 +3518,7 @@ export class ManipulationFeature extends EditorFeature {
     remapPastedAuthoredIds(fragment, document, undefined, this.editor.features.widget.isWidget)
     this.selectCapturedElementForInsertion()
     if(this.insertLayoutPaste(fragment)) return
+    if(!this.editor.schema.allowsPlacement($.ranges[0]?.startContainer ?? null, Array.from(fragment.childNodes))) return false
     if(this.insertListPaste(fragment)) return true
     const container = $.anchorContainer
     if(!$.isElementSelection && !$.isGapSelection && !$.isEmptyDocumentSelection
@@ -3607,7 +3609,8 @@ export class ManipulationFeature extends EditorFeature {
     const root = canvas.active ? document.body : slides.active ? slides.insertionSlide() : null
     if(!root || !root.isConnected || this.editor.isEditingLocked || !this.editor.allows("insert", root)) return false
     const elements = Array.from(fragment.children)
-    if(!elements.length || elements.some(element => !(element instanceof HTMLElement || element instanceof SVGSVGElement)
+    if(!elements.length || !this.editor.schema.allowsPlacement(root, elements)
+      || elements.some(element => !(element instanceof HTMLElement || element instanceof SVGSVGElement)
       || element.matches("style,script,link,meta,template") || slideLayoutRole(element))
       || Array.from(fragment.childNodes).some(node => node instanceof Text && node.data.trim())) return false
     const items = elements as (HTMLElement | SVGSVGElement)[]
@@ -3686,7 +3689,7 @@ export class ManipulationFeature extends EditorFeature {
       return this.inheritInsertionLayout(Array.from(fragment.childNodes), () => this.insertClipboardFragment(fragment, commandInsertion, paste))
     }
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
-    if(!this.allowsCaptionInsertion(Array.from(fragment.childNodes))) return false
+    if(!this.allowsInsertionAt(Array.from(fragment.childNodes))) return false
     if(commandInsertion) {
       this.hoverInsertion(false)
       if(this.insertIntoCell(fragment)) return
@@ -4100,9 +4103,9 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
-  /** Captions share prose's inline vocabulary, even inside nested marks. Check
-   * the live destination before a command moves or replaces any content. */
-  allowsCaptionInsertion(nodes: Node[], container: Node | null = $.anchor) {
+  /** Check contextual schema and caption rules before mutating the document. */
+  allowsInsertionAt(nodes: Node[], container: Node | null = $.ranges[0]?.startContainer ?? null) {
+    if(!this.editor.schema.allowsPlacement(container, nodes)) return false
     const parent = container instanceof Element ? container : container?.parentElement
     if(nodes.some(node => node instanceof Element && node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("figure:not([is]):has(> figcaption)") && !this.editor.schema.hasFigureContent(Array.from(node.childNodes)))) return false
     const captions = nodes.filter((node): node is Element => node instanceof Element && node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("caption:not([is]), figcaption:not([is])"))
@@ -4753,7 +4756,7 @@ export class ManipulationFeature extends EditorFeature {
       const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
       return this.inheritInsertionLayout(nodes, () => this.insert(node, splitDepth, strict, commandInsertion))
     }
-    if(node && !this.allowsCaptionInsertion(node instanceof DocumentFragment ? Array.from(node.childNodes) : [node])) return false
+    if(node && !this.allowsInsertionAt(node instanceof DocumentFragment ? Array.from(node.childNodes) : [node])) return false
     if(isElement(node) && !node.parentNode) {
       const entry = this.editor.schema.get(node)
       if(entry.wrapper || entry.replacement || entry.requiredAttributes) {
@@ -5118,12 +5121,16 @@ export class ManipulationFeature extends EditorFeature {
    * Caption destinations accept only inline content. */
   wrap(wrapping?: DocumentFragment | Element) {
     const candidate = wrapping instanceof DocumentFragment ? wrapping.firstElementChild : wrapping
-    if(candidate && !this.allowsCaptionInsertion([candidate])) return
+    if(candidate && !this.allowsInsertionAt([candidate])) return
     return this.withNormalization(() => {
       if(wrapping) {
         const wrapper = wrapping instanceof DocumentFragment? wrapping.firstElementChild: wrapping
         if(!wrapper) return
-        wrapper.append($.slice)
+        const slice = $.slice
+        const content = Array.from(slice.childNodes)
+        if(!this.editor.schema.allowsPlacement(wrapper, content)
+          || !this.editor.schema.allowsPlacement($.range.startContainer, content)) return
+        wrapper.append(slice)
         $.replace(wrapper)
         return wrapper
       }
@@ -5132,7 +5139,7 @@ export class ManipulationFeature extends EditorFeature {
         if(!wrapper) {
           return
         }
-        if($.anchorContainer && !this.allowsCaptionInsertion([$.anchorContainer], wrapper)) return
+        if($.anchorContainer && !this.allowsInsertionAt([$.anchorContainer], wrapper)) return
         if($.anchorContainer) wrapper.append($.anchorContainer)
         return wrapper
       }

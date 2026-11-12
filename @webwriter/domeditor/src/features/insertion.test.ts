@@ -31,6 +31,20 @@ beforeEach(() => {
 })
 
 describe("insertion menu", () => {
+  it("keeps the typed command when table insertion is rejected inside a cell", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td><div><p></p></div></td></tr></tbody></table>"
+    const paragraph = document.querySelector("td p")!
+    $.move(paragraph)
+    typeCommand()
+    typeText("table")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    menu.dispatchEvent(new CustomEvent("insertion-menu-select", {detail: {tag: "table"}}))
+    expect(paragraph.textContent).toBe("++table")
+    expect(document.querySelectorAll("table")).toHaveLength(1)
+    expect(menu.open).toBe(false)
+  })
+
   it("ignores secondary presses on choices and the close button", async () => {
     typeCommand()
     typeText("formula")

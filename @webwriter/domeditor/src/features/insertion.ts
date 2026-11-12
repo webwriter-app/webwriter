@@ -464,7 +464,7 @@ export class InsertionFeature extends EditorFeature {
       this.close()
       return
     }
-    if(!this.editor.features.manipulation.allowsCaptionInsertion(nodes, range.startContainer)) {
+    if(!this.editor.features.manipulation.allowsInsertionAt(nodes, range.startContainer)) {
       this.close(false)
       return
     }

@@ -1,5 +1,5 @@
 import { baseSchema, baseSchemaMathML, baseSchemaSVG } from "./baseschema"
-import { $, cloneInert, getContainer, getIndexBefore, getInertDocument, isParagraphContent } from "./utility"
+import { $, cloneInert, getContainer, getIndexBefore, getInertDocument, isContentfulWidget, isParagraphContent } from "./utility"
 import {isWidgetDataContainer} from "./active-content"
 import {normalizeTableStructure} from "./table"
 import {popupElementRole} from "./element-names"
@@ -82,6 +82,8 @@ export type SchemaEntry = {
   contentNamespace?: string
   /** Whether generic insertion UI may offer this type at a valid position. */
   directlyInsertable?: boolean
+  /** Native HTML selector forbidden anywhere in this type's authored content. */
+  excludedDescendant?: string
   requiredAttributes?: Record<string, string>
   wrapper?: string
   replacement?: string
@@ -722,6 +724,47 @@ export class Schema {
     return (rule.max ?? 1) > 0
   }
 
+  #isOpaqueWidget(element: Element) {
+    return element.namespaceURI === "http://www.w3.org/1999/xhtml"
+      && (element.localName.includes("-") || element.hasAttribute("is"))
+      && !isContentfulWidget(element, this)
+  }
+
+  #excludedDescendant(element: Element) {
+    return element.namespaceURI === "http://www.w3.org/1999/xhtml" && !element.hasAttribute("is")
+      ? this.#schema[element.localName]?.excludedDescendant : undefined
+  }
+
+  #excludedDescendants(container: Node | string | null) {
+    const excluded = new Set<string>()
+    for(let element = typeof container === "string" ? this.#nodes[container]
+      : container instanceof Element ? container : container?.parentElement;
+      element instanceof Element; element = element.parentElement) {
+      if(this.#isOpaqueWidget(element)) break
+      const selector = this.#excludedDescendant(element)
+      if(selector) excluded.add(selector)
+    }
+    return [...excluded]
+  }
+
+  #allowsDescendants(node: Node, excluded: string[], checkNewSubtree: boolean): boolean {
+    if(!(node instanceof Element || node instanceof DocumentFragment)) return true
+    if(node instanceof Element) {
+      if(excluded.some(selector => this.testSelectorRule(node, selector))) return false
+      if(this.#isOpaqueWidget(node)) return true
+      const selector = checkNewSubtree ? this.#excludedDescendant(node) : undefined
+      if(selector && !excluded.includes(selector)) excluded = [...excluded, selector]
+    }
+    return (!excluded.length && !checkNewSubtree)
+      || Array.from(node.children).every(child => this.#allowsDescendants(child, excluded, checkNewSubtree))
+  }
+
+  /** Checks descendant restrictions at the live destination and inside newly inserted subtrees. */
+  allowsPlacement(container: Node | string | null, content: readonly Node[]) {
+    const excluded = this.#excludedDescendants(container)
+    return content.every(node => this.#allowsDescendants(node, excluded, true))
+  }
+
   /** Whether `content` (default: the node's current children) is valid for the node (given as node or type key). Each node is validated against a shared cloned rule (see isNodeValid), and the rule's minimum must be satisfied. Non-element nodes are always valid.. */
   isContentValid(node: Node | string, content?: Node[], rule=this.getContentRule(node)): boolean {
     let nodeToCheck = typeof node === "string"? this.create(node, getInertDocument()): node
@@ -732,6 +775,11 @@ export class Schema {
       && !(content ?? Array.from(nodeToCheck.childNodes)).every(isParagraphContent)) return false
     // A widget's data containers are valid under any content model.
     const contentToCheck = (content ?? Array.from(nodeToCheck.childNodes)).filter(child => child.nodeType !== Node.PROCESSING_INSTRUCTION_NODE && !isWidgetDataContainer(child))
+    // These authoring restrictions leave existing document trees intact during repair.
+    if(!this.#repairingContent) {
+      const excluded = this.#excludedDescendants(nodeToCheck)
+      if(!contentToCheck.every(child => this.#allowsDescendants(child, excluded, child.parentNode !== nodeToCheck))) return false
+    }
     const nativeContainer = nodeToCheck.namespaceURI === "http://www.w3.org/1999/xhtml" && !nodeToCheck.localName.includes("-") && !nodeToCheck.hasAttribute("is")
     if(nativeContainer && !nodeToCheck.matches("table") && contentToCheck.some(child => child instanceof Element && child.namespaceURI === "http://www.w3.org/1999/xhtml" && child.matches("caption:not([is])"))) return false
     const captions = contentToCheck.filter(child => child instanceof Element && child.namespaceURI === "http://www.w3.org/1999/xhtml" && child.matches("figcaption:not([is])"))
@@ -920,6 +968,8 @@ export class Schema {
     }
 
     const container = containerOrKey instanceof Node? containerOrKey: this.create(containerOrKey, getInertDocument())
+    const excluded = this.#repairingContent ? [] : this.#excludedDescendants(container)
+    const allowed = (key: string) => !excluded.some(selector => this.testSelectorRule(this.#nodes[key], selector))
     if(content !== undefined) {
       rule = structuredClone(rule)
       if(!content.every(node => this.isNodeValid(node, rule))) return []
@@ -927,7 +977,7 @@ export class Schema {
 
     if("expression" in rule) {
       const references = expressionFirstReferences(rule.current ?? rule.expression)
-      return Object.keys(this.#nodes).filter(key => references.some(reference =>
+      return Object.keys(this.#nodes).filter(key => allowed(key) && references.some(reference =>
         reference.reference === "node"
           ? key === reference.name
           : this.getGroupMembers(reference.name).includes(key),
@@ -939,7 +989,7 @@ export class Schema {
     
     if("group" in rule) {
       const groupKeys = this.getGroupMembers(rule.group)
-      return groupKeys.filter(k => !rule.selector || this.testSelectorRule(this.#nodes[k], rule.selector))
+      return groupKeys.filter(k => allowed(k) && (!rule.selector || this.testSelectorRule(this.#nodes[k], rule.selector)))
     }
     else if("transparent" in rule) {
       const parent = container.parentElement
@@ -948,7 +998,7 @@ export class Schema {
       }
       const parentRule = this.getContentRule(parent)
       const validParentContentTypes = this.findValidContentTypes(parent, parentRule)
-      return Object.keys(this.#nodes).filter(k => validParentContentTypes.includes(k) && (!rule.selector
+      return Object.keys(this.#nodes).filter(k => allowed(k) && validParentContentTypes.includes(k) && (!rule.selector
         || typeof rule.selector === "string" && !(this.#nodes[k] instanceof Element)
         || this.testSelectorRule(this.#nodes[k], rule.selector)))
     }
@@ -964,7 +1014,7 @@ export class Schema {
       return termRule ? this.findValidContentTypes(container, termRule) : []
     }
     else if("selector" in rule) {
-      return Object.keys(this.#nodes).filter(k => this.testSelectorRule(this.#nodes[k], rule.selector))
+      return Object.keys(this.#nodes).filter(k => allowed(k) && this.testSelectorRule(this.#nodes[k], rule.selector))
     }
     else {
       throw TypeError(`Invalid rule '${JSON.stringify(rule)}'`)
