@@ -2221,6 +2221,12 @@ await check("table presets respect whole-table and cell selections without chang
       table.style.width = "100%"
       for(const cell of cells) cell.removeAttribute("style")
       cells[1].style.width = "40%"
+      cells[1].style.setProperty("padding", "3px 5px 7px 11px", "important")
+      cells[2].style.paddingInlineStart = "20px"
+      const padding = cells.map(cell => {
+        const computed = view.getComputedStyle(cell)
+        return [computed.paddingTop, computed.paddingRight, computed.paddingBottom, computed.paddingLeft].join()
+      })
       editor!.features.table.clearCellSelection(false)
       if(selection === "table") {
         const range = doc.createRange()
@@ -2243,13 +2249,20 @@ await check("table presets respect whole-table and cell selections without chang
           for(const cell of selected) {
             const computed = view.getComputedStyle(cell), box = cell.getBoundingClientRect(), tableBox = table.getBoundingClientRect()
             assert(computed.backgroundColor === expected, `${selection}: preset color is hidden by theme cell paint`)
-            assert(computed.display === "table-cell" && computed.paddingTop === "8px", `${selection}: preset broke cell layout or padding`)
+            assert(computed.display === "table-cell", `${selection}: preset broke cell layout`)
             assert(box.width > 0 && box.height > 0 && box.left >= tableBox.left - 1 && box.right <= tableBox.right + 1,
               `${selection}: cell escaped table bounds`)
             for(const property of ["margin", "position", "transform", "box-shadow", "border-radius"]) {
               assert(!cell.style.getPropertyValue(property), `${selection}: preset added cell ${property}`)
             }
           }
+          assert(cells.every((cell, index) => {
+            const computed = view.getComputedStyle(cell)
+            return [computed.paddingTop, computed.paddingRight, computed.paddingBottom, computed.paddingLeft].join() === padding[index]
+          }), `${selection}: preset changed cell padding`)
+          assert(!table.style.padding && !cells[0].style.padding
+            && cells[1].style.getPropertyPriority("padding") === "important" && cells[2].style.paddingInlineStart === "20px",
+            `${selection}: preset rewrote authored spacing`)
           assert(cells[1].style.width === "40%" && !cells[0].style.width && !cells[2].style.width, "preset changed authored cell sizing")
           assert(table.style.width === "100%" && !table.style.margin, "preset changed table sizing or margins")
           if(selection === "cell") assert(!cells[0].style.backgroundColor && !cells[2].style.backgroundColor && !table.style.backgroundColor,
