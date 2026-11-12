@@ -2121,6 +2121,80 @@ await check("Details chevrons stay beside wrapped summaries", async () => {
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("table columns start equal and empty rows keep their height while typing", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:600px;height:400px;max-width:none"
+  frame.srcdoc = `<!doctype html><style data-ww-theme="base">${defaultDocumentTheme.source}</style>
+    <style>#auto { table-layout: auto; width: 360px } #fixed { table-layout: fixed }</style>
+    <table id="equal"><thead><tr><th>Short</th><th>A considerably longer heading</th></tr></thead>
+      <tbody><tr><td></td><td></td></tr></tbody></table>
+    <table id="auto"><tr><td>Short</td><td>A considerably longer phrase</td></tr></table>
+    <table id="merged"><thead><tr><th colspan="2">Merged heading</th></tr></thead>
+      <tbody><tr><td>Short</td><td>Other</td></tr></tbody></table>
+    <table id="fixed"><thead><tr><th colspan="2">Merged heading</th></tr></thead>
+      <tbody><tr><td>Short</td><td>Other</td></tr></tbody></table>
+    <script type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script>`
+  fixture.append(frame)
+  try {
+    for(let attempt = 0; attempt < 200 && !frame.contentWindow?.editor; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    const editor = frame.contentWindow?.editor
+    assert(editor, `table layout editor failed: ${frame.contentWindow?.editorError}`)
+    const doc = frame.contentDocument!, view = frame.contentWindow!
+    const table = doc.querySelector<HTMLTableElement>("#equal")!, auto = doc.querySelector<HTMLTableElement>("#auto")!
+    const [heading, longHeading] = Array.from(table.rows[0].cells)
+    const [cell, otherCell] = Array.from(table.rows[1].cells)
+    const widthDifference = (target: HTMLTableElement) =>
+      Math.abs(target.rows[0].cells[0].getBoundingClientRect().width - target.rows[0].cells[1].getBoundingClientRect().width)
+    assert(view.getComputedStyle(table).tableLayout === "fixed" && widthDifference(table) < 1, "column widths followed content")
+    assert(view.getComputedStyle(auto).tableLayout === "auto" && widthDifference(auto) > 25
+      && Math.abs(auto.getBoundingClientRect().width - 360) < 1, "authored layout or width was overridden")
+
+    const emptyHeight = cell.getBoundingClientRect().height
+    const cellBox = cell.getBoundingClientRect()
+    const point = doc.caretRangeFromPoint(cellBox.left + 18, cellBox.top + cellBox.height / 2)
+    assert(point?.startContainer === cell && point.startOffset === 0, "empty cell has no native editing position")
+    view.focus()
+    doc.getSelection()!.collapse(cell, 0)
+    assert(doc.execCommand("insertText", false, "Text") && cell.textContent === "Text", "empty cell rejected typing")
+    doc.getSelection()!.collapse(otherCell, 0)
+    assert(doc.execCommand("insertText", false, "More text") && otherCell.textContent === "More text", "second empty cell rejected typing")
+    assert(Math.abs(cell.getBoundingClientRect().height - emptyHeight) < 0.25, "typing changed the empty row height")
+
+    const resizeColumn = (target: HTMLTableCellElement) => {
+      target.scrollIntoView({block: "nearest"})
+      const box = target.getBoundingClientRect()
+      const y = box.top + box.height / 2
+      target.dispatchEvent(new PointerEvent("pointermove", {clientX: box.right, clientY: y, bubbles: true, cancelable: true}))
+      target.dispatchEvent(new PointerEvent("pointerdown", {clientX: box.right, clientY: y, bubbles: true, cancelable: true}))
+      doc.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: box.right + 32, clientY: y, bubbles: true, cancelable: true}))
+      doc.dispatchEvent(new PointerEvent("pointerup", {clientX: box.right + 32, clientY: y, bubbles: true, cancelable: true}))
+      return target.getBoundingClientRect().width - box.width
+    }
+    assert(resizeColumn(heading) > 25 && heading.style.width && cell.style.width
+      && !longHeading.style.width, "dragging did not resize the default fixed-layout column")
+    assert(!table.style.tableLayout, "column resize rewrote the default layout mode")
+
+    editor!.doc.syncFromDOM()
+    editor!.doc.stopCapturing()
+    const merged = doc.querySelector<HTMLTableElement>("#merged")!
+    const mergedCell = merged.rows[1].cells[0]
+    const mergedDelta = resizeColumn(mergedCell)
+    assert(mergedDelta > 25 && merged.style.tableLayout === "auto" && mergedCell.style.width,
+      `dragging did not resize a single column under a merged header: ${mergedDelta}px, ${merged.style.cssText}, ${mergedCell.style.cssText}`)
+    editor!.doc.undo()
+    assert(!merged.style.tableLayout && !mergedCell.style.width, "undo did not restore the merged table's default layout")
+    editor!.doc.redo()
+    assert(merged.style.tableLayout === "auto" && mergedCell.style.width, "redo did not restore the merged table's column resize")
+
+    const fixed = doc.querySelector<HTMLTableElement>("#fixed")!
+    const fixedCell = fixed.rows[1].cells[0]
+    resizeColumn(fixedCell)
+    assert(fixedCell.style.width && !fixed.style.tableLayout && view.getComputedStyle(fixed).tableLayout === "fixed",
+      "dragging overrode an authored fixed layout")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("table presets respect whole-table and cell selections without changing layout", async () => {
   const {ElementStyleEditor} = await import("../src/components/element-style-editor")
   const controls = new ElementStyleEditor()

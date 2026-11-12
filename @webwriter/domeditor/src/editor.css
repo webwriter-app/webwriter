@@ -1420,6 +1420,14 @@ body:state(ww-transform-rotating), body:state(ww-transform-rotating) * {
   content: "\200B";
 }
 
+/* Keep an editable line in empty cells without increasing the row height. */
+:where(td, th):empty::before {
+  display: inline-block;
+  inline-size: 0;
+  block-size: 1lh;
+  vertical-align: top;
+}
+
 /* A low-priority caret fallback lets authored numbering supply the content. */
 :where(caption:empty, figcaption:empty)::before {
   content: "\200B";
