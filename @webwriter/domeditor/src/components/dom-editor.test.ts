@@ -7026,6 +7026,47 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "setSelectedElementStyles", selectionType, styles: {zoom: null}})
   })
 
+  it("shows and changes alignment separately for selected header and data cells in Edit", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const namespaceURI = "http://www.w3.org/1999/xhtml"
+    const cellGroup = (localName: string, name: string, column: number, horizontal: string, vertical: string) => ({
+      element: {localName, namespaceURI, name, path: [0, 0, 0, column], attributes: {}},
+      count: 1, styleProperties: ["text-align", "vertical-align"], configuredWidgetOptions: [],
+      style: {target: {localName, namespaceURI}, inline: {
+        "text-align": {value: horizontal, priority: ""},
+        "vertical-align": {value: vertical, priority: ""},
+      }, computed: {}, context: {display: "table-cell", parentDisplay: "table-row"}},
+    })
+    const heading = cellGroup("th", "Header cell", 0, "center", "top")
+    const data = cellGroup("td", "Data cell", 1, "left", "bottom")
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type: selectionChangeEvent, detail: {
+      path: [{path: [], name: "Document"}, data.element], nodeSelected: true, element: data.element,
+      selectedElementTypes: [heading, data],
+    }}}))
+    await editor.updateComplete
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    const choices = async (localName: string, property: string) => {
+      const control = toolbox.shadowRoot!.querySelector<import("./element-style-editor").ElementStyleEditor>(
+        `[data-specialized="${localName}"] element-style-editor`,
+      )!
+      await control.updateComplete
+      return control.shadowRoot!.querySelector(`[data-property="${property}"]`)!
+    }
+    const headingAlignment = await choices("th", "text-align")
+    const dataAlignment = await choices("td", "vertical-align")
+    expect(headingAlignment.querySelector('[aria-pressed="true"]')?.getAttribute("aria-label")).toBe("Center")
+    expect(dataAlignment.querySelector('[aria-pressed="true"]')?.getAttribute("aria-label")).toBe("Bottom")
+    headingAlignment.querySelector<HTMLButtonElement>('[aria-label="Right"]')!.click()
+    dataAlignment.querySelector<HTMLButtonElement>('[aria-label="Middle"]')!.click()
+    expect(execute).toHaveBeenCalledWith({type: "setSelectedElementStyles", selectionType: {localName: "th", namespaceURI},
+      styles: {"text-align": {value: "right", priority: ""}}})
+    expect(execute).toHaveBeenCalledWith({type: "setSelectedElementStyles", selectionType: {localName: "td", namespaceURI},
+      styles: {"vertical-align": {value: "middle", priority: ""}}})
+  })
+
   it("routes media ribbon commands through the iframe bridge", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

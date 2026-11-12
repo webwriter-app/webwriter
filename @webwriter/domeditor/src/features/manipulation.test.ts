@@ -6184,9 +6184,9 @@ describe("setStyle()", () => {
     expect(Array.from(cells, cell => cell.style.backgroundColor)).toEqual(["gold", "gold"])
   })
   it("scopes specialized cell styles to every selected cell of that type", () => {
-    document.body.innerHTML = '<table><tbody><tr><th>Heading</th><td style="vertical-align: top">one</td><td style="vertical-align: top">two</td><td>outside</td></tr></tbody></table>'
-    const cells = document.querySelectorAll("td")
-    editor.features.table.selectCells(cells[0], cells[1])
+    document.body.innerHTML = '<table><tbody><tr><td id="outer" style="vertical-align: bottom"><table id="nested"><tbody><tr><th>Heading</th><td style="vertical-align: top">one</td><td style="vertical-align: top">two</td><td>outside</td></tr></tbody></table></td></tr></tbody></table>'
+    const cells = document.querySelectorAll<HTMLTableCellElement>("#nested td")
+    editor.features.table.selectCells(document.querySelector("th")!, cells[1])
     const state = editor.features.manipulation.getSelectedElementTypes(["vertical-align"])
       .find(state => state.element.localName === "td")!
     expect(state.count).toBe(2)
@@ -6194,6 +6194,7 @@ describe("setStyle()", () => {
     editor.features.manipulation.actions.setSelectedElementStyles({type: "setSelectedElementStyles",
       selectionType: {localName: "td", namespaceURI: "http://www.w3.org/1999/xhtml"}, styles: {"vertical-align": "middle"}})
     expect(Array.from(cells, cell => cell.style.verticalAlign)).toEqual(["middle", "middle", ""])
+    expect(document.querySelector<HTMLTableCellElement>("#outer")!.style.verticalAlign).toBe("bottom")
     expect(document.querySelector("th")).not.toHaveAttribute("style")
     expect(document.querySelector("table")).not.toHaveAttribute("style")
   })

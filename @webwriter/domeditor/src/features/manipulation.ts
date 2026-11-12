@@ -3104,6 +3104,13 @@ export class ManipulationFeature extends EditorFeature {
       if(image) addContainer(image)
     }
     for(const element of [...elements]) imageMapPopups(element).forEach(popup => elements.add(popup))
+    if(cells.length) {
+      const selectedCells = new Set(cells)
+      // A rectangle in a nested table excludes cells in the enclosing table.
+      for(const element of elements) {
+        if(element instanceof HTMLTableCellElement && !selectedCells.has(element)) elements.delete(element)
+      }
+    }
     return [...elements].sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING ? 1 : -1)
   }
 
@@ -3138,7 +3145,8 @@ export class ManipulationFeature extends EditorFeature {
     return [...groups.values()].map(elements => {
       const states = elements.map(element => elementAttributeState(element, pathFromNode(document.body, element) ?? []))
       const profile = specializedElementStyle(elements[0].localName)
-      const requested = properties.length ? properties : [...(profile?.primary ?? []), ...(profile?.advanced ?? [])]
+      const requested = properties.length ? properties : [...(profile?.primary ?? []), ...(profile?.advanced ?? []),
+        ...(["td", "th"].includes(elements[0].localName) ? ["direction"] : [])]
       const styles = elements.map(element => this.getStyleState(requested, element, false))
       const widgets = elements.map(element => this.editor.features.widget.getOptionsState([element]))
       const widget = widgets[0]

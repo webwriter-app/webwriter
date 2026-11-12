@@ -8316,11 +8316,14 @@ export class DomEditor extends LitElement {
     }
     const topLevel = event.composedPath().includes(this.renderRoot.querySelector("dom-editor-toolbox")!)
       && this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Edit"
-    const scopedZoom = Object.hasOwn(styles, "zoom") && isElementSelectionType(detail.selectionType)
-      && isWebsiteType(detail.selectionType.localName)
-    if(detail.selectionType !== undefined && (!topLevel || scopedZoom)) {
-      if(!isElementSelectionType(detail.selectionType)) return
-      void this.execute({type: "setSelectedElementStyles", selectionType: detail.selectionType, styles})
+    const selectionType = detail.selectionType
+    const scopedStyle = isElementSelectionType(selectionType)
+      && (isWebsiteType(selectionType.localName) && Object.hasOwn(styles, "zoom")
+        || selectionType.namespaceURI === "http://www.w3.org/1999/xhtml" && ["td", "th"].includes(selectionType.localName)
+          && Object.keys(styles).every(name => name === "text-align" || name === "vertical-align"))
+    if(selectionType !== undefined && (!topLevel || scopedStyle)) {
+      if(!isElementSelectionType(selectionType)) return
+      void this.execute({type: "setSelectedElementStyles", selectionType, styles})
       return
     }
     const previousState = this.elementStyle

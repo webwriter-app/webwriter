@@ -1143,7 +1143,8 @@ export class DomEditorToolbox extends EditingControls {
           detail: {path: attributes.path}, bubbles: true, composed: true,
         }))}>${ribbonIcon("Delete")}Delete</button>
     </ribbon-drawer>`
-    let style = group && isWebsiteType(group.element.localName) ? group.style : this.elementStyle
+    let style = group && (isWebsiteType(group.element.localName) || ["td", "th"].includes(group.element.localName))
+      ? group.style : this.elementStyle
     const widgetOptions = group ? group.widget : this.widgetOptions
     const singleTarget = Boolean(group?.count === 1 && this.elementAttributes && attributes
       && (attributes.localName === this.elementAttributes.localName && attributes.namespaceURI === this.elementAttributes.namespaceURI
