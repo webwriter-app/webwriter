@@ -8,6 +8,7 @@ import {$, atomicEditingContainer, caretRect, fixedClientX, authoredClassValue, 
 import {
   buildTableMap,
   normalizeTableStructure,
+  setTableRowCellType,
   cellForNode,
   clearTableMarkers,
   completeCellRectangle,
@@ -556,9 +557,26 @@ export class TableFeature extends EditorFeature {
     return this.selectCells(hit)
   }
 
-  private canToggleRowGroup(map: TableMap, type: "thead" | "tfoot") {
+  private headerRowCountAfterToggle(map: TableMap) {
+    if(map.limited || !map.rows.length || !this.editableTable(map.table)) return null
+    const current = map.rows.filter(row => row.parentElement?.localName === "thead").length
+    const rectangle = this.cellRectangle(map)
+    let count = current ? 0 : 1
+    if(rectangle && rectangle.bottom >= current) {
+      if(rectangle.top <= current && rectangle.left === 0 && rectangle.right === map.width - 1) count = rectangle.bottom + 1
+      else if(this.anchorCell !== this.focusCell) return null
+    }
+    if(!count) return count
+    if(map.rows.length > 1 && map.rows.slice(0, count).some(row => row.parentElement?.localName === "tfoot")) return null
+    // Moving rows into one group must neither cut a span nor grow a span
+    // whose effective length was limited by its original row group.
+    return map.placements.some(({cell, row, rowSpan}) => row < count && (row + rowSpan > count
+      || row + rowSpan < count && (cell.rowSpan === 0 || cell.rowSpan > rowSpan))) ? null : count
+  }
+
+  private canToggleFooter(map: TableMap) {
     if(map.limited || !map.rows.length) return false
-    const boundary = type === "thead" ? 1 : map.rows.length - 1
+    const boundary = map.rows.length - 1
     return !map.placements.some(cell => cell.row < boundary && cell.row + cell.rowSpan > boundary)
   }
 
@@ -567,6 +585,8 @@ export class TableFeature extends EditorFeature {
     if(!map) return
     const selected = this.selectedCellsIn(map)
     const cells = this.actionCells(map, selected)
+    const hasHeader = Boolean(map.table.querySelector(":scope > thead > tr"))
+    const headerChange = this.headerRowCountAfterToggle(map)
     return {
       active: true,
       cellSelection: this.hasCellSelection,
@@ -579,10 +599,11 @@ export class TableFeature extends EditorFeature {
         return Boolean(placement && (placement.rowSpan > 1 || placement.columnSpan > 1))
       }),
       hasCaption: Boolean(map.table.caption),
-      hasHeader: Boolean(map.table.querySelector(":scope > thead > tr")),
+      hasHeader,
+      headerActive: hasHeader && (headerChange === null || headerChange === 0),
       hasFooter: Boolean(map.table.querySelector(":scope > tfoot > tr")),
-      canToggleHeader: this.canToggleRowGroup(map, "thead"),
-      canToggleFooter: this.canToggleRowGroup(map, "tfoot"),
+      canToggleHeader: headerChange !== null,
+      canToggleFooter: this.canToggleFooter(map),
     }
   }
 
@@ -644,42 +665,50 @@ export class TableFeature extends EditorFeature {
   private insertRow(side: Extract<TableSide, "above" | "below">) {
     const table = this.selectedTable
     if(!table) return
-    let map = this.normalizeTable(table)
+    const map = this.normalizeTable(table)
     const rectangle = this.actionRectangle(map)
     if(!rectangle) return
-    this.insertRowAt(table, side === "above" ? rectangle.top : rectangle.bottom + 1, rectangle.top)
+    if(side === "above") this.insertRowAt(table, rectangle.top)
+    else this.insertRowAt(table, rectangle.bottom + 1, rectangle.bottom)
   }
 
   private insertRowAt(table: HTMLTableElement, boundary: number, sourceRow = boundary) {
     let map = this.normalizeTable(table)
     if(map.limited || boundary < 0 || boundary > map.rows.length) return
     if((map.rows.length + 1) * map.width > maximumTableMapSlots) return
-    const crossing = map.placements.filter(placement => placement.row < boundary && placement.row + placement.rowSpan > boundary)
+    const row = document.createElement("tr")
+    const sourceIndex = Math.min(sourceRow, map.rows.length - 1)
+    const source = map.rows[sourceIndex]
+    let parent = source.parentElement!
+    const fromHeader = parent.localName === "thead"
+    // Keep the header contiguous. An add gesture inside it inserts at the
+    // start of the body, where the new row can be selected for promotion.
+    if(fromHeader) while(map.rows[boundary]?.parentElement === parent) boundary++
+    const before = map.rows[boundary - 1]?.parentElement
+    const after = map.rows[boundary]?.parentElement
+    if(fromHeader || parent.localName === "tfoot" && sourceIndex >= boundary && before !== parent) {
+      const adjacent = fromHeader ? after : before
+      parent = adjacent?.localName === "tbody" || adjacent === table ? adjacent
+        : table.tBodies[0] ?? table.ownerDocument.createElement("tbody")
+      if(!parent.parentNode) {
+        table.insertBefore(parent, table.tFoot)
+      }
+    }
+    const crossing = map.placements.filter(placement => map.rows[placement.row].parentElement === parent && placement.row < boundary
+      && placement.row + placement.rowSpan > boundary)
     crossing.forEach(placement => {
       if(placement.cell.getAttribute("rowspan") !== "0") placement.cell.rowSpan = placement.rowSpan + 1
     })
-
-    const row = document.createElement("tr")
-    const source = map.rows[Math.min(Math.max(0, sourceRow), map.rows.length - 1)]
-    let parent: Element = source?.parentElement ?? table
-    const sourceGroup = parent.localName
-    if(source && (sourceGroup === "thead" && boundary > sourceRow && !map.rows.slice(boundary).some(row => row.parentElement === parent)
-      || sourceGroup === "tfoot" && boundary <= sourceRow && !map.rows.slice(0, boundary).some(row => row.parentElement === parent))) {
-      parent = Array.from(table.children).find(child => child.localName === "tbody") ?? table.ownerDocument.createElement("tbody")
-      if(!parent.parentNode) {
-        const footer = Array.from(table.children).find(child => child.localName === "tfoot")
-        footer ? table.insertBefore(parent, footer) : table.append(parent)
-      }
-    }
     const next = map.rows.slice(boundary).find(candidate => candidate.parentElement === parent)
     const previous = map.rows.slice(0, boundary).reverse().find(candidate => candidate.parentElement === parent)
     if(next) parent.insertBefore(row, next)
     else if(previous) previous.after(row)
     else parent.append(row)
+    const templateRow = source.parentElement === parent ? source : next ?? previous
+    const template = templateRow ? map.matrix[map.rows.indexOf(templateRow)] : undefined
     for(let column = 0; column < map.width; column++) {
       if(crossing.some(placement => placement.column <= column && column < placement.column + placement.columnSpan)) continue
-      const source = map.matrix[Math.min(sourceRow, map.rows.length - 1)]?.[column]?.cell
-      row.append(newCellForRow(row, source, parent.localName === "tbody" ? "td" : undefined))
+      row.append(newCellForRow(row, template?.[column]?.cell, parent.localName === "tfoot" ? undefined : "td"))
     }
     normalizeTableStructure(table)
     map = this.normalizeTable(table)
@@ -790,11 +819,18 @@ export class TableFeature extends EditorFeature {
       else {
         let section = sectionClones.get(parent)
         if(!section) {
-          section = cloneWithoutEditorMarkers(parent, false) as Element
+          const clone = cloneWithoutEditorMarkers(parent, false) as Element
+          if(parent.localName === "thead") {
+            section = next.ownerDocument.createElement("tbody")
+            clone.removeAttribute("id")
+            for(const attribute of clone.attributes) section.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+          }
+          else section = clone
           sectionClones.set(parent, section)
           next.append(section)
         }
         section.append(row)
+        if(parent.localName === "thead") setTableRowCellType(row, "td")
       }
     })
     Array.from(table.children).filter(child => child.matches("thead, tbody, tfoot") && !child.querySelector("tr")).forEach(child => child.remove())
@@ -846,18 +882,10 @@ export class TableFeature extends EditorFeature {
     const table = this.selectedTable
     if(!table) return false
     const map = buildTableMap(table)
-    if(!this.canToggleRowGroup(map, type)) return false
     const rows = map.rows
-    let header = Boolean(table.querySelector(":scope > thead > tr"))
-    let footer = Boolean(table.querySelector(":scope > tfoot > tr"))
-    if(type === "thead") {
-      header = !header
-      if(header && rows.length === 1) footer = false
-    }
-    else {
-      footer = !footer
-      if(footer && rows.length === 1) header = false
-    }
+    const header = type === "thead" ? this.headerRowCountAfterToggle(map) : rows.length === 1 ? 0 : undefined
+    if(header === null || type === "tfoot" && !this.canToggleFooter(map)) return false
+    const footer = type === "tfoot" ? !table.querySelector(":scope > tfoot > tr") : rows.length === 1 ? false : undefined
     const endUndoGroup = this.editor.doc.beginUndoGroup()
     try {
       const anchor = this.hasCellSelection ? this.anchorCell : null
@@ -867,9 +895,7 @@ export class TableFeature extends EditorFeature {
         anchor: selection.anchorNode, anchorOffset: selection.anchorOffset,
         focus: selection.focusNode, focusOffset: selection.focusOffset,
       } : null
-      const replacements = normalizeTableStructure(table,
-        type === "thead" || rows.length === 1 ? header : undefined,
-        type === "tfoot" || rows.length === 1 ? footer : undefined)
+      const replacements = normalizeTableStructure(table, header, footer)
       if(anchor && focus) {
         const nextAnchor = replacements.get(anchor) ?? anchor
         const nextFocus = replacements.get(focus) ?? focus

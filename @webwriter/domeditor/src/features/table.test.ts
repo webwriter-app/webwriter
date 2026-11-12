@@ -1789,6 +1789,24 @@ describe("table gap controls", () => {
     expect(count()).toBe(expected)
   })
 
+  it.each(["gap", "command"] as const)("inserts a body row below a header-only table through the %s", async source => {
+    document.body.innerHTML = '<table><thead><tr><th scope="col">A</th><th scope="col">B</th></tr></thead></table>'
+    const table = document.querySelector("table")!
+    const header = table.querySelector<HTMLTableRowElement>("thead > tr")!
+    if(source === "gap") {
+      mockTableGeometry(table, [header], [Array.from(header.cells)])
+      const buttons = await renderGaps(table)
+      Array.from(buttons).find(button => button.getAttribute("aria-label") === "Insert row 2")!
+        .dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
+    }
+    else {
+      editor.features.table.selectCells(header.cells[0])
+      editor.features.table.actions.insertTableRow({type: "insertTableRow", side: "below"})
+    }
+    expect(Array.from(table.querySelectorAll("thead > tr"))).toEqual([header])
+    expect(Array.from(table.querySelectorAll("tbody > tr > td"), cell => cell.outerHTML)).toEqual(["<td></td>", "<td></td>"])
+  })
+
   it("inserts through a colspan and keeps the merged cell spanning the new column", async () => {
     document.body.innerHTML = "<table><tbody><tr><td colspan='2'>A</td></tr><tr><td>B</td><td>C</td></tr></tbody></table>"
     const table = document.querySelector("table")!
@@ -1925,20 +1943,35 @@ describe("table actions", () => {
     expect(originalCell).toHaveAttribute("role", "cell")
   })
 
-  it.each([
-    {group: "thead", side: "below", selected: 0},
-    {group: "tfoot", side: "above", selected: 2},
-  ] as const)("inserts $side inside a multi-row $group at the selected boundary", ({group, side, selected}) => {
-    document.body.innerHTML = `<table><${group} id="keep"><tr><th>A</th></tr><tr><th>B</th></tr><tr><th>C</th></tr></${group}></table>`
-    const rowGroup = document.querySelector(group)!
-    const originalRows = Array.from(rowGroup.children)
-    editor.features.table.selectCells(cells()[selected])
+  it.each(["above", "below"] as const)("adds a body row from Row %s inside a multi-row header", side => {
+    document.body.innerHTML = '<table><thead id="keep"><tr><th>A</th></tr><tr><th>B</th></tr><tr><th>C</th></tr></thead><tbody><tr><td>D</td></tr></tbody></table>'
+    const head = document.querySelector("thead")!
+    const originalRows = Array.from(head.children)
+    editor.features.table.selectCells(cells()[1])
 
     editor.features.table.actions.insertTableRow({type: "insertTableRow", side})
 
+    expect(Array.from(head.children)).toEqual(originalRows)
+    const body = document.querySelector("tbody")!
+    expect(Array.from(body.children, row => row.textContent)).toEqual(["", "D"])
+    expect(body.querySelector("tr")!.cells[0].localName).toBe("td")
+    expect(editor.features.table.getState()).toMatchObject({hasHeader: true, headerActive: false, canToggleHeader: true})
+    expect(editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})).toBe(true)
+    expect(Array.from(head.querySelectorAll("th"))).toHaveLength(4)
+    expect(body.textContent).toBe("D")
+  })
+
+  it("inserts inside a multi-row footer at the selected boundary", () => {
+    document.body.innerHTML = '<table><tfoot id="keep"><tr><th>A</th></tr><tr><th>B</th></tr><tr><th>C</th></tr></tfoot></table>'
+    const rowGroup = document.querySelector("tfoot")!
+    const originalRows = Array.from(rowGroup.children)
+    editor.features.table.selectCells(cells()[2])
+
+    editor.features.table.actions.insertTableRow({type: "insertTableRow", side: "above"})
+
     const rows = Array.from(rowGroup.children)
     expect(rows).toHaveLength(4)
-    const boundary = side === "below" ? selected + 1 : selected
+    const boundary = 2
     expect(rows.slice(0, boundary)).toEqual(originalRows.slice(0, boundary))
     expect(rows.slice(boundary + 1)).toEqual(originalRows.slice(boundary))
     expect(rows[boundary].querySelector("th")).not.toBeNull()
@@ -2004,6 +2037,22 @@ describe("table actions", () => {
     expect(tables[1].querySelector("tbody")).not.toHaveClass("◆row-marker")
   })
 
+  it("requires a multi-cell selection to cover whole leading rows without crossing a rowspan", () => {
+    document.body.innerHTML = '<table><thead><tr><th>A</th><th>B</th><th>C</th></tr></thead><tbody><tr><td>D</td><td>E</td><td>F</td></tr><tr><td rowspan="2">G</td><td>H</td><td>I</td></tr><tr><td>J</td><td>K</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    const original = editor.toHTML(true)
+    for(const [anchor, focus] of [[table.rows[1].cells[0], table.rows[1].cells[1]], [table.rows[2].cells[1], table.rows[3].cells[1]]]) {
+      editor.features.table.selectCells(anchor, focus)
+      expect(editor.features.table.getState()?.canToggleHeader).toBe(false)
+      expect(editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})).toBe(false)
+      expect(editor.toHTML(true)).toBe(original)
+    }
+    editor.features.table.selectCells(table.rows[1].cells[0], table.rows[3].cells[1])
+    expect(editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})).toBe(true)
+    expect(table.tHead?.querySelectorAll("tr")).toHaveLength(4)
+    expect(table.querySelector("th[rowspan]")).toHaveAttribute("rowspan", "2")
+  })
+
   it("toggles a caption and applies cell border and background styles", () => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
     editor.features.table.selectCells(cells()[0], cells()[1])
@@ -2042,7 +2091,7 @@ describe("table actions", () => {
     expect(window.getSelection()?.toString()).toBe("lph")
   })
 
-  it("toggles the first and last rows regardless of which cells are selected", () => {
+  it("keeps single-cell shortcuts for the first header and last footer rows", () => {
     document.body.innerHTML = '<table><tbody><tr><td id="name"><strong>A</strong></td></tr><tr><td><demo-widget>B</demo-widget></td></tr><tr><td>C</td></tr></tbody></table>'
     const widget = document.querySelector("demo-widget")
     editor.features.table.selectCells(cells()[1])
@@ -2053,6 +2102,7 @@ describe("table actions", () => {
     expect(editor.features.table.actions.toggleTableFooter({type: "toggleTableFooter"})).toBe(true)
     expect(document.querySelector("tfoot td")?.textContent).toBe("C")
     expect(editor.features.table.getState()).toMatchObject({hasHeader: true, hasFooter: true})
+    editor.features.table.selectCells(cells()[0])
     editor.features.table.actions.toggleTableHeader({type: "toggleTableHeader"})
     editor.features.table.actions.toggleTableFooter({type: "toggleTableFooter"})
     expect(document.querySelector("thead, tfoot, th")).toBeNull()

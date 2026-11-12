@@ -951,6 +951,7 @@ const isTableSelection = (table: UnknownRecord) => isBoolean(table.active)
   && isBoolean(table.canSplit)
   && isBoolean(table.hasCaption)
   && isBoolean(table.hasHeader)
+  && isOptional(table.headerActive, isBoolean)
   && isBoolean(table.hasFooter)
 
 const isGraphicSelection = (graphic: UnknownRecord) => graphic.active === true

@@ -2432,7 +2432,7 @@ export abstract class EditingControls extends LitElement {
   protected renderTableStructureControls(showCaption = true, toolboxGrid = false) {
     const active = Boolean(this.table?.active)
     const sections = html`
-        <ribbon-button label="Header" action="table-header" icon="TableHeader" toggle .active=${this.table?.hasHeader ?? false}
+        <ribbon-button label="Header" action="table-header" icon="TableHeader" toggle .active=${this.table?.headerActive ?? this.table?.hasHeader ?? false}
           variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active || this.table?.canToggleHeader === false}></ribbon-button>
         <ribbon-button label="Footer" action="table-footer" icon="TableFooter" toggle .active=${this.table?.hasFooter ?? false}
           variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active || this.table?.canToggleFooter === false}></ribbon-button>

@@ -239,6 +239,11 @@ describe("table controls", () => {
     const footerButton = footer.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
     expect(headerButton.getAttribute("aria-pressed")).toBe("true")
     expect(footerButton.getAttribute("aria-pressed")).toBe("false")
+    toolbox.table = {...toolbox.table, headerActive: false, canToggleHeader: true}
+    await toolbox.updateComplete
+    await header.updateComplete
+    expect(headerButton.getAttribute("aria-pressed")).toBe("false")
+    expect(headerButton.disabled).toBe(false)
     headerButton.click()
     footerButton.click()
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "table-header", keepDrawerOpen: false}}))

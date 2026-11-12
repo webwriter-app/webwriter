@@ -30,6 +30,7 @@ export type TableSelectionState = {
   canSplit: boolean
   hasCaption: boolean
   hasHeader: boolean
+  headerActive?: boolean
   hasFooter: boolean
   canToggleHeader?: boolean
   canToggleFooter?: boolean
@@ -205,8 +206,19 @@ export function clearTableMarkers(root: ParentNode) {
   clearEditorMarkerClasses(root as Node)
 }
 
-/** Toggle the first and last row groups while preserving other authored table structure. */
-export function normalizeTableStructure(table: HTMLTableElement, header?: boolean, footer?: boolean) {
+export function setTableRowCellType(row: HTMLTableRowElement, tag: "td" | "th", changedCells?: Map<HTMLTableCellElement, HTMLTableCellElement>) {
+  for(const cell of Array.from(row.cells)) {
+    if(cell.localName === tag) continue
+    const replacement = row.ownerDocument.createElement(tag)
+    Array.from(cell.attributes).forEach(attribute => replacement.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value))
+    replacement.append(...Array.from(cell.childNodes))
+    cell.replaceWith(replacement)
+    changedCells?.set(cell, replacement)
+  }
+}
+
+/** Change the leading header rows or the final footer row. */
+export function normalizeTableStructure(table: HTMLTableElement, header?: number, footer?: boolean) {
   const changedCells = new Map<HTMLTableCellElement, HTMLTableCellElement>()
   const rows = tableRows(table)
   if(header === undefined && footer === undefined) return changedCells
@@ -240,8 +252,7 @@ export function normalizeTableStructure(table: HTMLTableElement, header?: boolea
     const target = name === "tbody" ? bodySection(row) : section(name, row)
     if(row.parentElement === target) return
     const previousParent = row.parentElement
-    if(name === "thead") target.prepend(row)
-    else if(name === "tfoot") target.append(row)
+    if(name === "thead" || name === "tfoot") target.append(row)
     else {
       const index = rows.indexOf(row)
       const next = rows.slice(index + 1).find(candidate => candidate.parentElement === target)
@@ -253,30 +264,30 @@ export function normalizeTableStructure(table: HTMLTableElement, header?: boolea
     if(previousParent && previousParent !== target && /^(thead|tbody|tfoot)$/.test(previousParent.localName)
       && previousParent.childNodes.length === 0) previousParent.remove()
   }
-  const setRowType = (row: HTMLTableRowElement, tag: "td" | "th") => {
-    Array.from(row.children).filter(child => child.matches(tableCellSelector)).forEach(child => {
-      const cell = child as HTMLTableCellElement
-      if(cell.localName === tag) return
-      const replacement = table.ownerDocument.createElement(tag)
-      Array.from(cell.attributes).forEach(attribute => replacement.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value))
-      replacement.append(...Array.from(cell.childNodes))
-      cell.replaceWith(replacement)
-      changedCells.set(cell, replacement)
-    })
-  }
   if(first && first === last) {
     const name = header ? "thead" : footer ? "tfoot" : "tbody"
     moveRow(first, name)
-    setRowType(first, name === "thead" ? "th" : "td")
+    setTableRowCellType(first, name === "thead" ? "th" : "td", changedCells)
   }
   else {
-    if(first && header !== undefined) {
-      moveRow(first, header ? "thead" : "tbody")
-      setRowType(first, header ? "th" : "td")
+    if(header) {
+      for(const row of rows.slice(0, header)) {
+        if(row.parentElement?.localName === "thead") continue
+        moveRow(row, "thead")
+        setTableRowCellType(row, "th", changedCells)
+      }
+    }
+    else if(header === 0 && table.tHead) {
+      const head = table.tHead
+      const body = table.ownerDocument.createElement("tbody")
+      Array.from(head.attributes).forEach(attribute => body.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value))
+      body.append(...Array.from(head.childNodes))
+      head.replaceWith(body)
+      for(const row of rows) if(row.parentElement === body) setTableRowCellType(row, "td", changedCells)
     }
     if(last && footer !== undefined) {
       moveRow(last, footer ? "tfoot" : "tbody")
-      setRowType(last, "td")
+      setTableRowCellType(last, "td", changedCells)
     }
   }
   return changedCells

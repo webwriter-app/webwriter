@@ -522,7 +522,7 @@ describe("table normalization", () => {
     table.innerHTML = '<!--table--><tbody id="records"><!--body--><tr><td>A</td></tr><!--between--><tr><td>B</td></tr></tbody>'
     const body = table.querySelector("tbody")!
     const last = table.querySelectorAll("tr")[1]
-    normalizeTableStructure(table, true, false)
+    normalizeTableStructure(table, 1, false)
     expect(table.querySelector("tbody")).toBe(body)
     expect(table.querySelector("tbody")).toHaveAttribute("id", "records")
     expect(table.querySelectorAll("tr")[1]).toBe(last)
@@ -566,7 +566,7 @@ describe("table normalization", () => {
   it("uses explicit header and footer flags and produces schema-valid parsed tables", () => {
     document.body.innerHTML = `<table role="grid"><tr><td>First</td></tr><tr><th>Last</th></tr></table>`
     const table = document.querySelector("table")!
-    normalizeTableStructure(table, true, false)
+    normalizeTableStructure(table, 1, false)
     expect(table.outerHTML).toBe(`<table role="grid"><thead><tr><th>First</th></tr></thead><tbody><tr><td>Last</td></tr></tbody></table>`)
     editor.schema.checkAndCorrect(table, true)
     expect(editor.schema.isContentValid(table)).toBe(true)
