@@ -728,6 +728,45 @@ describe("table cell selection", () => {
     expect(first.style.width).toBe("")
   })
 
+  it.each(["<strong>First</strong>", ""])("replaces only the top-left cell on typing into a reversed selection (%s)", content => {
+    document.body.innerHTML = `<table><tbody><tr><td id="first">${content}</td><td>Second</td></tr><tr><td>Third</td><td>Fourth</td></tr></tbody></table>`
+    editor.doc.syncFromDOM()
+    const before = editor.toHTML(true)
+    const [first, second, third, fourth] = cells()
+    editor.features.table.selectCells(fourth, first)
+
+    const input = new InputEvent("beforeinput", {inputType: "insertText", data: "é", cancelable: true, bubbles: true})
+    document.body.dispatchEvent(input)
+
+    expect(input.defaultPrevented).toBe(true)
+    expect(editor.features.table.selectedCells).toEqual([])
+    expect(cells()).toEqual([first, second, third, fourth])
+    expect(cells().map(cell => cell.textContent)).toEqual(["é", "Second", "Third", "Fourth"])
+    expect($.anchor).toBe(first.firstChild)
+    expect($.anchorOffset).toBe(1)
+    expect(hasPresentationState(document.body, "table-cell-selection")).toBe(false)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(cells()[0].textContent).toBe("é")
+  })
+
+  it("targets the top-left cell contents when native composition starts", () => {
+    document.body.innerHTML = "<table><tbody><tr><td><strong>First</strong></td><td>Second</td></tr></tbody></table>"
+    const [first, second] = cells()
+    editor.features.table.selectCells(second, first)
+    const start = new CompositionEvent("compositionstart", {bubbles: true, cancelable: true})
+    document.body.dispatchEvent(start)
+
+    expect(start.defaultPrevented).toBe(false)
+    expect(editor.features.table.hasCellSelection).toBe(false)
+    expect(document.getSelection()!.toString()).toBe("First")
+    expect(first.contains($.anchor)).toBe(true)
+    expect(first.contains($.focus)).toBe(true)
+    expect(second.textContent).toBe("Second")
+    document.body.dispatchEvent(new CompositionEvent("compositionend", {bubbles: true}))
+  })
+
   it.each(["pointermove", "pointercancel", "lostpointercapture", "contextmenu"])("ends the table gesture on %s without extending the selection", eventType => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td><td>C</td></tr></tbody></table>"
     const [first, second, third] = cells()

@@ -1133,6 +1133,45 @@ export class TableFeature extends EditorFeature {
     this.pasteMatrix(this.clipboardMatrix(html, plain))
   }
 
+  private textEntryCell() {
+    const cell = this.selectedCells[0]
+    return cell && this.editableTable(tableForNode(cell)) && !cell.closest('[contenteditable="false"]')
+      && this.editor.allows("edit", cell) && Array.from(cell.querySelectorAll("*")).every(element => this.editor.allows("edit", element))
+      ? cell : null
+  }
+
+  private startCellComposition(event: CompositionEvent) {
+    if(event.defaultPrevented || !this.hasCellSelection) return
+    const cell = this.textEntryCell()
+    if(!cell) { event.preventDefault(); return }
+    // Give native composition the replacement range before the browser
+    // creates its non-cancelable composition updates.
+    this.clearCellSelection(false)
+    $.selectRange(cell, 0, cell, cell.childNodes.length)
+    this.editor.features.selection.processSelection()
+    this.editor.postSelectionPath()
+  }
+
+  private insertCellText(event: InputEvent) {
+    if(event.defaultPrevented || !this.hasCellSelection || !event.cancelable || event.isComposing || !event.data
+      || !["insertText", "insertReplacementText"].includes(event.inputType)) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const cell = this.textEntryCell()
+    if(!cell) return
+    const endUndoGroup = this.editor.doc.beginUndoGroup()
+    try {
+      this.clearCellSelection(false)
+      const text = cell.ownerDocument.createTextNode(event.data)
+      cell.replaceChildren(text)
+      $.move(text, text.length)
+      this.editor.features.selection.processSelection()
+    }
+    finally { endUndoGroup() }
+    this.editor.postSelectionPath()
+    this.editor.postMarkState()
+  }
+
   private resizeEdge(event: PointerEvent, cell: HTMLTableCellElement): TableResizeEdge | null {
     const table = tableForNode(cell)
     if(!table) return null
@@ -1495,6 +1534,8 @@ export class TableFeature extends EditorFeature {
 
   activeListeners = {
     click: (event: MouseEvent) => this.insertAtGap(event),
+    compositionstart: (event: CompositionEvent) => this.startCellComposition(event),
+    beforeinput: (event: InputEvent) => this.insertCellText(event),
     pointerdown: (event: PointerEvent) => {
       if(event.button !== 0 || event.pointerType === "touch" && event.isPrimary === false) return
       if(this.dragPointerId !== null) {
