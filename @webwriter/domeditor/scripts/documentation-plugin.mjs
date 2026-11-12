@@ -68,12 +68,15 @@ function libraryURL(href, path, library, staticBuild = false) {
   if(url.origin !== "http://docs.local" || !url.pathname.startsWith("/docs/")
     && !["/README.md", "/packages.md"].includes(url.pathname)) return href
   const examples = "/docs/widgets/examples/"
-  if(library !== "vanilla" && url.pathname.startsWith(examples)
+  const isExample = url.pathname.startsWith(examples)
+  const exampleLibrary = isExample && url.searchParams.get("library")
+  if(exampleLibrary && libraries.some(({value}) => value === exampleLibrary)) library = exampleLibrary
+  if(library !== "vanilla" && isExample
     && /^(?:0[1-6]-[\w-]+\.js|hello\.js|ww-(?:quiz|ghost-disco)\.js|(?:ghost-disco-)?package\.json|(?:quiz|ghost-disco)(?:-tests\.js|\.html))$/.test(url.pathname.slice(examples.length))) {
     const name = url.pathname.slice(examples.length)
     url.pathname = `${examples}${library}/${sourceExtensions[library] && /^(?:0[1-6]-|hello\.js)/.test(name) ? name.replace(/\.js$/, `.${sourceExtensions[library]}`) : name}`
   }
-  if(url.pathname.startsWith(examples) && sourcePattern.test(url.pathname)) url.searchParams.set("download", "1")
+  if(isExample && sourcePattern.test(url.pathname)) url.searchParams.set("download", "1")
   url.searchParams.set("library", library)
   if(staticBuild && (url.pathname.endsWith(".md") || url.pathname.endsWith("/"))) {
     if(url.pathname.endsWith("/")) url.pathname += "index.md"
@@ -120,6 +123,9 @@ function guideOpening(tokens) {
 function renderMarkdown(source, {path, library, highlighter, staticBuild, guideIcons, guide, capabilities}) {
   const headingIds = new Set()
   const libraryNotes = new Map()
+  const iconRoot = staticBuild ? "/assets/docs" : "/dev-server"
+  const libraryNoteLabel = ({icon, label}, id) =>
+    `<span class="library-note-label"${id ? ` id="${id}"` : ""}><img src="${iconRoot}/icons/${icon}.svg" alt="" width="16" height="16">${label}</span>`
   const renderHeading = (depth, text, content) => {
     const slug = text.toLowerCase().replace(/<[^>]*>/g, "")
       .replace(/[^\p{L}\p{N}\s-]/gu, "").trim().replace(/\s+/g, "-") || "section"
@@ -158,9 +164,7 @@ function renderMarkdown(source, {path, library, highlighter, staticBuild, guideI
       const paragraph = Renderer.prototype.paragraph.call(this, token)
       const note = libraryNotes.get(token)
       if(!note) return paragraph
-      const {value, icon, label} = note
-      const iconRoot = staticBuild ? "/assets/docs" : "/dev-server"
-      return `<div class="library-note" data-library="${value}" role="note"><span class="library-note-label"><img src="${iconRoot}/icons/${icon}.svg" alt="" width="16" height="16">${label}</span>${paragraph}</div>\n`
+      return `<div class="library-note" data-library="${note.value}" role="note">${libraryNoteLabel(note)}${paragraph}</div>\n`
     },
     blockquote(token) {
       const [marker, ...content] = token.tokens
@@ -184,6 +188,16 @@ function renderMarkdown(source, {path, library, highlighter, staticBuild, guideI
         ? html.replace("<a ", '<a download ') : html
     },
     html({text}) {
+      if(path === libraryPagePath) {
+        const marker = text.trim()
+        const value = /^<!-- library-card:([\w-]+) -->$/.exec(marker)?.[1]
+        const card = value && libraries.find(library => library.value === value)
+        if(card) {
+          const id = `library-card-${card.value}`
+          return `<section class="library-note" data-library="${card.value}" aria-labelledby="${id}">\n${libraryNoteLabel(card, id)}\n`
+        }
+        if(marker === "<!-- /library-card -->") return "</section>\n"
+      }
       if(capabilities && (path === home && text.trim() === capabilities.markup.trim()
         || path === guideIndex && text.trim() === "<!-- widget-capabilities -->")) {
         return rewriteHTMLLinks(renderCapabilityMap(capabilities, path, library, renderHeading), home)
@@ -437,7 +451,7 @@ function renderPage({source, path, sections, library, highlighter, guideIcons, c
         entry.addEventListener("error", reveal, {once: true})
       })()
     </script>
-    <script type="module" src="${escapeHTML(documentationURL)}"></script>
+    <script type="module"${path === libraryPagePath ? ' blocking="render"' : ""} src="${escapeHTML(documentationURL)}"></script>
   </head>
   <body class="site-layout">
     ${guideIcons.markup}

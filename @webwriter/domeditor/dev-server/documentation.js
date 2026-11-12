@@ -56,6 +56,59 @@ if(requestedOption?.dataset.href && requestedOption.value !== library.value) {
   location.replace(url)
 }
 
+// Keep the full source in one code block so it can still be copied after expansion.
+const samplePreviewLines = 10
+const canRevealSearchMatches = "onbeforematch" in HTMLElement.prototype
+for(const card of document.querySelectorAll("section.library-note[data-library]")) {
+  const [first, ...files] = card.querySelectorAll(":scope > .code-snippet")
+  const code = first?.querySelector("pre > code")
+  if(!code) continue
+
+  const targets = []
+  const id = `library-source-${card.dataset.library}`
+  const lines = [...code.querySelectorAll(":scope > .line")]
+  const lineCount = lines.length - Number(lines.at(-1)?.textContent === "")
+  if(lineCount > samplePreviewLines) {
+    const rest = document.createElement("span")
+    rest.className = "library-source-rest"
+    rest.id = `${id}-rest`
+    const nodes = [...code.childNodes]
+    rest.append(...nodes.slice(nodes.indexOf(lines[samplePreviewLines - 1]) + 1))
+    code.append(rest)
+    targets.push(rest)
+  }
+  if(files.length) {
+    const extraFiles = document.createElement("div")
+    extraFiles.id = `${id}-files`
+    extraFiles.append(...files)
+    card.append(extraFiles)
+    targets.push(extraFiles)
+  }
+  if(!targets.length) continue
+
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = "library-source-toggle"
+  button.setAttribute("aria-controls", targets.map(target => target.id).join(" "))
+  const setExpanded = expanded => {
+    for(const target of targets) {
+      if(expanded) target.removeAttribute("hidden")
+      else target.setAttribute("hidden", canRevealSearchMatches ? "until-found" : "")
+    }
+    button.setAttribute("aria-expanded", String(expanded))
+    button.textContent = expanded ? "Show less" : "Show more..."
+  }
+  button.addEventListener("click", () => {
+    const expanded = button.getAttribute("aria-expanded") === "false"
+    setExpanded(expanded)
+    if(expanded) code.parentElement.focus({preventScroll: true})
+    else button.scrollIntoView({block: "nearest"})
+  })
+  for(const target of targets) target.addEventListener("beforematch", () => setExpanded(true))
+  setExpanded(false)
+  card.append(button)
+}
+
 // Keep same-origin examples fitted to their content, including narrow layouts.
 document.querySelectorAll("article iframe").forEach(frame => {
   let observer

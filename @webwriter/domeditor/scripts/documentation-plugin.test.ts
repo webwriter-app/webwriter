@@ -253,6 +253,36 @@ it("links the library picker label and orders Library, Overview, and Quick start
 
 })
 
+it("shows each Library card with its own source regardless of the selected library", async () => {
+  const {base} = await fixture()
+  const docs = join(directory, "docs/widgets")
+  const introduction = join(docs, "introduction")
+  mkdirSync(introduction)
+  writeFileSync(join(docs, "examples/vue/registration.js"), "export const registration = 'vue-entry'")
+  const variants = ["vanilla", "lit", "react", "vue", "angular", "svelte"]
+  const cards = variants.map(library => [
+    `<!-- library-card:${library} -->`, "", `${library} description.`, "",
+    "**Sample file**", "", `<!-- script:../examples/04-state.js?library=${library} -->`, "",
+    ...(library === "vue" ? ["<!-- script:../examples/vue/registration.js -->", ""] : []),
+    "<!-- /library-card -->",
+  ].join("\n"))
+  writeFileSync(join(introduction, "library.md"), "# Library\n\n" + cards.join("\n\n"))
+
+  const {status, body} = await get(base, "/docs/widgets/introduction/library.md?library=angular")
+  expect(status).toBe(200)
+  const sections = [...body.matchAll(/<section class="library-note" data-library="([^"]+)" aria-labelledby="([^"]+)">([\s\S]*?)<\/section>/g)]
+  expect(sections.map(([, library]) => library)).toEqual(variants)
+  for(const [, library, id, content] of sections) {
+    expect(content).toContain(`class="library-note-label" id="${id}"`)
+    expect(content).toContain(`<p>${library} description.</p>`)
+    expect(content).not.toContain("<details>")
+    expect(content).toContain('<figcaption class="code-snippet-label">Sample file</figcaption>')
+    expect(content).toContain(`'${library}'`)
+  }
+  expect(sections.find(([, library]) => library === "vue")?.[3]).toContain("'vue-entry'")
+  expect(body).not.toContain("<!-- library-card:")
+})
+
 it("nests reference pages under named sections and follows their order for adjacent links", async () => {
   const {base} = await fixture()
   const docs = join(directory, "docs/widgets")

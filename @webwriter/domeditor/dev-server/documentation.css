@@ -252,6 +252,21 @@ article img { display: block; max-inline-size: 100%; block-size: auto; margin-in
 }
 .library-note-label img { inline-size: 1rem; block-size: 1rem; margin: 0; }
 .library-note > p { margin: 0; }
+.library-note > p + p { margin-block-start: .5rem; }
+.library-source-rest[hidden="until-found"] { display: block; }
+.library-source-toggle {
+  padding: .25rem .625rem;
+  border: 1px solid var(--border);
+  border-radius: .35rem;
+  background: #f7f9fc;
+  color: var(--accent);
+  font: inherit;
+  font-size: .875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.library-source-toggle:hover { background: #eaf2fb; }
+.library-source-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .widget-guide { container-type: inline-size; }
 .guide-intro { margin-block-end: 1.5rem; }
 .guide-intro-meta {

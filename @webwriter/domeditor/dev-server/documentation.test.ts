@@ -89,6 +89,42 @@ it("opens the requested static library variant from an existing query link", asy
   finally { vi.unstubAllGlobals() }
 })
 
+it("shows ten sample lines and reveals the full source and companion files together", async () => {
+  const lines = Array.from({length: 12}, (_, index) => `line ${index + 1}`)
+  const source = lines.map(line => `<span class="line">${line}</span>`).join("\n")
+  document.body.innerHTML = `<section class="library-note" data-library="vue">
+    <figure class="code-snippet"><pre tabindex="0"><code>${source}</code></pre></figure>
+    <figure class="code-snippet"><pre><code>registration</code></pre></figure>
+  </section>`
+  await import("./documentation.js")
+
+  const code = document.querySelector("pre > code")!
+  const rest = document.getElementById("library-source-vue-rest")!
+  const files = document.getElementById("library-source-vue-files")!
+  const button = document.querySelector<HTMLButtonElement>(".library-source-toggle")!
+  expect(code.querySelectorAll(":scope > .line")).toHaveLength(10)
+  expect(code.textContent).toBe(lines.join("\n"))
+  expect(rest.textContent).toBe("\nline 11\nline 12")
+  expect(rest.hasAttribute("hidden")).toBe(true)
+  expect(files.hasAttribute("hidden")).toBe(true)
+  expect(button.getAttribute("aria-controls")).toBe("library-source-vue-rest library-source-vue-files")
+  expect(button.textContent).toBe("Show more...")
+
+  button.click()
+  expect(rest.hasAttribute("hidden")).toBe(false)
+  expect(files.hasAttribute("hidden")).toBe(false)
+  expect(button.getAttribute("aria-expanded")).toBe("true")
+  expect(button.textContent).toBe("Show less")
+
+  button.click()
+  expect(rest.hasAttribute("hidden")).toBe(true)
+  expect(files.hasAttribute("hidden")).toBe(true)
+  expect(button.getAttribute("aria-expanded")).toBe("false")
+  rest.dispatchEvent(new Event("beforematch"))
+  expect(files.hasAttribute("hidden")).toBe(false)
+  expect(button.getAttribute("aria-expanded")).toBe("true")
+})
+
 it("copies the heading URL with its query and fragment while leaving native link activation intact", async () => {
   vi.useFakeTimers()
   const originalURL = location.href
