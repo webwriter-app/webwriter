@@ -118,7 +118,7 @@ describe('appVersionPlugin', () => {
       configFile: false,
       root,
       plugins: [appVersionPlugin()],
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, ws: false },
     })
 
     try {

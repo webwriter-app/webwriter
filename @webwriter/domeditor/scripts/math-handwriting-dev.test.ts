@@ -12,7 +12,7 @@ it("opens the lazy handwriting worker without discovering new dependencies or re
   const server = await createServer({
     cacheDir,
     logLevel: "silent",
-    server: {middlewareMode: true, watch: null},
+    server: {middlewareMode: true, ws: false, watch: null},
     // Reproduce a cold page crawl that cannot see inside the lazy worker.
     optimizeDeps: {entries: [], holdUntilCrawlEnd: false},
   })
