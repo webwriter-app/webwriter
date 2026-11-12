@@ -1808,7 +1808,7 @@ describe("capture outline selection", () => {
       expect(caret.style.width).toBe("")
       expect(caret.style.height).toBe("")
       expect(hasAnchorTarget(figure)).toBe(true)
-      expect(editor.features.transformation.target).toBe(content)
+      expect(editor.features.transformation.target).toBe(figure)
       expect(editor.features.transformation.overlay.style.height).toBe("")
 
       figure.prepend(caption)
@@ -1824,6 +1824,7 @@ describe("capture outline selection", () => {
       expect(caret.style.top).toBe("")
       expect(caret.style.height).toBe("")
       expect(hasAnchorTarget(content)).toBe(true)
+      expect(editor.features.transformation.target).toBe(content)
       figure.prepend(content)
       figure.append(caption)
       expect(editor.toHTML(true)).toBe(authored)

@@ -1,5 +1,26 @@
 /* Page geometry is shared by editing and standalone exports. */
 @layer webwriter-theme {
+  :where(figure:not([is])) {
+    min-block-size: min-content;
+    > figcaption { overflow-wrap: anywhere; }
+    /* Shadow hosts may provide their own maximum in a :host rule. */
+    > :is(
+      address, article, aside, audio, blockquote, canvas, details, div, dl,
+      embed, fieldset, figure, form, h1, h2, h3, h4, h5, h6, iframe, img,
+      math, menu, object, ol, p, picture, pre, section, svg, table, ul, video
+    ):not([is]) { max-inline-size: 100%; }
+    > :is(audio[controls], video):not([is]) {
+      display: block;
+      box-sizing: border-box;
+      inline-size: 100%;
+    }
+  }
+
+  :where(figure:not([is]):has(> figcaption):has(> :is(audio, video):not([is]))) {
+    display: flow-root;
+    min-inline-size: min(175px, 100%);
+  }
+
   details:not([is]) { background-color: inherit; }
   span.ww-popup { display: inline-block; line-height: inherit; }
   span.ww-popup > button[popovertarget] {

@@ -212,6 +212,10 @@ video {
   min-height: 70px;
 }
 
+:where(figure:not([is]):has(> figcaption)) > :is(audio, video):not([is]) {
+  min-width: min(175px, 100%);
+}
+
 :is(picture, img),
 svg:not(svg *) {
   min-width: 32px;

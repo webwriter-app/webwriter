@@ -12,6 +12,7 @@ const expectedChecks = [
   "table pictures keep their size in editing and preview",
   "full width resizing clears the float column",
   "captioned graphics retain their resized width and selection outline",
+  "captioned media reflows and resizes with native controls",
   "legacy bundled tables keep full width in editing, preview, and export",
   "interrupted live sessions recover committed data locally",
   "document recovery checkpoints cache inline media",

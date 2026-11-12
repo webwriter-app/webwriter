@@ -12740,8 +12740,9 @@ await check("rotated figure captions flow upright and their transformation frame
           editor.features.selection.captureElement(figure)
           editor.features.transformation.updateInfo()
           const overlay = editor.features.transformation.overlay.getBoundingClientRect()
-          assert(Math.abs(overlay.left - box.left) < 1 && Math.abs(overlay.top - box.top) < 1
-            && Math.abs(overlay.width - box.width) < 1 && Math.abs(overlay.height - box.height) < 1, `${context}: frame is offset from the rotated content`)
+          const wrapper = figure.getBoundingClientRect()
+          assert(Math.abs(overlay.left - wrapper.left) < 1 && Math.abs(overlay.top - wrapper.top) < 1
+            && Math.abs(overlay.width - wrapper.width) < 1 && Math.abs(overlay.height - wrapper.height) < 1, `${context}: resize frame is offset from the figure`)
         }
       }
       image.setAttribute("style", authored!)
@@ -12808,6 +12809,75 @@ await check("captioned graphics retain their resized width and selection outline
       assert(graphic.parentElement === doc.body && Math.abs(unwrapped.left - original.left) < 1
         && Math.abs(unwrapped.width - original.width) < 1, "unwrapping changed the graphic placement")
     }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("captioned media reflows and resizes with native controls", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:560px;height:650px;border:0"
+  frame.srcdoc = `<!doctype html><figure style="width:260px;max-height:40px;background:#e4eef8">
+    <video controls src="/src/assets/layouts/document.mp4" style="width:400px;aspect-ratio:16 / 9;background:#222"></video>
+    <figcaption>A caption with enough words to reflow onto multiple lines at the resized player width.</figcaption>
+    </figure><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script>`
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && !view.editorError && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `media caption fixture failed: ${view.editorError}`)
+    const editor = view.editor!, doc = frame.contentDocument!
+    const theme = doc.createElement("style")
+    theme.textContent = defaultDocumentTheme.source
+    doc.head.append(theme)
+    const figure = doc.querySelector("figure")!, player = doc.querySelector("video")!, caption = doc.querySelector("figcaption")!
+    const playerStyle = player.getAttribute("style")
+    editor.features.selection.captureElement(player)
+    await layoutFrame()
+    const initialFigure = figure.getBoundingClientRect(), initialPlayer = player.getBoundingClientRect()
+    const captionBox = caption.getBoundingClientRect()
+    assert(initialPlayer.right <= initialFigure.right + 1 && captionBox.bottom <= initialFigure.bottom + 1,
+      `player and caption should fit the figure: figure=${initialFigure.height} player=${initialPlayer.height} caption=${captionBox.height}`)
+    const transform = editor.features.transformation
+    assert(transform.target === figure, "capturing the player targets its figure for resize")
+    const handle = transform.overlay.querySelector<HTMLElement>(".◆transform-overlay-scale:not([hidden])")!
+    assert(handle, "media resize handle is available")
+    const box = handle.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
+    const sign = handle.dataset.resizeDirection?.includes("left") ? 1 : -1
+    handle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once: true})
+    handle.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, clientX: x, clientY: y}))
+    transform.handleScaleDrag(new MouseEvent("mousemove", {buttons: 1, clientX: x + sign * 45, clientY: y - 10, shiftKey: true}))
+    await layoutFrame()
+    const resized = player.getBoundingClientRect(), resizedFigure = figure.getBoundingClientRect()
+    assert(resized.width < initialPlayer.width && Math.abs(resized.width / resized.height - 16 / 9) < .02,
+      `video preserves aspect ratio through resize: before=${initialPlayer.width} after=${resized.width}×${resized.height}`)
+    assert(!figure.style.scale && !player.style.scale && caption.getBoundingClientRect().bottom <= resizedFigure.bottom + 1,
+      "figure and caption reflow without scaling native controls")
+    const geometry = transform.boxGeometry(figure)
+    assert(Math.abs(geometry.height - resizedFigure.height) < 1, "outline geometry follows the resized figure")
+    assert(player.getAttribute("style") === playerStyle, "resizing does not replace the player's authored styles")
+    transform.handleScaleEnd()
+    const leading = doc.createElement("p")
+    leading.textContent = "Additional authored content before the player."
+    figure.prepend(leading)
+    figure.style.maxHeight = "40px"
+    await layoutFrame()
+    const mixed = figure.getBoundingClientRect()
+    assert(figure.firstElementChild === leading && leading.getBoundingClientRect().top >= mixed.top
+      && caption.getBoundingClientRect().bottom <= mixed.bottom + 1,
+      "the figure should also contain authored siblings before the player")
+    leading.remove()
+    player.removeAttribute("src")
+    player.style.width = "220px"
+    figure.style.width = "360px"
+    editor.features.selection.captureElement(player)
+    await layoutFrame()
+    const emptyFigure = figure.getBoundingClientRect(), emptyPlayer = player.getBoundingClientRect()
+    const grip = transform.overlay.querySelector<HTMLElement>(".◆transform-overlay-scale:not([hidden])")!
+    const corner = grip.getBoundingClientRect()
+    const cornerX = grip.dataset.resizeDirection?.includes("left") ? emptyFigure.left : emptyFigure.right
+    assert(emptyFigure.width > emptyPlayer.width + 10
+      && Math.abs(corner.left + corner.width / 2 - cornerX) < 12
+      && Math.abs(corner.top + corner.height / 2 - emptyFigure.bottom) < 12, "the empty player grip stays at the figure corner")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })

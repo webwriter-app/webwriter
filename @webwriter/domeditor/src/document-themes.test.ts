@@ -60,6 +60,38 @@ describe("document themes", () => {
     expect(documentWidgetStyleSource([{tagName: "div"}])).toBe("")
   })
 
+  it("updates stock media figure layout without replacing customized theme CSS", () => {
+    const previousFigureRules = `  :where(figure:not([is]):has(> figcaption):has(> :is(audio, video):not([is]))) {
+    display: flow-root;
+    min-inline-size: min(175px, 100%);
+    min-block-size: min-content;
+    > figcaption { overflow-wrap: anywhere; }
+    > :is(audio, video):not([is]) {
+      display: block;
+      box-sizing: border-box;
+      max-inline-size: 100%;
+    }
+  }
+
+`
+    for(const theme of bundledThemes) {
+      const original = originalThemes[theme.value].source
+      const start = original.indexOf("  :where(figure:not([is])) {")
+      const end = original.indexOf("  details:not([is]) { background-color: inherit; }", start)
+      const previous = original.slice(0, start) + previousFigureRules + original.slice(end)
+      const root = document.implementation.createHTMLDocument()
+      const stock = root.createElement("style"), customized = root.createElement("style")
+      stock.setAttribute("data-ww-theme", theme.value)
+      customized.setAttribute("data-ww-theme", theme.value)
+      stock.textContent = previous
+      customized.textContent = previous + "\nfigure { padding: 2rem; }"
+      root.head.append(stock, customized)
+      upgradeBundledDocumentThemes(root)
+      expect(stock.textContent).toBe(theme.source)
+      expect(customized.textContent).toBe(previous + "\nfigure { padding: 2rem; }")
+    }
+  })
+
   it("defaults iframes to 16:9 with low-priority CSS in editing and exports", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain(":where(iframe:not([is])) {\n    aspect-ratio: 16 / 9;\n  }")
