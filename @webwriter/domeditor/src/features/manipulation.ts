@@ -1241,34 +1241,63 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
-  /** A command inserts one element into a cell by replacing its current content. */
-  private replaceCellInsertion(node: Node) {
+  /** Place a command's element inside the active cell. */
+  private insertIntoCell(node: Node) {
     const selected = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
     const selection = document.getSelection()
     if(!selection?.rangeCount) return false
     const range = selection.getRangeAt(0)
-    if(!selected && (atomicEditingContainer(range.startContainer, this.editor.schema)
-      || atomicEditingContainer(range.endContainer, this.editor.schema))) return false
     const cell = cellForNode(selected ?? range.startContainer)
     if(!cell || !cell.isConnected || !getDocumentRoot().contains(cell)
       || atomicEditingContainer(cell, this.editor.schema)) return false
-    if(!selected && cellForNode(range.endContainer) !== cell) return false
+    if(!selected && (cellForNode(range.endContainer) !== cell
+      || atomicEditingContainer(range.startContainer, this.editor.schema)
+      || atomicEditingContainer(range.endContainer, this.editor.schema))) return false
     const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
     const elements = nodes.filter(isElement)
     if(!elements.length) return false
-    // Do not discard an existing irregular cell or insert multiple elements.
-    if(cell.children.length > 1 || elements.length !== 1
+    const table = this.editor.features.table
+    const cellSelection = table.hasCellSelection
+    const selectedWholeCell = selected === cell || cellSelection && table.selectedCells.length === 1 && table.selectionFocusCell === cell
+    const wholeCell = selectedWholeCell || !range.collapsed && range.startContainer === cell && range.startOffset === 0
+      && range.endContainer === cell && range.endOffset === cell.childNodes.length
+    if(cellSelection && !selectedWholeCell || elements.length !== 1
       || nodes.some(child => child instanceof Text && child.data.trim())
       || nodes.some(child => cell.contains(child) || child.contains(cell))) return true
-    const replacement = elements[0]
-    const retained = Array.from(cell.childNodes).filter(child => child.nodeType === Node.COMMENT_NODE)
-    if(!this.editor.schema.isContentValid(cell, [...retained, ...nodes])) return true
+    if(selected && !wholeCell) {
+      this.replaceInsertionElement(node)
+      return true
+    }
+    if(!wholeCell && this.replaceInsertionElement(node)) return true
+
+    const element = elements[0]
+    const children = Array.from(cell.childNodes)
+    const retained = (child: Node) => child.nodeType === Node.COMMENT_NODE || child.nodeType === Node.PROCESSING_INSTRUCTION_NODE
+    const content = children.filter(child => !retained(child))
+    const remove = wholeCell || content.every(child => child instanceof Text && !child.data.trim()
+      || child instanceof Element && child.matches("br:not([is])")) ? content : []
+    // Validate the new element independently of unfamiliar siblings already in the cell.
+    if(!this.editor.schema.isContentValid(cell, nodes)) return true
     this.withNormalization(() => {
-      const content = Array.from(cell.childNodes).filter(child => child.nodeType !== Node.COMMENT_NODE)
-      for(const child of nodes) cell.insertBefore(child, content[0] ?? null)
-      content.forEach(child => child.remove())
-      if(this.insertedWidget(replacement)) this.editor.features.selection.captureElement(replacement)
-      else $.selectElement(replacement)
+      if(remove.length) {
+        for(const child of nodes) cell.insertBefore(child, remove[0])
+        remove.forEach(child => child.remove())
+      }
+      else if(wholeCell) cell.append(...nodes)
+      else {
+        const point = range.cloneRange()
+        point.collapse(false)
+        let child = point.startContainer
+        if(child !== cell && !(child instanceof Text && child.parentNode === cell)) {
+          // Keep the containing block intact and insert beside it.
+          while(child.parentNode && child.parentNode !== cell) child = child.parentNode
+          if(child.parentNode === cell) point.setStartAfter(child)
+        }
+        point.insertNode(node)
+      }
+      if(cellSelection) table.clearCellSelection(false)
+      if(this.insertedWidget(element)) this.editor.features.selection.captureElement(element)
+      else $.selectElement(element)
     })
     this.editor.postSelectionPath(true)
     return true
@@ -1934,14 +1963,14 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private createRibbonElement(tag: string) {
-    if(!this.allowsCaptionInsertion([this.ribbonElement(tag)])) return
-    if(this.commandPlacement && this.replaceCellInsertion(this.ribbonElement(tag))) return
+    const element = this.ribbonElement(tag)
+    if(!this.allowsCaptionInsertion([element])) return
+    if(this.commandPlacement && this.insertIntoCell(element)) return
     if(this.convertInsertion(tag)) return
     if(tag === "table") this.editor.features.table.actions.insertTable({type: "insertTable", rows: 2, columns: 2})
     else if(tag === "details" && this.commandPlacement) {
-      const details = this.ribbonElement(tag)
-      this.insert(details)
-      if(details.isConnected) $.move(details.firstElementChild!)
+      this.insert(element)
+      if(element.isConnected) $.move(element.firstElementChild!)
     }
     else if(tag === "details") this.editor.features.list.actions.insertDetails({type: "insertDetails"})
     else if(tag === "svg") this.editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
@@ -1956,7 +1985,7 @@ export class ManipulationFeature extends EditorFeature {
     else if(isBlockFormatTag(tag)) {
       if(this.insertRibbonTextRoot()) this.actions.setBlockType({type: "setBlockType", tag})
     }
-    else this.insertHTML(this.ribbonElement(tag).outerHTML)
+    else this.insertHTML(element.outerHTML)
   }
 
   private insertRibbonCommand(action: string, position: RibbonDropPosition) {
@@ -3660,7 +3689,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!this.allowsCaptionInsertion(Array.from(fragment.childNodes))) return false
     if(commandInsertion) {
       this.hoverInsertion(false)
-      if(this.replaceCellInsertion(fragment)) return
+      if(this.insertIntoCell(fragment)) return
       if(this.replaceInsertionElement(fragment)) return
       this.moveCommandInsertionOutsideFloat()
     }
@@ -4741,7 +4770,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!node && this.editor.features.board.active && this.editor.features.board.editingScope($.anchor)?.matches("h2")) return this.editor.features.board.addCard()
     if(node) {
       this.hoverInsertion(false)
-      if(commandInsertion && this.replaceCellInsertion(node)) return
+      if(commandInsertion && this.insertIntoCell(node)) return
       if(this.replaceInsertionElement(node)) return
       if(commandInsertion) this.moveCommandInsertionOutsideFloat()
       this.selectCapturedElementForInsertion()

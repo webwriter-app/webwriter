@@ -1134,16 +1134,19 @@ describe("insertable element placement and previews", () => {
     expect(copiedContent?.closest("td")).toBe(toggles[0].closest("td"))
   })
 
-  it.each(["td", "th"])("replaces cell content with a ribbon image in %s and supports undo", tag => {
-    document.body.innerHTML = `<table><tbody><tr><${tag} id="target"><p>Old text</p></${tag}><td>Keep</td></tr></tbody></table>`
+  it.each(["td", "th"])("inserts a ribbon image after the current paragraph in %s and supports undo", tag => {
+    document.body.innerHTML = `<table><tbody><tr><${tag} id="target"><p>First<br><em>Second</em></p><!--keep--><p>Last</p></${tag}><td>Keep</td></tr></tbody></table>`
     const cell = document.querySelector(`#target`)!
-    $.move(cell.querySelector("p")!.firstChild!, 2)
+    const paragraph = cell.querySelector("p")!
+    $.move(paragraph.querySelector("em")!.firstChild!, 2)
     editor.doc.syncFromDOM(); editor.doc.stopCapturing()
     const before = editor.toHTML(true)
     editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "picture"})
-    expect(cell.children).toHaveLength(1)
-    expect(cell.firstElementChild?.localName).toBe("picture")
-    expect(cell.textContent).not.toContain("Old text")
+    expect(Array.from(cell.children).map(child => child.localName)).toEqual(["p", "picture", "p"])
+    expect(cell.firstElementChild).toBe(paragraph)
+    expect(paragraph.innerHTML).toBe("First<br><em>Second</em>")
+    expect(cell.textContent).toBe("FirstSecondLast")
+    expect(cell.childNodes[2].nodeType).toBe(Node.COMMENT_NODE)
     expect(document.querySelectorAll("td, th")[1].textContent).toBe("Keep")
     editor.doc.syncFromDOM()
     const after = editor.toHTML(true)
@@ -1151,16 +1154,37 @@ describe("insertable element placement and previews", () => {
     editor.doc.redo(); expect(editor.toHTML(true)).toBe(after)
   })
 
-  it("does not add elements to an irregular cell or insert multiple elements", () => {
+  it("inserts at a live cell caret between native soft breaks", () => {
+    document.body.innerHTML = '<table><tbody><tr><td>A<br><br></td><td>Keep</td></tr></tbody></table>'
+    const cell = document.querySelector("td")!
+    $.move(cell, 2)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "picture"})
+    expect(Array.from(cell.childNodes).map(child => child.nodeName)).toEqual(["#text", "BR", "PICTURE", "BR"])
+    expect(cell.textContent).toBe("A")
+  })
+
+  it("inserts a single HTML element into a populated cell and guards multiple elements", () => {
     document.body.innerHTML = '<table><tbody><tr><td><p>One</p><p>Two</p></td></tr></tbody></table>'
     const cell = document.querySelector("td")!
     $.move(cell.firstElementChild!.firstChild!, 1)
     insert('<video></video>')
-    expect(cloneWithoutEditorMarkers(cell, true).innerHTML).toBe('<p>One</p><p>Two</p>')
-    cell.innerHTML = '<p>One</p>'
+    expect(Array.from(cell.children).map(child => child.localName)).toEqual(["p", "video", "p"])
     $.move(cell.firstElementChild!.firstChild!, 1)
     insert('<video></video><aside>Two</aside>')
-    expect(cloneWithoutEditorMarkers(cell, true).innerHTML).toBe('<p>One</p>')
+    expect(Array.from(cell.children).map(child => child.localName)).toEqual(["p", "video", "p"])
+  })
+
+  it.each(["media", "whole cell"] as const)("replaces an explicit %s selection in a cell", target => {
+    document.body.innerHTML = '<table><tbody><tr><td><p>Keep</p><video controls></video><!--keep--></td><td>Neighbor</td></tr></tbody></table>'
+    const cell = document.querySelector("td")!
+    if(target === "media") $.selectElement(cell.querySelector("video")!)
+    else editor.features.table.selectCells(cell)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "picture"})
+    expect(cell.querySelector("picture")).not.toBeNull()
+    expect(cell.querySelector("video")).toBeNull()
+    expect(cell.textContent).toBe(target === "media" ? "Keep" : "")
+    expect(cell.lastChild?.nodeType).toBe(Node.COMMENT_NODE)
+    expect(editor.features.table.hasCellSelection).toBe(false)
   })
 
   it.each(['class="ww-float-left"', 'style="float: right"', 'class="responsive"', 'class="hidden-float" style="float: left"'])('inherits full width past a float (%s)', float => {

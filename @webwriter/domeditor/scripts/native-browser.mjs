@@ -196,6 +196,7 @@ const expectedChecks = [
   "ribbon collapses when vertical space is constrained",
   "iframe reactivation restores hit testing without changing the document or selection",
   "table commands complete across the real iframe bridge",
+  "table ribbon insertion after Shift+Enter keeps cell text",
   "table paste strips marked Office placeholders",
   "table caret arrows follow visual lines and columns",
   "graphic imports open host pickers synchronously and retry across the iframe bridge",

@@ -183,6 +183,28 @@ await check("table pictures keep their size in editing and preview", async () =>
   finally { frames.forEach(frame => frame.remove()) }
 })
 
+await check("table ribbon insertion after Shift+Enter keeps cell text", async () => {
+  const table = document.createElement("table")
+  table.innerHTML = "<tbody><tr><td>First line</td><td>Neighbor</td></tr></tbody>"
+  fixture.append(table)
+  const tableEditor = new DOMEditor()
+  try {
+    const [cell, neighbor] = Array.from(table.rows[0].cells)
+    $.move(cell.firstChild!, 10)
+    const press = new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true})
+    tableEditor.features.manipulation.activeListeners.keydown!(press)
+    assert(press.defaultPrevented && cell.querySelectorAll("br").length === 2, "Shift+Enter did not create a soft break")
+    tableEditor.features.manipulation.actions.insertElement({type: "insertElement", tag: "picture"})
+    assert(cell.querySelector("picture") && cell.querySelectorAll("br").length === 2
+      && cell.textContent === "First line" && neighbor.textContent === "Neighbor", "ribbon insertion changed authored cell content")
+    await layoutFrame()
+    const image = cell.querySelector("picture")!.getBoundingClientRect()
+    const text = caretRect(cell.firstChild!, 0)
+    assert(image.width > 0 && image.top >= text.bottom - 1, "inserted image did not render below the first line")
+  }
+  finally { table.remove(); tableEditor.destroy() }
+})
+
 await check("table paste strips marked Office placeholders", () => {
   const tableEditor = new DOMEditor()
   try {
