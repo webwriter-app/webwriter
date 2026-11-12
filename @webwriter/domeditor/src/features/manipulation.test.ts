@@ -7707,6 +7707,25 @@ describe("unified content transfer", () => {
     expectBodyToBe('<p><b>bold</b> <i>italic</i> <s>old</s>plain漢<a>link</a></p><picture><img src="photo.png"></picture>')
   })
 
+  it("removes marked Office spacer cells from pasted tables while retaining real blanks and spans", () => {
+    document.body.innerHTML = "<p><br></p>"
+    const data = new DataTransfer()
+    data.setData("text/html", '<table><tbody><tr><td rowspan="2">First</td><td style="width:0;mso-cell-special:placeholder"><p><span>&nbsp;</span></p></td><td colspan="2">Merged</td></tr><tr><td style="MSO-CELL-SPECIAL : placeholder;"><o:p>&nbsp;</o:p></td><td></td><td>Last</td></tr></tbody></table>')
+    $.move(document.querySelector("p")!)
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
+    const table = document.querySelector("table")!
+    expect(Array.from(table.rows, row => Array.from(row.cells, cell => cell.textContent))).toEqual([["First", "Merged"], ["", "Last"]])
+    expect(table.rows[0].cells[0].rowSpan).toBe(2)
+    expect(table.rows[0].cells[1].colSpan).toBe(2)
+  })
+
+  it("keeps nonempty marked cells and keeps placeholders in explicit HTML edits", () => {
+    const html = '<table><tbody><tr><td style="mso-cell-special:placeholder"><p>&nbsp;</p></td><td style="mso-cell-special:placeholder"><p>Content</p></td></tr></tbody></table>'
+    expect(editor.parseHTMLFragment(html).fragment.querySelectorAll("td")).toHaveLength(2)
+    const transferred = editor.parseHTMLFragment(html, true).fragment
+    expect(Array.from(transferred.querySelectorAll("td"), cell => cell.textContent)).toEqual(["Content"])
+  })
+
   it.each(excludedMarkNames)("strips imported <%s> marks while preserving nested content", name => {
     const {fragment} = editor.parseHTMLFragment(`<p>before<${name} title="discard"><strong>keep</strong><sup>2</sup></${name}>after</p>`, true)
     expect(fragment.firstElementChild?.outerHTML).toBe('<p>before<b>keep</b><sup>2</sup>after</p>')

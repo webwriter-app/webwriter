@@ -18,6 +18,7 @@ import { MediaFeature } from "./features/media"
 import { WidgetFeature } from "./features/widget"
 import { MigrationFeature } from "./features/migration"
 import { TableFeature } from "./features/table"
+import {stripOfficeTablePlaceholders} from "./table"
 import { LayoutFeature } from "./features/layout"
 import { GraphicFeature } from "./features/graphic"
 import { MathFeature } from "./features/math"
@@ -1918,6 +1919,7 @@ export class DOMEditor {
    * edits retain authored structure and styles. */
   prepareHTMLFragment(fragment: DocumentFragment, transfer=false, repair=true) {
     hydrateWidgetGroupings(fragment)
+    if(transfer) stripOfficeTablePlaceholders(fragment)
     // Convert PRE after transfer sanitization so its whitespace styles survive.
     if(repair) this.schema.enforceMedia(fragment, false)
     this.clearEditingArtifacts(fragment)

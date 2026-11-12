@@ -183,6 +183,19 @@ await check("table pictures keep their size in editing and preview", async () =>
   finally { frames.forEach(frame => frame.remove()) }
 })
 
+await check("table paste strips marked Office placeholders", () => {
+  const tableEditor = new DOMEditor()
+  try {
+    const source = '<table><tr><td rowspan="2">A</td><td style="mso-cell-special:placeholder;width:0"><p><o:p>&nbsp;</o:p></p></td><td colspan="2">B</td></tr><tr><td style="mso-cell-special:placeholder">&nbsp;</td><td></td><td>C</td></tr></table>'
+    const {fragment} = tableEditor.parseHTMLFragment(source, true)
+    const table = fragment.querySelector("table")!
+    assert(table.rows[0].cells.length === 2 && table.rows[1].cells.length === 2, "Office placeholders left extra cells")
+    assert(table.rows[0].cells[0].rowSpan === 2 && table.rows[0].cells[1].colSpan === 2, "paste changed real cell spans")
+    assert(table.rows[1].cells[0].textContent === "" && table.rows[1].cells[1].textContent === "C", "paste changed a genuine blank cell")
+  }
+  finally { tableEditor.destroy() }
+})
+
 await check("converted list items support repeated Backspace without clicking", checkListDeletion)
 await check("Command deletion stops at visual and hard line boundaries", checkLineDeletion)
 await check("interrupted live sessions recover committed data locally", checkLiveSessionRecovery)

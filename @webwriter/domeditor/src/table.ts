@@ -52,6 +52,31 @@ export function tableRows(table: HTMLTableElement) {
     .filter(row => tableForNode(row) === table)
 }
 
+/** Office HTML can carry empty layout cells marked as placeholders. Remove
+ * them before transfer sanitization strips the Office style declaration. */
+export function stripOfficeTablePlaceholders(root: ParentNode) {
+  const placeholder = /(?:^|;)\s*mso-cell-special\s*:\s*placeholder\s*(?:!\s*important\s*)?(?:;|$)/i
+  const empty = (node: Node): boolean => node instanceof Text ? !node.data.trim()
+    : node instanceof HTMLElement && ["p", "span", "br", "o:p"].includes(node.localName)
+      && !node.matches("[id], [is], [contenteditable=false]")
+      && Array.from(node.childNodes).every(empty)
+
+  const visit = (container: ParentNode) => {
+    for(const element of container.children) {
+      if(!(element instanceof HTMLElement) || element.localName.includes("-") || element.hasAttribute("is")) continue
+      if(element instanceof HTMLTableRowElement) {
+        for(const cell of Array.from(element.cells)) {
+          if(cell.colSpan === 1 && cell.rowSpan === 1 && !cell.matches("[id], [is], [headers], [scope], [contenteditable=false]")
+            && placeholder.test(cell.getAttribute("style") ?? "") && Array.from(cell.childNodes).every(empty)) cell.remove()
+        }
+      }
+      if(element instanceof HTMLTemplateElement) visit(element.content)
+      visit(element)
+    }
+  }
+  visit(root)
+}
+
 const maximumColumnSpan = 1000
 export const maximumTableMapSlots = 1_000_000
 
