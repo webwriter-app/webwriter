@@ -1,6 +1,6 @@
 import {validateGroupingRules, type WidgetGroupingRules} from "./widget-grouping.js"
-import {compatibleControl, isRecord, widgetOptionTypes, type UnknownRecord, type WidgetOptionType, type WidgetOptionState, type WidgetOptionGroupState, type WidgetActionState} from "@webwriter/lit"
-export * from "@webwriter/lit"
+import {compatibleControl, isRecord, widgetOptionTypes, type UnknownRecord, type WidgetOptionType, type WidgetOptionState, type WidgetOptionGroupState, type WidgetActionState} from "@webwriter/lit/widget-options"
+export * from "@webwriter/lit/widget-options"
 
 /** Options and actions of the widget at the selection. */
 export type WidgetOptionsState = {
