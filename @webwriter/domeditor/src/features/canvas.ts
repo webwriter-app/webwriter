@@ -24,7 +24,6 @@ export class CanvasFeature extends EditorFeature {
   private layoutStylesheet: CSSStyleSheet | null = null
   private observer: MutationObserver | null = null
   private frame: number | null = null
-  private cameraFrame: number | null = null
   private cameraZoom = 1
   private signature = ""
   private hand = false
@@ -402,19 +401,12 @@ export class CanvasFeature extends EditorFeature {
     const zoomChanged = zoom !== this.cameraZoom
     this.cameraZoom = zoom
     if(zoomChanged) {
-      if(this.cameraFrame !== null) cancelAnimationFrame(this.cameraFrame)
-      this.cameraFrame = null
       this.editor.features.transformation.updateInfo()
       this.editor.features.layout.refresh()
       this.editor.features.graphic.refresh()
       this.editor.postSelectionPath()
     }
-    else if(this.cameraFrame === null) this.cameraFrame = requestAnimationFrame(() => {
-      this.cameraFrame = null
-      if(!this.active || !this.isEnabled) return
-      this.editor.features.transformation.updateInfo()
-      this.editor.features.graphic.refresh()
-    })
+    // The overlay features coalesce geometry updates from scroll events.
     document.dispatchEvent(new Event("scroll"))
   }
 
@@ -652,8 +644,7 @@ export class CanvasFeature extends EditorFeature {
     this.observer?.disconnect(); this.observer = null
     if(this.frame !== null) cancelAnimationFrame(this.frame)
     this.frame = null
-    if(this.cameraFrame !== null) cancelAnimationFrame(this.cameraFrame)
-    this.cameraFrame = null; this.cameraZoom = 1
+    this.cameraZoom = 1
     window.removeEventListener("blur", this.release)
     window.removeEventListener("resize", this.onResize)
     this.restoreSlot()

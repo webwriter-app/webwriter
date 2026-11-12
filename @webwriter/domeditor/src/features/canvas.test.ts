@@ -925,6 +925,7 @@ describe("canvas document layout", () => {
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     expect(geometry).toHaveBeenCalledTimes(1)
     expect(layout).not.toHaveBeenCalled()
+    expect(selectionPath).not.toHaveBeenCalled()
     editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
     expect(layout).toHaveBeenCalledTimes(1)
     document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true, pointerId: 18}))
