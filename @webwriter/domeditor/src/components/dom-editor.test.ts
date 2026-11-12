@@ -7980,12 +7980,21 @@ describe("DomEditor.execute()", () => {
   it("cancels media capture before hiding the editor frame for preview", async () => {
     const {editor, iframe} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const audio = iframe.contentDocument!.createElement("audio")
+    const video = iframe.contentDocument!.createElement("video")
+    audio.setAttribute("autoplay", "")
+    iframe.contentDocument!.body.append(audio, video)
+    const pauseAudio = vi.spyOn(audio, "pause").mockImplementation(() => {})
+    const pauseVideo = vi.spyOn(video, "pause").mockImplementation(() => {})
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
 
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
     await editor.updateComplete
 
     expect(execute).toHaveBeenCalledWith({type: "cancelMediaCapture"})
+    expect(pauseAudio).toHaveBeenCalledOnce()
+    expect(pauseVideo).toHaveBeenCalledOnce()
+    expect(audio.hasAttribute("autoplay")).toBe(true)
     expect(iframe.hidden).toBe(true)
   })
 

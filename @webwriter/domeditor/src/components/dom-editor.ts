@@ -3071,6 +3071,10 @@ export class DomEditor extends LitElement {
       const lock = this.setPreviewEditingLocked(true)
       if(lock) await lock
       if(generation !== this.previewGeneration) return
+      if(this.editorOpaque) await this.requestFrameControl("pause-authored-media")
+      else this.editorIframe()?.contentDocument?.body.querySelectorAll<HTMLMediaElement>("audio, video")
+        .forEach(media => media.pause())
+      if(generation !== this.previewGeneration) return
       // Preview hides the editor iframe, so close any appendix capture UI and
       // release its device streams before the authored document is previewed.
       void this.execute({type: "cancelMediaCapture"}).catch(() => {
