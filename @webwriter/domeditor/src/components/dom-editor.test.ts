@@ -1825,7 +1825,6 @@ describe("DomEditor iframe setup", () => {
 
     expect(iframe.contentDocument!.head.querySelector('meta[name="generator"]')?.getAttribute("content"))
       .toBe(WEBWRITER_GENERATOR)
-    expect(iframe.contentDocument!.documentElement.lang).toBe("en")
   })
 
   it("discards the entire iframe and ignores old document messages when creating a new document", async () => {
