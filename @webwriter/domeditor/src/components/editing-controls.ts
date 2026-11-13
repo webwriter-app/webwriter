@@ -1191,7 +1191,7 @@ export abstract class EditingControls extends LitElement {
             label="Add package"
             action="local-package-add"
             ?disabled=${this.localPackagesLoading}
-            .submenu=${[{label: "Add from local folder", action: "local-package-add", icon: "Open"}, {label: "Add from parent folder", action: "local-package-add-batch", icon: "Open"}, {label: "Add from Git repository", action: "git-package-add", icon: "Git"}, {label: "Create new package", action: "local-package-new", icon: "PackagePlus"}]}
+            .submenu=${[{label: "Add from local folder", action: "local-package-add", icon: "Open"}, {label: "Add from parent folder", action: "local-package-add-batch", icon: "Open"}, {label: "Add from Git repository", action: "git-package-add", icon: "Git"}]}
             @ribbon-button-click=${this.handlePackageLoadMenu}
             icon="Plus"
             variant="toolbar"
