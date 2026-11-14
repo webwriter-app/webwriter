@@ -1249,8 +1249,10 @@ export async function createDevServer(options = {}) {
       socket.destroy()
       return
     }
-    if(request.headers["sec-websocket-protocol"] === "vite-hmr") {
-      if(privateTesting) socket.destroy()
+    const protocol = request.headers["sec-websocket-protocol"]
+    // Vite owns both the HMR socket and the browser's probe after a restart.
+    if(protocol === "vite-hmr" || protocol === "vite-ping") {
+      if(!useVite) socket.destroy()
       return
     }
     const origin = request.headers.origin
