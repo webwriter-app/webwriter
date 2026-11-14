@@ -22,6 +22,7 @@
   "workspaces": [
     "@webwriter/build",
     "@webwriter/domeditor",
+    "@webwriter/guidance",
     "@webwriter/lit",
     "@webwriter/widget",
     "@webwriter/react",

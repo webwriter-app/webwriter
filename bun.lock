@@ -96,6 +96,13 @@
         "vue": "^3.5.44",
       },
     },
+    "@webwriter/guidance": {
+      "name": "@webwriter/guidance",
+      "version": "1.0.0",
+      "bin": {
+        "webwriter-guidance": "./cli.mjs",
+      },
+    },
     "@webwriter/lit": {
       "name": "@webwriter/lit",
       "version": "3.0.0",
@@ -538,6 +545,8 @@
     "@webwriter/build": ["@webwriter/build@workspace:@webwriter/build"],
 
     "@webwriter/domeditor": ["@webwriter/domeditor@workspace:@webwriter/domeditor"],
+
+    "@webwriter/guidance": ["@webwriter/guidance@workspace:@webwriter/guidance"],
 
     "@webwriter/lit": ["@webwriter/lit@workspace:@webwriter/lit"],
 
