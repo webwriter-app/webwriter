@@ -1,4 +1,8 @@
 import "./preview-entry"
+import {cloneInert} from "./utility"
+import {clearEditorArtifacts, isAuthoredMutation, widgetLookupForTags} from "./editor-artifacts"
+import {reconcileExampleContent} from "./example-content"
+import {sanitizePackageSnippet} from "./packages"
 
 const bridge = document.querySelector<HTMLMetaElement>('meta[name="webwriter-preview-bridge"]')
 const hostOrigin = bridge?.getAttribute("data-host-origin")
@@ -214,6 +218,134 @@ export async function revealGalleryWidget(source: Document, tag: string | null) 
   }
 }
 
+function connectGalleryModes(post: (detail: object) => void, signal: AbortSignal) {
+  const root = document.body
+  const widgetLookup = widgetLookupForTags(tags)
+  const dataSelector = 'script[slot="data"]:is([type="application/json"], [type="application/xml"]):not([src])'
+  const blocks = () => new Map([...root.querySelectorAll<HTMLScriptElement>(dataSelector)].flatMap((block, index) => {
+    const widget = block.parentElement
+    if(!widget || !widgetLookup(widget) || widget.querySelector(':scope > script[slot="data"]') !== block) return []
+    const shared = widget.getAttribute("shared")
+    const mode = shared === "group" ? "group" : shared === "" ? "all" : "individual"
+    return [[JSON.stringify([widget.localName, widget.id || index, shared]), {block, mode}] as const]
+  }))
+  let editing = false, shared = false, revision = 0
+  let controller: ReturnType<typeof import("../dev-server/live-example-editing").mount> | undefined
+  let lastHTML: string | undefined, lastEditableHTML: string | undefined
+  let lastData = new Map<string, string>()
+  const snapshot = () => {
+    const clone = cloneInert(root, true)
+    clearEditorArtifacts(clone, [], () => false)
+    const editableHTML = editing ? sanitizePackageSnippet(clone.innerHTML) : undefined
+    clearEditorArtifacts(clone, [], widgetLookup)
+    return {html: sanitizePackageSnippet(clone.innerHTML), editableHTML}
+  }
+  const publishHTML = (local: boolean, force = false) => {
+    const {html, editableHTML} = snapshot()
+    if(!force && html === lastHTML && editableHTML === lastEditableHTML) return
+    lastHTML = html
+    lastEditableHTML = editableHTML
+    post({type: "gallery-preview-html", html, editableHTML, editing, shared, local})
+  }
+  const notify = (block: HTMLScriptElement, mode: string) =>
+    block.dispatchEvent(new CustomEvent("datachange", {bubbles: true, detail: {mode}}))
+  const observe = () => observer.observe(root, {subtree: true, childList: true, characterData: true, characterDataOldValue: true,
+    attributes: true, attributeOldValue: true})
+  const publishData = (all = false) => {
+    const current = new Map<string, string>()
+    const changes: [string, string][] = []
+    for(const [key, {block, mode}] of blocks()) {
+      if(mode === "individual") continue
+      const value = block.textContent ?? ""
+      current.set(key, value)
+      const changed = value !== lastData.get(key)
+      if(changed) notify(block, mode)
+      if((all || changed) && key.length < 1024 && value.length <= 250_000) changes.push([key, value])
+    }
+    lastData = current
+    if(changes.length) post({type: "gallery-preview-data", changes: changes.slice(0, 128)})
+  }
+  const observer = new MutationObserver(records => {
+    if(!editing && shared) publishData()
+    if(records.some(record => isAuthoredMutation(record) || editing && record.attributeName === "contenteditable")) {
+      publishHTML(true)
+    }
+  })
+  root.addEventListener("datarequest", event => {
+    if(editing || !shared) return
+    for(const {block, mode} of blocks().values()) if(block === event.target && mode !== "individual") {
+      event.preventDefault()
+      notify(block, mode)
+      break
+    }
+  }, {signal})
+  window.addEventListener("message", async event => {
+    const data = event.data
+    if(event.source !== parent || event.origin !== hostOrigin || data?.bridgeNonce !== bridgeNonce) return
+    if(data.type === "gallery-preview-configure" && typeof data.editing === "boolean" && typeof data.shared === "boolean") {
+      observe()
+      if(data.editing === editing && data.shared === shared && (!editing || controller)) {
+        publishHTML(false, true)
+        return
+      }
+      const wasSharedReading = shared && !editing
+      const modeChanged = data.editing !== editing
+      const request = ++revision
+      editing = data.editing
+      shared = data.shared
+      if(wasSharedReading && (!shared || editing)) {
+        for(const {block, mode} of blocks().values()) if(mode !== "individual") {
+          block.dispatchEvent(new CustomEvent("datarelease", {bubbles: true}))
+        }
+      }
+      if(modeChanged && !editing) {
+        controller?.destroy()
+        controller = undefined
+      }
+      if(editing && !controller) {
+        try {
+          const {mount} = await import("../dev-server/live-example-editing")
+          if(signal.aborted || request !== revision || !editing) return
+          controller = mount(root, widgetLookup)
+        }
+        catch(error) { if(request === revision) post({type: "gallery-preview-error", message: String(error)}) }
+      }
+      if(!editing && shared && !wasSharedReading) {
+        lastData = new Map()
+        for(const {block, mode} of blocks().values()) if(mode !== "individual") notify(block, mode)
+        for(const [key, {block, mode}] of blocks()) if(mode !== "individual") lastData.set(key, block.textContent ?? "")
+      }
+      publishHTML(false, true)
+    }
+    else if(data.type === "gallery-preview-html" && typeof data.html === "string" && data.html.length <= 50_000_000) {
+      const template = document.createElement("template")
+      template.innerHTML = sanitizePackageSnippet(data.html)
+      // Report the result to the HTML pane without relaying it back to the sender.
+      observer.disconnect()
+      reconcileExampleContent(root, [...template.content.childNodes])
+      controller?.refresh(true)
+      publishHTML(false)
+      observe()
+    }
+    else if(!editing && shared && data.type === "gallery-preview-data-request") publishData(true)
+    else if(!editing && shared && data.type === "gallery-preview-data" && Array.isArray(data.changes)) {
+      const current = blocks()
+      for(const item of data.changes.slice(0, 128)) {
+        if(!Array.isArray(item) || typeof item[0] !== "string" || typeof item[1] !== "string" || item[1].length > 250_000) continue
+        const target = current.get(item[0])
+        if(!target || target.mode === "individual" || target.block.textContent === item[1]) continue
+        target.block.textContent = item[1]
+        lastData.set(item[0], item[1])
+        notify(target.block, target.mode)
+      }
+    }
+  }, {signal})
+  signal.addEventListener("abort", () => {
+    observer.disconnect()
+    controller?.destroy()
+  }, {once: true})
+}
+
 if(hostOrigin && bridgeNonce && window.parent !== window) {
   const post = (detail: object) => window.parent.postMessage({...detail, bridgeNonce}, hostOrigin)
   const fail = (message: string) => post({type: "gallery-preview-error", message})
@@ -232,6 +364,7 @@ if(hostOrigin && bridgeNonce && window.parent !== window) {
   })
   observer.observe(document.body)
   const ready = () => post({type: "gallery-preview-ready"})
+  const lifetime = new AbortController()
   const fittingCleanups: (() => void)[] = []
   void connectGalleryContent(document, tags, customElements, networkVersion, slidesVersion).then(async () => {
     recoverGalleryImages(document)
@@ -240,8 +373,14 @@ if(hostOrigin && bridgeNonce && window.parent !== window) {
     fittingCleanups.push(await fitGalleryModels(document, modelVersion))
     fittingCleanups.push(await fitGalleryHiddenHashes(document, hashVersion))
     await revealGalleryWidget(document, tag)
-  }).then(ready).catch(error => fail(String(error)))
+  }).then(() => {
+    if(!lifetime.signal.aborted) {
+      connectGalleryModes(post, lifetime.signal)
+      ready()
+    }
+  }).catch(error => fail(String(error)))
   window.addEventListener("pagehide", () => {
+    lifetime.abort()
     fittingCleanups.forEach(cleanup => cleanup())
     observer.disconnect()
     window.removeEventListener("error", error, true)

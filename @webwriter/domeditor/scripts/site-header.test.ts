@@ -25,7 +25,7 @@ it("keeps localization render-blocking after Vite combines the landing scripts",
 
 it("renders the landing and Widgets headers from the same navigation template", async () => {
   const plugin = siteHeaderPlugin()
-  for(const [file, path] of [["../index.html", "/"], ["../gallery/index.html", "/gallery/"], ["../examples/index.html", "/examples/"], ["../legal_notice/index.html", "/legal_notice/"]]) {
+  for(const [file, path] of [["../index.html", "/"], ["../packages/index.html", "/packages/"], ["../examples/index.html", "/examples/"], ["../legal_notice/index.html", "/legal_notice/"]]) {
     const source = await readFile(new URL(file, import.meta.url), "utf8")
     expect(source).toContain("<!-- site-header -->")
     expect(source).toContain('<body class="site-layout">')
@@ -35,10 +35,10 @@ it("renders the landing and Widgets headers from the same navigation template", 
     expect(result.match(/<footer\b[^>]*>[\s\S]*?<\/footer>/)?.[0]).toBe(renderSiteFooter())
     expect(result).not.toContain("<!-- site-header -->")
     expect(header).toContain('aria-label="Main navigation"')
-    expect([...header.matchAll(/href="([^"]+)"/g)].map(match => match[1])).toEqual(["/", "/examples/", "/gallery/", "/docs/", "/editor/"])
+    expect([...header.matchAll(/href="([^"]+)"/g)].map(match => match[1])).toEqual(["/", "/examples/", "/packages/", "/docs/", "/editor/"])
     expect(header).toContain("WebWriter")
     expect(header).toContain("by Edumix")
-    if(path === "/gallery/") expect(header).toContain('href="/gallery/" aria-current="page">Widgets</a>')
+    if(path === "/packages/") expect(header).toContain('href="/packages/" aria-current="page">Widgets</a>')
     if(path === "/examples/") expect(header).toContain('href="/examples/" aria-current="page">Examples</a>')
   }
   const docs = renderSiteHeader("/docs/widgets/tutorial/01-setup.md")

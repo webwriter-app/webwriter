@@ -7,7 +7,6 @@
 }
 
 .details-keyword {
-  --keyword-background: hsl(240 5.9% 90%);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -17,18 +16,24 @@
   padding-inline: 4px;
   border: 1px solid currentColor;
   border-radius: 5px;
-  background: var(--keyword-background);
-  color: #172033;
-  color: contrast-color(var(--keyword-background));
   overflow-wrap: anywhere;
 }
 
-.details-keyword:is([data-kind="field"], [data-kind="widget"]) { --keyword-background: #fff; }
-.details-keyword[data-kind="level"] { --keyword-background: hsl(140.6 84.2% 92.5%); }
-.details-keyword:is([data-kind="editing"], [data-kind="input"], [data-kind="content"], [data-kind="conversion"]) { --keyword-background: #ffe7d7; }
-.details-keyword:is([data-kind="language"], [data-kind="display"]) { --keyword-background: #dff2d9; }
-.details-keyword:is([data-kind="state"], [data-kind="participation"]) { --keyword-background: #ddecff; }
-.details-keyword:is([data-kind="online"], [data-kind="dependency"], [data-kind="development"], [data-kind="discovery"], [data-kind="type"]) { --keyword-background: #ede5ff; }
+:is(.details-keyword, .keyword-badge) {
+  --keyword-background: hsl(240 5.9% 90%);
+  background-color: var(--keyword-background);
+  background-color: color-mix(in srgb, var(--keyword-background) 75%, transparent);
+  color: #172033;
+  color: contrast-color(var(--keyword-background));
+}
+
+:is(.details-keyword, .keyword-badge)[data-kind="widget"] { --keyword-background: #fff; }
+:is(.details-keyword, .keyword-badge)[data-kind="field"] { --keyword-background: #f5e4cb; }
+:is(.details-keyword, .keyword-badge)[data-kind="level"] { --keyword-background: hsl(140.6 84.2% 92.5%); }
+:is(.details-keyword, .keyword-badge):is([data-kind="editing"], [data-kind="input"], [data-kind="content"], [data-kind="conversion"]) { --keyword-background: #ffe7d7; }
+:is(.details-keyword, .keyword-badge):is([data-kind="language"], [data-kind="display"]) { --keyword-background: #dff2d9; }
+:is(.details-keyword, .keyword-badge):is([data-kind="state"], [data-kind="participation"]) { --keyword-background: #ddecff; }
+:is(.details-keyword, .keyword-badge):is([data-kind="online"], [data-kind="dependency"], [data-kind="development"], [data-kind="discovery"], [data-kind="type"]) { --keyword-background: #ede5ff; }
 
 .details-keyword-icon {
   display: inline-flex;

@@ -124,6 +124,7 @@ export type WebWriterPackageManifest = {
   license?: string
   homepage?: string
   repository?: string | {url?: string}
+  bugs?: string | {url?: string}
   exports?: Record<string, PackageExportTarget>
   customElements?: string
   editingConfig?: PackageEditingConfig
@@ -770,6 +771,17 @@ export class WebWriterPackageRegistry {
       ? candidate : latest, version)
   }
 
+  /** Fetch a directly linked package without waiting for catalog search. */
+  async getLatestPackage(name: string) {
+    const response = await this.fetcher(`${NPM_REGISTRY_ENDPOINT}/${encodeURIComponent(name)}/latest`, {cache: "no-cache"})
+    if(!response.ok) throw new Error(`Package metadata failed (${response.status})`)
+    const manifest = await response.json() as WebWriterPackageManifest
+    if(manifest.name !== name || typeof manifest.version !== "string") throw new Error("Invalid package metadata")
+    return this.getPackage({name, version: manifest.version, description: manifest.description,
+      license: manifest.license, keywords: manifest.keywords,
+      authors: [manifest.author, ...(manifest.contributors ?? [])].map(personLabel).filter((author): author is string => !!author)})
+  }
+
   getPackage(summary: Pick<WebWriterPackage, "name" | "version"> & Partial<WebWriterPackage>) {
     const key = `${summary.name}@${summary.version}`
     let request = this.packageCache.get(key)
@@ -957,6 +969,7 @@ export class WebWriterPackageRegistry {
         ...summary.links,
         homepage: manifest.homepage ?? summary.links?.homepage,
         repository: repositoryUrl(manifest.repository) ?? summary.links?.repository,
+        bugs: repositoryUrl(manifest.bugs) ?? summary.links?.bugs,
         npm: summary.links?.npm ?? `https://www.npmjs.com/package/${manifest.name}`,
       },
       members,

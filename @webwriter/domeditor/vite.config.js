@@ -14,6 +14,22 @@ import {appVersionPlugin} from './scripts/app-version.mjs'
 import {canvasSnapshotPlugin} from './scripts/canvas-snapshot-plugin.mjs'
 import {documentThemesPlugin} from './scripts/document-themes-plugin.mjs'
 import {minifiedReaderSourcePlugin} from './scripts/minified-reader-source-plugin.mjs'
+import {packageGalleryPath, packageNameFromPath} from './src/package-gallery-route.ts'
+
+function packageGalleryRoutes() {
+  const install = server => { server.middlewares.use((request, response, next) => {
+    if(!["GET", "HEAD"].includes(request.method)) return next()
+    const [path, query = ""] = (request.url ?? "").split(/\?(.*)/s)
+    if(path === "/gallery/" || path === "/gallery") {
+      response.writeHead(308, {Location: packageGalleryPath + (query ? `?${query}` : "")})
+      response.end()
+      return
+    }
+    if(packageNameFromPath(path)) request.url = packageGalleryPath + "index.html" + (query ? `?${query}` : "")
+    next()
+  }) }
+  return {name: "package-gallery-routes", configureServer: install, configurePreviewServer: install}
+}
 
 const localPackageWorkerSource = fileURLToPath(new URL('./src/local-package-service-worker.ts', import.meta.url))
 const localPackageWorkerFile = 'local-package-service-worker.js'
@@ -84,7 +100,7 @@ export default defineConfig(({mode}) => {
   for(const directory of [...privateDirectories]) if(existsSync(directory)) privateDirectories.push(realpathSync(directory))
   const privatePaths = [...new Set(privateDirectories)].map(path => `${normalizePath(path).replace(/[?*\[\]{}()!+@]/g, "\\$&")}/**`)
   return {
-    plugins: [appVersionPlugin(), appEntryUrlsPlugin(), siteHeaderPlugin(), documentationPlugin(), liveExampleRuntimes(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
+    plugins: [appVersionPlugin(), appEntryUrlsPlugin(), packageGalleryRoutes(), siteHeaderPlugin(), documentationPlugin(), liveExampleRuntimes(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
       referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url))),
       distributionReaderPlugin(), canvasSnapshotPlugin(), documentThemesPlugin(), minifiedReaderSourcePlugin()],
     appType: "mpa",
@@ -150,7 +166,7 @@ export default defineConfig(({mode}) => {
         rollupOptions: {
           input: {
             index: fileURLToPath(new URL("./index.html", import.meta.url)),
-            gallery: fileURLToPath(new URL("./gallery/index.html", import.meta.url)),
+            packages: fileURLToPath(new URL("./packages/index.html", import.meta.url)),
             examples: fileURLToPath(new URL("./examples/index.html", import.meta.url)),
             "legal-notice": fileURLToPath(new URL("./legal_notice/index.html", import.meta.url)),
             "site-entry": fileURLToPath(new URL("./src/site-entry.ts", import.meta.url)),

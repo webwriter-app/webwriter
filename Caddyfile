@@ -1,10 +1,14 @@
 (static) {
 	root * /srv
 	encode zstd gzip
+	redir /gallery /packages/ 308
+	redir /gallery/ /packages/ 308
+	@packagePreview path_regexp packagePreview ^/packages/@[a-z0-9_][a-z0-9._-]*/[a-z0-9_][a-z0-9._-]*/?$
+	rewrite @packagePreview /packages/index.html
 	file_server
 
 	# Never cache the service worker or HTML entry points, otherwise clients get stuck on old versions
-	@nocache path / /index.html /frame-shell.html /local-package-service-worker.js
+	@nocache path / /index.html /packages/ /packages/index.html /frame-shell.html /local-package-service-worker.js
 	header @nocache Cache-Control "no-cache"
 }
 
