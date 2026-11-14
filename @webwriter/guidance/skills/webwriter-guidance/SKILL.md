@@ -1,11 +1,15 @@
 ---
 name: webwriter-guidance
-description: Search and retrieve WebWriter's widget documentation. Use before answering WebWriter widget questions or implementing changes that rely on its documented widget interfaces, including package exports, framework adapters, editing controls, state, styling, and live sessions.
+description: Search and retrieve WebWriter's widget documentation and audit or rework existing widgets using their capability badges. Use for WebWriter widget questions and changes involving documented widget interfaces, including package exports, framework adapters, editing controls, state, styling, and live sessions.
 ---
 
 # WebWriter Guidance
 
 Use the WebWriter widget guides, tutorials, and interface reference through the `@webwriter/guidance` CLI. Run it with Node.js 22.20 or newer.
+
+## Rework an existing widget
+
+For a widget audit, modernization, or rework, use the [widget rework checklist](references/widget-rework.md). Resolve the manifest's badges to their guides, verify the claims in scope, and ask the user to decide open design questions while continuing independent fixes.
 
 ## Search
 

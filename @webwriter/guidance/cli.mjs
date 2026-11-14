@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import {spawnSync} from "node:child_process"
-import {existsSync, fstatSync, mkdtempSync, writeFileSync} from "node:fs"
+import {existsSync, fstatSync, mkdtempSync, readFileSync, writeFileSync} from "node:fs"
 import {tmpdir} from "node:os"
 import {delimiter, dirname, join} from "node:path"
 import {fileURLToPath} from "node:url"
 
-import {loadWidgetDocs} from "./docs.mjs"
+import {loadWidgetDocs, loadWidgetKeywords} from "./docs.mjs"
 
 const skill = "webwriter-guidance"
 const usage = `Usage: ${skill} <command>
@@ -13,6 +13,7 @@ const usage = `Usage: ${skill} <command>
   search <query>          Find WebWriter widget docs
   list                    List documentation IDs and descriptions
   retrieve <id[,id...]>   Read the full Markdown for one or more pages
+  badges [package.json]   List badges and guide IDs, optionally for one manifest
   install [options]       Install the skill using the Vercel Skills CLI
   uninstall [options]     Remove the skill using the Vercel Skills CLI`
 const stopWords = new Set("a an and are as at be by can do for from how i in is it of on or the to use what which with you".split(" "))
@@ -70,6 +71,31 @@ function printEntries(guides) {
   console.log(JSON.stringify(guides.map(({id, description}) => ({id, description})), null, 2))
 }
 
+function printBadges(manifestPath) {
+  const {badges, guides} = loadWidgetKeywords()
+  const catalog = Object.entries(badges).map(([keyword, {label, pattern}]) => ({
+    keyword, label, pattern,
+    guides: Object.entries(guides).filter(([, keywords]) => keywords.includes(keyword)).map(([id]) => `guides/${id}`),
+  }))
+  if(manifestPath === undefined) {
+    console.log(JSON.stringify(catalog, null, 2))
+    return
+  }
+
+  const {keywords = []} = JSON.parse(readFileSync(manifestPath, "utf8"))
+  if(!Array.isArray(keywords) || keywords.some(keyword => typeof keyword !== "string")) {
+    throw new Error("Expected package.json keywords to be an array of strings.")
+  }
+  const declared = [...new Set(keywords)].flatMap(keyword => {
+    const normalized = keyword.toLowerCase()
+    const badge = catalog.find(entry => entry.pattern
+      ? normalized.startsWith(entry.keyword) && normalized.length > entry.keyword.length
+      : normalized === entry.keyword)
+    return badge ? [{...badge, keyword}] : []
+  })
+  console.log(JSON.stringify(declared, null, 2))
+}
+
 function retrieve(catalog, ids) {
   const guides = new Map(catalog.map(guide => [guide.id, guide]))
   const pages = [...new Set(ids)].flatMap(id => {
@@ -114,6 +140,10 @@ function main([command, ...args]) {
     const source = fileURLToPath(new URL("./skills/webwriter-guidance", import.meta.url))
     const action = command === "install" ? ["add", source, "--skill", skill] : ["remove", skill]
     runSkills(["-y", "skills", ...action, ...args])
+    return
+  }
+  if(command === "badges" && args.length <= 1) {
+    printBadges(args[0])
     return
   }
   const ids = argument.split(/[,\s]+/).filter(Boolean)

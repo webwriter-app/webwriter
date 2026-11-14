@@ -26,5 +26,10 @@ npx -y @webwriter/guidance list
 | `search <query>` | Up to five ranked results with `id` and `description` fields. Use one topic or API name per query. |
 | `retrieve <id[,id...]>` | Full Markdown for the named pages. The CLI prints a temporary file path for large results. |
 | `list` | All searchable page IDs and descriptions. |
+| `badges [package.json]` | Widget badge keywords and their guide IDs. Pass a manifest path to look up its declared badges. |
 
 The npm package bundles a snapshot of the widget guides, tutorials, and reference pages. Once the package is installed, document lookup works offline. From the WebWriter repository root, use `node @webwriter/guidance/cli.mjs` with the same commands to query the current checkout.
+
+## Rework an existing widget
+
+Ask your coding agent to rework the widget using the WebWriter Guidance skill. The agent uses the declared [widget keywords](keywords.md) and the affected capabilities to check the widget against the guides. It asks you to decide open design questions and continues fixes that can be verified independently.

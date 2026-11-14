@@ -3,7 +3,9 @@ import {join, relative, sep} from "node:path"
 import {fileURLToPath, pathToFileURL} from "node:url"
 
 const checkoutDocs = fileURLToPath(new URL("../domeditor/docs/widgets/", import.meta.url))
+const checkoutKeywords = new URL("../domeditor/src/widget-keywords.json", import.meta.url)
 const snapshot = new URL("./dist/widget-docs.json", import.meta.url)
+const readJSON = file => JSON.parse(readFileSync(file, "utf8"))
 
 function readWidgetDocs(directory = checkoutDocs) {
   return readdirSync(directory, {withFileTypes: true}).flatMap(entry => {
@@ -16,11 +18,15 @@ function readWidgetDocs(directory = checkoutDocs) {
 }
 
 export function loadWidgetDocs() {
-  return existsSync(checkoutDocs) ? readWidgetDocs() : JSON.parse(readFileSync(snapshot, "utf8"))
+  return existsSync(checkoutDocs) ? readWidgetDocs() : readJSON(snapshot).docs
+}
+
+export function loadWidgetKeywords() {
+  return existsSync(checkoutKeywords) ? readJSON(checkoutKeywords) : readJSON(snapshot).widgetKeywords
 }
 
 if(process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   const docs = readWidgetDocs().sort((a, b) => a.id.localeCompare(b.id))
   mkdirSync(new URL(".", snapshot), {recursive: true})
-  writeFileSync(snapshot, JSON.stringify(docs) + "\n")
+  writeFileSync(snapshot, JSON.stringify({docs, widgetKeywords: readJSON(checkoutKeywords)}) + "\n")
 }
