@@ -21,4 +21,4 @@ This reference describes the widget interface. The [guides](../guides/index.md) 
 ## C. Tooling
 
 - [C1. @webwriter/build](build-test.md) lists commands, flags, and test reporting requirements.
-- [C2. @webwriter/lit](lit.md) describes `LitElementWw`, signals, and the standalone widget drawer.
+- [C2. Widget adapters](adapters.md) describes the widget tooling for the selected library.

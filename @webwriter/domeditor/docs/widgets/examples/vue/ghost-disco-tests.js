@@ -1,4 +1,5 @@
 import "./dist/ww-ghost-disco.js"
+import {checkLighting} from "./disco/checks.js"
 
 const report = detail => window.dispatchEvent(new CustomEvent("test-update", {detail}))
 const test = {id: "lighting", path: ["Ghost Disco", "restores and resets lighting"]}
@@ -8,16 +9,12 @@ const widget = document.createElement("ww-ghost-disco")
 try {
   widget.setAttribute("lighting", "neon")
   document.body.append(widget)
-  if(widget.lighting !== "neon") throw new Error("Lighting was not restored")
-  widget.resetLighting()
-  if(widget.getAttribute("lighting") !== "moonlight") throw new Error("Lighting did not reset")
+  await checkLighting(widget)
   report({type: "afterOne", ...test, passed: true})
-}
-catch(error) {
+} catch(error) {
   console.error(error)
   report({type: "afterOne", ...test, passed: false})
-}
-finally {
+} finally {
   widget.remove()
   report({type: "afterAll"})
 }

@@ -16,6 +16,7 @@ await build({
   entryPoints,
   outdir: "dist",
   bundle: true,
+  splitting: target === "ghost-disco",
   platform: "browser",
   format: "esm",
   target: "es2022",

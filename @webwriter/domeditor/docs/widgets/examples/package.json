@@ -12,6 +12,14 @@
     "./snippets/quiz.html": "./quiz.html",
     "./tests/quiz.js": "./quiz-tests.js"
   },
+  "imports": {
+    "#disco-authoring": "./disco/authoring.js",
+    "#disco-participation": "./disco/participation.js",
+    "#disco-scoreboard": "./disco/scoreboard.js",
+    "#disco-dependencies": "./disco/dependencies.js",
+    "#disco-tips": "./disco/tips.js",
+    "#disco-dance": "./disco/dance.js"
+  },
   "editingConfig": {
     "./widgets/ww-quiz": {
       "label": "Quiz",

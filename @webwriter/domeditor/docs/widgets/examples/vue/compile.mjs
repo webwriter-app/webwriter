@@ -21,7 +21,11 @@ export function compileVue(source, filename) {
     scoped: style.scoped,
   }).code)
 
-  let code = script.content.replace(/from (["'])vue\1/g, 'from "vue/dist/vue.runtime.esm-browser.js"')
+  // Older examples register with the browser build directly. Adapter-based
+  // components and their generated render helpers use the same Vue import.
+  let code = /["']@webwriter\/vue["']/.test(script.content)
+    ? script.content
+    : script.content.replace(/from (["'])vue\1/g, 'from "vue/dist/vue.runtime.esm-browser.js"')
   if(styles.length) {
     code = code.replace("export default {", "const __vueWidgetComponent = {")
     code += `\n__vueWidgetComponent.styles = ${JSON.stringify(styles)}\nexport default __vueWidgetComponent\n`

@@ -1,6 +1,13 @@
 // @vitest-environment happy-dom
-import {afterEach, expect, it} from "vitest"
-import "./06-disco-collaboration.svelte"
+import {afterEach, expect, it, vi} from "vitest"
+import "./ww-ghost-disco.js"
+
+// Happy DOM does not implement form-associated custom elements.
+vi.hoisted(() => {
+  HTMLElement.prototype.attachInternals ??= () => ({
+    setFormValue() {}, setValidity() {}, reportValidity: () => true,
+  }) as ElementInternals
+})
 
 function createBlock() {
   const block = document.createElement("script")
@@ -32,14 +39,17 @@ it("renders reader moves separately from authored lighting", async () => {
   const block = createBlock()
   widget.append(invitation, block)
   const dataRequests: Event[] = []
-  widget.addEventListener("datarequest", event => dataRequests.push(event))
+  widget.addEventListener("datarequest", event => {
+    event.preventDefault()
+    dataRequests.push(event)
+  })
 
   widget.lighting = "neon"
   document.body.append(widget)
   await render()
   const shadow = widget.shadowRoot!
   const stage = shadow.querySelector(".stage")!
-  const output = shadow.querySelector("output")!
+  const output = shadow.querySelector("output[aria-live]")!
   const twirl = shadow.querySelector<HTMLButtonElement>('button[value="twirl"]')!
   expect(stage.getAttribute("data-lighting")).toBe("neon")
   expect(widget.getAttribute("lighting")).toBe("neon")
@@ -68,6 +78,11 @@ it("renders reader moves separately from authored lighting", async () => {
   await render()
   expect(output.textContent?.trim()).toBe("The ghost floats!")
   expect(shadow.querySelector(".ghost")?.getAttribute("data-move")).toBe("float")
+  widget.setAttribute("shared", "group")
+  await render()
+  expect(dataRequests.at(-1)?.target).toBe(block)
+  expect(dataRequests).toHaveLength(2)
+  expect(twirl.disabled).toBe(true)
   sendData(block, "datapending")
   twirl.click()
   expect(block.textContent).toBe('{"move":"float"}')
