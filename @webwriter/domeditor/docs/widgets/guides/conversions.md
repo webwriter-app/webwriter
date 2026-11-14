@@ -4,6 +4,78 @@ A widget can convert HTML content to an interactive element. It can also convert
 
 ![A widget exchanges content with a native HTML list and with files](../../images/widgets/conversions.svg)
 
+<!-- live-example: Convert a list -->
+
+```js vanilla
+class PackingChecklist extends HTMLElement {
+  static convertFrom = {ul: "loadList", ".json": "importJson"}
+  static convertTo = {ul: "toList", "text/plain": "exportText"}
+
+  constructor() {
+    super()
+    this.attachShadow({mode: "open"}).innerHTML = `
+      <slot></slot>
+      <label>Import a JSON list <input type="file" accept=".json,application/json"></label>
+      <button type="button">Preview exported list</button>
+      <button type="button">Preview text file</button>
+      <pre role="status"></pre>`
+    const root = this.shadowRoot
+    const result = root.querySelector("pre")
+    const [listButton, textButton] = root.querySelectorAll("button")
+    listButton.addEventListener("click", () => { result.textContent = this.toList()?.outerHTML ?? "" })
+    textButton.addEventListener("click", async () => { result.textContent = await this.exportText().text() })
+    root.querySelector("input").addEventListener("change", async event => {
+      const file = event.target.files[0]
+      if(!file) return
+      try {
+        const apply = await this.importJson(file)
+        apply()
+        result.textContent = "List imported."
+      }
+      catch(error) { result.textContent = error.message }
+    })
+  }
+
+  loadList(fragment) {
+    this.replaceChildren(fragment)
+  }
+
+  toList() {
+    return this.querySelector(":scope > ul")?.cloneNode(true) ?? null
+  }
+
+  async importJson(file) {
+    const values = JSON.parse(await file.text())
+    if(!Array.isArray(values) || !values.every(value => typeof value === "string")) {
+      throw new Error("Expected a JSON array of strings.")
+    }
+    const list = document.createElement("ul")
+    for(const value of values) {
+      const item = document.createElement("li")
+      item.textContent = value
+      list.append(item)
+    }
+    return () => this.loadList(list)
+  }
+
+  exportText() {
+    const items = this.querySelectorAll(":scope > ul > li")
+    return new File([Array.from(items, item => item.textContent).join("\n")],
+      "packing-list.txt", {type: "text/plain"})
+  }
+}
+
+customElements.define("ww-packing-checklist", PackingChecklist)
+```
+
+```html
+<ww-packing-checklist>
+  <ul><li>Water bottle</li><li>Notebook</li></ul>
+</ww-packing-checklist>
+```
+
+<!-- /live-example -->
+
 Use `convertFrom` to specify the formats that the widget can read. Use `convertTo` to specify the formats that it can write. Use tag names for HTML conversions. Use file extensions or [media types](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/MIME_types) for file conversions.
 
 The authoring tool shows available conversions for the selected element. Authors can open the Widget drawer or select the element icon to find them. A dotted underline in the Packages drawer identifies an installed widget that can accept the selected element.

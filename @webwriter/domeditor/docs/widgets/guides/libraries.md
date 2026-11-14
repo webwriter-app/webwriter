@@ -4,6 +4,65 @@ A widget can use native web APIs or a framework that produces a browser-ready cu
 
 ![Code and image assets connect to a widget](../../images/widgets/libraries.svg)
 
+Try **Load orbit diagram**. The widget imports the optional module on the first request and reuses it on later requests. The demo stores the module in the example source so it can run inside the preview. In a package, put it in its own file.
+
+<!-- live-example: On-demand orbit diagram -->
+
+```js vanilla
+const orbitModule = `
+  export function drawOrbit() {
+    return '<svg viewBox="0 0 160 64" width="160" role="img" aria-label="Planet on an orbit">'
+      + '<ellipse cx="80" cy="32" rx="72" ry="24" fill="none" stroke="currentColor"/>'
+      + '<circle cx="80" cy="32" r="9" fill="gold"/>'
+      + '<circle cx="138" cy="18" r="6" fill="royalblue"/></svg>'
+  }
+`
+
+class OrbitDemo extends HTMLElement {
+  #module
+  constructor() {
+    super()
+    const root = this.attachShadow({mode: "open"})
+    root.innerHTML = `
+      <button type="button">Load orbit diagram</button>
+      <p role="status">Optional module idle.</p>
+      <div></div>
+    `
+    const button = root.querySelector("button")
+    const status = root.querySelector("p")
+    button.addEventListener("click", async () => {
+      button.disabled = true
+      status.textContent = "Loading optional module…"
+      try {
+        this.#module ??= this.loadDiagram()
+        const {drawOrbit} = await this.#module
+        root.querySelector("div").innerHTML = drawOrbit()
+        status.textContent = "Optional module ready."
+      } catch {
+        this.#module = undefined
+        status.textContent = "Could not load the diagram. Try again."
+      } finally {
+        button.disabled = false
+      }
+    })
+  }
+
+  async loadDiagram() {
+    const url = URL.createObjectURL(new Blob([orbitModule], {type: "text/javascript"}))
+    try { return await import(url) }
+    finally { URL.revokeObjectURL(url) }
+  }
+}
+
+customElements.define("ww-orbit-demo", OrbitDemo)
+```
+
+```html
+<ww-orbit-demo></ww-orbit-demo>
+```
+
+<!-- /live-example -->
+
 <!-- library:vanilla -->
 The [tutorial](../tutorial/index.md) uses [`HTMLElement`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement) in its **JS** version. The library selector also offers [Lit](https://lit.dev/docs/components/overview/).
 <!-- /library -->

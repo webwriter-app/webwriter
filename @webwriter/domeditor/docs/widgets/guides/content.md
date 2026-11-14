@@ -4,6 +4,34 @@ A widget can show text, HTML elements, and other widgets in its interface. Its e
 
 ![A nested widget and editable text inside an outer widget](../../images/widgets/content.svg)
 
+<!-- live-example: Nested content -->
+
+```js vanilla
+class CalloutWidget extends HTMLElement {
+  constructor() {
+    super()
+    this.attachShadow({mode: "open"}).innerHTML = `
+      <aside><slot></slot></aside>
+      <output aria-live="polite"></output>`
+    this.shadowRoot.querySelector("slot").addEventListener("slotchange", event => {
+      const count = event.target.assignedElements().length
+      this.shadowRoot.querySelector("output").textContent = `${count} authored items`
+    })
+  }
+}
+
+customElements.define("ww-callout", CalloutWidget)
+```
+
+```html
+<ww-callout>
+  <p>Bring a reusable water bottle.</p>
+  <p>Meet beside the north gate.</p>
+</ww-callout>
+```
+
+<!-- /live-example -->
+
 Keep authored content in the widget's light DOM. Use a [slot](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/slot) to show that content. This callout widget lets authors edit a note in the document.
 
 ```html

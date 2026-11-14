@@ -4,6 +4,67 @@ A widget can keep temporary interaction state in memory and save author settings
 
 ![A widget linked to properties, attributes, content, and data](../../images/widgets/state.svg)
 
+<!-- live-example: Metronome settings -->
+
+```js vanilla
+class GuideMetronome extends HTMLElement {
+  static options = {tempo: {type: Number, label: {_: "Tempo"}, min: 40, max: 240}}
+  static actions = {resetTempo: {label: {_: "Reset tempo"}}}
+  static observedAttributes = ["tempo", "sound"]
+
+  constructor() {
+    super()
+    this.beat = 0
+    this.attachShadow({mode: "open"}).innerHTML = `
+      <label>Tempo <input type="range" min="40" max="240" value="96"></label>
+      <button type="button">Next beat</button>
+      <button type="button">Reset tempo</button>
+      <button type="button" aria-expanded="false">Sound details</button>
+      <output aria-live="polite"></output>
+      <p hidden>Selected sound: <span></span></p>`
+    this.tempoInput = this.shadowRoot.querySelector('input[type="range"]')
+    this.tempoInput.addEventListener("input", () => this.setAttribute("tempo", this.tempoInput.value))
+    this.shadowRoot.querySelector("button").addEventListener("click", () => {
+      this.beat = (this.beat + 1) % 4
+      this.render()
+    })
+    this.shadowRoot.querySelectorAll("button")[1].addEventListener("click", () => this.resetTempo())
+    this.shadowRoot.querySelectorAll("button")[2].addEventListener("click", event => {
+      const details = this.shadowRoot.querySelector("p")
+      details.hidden = !details.hidden
+      event.currentTarget.setAttribute("aria-expanded", String(!details.hidden))
+    })
+    this.syncSettings()
+  }
+
+  resetTempo() { this.setAttribute("tempo", "120") }
+  attributeChangedCallback() { this.syncSettings() }
+
+  syncSettings() {
+    this.tempoInput.value = this.tempo
+    this.shadowRoot.querySelector("p span").textContent = this.sound
+    this.render()
+  }
+
+  get tempo() { return Number(this.getAttribute("tempo") ?? 120) }
+  set tempo(value) { this.setAttribute("tempo", value) }
+  get sound() { return this.getAttribute("sound") ?? "woodblock" }
+
+  render() {
+    this.shadowRoot.querySelector("output").textContent =
+      `${this.tempo} BPM · Beat ${this.beat + 1} of 4`
+  }
+}
+
+customElements.define("ww-guide-metronome", GuideMetronome)
+```
+
+```html
+<ww-guide-metronome tempo="96" sound="woodblock"></ww-guide-metronome>
+```
+
+<!-- /live-example -->
+
 Use properties for temporary state. Use attributes for settings that the authoring tool must save, share, and undo. For example, a metronome can save its selected sound in an attribute. It can keep the visibility of sound details in memory.
 
 <!-- library:vanilla -->
@@ -52,7 +113,7 @@ function Metronome({sound = "woodblock"}) {
 }
 ```
 
-The [tutorial state step](../tutorial/04-state.md) has a complete React host bridge.
+The [tutorial state step](../tutorial/04-state.md) shows how React reads shared participant data.
 <!-- /library -->
 
 <!-- library:vue -->
@@ -85,7 +146,7 @@ toggleDetails() {
 }
 ```
 
-The [tutorial state step](../tutorial/04-state.md) has an Angular component and a native host bridge.
+The [tutorial state step](../tutorial/04-state.md) shows how the Angular widget adapter reads shared data.
 <!-- /library -->
 
 <!-- library:svelte -->
@@ -138,11 +199,9 @@ set tempo(value) { this.setAttribute("tempo", String(value)) }
 resetTempo() { this.tempo = 120 }
 ```
 
-The widget updates its beat interval when `tempo` changes. Changes can come from an option, undo, redo, or collaboration. Start the metronome. Change **Tempo** in its drawer. Select **Reset tempo**. The standalone drawer uses the same declarations as the authoring tool.
+Change **Tempo** in the preview and look for the new attribute in the HTML pane. Select **Next beat** to change the temporary beat count. Select **Reset tempo** to restore 120 BPM. In an authoring tool, the Widget drawer can use the same option and action declarations.
 
-<iframe title="Metronome with tempo option and reset action" src="../examples/preview.html?guide=state" width="100%" height="260" loading="lazy"></iframe>
-
-[Open the metronome preview](../examples/preview.html?guide=state) · [View the example source](../examples/guide-state.js) · [Options and actions reference](../reference/options-actions.md)
+See the [options and actions reference](../reference/options-actions.md).
 
 ## State in memory and in the document
 

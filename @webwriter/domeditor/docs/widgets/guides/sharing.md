@@ -4,13 +4,71 @@ A widget can keep separate data for each participant or share data with a group 
 
 ![Two participants linked to one shared tally](../../images/widgets/sharing.svg)
 
-Set `sharedData: true` in the [editing configuration](../reference/editing-configuration.md). Add one direct [data block](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script#embedding_data_in_html) to the authored HTML. A snippet can supply this block.
+Choose **Shared** and **Reading**, then add to the count from either participant. Turn off **Share with everyone** in Editing mode to give each reader a separate count.
 
-```html
-<ww-counter shared>
-  <script type="application/json" slot="data">{"count":0}</script>
-</ww-counter>
+<!-- live-example: Participant data scopes -->
+
+```js vanilla
+class SharedCounter extends HTMLElement {
+  static observedAttributes = ["shared", "contenteditable"]
+  #observer = new MutationObserver(() => this.render())
+
+  constructor() {
+    super()
+    const root = this.attachShadow({mode: "open"})
+    root.innerHTML = `
+      <label><input type="checkbox"> Share with everyone</label>
+      <button type="button">Add one</button>
+      <output aria-live="polite"></output>
+    `
+    root.querySelector("input").addEventListener("change", event => {
+      this.toggleAttribute("shared", event.currentTarget.checked)
+    })
+    root.querySelector("button").addEventListener("click", () => {
+      const block = this.dataBlock
+      if(block) block.textContent = JSON.stringify({count: this.count + 1})
+    })
+  }
+
+  connectedCallback() {
+    this.#observer.observe(this, {childList: true, characterData: true, subtree: true})
+    this.render()
+  }
+
+  disconnectedCallback() { this.#observer.disconnect() }
+  attributeChangedCallback() { this.render() }
+
+  get dataBlock() { return this.querySelector(':scope > script[type="application/json"][slot="data"]') }
+
+  get count() {
+    try {
+      const {count} = JSON.parse(this.dataBlock?.textContent ?? "{}")
+      return Number.isSafeInteger(count) && count >= 0 ? count : 0
+    } catch { return 0 }
+  }
+
+  render() {
+    const root = this.shadowRoot
+    const shared = this.hasAttribute("shared")
+    root.querySelector("label").hidden = !this.isContentEditable
+    root.querySelector("input").checked = shared
+    root.querySelector("button").disabled = this.isContentEditable
+    root.querySelector("output").textContent = `${this.count} · ${shared ? "shared" : "private"}`
+  }
+}
+
+customElements.define("ww-shared-counter", SharedCounter)
 ```
+
+```html shared
+<ww-shared-counter id="tally" shared>
+  <script type="application/json" slot="data">{"count":0}</script>
+</ww-shared-counter>
+```
+
+<!-- /live-example -->
+
+Set `sharedData: true` in the [editing configuration](../reference/editing-configuration.md). Add one direct [data block](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script#embedding_data_in_html) to the authored HTML. A snippet can supply this block.
 
 <!-- library:vanilla -->
 Listen for `datapending` and `datachange` on the widget. When the widget connects or replaces the direct data block, dispatch a [bubbling, cancelable](https://developer.mozilla.org/en-US/docs/Web/API/Event/Event) `datarequest` on the current block. The runtime reports the current pending, ready, or error state.
@@ -41,7 +99,7 @@ Use the `dataPending`, `dataChanged`, and `dataError` methods from `LitElementWw
 
 When the scope changes, the widget gets the saved data for that scope or the authored defaults. The **Share** control shows group options when the server supplies a participant list. Keep any direct `ww-grouping` processing instruction when you change child nodes.
 
-The [data reference](../reference/data.md) describes the data interface. The [tutorial](../tutorial/06-collaboration.md) gives a complete example.
+The [data reference](../reference/data.md) describes the data interface. The [tutorial](../tutorial/04-state.md#share-participant-data) gives a complete example.
 
 <!-- library:lit optional -->
 ## Handler methods with LitElementWw

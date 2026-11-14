@@ -4,13 +4,86 @@ A widget can give authors control over optional participant interactions in a li
 
 ![Three workshop votes feed a live tally](../../images/widgets/live-sessions.svg)
 
+Choose **Shared** and **Reading**. Submit a different vote in each preview to see each participant's response.
+
+<!-- live-example: Workshop poll -->
+
+```js vanilla
+class WorkshopPoll extends HTMLElement {
+  static permissions = {
+    allowGlossary: {
+      attribute: "allow-glossary",
+      label: {_: "Allow glossary"},
+      description: {_: "Let participants open a glossary."},
+    },
+  }
+
+  static observedAttributes = ["allow-glossary", "contenteditable"]
+
+  constructor() {
+    super()
+    this.attachShadow({mode: "open"}).innerHTML = `
+      <label><input type="checkbox"> Allow glossary</label>
+      <p>Choose the next activity.</p>
+      <label><input type="radio" name="activity" value="drawing" checked> Drawing</label>
+      <label><input type="radio" name="activity" value="collage"> Collage</label>
+      <button type="button">Submit vote</button>
+      <output aria-live="polite"></output>
+      <details hidden><summary>Activity glossary</summary><p>Drawing uses lines and shapes.</p></details>`
+    this.shadowRoot.querySelector('input[type="checkbox"]').addEventListener("change", event => {
+      this.toggleAttribute("allow-glossary", event.currentTarget.checked)
+    })
+    this.shadowRoot.querySelector("button").addEventListener("click", () => {
+      const choice = this.shadowRoot.querySelector('input[name="activity"]:checked')?.value
+      if(!choice) return
+      const block = this.querySelector(':scope > script[slot="data"]')
+      if(block) block.textContent = JSON.stringify({activity: choice})
+    })
+  }
+
+  #observer = new MutationObserver(() => this.showVote())
+
+  connectedCallback() {
+    this.#observer.observe(this, {childList: true, characterData: true, subtree: true})
+    this.showVote()
+  }
+
+  disconnectedCallback() { this.#observer.disconnect() }
+
+  showVote() {
+    const block = this.querySelector(':scope > script[slot="data"]')
+    const output = this.shadowRoot.querySelector("output")
+    try {
+      const {activity} = JSON.parse(block?.textContent ?? "{}")
+      output.textContent = activity ? `Vote submitted: ${activity}.` : ""
+    }
+    catch { output.textContent = "The saved vote is invalid." }
+  }
+
+  attributeChangedCallback() {
+    const enabled = this.hasAttribute("allow-glossary")
+    const details = this.shadowRoot.querySelector("details")
+    details.hidden = !enabled
+    if(!enabled) details.open = false
+    this.shadowRoot.querySelector('input[type="checkbox"]').checked = enabled
+    this.shadowRoot.querySelector("label").hidden = !this.isContentEditable
+  }
+}
+
+customElements.define("ww-workshop-poll", WorkshopPoll)
+```
+
+```html shared
+<ww-workshop-poll allow-glossary>
+  <script type="application/json" slot="data">{"activity":""}</script>
+</ww-workshop-poll>
+```
+
+<!-- /live-example -->
+
 ## Let authors choose what participants can do
 
 Declare `static permissions` to give the author control over an optional interaction. For example, an author can give workshop participants access to a glossary.
-
-<iframe title="Workshop activity with an optional participant glossary" src="../examples/preview.html?guide=live-sessions" width="100%" height="360" loading="lazy"></iframe>
-
-[Open the participant controls demo](../examples/preview.html?guide=live-sessions) · [View the example source](../examples/guide-live-sessions.js)
 
 The author checkbox adds or removes `allow-glossary` on the widget. Open the glossary in the participant view. Clear **Allow glossary**. Make sure that the glossary closes and that the control disappears.
 
