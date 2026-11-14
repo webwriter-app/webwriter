@@ -4,6 +4,17 @@
     "": {
       "name": "webwriter",
     },
+    "@webwriter/angular": {
+      "name": "@webwriter/angular",
+      "version": "1.0.0",
+      "dependencies": {
+        "@webwriter/widget": "^1.0.0",
+      },
+      "peerDependencies": {
+        "@angular/core": "^22.2.0",
+        "@angular/platform-browser": "^22.2.0",
+      },
+    },
     "@webwriter/build": {
       "name": "@webwriter/build",
       "version": "1.13.1",
@@ -85,13 +96,52 @@
       "version": "3.0.0",
       "dependencies": {
         "@lit-labs/signals": "0.3.0",
+        "@webwriter/widget": "^1.0.0",
       },
       "devDependencies": {
-        "@happy-dom/global-registrator": "~20.8.9",
         "esbuild": "^0.25.4",
+        "@happy-dom/global-registrator": "~20.8.9",
       },
       "peerDependencies": {
         "lit": "^3.3.0",
+      },
+    },
+    "@webwriter/react": {
+      "name": "@webwriter/react",
+      "version": "1.0.0",
+      "dependencies": {
+        "@webwriter/widget": "^1.0.0",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+    },
+    "@webwriter/svelte": {
+      "name": "@webwriter/svelte",
+      "version": "1.0.0",
+      "dependencies": {
+        "@webwriter/widget": "^1.0.0",
+      },
+      "peerDependencies": {
+        "svelte": "^5.0.0",
+      },
+    },
+    "@webwriter/vue": {
+      "name": "@webwriter/vue",
+      "version": "1.0.0",
+      "dependencies": {
+        "@webwriter/widget": "^1.0.0",
+      },
+      "peerDependencies": {
+        "vue": "^3.5.0",
+      },
+    },
+    "@webwriter/widget": {
+      "name": "@webwriter/widget",
+      "version": "1.0.0",
+      "devDependencies": {
+        "esbuild": "^0.25.4",
       },
     },
   },
@@ -444,11 +494,21 @@
 
     "@webcomponents/scoped-custom-element-registry": ["@webcomponents/scoped-custom-element-registry@0.0.9", "", {}, "sha512-4RVHwN9oIp23mhrxeDbP9/0wvdcrB0d/MFMqIStShIgfzsqXZXf1OdU5kvqjgdMYavQ5Zm8C6BuBcAjzNwAetQ=="],
 
+    "@webwriter/angular": ["@webwriter/angular@workspace:@webwriter/angular"],
+
     "@webwriter/build": ["@webwriter/build@workspace:@webwriter/build"],
 
     "@webwriter/domeditor": ["@webwriter/domeditor@workspace:@webwriter/domeditor"],
 
     "@webwriter/lit": ["@webwriter/lit@workspace:@webwriter/lit"],
+
+    "@webwriter/react": ["@webwriter/react@workspace:@webwriter/react"],
+
+    "@webwriter/svelte": ["@webwriter/svelte@workspace:@webwriter/svelte"],
+
+    "@webwriter/vue": ["@webwriter/vue@workspace:@webwriter/vue"],
+
+    "@webwriter/widget": ["@webwriter/widget@workspace:@webwriter/widget"],
 
     "@xmldom/xmldom": ["@xmldom/xmldom@0.8.11", "", {}, "sha512-cQzWCtO6C8TQiYl1ruKNn2U6Ao4o4WBBcbL61yJl84x+j5sOWWFU9X7DpND8XZG3daDppSsigMdfAIl2upQBRw=="],
 

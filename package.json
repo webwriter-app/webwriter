@@ -22,7 +22,12 @@
   "workspaces": [
     "@webwriter/build",
     "@webwriter/domeditor",
-    "@webwriter/lit"
+    "@webwriter/lit",
+    "@webwriter/widget",
+    "@webwriter/react",
+    "@webwriter/vue",
+    "@webwriter/svelte",
+    "@webwriter/angular"
   ],
   "private": true
 }

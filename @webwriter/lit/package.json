@@ -11,7 +11,7 @@
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
   "scripts": {
-    "prepublishOnly": "esbuild ./index.ts --bundle --target=es2022 --format=esm --outfile=index.js --external:lit --external:@lit-labs/signals",
+    "prepublishOnly": "esbuild ./index.ts --bundle --target=es2022 --format=esm --outfile=index.js --external:lit --external:@lit-labs/signals --external:@webwriter/widget",
     "test": "node --test index.test.js"
   },
   "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60",
@@ -24,6 +24,7 @@
   },
   "type": "module",
   "dependencies": {
-    "@lit-labs/signals": "0.3.0"
+    "@lit-labs/signals": "0.3.0",
+    "@webwriter/widget": "^1.0.0"
   }
 }
