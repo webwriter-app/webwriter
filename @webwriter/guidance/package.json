@@ -2,11 +2,11 @@
   "name": "@webwriter/guidance",
   "version": "1.0.0",
   "description": "WebWriter widget documentation search and coding agent skill",
-  "license": "AGPL-3.0-only",
+  "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/webwriter-app/webwriter.git",
+    "url": "git+https://github.com/webwriter-app/webwriter.git",
     "directory": "@webwriter/guidance"
   },
   "publishConfig": {
@@ -16,7 +16,7 @@
     "node": ">=22.20.0"
   },
   "bin": {
-    "webwriter-guidance": "./cli.mjs"
+    "webwriter-guidance": "cli.mjs"
   },
   "files": [
     "cli.mjs",
