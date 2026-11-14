@@ -12,11 +12,21 @@ const libraryPagePath = "/docs/widgets/introduction/library.md"
 const quickStart = "/docs/widgets/introduction/quick-start.md"
 const guideIndex = "/docs/widgets/guides/index.md"
 const referenceIndex = "/docs/widgets/reference/index.md"
+const adapterReference = "/docs/widgets/reference/adapters.md"
+const litReference = "/docs/widgets/reference/lit.md"
+const sandboxPage = "/docs/widgets/sandbox.md"
 const keywordReference = "/docs/widgets/reference/keywords.md"
 const keywordStyles = new URL("../src/package-keywords.css", import.meta.url)
 const guideSprite = "/docs/images/widgets/capability-icons.svg"
 const packageIcon = readFileSync(new URL(import.meta.resolve("@tabler/icons/outline/package.svg")), "utf8")
+const maximizeIcon = readFileSync(new URL(import.meta.resolve("@tabler/icons/outline/maximize.svg")), "utf8")
+const minimizeIcon = readFileSync(new URL(import.meta.resolve("@tabler/icons/outline/minimize.svg")), "utf8")
+const uploadIcon = readFileSync(new URL(import.meta.resolve("@tabler/icons/outline/upload.svg")), "utf8")
+const saveIcon = readFileSync(new URL(import.meta.resolve("@tabler/icons/outline/device-floppy.svg")), "utf8")
 const guideIconId = name => `widget-guide-icon-${name}`
+const guideName = path => /^\/docs\/widgets\/guides\/([\w-]+)\.md$/.exec(path)?.[1]
+const guideIcon = (name, icons) => icons.ids.has(name)
+  ? `<svg aria-hidden="true" width="16" height="16"><use href="#${guideIconId(name)}"></use></svg>` : ""
 const libraries = [
   {value: "vanilla", label: "JS", icon: "javascript"},
   {value: "lit", label: "Lit", icon: "lit"},
@@ -25,6 +35,7 @@ const libraries = [
   {value: "angular", label: "Angular", icon: "angular"},
   {value: "svelte", label: "Svelte", icon: "svelte"},
 ]
+const adapterTitle = library => `C2. @webwriter/${library === "vanilla" ? "widget" : library}`
 const sourceExtensions = {react: "jsx", vue: "vue", angular: "ts", svelte: "svelte"}
 const sourcePattern = /\.(?:js|mjs|jsx|ts|tsx|vue|svelte)$/
 const exampleFallback = "The examples on this page currently use JS."
@@ -63,14 +74,20 @@ function markdown(source, library = "lit") {
     : result
 }
 
+async function documentationSource(root, path, library, content) {
+  if(path === adapterReference && library === "lit") return readFile(resolve(root, `.${litReference}`), "utf8")
+  const source = markdown(content ?? await readFile(resolve(root, `.${path}`), "utf8"), library)
+  return path === adapterReference ? source.replace(/^<!-- (?:library:[\w-]+|\/library) -->\r?\n/gm, "") : source
+}
+
 function libraryURL(href, path, library, staticBuild = false) {
   const url = new URL(href, `http://docs.local${path}`)
   if(url.origin !== "http://docs.local" || !url.pathname.startsWith("/docs/")
     && !["/README.md", "/packages.md"].includes(url.pathname)) return href
   const examples = "/docs/widgets/examples/"
   const isExample = url.pathname.startsWith(examples)
-  const exampleLibrary = isExample && url.searchParams.get("library")
-  if(exampleLibrary && libraries.some(({value}) => value === exampleLibrary)) library = exampleLibrary
+  const targetLibrary = (isExample || url.pathname === adapterReference) && url.searchParams.get("library")
+  if(targetLibrary && libraries.some(({value}) => value === targetLibrary)) library = targetLibrary
   if(library !== "vanilla" && isExample
     && /^(?:0[1-6]-[\w-]+\.js|hello\.js|ww-(?:quiz|ghost-disco)\.js|(?:ghost-disco-)?package\.json|(?:quiz|ghost-disco)(?:-tests\.js|\.html))$/.test(url.pathname.slice(examples.length))) {
     const name = url.pathname.slice(examples.length)
@@ -120,9 +137,170 @@ function guideOpening(tokens) {
   return {heading, lead}
 }
 
-function renderMarkdown(source, {path, library, highlighter, staticBuild, guideIcons, guide, capabilities}) {
+// Each live example uses ordinary fences for its editor contents, with one shared HTML fence.
+function liveExamples(tokens, library) {
+  return tokens.flatMap((token, start) => {
+    const title = token.type === "html" && /^<!-- live-example: (.+?) -->$/.exec(token.text.trim())?.[1]
+    if(!title) return []
+    let end = start + 1
+    const blocks = []
+    for(; tokens[end]?.type === "space" || tokens[end]?.type === "code"; end++) {
+      if(tokens[end].type === "code") blocks.push(tokens[end])
+    }
+    if(tokens[end]?.type !== "html" || tokens[end].text.trim() !== "<!-- /live-example -->") return []
+    const html = blocks.find(block => /^html(?: shared)?$/.test(block.lang?.trim()))
+    const shared = blocks.flatMap(block => {
+      const match = /^js shared(?: ([\w#@./-]+)(?: ([\w./-]+))?)?$/.exec(block.lang?.trim())
+      return match ? [{specifier: match[1] ?? "@webwriter/weather-example", path: match[2], source: block.text}] : []
+    })
+    const setup = blocks.find(block => block.lang?.trim() === "js setup")
+    const registration = blocks.find(block => block.lang?.trim() === `js ${library}-registration`)
+    const files = blocks.flatMap(block => {
+      const match = /^\S+ file (\S+)$/.exec(block.lang?.trim())
+      return match ? [{path: match[1], source: block.text}] : []
+    })
+    const variant = blocks.find(block => block.lang?.trim().split(/\s+/)[1] === library)
+    const source = variant ?? blocks.find(block => /^(?:js|javascript)(?: vanilla)?$/.test(block.lang?.trim()))
+    if(!source || !html) return []
+    const runtime = variant ? library : "vanilla"
+    const language = source.lang.trim().split(/\s+/)[0]
+    const manifest = blocks.find(block => block.lang?.trim() === "json package")
+      ?? starterManifest(html.text, language, runtime, source.text + "\n" + (registration?.text ?? ""), shared)
+    return [{start, end, type: "liveExample", title, source, html, shared, setup, registration, manifest, files,
+      collaboration: html.lang.trim() === "html shared", runtime, language}]
+  })
+}
+
+function starterManifest(html, language, runtime, source, shared) {
+  const tags = [...new Set(Array.from(html.matchAll(/<([a-z][\w]*-[\w-]+)(?=[\s/>])/g), match => match[1]))]
+  const [name = "widget-example"] = tags
+  const extension = ({javascript: "js", typescript: "ts"})[language] ?? language
+  const output = `./dist/${name}.js`
+  const knownVersions = {lit: "^3.3.2", "@webwriter/lit": "^3.0.0", "@lit-labs/signals": "^0.3.0",
+    "@webwriter/widget": "^1.0.0", "@webwriter/react": "^1.0.0", "@webwriter/vue": "^1.0.0", "@webwriter/angular": "^1.0.0", "@webwriter/svelte": "^1.0.0",
+    react: "^19.3.1", "react-dom": "^19.3.1", vue: "^3.5.44", svelte: "^5.57.2",
+    "@angular/compiler": "^22.2.2", "@angular/core": "^22.2.2", "@angular/elements": "^22.2.2",
+    "@angular/platform-browser": "^22.2.2", "@angular/common": "^22.2.2", rxjs: "^7.8.2"}
+  const packages = new Set(Array.from(source.matchAll(/\b(?:from|import)\s*["'](@[^/"']+\/[^/"']+|[\w-]+)(?:\/[^"']+)?["']/g), match => match[1]))
+  if(runtime === "react") packages.add("react")
+  if(runtime === "svelte") packages.add("svelte")
+  if(runtime === "angular") { packages.add("@angular/common"); packages.add("rxjs") }
+  const dependencies = Object.fromEntries([...packages].filter(name => Object.hasOwn(knownVersions, name)).map(name => [name, knownVersions[name]]))
+  const sourcePath = `./${name}.${extension === "vue" ? "js" : extension}`
+  const entry = Object.keys(dependencies).length || extension !== "js"
+    ? {source: sourcePath, default: output} : sourcePath
+  const manifest = {
+    name: `@example/${name}`,
+    version: "1.0.0",
+    keywords: ["webwriter-widget"],
+    exports: Object.fromEntries(tags.map(tag => [`./widgets/${tag}.js`, entry])),
+  }
+  if(Object.keys(dependencies).length) manifest.dependencies = dependencies
+  const imports = shared.filter(({path, specifier}) => path && specifier.startsWith("#"))
+  if(imports.length) manifest.imports = Object.fromEntries(imports.map(({specifier, path}) => [specifier, `./${path}`]))
+  return {type: "code", lang: "json", text: JSON.stringify(manifest, null, 2)}
+}
+
+function packageFences(source) {
+  return new Marked().lexer(source).filter(block => block.type === "code" && block.lang?.trim() === "json package")
+}
+
+function mergeManifest(manifest, patch) {
+  const entries = []
+  for(const [name, value] of Object.entries(patch)) {
+    const current = Object.hasOwn(manifest, name) ? manifest[name] : undefined
+    const merged = value && typeof value === "object" && !Array.isArray(value)
+      && current && typeof current === "object" && !Array.isArray(current) ? mergeManifest(current, value) : value
+    entries.push([name, merged])
+  }
+  return {...manifest, ...Object.fromEntries(entries)}
+}
+
+async function includeLiveExamples(source, options) {
+  const {root, path} = options
+  const links = /^<!-- live-example-link: (\S+) -->$/gm
+  const linked = await Promise.all([...source.matchAll(links)].map(async ([, href]) => {
+    const url = new URL(href, `http://docs.local${path}`)
+    if(url.origin !== "http://docs.local" || !/^\/docs\/widgets\/(?:guides|tutorial)\/.+\.md$/.test(url.pathname)) {
+      throw new Error("Invalid linked interactive example")
+    }
+    const linkedSource = await readFile(resolve(root, `.${url.pathname}`), "utf8")
+    const example = /^<!-- live-example: .+? -->\r?\n[\s\S]*?^<!-- \/live-example -->$/m.exec(linkedSource)?.[0] ?? ""
+    return includeLiveSources(example, {...options, path: url.pathname})
+  }))
+  let linkIndex = 0
+  return includeLiveSources(source.replace(links, () => linked[linkIndex++]), options)
+}
+
+async function includeLiveSources(source, {root, path, library}) {
+  const packageLinks = /^<!-- live-package: ([^\r\n]+?) -->$/gm
+  const manifests = await Promise.all([...source.matchAll(packageLinks)].map(async ([, paths]) => {
+    const parts = await Promise.all(paths.split(/\s+/).map(async href => {
+      const url = new URL(href === "." ? path : href, `http://docs.local${path}`)
+      if(url.origin !== "http://docs.local" || !/^\/docs\/widgets\/(?:examples\/[\w/-]+\.json|(?:tutorial|introduction)\/[\w-]+\.md)$/.test(url.pathname)) {
+        throw new Error("Invalid live example package source")
+      }
+      if(url.pathname.endsWith(".json")) {
+        const variant = new URL(libraryURL(url.pathname, path, library), url)
+        return [JSON.parse(await readFile(resolve(root, `.${variant.pathname}`), "utf8"))]
+      }
+      const content = url.pathname === path ? source : markdown(await readFile(resolve(root, `.${url.pathname}`), "utf8"), library)
+      return packageFences(content).map(block => JSON.parse(block.text))
+    }))
+    const manifest = parts.flat().reduce(mergeManifest, {})
+    return `~~~json package\n${JSON.stringify(manifest, null, 2)}\n~~~`
+  }))
+  let packageIndex = 0
+  source = source.replace(packageLinks, () => manifests[packageIndex++])
+  source = source.replace(/^<!-- live-build-files -->$/gm, () => new Marked().lexer(source)
+    .filter(block => block.type === "code" && /^(?:js|json) file [\w.-]+$/.test(block.lang?.trim()))
+    .map(block => block.raw.trimEnd()).join("\n\n"))
+  const fileLinks = /^<!-- live-file: ([\w-]+) ([\w./-]+) (\S+) -->$/gm
+  const files = await Promise.all([...source.matchAll(fileLinks)].map(async ([, variant, name, href]) => {
+    if(variant !== "all" && variant !== library) return ""
+    const url = new URL(libraryURL(href, path, library), `http://docs.local${path}`)
+    if(url.origin !== "http://docs.local" || !/^\/docs\/widgets\/examples\/[\w/.-]+$/.test(url.pathname)) throw new Error("Invalid live example file")
+    const content = await readFile(resolve(root, `.${url.pathname}`), "utf8")
+    return `~~~${name.split(".").at(-1)} file ${name}\n${content.trimEnd()}\n~~~`
+  }))
+  let fileIndex = 0
+  source = source.replace(fileLinks, () => files[fileIndex++])
+  const pattern = /^<!-- live-source: ([\w-]+) (\S+) -->$/gm
+  const includes = await Promise.all([...source.matchAll(pattern)].map(async ([, variant, href]) => {
+    const shared = variant.startsWith("shared-")
+    if(!shared && variant !== library && variant !== `${library}-registration`) return ""
+    const url = new URL(href, `http://docs.local${path}`)
+    const file = resolve(root, `.${url.pathname}`)
+    const within = relative(resolve(root, "docs/widgets/examples"), file)
+    if(url.origin !== "http://docs.local" || within.startsWith("..") || isAbsolute(within)
+      || !sourcePattern.test(file)) throw new Error("Invalid interactive example source")
+    const content = await readFile(file, "utf8")
+    const info = shared ? `js shared #${variant.slice("shared-".length)}` : `${file.split(".").at(-1)} ${variant}`
+    return `~~~${info}\n${content.trimEnd()}\n~~~`
+  }))
+  let index = 0
+  return source.replace(pattern, () => includes[index++])
+}
+
+async function sandboxExamples(root, files) {
+  const pages = files ?? await filesIn(resolve(root, "docs"))
+  const sources = await Promise.all(pages.filter(file => file.endsWith(".md") && relative(root, file) !== sandboxPage.slice(1))
+    .map(async file => ({path: `/${relative(root, file)}`, source: await readFile(file, "utf8")})))
+  const examples = sources.filter(({source}) => source.includes("<!-- live-example:"))
+  return async library => (await Promise.all(examples.map(async ({path, source}) => {
+    const expanded = await includeLiveSources(markdown(source, library), {root, path, library})
+    return liveExamples(new Marked().lexer(expanded), library)
+  }))).flat()
+}
+
+function renderMarkdown(source, {path, library, highlighter, staticBuild, guideIcons, guide, capabilities, sandbox}) {
   const headingIds = new Set()
+  const tutorialStep = /^\/docs\/widgets\/tutorial\/(\d+)-[^/]+\.md$/.exec(path)?.[1]
+  const subsectionNumbers = []
+  let hasPageHeading = false
   const libraryNotes = new Map()
+  const tutorialGuideLinks = new Map()
+  let liveExampleCount = 0
   const iconRoot = staticBuild ? "/assets/docs" : "/dev-server"
   const libraryNoteLabel = ({icon, label}, id) =>
     `<span class="library-note-label"${id ? ` id="${id}"` : ""}><img src="${iconRoot}/icons/${icon}.svg" alt="" width="16" height="16">${label}</span>`
@@ -132,6 +310,10 @@ function renderMarkdown(source, {path, library, highlighter, staticBuild, guideI
     let id = slug
     for(let suffix = 1; headingIds.has(id); suffix++) id = `${slug}-${suffix}`
     headingIds.add(id)
+    if(depth === 1 && !hasPageHeading) {
+      hasPageHeading = true
+      return `<h1 id="${escapeHTML(id)}" class="docs-heading">${content}</h1>\n`
+    }
     const title = escapeHTML(nodeText(parseFragment(content)).trim())
     const label = title ? ` aria-label="${title}"` : ""
     const linkLabel = title ? `Copy link to ${title}` : "Copy link to this heading"
@@ -145,19 +327,72 @@ function renderMarkdown(source, {path, library, highlighter, staticBuild, guideI
       ? `#${guideIconId(icon)}` : url
     return `${attribute}=${quote}${escapeHTML(target)}${quote}`
   })
-  const parser = new Marked({extensions: [{
-    name: "codeSnippet",
-    renderer({label, snippet}) {
-      const caption = this.parser.parseInline(label.tokens)
-      const code = this.parser.parse([snippet])
-      return `<figure class="code-snippet"><figcaption class="code-snippet-label">${caption}</figcaption>\n${code}</figure>\n`
+  const codeSnippet = (caption, content, attribute = "") =>
+    `<figure class="code-snippet"${attribute}><figcaption class="code-snippet-label">${caption}</figcaption>\n${content}</figure>\n`
+  const parser = new Marked({extensions: [
+    {
+      name: "codeSnippet",
+      renderer({label, snippet}) {
+        const inlineLabel = path.startsWith("/docs/widgets/tutorial/") && snippet.type === "code"
+        return codeSnippet(this.parser.parseInline(label.tokens), this.parser.parse([snippet]),
+          inlineLabel ? " data-inline-label" : "")
+      },
     },
-  }], renderer: {
+    {
+      name: "liveExample",
+      renderer({title, source, html, shared, setup, registration, runtime, language, collaboration, manifest, files}) {
+        const prefix = `live-example-${++liveExampleCount}`
+        const markupTab = (kind, label, active) =>
+          `<button type="button" role="tab" id="${prefix}-${kind}-tab" data-live-code-tab="${kind}" aria-controls="${prefix}-${kind}" aria-selected="${active}"${active ? "" : ' tabindex="-1"'}>${label}</button>`
+        const markupPanel = (kind, caption, content, active) =>
+          codeSnippet(caption, content, ` data-live-${kind} id="${prefix}-${kind}"${active ? "" : " hidden"}`)
+        const splitter = (kind, label, controls) =>
+          `<div data-live-resize="${kind}" role="separator" aria-label="${label}" aria-controls="${controls}" aria-orientation="horizontal" aria-valuemin="0"></div>`
+        const widgetSource = codeSnippet("Widget source", this.parser.parse([source]), ` data-live-source data-language="${escapeHTML(language)}" id="${prefix}-widget-source"`)
+        const packageJSON = markupPanel("package", "package.json", this.parser.parse([manifest]), false)
+        const documentHTML = markupPanel("html", "Document HTML", this.parser.parse([html]), true)
+        const shadowDOM = markupPanel("shadow", "Rendered shadow DOM", '<pre><code></code></pre>\n', false)
+        const titleControl = sandbox
+          ? `<select data-live-picker aria-label="Example" name="example"><option value="default">${escapeHTML(title)}</option>${sandbox.map(({title}, index) => `<option value="${index}">${escapeHTML(title)}</option>`).join("")}</select>`
+          : `<strong data-live-title>${escapeHTML(title)}</strong>`
+        const extraCode = ({shared, setup, registration, files}) => shared.map(({specifier, path, source}) =>
+          `<code data-live-shared="${escapeHTML(specifier)}"${path ? ` data-save-path="${escapeHTML(path)}"` : ""}>${escapeHTML(source)}</code>`).join("")
+          + files.map(({path, source}) => `<code data-live-file="${escapeHTML(path)}">${escapeHTML(source)}</code>`).join("")
+          + Object.entries({setup, registration}).filter(([, block]) => block)
+            .map(([key, block]) => `<code data-live-${key}>${escapeHTML(block.text)}</code>`).join("")
+        const alternatives = sandbox?.map(({source, html, runtime, language, collaboration, manifest, ...extra}, index) =>
+          `<template data-live-option="${index}" data-library="${runtime}" data-language="${escapeHTML(language)}"${collaboration ? " data-live-collaboration" : ""}><code data-live-source>${escapeHTML(source.text)}</code><code data-live-html>${escapeHTML(html.text)}</code><template data-live-package>${this.parser.parse([manifest])}</template>${extraCode(extra)}</template>`).join("") ?? ""
+        return `<div class="live-example" role="group" aria-label="Live widget example" data-live-library="${runtime}"${collaboration ? " data-live-collaboration" : ""}>
+${shared.length || setup || registration || files.length ? `<template data-live-extra>${extraCode({shared, setup, registration, files})}</template>` : ""}
+${alternatives}
+<div class="live-example-controls" hidden>${titleControl}<div class="live-example-actions">
+<button type="button" data-live-reset>Reset</button>
+<div class="live-example-file-actions" role="group" aria-label="Widget files">
+<button type="button" data-live-upload aria-label="Load widget files from a folder" title="Load widget files from a folder" hidden><span aria-hidden="true">${uploadIcon}</span></button>
+<button type="button" data-live-save aria-label="Save widget files" title="Save widget files" hidden><span aria-hidden="true">${saveIcon}</span></button>
+</div>
+<button type="button" data-live-fullscreen aria-label="View fullscreen" title="View fullscreen" hidden><span aria-hidden="true">${maximizeIcon}${minimizeIcon}</span></button>
+</div></div>
+<p class="live-example-save-status" data-live-save-status role="status"></p>
+<div data-live-workspace>
+<div class="widget-source" id="${prefix}-source"><div class="code-snippet-label live-code-tabs" data-live-source-tabs role="tablist" aria-label="Widget files" hidden>${markupTab("widget-source", "Source", true)}${markupTab("package", "package.json", false)}</div>${widgetSource}${packageJSON}</div>
+${splitter("source", "Resize widget source", `${prefix}-source`)}
+<div class="widget-dom-example"><div class="code-snippet-label live-code-tabs" data-live-code-tabs role="tablist" aria-label="Widget markup" hidden>${markupTab("html", "HTML", true)}${markupTab("shadow", "Shadow DOM", false)}</div>${documentHTML}${shadowDOM}</div>
+${splitter("preview", "Resize widget preview", `${prefix}-preview`)}
+<figure class="code-snippet widget-preview" id="${prefix}-preview"><figcaption class="code-snippet-label"><span data-live-preview-label>Widget preview</span><span class="live-preview-mode" data-live-participants role="group" aria-label="Preview participants" hidden><button type="button" data-live-layout="single" aria-pressed="true">Single</button><button type="button" data-live-layout="shared" aria-pressed="false">Shared</button></span><span class="live-preview-mode" data-live-modes role="group" aria-label="Preview mode" hidden><button type="button" data-live-mode="editing" aria-pressed="true">Editing</button><button type="button" data-live-mode="reading" aria-pressed="false">Reading</button></span></figcaption><div data-live-preview></div><p class="live-example-status" data-live-status role="status"></p><dialog class="live-example-error" data-live-error popover="manual" aria-labelledby="${prefix}-error-title" aria-describedby="${prefix}-error-text" hidden><div class="live-example-error-header"><strong id="${prefix}-error-title">Preview error</strong><button type="button" data-live-dismiss-error>Dismiss</button></div><p id="${prefix}-error-text" tabindex="0"></p></dialog></figure>
+</div>
+</div>\n`
+      },
+    },
+  ], renderer: {
     code({text, lang}) {
-      const language = lang?.split(/\s/)[0] || "text"
+      const [language = "text", display] = lang?.trim().split(/\s+/) ?? []
       return highlighter.codeToHtml(text, {
         lang: highlighter.getLoadedLanguages().includes(language) ? language : "text",
         theme: "github-light",
+        ...(display === "prompt" ? {transformers: [{
+          pre(node) { this.addClassToHast(node, "cli-prompt") },
+        }]} : {}),
       }) + "\n"
     },
     paragraph(token) {
@@ -183,7 +418,10 @@ function renderMarkdown(source, {path, library, highlighter, staticBuild, guideI
     },
     link(token) {
       const href = libraryURL(token.href, path, library, staticBuild)
-      const html = Renderer.prototype.link.call(this, {...token, href})
+      const title = path === referenceIndex && new URL(token.href, `http://docs.local${path}`).pathname === adapterReference
+        ? adapterTitle(library) : undefined
+      const tokens = title ? [{type: "text", raw: title, text: title}] : token.tokens
+      const html = Renderer.prototype.link.call(this, {...token, href, tokens})
       return staticBuild && new URL(href, "http://docs.local").searchParams.get("download") === "1"
         ? html.replace("<a ", '<a download ') : html
     },
@@ -204,8 +442,20 @@ function renderMarkdown(source, {path, library, highlighter, staticBuild, guideI
       }
       return rewriteHTMLLinks(text, path)
     },
-    heading({text, tokens, depth}) {
-      return renderHeading(depth, text, this.parser.parseInline(tokens))
+    heading(token) {
+      const {text, tokens, depth} = token
+      let content = this.parser.parseInline(tokens)
+      if(tutorialStep && depth > 1) {
+        const level = depth - 2
+        subsectionNumbers[level] = (subsectionNumbers[level] ?? 0) + 1
+        subsectionNumbers.length = level + 1
+        content = `${Number(tutorialStep)}.${subsectionNumbers.join(".")} ${content}`
+      }
+      const heading = renderHeading(depth, text, content)
+      const guide = tutorialGuideLinks.get(token)
+      if(!guide) return heading
+      const href = escapeHTML(libraryURL(guide.href, path, library, staticBuild))
+      return `<div class="tutorial-heading">${heading}<a class="tutorial-guide-link" href="${href}">${guideIcon(guide.name, guideIcons)}<span>${escapeHTML(guide.title)}</span></a></div>\n`
     },
   }})
   // Repository Markdown is trusted; keep its authored HTML, including example iframes.
@@ -226,6 +476,26 @@ function renderMarkdown(source, {path, library, highlighter, staticBuild, guideI
     }
     return true
   })
+  // A guide link in its own paragraph directly after a tutorial heading labels that section.
+  if(path.startsWith("/docs/widgets/tutorial/")) {
+    for(let index = tokens.length - 1; index >= 0; index--) {
+      const heading = tokens[index]
+      if(heading.type !== "heading") continue
+      const linkIndex = tokens[index + 1]?.type === "space" ? index + 2 : index + 1
+      const paragraph = tokens[linkIndex]
+      if(paragraph?.type !== "paragraph" || paragraph.tokens.length !== 1 || paragraph.tokens[0].type !== "link") continue
+      const link = paragraph.tokens[0]
+      const url = new URL(link.href, `http://docs.local${path}`)
+      const name = guideName(url.pathname)
+      if(url.origin !== "http://docs.local" || !name) continue
+      const title = nodeText(parseFragment(parser.parseInline(link.text)))
+      tutorialGuideLinks.set(heading, {name, href: url.pathname + url.search + url.hash, title})
+      tokens.splice(linkIndex, 1)
+    }
+  }
+  for(const example of liveExamples(tokens, library).reverse()) {
+    tokens.splice(example.start, example.end - example.start + 1, example)
+  }
   // A standalone bold caption can label either a Markdown fence or an embedded script.
   for(let index = tokens.length - 1; index > 0; index--) {
     const snippet = tokens[index]
@@ -384,7 +654,7 @@ async function readGuideIcons(root) {
   return {markup: serializeOuter(svg), ids}
 }
 
-function renderPage({source, path, sections, library, highlighter, guideIcons, capabilities, missing = false, staticBuild = false,
+function renderPage({source, path, sections, library, highlighter, guideIcons, capabilities, sandbox, missing = false, staticBuild = false,
   siteEntryURL = "/src/site-entry.ts", documentationURL = "/dev-server/documentation.js"}) {
   const title = new Marked().lexer(source).find(token => token.type === "heading" && token.depth === 1)?.text ?? "Documentation"
   const titleSuffix = path.startsWith("/docs/widgets/") ? "Widget documentation" : "WebWriter documentation"
@@ -393,39 +663,52 @@ function renderPage({source, path, sections, library, highlighter, guideIcons, c
   const menuSections = sections.filter(section => section !== libraryPage && section !== quickStartPage)
   const introPages = [libraryPage, {path: home, title: "Widgets"}, quickStartPage].filter(Boolean)
   const pages = [...introPages, ...menuSections.flatMap(section => [section, ...section.groups.flatMap(group => group.pages)])]
-  const index = pages.findIndex(page => page.path === path)
+  const currentPath = path === litReference ? adapterReference : path
+  const index = pages.findIndex(page => page.path === currentPath)
   const section = sections.find(section => section.path.endsWith("/index.md")
     && path.startsWith(section.path.slice(0, -"index.md".length)))
   const href = value => escapeHTML(libraryURL(value, path, library, staticBuild))
+  const pageTitle = page => page.path === adapterReference ? adapterTitle(path === litReference ? "lit" : library) : page.title
   const link = (page, id) => {
-    const guide = /^\/docs\/widgets\/guides\/([a-z\d-]+)\.md$/.exec(page.path)?.[1]
-    const icon = guideIcons.ids.has(guide)
-      ? `<svg aria-hidden="true" width="16" height="16"><use href="#${guideIconId(guide)}"></use></svg>`
-      : ""
-    const current = page.path === path
-    const className = icon ? "guide-nav-link" : current && page.path.endsWith("/index.md") ? "nav-index-link" : ""
-    return `<a href="${href(page.path)}"${id ? ` id="${id}"` : ""}${className ? ` class="${className}"` : ""}${current ? ' aria-current="page"' : ""}>${icon}${escapeHTML(page.title)}</a>`
+    const icon = guideIcon(guideName(page.path), guideIcons)
+    const current = page.path === currentPath
+    const className = icon ? "guide-nav-link" : page.path === sandboxPage ? "nav-shortcut" : current && page.path.endsWith("/index.md") ? "nav-index-link" : ""
+    const target = current && path === litReference ? `${page.path}?library=lit` : page.path
+    return `<a href="${href(target)}"${id ? ` id="${id}"` : ""}${className ? ` class="${className}"` : ""}${current ? ' aria-current="page"' : ""}>${icon}${escapeHTML(pageTitle(page))}</a>`
   }
   const shortcuts = `<ul${quickStartPage ? ' class="nav-intro-row"' : ""}><li>${link({path: home, title: "Overview"})}</li>${quickStartPage ? `<li>${link(quickStartPage)}</li>` : ""}</ul>`
   let headingCount = 0
   const heading = content => `<div class="nav-heading" style="--nav-heading-index:${headingCount++}">${content}</div>`
   const menu = menuSections.map(section => {
     if(!section.path.endsWith("/index.md")) return link(section)
-    const sectionHeading = heading(link(section))
+    const isReference = section.path === referenceIndex
+    const sectionHeading = isReference ? "" : heading(link(section))
     const groups = section.groups.map(group => {
       const label = group.title ? ` aria-label="${escapeHTML(group.title)}"` : ""
       const list = `<ul${label}>${group.pages.map(page => `<li>${link(page)}</li>`).join("")}</ul>`
-      return group.title ? `<div class="nav-subsection">${heading(`<span>${escapeHTML(group.title)}</span>`)}${list}</div>` : list
+      if(!group.title) return list
+      const title = escapeHTML(group.title)
+      if(isReference) return `<p>${title}</p>${list}`
+      return `<div class="nav-subsection">${heading(`<span>${title}</span>`)}${list}</div>`
     }).join("")
+    if(isReference) {
+      return `<details class="nav-reference"><summary>${escapeHTML(section.title)}</summary><div class="nav-reference-pages"><ul><li>${link({...section, title: "Reference overview"})}</li></ul>${groups}</div></details>`
+    }
     return `<div class="nav-section">${sectionHeading}${groups}</div>`
   }).join("")
-  const adjacent = (page, direction) => page ? `<a class="${direction.toLowerCase()}" href="${href(page.path)}"><span>${direction}</span>${escapeHTML(page.title)}</a>` : "<span></span>"
+  const adjacent = (page, direction) => page ? `<a class="${direction.toLowerCase()}" href="${href(page.path)}"><span>${direction}</span>${escapeHTML(pageTitle(page))}</a>` : "<span></span>"
   const breadcrumb = section && section.path !== path
     ? `<nav class="breadcrumb" aria-label="Breadcrumb">${link(section)}</nav>` : ""
+  const iconRoot = staticBuild ? "/assets/docs" : "/dev-server"
+  const activeAdapter = path === litReference ? "lit" : library
+  const adapterNavigation = currentPath === adapterReference && !missing
+    ? `<nav class="adapter-navigation" aria-label="Widget tooling by library">${libraries
+      .map(({value, label, icon}) => `<a href="${href(`${adapterReference}?library=${value}`)}"${value === activeAdapter ? ' aria-current="page"' : ""}><img src="${iconRoot}/icons/${icon}.svg" alt="" width="16" height="16">${label}</a>`).join("")}</nav>`
+    : ""
   const introNotice = [home, quickStart, libraryPagePath, "/docs/widgets/tutorial/index.md", guideIndex, referenceIndex].includes(path)
     ? '<div class="docs-intro-note" role="note">This documentation is for developers. It is available only in English.</div>' : ""
   const guide = section?.path === guideIndex && path !== guideIndex && !missing
-  const {intro, body} = renderMarkdown(source, {path, library, highlighter, staticBuild, guideIcons, guide, capabilities})
+  const {intro, body} = renderMarkdown(source, {path, library, highlighter, staticBuild, guideIcons, guide, capabilities, sandbox})
   const guideIntro = intro
     ? `<header class="guide-intro"><div class="guide-intro-meta">${breadcrumb}${renderGuideKeywords(path, href)}</div><div class="guide-intro-content"><div class="guide-intro-text">${intro.title}${intro.text}</div>${intro.illustration}</div></header>` : ""
   return `<!doctype html>
@@ -457,7 +740,7 @@ function renderPage({source, path, sections, library, highlighter, guideIcons, c
     ${guideIcons.markup}
     <a class="skip-link" href="#content">Skip to content</a>
     ${renderSiteHeader("/docs/")}
-    <div class="docs-layout site-content">
+    <div class="docs-layout site-content" tabindex="0" role="region" aria-label="Documentation content">
       <aside>
         <nav aria-label="Documentation">
           <div class="documentation-controls">
@@ -474,9 +757,9 @@ function renderPage({source, path, sections, library, highlighter, guideIcons, c
           <div class="documentation-sections" style="--nav-heading-count:${headingCount}">${menu}</div>
         </nav>
       </aside>
-      <div class="page" tabindex="0" role="region" aria-label="Documentation content">
+      <div class="page">
         <details class="mobile-navigation"><summary>Browse documentation</summary><nav aria-label="Mobile documentation">${menu}</nav></details>
-        ${intro ? "" : breadcrumb}
+        ${adapterNavigation ? `<div class="adapter-page-meta">${breadcrumb}${adapterNavigation}</div>` : intro ? "" : breadcrumb}
         <main id="content" tabindex="-1">${introNotice}<article${guide ? ' class="widget-guide"' : ""}>${guideIntro}${body}</article></main>
         ${!missing && index !== -1 ? `<nav class="page-navigation" aria-label="Page navigation">${adjacent(pages[index - 1], "Previous")}${adjacent(pages[index + 1], "Next")}</nav>` : ""}
         ${renderSiteFooter()}
@@ -508,27 +791,28 @@ export function documentationPlugin() {
       // Preload dynamically selected tutorial imports so first navigation does
       // not replace Vite's dependency cache while a preview is loading.
       return {optimizeDeps: {include: [
+        "@codemirror/commands", "@codemirror/lang-html", "@codemirror/lang-javascript", "@codemirror/language", "@codemirror/view",
         "react", "react/jsx-runtime", "react/jsx-dev-runtime", "react-dom/client", "vue/dist/vue.runtime.esm-browser.js",
         "@angular/compiler", "@angular/core", "@angular/elements", "@angular/platform-browser",
         "svelte", "svelte/internal/client", "svelte/internal/disclose-version", "svelte/internal/flags/legacy",
-      ]}}
+      ], exclude: ["@vue/compiler-sfc/dist/compiler-sfc.esm-browser.js"]}}
     },
     async load(id) {
       // Compile tutorial sources only; document widgets arrive as browser-ready scripts.
       const file = id.split("?")[0]
       if(/[?&](?:raw|url)(?:[=&]|$)/.test(id)) return
-      if(file.endsWith(".vue") && file.includes("/docs/widgets/examples/vue/")) {
+      if(file.endsWith(".vue") && /\/docs\/widgets\/examples\/(?:disco\/)?vue\//.test(file)) {
         const {compileVue} = await import("../docs/widgets/examples/vue/compile.mjs")
         return {code: compileVue(await readFile(file, "utf8"), file), map: null}
       }
-      if(file.endsWith(".ts") && file.includes("/docs/widgets/examples/angular/")) {
+      if(file.endsWith(".ts") && /\/docs\/widgets\/examples\/(?:disco\/)?angular\//.test(file)) {
         const {transform} = await import("esbuild-wasm")
         return transform(await readFile(file, "utf8"), {
           loader: "ts", sourcefile: file, format: "esm", target: "es2022",
           tsconfigRaw: {compilerOptions: {experimentalDecorators: true, useDefineForClassFields: false}},
         })
       }
-      if(!file.endsWith(".svelte") || !file.includes("/docs/widgets/examples/svelte/")) return
+      if(!file.endsWith(".svelte") || !/\/docs\/widgets\/examples\/(?:disco\/)?svelte\//.test(file)) return
       const {compile} = await import("svelte/compiler")
       const result = compile(await readFile(file, "utf8"), {filename: file, generate: "client", customElement: true, dev: true})
       return {code: result.js.code, map: result.js.map}
@@ -585,15 +869,19 @@ export function documentationPlugin() {
         }
         try {
           let source, missing = false
-          try { source = markdown(await readFile(file, "utf8"), library) }
+          try { source = await documentationSource(root, path, library) }
           catch(error) {
             if(error.code !== "ENOENT" && error.code !== "EISDIR") throw error
             source = "# Page not found\n\nChoose a page from the navigation or return to the [widget documentation](/docs/)."
             missing = true
           }
-          const [codeHighlighter, docsNav, guideIcons] = await Promise.all([highlighter(), navigation(root, [home, guideIndex].includes(path)), readGuideIcons(root)])
+          const [codeHighlighter, docsNav, guideIcons, catalog] = await Promise.all([
+            highlighter(), navigation(root, [home, guideIndex].includes(path)), readGuideIcons(root), path === sandboxPage && sandboxExamples(root),
+          ])
+          source = await includeLiveExamples(source, {root, path, library})
           source = await embedExamples(source, {root, path, library, highlighter: codeHighlighter})
-          const html = renderPage({source, path, ...docsNav, library, highlighter: codeHighlighter, guideIcons, missing})
+          const html = renderPage({source, path, ...docsNav, library, highlighter: codeHighlighter, guideIcons, missing,
+            sandbox: catalog ? await catalog(library) : undefined})
           const body = await server.transformIndexHtml(url.pathname, html)
           response.writeHead(missing ? 404 : 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"})
           response.end(request.method === "HEAD" ? undefined : body)
@@ -613,14 +901,16 @@ export function documentationPlugin() {
       const [files, docsNav, codeHighlighter, guideIcons] = await Promise.all([
         filesIn(resolve(root, "docs")), navigation(root, true), highlighter(), readGuideIcons(root),
       ])
+      const catalog = await sandboxExamples(root, files)
       const emit = (fileName, source) => this.emitFile({type: "asset", fileName, source})
       for(const file of [...files.filter(file => file.endsWith(".md")), resolve(root, "README.md"), resolve(root, "packages.md")]) {
         const path = `/${relative(root, file)}`
         const content = await readFile(file, "utf8")
         for(const {value: library} of libraries) {
-          const source = await embedExamples(markdown(content, library), {root, path, library, highlighter: codeHighlighter})
+          const expanded = await includeLiveExamples(await documentationSource(root, path, library, content), {root, path, library})
+          const source = await embedExamples(expanded, {root, path, library, highlighter: codeHighlighter})
           const html = renderPage({source, path, ...docsNav, library, highlighter: codeHighlighter, guideIcons, staticBuild: true,
-            siteEntryURL, documentationURL})
+            siteEntryURL, documentationURL, sandbox: path === sandboxPage ? await catalog(library) : undefined})
           const output = new URL(libraryURL(path, path, library, true), "http://docs.local").pathname.slice(1)
           emit(output, html)
           if(path === home) emit(`docs/index${library === "lit" ? "" : `.${library}`}.html`, html)

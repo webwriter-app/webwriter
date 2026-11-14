@@ -1,20 +1,655 @@
-# Widgets
+# Overview: Widgets
 
 Widgets add interactive content to a web document. They are [Web Components](https://developer.mozilla.org/en-US/docs/Web/API/Web_components). An [npm package](https://docs.npmjs.com/about-packages-and-modules/) can contain one or more widgets.
 
-The [Library](introduction/library.md) page describes the six choices in the library selector. The widget interface, document HTML, and CSS use the same web standards for all six choices. The [Quick start](introduction/quick-start.md) shows how to add a widget to a document. The [Tutorial](tutorial/index.md) shows how to make a complete widget. Both include source code and a live preview for each library. The [Guides](guides/index.md) give instructions for specific widget features. The [Reference](reference/index.md) describes the package interface, runtime interface, and tools.
+This documentation has multiple sections: The [Library](introduction/library.md) page describes the six choices in the library selector. The [Quick start](introduction/quick-start.md) shows how to add a widget to a document. The [Tutorial](tutorial/index.md) shows how to make a complete widget. Both include source code and a live preview for each library. The [Guides](guides/index.md) give instructions for specific widget features. The [Reference](reference/index.md) describes the package interface, runtime interface, and tools. The [Sandbox](sandbox.md) lets you edit and run a basic widget.
 
 ## What is a widget?
 
 A widget is an HTML [custom element](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements). Its class can extend [`HTMLElement`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement) directly or use a base class from a library such as [Lit](https://lit.dev/docs/components/defining/). A widget can use the web APIs that the browser supplies.
 
+<!-- live-example: Weather -->
+
+```js vanilla
+class WeatherWidget extends HTMLElement {
+  static observedAttributes = ["contenteditable", "fixed"]
+  static forecasts = {
+    Utrecht: "12 °C · Cloudy",
+    Amsterdam: "11 °C · Rainy",
+    Rotterdam: "13 °C · Windy",
+  }
+
+  constructor() {
+    super()
+    const root = this.attachShadow({mode: "open"})
+    const style = document.createElement("style")
+    style.textContent = `
+      :host { display: block; }
+      .forecast {
+        user-select: none;
+        display: grid;
+        gap: .35rem;
+        padding: .65rem;
+        border: 1px solid #b8d4df;
+        border-radius: .5rem;
+        background: #f2f9fc;
+      }
+      .heading, .report {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .35rem;
+      }
+      slot { font-weight: bold; }
+      p { margin: 0; }
+      label, button { font-size: .8125rem; }
+    `
+    const panel = document.createElement("div")
+    panel.className = "forecast"
+    const heading = document.createElement("div")
+    heading.className = "heading"
+    this.fixedLabel = document.createElement("label")
+    this.fixedLabel.hidden = true
+    this.fixedInput = document.createElement("input")
+    this.fixedInput.type = "checkbox"
+    this.fixedInput.addEventListener("change", () => {
+      this.toggleAttribute("fixed", this.fixedInput.checked)
+    })
+    this.fixedLabel.append(this.fixedInput, "Fixed")
+    heading.append(document.createElement("slot"), this.fixedLabel)
+
+    const report = document.createElement("div")
+    report.className = "report"
+    this.forecast = document.createElement("p")
+    this.nextCity = document.createElement("button")
+    this.nextCity.type = "button"
+    this.nextCity.textContent = "Next city"
+    this.nextCity.addEventListener("click", () => {
+      const cities = Object.keys(WeatherWidget.forecasts)
+      const data = this.readData()
+      const current = cities.indexOf(data.place || "Utrecht")
+      this.writeData({...data, place: cities[(current + 1) % cities.length]})
+    })
+    report.append(this.forecast, this.nextCity)
+    panel.append(heading, report)
+    root.append(style, panel)
+    this.dataObserver = new MutationObserver(() => this.updateForecast())
+  }
+
+  connectedCallback() {
+    this.dataObserver.observe(this, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributeFilter: ["type", "slot"],
+    })
+    this.fixedLabel.hidden = !this.isContentEditable
+    this.updateForecast()
+  }
+
+  disconnectedCallback() {
+    this.dataObserver.disconnect()
+  }
+
+  attributeChangedCallback() {
+    this.fixedLabel.hidden = !this.isContentEditable
+    this.fixedInput.checked = this.hasAttribute("fixed")
+    this.nextCity.disabled = this.fixedInput.checked
+  }
+
+  get dataElement() {
+    return this.querySelector(':scope > script[type="application/json"][slot="data"]')
+  }
+
+  readData() {
+    try {
+      const data = JSON.parse(this.dataElement?.textContent ?? "null")
+      return data && typeof data === "object" && !Array.isArray(data) ? data : {}
+    } catch {
+      return {}
+    }
+  }
+
+  writeData(data) {
+    const json = JSON.stringify(data).replaceAll("<", "\\u003c")
+    const existing = this.dataElement
+    if(existing) {
+      existing.textContent = json
+      return
+    }
+    const script = document.createElement("script")
+    script.type = "application/json"
+    script.slot = "data"
+    script.textContent = json
+    this.append(script)
+  }
+
+  updateForecast() {
+    const value = this.readData().place
+    const place = typeof value === "string" && value ? value : "Utrecht"
+    const forecast = Object.hasOwn(WeatherWidget.forecasts, place)
+      ? WeatherWidget.forecasts[place]
+      : "No sample forecast"
+    this.forecast.textContent = `${place} · ${forecast}`
+  }
+}
+
+customElements.define("ww-weather", WeatherWidget)
+```
+
+```js shared #weather-example weather-data.js
+const selector = ':scope > script[type="application/json"][slot="data"]'
+
+export function readWeatherData(host) {
+  try {
+    const data = JSON.parse(host.querySelector(selector)?.textContent ?? "null")
+    return data && typeof data === "object" && !Array.isArray(data) ? data : {}
+  } catch {
+    return {}
+  }
+}
+
+export function writeWeatherData(host, data) {
+  let block = host.querySelector(selector)
+  if(!block) {
+    block = document.createElement("script")
+    block.type = "application/json"
+    block.slot = "data"
+    host.append(block)
+  }
+  const json = JSON.stringify(data).replaceAll("<", "\\u003c")
+  block.textContent = json
+}
+
+export function observeWeather(host, update) {
+  const observer = new MutationObserver(update)
+  observer.observe(host, {
+    subtree: true,
+    childList: true,
+    characterData: true,
+    attributeFilter: ["contenteditable", "fixed", "slot", "type"],
+  })
+  return () => observer.disconnect()
+}
+
+export const weatherStyles = `
+:host { display: block; }
+.forecast {
+  user-select: none;
+  display: grid;
+  gap: .35rem;
+  padding: .65rem;
+  border: 1px solid #b8d4df;
+  border-radius: .5rem;
+  background: #f2f9fc;
+}
+.heading, .report {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem;
+}
+slot { font-weight: bold; }
+p { margin: 0; }
+label, button { font-size: .8125rem; }
+`
+```
+
+```js lit
+import {LitElement, css, html} from "lit"
+
+class WeatherWidget extends LitElement {
+  static styles = css`
+    :host { display: block; }
+    .forecast {
+      user-select: none;
+      display: grid;
+      gap: .35rem;
+      padding: .65rem;
+      border: 1px solid #b8d4df;
+      border-radius: .5rem;
+      background: #f2f9fc;
+    }
+    .heading, .report {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: .35rem;
+    }
+    slot { font-weight: bold; }
+    p { margin: 0; }
+    label, button { font-size: .8125rem; }
+  `
+
+  static forecasts = {
+    Utrecht: "12 °C · Cloudy",
+    Amsterdam: "11 °C · Rainy",
+    Rotterdam: "13 °C · Windy",
+  }
+
+  dataObserver = new MutationObserver(() => this.requestUpdate())
+
+  connectedCallback() {
+    super.connectedCallback()
+    this.dataObserver.observe(this, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributeFilter: ["contenteditable", "fixed", "slot", "type"],
+    })
+    this.requestUpdate()
+  }
+
+  disconnectedCallback() {
+    this.dataObserver.disconnect()
+    super.disconnectedCallback()
+  }
+
+  get dataElement() {
+    return this.querySelector(':scope > script[type="application/json"][slot="data"]')
+  }
+
+  readData() {
+    try {
+      const data = JSON.parse(this.dataElement?.textContent ?? "null")
+      return data && typeof data === "object" && !Array.isArray(data) ? data : {}
+    } catch {
+      return {}
+    }
+  }
+
+  writeData(data) {
+    const existing = this.dataElement
+    const script = existing ?? document.createElement("script")
+    const json = JSON.stringify(data).replaceAll("<", "\\u003c")
+    script.textContent = json
+    if(!existing) {
+      script.type = "application/json"
+      script.slot = "data"
+      this.append(script)
+    }
+  }
+
+  nextCity() {
+    const data = this.readData()
+    const cities = Object.keys(WeatherWidget.forecasts)
+    const current = cities.indexOf(data.place || "Utrecht")
+    this.writeData({...data, place: cities[(current + 1) % cities.length]})
+  }
+
+  render() {
+    const {place: value} = this.readData()
+    const place = typeof value === "string" && value ? value : "Utrecht"
+    const forecasts = WeatherWidget.forecasts
+    const forecast = Object.hasOwn(forecasts, place) ? forecasts[place] : "No sample forecast"
+    const fixed = this.hasAttribute("fixed")
+
+    return html`
+      <div class="forecast">
+        <div class="heading">
+          <slot></slot>
+          <label ?hidden=${!this.isContentEditable}>
+            <input
+              type="checkbox"
+              .checked=${fixed}
+              @change=${event => this.toggleAttribute("fixed", event.target.checked)}
+            >
+            Fixed
+          </label>
+        </div>
+        <div class="report">
+          <p>${place} · ${forecast}</p>
+          <button type="button" ?disabled=${fixed} @click=${this.nextCity}>Next city</button>
+        </div>
+      </div>
+    `
+  }
+}
+
+customElements.define("ww-weather", WeatherWidget)
+```
+
+```js react
+import {createElement as h} from "react"
+import {flushSync} from "react-dom"
+import {createRoot} from "react-dom/client"
+import {
+  observeWeather, readWeatherData, writeWeatherData, weatherStyles,
+} from "#weather-example"
+
+function Forecast({place, forecast, editing, fixed, fixedInput, nextCity}) {
+  return h("div", {className: "forecast"},
+    h("div", {className: "heading"},
+      h("slot"),
+      h("label", {hidden: !editing},
+        h("input", {
+          type: "checkbox",
+          defaultChecked: fixed,
+          ref: fixedInput,
+        }),
+        "Fixed",
+      ),
+    ),
+    h("div", {className: "report"},
+      h("p", null, `${place} · ${forecast}`),
+      h("button", {type: "button", disabled: fixed, onClick: nextCity}, "Next city"),
+    ),
+  )
+}
+
+class WeatherWidget extends HTMLElement {
+  static forecasts = {
+    Utrecht: "12 °C · Cloudy",
+    Amsterdam: "11 °C · Rainy",
+    Rotterdam: "13 °C · Windy",
+  }
+
+  constructor() {
+    super()
+    const shadow = this.attachShadow({mode: "open"})
+    const style = document.createElement("style")
+    style.textContent = weatherStyles
+    this.mount = document.createElement("div")
+    shadow.append(style, this.mount)
+  }
+
+  connectedCallback() {
+    this.root = createRoot(this.mount)
+    this.stopObserving = observeWeather(this, () => this.render())
+    flushSync(() => this.render())
+  }
+
+  disconnectedCallback() {
+    this.stopObserving()
+    this.root.unmount()
+  }
+
+  nextCity() {
+    const data = readWeatherData(this)
+    const cities = Object.keys(WeatherWidget.forecasts)
+    const current = cities.indexOf(data.place || "Utrecht")
+    writeWeatherData(this, {...data, place: cities[(current + 1) % cities.length]})
+  }
+
+  render() {
+    const {place: value} = readWeatherData(this)
+    const place = typeof value === "string" && value ? value : "Utrecht"
+    const forecasts = WeatherWidget.forecasts
+    const forecast = Object.hasOwn(forecasts, place) ? forecasts[place] : "No sample forecast"
+
+    this.root.render(h(Forecast, {
+      place,
+      forecast,
+      editing: this.isContentEditable,
+      fixed: this.hasAttribute("fixed"),
+      fixedInput: input => {
+        if(!input) return
+        input.checked = this.hasAttribute("fixed")
+        input.onchange = () => this.toggleAttribute("fixed", input.checked)
+      },
+      nextCity: () => this.nextCity(),
+    }))
+  }
+}
+
+customElements.define("ww-weather", WeatherWidget)
+```
+
+```vue vue
+<script setup>
+import {computed, onMounted, onBeforeUnmount, ref, useHost} from "vue"
+import {readWeatherData, writeWeatherData, observeWeather, weatherStyles} from "#weather-example"
+
+const host = useHost()
+const forecasts = {
+  Utrecht: "12 °C · Cloudy",
+  Amsterdam: "11 °C · Rainy",
+  Rotterdam: "13 °C · Windy",
+}
+const cities = Object.keys(forecasts)
+const data = ref(readWeatherData(host))
+const fixed = ref(host.hasAttribute("fixed"))
+const editing = ref(host.isContentEditable)
+const place = computed(() => data.value.place || "Utrecht")
+const forecast = computed(() => Object.hasOwn(forecasts, place.value) ? forecasts[place.value] : "No sample forecast")
+
+let stopObserving
+let styleElement
+onMounted(() => {
+  styleElement = document.createElement("style")
+  styleElement.textContent = weatherStyles
+  host.shadowRoot.append(styleElement)
+  stopObserving = observeWeather(host, () => {
+    data.value = readWeatherData(host)
+    fixed.value = host.hasAttribute("fixed")
+    editing.value = host.isContentEditable
+  })
+})
+onBeforeUnmount(() => {
+  stopObserving?.()
+  styleElement?.remove()
+})
+
+function nextCity() {
+  if(fixed.value) return
+  const index = cities.indexOf(place.value)
+  writeWeatherData(host, {...readWeatherData(host), place: cities[(index + 1) % cities.length]})
+}
+</script>
+
+<template>
+  <section class="forecast">
+    <div class="heading">
+      <slot></slot>
+      <label v-if="editing"><input type="checkbox" :checked="fixed" @change="host.toggleAttribute('fixed', $event.target.checked); fixed = $event.target.checked"> Fixed</label>
+    </div>
+    <div class="report">
+      <p>{{ place }} · {{ forecast }}</p>
+      <button type="button" :disabled="fixed" @click="nextCity">Next city</button>
+    </div>
+  </section>
+</template>
+```
+
+```js vue-registration
+import {defineCustomElement} from "vue"
+import WeatherWidget from "./WeatherWidget.vue"
+
+customElements.define("ww-weather", defineCustomElement(WeatherWidget))
+```
+
+```js angular
+import "@angular/compiler"
+import {
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  inject,
+  ViewEncapsulation,
+} from "@angular/core"
+import {createApplication} from "@angular/platform-browser"
+import {createCustomElement} from "@angular/elements"
+import {
+  observeWeather,
+  readWeatherData,
+  weatherStyles,
+  writeWeatherData,
+} from "#weather-example"
+
+class WwWeather {
+  static forecasts = {
+    Utrecht: "12 °C · Cloudy",
+    Amsterdam: "11 °C · Rainy",
+    Rotterdam: "13 °C · Windy",
+  }
+
+  host = inject(ElementRef).nativeElement
+  changeDetector = inject(ChangeDetectorRef)
+  report = ""
+  stopObserving
+
+  ngOnInit() {
+    this.stopObserving = observeWeather(this.host, () => {
+      this.updateReport()
+      this.changeDetector.detectChanges()
+    })
+    this.updateReport()
+  }
+
+  ngOnDestroy() {
+    this.stopObserving?.()
+  }
+
+  setFixed(event) {
+    const checkbox = event.currentTarget
+    this.host.toggleAttribute("fixed", checkbox.checked)
+  }
+
+  nextCity() {
+    const cities = Object.keys(WwWeather.forecasts)
+    const data = readWeatherData(this.host)
+    const current = cities.indexOf(data.place || "Utrecht")
+    writeWeatherData(this.host, {
+      ...data,
+      place: cities[(current + 1) % cities.length],
+    })
+    this.updateReport()
+  }
+
+  updateReport() {
+    const data = readWeatherData(this.host)
+    const value = data.place
+    const place = typeof value === "string" && value ? value : "Utrecht"
+    const forecast = Object.hasOwn(WwWeather.forecasts, place)
+      ? WwWeather.forecasts[place]
+      : "No sample forecast"
+    this.report = `${place} · ${forecast}`
+  }
+}
+
+Component({
+  selector: "ww-weather-view",
+  standalone: true,
+  template: `
+    <div class="forecast">
+      <div class="heading">
+        <slot></slot>
+        <label [hidden]="!host.isContentEditable">
+          <input
+            type="checkbox"
+            [checked]="host.hasAttribute('fixed')"
+            (change)="setFixed($event)"
+          >
+          Fixed
+        </label>
+      </div>
+      <div class="report">
+        <p aria-live="polite">{{ report }}</p>
+        <button type="button" [disabled]="host.hasAttribute('fixed')" (click)="nextCity()">
+          Next city
+        </button>
+      </div>
+    </div>
+  `,
+  styles: [weatherStyles],
+  encapsulation: ViewEncapsulation.ShadowDom,
+})(WwWeather)
+
+async function register() {
+  if(customElements.get("ww-weather")) return
+
+  const app = await createApplication()
+  const AngularWeatherElement = createCustomElement(WwWeather, {
+    injector: app.injector,
+  })
+
+  class WwWeatherElement extends AngularWeatherElement {
+    connectedCallback() {
+      const version = this.getAttribute("ng-version")
+      super.connectedCallback()
+      // Keep Angular's runtime stamp out of the authored HTML.
+      if(version === null) this.removeAttribute("ng-version")
+      else this.setAttribute("ng-version", version)
+    }
+  }
+
+  customElements.define("ww-weather", WwWeatherElement)
+}
+
+await register()
+```
+
+```svelte svelte
+<svelte:options customElement={{tag: "ww-weather"}} />
+
+<script>
+  import {onMount} from "svelte"
+  import {readWeatherData, writeWeatherData, observeWeather, weatherStyles} from "#weather-example"
+
+  const host = $host()
+  const forecasts = {
+    Utrecht: "12 °C · Cloudy",
+    Amsterdam: "11 °C · Rainy",
+    Rotterdam: "13 °C · Windy",
+  }
+  const cities = Object.keys(forecasts)
+  let data = $state(readWeatherData(host))
+  let fixed = $state(host.hasAttribute("fixed"))
+  let editing = $state(host.isContentEditable)
+  let place = $derived(data.place || "Utrecht")
+  let forecast = $derived(Object.hasOwn(forecasts, place) ? forecasts[place] : "No sample forecast")
+
+  onMount(() => {
+    const style = document.createElement("style")
+    style.textContent = weatherStyles
+    host.shadowRoot.append(style)
+    const stopObserving = observeWeather(host, () => {
+      data = readWeatherData(host)
+      fixed = host.hasAttribute("fixed")
+      editing = host.isContentEditable
+    })
+    return () => {
+      stopObserving()
+      style.remove()
+    }
+  })
+
+  function nextCity() {
+    if(fixed) return
+    const index = cities.indexOf(place)
+    writeWeatherData(host, {...readWeatherData(host), place: cities[(index + 1) % cities.length]})
+  }
+
+  function setFixed(event) {
+    host.toggleAttribute("fixed", event.currentTarget.checked)
+    fixed = event.currentTarget.checked
+  }
+</script>
+
+<section class="forecast">
+  <div class="heading">
+    <slot></slot>
+    {#if editing}
+      <label><input type="checkbox" checked={fixed} onchange={setFixed} /> Fixed</label>
+    {/if}
+  </div>
+  <div class="report">
+    <p>{place} · {forecast}</p>
+    <button type="button" disabled={fixed} onclick={nextCity}>Next city</button>
+  </div>
+</section>
+```
+
 ```html
-<ww-weather place="Utrecht">
+<ww-weather>
   <p>Schoolyard forecast</p>
+  <script type="application/json" slot="data">{"place":"Utrecht"}</script>
 </ww-weather>
 ```
 
-The tag name identifies the widget. [Attributes](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes) can store settings. Child nodes can hold content from the author. The widget can use a [shadow DOM](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_shadow_DOM) for its user interface.
+<!-- /live-example -->
+
+The tag name identifies the widget. A [JSON data block](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script#embedding_data_in_html) stores the city in `place`. Click **Next city** in the preview to change the forecast and update `place` in the Document HTML pane. In editing mode, select **Fixed** to set the `fixed` [attribute](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes) and keep the current city. The widget uses a [shadow DOM](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_shadow_DOM) for its user interface. The [slot](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/slot) displays the authored paragraph.
 
 A widget package can also include HTML snippets, style sheets, and tests. The authoring tool uses the package to find and load the widgets.
 

@@ -10,7 +10,7 @@ const widgetDocs = resolve("docs/widgets")
 const overview = readFileSync(resolve(widgetDocs, "index.md"), "utf8")
 
 function guideMap() {
-  document.body.innerHTML = overview.match(/<nav class="widget-capabilities"[\s\S]*?<\/nav>/)![0]
+  document.body.innerHTML = `<div class="docs-layout">${overview.match(/<nav class="widget-capabilities"[\s\S]*?<\/nav>/)![0]}</div>`
   return document.querySelector<HTMLElement>(".widget-capabilities")!
 }
 
@@ -200,7 +200,8 @@ it("previews guides on hover and focus and dismisses them without moving focus",
   const map = guideMap()
   const content = map.querySelector<HTMLAnchorElement>('a[href="guides/content.md"]')!
   const editing = map.querySelector<HTMLAnchorElement>('a[href="guides/editing.md"]')!
-  vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 240, 160, 40))
+  let contentBounds = new DOMRect(20, 240, 160, 40)
+  vi.spyOn(content, "getBoundingClientRect").mockImplementation(() => contentBounds)
   vi.spyOn(editing, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 80, 160, 40))
   content.querySelector("template")!.content.appendChild(Object.assign(document.createElement("ul"), {
     className: "details-keywords guide-keywords", innerHTML: '<li><span class="details-keyword">Has content</span></li>',
@@ -209,7 +210,9 @@ it("previews guides on hover and focus and dismisses them without moving focus",
     'Use a <code>slot</code> to display authored content. Authors can edit that content in place.'
   const preview = map.querySelector<HTMLElement>(".widget-capabilities-preview")!
   vi.spyOn(preview, "getBoundingClientRect").mockImplementation(() =>
-    new DOMRect(0, 0, 336, Math.min(320, parseFloat(preview.style.maxBlockSize))))
+    new DOMRect(0, 0, 336, preview.style.maxBlockSize
+      ? Math.min(320, parseFloat(preview.style.maxBlockSize))
+      : 320))
   Object.defineProperty(preview, "showPopover", {value: undefined})
   await import("./documentation.js")
 
@@ -239,4 +242,25 @@ it("previews guides on hover and focus and dismisses them without moving focus",
   document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape"}))
   expect(preview.hidden).toBe(true)
   expect(document.activeElement).toBe(editing)
+
+  content.style.setProperty("--guide-preview-side", "left")
+  contentBounds = new DOMRect(400, 240, 160, 40)
+  content.dispatchEvent(new PointerEvent("pointermove", {pointerType: "mouse"}))
+  expect(preview.style.left).toBe("64px")
+  expect(preview.style.top).toBe("240px")
+  expect(preview.style.maxBlockSize).toBe("")
+  document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape"}))
+
+  content.style.setProperty("--guide-preview-side", "right")
+  contentBounds = new DOMRect(490, 240, 160, 40)
+  content.dispatchEvent(new PointerEvent("pointerleave"))
+  content.dispatchEvent(new PointerEvent("pointermove", {pointerType: "mouse"}))
+  expect(preview.style.left).toBe("650px")
+  expect(preview.style.top).toBe("240px")
+
+  contentBounds = new DOMRect(700, 240, 160, 40)
+  window.dispatchEvent(new Event("resize"))
+  expect(preview.style.left).toBe("656px")
+  expect(preview.style.top).toBe("8px")
+  expect(preview.style.maxBlockSize).toBe("232px")
 })

@@ -98,6 +98,49 @@ async function get(base, path, method = "GET") {
   return {status: response.status, headers: response.headers, body: await response.text()}
 }
 
+function adapterReferenceFixture() {
+  const docs = join(directory, "docs/widgets")
+  const reference = join(docs, "reference")
+  mkdirSync(reference)
+  writeFileSync(join(docs, "index.md"), "# Widgets\n\n- [Reference](reference/index.md)\n")
+  writeFileSync(join(reference, "index.md"), "# Reference\n\n## C. Tooling\n\n- [C1. Build](build-test.md)\n- [C2. Widget adapters](adapters.md)\n")
+  writeFileSync(join(reference, "build-test.md"), "# C1. Build\n")
+  writeFileSync(join(reference, "adapters.md"), [
+    "<!-- library:vanilla -->", "# C2. @webwriter/widget", "<!-- /library -->", "",
+    "<!-- library:react -->", "# C2. @webwriter/react", "", "React tooling.", "<!-- /library -->", "",
+    "<!-- library:angular -->", "# C2. @webwriter/angular", "<!-- /library -->", "",
+  ].join("\n"))
+  writeFileSync(join(reference, "lit.md"), "# C2. @webwriter/lit\n\n## Standalone widget drawer\n")
+}
+
+it("shows one C2 reference for the selected library and keeps Lit deep links", async () => {
+  const {base} = await fixture()
+  adapterReferenceFixture()
+  const reference = "/docs/widgets/reference/"
+  const react = await get(base, `${reference}adapters.md?library=react`)
+  expect(react.status).toBe(200)
+  expect(react.body).toContain('class="docs-heading">C2. @webwriter/react</h1>')
+  expect(react.body).toContain('<p>React tooling.</p>')
+  expect(react.body).not.toContain('class="library-note"')
+  const meta = react.body.match(/<div class="adapter-page-meta">(.*?)<\/div>/)?.[1]
+  expect(meta).toContain('<nav class="breadcrumb"')
+  expect(meta).toContain('<nav class="adapter-navigation" aria-label="Widget tooling by library">')
+  expect(meta).toContain(`href="${reference}adapters.md?library=angular"><img src="/dev-server/icons/angular.svg" alt="" width="16" height="16">Angular</a>`)
+  expect(meta).toContain('library=react" aria-current="page"><img')
+  expect([...meta.matchAll(/adapters\.md\?library=(\w+)/g)].map(match => match[1])).toEqual([
+    "vanilla", "lit", "react", "vue", "angular", "svelte",
+  ])
+  const index = await get(base, `${reference}index.md?library=angular`)
+  expect(index.body).toContain(`<a href="${reference}adapters.md?library=angular">C2. @webwriter/angular</a>`)
+  const vanilla = await get(base, `${reference}adapters.md?library=vanilla`)
+  expect(vanilla.body).toContain('class="docs-heading">C2. @webwriter/widget</h1>')
+  const lit = await get(base, `${reference}adapters.md?library=lit`)
+  expect(lit.body).toContain('id="standalone-widget-drawer"')
+  const legacy = await get(base, `${reference}lit.md?library=react`)
+  expect(legacy.body).toContain('id="standalone-widget-drawer"')
+  expect(legacy.body).toContain(`href="${reference}adapters.md?library=lit" aria-current="page">C2. @webwriter/lit</a>`)
+})
+
 it("embeds the selected library's complete script in a highlighted disclosure", async () => {
   const {base} = await fixture()
   for(const library of ["vanilla", "lit", "react", "vue", "angular", "svelte"]) {
@@ -143,6 +186,7 @@ it("renders linked sections, adjacent page navigation, frontmatter, headings, an
   expect(pageNavigation).toBeDefined()
   expect(pageNavigation).toContain('<a class="previous" href="/docs/widgets/basics/index.md?library=lit">')
   expect(pageNavigation).toContain('<a class="next" href="/docs/widgets/basics/second.md?library=lit">')
+  expect(response.body).toContain('<h1 id="first-page" class="docs-heading">First page</h1>')
   expect(response.body).toContain('<h2 id="a-heading" class="docs-heading" aria-label="A heading!">')
   expect(response.body).toContain('<a class="docs-heading-link" href="#a-heading" aria-label="Copy link to A heading!">#</a>A heading!</h2>')
   expect(response.body).not.toContain("draft: true")
@@ -162,8 +206,7 @@ it("renders linked sections, adjacent page navigation, frontmatter, headings, an
   expect(response.body).not.toContain('class="docs-toolbar"')
   expect(response.body.match(/<select\b/g)).toHaveLength(1)
   expect(response.body).toContain('<body class="site-layout">')
-  expect(response.body).toContain('<div class="docs-layout site-content">')
-  expect(response.body).toContain('<div class="page" tabindex="0" role="region" aria-label="Documentation content">')
+  expect(response.body).toContain('<div class="docs-layout site-content" tabindex="0" role="region" aria-label="Documentation content">')
   expect(response.body).toContain('href="/src/site-header.css"')
   expect(response.body).toContain(renderSiteFooter())
   expect(transformIndexHtml).toHaveBeenCalledOnce()
@@ -288,7 +331,8 @@ it("nests reference pages under named sections and follows their order for adjac
   const docs = join(directory, "docs/widgets")
   const reference = join(docs, "reference")
   mkdirSync(reference)
-  writeFileSync(join(docs, "index.md"), "# Widgets\n\n- [Reference](reference/index.md)\n")
+  writeFileSync(join(docs, "index.md"), "# Widgets\n\n- [Reference](reference/index.md)\n- [Sandbox](sandbox.md)\n")
+  writeFileSync(join(docs, "sandbox.md"), "# Sandbox\n")
   const groups = [
     ["A. Package interface", "distribution", "Distribution"],
     ["B. Class interface", "runtime", "Runtime interface"],
@@ -303,12 +347,18 @@ it("nests reference pages under named sections and follows their order for adjac
   const menus = [...body.matchAll(/<nav aria-label="(?:Documentation|Mobile documentation)">([\s\S]*?)<\/nav>/g)]
   expect(menus).toHaveLength(2)
   for(const [, menu] of menus) {
-    expect([...menu.matchAll(/<div class="nav-subsection"><div class="nav-heading"[^>]*><span>([^<]+)<\/span><\/div><ul aria-label="([^"]+)"><li><a href="([^"]+)"/g)]
+    const disclosure = menu.match(/<details class="nav-reference"><summary>Reference<\/summary>([\s\S]*?)<\/details>/)?.[1]
+    expect(disclosure).toContain('href="/docs/widgets/reference/index.md?library=vue">Reference overview</a>')
+    expect([...disclosure.matchAll(/<p>([^<]+)<\/p><ul aria-label="([^"]+)"><li><a href="([^"]+)"/g)]
       .map(([, title, label, href]) => [title, label, href])).toEqual(groups.map(([title, path]) =>
       [title, title, `/docs/widgets/reference/${path}.md?library=vue`]))
   }
   expect(body).toContain('class="previous" href="/docs/widgets/reference/distribution.md?library=vue"')
   expect(body).toContain('class="next" href="/docs/widgets/reference/data.md?library=vue"')
+  const sandbox = await get(base, "/docs/widgets/sandbox.md?library=vue")
+  expect(sandbox.status).toBe(200)
+  expect(sandbox.body).toMatch(/<summary>Reference<\/summary>[\s\S]*?<\/details><a [^>]*class="nav-shortcut" aria-current="page">Sandbox<\/a>/)
+  expect(sandbox.body).toContain('class="previous" href="/docs/widgets/reference/build-test.md?library=vue"')
 })
 
 it("defaults missing and unsupported library choices to Lit", async () => {
@@ -508,11 +558,11 @@ it("renders the root README with heading anchors and strips frontmatter", async 
 
 it("gives repeated headings distinct fragments and keeps formatted heading labels readable", async () => {
   const {base} = await fixture()
-  writeFileSync(join(directory, "docs/widgets/basics/second.md"), "# Configure `<widget>` &amp; save\n\n## Café\n\n## Café\n\n## Café-1\n")
+  writeFileSync(join(directory, "docs/widgets/basics/second.md"), "# Configure `<widget>` &amp; save\n\n## Café\n\n## Café\n\n## Café-1\n\n## Configure `<widget>` &amp; save\n")
   const {body} = await get(base, "/docs/widgets/basics/second.md?library=vue")
-  expect(body).toContain('aria-label="Configure &lt;widget&gt; &amp; save"')
-  expect(body).toContain('aria-label="Copy link to Configure &lt;widget&gt; &amp; save">#</a>Configure <code>&lt;widget&gt;</code> &amp; save</h1>')
-  expect([...body.matchAll(/<h2 id="([^"]+)"/g)].map(match => match[1])).toEqual(["café", "café-1", "café-1-1"])
+  expect(body).toContain('<h1 id="configure-amp-save" class="docs-heading">Configure <code>&lt;widget&gt;</code> &amp; save</h1>')
+  expect(body).toContain('aria-label="Copy link to Configure &lt;widget&gt; &amp; save">#</a>Configure <code>&lt;widget&gt;</code> &amp; save</h2>')
+  expect([...body.matchAll(/<h2 id="([^"]+)"/g)].map(match => match[1])).toEqual(["café", "café-1", "café-1-1", "configure-amp-save-1"])
   expect([...body.matchAll(/href="#(caf[^"]+)"/g)].map(match => match[1])).toEqual(["caf%C3%A9", "caf%C3%A9-1", "caf%C3%A9-1-1"])
 })
 
@@ -622,8 +672,7 @@ An example in JavaScript.
   expect(illustrated.status).toBe(200)
   const [, intro, body] = illustrated.body.match(/<article class="widget-guide"><header class="guide-intro">([\s\S]*?)<\/header>([\s\S]*?)<\/article>/)!
   expect(intro).toContain('<nav class="breadcrumb" aria-label="Breadcrumb"><a href="/docs/widgets/guides/index.md?library=vue">Guides</a>')
-  expect(intro).toContain('<div class="guide-intro-content"><div class="guide-intro-text"><h1 id="illustrated-guide" class="docs-heading"')
-  expect(intro).toContain('href="#illustrated-guide" aria-label="Copy link to Illustrated guide">#</a>Illustrated guide</h1>')
+  expect(intro).toContain('<div class="guide-intro-content"><div class="guide-intro-text"><h1 id="illustrated-guide" class="docs-heading">Illustrated guide</h1>')
   expect(intro).toContain('<p>A <strong>lead</strong> with a <a href="/docs/widgets/guides/text.md?library=vue">link</a>.</p>')
   expect(intro).toContain('<img src="./opening.svg" alt="Opening illustration">')
   expect(intro).not.toContain("A second paragraph")
@@ -657,7 +706,7 @@ it("renders guide keyword badges from the shared package keyword data", async ()
   expect(body).toContain('</ul></div><div class="guide-intro-content"><div class="guide-intro-text">')
 })
 
-it("renders overview info boxes, groups illustrated guides, and keeps authored table headers", async () => {
+it("renders overview info boxes, paired code examples, illustrated guides, and authored table headers", async () => {
   const {base} = await fixture()
   const docs = join(directory, "docs/widgets")
   mkdirSync(join(docs, "guides"))
@@ -676,9 +725,27 @@ it("renders overview info boxes, groups illustrated guides, and keeps authored t
 
 [Guides](guides/index.md) give instructions for widget features.
 
+[Sandbox](sandbox.md)
+
 | Example header |
 |---|
 | Example row |
+
+<!-- live-example: Weather -->
+
+~~~js
+customElements.define("ww-weather", class extends HTMLElement {})
+~~~
+
+~~~js vue
+const vueWeatherFixture = "Selected Vue source"
+~~~
+
+~~~html
+<ww-weather></ww-weather>
+~~~
+
+<!-- /live-example -->
 
 <nav class="widget-capabilities" aria-labelledby="what-widgets-can-do">
   <h4>Authoring</h4>
@@ -686,6 +753,20 @@ it("renders overview info boxes, groups illustrated guides, and keeps authored t
   <h4>Participation</h4>
   <ul><li><a href="guides/state.md">State</a></li></ul>
 </nav>
+`)
+  writeFileSync(join(docs, "sandbox.md"), `# Sandbox
+
+<!-- live-example: Hello world -->
+
+~~~js vanilla
+customElements.define("ww-hello", class extends HTMLElement {})
+~~~
+
+~~~html
+<ww-hello></ww-hello>
+~~~
+
+<!-- /live-example -->
 `)
   writeFileSync(join(docs, "guides/index.md"), `# Guides
 
@@ -711,6 +792,42 @@ This second paragraph belongs to the guide body.
   const tables = [...overview.body.matchAll(/<table>[\s\S]*?<\/table>/g)].map(match => match[0])
   expect(tables).toHaveLength(1)
   expect(tables[0]).toContain("<th>Example header</th>")
+  const example = overview.body.match(/<div class="live-example"[^>]*>([\s\S]*?)<nav class="widget-capabilities"/)?.[1] ?? ""
+  expect(example).toContain('<div class="live-example-controls" hidden><strong data-live-title>Weather</strong>')
+  const fileActions = example.match(/<div class="live-example-file-actions" role="group" aria-label="Widget files">([\s\S]*?)<\/div>/)?.[1] ?? ""
+  const fileButtons = [...fileActions.matchAll(/<button([^>]*)><span aria-hidden="true">([\s\S]*?)<\/span><\/button>/g)]
+  expect(fileButtons).toHaveLength(2)
+  expect(fileButtons[0][1]).toContain('data-live-upload aria-label="Load widget files from a folder"')
+  expect(fileButtons[0][2]).toContain('icon-tabler-upload')
+  expect(fileButtons[1][1]).toContain('data-live-save aria-label="Save widget files"')
+  expect(fileButtons[1][2]).toContain('icon-tabler-device-floppy')
+  expect(example).not.toContain('data-live-picker')
+  const source = example.match(/<figure class="code-snippet" data-live-source data-language="js" id="live-example-1-widget-source">([\s\S]*?)<\/figure>/)?.[1] ?? ""
+  expect(source).toContain('<figcaption class="code-snippet-label">Widget source</figcaption>')
+  expect(source).toContain('class="shiki')
+  expect(source).toContain('vueWeatherFixture')
+  expect(source).not.toContain('customElements')
+  expect(overview.body).toContain('data-live-library="vue"')
+  const vanilla = await get(base, "/docs/widgets/?library=vanilla")
+  expect(vanilla.body).toContain('data-live-library="vanilla"')
+  expect(vanilla.body).toContain('customElements')
+  expect(vanilla.body).not.toContain('vueWeatherFixture')
+  const comparison = example.match(/<div class="widget-dom-example">([\s\S]*?)<figure class="code-snippet widget-preview"/)?.[1] ?? ""
+  expect(comparison).toContain('data-live-code-tabs role="tablist"')
+  expect(comparison).toContain('data-live-code-tab="html" aria-controls="live-example-1-html" aria-selected="true"')
+  expect(comparison).toContain('data-live-shadow id="live-example-1-shadow" hidden')
+  expect([...comparison.matchAll(/<figcaption class="code-snippet-label">([^<]+)<\/figcaption>/g)].map(match => match[1]))
+    .toEqual(["Document HTML", "Rendered shadow DOM"])
+  expect(comparison).toMatch(/data-live-html[\s\S]*?<pre class="shiki[\s\S]*?(?:&lt;|&#x3C;)[\s\S]*?ww-weather/)
+  expect(comparison).toContain('data-live-shadow')
+  expect(example).toContain('data-live-resize="source" role="separator" aria-label="Resize widget source"')
+  expect(example).toContain('data-live-resize="preview" role="separator" aria-label="Resize widget preview"')
+  expect(example).toContain('<div data-live-preview></div>')
+  expect(example).toContain('data-live-mode="editing" aria-pressed="true">Editing</button>')
+  expect(example).toContain('data-live-mode="reading" aria-pressed="false">Reading</button>')
+  expect(example).toContain('<button type="button" data-live-reset>Reset</button>')
+  expect(example).not.toContain("<script")
+  expect(example).not.toContain("<ww-weather>")
   expect(overview.body).toContain('<p><a href="/docs/widgets/guides/index.md?library=vue">Guides</a> give instructions for widget features.</p>')
   expect(overview.body).toContain('<script id="docs-site-entry" type="module" blocking="render" src="/src/site-entry.ts">')
   expect(overview.body).toContain('<article>')
@@ -718,10 +835,14 @@ This second paragraph belongs to the guide body.
   expect(overview.body).toContain('<symbol id="widget-guide-icon-content"')
   expect(overview.body).not.toContain('capability-icons.svg?library=vue')
   const guides = await get(base, "/docs/widgets/guides/index.md?library=vue")
+  expect(guides.body).not.toContain('class="live-example"')
   expect(guides.body).not.toMatch(/<table>|<h2[^>]*>What widgets can do/)
   expect(guides.body).toContain('<nav class="widget-capabilities" aria-labelledby="guides">')
   expect(guides.body).toContain('class="nav-index-link" aria-current="page">Guides</a>')
   expect(overview.body).toContain('class="nav-index-link" aria-current="page">Overview</a>')
+  const sandbox = await get(base, "/docs/widgets/sandbox.md?library=vue")
+  expect(sandbox.body).toContain('<select data-live-picker aria-label="Example" name="example"><option value="default">Hello world</option><option value="0">Weather</option></select>')
+  expect(sandbox.body).toContain('<template data-live-option="0" data-library="vue" data-language="js"><code data-live-source>const vueWeatherFixture')
   for(const page of [overview, guides]) {
     const map = page.body.match(/<nav class="widget-capabilities"[\s\S]*?<\/nav>/)?.[0]
     expect(map).toContain('href="/docs/widgets/guides/content.md?library=vue"')
@@ -751,6 +872,157 @@ This second paragraph belongs to the guide body.
   expect(state.body).toContain('class="next" href="/docs/widgets/guides/printing.md?library=vue"')
 })
 
+it("reuses editable tutorial and quick start sources and lists interactive examples once in Sandbox", async () => {
+  const {base} = await fixture()
+  const docs = join(directory, "docs/widgets")
+  mkdirSync(join(docs, "tutorial"), {recursive: true})
+  mkdirSync(join(docs, "introduction"), {recursive: true})
+  mkdirSync(join(docs, "examples"), {recursive: true})
+  mkdirSync(join(docs, "guides"), {recursive: true})
+  const example = title => `<!-- live-example: ${title} -->
+
+~~~js vanilla
+const source = "hello"
+~~~
+
+~~~html
+<ww-example></ww-example>
+~~~
+
+<!-- /live-example -->`
+  writeFileSync(join(docs, "sandbox.md"), "# Sandbox\n\n" + example("Hello world"))
+  writeFileSync(join(docs, "guides/dependencies.md"), "# Dependencies\n\n" + example("Optional module"))
+  writeFileSync(join(docs, "guides/old-dependencies.md"), "# Dependencies\n\n<!-- live-example-link: dependencies.md -->\n")
+  writeFileSync(join(docs, "examples/disco.jsx"), 'export const disco = <p>Editable JSX</p>\n')
+  writeFileSync(join(docs, "examples/react/hello.jsx"), 'export const hello = <p>Hello from React</p>\n')
+  writeFileSync(join(docs, "introduction/quick-start.md"), `# Quick start
+
+## Step 1: Set up the widget package
+
+~~~sh prompt
+npm install
+npx @webwriter/build dev
+~~~
+
+<!-- live-example: Hello widget -->
+
+<!-- live-source: react ../examples/react/hello.jsx -->
+
+~~~html
+<ww-hello></ww-hello>
+~~~
+
+<!-- /live-example -->
+`)
+  writeFileSync(join(docs, "tutorial/index.md"), `# Build Ghost Disco
+
+<!-- live-example-link: steps/collaboration.md -->
+`)
+  mkdirSync(join(docs, "tutorial/steps"))
+  writeFileSync(join(docs, "tutorial/steps/collaboration.md"), `# Support collaboration
+
+<!-- live-example: Ghost Disco -->
+
+<!-- live-source: react ../../examples/disco.jsx -->
+
+~~~json package
+{"name":"@example/ghost-disco"}
+~~~
+
+~~~js file build.mjs
+export const build = true
+~~~
+
+~~~js shared #dance-moves
+export const firstMove = "Float"
+~~~
+
+~~~js setup
+const previewHost = true
+~~~
+
+~~~html shared
+<ww-ghost-disco></ww-ghost-disco>
+~~~
+
+<!-- /live-example -->
+`)
+
+  const tutorial = await get(base, "/docs/widgets/tutorial/index.md?library=react")
+  expect(tutorial.body).toContain('data-live-library="react"')
+  expect(tutorial.body).toContain('data-live-collaboration')
+  expect(tutorial.body).toContain('data-live-layout="shared" aria-pressed="false">Shared')
+  expect(tutorial.body).toContain('data-live-source data-language="jsx"')
+  expect(tutorial.body).toContain("Editable JSX")
+  expect(tutorial.body).toContain("<code data-live-setup>const previewHost = true</code>")
+  expect(tutorial.body).toContain('<code data-live-shared="#dance-moves">export const firstMove = &quot;Float&quot;</code>')
+  expect(tutorial.body).toContain('data-live-source-tabs role="tablist" aria-label="Widget files"')
+  expect(tutorial.body).toContain('data-live-package id="live-example-1-package" hidden')
+  expect(tutorial.body).toContain('@example/ghost-disco')
+  expect(tutorial.body).toContain('<code data-live-file="build.mjs">export const build = true</code>')
+  expect(tutorial.body).toContain('aria-label="Save widget files"')
+  expect(tutorial.body).toContain('<div data-live-preview></div><p class="live-example-status" data-live-status role="status"')
+  expect(tutorial.body).toContain('<dialog class="live-example-error" data-live-error popover="manual" aria-labelledby="live-example-1-error-title" aria-describedby="live-example-1-error-text" hidden>')
+  expect(tutorial.body).toContain('<button type="button" data-live-dismiss-error>Dismiss</button>')
+  const step = await get(base, "/docs/widgets/tutorial/steps/collaboration.md?library=react")
+  expect(step.body).toContain("Editable JSX")
+  const quickStart = await get(base, "/docs/widgets/introduction/quick-start.md?library=react")
+  const commands = quickStart.body.match(/<pre class="shiki[^"]* cli-prompt"[^>]*><code>([\s\S]*?)<\/code><\/pre>/)?.[1]
+  expect(commands?.replace(/<[^>]+>/g, "")).toBe("npm install\nnpx @webwriter/build dev")
+  expect(quickStart.body).toContain("<strong data-live-title>Hello widget</strong>")
+  expect(quickStart.body).toContain('data-live-source data-language="jsx"')
+  expect(quickStart.body).toContain("Hello from React")
+  const linked = await get(base, "/docs/widgets/guides/old-dependencies.md?library=react")
+  expect(linked.body).toContain("<strong data-live-title>Optional module</strong>")
+  const sandbox = await get(base, "/docs/widgets/sandbox.md?library=react")
+  expect(sandbox.body.match(/<option value="\d+">Ghost Disco<\/option>/g)).toHaveLength(1)
+  expect(sandbox.body).toMatch(/<option value="\d+">Hello widget<\/option>/)
+  expect(sandbox.body).toMatch(/<template data-live-option="\d+" data-library="react" data-language="jsx" data-live-collaboration>/)
+  expect(sandbox.body.match(/>Optional module<\/option>/g)).toHaveLength(1)
+  expect(sandbox.body).toContain("const previewHost = true")
+  expect(sandbox.body).toContain('data-live-shared="#dance-moves"')
+  expect(sandbox.body).toContain('<template data-live-package><pre')
+})
+
+it("numbers tutorial navigation and headings while preserving guide links and heading anchors", async () => {
+  const {base} = await fixture()
+  const docs = join(directory, "docs/widgets")
+  mkdirSync(join(docs, "tutorial"))
+  writeFileSync(join(docs, "index.md"), "# Widget docs\n\n[Tutorial](./tutorial/index.md)")
+  writeFileSync(join(docs, "tutorial/index.md"), "# Tutorial\n\n- [2. Authoring](02-authoring.md)")
+  mkdirSync(join(directory, "docs/images/widgets"), {recursive: true})
+  writeFileSync(join(directory, "docs/images/widgets/capability-icons.svg"), '<svg><symbol id="focus" viewBox="0 0 16 16"></symbol></svg>')
+  writeFileSync(join(docs, "tutorial/02-authoring.md"), `# 2. Authoring
+
+[Support editing](../guides/editing.md)
+
+Read [the guide](../guides/editing.md) for details.
+
+## Handle input
+
+[Handle selection & input](../guides/focus.md#move-the-document-selection)
+
+**\`ww-ghost-disco.vue\`**
+
+\`\`\`html
+<button>Float</button>
+\`\`\`
+
+### Move the caret
+
+## Results
+`)
+  const {body} = await get(base, "/docs/widgets/tutorial/02-authoring.md?library=vue")
+  expect(body).toContain('<div class="tutorial-heading"><h1 id="2-authoring" class="docs-heading">2. Authoring</h1>\n<a class="tutorial-guide-link" href="/docs/widgets/guides/editing.md?library=vue"><span>Support editing</span></a></div>')
+  expect(body).toContain('<a class="docs-heading-link" href="#handle-input" aria-label="Copy link to 2.1 Handle input">#</a>2.1 Handle input</h2>\n<a class="tutorial-guide-link" href="/docs/widgets/guides/focus.md?library=vue#move-the-document-selection">')
+  expect(body).toContain('<use href="#widget-guide-icon-focus"></use></svg><span>Handle selection &amp; input</span>')
+  expect(body).toContain('href="/docs/widgets/tutorial/02-authoring.md?library=vue" aria-current="page">2. Authoring</a>')
+  expect(body).toContain('href="#move-the-caret" aria-label="Copy link to 2.1.1 Move the caret"')
+  expect(body).toContain('href="#results" aria-label="Copy link to 2.2 Results"')
+  expect(body).toContain('<p>Read <a href="/docs/widgets/guides/editing.md?library=vue">the guide</a> for details.</p>')
+  expect(body).toContain('<figure class="code-snippet" data-inline-label><figcaption class="code-snippet-label"><code>ww-ghost-disco.vue</code></figcaption>')
+})
+
 it("renders an npm package banner as a native link with a decorative package icon", async () => {
   const {base} = await fixture()
   writeFileSync(join(directory, "docs/widgets/basics/second.md"), `# Build
@@ -771,6 +1043,8 @@ Build the exports.
 
 it("emits static documentation variants, navigation, assets, and original example downloads", async () => {
   const {plugin} = await fixture()
+  adapterReferenceFixture()
+  writeFileSync(join(directory, "docs/widgets/index.md"), "# Widgets\n\n- [Basics](basics/index.md)\n- [Reference](reference/index.md)\n")
   const assets = join(directory, "dev-server")
   mkdirSync(join(assets, "icons"), {recursive: true})
   writeFileSync(join(assets, "documentation.css"), 'body {color: black}')
@@ -791,12 +1065,13 @@ it("emits static documentation variants, navigation, assets, and original exampl
     const suffix = library === "lit" ? "" : `.${library}`
     const page = emitted.get(`docs/widgets/basics/first${suffix}.html`)
     expect(page).toContain('<title>First page · Widget documentation</title>')
+    expect(page).toContain('<h1 id="first-page" class="docs-heading">First page</h1>')
     expect(page).toContain('href="#a-heading" aria-label="Copy link to A heading!"')
     expect(page).toContain(`href="/docs/widgets/basics/second${suffix}.html?step=2&library=${library}#setup"`)
     expect(page).toContain(`data-href="/docs/widgets/basics/first.react.html?library=react"`)
     const breadcrumb = page.match(/<nav class="breadcrumb"[^>]*>([\s\S]*?)<\/nav>/)?.[1]
     expect(breadcrumb).toBe(`<a href="/docs/widgets/basics/index${suffix}.html?library=${library}">Basics</a>`)
-    expect(page).toContain('href="/gallery/">Widgets</a>')
+    expect(page).toContain('href="/packages/">Widgets</a>')
     expect(page).toContain('href="/editor/">Open WebWriter')
     expect(page).toContain('href="/assets/docs/documentation.css"')
     const noteIcon = library === "lit" ? "lit" : "javascript"
@@ -819,4 +1094,9 @@ it("emits static documentation variants, navigation, assets, and original exampl
   expect(emitted.get("assets/docs/documentation.css").toString()).toContain('color: black')
   expect(emitted.get("assets/docs/package-keywords.css").toString()).toContain(".details-keyword")
   expect(emitted.get("assets/docs/icons/react.svg").toString()).toContain('id="react"')
+  const reactAdapter = emitted.get("docs/widgets/reference/adapters.react.html")
+  expect(reactAdapter).toContain('class="docs-heading">C2. @webwriter/react</h1>')
+  expect(reactAdapter).toContain('href="/docs/widgets/reference/adapters.angular.html?library=angular"><img src="/assets/docs/icons/angular.svg"')
+  expect(emitted.get("docs/widgets/reference/adapters.html")).toContain('id="standalone-widget-drawer"')
+  expect(emitted.get("docs/widgets/reference/lit.react.html")).toContain('id="standalone-widget-drawer"')
 })

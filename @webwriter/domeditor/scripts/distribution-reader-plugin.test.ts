@@ -40,4 +40,18 @@ describe("distribution reader virtual sources", () => {
     const { sources } = await loadSources()
     for(const source of Object.values(sources)) expect(source).not.toMatch(/Apply size|Width \(px\)|Height \(px\)|Element CSS declarations|Edit text|Move earlier|Move later/)
   })
+
+  it("bundles the WebWriter editing engine separately for opaque example previews", async () => {
+    const plugin = distributionReaderPlugin()
+    const watchFile = vi.fn()
+    const id = plugin.resolveId("virtual:live-example-editing")
+    const output = await plugin.load.call({addWatchFile: watchFile}, id)
+    const source = JSON.parse(output.slice("export default ".length))
+    expect(source).toMatch(/^var __liveExampleEditing=\(\(\)=>\{/)
+    expect(source).toContain("live-example-editing")
+    expect(source).not.toContain("WebWriter editing")
+    expect(source).not.toMatch(/^\s*import\s/m)
+    expect(watchFile).toHaveBeenCalledWith(expect.stringMatching(/src\/domeditor-core\.ts$/))
+    expect(watchFile).toHaveBeenCalledWith(expect.stringMatching(/dev-server\/live-example-editing\.ts$/))
+  })
 })

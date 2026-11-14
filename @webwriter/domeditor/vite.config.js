@@ -7,6 +7,7 @@ import {componentLicensesPlugin} from './scripts/component-licenses.mjs'
 import {referenceFormatterPlugin} from './scripts/reference-formatter-plugin.mjs'
 import {distributionReaderPlugin} from './scripts/distribution-reader-plugin.mjs'
 import {documentationPlugin} from './scripts/documentation-plugin.mjs'
+import {liveExampleRuntimes} from './scripts/live-example-runtimes.mjs'
 import {siteHeaderPlugin} from './scripts/site-header.mjs'
 import {appEntryUrlsPlugin} from './scripts/app-entry-urls.mjs'
 import {appVersionPlugin} from './scripts/app-version.mjs'
@@ -83,7 +84,7 @@ export default defineConfig(({mode}) => {
   for(const directory of [...privateDirectories]) if(existsSync(directory)) privateDirectories.push(realpathSync(directory))
   const privatePaths = [...new Set(privateDirectories)].map(path => `${normalizePath(path).replace(/[?*\[\]{}()!+@]/g, "\\$&")}/**`)
   return {
-    plugins: [appVersionPlugin(), appEntryUrlsPlugin(), siteHeaderPlugin(), documentationPlugin(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
+    plugins: [appVersionPlugin(), appEntryUrlsPlugin(), siteHeaderPlugin(), documentationPlugin(), liveExampleRuntimes(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
       referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url))),
       distributionReaderPlugin(), canvasSnapshotPlugin(), documentThemesPlugin(), minifiedReaderSourcePlugin()],
     appType: "mpa",
