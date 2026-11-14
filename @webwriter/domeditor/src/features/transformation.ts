@@ -719,7 +719,7 @@ export class TransformationFeature extends EditorFeature {
 
   #syncControlParts() {
     const overlay = this.overlay
-    const allows = (permission: "move" | "delete" | "style" | "edit") => this.#group.length
+    const allows = (permission: "move" | "delete" | "style") => this.#group.length
       ? this.#group.every(element => this.editor.allows(permission, element)) : this.editor.allows(permission, this.target)
     const position = this.target ? getComputedStyle(this.target).position || "static" : "static"
     const freeform = Boolean(this.target && this.#isFreeformItem(this.target))
@@ -762,7 +762,7 @@ export class TransformationFeature extends EditorFeature {
     const captionPosition = this.editor.features.manipulation.getCaptionPosition()
     const captionAlignment = this.editor.features.manipulation.getCaptionAlignment() ?? "left"
     const caption = overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
-    hidden("caption", !allows("edit") || freeform || !this.target || captionPosition === null)
+    hidden("caption", !allows("style") || freeform || !this.target || captionPosition === null)
     caption.style.setProperty("--icon", `url("data:image/svg+xml,${encodeURIComponent(captionIconSource(captionPosition ?? "none", captionAlignment, true))}")`)
     caption.title = captionPosition === "none" ? "Add caption" : `Caption ${captionPosition}, align ${captionAlignment}: cycle position`
     caption.setAttribute("aria-label", caption.title)

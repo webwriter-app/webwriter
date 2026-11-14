@@ -1,1 +1,1 @@
-import "./06-disco-collaboration.ts"
+import "../disco/angular/08-disco-dependencies.ts"

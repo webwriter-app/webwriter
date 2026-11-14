@@ -1,17 +1,25 @@
-// index.ts
+// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/index.ts
 import { LitElement as LitElement2, adoptStyles } from "lit";
 import { SignalWatcher } from "@lit-labs/signals";
+import {
+  WidgetRuntime,
+  widgetLanguage,
+  widgetRuntimeAttributes
+} from "@webwriter/widget";
+import {
+  isDataBlockType
+} from "@webwriter/widget";
 export * from "@lit-labs/signals";
 
-// widget-drawer.ts
+// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-drawer.ts
 import { LitElement, css as css2, html as html2, nothing as nothing2 } from "lit";
 import { live } from "lit/directives/live.js";
 
-// widget-option-controls.ts
+// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-option-controls.ts
 import { html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 
-// widget-options.ts
+// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-options.ts
 var widgetOptionTypes = [
   "boolean",
   "string",
@@ -294,7 +302,7 @@ function widgetConversionMethod(widget, declaration) {
   }
 }
 
-// widget-option-controls.ts
+// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-option-controls.ts
 function widgetOptionInputValue(option, target) {
   if (option.type === "boolean") return target.checked;
   if (option.type === "select" && option.multiple) {
@@ -520,7 +528,7 @@ function renderWidgetOptions(options, actions, groups, renderField, renderAction
   </div>`;
 }
 
-// widget-option-controls.styles.ts
+// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-option-controls.styles.ts
 import { css } from "lit";
 var widgetOptionControlStyles = css`
   .widget-options {
@@ -617,7 +625,7 @@ var widgetOptionControlStyles = css`
 
 `;
 
-// widget-result-storage.ts
+// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-result-storage.ts
 var WidgetResultConflict = class extends Error {
   constructor() {
     super("A newer result is already saved.");
@@ -726,7 +734,7 @@ function widgetResultKey(widget) {
   return `webwriter:widget-result:${JSON.stringify([origin, pathname, search, path])}`;
 }
 
-// widget-result-binding.ts
+// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-result-binding.ts
 function widgetResultBlock(widget) {
   return Array.from(widget.children).find((child) => child.localName === "script" && child.namespaceURI === "http://www.w3.org/1999/xhtml" && child.getAttribute("slot") === "data" && isWidgetResultType(child.getAttribute("type")) && !child.hasAttribute("src"));
 }
@@ -850,7 +858,7 @@ var WidgetResultBinding = class {
   }
 };
 
-// widget-drawer.ts
+// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-drawer.ts
 var authoredDefaults = /* @__PURE__ */ new WeakMap();
 var browser = { kind: "browser" };
 var WidgetDrawer = class extends LitElement {
@@ -1304,30 +1312,7 @@ var WidgetDrawer = class extends LitElement {
   }
 };
 
-// index.ts
-var javaScriptMimeTypes = /* @__PURE__ */ new Set([
-  "application/ecmascript",
-  "application/javascript",
-  "application/x-ecmascript",
-  "application/x-javascript",
-  "text/ecmascript",
-  "text/javascript",
-  "text/javascript1.0",
-  "text/javascript1.1",
-  "text/javascript1.2",
-  "text/javascript1.3",
-  "text/javascript1.4",
-  "text/javascript1.5",
-  "text/jscript",
-  "text/livescript",
-  "text/x-ecmascript",
-  "text/x-javascript"
-]);
-function isDataBlockType(type) {
-  const essence = type.split(";")[0].trim().toLowerCase();
-  return /^[^\s/]+\/[^\s/]+$/.test(essence) && !javaScriptMimeTypes.has(essence);
-}
-var contextFollowers = /* @__PURE__ */ new WeakMap();
+// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/index.ts
 var registries = /* @__PURE__ */ new WeakMap();
 var LitElementWw = class extends SignalWatcher(LitElement2) {
   static scopedElements = {};
@@ -1364,221 +1349,82 @@ var LitElementWw = class extends SignalWatcher(LitElement2) {
   }
   /** Empty opts into local storage. A URL supplies the initial remote destination. */
   get standalone() {
-    return this.getAttribute("standalone");
+    return this.#runtime.standalone;
   }
   set standalone(value) {
-    if (value === null) this.removeAttribute("standalone");
-    else this.setAttribute("standalone", value);
+    this.#runtime.standalone = value;
   }
-  /** Includes explicit lang="", which stops inheritance. Inherited values are
-   * never reflected onto the widget. Setting null removes an authored value. */
+  /** An explicit lang="" stops inheritance. Inherited values stay off the DOM. */
   get lang() {
-    return this.closest("[lang]")?.getAttribute("lang") ?? "";
+    return widgetLanguage(this);
   }
   set lang(value) {
     if (value === null || value === void 0) this.removeAttribute("lang");
     else this.setAttribute("lang", value);
   }
   static get observedAttributes() {
-    return [.../* @__PURE__ */ new Set([...super.observedAttributes, "contenteditable", "lang", "shared", "id", "standalone"])];
+    return [.../* @__PURE__ */ new Set([...super.observedAttributes, ...widgetRuntimeAttributes])];
   }
   attributeChangedCallback(name, oldValue, value) {
     super.attributeChangedCallback(name, oldValue, value);
-    if (oldValue === value) return;
-    if (name === "standalone") this.requestUpdate("standalone", oldValue);
-    if (name === "lang" || name === "contenteditable") this.#contextChanged();
-    if (name === "shared" || name === "id") {
-      this.#readyBlock = null;
-      if (this.isConnected) this.#syncData();
-    }
+    if (widgetRuntimeAttributes.includes(name)) this.#runtime.attributeChanged(name, oldValue, value);
   }
-  #observedDocument;
-  #language;
-  #editable;
-  #contextChanged = () => {
-    const language = this.lang, editable = this.editable;
-    if (language !== this.#language) {
-      const before = this.#language;
-      this.#language = language;
-      this.requestUpdate("lang", before);
-      if (this.isConnected && this.localize) {
+  #runtime = new WidgetRuntime(this, {
+    language: () => this.lang,
+    editable: () => this.editable,
+    update: (name, previous) => {
+      this.requestUpdate(name, previous);
+      if (name === "lang" && this.isConnected && this.localize) {
         const failed = (error) => {
           this.dispatchEvent(new CustomEvent("localizationerror", { detail: { error } }));
           this.requestUpdate();
         };
         try {
-          void Promise.resolve(this.localize.setLocale(language)).then(() => this.requestUpdate(), failed);
+          void Promise.resolve(this.localize.setLocale(this.lang)).then(() => this.requestUpdate(), failed);
         } catch (error) {
           failed(error);
         }
       }
-    }
-    if (editable !== this.#editable) {
-      const before = this.#editable;
-      this.#editable = editable;
-      this.requestUpdate("editable", before);
-    }
-  };
-  /** Retained for widgets that explicitly request an inherited-language refresh. */
+    },
+    dataPending: (context) => this.dataPending(context),
+    dataChanged: (value, context) => this.dataChanged(value, context),
+    dataError: (error, context) => this.dataError(error, context)
+  });
   languageChanged() {
-    this.#contextChanged();
-  }
-  #dataContainer() {
-    const blocks = Array.from(this.children).filter((child) => child.namespaceURI === "http://www.w3.org/1999/xhtml" && child.localName === "script" && isDataBlockType(child.type) && !child.hasAttribute("src"));
-    return blocks.find((block) => this.#scoped(block)) ?? blocks[0] ?? null;
-  }
-  #scoped(block) {
-    return !!block && block.getAttribute("slot") === "data" && ["application/json", "application/xml"].includes(block.type);
-  }
-  #scope() {
-    return JSON.stringify([
-      this.ownerDocument.documentElement.id,
-      this.id,
-      this.getAttribute("shared"),
-      ...Array.from(this.childNodes).filter((node) => node.nodeType === 7 && node.nodeName === "ww-grouping").map((node) => node.nodeValue)
-    ]);
+    this.#runtime.contextChanged();
   }
   get data() {
-    return this.#dataContainer()?.textContent ?? null;
+    return this.#runtime.data;
   }
   set data(value) {
     this.setData(this.dataType ?? "text/plain", value ?? "");
   }
   get dataType() {
-    return this.#dataContainer()?.type ?? this.constructor.dataType;
+    return this.#runtime.dataType;
   }
-  #block;
-  #bindingScope;
-  #readyBlock = null;
-  #readyScope;
-  #managed = false;
-  #lastText;
-  #mode = "local";
-  #syncing = false;
-  #contentObserver = new MutationObserver(() => this.#syncData());
-  /** False while the current participant scope is loading or unavailable. */
   get dataReady() {
-    const block = this.#dataContainer();
-    return this.isConnected && (!this.#scoped(block) || block === this.#block && this.#bindingScope === this.#scope() && (!this.#managed || block === this.#readyBlock && this.#readyScope === this.#scope()));
+    return this.#runtime.dataReady;
   }
-  /** Implement these hooks to update the widget's presentation. Do not write
-   * snapshots back from a notification; write in response to user interactions. */
+  /** Update the widget's presentation when the data scope changes. */
   dataPending(context) {
   }
   dataChanged(value, context) {
   }
   dataError(error, context) {
   }
-  #context(block = this.#dataContainer()) {
-    return { block, mode: this.#mode };
-  }
-  #syncData() {
-    if (!this.isConnected || this.#syncing) return;
-    this.#syncing = true;
-    try {
-      const block = this.#dataContainer(), scope = this.#scope();
-      if (block !== this.#block || scope !== this.#bindingScope) {
-        this.#block = block;
-        this.#bindingScope = scope;
-        this.#readyBlock = null;
-        this.#managed = false;
-        this.#mode = "local";
-        if (this.#scoped(block)) {
-          const Request = this.ownerDocument.defaultView?.CustomEvent ?? CustomEvent;
-          const request = new Request("datarequest", { bubbles: true, cancelable: true });
-          this.#managed = !block.dispatchEvent(request);
-        }
-        if (!this.#managed) this.#acceptData("local");
-      } else if (!this.#managed && this.data !== this.#lastText) this.#acceptData("local");
-      this.requestUpdate("data");
-    } finally {
-      this.#syncing = false;
-    }
-  }
-  #acceptData(mode) {
-    this.#mode = mode;
-    this.#readyBlock = this.#dataContainer();
-    this.#readyScope = this.#scope();
-    this.#lastText = this.data;
-    this.dataChanged(this.data, this.#context());
-    this.requestUpdate("data");
-  }
-  #dataEvent = (event) => {
-    const block = this.#dataContainer();
-    if (!this.isConnected || !block || event.target !== block || !this.#scoped(block)) return;
-    if (event.type === "datarelease") {
-      this.#block = void 0;
-      this.#syncData();
-      return;
-    }
-    const detail = event.detail;
-    this.#managed = true;
-    this.#block = block;
-    this.#bindingScope = this.#scope();
-    if (detail?.mode) this.#mode = detail.mode;
-    else if (this.#mode === "local") this.#mode = !this.hasAttribute("shared") ? "individual" : this.getAttribute("shared") === "group" ? "group" : "all";
-    if (event.type === "datachange") this.#acceptData(this.#mode);
-    else {
-      if (event.type === "datapending") {
-        this.#readyBlock = null;
-        this.dataPending(this.#context(block));
-      } else this.dataError(new Error(detail?.message ?? "Widget data is unavailable"), this.#context(block));
-      this.requestUpdate("data");
-    }
-  };
-  /** Updates a data block in place, preserving its identity and attributes.
-   * A managed block cannot be written until its current scope is ready. */
+  /** Updates a data block in place, preserving its identity and attributes. */
   setData(type, value, attrs = {}) {
-    if (!isDataBlockType(type)) throw new TypeError(`'${type}' is not a data block type`);
-    if (Object.keys(attrs).some((name) => name.toLowerCase() === "src")) throw new TypeError("Data blocks cannot have src");
-    this.#syncData();
-    const old = this.#dataContainer();
-    if (old && this.#managed && !this.dataReady) throw new DOMException("Wait for the current data scope to become ready", "InvalidStateError");
-    const text2 = type === "application/json" ? value.replace(/</g, "\\u003c") : value;
-    if (/<\/script[\s/>]/i.test(text2)) throw new TypeError("Data blocks cannot contain a closing script tag");
-    const block = old ?? this.ownerDocument.createElement("script");
-    for (const [name, value2] of Object.entries(attrs)) block.setAttribute(name, value2);
-    block.type = type;
-    block.textContent = text2;
-    if (!old) this.append(block);
-    this.requestUpdate("data");
+    this.#runtime.setData(type, value, attrs);
   }
   #slotChanged = () => this.requestUpdate();
   connectedCallback() {
     super.connectedCallback();
-    this.#observedDocument = this.ownerDocument;
-    let followers = contextFollowers.get(this.ownerDocument);
-    if (!followers) {
-      const widgets = /* @__PURE__ */ new Set();
-      const Observer = this.ownerDocument.defaultView?.MutationObserver ?? MutationObserver;
-      const observer = new Observer(() => widgets.forEach((widget) => widget.#contextChanged()));
-      observer.observe(this.ownerDocument.documentElement, { attributes: true, attributeFilter: ["lang", "contenteditable"], subtree: true });
-      followers = { widgets, observer };
-      contextFollowers.set(this.ownerDocument, followers);
-    }
-    followers.widgets.add(this);
-    this.#language = void 0;
-    this.#contextChanged();
-    for (const type of ["datapending", "datachange", "dataerror", "datarelease"]) this.addEventListener(type, this.#dataEvent);
-    this.#contentObserver.observe(this, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["type", "src", "slot"] });
     this.renderRoot.addEventListener("slotchange", this.#slotChanged);
-    this.#block = void 0;
-    this.#syncData();
+    this.#runtime.connect();
   }
   disconnectedCallback() {
-    this.#contentObserver.disconnect();
-    for (const type of ["datapending", "datachange", "dataerror", "datarelease"]) this.removeEventListener(type, this.#dataEvent);
+    this.#runtime.disconnect();
     this.renderRoot?.removeEventListener("slotchange", this.#slotChanged);
-    this.#readyBlock = null;
-    if (this.#observedDocument) {
-      const followers = contextFollowers.get(this.#observedDocument);
-      followers?.widgets.delete(this);
-      if (!followers?.widgets.size) {
-        followers?.observer.disconnect();
-        contextFollowers.delete(this.#observedDocument);
-      }
-    }
-    this.#observedDocument = void 0;
     super.disconnectedCallback();
   }
 };

@@ -36,6 +36,26 @@ function mockCaretPosition(node: Node, offset = 0) {
 }
 
 describe("table grid", () => {
+  it("requires Styling permission to add or remove a table caption", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>Content</td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    const feature = editor.features.table
+    const allows = vi.spyOn(editor, "allows").mockImplementation(permission => permission !== "style")
+    try {
+      $.move(cells()[0], 0)
+      feature.actions.addTableCaption({type: "addTableCaption"})
+      feature.actions.toggleTableCaption({type: "toggleTableCaption"})
+      expect(table.caption).toBeNull()
+      allows.mockReturnValue(true)
+      feature.actions.addTableCaption({type: "addTableCaption"})
+      expect(table.caption).not.toBeNull()
+      allows.mockImplementation(permission => permission !== "style")
+      feature.actions.toggleTableCaption({type: "toggleTableCaption"})
+      expect(table.caption).not.toBeNull()
+    }
+    finally { allows.mockRestore() }
+  })
+
   it("keeps popup content pointer interactions separate from table cell selection", () => {
     document.body.innerHTML = '<table><tbody><tr><td><p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><p>Bubble words</p></div></td><td><p>Other</p></td></tr></tbody></table>'
     const content = document.querySelector<HTMLElement>(".ww-popup-content")!

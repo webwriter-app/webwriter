@@ -4,6 +4,41 @@ A migration updates saved widget markup when an author pastes it, drops it, or i
 
 ![The old lang-code attribute becomes term-lang while child content is preserved](../../images/widgets/migrations.svg)
 
+<!-- live-example: Migrate an old glossary -->
+
+```js vanilla
+document.addEventListener("migrate", event => {
+  const widget = event.target
+  if(widget.localName !== "ww-glossary" || !widget.hasAttribute("lang-code")) return
+  if(!widget.hasAttribute("term-lang")) {
+    widget.setAttribute("term-lang", widget.getAttribute("lang-code"))
+  }
+  widget.removeAttribute("lang-code")
+})
+
+class GlossaryWidget extends HTMLElement {
+  constructor() {
+    super()
+    this.attachShadow({mode: "open"}).innerHTML = `
+      <slot></slot>
+      <button type="button">Migrate content</button>`
+    this.shadowRoot.querySelector("button").addEventListener("click", () => {
+      this.dispatchEvent(new Event("migrate", {bubbles: true}))
+    })
+  }
+}
+
+customElements.define("ww-glossary", GlossaryWidget)
+```
+
+```html
+<ww-glossary lang-code="nl">
+  <p><strong>fiets</strong> — a bicycle</p>
+</ww-glossary>
+```
+
+<!-- /live-example -->
+
 Export `./migrate.js` to supply a migration. The migration runs in a sandbox outside the live document.
 
 For example, a glossary widget can change the name of its language attribute and keep the authored definition.

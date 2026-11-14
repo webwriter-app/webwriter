@@ -757,6 +757,212 @@ await check("LitElementWw uses native registries and shared data handlers withou
   finally { bindings.destroy(); parent.remove(); docs.forEach(doc => doc.destroy()) }
 })
 
+await check("the Overview weather preview updates both live editors", async () => {
+  const {EditorView} = await import("@codemirror/view")
+  const frame = document.createElement("iframe")
+  frame.src = "/docs/widgets/?library=vanilla"
+  frame.style.cssText = "width: 1000px; height: 660px; border: 0"
+  const loaded = new Promise<void>(resolve => frame.onload = () => resolve())
+  fixture.append(frame)
+  try {
+    await loaded
+    const doc = frame.contentDocument!
+    const waitFor = async (condition: () => unknown, message: string) => {
+      const deadline = performance.now() + 8000
+      while(!condition() && performance.now() < deadline) await nextFrame()
+      assert(condition(), message)
+    }
+    const rendered = (text: string) => doc.querySelector("[data-live-shadow] code")?.textContent?.includes(text)
+    const preview = () => doc.querySelector("[data-live-preview] iframe:not([data-staging])")
+    await waitFor(() => rendered("Utrecht · 12 °C · Cloudy"), "The initial weather example did not render")
+    const originalPreview = preview()
+    assert(originalPreview?.getAttribute("sandbox") === "allow-scripts", "The widget did not run in an opaque sandbox")
+    const editor = (pane: string) => EditorView.findFromDOM(doc.querySelector<HTMLElement>(`[data-live-${pane}] .cm-editor`)!)!
+    const source = editor("source"), html = editor("html")
+    const checkScroller = (scroller: HTMLElement) => {
+      const pane = scroller.closest("figure")!
+      const border = parseFloat(frame.contentWindow!.getComputedStyle(pane).borderBlockEndWidth)
+      const bottomGap = pane.getBoundingClientRect().bottom - scroller.getBoundingClientRect().bottom
+      assert(Math.abs(bottomGap - border) <= 1, "A code scroller did not reach the bottom edge of its pane")
+      assert(scroller.scrollWidth <= scroller.clientWidth + 1, "A code scroller overflowed horizontally")
+    }
+    checkScroller(html.scrollDOM)
+    const original = source.state.doc.toString()
+    const initialHTML = html.state.doc.toString()
+    const editing = doc.querySelector<HTMLButtonElement>('[data-live-mode="editing"]')!
+    const reading = doc.querySelector<HTMLButtonElement>('[data-live-mode="reading"]')!
+    assert(editing.getAttribute("aria-pressed") === "true" && initialHTML.includes('contenteditable=""'),
+      "The preview did not start with contenteditable in the HTML editor")
+    const replace = (view: typeof source, insert: string) => view.dispatch({changes: {from: 0, to: view.state.doc.length, insert}})
+    replace(html, html.state.doc.toString().replace("Utrecht", "Amsterdam"))
+    await waitFor(() => rendered("Amsterdam · 11 °C · Rainy"), "HTML edits did not update the widget")
+    assert(preview() === originalPreview, "An HTML edit reloaded the preview")
+
+    const htmlPane = doc.querySelector<HTMLElement>("[data-live-html]")!
+    const shadowPane = doc.querySelector<HTMLElement>("[data-live-shadow]")!
+    const tabs = doc.querySelector<HTMLElement>("[data-live-code-tabs]")!
+    const htmlTab = tabs.querySelector<HTMLButtonElement>('[data-live-code-tab="html"]')!
+    const shadowTab = tabs.querySelector<HTMLButtonElement>('[data-live-code-tab="shadow"]')!
+    const visible = (element: HTMLElement) => element.getClientRects().length > 0
+    assert(visible(htmlPane) && !visible(shadowPane) && visible(tabs) && htmlTab.getAttribute("aria-selected") === "true",
+      "Wide layout did not start on the Document HTML tab")
+    const draft = html.state.doc.toString()
+    frame.style.width = "375px"
+    await waitFor(() => visible(tabs) && htmlTab.getAttribute("aria-selected") === "true" && !visible(shadowPane),
+      "Narrow layout did not start on the Document HTML tab")
+    assert(tabs.getAttribute("role") === "tablist" && visible(htmlPane), "Narrow layout did not expose the HTML editor tab")
+    htmlTab.focus()
+    htmlTab.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true}))
+    await waitFor(() => shadowTab.getAttribute("aria-selected") === "true" && visible(shadowPane) && !visible(htmlPane),
+      "ArrowRight did not select the Rendered shadow DOM tab")
+    assert(doc.activeElement === shadowTab, "ArrowRight did not focus the Rendered shadow DOM tab")
+    checkScroller(shadowPane.querySelector("pre")!)
+    const shadowStyle = frame.contentWindow!.getComputedStyle(shadowPane)
+    assert(shadowStyle.backgroundColor === "rgb(245, 245, 245)" && shadowStyle.color === "rgb(66, 66, 66)",
+      "Rendered shadow DOM did not use the read-only grey palette")
+    htmlTab.click()
+    await waitFor(() => htmlTab.getAttribute("aria-selected") === "true" && visible(htmlPane) && !visible(shadowPane),
+      "Selecting Document HTML did not restore the HTML editor pane")
+    assert(editor("html") === html && html.state.doc.toString() === draft, "Switching panes discarded the HTML editor or its draft")
+    frame.style.width = "1000px"
+    await nextFrame()
+    assert(visible(htmlPane) && !visible(shadowPane) && visible(tabs), "Widening the example changed the selected markup pane")
+
+    replace(source, `${original}\nthrow new Error("Example error")`)
+    await waitFor(() => doc.querySelector("[data-live-status]")?.textContent?.includes("Example error"), "The source error was not reported")
+    assert(preview() === originalPreview && rendered("Amsterdam · 11 °C · Rainy"), "An error replaced the working preview")
+    replace(source, original.replace("11 °C · Rainy", "21 °C · Sunny"))
+    await waitFor(() => rendered("Amsterdam · 21 °C · Sunny"), "Source edits did not restart the widget")
+    assert(preview() !== originalPreview, "A source edit reused the registered widget")
+
+    replace(source, `${original}\nsetTimeout(() => document.querySelector("ww-weather").shadowRoot.querySelector("button").click(), 600)`)
+    await waitFor(() => rendered("Amsterdam · 11 °C · Rainy"), "The preview action test did not initialize")
+    const interactivePreview = preview()
+    await waitFor(() => /<script[^>]+>\{"place":"Rotterdam"\}<\/script>/.test(html.state.doc.toString())
+      && rendered("Rotterdam · 13 °C · Windy"),
+      "The widget's action did not update the HTML editor and shadow DOM")
+    assert(preview() === interactivePreview, "A preview mutation restarted the frame")
+
+    reading.click()
+    await waitFor(() => !html.state.doc.toString().includes("contenteditable"), "Reading mode did not remove contenteditable")
+    replace(source, `${original}\nconst widget = document.querySelector("ww-weather")
+new MutationObserver(() => {
+  if(!widget.isContentEditable) return
+  widget.shadowRoot.querySelector('input[type="checkbox"]').click()
+  widget.shadowRoot.querySelector("button").click()
+}).observe(widget, {attributes: true, attributeFilter: ["contenteditable"]})`)
+    await waitFor(() => preview() !== interactivePreview, "The editing mode test did not initialize")
+    const editingPreview = preview()
+    editing.click()
+    await waitFor(() => /<ww-weather[^>]*\sfixed(?:="")?(?:\s|>)/.test(html.state.doc.toString())
+      && html.state.doc.toString().includes('contenteditable=""'), "Editing mode and Fixed were not reflected in the HTML editor")
+    assert(rendered("Rotterdam · 13 °C · Windy"), "Fixed allowed switching to another city")
+    assert(preview() === editingPreview, "Toggling editing mode restarted the preview")
+    reading.click()
+    await waitFor(() => !html.state.doc.toString().includes("contenteditable"), "Reading mode did not remove contenteditable")
+    assert(reading.getAttribute("aria-pressed") === "true" && html.state.doc.toString().includes("fixed"), "Reading mode lost the saved fixed setting")
+    doc.querySelector<HTMLButtonElement>("[data-live-reset]")!.click()
+    await waitFor(() => rendered("Utrecht · 12 °C · Cloudy"), "Reset did not restore the Markdown inputs")
+    assert(html.state.doc.toString() === initialHTML.replace(' contenteditable=""', ""), "Reset did not restore the JSON data block")
+  }
+  finally { frame.remove() }
+})
+
+await check("the Overview weather preview loads the selected library", async () => {
+  const variants = {
+    vanilla: "extends HTMLElement",
+    lit: "extends LitElement",
+    react: "createRoot",
+    vue: "<template>",
+    angular: "createCustomElement",
+    svelte: "<svelte:options",
+  }
+  for(const [library, syntax] of Object.entries(variants)) {
+    const frame = document.createElement("iframe")
+    frame.src = `/docs/widgets/?library=${library}`
+    frame.style.cssText = "width: 1000px; height: 660px; border: 0"
+    const loaded = new Promise<void>(resolve => frame.onload = () => resolve())
+    fixture.append(frame)
+    try {
+      await loaded
+      const {EditorView} = await import("@codemirror/view")
+      const waitFor = async (condition: () => unknown, message: string) => {
+        const deadline = performance.now() + 10000
+        while(!condition() && performance.now() < deadline) await nextFrame()
+        const doc = frame.contentDocument
+        assert(condition(), `${library}: ${message}. ${doc?.querySelector("[data-live-status]")?.textContent}
+          HTML: ${doc?.querySelector("[data-live-html] .cm-content")?.textContent}
+          Shadow: ${doc?.querySelector("[data-live-shadow] code")?.textContent}`)
+      }
+      const rendered = (text: string) => frame.contentDocument?.querySelector("[data-live-shadow] code")?.textContent
+        ?.replace(/<!--[\s\S]*?-->|<[^>]*>/g, "").replace(/\s+/g, " ").includes(text)
+      await waitFor(() => rendered("Utrecht · 12 °C · Cloudy"), "The preview did not render")
+      const example = frame.contentDocument!.querySelector<HTMLElement>(".live-example")!
+      assert(example.dataset.liveLibrary === library, `Overview selected the wrong ${library} variant`)
+      const editor = (pane: string) => EditorView.findFromDOM(example.querySelector<HTMLElement>(`[data-live-${pane}] .cm-editor`)!)!
+      assert(editor("source").state.doc.toString().includes(syntax), `Overview did not show the ${library} source`)
+      const html = editor("html")
+      const original = html.state.doc.toString()
+      const preview = example.querySelector("[data-live-preview] iframe")
+      html.dispatch({changes: {from: 0, to: html.state.doc.length, insert: original.replace("Utrecht", "Amsterdam")}})
+      await waitFor(() => rendered("Amsterdam · 11 °C · Rainy"), "Editing HTML did not update the preview")
+      assert(example.querySelector("[data-live-preview] iframe") === preview, "Editing HTML reloaded the preview")
+      example.querySelector<HTMLButtonElement>("[data-live-reset]")!.click()
+      await waitFor(() => rendered("Utrecht · 12 °C · Cloudy"), "Reset did not restore the example")
+      assert(html.state.doc.toString() === original, "Reset did not restore the shared HTML")
+    }
+    finally { frame.remove() }
+  }
+})
+
+await check("the tutorial live example shares Ghost Disco moves", async () => {
+  const {EditorView} = await import("@codemirror/view")
+  const frame = document.createElement("iframe")
+  frame.src = "/docs/widgets/tutorial/index.md?library=vanilla"
+  frame.style.cssText = "width: 1000px; height: 750px; border: 0"
+  const loaded = new Promise<void>(resolve => frame.onload = () => resolve())
+  fixture.append(frame)
+  try {
+    await loaded
+    const doc = frame.contentDocument!
+    const example = doc.querySelector(".live-example")!
+    const read = (key: string) => EditorView.findFromDOM(example.querySelector<HTMLElement>(`[data-live-${key}] .cm-editor`)!)!
+    const shadow = example.querySelector("[data-live-shadow] code")!
+    const waitFor = async (condition: () => unknown, message: string) => {
+      const deadline = performance.now() + 8000
+      while(!condition() && performance.now() < deadline) await nextFrame()
+      assert(condition(), message)
+    }
+    await waitFor(() => shadow.textContent?.includes("Edit the invitation"), "Ghost Disco did not render")
+    const previewFrames = () => [...example.querySelectorAll("iframe[data-live-participant]:not([data-staging])")]
+    assert(previewFrames().length === 1, "The example did not start in Single mode")
+    example.querySelector<HTMLButtonElement>('[data-live-layout="shared"]')!.click()
+    await waitFor(() => previewFrames().length === 2, "Shared mode did not create a second participant")
+    const source = read("source")
+    const original = source.state.doc.toString()
+    assert(original.includes("class WwGhostDisco"), "The live editor did not load the tutorial source")
+    const move = `
+const first = document.querySelector("ww-ghost-disco")
+new MutationObserver(() => {
+  if(!first.isContentEditable) first.shadowRoot.querySelector('button[value="float"]').click()
+}).observe(first, {attributes: true, attributeFilter: ["contenteditable"]})
+`
+    source.dispatch({changes: {from: original.length, insert: move}})
+    const initialFrame = previewFrames()[0]
+    await waitFor(() => previewFrames().length === 2 && previewFrames()[0] !== initialFrame, "Ghost Disco did not accept the source edit")
+    example.querySelector<HTMLButtonElement>('[data-live-mode="reading"]')!.click()
+    const html = read("html")
+    await waitFor(() => html.state.doc.toString().includes('"move":"float"'), "A dance move did not reach the data block")
+    assert(shadow.textContent?.includes("The ghost floats!"), "The participant did not show the move")
+    example.querySelector<HTMLButtonElement>("[data-live-reset]")!.click()
+    await waitFor(() => shadow.textContent?.includes("Pick a dance move."), "Reset did not clear the move")
+    assert(source.state.doc.toString() === original, "Reset did not restore the tutorial source")
+    example.querySelector<HTMLButtonElement>('[data-live-layout="single"]')!.click()
+    assert(previewFrames().length === 1, "Single mode did not close the second participant")
+  }
+  finally { frame.remove() }
+})
+
 await check("Lit documentation examples render and synchronize with LitElementWw", async () => {
   type Quiz = HTMLElement & {updateComplete: Promise<boolean>, dataReady: boolean, editable: boolean, answer: string, resetAnswer(): void}
   const frame = document.createElement("iframe")

@@ -4,6 +4,50 @@ A widget can use its own language setting or the language of the document. It ca
 
 ![Document language maps to translated widget text](../../images/widgets/localization.svg)
 
+<!-- live-example: Localized greeting -->
+
+```js vanilla
+class LocalizedGreeting extends HTMLElement {
+  static observedAttributes = ["lang"]
+
+  constructor() {
+    super()
+    this.attachShadow({mode: "open"})
+  }
+
+  connectedCallback() {
+    this.render()
+  }
+
+  attributeChangedCallback() {
+    this.render()
+  }
+
+  render() {
+    const german = this.lang.toLowerCase().startsWith("de")
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display: block; }
+        section { display: grid; justify-items: start; gap: .5rem; padding: .75rem; border: 1px solid #b8c7d6; border-radius: .5rem; }
+      </style>
+      <section lang="${german ? "de" : "en"}">
+        <strong>${german ? "Guten Morgen!" : "Good morning!"}</strong>
+        <button type="button">${german ? "Sprache wechseln" : "Change language"}</button>
+      </section>`
+    this.shadowRoot.querySelector("button").addEventListener("click", () =>
+      this.lang = german ? "en" : "de")
+  }
+}
+
+customElements.define("ww-localized-greeting", LocalizedGreeting)
+```
+
+```html
+<ww-localized-greeting lang="en"></ww-localized-greeting>
+```
+
+<!-- /live-example -->
+
 <!-- library:vanilla -->
 Read the nearest [`lang`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/lang) attribute on the widget or one of its ancestors.
 

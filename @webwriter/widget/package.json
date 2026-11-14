@@ -1,0 +1,28 @@
+{
+  "name": "@webwriter/widget",
+  "version": "1.0.0",
+  "description": "DOM-backed runtime for WebWriter widgets",
+  "license": "MIT",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.ts",
+    "options.ts"
+  ],
+  "scripts": {
+    "build": "esbuild ./index.ts --bundle --target=es2022 --format=esm --outfile=index.js",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.4"
+  }
+}

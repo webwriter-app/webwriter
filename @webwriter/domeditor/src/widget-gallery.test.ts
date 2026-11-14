@@ -71,6 +71,12 @@ describe("widget gallery helpers", () => {
     expect(widget).not.toBeInstanceOf(GalleryProbe)
   })
 
+  it("allows vertical scroll chaining through the gallery preview document", () => {
+    const result = galleryDocument("<p>Preview</p>", "Example")
+    const styles = [...result.head.querySelectorAll("style")].map(style => style.textContent).join("\n")
+    expect(styles).toContain("html:root, html > body {overscroll-behavior-y: auto}")
+  })
+
   it("selects packages used by widgets nested anywhere in the example", () => {
     const outer = pkg("@school/outer", "Outer", [member("school-activity")])
     const nested = pkg("@other/nested", "Nested", [member("other-control")])

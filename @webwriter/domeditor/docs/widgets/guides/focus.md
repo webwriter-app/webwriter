@@ -4,6 +4,41 @@ A widget can move keyboard focus to its controls. It can specify which input eve
 
 ![Tab advances focus between widget controls](../../images/widgets/focus.svg)
 
+Select **Focus first sound**, then press Enter to activate the focused button. Use Tab and Shift+Tab to move between the controls.
+
+<!-- live-example: Keyboard focus -->
+
+```js vanilla
+class Soundboard extends HTMLElement {
+  constructor() {
+    super()
+    this.attachShadow({mode: "open"}).innerHTML = `
+      <button data-sound type="button">Rain</button>
+      <button data-sound type="button">Wind</button>
+      <button id="focus" type="button">Focus first sound</button>
+      <output aria-live="polite"></output>`
+    this.shadowRoot.querySelector("#focus").addEventListener("click", () => this.focus())
+    this.shadowRoot.addEventListener("click", event => {
+      if(event.target.id === "focus") return
+      if(!event.target.matches("[data-sound]")) return
+      this.shadowRoot.querySelector("output").textContent = `Selected ${event.target.textContent}`
+    })
+  }
+
+  focus(options) {
+    this.shadowRoot.querySelector("[data-sound]")?.focus(options)
+  }
+}
+
+customElements.define("ww-soundboard", Soundboard)
+```
+
+```html
+<ww-soundboard></ww-soundboard>
+```
+
+<!-- /live-example -->
+
 Use native buttons, inputs, and labels in the shadow DOM to get standard keyboard behavior.
 
 Implement [`focus()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/focus) to move focus from the widget to a control. In this example, a soundboard moves focus to its first sound button.

@@ -7,6 +7,7 @@ import {documentThemeSourcesId, loadDocumentThemeSources} from "./document-theme
 
 const virtualId = "virtual:distribution-reader-sources"
 const resolvedVirtualId = `\0${virtualId}`
+const editingPreviewId = "virtual:live-example-editing"
 const actions = {insert: "installInsert"}
 
 const blockedInputs = [
@@ -117,12 +118,19 @@ export function distributionReaderPlugin() {
   const projectRoot = fileURLToPath(new URL("../", import.meta.url))
   const coreEntry = resolve(projectRoot, "src/distribution-reader.ts")
   const actionEntry = resolve(projectRoot, "src/distribution-reader-actions.ts")
+  const previewEntry = resolve(projectRoot, "dev-server/live-example-editing.ts")
   return {
     name: "distribution-reader-sources",
     resolveId(source) {
       if (source === virtualId) return resolvedVirtualId
+      if (source === editingPreviewId) return `\0${editingPreviewId}`
     },
     async load(source) {
+      if (source === `\0${editingPreviewId}`) {
+        const result = await bundleEntry(previewEntry, projectRoot, "__liveExampleEditing", file => this.addWatchFile(file))
+        watchInputs(this, result, projectRoot)
+        return `export default ${JSON.stringify(result.outputFiles[0].text)}`
+      }
       if (source !== resolvedVirtualId) return
 
       const addWatchFile = file => this.addWatchFile(file)

@@ -1,5 +1,12 @@
 import {fixedPopupPosition} from "../src/components/popup-position.ts"
 
+const liveExamples = document.querySelectorAll(".live-example")
+if(liveExamples.length) {
+  import("./live-example.js").then(({mountLiveExample}) => liveExamples.forEach(mountLiveExample)).catch(() => {
+    for(const example of liveExamples) example.querySelector("[data-live-status]").textContent = "The live editor could not load."
+  })
+}
+
 // Share the sidebar position across documentation pages in this browser tab.
 const sidebar = document.querySelector(".documentation-sections")
 const sidebarScrollKey = "webwriter-docs-sidebar-scroll"
@@ -156,12 +163,25 @@ if(guidePreview) {
     if(!activeLink) return
     const bounds = activeLink.getBoundingClientRect()
     const {clientWidth: width, clientHeight: height} = document.documentElement
-    const pageBounds = capabilities.closest(".page")?.getBoundingClientRect()
+    const pageBounds = capabilities.closest(".docs-layout")?.getBoundingClientRect()
     if(bounds.bottom <= Math.max(0, pageBounds?.top ?? 0) || bounds.top >= height) {
       closePreview()
       return
     }
     const margin = 8
+    const side = getComputedStyle(activeLink).getPropertyValue("--guide-preview-side").trim()
+    const sideWidth = guidePreview.getBoundingClientRect().width
+    const outLeft = bounds.left - sideWidth
+    const sideLeft = side === "left" && outLeft >= margin ? outLeft
+      : side === "right" && bounds.right + sideWidth <= width - margin ? bounds.right
+        : undefined
+    if(sideLeft !== undefined) {
+      guidePreview.style.maxBlockSize = ""
+      const popupHeight = guidePreview.getBoundingClientRect().height
+      guidePreview.style.left = `${sideLeft}px`
+      guidePreview.style.top = `${Math.max(margin, Math.min(bounds.top, height - popupHeight - margin))}px`
+      return
+    }
     const spaceAbove = bounds.top - margin
     const spaceBelow = height - bounds.bottom - margin
     // Keep enough room to see the illustration when the card is near the top edge.

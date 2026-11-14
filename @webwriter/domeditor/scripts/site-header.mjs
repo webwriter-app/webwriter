@@ -16,7 +16,7 @@ function renderExampleShowcase() {
 export function renderSiteHeader(path = "/") {
   const links = [
     {href: "/examples/", label: "Examples"},
-    {href: "/gallery/", label: "Widgets"},
+    {href: "/packages/", label: "Widgets"},
     {href: "/docs/", label: "Documentation"},
     {href: "/editor/", label: "Open WebWriter", editor: true},
   ]
@@ -35,7 +35,7 @@ export function renderSiteFooter() {
       <div class="footer-legal"><small class="copyright">© Frederic Salmen. <span>All rights reserved.</span></small><a href="/legal_notice/">Legal notice</a></div>
       <site-language-switcher></site-language-switcher>
       </div>
-      <nav aria-label="Footer navigation"><a href="/examples/">Examples</a><a href="/gallery/">Widgets</a><a href="/docs/">Documentation</a><a href="/editor/">Open WebWriter</a></nav>
+      <nav aria-label="Footer navigation"><a href="/examples/">Examples</a><a href="/packages/">Widgets</a><a href="/docs/">Documentation</a><a href="/editor/">Open WebWriter</a></nav>
     </footer>`
 }
 

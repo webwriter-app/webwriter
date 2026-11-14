@@ -1,0 +1,26 @@
+{
+  "name": "@webwriter/svelte",
+  "version": "1.0.0",
+  "description": "Svelte adapter for WebWriter widgets",
+  "license": "MIT",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
+  "dependencies": {
+    "@webwriter/widget": "^1.0.0"
+  },
+  "peerDependencies": {
+    "svelte": "^5.0.0"
+  }
+}

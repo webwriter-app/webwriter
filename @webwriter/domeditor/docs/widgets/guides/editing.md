@@ -4,6 +4,53 @@ A widget can change its controls when the authoring tool changes the document mo
 
 ![Pencil editing interface beside reader controls](../../images/widgets/editing.svg)
 
+Edit the heading in the preview. Switch to **Reading** to use **Show note**.
+
+<!-- live-example: Edit mode -->
+
+```js vanilla
+class EditNote extends HTMLElement {
+  static observedAttributes = ["contenteditable"]
+
+  constructor() {
+    super()
+    this.attachShadow({mode: "open"}).innerHTML = `
+      <slot></slot>
+      <p id="hint"></p>
+      <button id="toggle" type="button">Show note</button>
+      <p id="note" hidden>Meet at the north gate.</p>`
+    this.shadowRoot.querySelector("#toggle").addEventListener("click", () => {
+      const note = this.shadowRoot.querySelector("#note")
+      note.hidden = !note.hidden
+    })
+  }
+
+  connectedCallback() {
+    this.renderMode()
+  }
+
+  attributeChangedCallback() {
+    this.renderMode()
+  }
+
+  renderMode() {
+    const editing = this.isContentEditable
+    this.shadowRoot.querySelector("#hint").textContent = editing ? "Edit the heading in the document." : ""
+    this.shadowRoot.querySelector("#toggle").hidden = editing
+  }
+}
+
+customElements.define("ww-edit-note", EditNote)
+```
+
+```html
+<ww-edit-note contenteditable="">
+  <p>Field trip meeting point</p>
+</ww-edit-note>
+```
+
+<!-- /live-example -->
+
 <!-- library:vanilla -->
 Use [`this.isContentEditable`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/isContentEditable) to identify the mode.
 

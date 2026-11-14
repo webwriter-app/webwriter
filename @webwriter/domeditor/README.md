@@ -41,7 +41,7 @@ npm run build
 npm run preview
 ```
 
-The build produces `dist/` with independent landing (`/`), Widgets (`/gallery/`), documentation (`/docs/`), and editor (`/editor/`) pages. Serve directory indexes normally and return 404 for missing pages; no SPA fallback or documentation server is required. The preview server binds only to `127.0.0.1`.
+The build produces `dist/` with independent landing (`/`), Widgets (`/packages/`), documentation (`/docs/`), and editor (`/editor/`) pages. Serve directory indexes normally. Internally rewrite `/packages/@scope/name/` to `/packages/index.html` (preserving the public URL) and redirect the old `/gallery/` route to `/packages/`. Other missing pages should return 404. The included server configurations handle these package routes. The preview server binds only to `127.0.0.1`.
 
 Application and frame scripts use content-hashed filenames. For nginx deployments,
 send `Cache-Control: no-cache` for HTML (including directory indexes), the service
@@ -111,7 +111,7 @@ editor and try adding the local package again.
 
 ## Widgets
 
-The **Widgets** navigation item opens `/gallery/`. It reads the current npm catalog of published `@webwriter/…` packages carrying the `webwriter-widget` keyword, following all search result pages. Each package gets one card; search includes its widget and snippet names. No package list is frozen into the build.
+The **Widgets** navigation item opens `/packages/`. It reads the current npm catalog of published `@webwriter/…` packages carrying the `webwriter-widget` keyword, following all search result pages. A package opens at its shareable `/packages/@scope/name/` URL. Each package gets one card; search includes its widget and snippet names. No package list is frozen into the build.
 
 Open a package to switch between its widgets and published snippets in learner view. Widget defaults use a matching published example when available, or an existing example lesson before falling back to the widget's default state. Snippet-only collections such as PhET are included. Reset recreates the example; closing it removes the frame. Previews use the existing separate frame origin, package dependency resolver, and preview serialization, with editing disabled. The catalog and published assets require an internet connection; the gallery needs no development backend.
 

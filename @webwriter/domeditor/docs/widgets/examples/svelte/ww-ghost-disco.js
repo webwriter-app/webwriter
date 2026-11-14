@@ -1,1 +1,1 @@
-import "./06-disco-collaboration.svelte"
+import "../disco/svelte/08-disco-dependencies.svelte"

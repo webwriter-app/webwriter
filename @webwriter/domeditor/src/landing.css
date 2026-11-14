@@ -7,7 +7,7 @@ body { margin: 0; }
 a { color: var(--accent); text-underline-offset: .2em; }
 a:hover { text-decoration-thickness: 2px; }
 a:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
-main, footer { max-inline-size: 76rem; margin-inline: auto; padding-inline: 1.5rem; }
+main, footer { max-inline-size: var(--site-max-inline-size); margin-inline: auto; padding-inline: var(--site-gutter); }
 .button { display: inline-flex; align-items: center; justify-content: center; gap: 1.5rem; padding: .8rem 1.2rem; background: var(--accent); border: 1px solid var(--accent); border-radius: .4rem; color: white; font-weight: 600; text-decoration: none; white-space: nowrap; }
 .button:hover { background: #104a7b; }
 example-showcase { display: contents; min-inline-size: 0; }
@@ -53,7 +53,6 @@ h3 { margin: .8rem 0; font-size: 1rem; line-height: 1.4; }
 .skip-link:focus { transform: none; }
 @media (max-width: 60rem) { .hero { column-gap: 2rem; padding-block: 2.5rem; } .possibilities { grid-template-columns: 1fr; gap: 2rem; } .possibilities h2 br { display: none; } .developer-invitation { align-items: start; flex-direction: column; } }
 @media (max-width: 42rem) { .hero { grid-template-columns: 1fr; grid-template-rows: auto; } h1 { font-size: clamp(2.5rem, 9vw, 3.75rem); } .capabilities { grid-template-columns: 1fr; } .capabilities article { border-top: 1px solid var(--border); padding-block-start: 1rem; } .developer-invitation { padding: 1.5rem; } .research-background { flex-direction: column; align-items: start; gap: 1.5rem; } .research-logo { flex: none; inline-size: min(17rem, 100%); } }
-@media (max-width: 24rem) { main, footer { padding-inline: 1rem; } }
 
 .legal-notice {max-inline-size: 54rem; padding-block: 3rem 4rem; overflow-wrap: anywhere}
 .legal-notice h1 {font-size: clamp(2.3rem, 5vw, 3.5rem)}

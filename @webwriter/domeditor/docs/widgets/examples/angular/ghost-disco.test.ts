@@ -1,6 +1,13 @@
 // @vitest-environment happy-dom
-import {afterEach, expect, it} from "vitest"
-import "./06-disco-collaboration.ts"
+import {afterEach, expect, it, vi} from "vitest"
+import "./ww-ghost-disco.js"
+
+// Happy DOM does not implement form-associated custom elements.
+vi.hoisted(() => {
+  HTMLElement.prototype.attachInternals ??= () => ({
+    setFormValue() {}, setValidity() {}, reportValidity: () => true,
+  }) as ElementInternals
+})
 
 function createBlock() {
   const block = document.createElement("script")
@@ -32,18 +39,22 @@ it("renders reader moves separately from authored lighting", async () => {
   const block = createBlock()
   widget.append(invitation, block)
   const dataRequests: Event[] = []
-  widget.addEventListener("datarequest", event => dataRequests.push(event))
+  widget.addEventListener("datarequest", event => {
+    event.preventDefault()
+    dataRequests.push(event)
+  })
 
   widget.lighting = "neon"
   document.body.append(widget)
   await render()
   const shadow = widget.shadowRoot!
   const stage = shadow.querySelector(".stage")!
-  const output = shadow.querySelector("output")!
+  const output = shadow.querySelector("output[aria-live]")!
   const twirl = shadow.querySelector<HTMLButtonElement>('button[value="twirl"]')!
   expect(stage.getAttribute("data-lighting")).toBe("neon")
   expect(widget.getAttribute("lighting")).toBe("neon")
   expect(invitation.parentNode).toBe(widget)
+  expect(widget.getAttributeNames().sort()).toEqual(["lighting"])
   expect(dataRequests[0]?.target).toBe(block)
   expect(twirl.disabled).toBe(true)
   expect(output.textContent?.trim()).toBe("Pick a dance move.")
@@ -68,6 +79,11 @@ it("renders reader moves separately from authored lighting", async () => {
   await render()
   expect(output.textContent?.trim()).toBe("The ghost floats!")
   expect(shadow.querySelector(".ghost")?.getAttribute("data-move")).toBe("float")
+  widget.setAttribute("shared", "group")
+  await render()
+  expect(dataRequests).toHaveLength(2)
+  expect(dataRequests.at(-1)?.target).toBe(block)
+  expect(twirl.disabled).toBe(true)
   sendData(block, "datapending")
   twirl.click()
   expect(block.textContent).toBe('{"move":"float"}')
@@ -82,4 +98,30 @@ it("renders reader moves separately from authored lighting", async () => {
   widget.contentEditable = "true"
   await render()
   expect(shadow.querySelector(".controls")?.hasAttribute("hidden")).toBe(true)
+})
+
+it("keeps the view on a DOM move and recreates it after removal", async () => {
+  const widget = document.createElement("ww-ghost-disco")
+  const block = createBlock()
+  block.textContent = '{"move":"float"}'
+  widget.append(block)
+  document.body.append(widget)
+  const shadow = widget.shadowRoot!
+  const stage = shadow.querySelector(".stage")!
+  const wrapper = document.createElement("div")
+  document.body.append(wrapper)
+  wrapper.append(widget)
+  await render()
+  expect(shadow.querySelector(".stage")).toBe(stage)
+
+  widget.remove()
+  await render()
+  expect(shadow.querySelector(".stage")).toBeNull()
+  expect(shadow.querySelectorAll("style")).toHaveLength(1)
+  wrapper.append(widget)
+  await render()
+  expect(shadow.querySelector(".stage")).not.toBe(stage)
+  expect(shadow.querySelector(".ghost")?.getAttribute("data-move")).toBe("float")
+  expect(widget.firstChild).toBe(block)
+  expect(widget.getAttributeNames()).toEqual([])
 })

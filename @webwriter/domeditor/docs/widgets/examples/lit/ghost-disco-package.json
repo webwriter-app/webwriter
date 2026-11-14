@@ -1,27 +1,75 @@
 {
   "name": "@example/ghost-disco-lit",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "A tiny dance floor for a ghost.",
   "keywords": [
-    "webwriter-widget"
+    "webwriter-widget",
+    "widget-editable",
+    "widget-has-content",
+    "widget-convertible-from-p",
+    "widget-convertible-to-p",
+    "widget-responsive",
+    "widget-themeable",
+    "widget-lang-en",
+    "widget-lang-de",
+    "widget-printable",
+    "widget-stateful",
+    "widget-configurable",
+    "widget-shareable",
+    "widget-distributable",
+    "widget-reactive",
+    "widget-supports-dynamic-loading",
+    "widget-testable",
+    "widget-migrates-from-1.0.0"
   ],
   "exports": {
-    "./widgets/ww-ghost-disco.js": "./ww-ghost-disco.js",
+    "./widgets/ww-ghost-disco.js": "./dist/ww-ghost-disco.js",
     "./snippets/ghost-disco.html": "./ghost-disco.html",
-    "./tests/ghost-disco.js": "./ghost-disco-tests.js"
+    "./tests/ghost-disco.js": "./ghost-disco-tests.js",
+    "./widgets/ww-dance-scoreboard.js": "./dist/ww-ghost-disco.js",
+    "./migrate.js": "./disco/migrate.js"
   },
   "editingConfig": {
     "./widgets/ww-ghost-disco": {
       "label": "Ghost Disco",
       "content": "p+",
-      "sharedData": true
+      "sharedData": true,
+      "importFormats": [
+        ".txt"
+      ],
+      "exportFormats": [
+        "text/plain"
+      ]
     },
     "./snippets/ghost-disco": {
       "label": "Ghost Disco with invitation"
+    },
+    "./widgets/ww-dance-scoreboard": {
+      "label": "Dance scoreboard"
     }
   },
   "dependencies": {
     "@webwriter/lit": "^3.0.0",
     "lit": "^3.3.2"
-  }
+  },
+  "imports": {
+    "#disco-authoring": "./disco/authoring.js",
+    "#disco-participation": "./disco/participation.js",
+    "#disco-scoreboard": "./disco/scoreboard.js",
+    "#disco-dependencies": "./disco/dependencies.js",
+    "#disco-tips": "./disco/tips.js"
+  },
+  "scripts": {
+    "build": "node build.mjs ghost-disco"
+  },
+  "devDependencies": {
+    "esbuild-wasm": "^0.25.12"
+  },
+  "files": [
+    "dist/",
+    "disco/migrate.js",
+    "disco/checks.js",
+    "ghost-disco.html",
+    "ghost-disco-tests.js"
+  ]
 }

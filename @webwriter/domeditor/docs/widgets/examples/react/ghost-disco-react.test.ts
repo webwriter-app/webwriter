@@ -1,7 +1,14 @@
 // @vitest-environment happy-dom
-import {afterEach, expect, it} from "vitest"
+import {afterEach, expect, it, vi} from "vitest"
 import {act} from "react"
-import "./06-disco-collaboration.jsx"
+import "./ww-ghost-disco.js"
+
+// Happy DOM does not implement form-associated custom elements.
+vi.hoisted(() => {
+  HTMLElement.prototype.attachInternals ??= () => ({
+    setFormValue() {}, setValidity() {}, reportValidity: () => true,
+  }) as ElementInternals
+})
 
 ;(globalThis as typeof globalThis & {IS_REACT_ACT_ENVIRONMENT?: boolean}).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -23,7 +30,7 @@ function send(block: HTMLScriptElement, type = "datachange") {
   block.dispatchEvent(new CustomEvent(type, {bubbles: true}))
 }
 
-async function createWidget() {
+async function createWidget(managed = false) {
   const widget = document.createElement("ww-ghost-disco") as HTMLElement & {
     lighting: string
     resetLighting: () => void
@@ -32,6 +39,7 @@ async function createWidget() {
   invite.textContent = "Costumes welcome!"
   const block = createData()
   widget.append(invite, block)
+  if(managed) widget.addEventListener("datarequest", event => event.preventDefault())
   widgets.push(widget)
   await update(() => document.body.append(widget))
   const shadow = widget.shadowRoot!
@@ -41,7 +49,7 @@ async function createWidget() {
     ghost: shadow.querySelector(".ghost")!,
     float: shadow.querySelector<HTMLButtonElement>('button[value="float"]')!,
     twirl: shadow.querySelector<HTMLButtonElement>('button[value="twirl"]')!,
-    output: shadow.querySelector("output")!,
+    output: shadow.querySelector("output[aria-live]")!,
     controls: shadow.querySelector<HTMLElement>(".controls")!,
   }
 }
@@ -73,7 +81,7 @@ it("keeps the invitation authored and reflects the lighting option in the stage"
 })
 
 it("writes only to a ready direct data block and renders accepted remote moves", async () => {
-  const {widget, block, float, twirl, ghost, output} = await createWidget()
+  const {widget, block, float, twirl, ghost, output} = await createWidget(true)
   expect(float.disabled).toBe(true)
   expect(output.textContent).toBe("Pick a dance move.")
   await update(() => send(block))
@@ -84,6 +92,11 @@ it("writes only to a ready direct data block and renders accepted remote moves",
   expect(float.getAttribute("aria-pressed")).toBe("true")
   expect(output.textContent).toBe("The ghost floats!")
 
+  const requests: Event[] = []
+  widget.addEventListener("datarequest", event => requests.push(event))
+  await update(() => widget.setAttribute("shared", "group"))
+  expect(requests.at(-1)?.target).toBe(block)
+  expect(twirl.disabled).toBe(true)
   await update(() => send(block, "datapending"))
   expect(twirl.disabled).toBe(true)
   const replacement = createData("twirl")

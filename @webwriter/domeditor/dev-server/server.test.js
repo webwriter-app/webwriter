@@ -46,8 +46,8 @@ const rawRequest = (path, init = {}) => new Promise((resolve, reject) => {
   outgoing.end(init.body)
 })
 
-const openWebSocket = (url, options) => new Promise((resolve, reject) => {
-  const socket = new WebSocketPackage(url, options)
+const openWebSocket = (url, options, protocol) => new Promise((resolve, reject) => {
+  const socket = new WebSocketPackage(url, protocol, options)
   const timer = setTimeout(() => {
     socket.terminate()
     reject(new Error("WebSocket connection timed out"))
@@ -304,8 +304,11 @@ describe("VPN-only private testing", () => {
     }
     for(const options of [socketOptions("https://attacker.example"), socketOptions("null"),
       {headers: {Host: new URL(appOrigin).host}}, socketOptions(editorOrigin, new URL(editorOrigin).host),
-      socketOptions(editorOrigin, "localhost:1234"), {...socketOptions(), headers: {...socketOptions().headers, "Sec-WebSocket-Protocol": "vite-hmr"}}]) {
+      socketOptions(editorOrigin, "localhost:1234")]) {
       await expect(openWebSocket(url, options)).rejects.toBeInstanceOf(Error)
+    }
+    for(const protocol of ["vite-hmr", "vite-ping"]) {
+      await expect(openWebSocket(url, socketOptions(), protocol)).rejects.toBeInstanceOf(Error)
     }
   })
 
@@ -388,6 +391,24 @@ describe("development server", () => {
       socket.once("open", () => { socket.terminate(); resolve() })
       socket.once("error", reject)
     })).rejects.toBeInstanceOf(Error)
+  })
+
+  it("leaves Vite's restart probe out of collaboration", async () => {
+    const {dataDirectory} = developmentServer
+    await developmentServer.close()
+    developmentServer = await createDevServer({port: 0, dataDirectory})
+    baseUrl = (await developmentServer.listen()).url
+    const collaboration = vi.fn()
+    developmentServer.websocketServer.on("connection", collaboration)
+
+    const closeCode = await new Promise((resolve, reject) => {
+      const ping = new WebSocketPackage(`${baseUrl.replace(/^http/, "ws")}/`, "vite-ping", {origin: baseUrl, handshakeTimeout: 2_000})
+      ping.once("close", resolve)
+      ping.once("error", reject)
+    })
+    expect(closeCode).toBe(1000)
+    expect(collaboration).not.toHaveBeenCalled()
+    expect((await request("/api/session")).response.status).toBe(200)
   })
 
   it("accepts bracketed IPv6 origins and advertises a usable IPv6 URL", async () => {

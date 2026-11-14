@@ -1,13 +1,37 @@
 import {sanitizePackageSnippet, type PackageMember, type WebWriterPackage} from "./packages"
 import {defaultDocumentTheme} from "./document-themes"
+import {packageKeywordPresentations, type PackageKeywordPresentation} from "./package-keywords"
 
 export type GalleryWidget = {pkg: WebWriterPackage, member: PackageMember}
 
+type GalleryTagFilter = Pick<PackageKeywordPresentation, "kind" | "label" | "icon"> & {keyword: string, packages: Set<string>}
+
+/** Present each searchable keyword on its own, including keywords grouped into badges on the detail page. */
+export function galleryTagFilters(packages: WebWriterPackage[]) {
+  const filters = new Map<string, GalleryTagFilter>()
+  for(const pkg of packages) {
+    for(const keyword of pkg.keywords) {
+      const [tag] = packageKeywordPresentations([keyword], "en")
+      if(!tag || tag.kind === "widget" || tag.kind === "custom" || tag.kind === "language") continue
+      const key = `${tag.kind}:${tag.label}`
+      const filter = filters.get(key) ?? {keyword: keyword.toLowerCase(), ...tag, packages: new Set<string>()}
+      filter.packages.add(pkg.name)
+      filters.set(key, filter)
+    }
+  }
+  return filters
+}
+
 /** One searchable card per published WebWriter package. */
-export function galleryPackages(packages: WebWriterPackage[], query = ""): WebWriterPackage[] {
+export function galleryPackages(packages: WebWriterPackage[], query = "", language = ""): WebWriterPackage[] {
   const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
+  const languageKeyword = language && `widget-lang-${language.toLowerCase()}`
   return packages.filter(pkg => {
     if(!pkg.name.startsWith("@webwriter/")) return false
+    if(languageKeyword && !pkg.keywords.some(keyword => {
+      const normalized = keyword.toLowerCase()
+      return normalized === languageKeyword || normalized.startsWith(languageKeyword + "-")
+    })) return false
     const text = [pkg.name, pkg.label, pkg.description, ...pkg.keywords,
       ...pkg.members.flatMap(member => [member.label, member.description, member.tagName])].join(" ").toLocaleLowerCase()
     return words.every(word => text.includes(word))
@@ -41,6 +65,8 @@ export function galleryDocument(html: string, title: string): Document {
   viewport.content = "width=device-width, initial-scale=1"
   const style = source.createElement("style")
   style.textContent = `${defaultDocumentTheme.source}\nhtml {background: white} body {box-sizing: border-box; min-width: 0; margin: 0; padding: 1.5rem; color: #263142; font: 1rem/1.6 system-ui, sans-serif; overflow-wrap: anywhere} img, video {max-width: 100%}`
+  // Gallery previews use the page's scroll chain, including when the editor stylesheet is active.
+  style.textContent += "\nhtml:root, html > body {overscroll-behavior-y: auto}"
   source.head.append(viewport, style)
   return source
 }

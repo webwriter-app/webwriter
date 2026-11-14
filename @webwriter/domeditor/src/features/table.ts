@@ -857,7 +857,7 @@ export class TableFeature extends EditorFeature {
 
   private addCaption() {
     const table = this.selectedTable
-    if(!table) return
+    if(this.editor.isEditingLocked || !table || !this.editor.allows("style", table)) return
     const caption = table.caption ?? table.createCaption()
     if(table.firstElementChild !== caption) table.prepend(caption)
     this.clearCellSelection(false)
@@ -868,7 +868,7 @@ export class TableFeature extends EditorFeature {
 
   private toggleCaption() {
     const table = this.selectedTable
-    if(!table) return
+    if(this.editor.isEditingLocked || !table || !this.editor.allows("style", table)) return
     const caption = table.caption
     if(!caption) {
       this.addCaption()

@@ -1,0 +1,27 @@
+{
+  "name": "@webwriter/angular",
+  "version": "1.0.0",
+  "description": "Angular adapter for WebWriter widgets",
+  "license": "MIT",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
+  "dependencies": {
+    "@webwriter/widget": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@angular/core": "^22.2.0",
+    "@angular/platform-browser": "^22.2.0"
+  }
+}

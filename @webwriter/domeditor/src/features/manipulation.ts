@@ -2199,7 +2199,7 @@ export class ManipulationFeature extends EditorFeature {
   setCaption(position: "none" | "above" | "below", alignment?: "left" | "center" | "right", {preserveSelection = false} = {}) {
     if(this.editor.isEditingLocked) return false
     let target = this.captionTarget()
-    if(!target || !target.parentNode) return false
+    if(!target || !target.parentNode || !this.editor.allows("style", target)) return false
     if(position !== "none" && target.matches("figure") && !this.editor.schema.hasFigureContent(Array.from(target.childNodes))) return false
     const captured = this.editor.features.selection.captureSelectedElement
     const selected = captured ?? $.selectedElement ?? target
@@ -2312,7 +2312,7 @@ export class ManipulationFeature extends EditorFeature {
 
   addFigureCaption(position: "before" | "after") {
     const figure = this.activeFigure()
-    if(!figure || this.directFigureCaption(figure)) return false
+    if(this.editor.isEditingLocked || !figure || !this.editor.allows("style", figure) || this.directFigureCaption(figure)) return false
     const caption = document.createElement("figcaption")
     if(!this.editor.schema.hasFigureContent(Array.from(figure.childNodes))) return false
     position === "before" ? figure.prepend(caption) : figure.append(caption)

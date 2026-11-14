@@ -4,6 +4,56 @@ Publication makes a widget available for installation in an authoring tool. The 
 
 ![A widget package uploaded to a registry shelf](../../images/widgets/publishing.svg)
 
+This field journal uses the same custom element tag in a document or on a host page. Switch the preview to **Reading** and write a note to update its data block. Use the standalone preview later in this guide to try saving across page loads.
+
+<!-- live-example: Embedded field journal -->
+
+```js vanilla
+class FieldJournal extends HTMLElement {
+  constructor() {
+    super()
+    const root = this.attachShadow({mode: "open"})
+    root.innerHTML = `
+      <style>:host([contenteditable]) textarea { display: none; }
+        :host(:not([contenteditable])) p { display: none; }</style>
+      <label>Field note <textarea></textarea></label>
+      <p>Switch to Reading to write a note.</p>
+    `
+    root.querySelector("textarea").addEventListener("input", event => {
+      if(this.isContentEditable) return
+      const block = this.querySelector('script[slot="data"]')
+      if(block) block.textContent = JSON.stringify({note: event.target.value}).replaceAll("<", "\\u003c")
+    })
+  }
+
+  #observer = new MutationObserver(() => this.render())
+
+  connectedCallback() {
+    this.#observer.observe(this, {subtree: true, childList: true, characterData: true})
+    this.render()
+  }
+
+  disconnectedCallback() { this.#observer.disconnect() }
+
+  render() {
+    const block = this.querySelector('script[slot="data"]')
+    const field = this.shadowRoot.querySelector("textarea")
+    try { field.value = JSON.parse(block?.textContent ?? "{}").note ?? "" }
+    catch { field.value = "" }
+  }
+}
+
+customElements.define("ww-field-journal", FieldJournal)
+```
+
+```html
+<ww-field-journal id="garden-notes" standalone>
+  <script type="application/json" slot="data">{"note":"Watch the first crocus open."}</script>
+</ww-field-journal>
+```
+
+<!-- /live-example -->
+
 ## Package and publish
 
 Before publication, load the widget from a local folder. Do the [widget checks](testing.md).
@@ -71,11 +121,9 @@ class WwFieldJournal extends LitElementWw {
 customElements.define("ww-field-journal", WwFieldJournal)
 ```
 
-Write a note. Reload the preview. Make sure that the browser restores the note.
+Write a note in the standalone preview. Reload that page. Make sure that the browser restores the note.
 
 [Open the standalone preview](../examples/preview.html?guide=publishing) · [View the example source](../examples/guide-publishing.js)
-
-<iframe title="Standalone field journal" src="../examples/preview.html?guide=publishing" width="100%" height="360" loading="lazy"></iframe>
 
 An empty `standalone` value selects browser storage. To use a remote destination, set `standalone` to the endpoint URL. When the reader changes destinations, the drawer restores the result for the new destination. The saved result stays in its original destination. See [standalone storage](../reference/standalone.md#http-endpoint) for the endpoint requirements.
 

@@ -343,7 +343,6 @@ describe("Developer console packages", () => {
       {label: "Add from local folder", action: "local-package-add", icon: "Open"},
       {label: "Add from parent folder", action: "local-package-add-batch", icon: "Open"},
       {label: "Add from Git repository", action: "git-package-add", icon: "Git"},
-      {label: "Create new package", action: "local-package-new", icon: "PackagePlus"},
     ])
     expect(getComputedStyle(load.shadowRoot!.querySelector<HTMLElement>(".main-button")!).justifyContent).toBe("flex-start")
     const chevron = load.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!
@@ -353,10 +352,11 @@ describe("Developer console packages", () => {
     await load.updateComplete
     const menu = load.shadowRoot!.querySelector("ribbon-menu")!
     await menu.updateComplete
-    expect(menu.shadowRoot!.querySelector('[title="Create new package"] .icon-tabler-cube-plus')).not.toBeNull()
-    menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Create new package"]')!.click()
+    const addFromParentFolder = menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Add from parent folder"]')!
+    expect(addFromParentFolder.querySelector(".icon-tabler-folder-open")).not.toBeNull()
+    addFromParentFolder.click()
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({label: "local-package-new"}),
+      detail: expect.objectContaining({label: "local-package-add-batch"}),
     }))
 
     items[1].click()

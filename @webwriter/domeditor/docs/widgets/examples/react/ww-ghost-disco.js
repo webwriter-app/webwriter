@@ -1,1 +1,1 @@
-import "./06-disco-collaboration.jsx"
+import "../disco/react/08-disco-dependencies.jsx"

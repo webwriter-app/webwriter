@@ -39,4 +39,4 @@ For other runners, dispatch [`CustomEvent("test-update", {detail})`](https://dev
 | `afterOne` | Same `id` and `path`, plus `passed: boolean`. Optional `duration: number` in milliseconds, `sync: boolean`, `timedOut: boolean`. |
 | `afterAll` | No additional fields. |
 
-Send one `beforeAll` and one `afterAll` per module. Send one `beforeOne` and one `afterOne` per test. The [tutorial](../tutorial/07-testing-publishing.md) gives a complete test example.
+Send one `beforeAll` and one `afterAll` per module. Send one `beforeOne` and one `afterOne` per test. See the [Ghost Disco test module](../examples/ghost-disco-tests.js) for a complete example.

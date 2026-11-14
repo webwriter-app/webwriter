@@ -1,0 +1,30 @@
+{
+  "name": "@webwriter/guidance",
+  "version": "1.1.0",
+  "description": "WebWriter widget documentation search and coding agent skill",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webwriter-app/webwriter.git",
+    "directory": "@webwriter/guidance"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.20.0"
+  },
+  "bin": {
+    "webwriter-guidance": "cli.mjs"
+  },
+  "files": [
+    "cli.mjs",
+    "docs.mjs",
+    "dist/widget-docs.json",
+    "skills"
+  ],
+  "scripts": {
+    "prepack": "node docs.mjs"
+  }
+}
