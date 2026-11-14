@@ -347,16 +347,20 @@ it("nests reference pages under named sections and follows their order for adjac
   const menus = [...body.matchAll(/<nav aria-label="(?:Documentation|Mobile documentation)">([\s\S]*?)<\/nav>/g)]
   expect(menus).toHaveLength(2)
   for(const [, menu] of menus) {
-    const disclosure = menu.match(/<details class="nav-reference"><summary>Reference<\/summary>([\s\S]*?)<\/details>/)?.[1]
+    const disclosure = menu.match(/<details class="nav-reference" open><summary>Reference<\/summary>([\s\S]*?)<\/details>/)?.[1]
     expect(disclosure).toContain('href="/docs/widgets/reference/index.md?library=vue">Reference overview</a>')
+    expect(disclosure).toContain('href="/docs/widgets/reference/runtime.md?library=vue" aria-current="page"')
     expect([...disclosure.matchAll(/<p>([^<]+)<\/p><ul aria-label="([^"]+)"><li><a href="([^"]+)"/g)]
       .map(([, title, label, href]) => [title, label, href])).toEqual(groups.map(([title, path]) =>
       [title, title, `/docs/widgets/reference/${path}.md?library=vue`]))
   }
   expect(body).toContain('class="previous" href="/docs/widgets/reference/distribution.md?library=vue"')
   expect(body).toContain('class="next" href="/docs/widgets/reference/data.md?library=vue"')
+  const overview = await get(base, "/docs/widgets/reference/index.md?library=vue")
+  expect(overview.body.match(/<details class="nav-reference" open>/g)).toHaveLength(2)
   const sandbox = await get(base, "/docs/widgets/sandbox.md?library=vue")
   expect(sandbox.status).toBe(200)
+  expect(sandbox.body.match(/<details class="nav-reference">/g)).toHaveLength(2)
   expect(sandbox.body).toMatch(/<summary>Reference<\/summary>[\s\S]*?<\/details><a [^>]*class="nav-shortcut" aria-current="page">Sandbox<\/a>/)
   expect(sandbox.body).toContain('class="previous" href="/docs/widgets/reference/build-test.md?library=vue"')
 })
@@ -1096,6 +1100,7 @@ it("emits static documentation variants, navigation, assets, and original exampl
   expect(emitted.get("assets/docs/icons/react.svg").toString()).toContain('id="react"')
   const reactAdapter = emitted.get("docs/widgets/reference/adapters.react.html")
   expect(reactAdapter).toContain('class="docs-heading">C2. @webwriter/react</h1>')
+  expect(reactAdapter.match(/<details class="nav-reference" open>/g)).toHaveLength(2)
   expect(reactAdapter).toContain('href="/docs/widgets/reference/adapters.angular.html?library=angular"><img src="/assets/docs/icons/angular.svg"')
   expect(emitted.get("docs/widgets/reference/adapters.html")).toContain('id="standalone-widget-drawer"')
   expect(emitted.get("docs/widgets/reference/lit.react.html")).toContain('id="standalone-widget-drawer"')

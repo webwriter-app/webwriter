@@ -1,5 +1,9 @@
 # C3. @webwriter/guidance
 
+> [!NPM]
+>
+> [View `@webwriter/guidance` on npm](https://www.npmjs.com/package/@webwriter/guidance)
+
 `@webwriter/guidance` provides the `webwriter-guidance` CLI and an Agent Skill for developing WebWriter widgets. Use Node.js 22.20 or newer.
 
 ## Install the skill

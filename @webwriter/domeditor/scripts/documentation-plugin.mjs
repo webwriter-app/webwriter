@@ -665,7 +665,7 @@ function renderPage({source, path, sections, library, highlighter, guideIcons, c
   const pages = [...introPages, ...menuSections.flatMap(section => [section, ...section.groups.flatMap(group => group.pages)])]
   const currentPath = path === litReference ? adapterReference : path
   const index = pages.findIndex(page => page.path === currentPath)
-  const section = sections.find(section => section.path.endsWith("/index.md")
+  const activeSection = sections.find(section => section.path.endsWith("/index.md")
     && path.startsWith(section.path.slice(0, -"index.md".length)))
   const href = value => escapeHTML(libraryURL(value, path, library, staticBuild))
   const pageTitle = page => page.path === adapterReference ? adapterTitle(path === litReference ? "lit" : library) : page.title
@@ -692,13 +692,13 @@ function renderPage({source, path, sections, library, highlighter, guideIcons, c
       return `<div class="nav-subsection">${heading(`<span>${title}</span>`)}${list}</div>`
     }).join("")
     if(isReference) {
-      return `<details class="nav-reference"><summary>${escapeHTML(section.title)}</summary><div class="nav-reference-pages"><ul><li>${link({...section, title: "Reference overview"})}</li></ul>${groups}</div></details>`
+      return `<details class="nav-reference"${section === activeSection && !missing ? " open" : ""}><summary>${escapeHTML(section.title)}</summary><div class="nav-reference-pages"><ul><li>${link({...section, title: "Reference overview"})}</li></ul>${groups}</div></details>`
     }
     return `<div class="nav-section">${sectionHeading}${groups}</div>`
   }).join("")
   const adjacent = (page, direction) => page ? `<a class="${direction.toLowerCase()}" href="${href(page.path)}"><span>${direction}</span>${escapeHTML(pageTitle(page))}</a>` : "<span></span>"
-  const breadcrumb = section && section.path !== path
-    ? `<nav class="breadcrumb" aria-label="Breadcrumb">${link(section)}</nav>` : ""
+  const breadcrumb = activeSection && activeSection.path !== path
+    ? `<nav class="breadcrumb" aria-label="Breadcrumb">${link(activeSection)}</nav>` : ""
   const iconRoot = staticBuild ? "/assets/docs" : "/dev-server"
   const activeAdapter = path === litReference ? "lit" : library
   const adapterNavigation = currentPath === adapterReference && !missing
@@ -707,7 +707,7 @@ function renderPage({source, path, sections, library, highlighter, guideIcons, c
     : ""
   const introNotice = [home, quickStart, libraryPagePath, "/docs/widgets/tutorial/index.md", guideIndex, referenceIndex].includes(path)
     ? '<div class="docs-intro-note" role="note">This documentation is for developers. It is available only in English.</div>' : ""
-  const guide = section?.path === guideIndex && path !== guideIndex && !missing
+  const guide = activeSection?.path === guideIndex && path !== guideIndex && !missing
   const {intro, body} = renderMarkdown(source, {path, library, highlighter, staticBuild, guideIcons, guide, capabilities, sandbox})
   const guideIntro = intro
     ? `<header class="guide-intro"><div class="guide-intro-meta">${breadcrumb}${renderGuideKeywords(path, href)}</div><div class="guide-intro-content"><div class="guide-intro-text">${intro.title}${intro.text}</div>${intro.illustration}</div></header>` : ""
