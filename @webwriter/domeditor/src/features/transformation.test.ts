@@ -919,6 +919,21 @@ describe("caption affordance", () => {
 
   const button = () => feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
 
+  it("requires Styling permission to add or reposition a caption", () => {
+    document.body.innerHTML = "<figure><p>Content</p></figure>"
+    const figure = document.querySelector("figure")!
+    const allows = vi.spyOn(editor, "allows").mockImplementation(permission => permission !== "style")
+    mockRect(figure, {width: 240, height: 40})
+    captureNode(figure)
+    expect(button().hidden).toBe(true)
+    expect(editor.features.manipulation.setCaption("below")).toBe(false)
+    expect(editor.features.manipulation.addFigureCaption("before")).toBe(false)
+    expect(figure.querySelector("figcaption")).toBeNull()
+    allows.mockReturnValue(true)
+    expect(editor.features.manipulation.setCaption("below")).toBe(true)
+    expect(figure.lastElementChild?.localName).toBe("figcaption")
+  })
+
   it.each((["document", "canvas", "slides"] as const).flatMap(mode =>
     ["p", "caption-widget", "table"].flatMap(tag => [false, true].map(captured => ({mode, tag, captured})))))("adds a bottom-left caption to $tag in $mode and preserves capture=$captured selection", async ({mode, tag, captured}) => {
     const target = targetElement(tag)
