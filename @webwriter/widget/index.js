@@ -1,4 +1,4 @@
-// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/widget/index.ts
+// index.ts
 var javaScriptMimeTypes = /* @__PURE__ */ new Set([
   "application/ecmascript",
   "application/javascript",
