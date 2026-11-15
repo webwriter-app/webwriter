@@ -62,7 +62,7 @@ import type {DocumentBlobAsset, EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
 import listMarkerStyleString from "./document-list-markers.css?raw"
 import * as Y from "yjs"
-import {offlinePackageStyleAttribute, originalPackageEntriesAttribute, originalURLAttribute, serializeDoctype, type HTMLDocumentParts} from "./serialization-primitives"
+import {offlineAssetsId, offlinePackageStyleAttribute, originalPackageEntriesAttribute, originalURLAttribute, serializeDoctype, type HTMLDocumentParts} from "./serialization-primitives"
 import type {DocumentHeadState} from "./document-head"
 import {upgradeBundledDocumentThemes} from "./document-themes"
 import {getSectionOption, isSectionElement} from "./sections"
@@ -1600,10 +1600,28 @@ export class DOMEditor {
       const url = new URL(member.scriptUrl, base).href
       if(bundled.has(url)) widgetEntries.set(member.tagName, url)
     }
-    const offlineImports = this.features.widget.offlineImports(root, widgetEntries)
-    const {js, css} = await bundleOfflineModules(urls, plan.map, base, offlineImports)
+    const {imports, assets} = this.features.widget.offlineRequirements(root, widgetEntries)
+    const {js, css} = await bundleOfflineModules(urls, plan.map, base, imports)
     if(await hasOfflineModuleImports(js)) throw new Error("Offline package bundle contains unresolved module imports")
     const first = scripts[0].script
+    const embeddedAssets = await Promise.all([...assets].map(async ([url, mimeType]) => {
+      try {
+        const resource = await (await this.fetchResource(url)).blob()
+        // The declared MIME type takes priority over the response headers.
+        const blob = mimeType ? new Blob([resource], {type: mimeType}) : resource
+        return [url, await this.blobDataURL(blob)] as const
+      }
+      catch(error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        throw new Error(`Could not embed offline asset ${url}: ${reason}`, {cause: error})
+      }
+    }))
+    const manifest = first.ownerDocument.createElement("script")
+    manifest.id = offlineAssetsId
+    manifest.type = "application/json"
+    // A URL can contain an HTML raw-text terminator.
+    manifest.textContent = JSON.stringify(Object.fromEntries(embeddedAssets)).replaceAll("<", "\\u003c")
+    root.head.insertBefore(manifest, root.head.querySelector(":scope > script"))
     const bundle = documentElement.ownerDocument.createElement("script")
     bundle.type = "module"
     bundle.src = await this.blobDataURL(new Blob([js], {type: "text/javascript"}))

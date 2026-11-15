@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "./domeditor"
+import {assetURL} from "../../widget/index"
 import {restoreOriginalResourceURLs} from "./serialization"
+import {offlineAssetsId} from "./serialization-primitives"
 import {bundleOfflineModules} from "./offline-module-bundler"
 import {bunnyFontStylesheet} from "./fonts"
 import {fontCSSDataURL, embeddedFontRules} from "./local-fonts"
@@ -95,16 +97,28 @@ describe("offline HTML resources", () => {
     ])
   })
 
-  it("collects offline import rules from saved widgets and reader templates", async () => {
+  it("collects offline imports and deduplicates assets across saved widgets and reader templates", async () => {
     const entry = "https://cdn.example/pkg/widgets/test-offline-imports.js"
     const tagName = "test-offline-imports"
+    const wasm = "https://cdn.example/pkg/runtime.wasm?v=1"
+    const archive = "https://cdn.example/pkg/stdlib.zip?v=1"
+    const unused = "https://cdn.example/pkg/unused.wasm"
     const select = vi.fn((element: Element) => [{
       importer: "../loaders.js", keep: [`./${element.getAttribute("type")}.js`],
     }])
-    customElements.define(tagName, class extends HTMLElement {static offlineImports = select})
+    const selectAssets = vi.fn((element: Element) => {
+      if(element.hasAttribute("disable-execution")) return []
+      return [{url: wasm, mimeType: "application/wasm"},
+        ...(element.getAttribute("type") === "third" ? [{url: archive}] : [])]
+    })
+    customElements.define(tagName, class extends HTMLElement {
+      static offlineImports = select
+      static offlineAssets = selectAssets
+    })
     document.head.insertAdjacentHTML("beforeend", `<script type="module" src="${entry}"></script>`)
     document.body.innerHTML = `<${tagName} type="first"></${tagName}>
-      <template><template><${tagName} type="second"></${tagName}></template></template>`
+      <template><template><${tagName} type="second"></${tagName}></template></template>
+      <${tagName} type="disabled" disable-execution></${tagName}>`
     const item = {id: `element:${tagName}`, label: "Insertable", html: `<${tagName} type="third"></${tagName}>`}
     writeDistributionConfig(document.body, {
       version: 1, scope: "individual", permissions: ["insert"], add: [item.id], items: [item],
@@ -116,16 +130,32 @@ describe("offline HTML resources", () => {
       members: [{kind: "widget", tagName, scriptUrl: entry}],
     } as WebWriterPackage])
     vi.mocked(bundleOfflineModules).mockResolvedValue({js: "", css: undefined})
+    const fetcher = mockResources({"/pkg/runtime.wasm": new Uint8Array([0, 97, 115, 109]), "/pkg/stdlib.zip": new Uint8Array([1, 2, 3])})
 
     try {
-      await activeEditor.serializeHTML()
+      const online = new DOMParser().parseFromString(await activeEditor.serializeHTML(), "text/html")
       expect(select).not.toHaveBeenCalled()
-      await activeEditor.serializeHTML(true)
-      expect(select.mock.calls).toHaveLength(3)
-      expect(select.mock.calls.every(([element]) => !element.isConnected)).toBe(true)
+      expect(selectAssets).not.toHaveBeenCalled()
+      expect(fetcher).not.toHaveBeenCalled()
+      expect(assetURL(wasm, online)).toBe(wasm)
+
+      const exported = new DOMParser().parseFromString(await activeEditor.serializeHTML(true), "text/html")
+      expect(selectAssets.mock.calls).toHaveLength(4)
+      expect(selectAssets.mock.calls.every(([element]) => !element.isConnected)).toBe(true)
       expect(vi.mocked(bundleOfflineModules).mock.lastCall?.[3]).toEqual(new Map([
-        ["https://cdn.example/pkg/loaders.js", new Set(["./first.js", "./second.js", "./third.js"])],
+        ["https://cdn.example/pkg/loaders.js", new Set(["./first.js", "./second.js", "./disabled.js", "./third.js"])],
       ]))
+      expect(fetcher.mock.calls.map(([input]) => input)).toEqual([wasm, archive])
+      expect(exported.querySelectorAll(`#${offlineAssetsId}`)).toHaveLength(1)
+      expect(assetURL(new URL(wasm), exported)).toBe("data:application/wasm;base64,AGFzbQ==")
+      expect(assetURL(archive, exported)).toBe("data:image/png;base64,AQID")
+      expect(() => assetURL(unused, exported)).toThrow(unused)
+      expect(document.getElementById(offlineAssetsId)).toBeNull()
+      restoreOriginalResourceURLs(exported)
+      expect(assetURL(wasm, exported)).toBe(wasm)
+
+      fetcher.mockResolvedValue(new Response(null, {status: 404}))
+      await expect(activeEditor.serializeHTML(true)).rejects.toThrow(`Could not embed offline asset ${wasm}`)
     }
     finally { writeDistributionConfig(document.body, null) }
   })

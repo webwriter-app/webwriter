@@ -19,6 +19,7 @@ The widget class extends `HTMLElement` or a compatible class such as [`LitElemen
 | `static convertFrom` / `convertFrom`, `static convertTo` / `convertTo` | [DOM conversions and file import or export](../guides/conversions.md). |
 | `static aggregate` | [Aggregated View](aggregated-view.md) declaration for aggregate views. |
 | `static offlineImports(element)` | [Select optional dynamic imports](#offline-imports) for Offline HTML. |
+| `static offlineAssets(element)` | [Declare runtime files](#offline-assets) for Offline HTML. |
 
 The authoring tool gives an installed widget a persistent `id` if the widget has none. During editing, the authoring tool adds `contenteditable=""` to widgets that have no `contenteditable` attribute. The authoring tool saves and shares authored values such as `contenteditable="false"`. The authoring tool omits its temporary value from saved and shared HTML.
 
@@ -58,6 +59,32 @@ static offlineImports(element) {
 The authoring tool bundles the selected imports and their dependencies. In the standalone file, an excluded call rejects with `OfflineImportError`. The usual bundle rules apply to static imports and to dynamic imports from modules without an `offlineImports` rule.
 
 [Manage dependencies](../guides/libraries.md#optimize-the-code-bundle) gives a loader example and steps to test the export.
+
+## Offline assets
+
+The optional `offlineAssets` method synchronously returns an array of `{url, mimeType?}` declarations. As with `offlineImports`, the tool passes a detached copy of each saved widget, including widgets in templates readers can insert. Read the copy to decide which files the reader can use. Use absolute, versioned HTTP(S) URLs without credentials or fragments.
+
+```js
+import {assetURL} from "@webwriter/widget"
+
+const sqliteWasm = "https://cdn.jsdelivr.net/npm/sql.js@1.16.0/dist/sql-wasm-browser.wasm"
+
+class CodeSql extends HTMLElement {
+  static offlineAssets(element) {
+    return element.hasAttribute("disable-execution") ? []
+      : [{url: sqliteWasm, mimeType: "application/wasm"}]
+  }
+
+  // Call when the reader clicks Run.
+  async loadSQLiteBytes() {
+    const response = await fetch(assetURL(sqliteWasm, this.ownerDocument))
+    if (!response.ok) throw new Error("Could not load SQLite")
+    return response.arrayBuffer()
+  }
+}
+```
+
+The exporter fetches each declared URL once and embeds it in the HTML. When supplied, `mimeType` sets the embedded media type. An asset that cannot be fetched fails the export. `assetURL(url, document?)` returns the original URL in the editor and regular HTML. In Offline HTML it returns an embedded data URL, or throws if the asset was not declared. Resolve the URL in the widget document before passing it to a worker.
 
 ## Conversions
 

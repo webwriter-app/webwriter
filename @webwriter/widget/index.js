@@ -1,4 +1,20 @@
 // index.ts
+var offlineAssets = /* @__PURE__ */ new WeakMap();
+function assetURL(url, owner = document) {
+  const href = new URL(url).href;
+  const manifest = owner.head?.querySelector('script#webwriter-offline-assets[type="application/json"]');
+  if (!manifest) return href;
+  let assets = offlineAssets.get(manifest);
+  if (!assets) {
+    assets = JSON.parse(manifest.textContent ?? "{}");
+    offlineAssets.set(manifest, assets);
+  }
+  const embedded = assets[href];
+  if (typeof embedded !== "string" || !embedded.startsWith("data:")) {
+    throw new Error(`Asset is unavailable in Offline HTML: ${href}`);
+  }
+  return embedded;
+}
 var javaScriptMimeTypes = /* @__PURE__ */ new Set([
   "application/ecmascript",
   "application/javascript",
@@ -301,6 +317,7 @@ function withWidgetRuntime(Base) {
 }
 export {
   WidgetRuntime,
+  assetURL,
   isDataBlockType,
   widgetLanguage,
   widgetRuntimeAttributes,

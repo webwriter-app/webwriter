@@ -2,6 +2,25 @@ import type {LocalizedText} from "./options"
 
 export type * from "./options"
 
+const offlineAssets = new WeakMap<Element, Readonly<Record<string, string>>>()
+
+/** Resolve a declared asset to its embedded URL in Offline HTML. */
+export function assetURL(url: string | URL, owner: Document = document): string {
+  const href = new URL(url).href
+  const manifest = owner.head?.querySelector('script#webwriter-offline-assets[type="application/json"]')
+  if(!manifest) return href
+  let assets = offlineAssets.get(manifest)
+  if(!assets) {
+    assets = JSON.parse(manifest.textContent ?? "{}") as Readonly<Record<string, string>>
+    offlineAssets.set(manifest, assets)
+  }
+  const embedded = assets[href]
+  if(typeof embedded !== "string" || !embedded.startsWith("data:")) {
+    throw new Error(`Asset is unavailable in Offline HTML: ${href}`)
+  }
+  return embedded
+}
+
 /** MIME type essences browsers execute as classic scripts. */
 const javaScriptMimeTypes = new Set([
   "application/ecmascript", "application/javascript", "application/x-ecmascript", "application/x-javascript",
