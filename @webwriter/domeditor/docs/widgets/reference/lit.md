@@ -18,7 +18,8 @@ Import `LitElementWw` from `@webwriter/lit`. Call `super` when you override a [l
 | `static scopedElements` | Maps tag names to component classes. All instances of the same widget class share its native registry. |
 | `registry` | The widget class's native `CustomElementRegistry`. |
 | `static properties` | Lit [reactive property](https://lit.dev/docs/components/properties/) declarations. Declare option metadata separately. |
-| `static options` / `static actions` | Widget drawer declarations. Use static fields for these declarations. |
+| `static options` / `static actions` | Default widget drawer declarations. Use instance getters `get options()` and `get actions()` for declarations that depend on widget state. |
+| `widgetRuntime` | The widget's public `WidgetRuntime` instance, shared with its language and data hooks. |
 | `localize` | Optional `{getLocale, setLocale}` connection from [`@lit/localize`](https://lit.dev/docs/localization/overview/). |
 | `static dataType` | Default MIME type for an inert data block. The initial value is undefined. |
 | `dataType` | Type of the current data block. It uses the class default when necessary. |

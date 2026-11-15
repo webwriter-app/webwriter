@@ -27,6 +27,66 @@ function selectText(node: Text, start = 0, end = node.length) {
 
 const cleanHTML = () => editor.toHTML(true)
 
+class MarkedWidget extends HTMLElement {
+  static marks = "b i a color font-family popup ruby"
+
+  constructor() {
+    super()
+    this.attachShadow({mode: "open"}).innerHTML = '<div contenteditable="true" data-ww-text data-ww-marks="b a color font-family" tabindex="0">Label</div><slot></slot>'
+  }
+}
+customElements.define("demo-marked-widget", MarkedWidget)
+
+describe("widget-owned text marks", () => {
+  it("routes declared commands and state through the widget host, including a plain link and the bold shortcut", () => {
+    editor.schema.extendWidgets([{tagName: "demo-marked-widget", editingConfig: {content: "p*", marks: "i"}}])
+    const paragraph = setContent('<p>Outside</p><demo-marked-widget><p>Slotted</p></demo-marked-widget>')
+    selectText(paragraph.firstChild as Text)
+    const widget = document.querySelector<MarkedWidget>("demo-marked-widget")!
+    const field = widget.shadowRoot!.querySelector<HTMLElement>("[data-ww-text]")!
+    field.focus()
+    const mark = vi.fn((event: Event) => event.preventDefault())
+    widget.addEventListener("ww-mark", mark)
+    const report = (detail: object) => widget.dispatchEvent(new CustomEvent("ww-markstate", {detail, bubbles: true, composed: true}))
+    report({b: true, i: true, color: "#c00", ruby: true, a: false})
+    expect(feature.getState()).toMatchObject({canMark: true, widgetMarks: ["b", "a", "font-family", "color"], marks: ["b"]})
+    expect(feature.getStyleState()).toEqual({color: "#c00"})
+
+    const shortcut = new KeyboardEvent("keydown", {key: "b", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true, composed: true})
+    field.dispatchEvent(shortcut)
+    expect(shortcut.defaultPrevented).toBe(true)
+    expect(mark.mock.calls.at(-1)?.[0]).toMatchObject({detail: {name: "b", value: undefined}})
+    feature.resolveWidgetShortcut = event => event.key === "d" ? "mark:b" : undefined
+    try {
+      const remapped = new KeyboardEvent("keydown", {key: "d", ctrlKey: true, bubbles: true, composed: true, cancelable: true})
+      field.dispatchEvent(remapped)
+      expect(remapped.defaultPrevented).toBe(true)
+      expect(mark).toHaveBeenCalledTimes(2)
+    }
+    finally { feature.resolveWidgetShortcut = undefined }
+    expect(feature.toggleMark("i")).toBe(false)
+    expect(feature.setStyleMark("font-family", "A web font, serif")).toBe(false)
+    expect(feature.setStyleMark("color", "")).toBe(true)
+    expect(mark.mock.calls.at(-1)?.[0]).toMatchObject({detail: {name: "color", value: null}})
+    expect(feature.togglePopup()).toBe(false)
+    expect(feature.selectLinkKind("cross-reference")).toBe(false)
+    expect(feature.selectLinkKind("link", true)).toBe(true)
+    const draft = feature.getLinkState()!
+    expect(draft).toMatchObject({plainOnly: true, kind: "link", targets: []})
+    expect(feature.editLink({identity: draft.identity, href: "https://example.com/", attributes: {}, kind: "link"})).toBe(true)
+    expect(mark.mock.calls.at(-1)?.[0]).toMatchObject({detail: {name: "a", value: "https://example.com/"}})
+
+    widget.removeEventListener("ww-mark", mark)
+    expect(feature.toggleMark("b")).toBe(false)
+    expect(paragraph.outerHTML).toBe("<p>Outside</p>")
+    field.blur()
+    selectText(widget.querySelector("p")!.firstChild as Text)
+    expect(feature.getState().widgetMarks).toBeUndefined()
+    expect(feature.toggleMark("i")).toBe(true)
+    expect(widget.querySelector("p")!.innerHTML).toBe("<i>Slotted</i>")
+  })
+})
+
 describe("MarkFeature DOM state", () => {
   it("wraps selected inline content in a popup while preserving surrounding markup", () => {
     const paragraph = setContent('<p>Before <em>selected <b>words</b></em> after</p>')

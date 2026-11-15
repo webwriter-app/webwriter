@@ -25,6 +25,18 @@ The authoring tool gives an installed widget a persistent `id` if the widget has
 
 The authoring tool handles shadow DOM events of the types in `propagateEvents`. The authoring tool also synchronizes changes that the widget makes to the authored DOM.
 
+## Undo transactions
+
+Dispatch bubbling, composed `ww-transactionstart` and `ww-transactionend` events from the widget host around one edit. Send the end event after the widget has finished writing its attributes, light DOM, and scoped data. Send one pair per widget and use `finally` to close the transaction if the edit fails. Overlapping widget transactions share an undo step. Empty transactions leave history untouched, and the editor closes an outstanding transaction after ten seconds or when its host leaves the document.
+
+## Formatting widget-owned text
+
+Set `static marks = "b i color"` to declare the ribbon controls available for the widget's own selection. Use HTML mark names and the style names `font-family`, `font-size`, `color`, and `background-color`. The default is an empty list. `editingConfig.marks` still governs authored light DOM children.
+
+Listen for the bubbling, cancelable `ww-mark` event on the widget host. Its detail contains `name` and `value`. Toggle an element mark when the value is undefined, set styles and plain link addresses with a string value, and clear them when the value is `null`. Call `preventDefault()` when the widget applies the command. A parent widget can handle a request that bubbles from its child.
+
+When the widget selection or formatting changes, dispatch a bubbling, composed `ww-markstate` event from the host with details such as `{b: true, color: "#c00", a: "https://example.com/"}`. The editor supports plain links and built-in fonts for widget-owned text. A focused shadow field marked `data-ww-text` can narrow its host's declared marks using `data-ww-marks`.
+
 ## Signals
 
 Widgets can publish signals. Other widgets can read these signals and respond to changes.

@@ -643,6 +643,7 @@ export class DOMEditor {
 
   allowsFeatureEvent(feature: import("./features").EditorFeature, event: Event) {
     if(!this.options.reader || feature.readerPermission === "view") return true
+    if(feature === this.features.widget && ["ww-transactionstart", "ww-transactionend"].includes(event.type)) return true
     const target = event.target instanceof Element ? event.target : event.target instanceof Node ? event.target.parentElement : null
     if(feature.readerPermission === "select") {
       // Release/cleanup events must still finish a gesture outside its region.

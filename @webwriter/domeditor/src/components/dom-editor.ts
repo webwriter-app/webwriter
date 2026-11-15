@@ -381,6 +381,7 @@ export class DomEditor extends LitElement {
     marks: {attribute: false, state: true},
     popupActive: {attribute: false, state: true},
     allowedMarks: {attribute: false, state: true},
+    widgetMarks: {attribute: false, state: true},
     markStyles: {attribute: false, state: true},
     markAttributes: {attribute: false, state: true},
     ruby: {attribute: false, state: true},
@@ -566,6 +567,7 @@ export class DomEditor extends LitElement {
   private svgText = false
   private marks: MarkName[] = []
   private allowedMarks: MarkName[] | null = null
+  private widgetMarks: import("../marks").WidgetMarkName[] | null = null
   private popupActive = false
   private markStyles: StyleMarkValues = {}
   private markAttributes: MarkAttributeValues = {}
@@ -2835,11 +2837,16 @@ export class DomEditor extends LitElement {
       this.savedEditorSelection = null
       return
     }
-    const graphic = (this.editorWindow as Window & {editor?: DOMEditor} | null)?.editor?.features.graphic
+    const features = (this.editorWindow as Window & {editor?: DOMEditor} | null)?.editor?.features
+    const graphic = features?.graphic
     if(graphic?.textEditingRange) {
       this.savedEditorSelection = null
       this.editorWindow?.focus()
       graphic.focusTextInput()
+      return
+    }
+    if(features?.mark.focusWidgetText()) {
+      this.savedEditorSelection = null
       return
     }
     // Activating designMode can collapse the range established by a command.
@@ -8705,7 +8712,8 @@ export class DomEditor extends LitElement {
       this.canRemoveMarks = event.data.detail.canRemoveMarks === true
       // SVG label text remains inside a captured graphic. Keep its controls
       // mounted while mark and selection messages arrive independently.
-      if(this.canMark && !this.svgText) {
+      this.widgetMarks = event.data.detail.widgetMarks ?? null
+      if(this.canMark && !this.svgText && !this.widgetMarks) {
         this.nodeSelection = false
         this.captureSelection = false
         this.selectionGap = null
@@ -8735,6 +8743,7 @@ export class DomEditor extends LitElement {
           canMark: this.canMark,
           canRemoveMarks: this.canRemoveMarks,
           marks: [...this.marks],
+          widgetMarks: this.widgetMarks ?? undefined,
           popupActive: this.popupActive,
           styles: {...this.markStyles},
           attributes: this.markAttributes,
@@ -8828,7 +8837,7 @@ export class DomEditor extends LitElement {
       // A captured graphic can contain the active SVG text selection. Other
       // node/gap selections retire the independently delivered mark state.
       const graphicText = this.svgText && event.data.detail.graphic?.capture
-      if(!graphicText && (this.nodeSelection || this.sectionSelected || this.selectionGap || event.data.detail.table?.cellSelection)) {
+      if(!graphicText && !this.widgetMarks && (this.nodeSelection || this.sectionSelected || this.selectionGap || event.data.detail.table?.cellSelection)) {
         this.canMark = false
         this.marks = []
         this.popupActive = false
@@ -9266,6 +9275,7 @@ export class DomEditor extends LitElement {
     this.selectionGap = null
     this.canMark = false
     this.canRemoveMarks = false
+    this.widgetMarks = null
     this.canSection = false
     this.sectionType = "section"
     this.sectionActive = false
@@ -9358,6 +9368,7 @@ export class DomEditor extends LitElement {
       attachmentActive: this.attachmentSelection !== null,
       inputLinkKind: this.linkSelection?.kind ?? null,
       allowedMarks: this.allowedMarks,
+      widgetMarks: this.widgetMarks,
       markStyles: this.markStyles,
       markAttributes: this.markAttributes,
       ruby: this.ruby,

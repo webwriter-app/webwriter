@@ -17,6 +17,7 @@ export type EditingUIProperties = Pick<EditingControls,
   | "attachmentActive"
   | "inputLinkKind"
   | "allowedMarks"
+  | "widgetMarks"
   | "markStyles"
   | "markAttributes"
   | "ruby"

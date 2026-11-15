@@ -61,14 +61,39 @@ export class WidgetFeature extends EditorFeature {
   readonly #rejectedEffects = new WeakMap<Element, Map<string, string>>()
   #pendingFileAction?: {widget: Element, cancel: () => void}
   #legacyOptions?: {widget: Element, panel: HTMLElement, popover: string | null}
+  readonly #transactions = new Map<Element, () => void>()
+  readonly #propertyUpdates = new Set<() => void>()
 
   // Explicit host notifications cross the ordinary widget-interaction boundary.
   captureListeners = {
-    optionschange: (event: Event) => {
-      const origin = event.composedPath()[0]
-      if(!(origin instanceof Element) || origin !== event.target || !document.body.contains(origin) || !this.isWidget(origin)) return
-      this.#queueOptionsRefresh()
+    "ww-transactionstart": (event: Event) => {
+      const widget = this.hostEventTarget(event)
+      if(!widget || this.editor.isEditingLocked || this.#transactions.has(widget)) return
+      if(!this.editor.allows("edit", widget) && this.editor.schema.get(widget)?.sharedData !== true) return
+      const end = this.editor.doc.beginUndoGroup()
+      const close = () => {
+        if(this.#transactions.get(widget) !== close) return
+        this.#transactions.delete(widget)
+        clearTimeout(timeout)
+        end()
+      }
+      const timeout = setTimeout(close, widgetOperationTimeout)
+      this.#transactions.set(widget, close)
     },
+    "ww-transactionend": (event: Event) => {
+      const widget = this.hostEventTarget(event)
+      if(widget) this.#transactions.get(widget)?.()
+    },
+    optionschange: (event: Event) => {
+      if(this.hostEventTarget(event)) this.#queueOptionsRefresh()
+    },
+  }
+
+  /** Public widget events originate on the mounted host itself. */
+  hostEventTarget(event: Event) {
+    const origin = event.composedPath()[0]
+    return origin instanceof Element && origin === event.target && document.body.contains(origin) && this.isWidget(origin)
+      ? origin : null
   }
 
   #queueOptionsRefresh() {
@@ -276,7 +301,12 @@ export class WidgetFeature extends EditorFeature {
       localName: string
       name: string
       value: WidgetOptionValue
-    }) => this.setOption(this.#widgetAt(path, localName), name, value),
+    }) => {
+      const widget = this.#widgetAt(path, localName)
+      const end = this.editor.doc.beginUndoGroup()
+      try { return this.setOption(widget, name, value) }
+      finally { end() }
+    },
     runWidgetAction: ({path, localName, name, confirmed}: {
       type: "runWidgetAction"
       path: number[]
@@ -766,7 +796,25 @@ export class WidgetFeature extends EditorFeature {
     const option = this.#referenceOption(widget, widgetOptionState(name, declaration, value, this.#locale()))
     if(option.hidden || option.disabled || option.readOnly || !validWidgetOptionValue(option, value, widget)) return false
     if(option.attribute === null) {
-      (widget as unknown as Record<string, unknown>)[name] = value
+      const instance = widget as unknown as Record<string, unknown>
+      const end = this.editor.doc.beginUndoGroup()
+      try {
+        instance[name] = value
+        const updated = instance.updateComplete as PromiseLike<unknown> | undefined
+        if(updated && typeof updated.then === "function") {
+          const close = () => {
+            if(!this.#propertyUpdates.delete(close)) return
+            clearTimeout(timeout)
+            end()
+            if(this.isEnabled) this.#queueOptionsRefresh()
+          }
+          const timeout = setTimeout(close, widgetOperationTimeout)
+          this.#propertyUpdates.add(close)
+          void Promise.resolve(updated).then(close, close)
+        }
+        else end()
+      }
+      catch(error) { end(); throw error }
     }
     else {
       const attribute = option.attribute
@@ -774,7 +822,7 @@ export class WidgetFeature extends EditorFeature {
         || ["style", "class", "is"].includes(attribute.toLowerCase())) {
         throw new TypeError(`The ${attribute} attribute cannot be set as an option`)
       }
-      const attributeValue = widgetOptionAttributeValue(option.type, value, option.multiple)
+      const attributeValue = widgetOptionAttributeValue(option.type, value, option.multiple, option.inverted)
       if(attributeValue !== null && isUnsafeElementAttributeValue(attribute, attributeValue)) {
         throw new TypeError(`The ${attribute} option contains an unsafe URL`)
       }
@@ -904,6 +952,13 @@ export class WidgetFeature extends EditorFeature {
   readonly #handleMutations = (records: MutationRecord[]) => this.#connectAddedWidgets(records)
 
   #connectAddedWidgets(records: MutationRecord[], prefill = true) {
+    // This can also run inside SharedDOMDoc's pre-sync hook. Close after the
+    // current synchronization so draining the final mutations cannot reenter it.
+    for(const [widget, close] of this.#transactions) {
+      if(!document.body.contains(widget)) queueMicrotask(() => {
+        if(!document.body.contains(widget)) close()
+      })
+    }
     if(this.#pendingFileAction && !document.body.contains(this.#pendingFileAction.widget)) this.#pendingFileAction.cancel()
     if(this.#legacyOptions && !document.body.contains(this.#legacyOptions.widget)) this.#closeLegacyOptions()
     if(this.#observingReferences) this.#queueOptionsRefresh()
@@ -948,6 +1003,8 @@ export class WidgetFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    for(const close of this.#transactions.values()) close()
+    for(const close of this.#propertyUpdates) close()
     this.#fileConversions.abort()
     this.#closeLegacyOptions()
     this.#observer?.disconnect()

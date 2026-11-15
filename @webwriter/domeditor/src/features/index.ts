@@ -1,7 +1,14 @@
 import type { DOMEditor } from "../domeditor"
 import {isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
 
-export type DocumentListenerMap = {[key in keyof DocumentEventMap]?: (event: DocumentEventMap[key]) => void}
+interface WidgetEventMap {
+  "ww-transactionstart": Event
+  "ww-transactionend": Event
+  "ww-markstate": CustomEvent<unknown>
+}
+
+type FeatureEventMap = DocumentEventMap & WidgetEventMap
+export type DocumentListenerMap = {[key in keyof FeatureEventMap]?: (event: FeatureEventMap[key]) => void}
 type FeatureActionHandler = (action: never) => unknown
 
 /** Collects the fixed feature command surface once, rejecting ambiguous names. */

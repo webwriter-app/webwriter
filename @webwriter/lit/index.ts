@@ -51,6 +51,47 @@ export type OptionDeclaration =
 | ReferenceOptionDeclaration
 
 const registries = new WeakMap<typeof LitElementWw, CustomElementRegistry>()
+// Declaration merging permits both getters and fields in widget subclasses
+// without installing accessors that can intercept existing instance writes.
+export interface LitElementWw {
+  get options(): Record<string, OptionDeclaration> | undefined
+  get actions(): Record<string, ActionDeclaration> | undefined
+}
+
+const warnedDeclarations = new WeakMap<Function, Set<string>>()
+
+function warnForDeclarationClashes(widget: LitElementWw) {
+  // Lit exposes this set in its development build. Local widget previews can
+  // also use the published build of Lit.
+  const location = widget.ownerDocument.defaultView?.location
+  if(!("litIssuedWarnings" in globalThis) && !["localhost", "127.0.0.1", "[::1]"].includes(location?.hostname ?? "")) return
+  const owner = widget.constructor
+  let warned = warnedDeclarations.get(owner)
+  if(!warned) warnedDeclarations.set(owner, warned = new Set())
+  const own = widget as unknown as Record<string, unknown>
+  const isMap = (value: unknown) => {
+    if(!value || typeof value !== "object") return false
+    const prototype = Object.getPrototypeOf(value)
+    return prototype === Object.prototype || prototype === null
+  }
+  for(const name of ["permissions", "options", "actions", "data", "localize"]) {
+    if(warned.has(name)) continue
+    let valid: boolean
+    try {
+      const value = own[name]
+      valid = name === "data" ? !Object.hasOwn(widget, name)
+        : value === undefined || (name === "localize"
+          ? typeof (value as {getLocale?: unknown} | null)?.getLocale === "function"
+            && typeof (value as {setLocale?: unknown} | null)?.setLocale === "function"
+          : isMap(value) && Object.values(value as object).every(isMap))
+    }
+    catch { valid = false }
+    if(!valid) {
+      warned.add(name)
+      console.warn(`<${widget.localName}> uses "${name}" for a value that conflicts with the WebWriter widget API.`)
+    }
+  }
+}
 
 /** Optional WebWriter conveniences for Lit widgets. The authored DOM remains
  * authoritative; only registry, readiness, and notification state are retained. */
@@ -63,8 +104,6 @@ export class LitElementWw extends SignalWatcher(LitElement) {
   static readonly dataType: string | undefined = undefined
 
   /** Per-instance editor declarations, including empty maps, override static maps. */
-  declare readonly options?: Record<string, OptionDeclaration>
-  declare readonly actions?: Record<string, ActionDeclaration>
   declare readonly permissions?: Record<string, PermissionDeclaration>
   declare readonly optionGroups?: Record<string, OptionGroupDeclaration>
   protected localize?: {getLocale: () => string, setLocale: (locale: string) => Promise<void>}
@@ -135,6 +174,8 @@ export class LitElementWw extends SignalWatcher(LitElement) {
     dataError: (error, context) => this.dataError(error, context),
   })
 
+  get widgetRuntime() { return this.#runtime }
+
   languageChanged() { this.#runtime.contextChanged() }
 
   get data() { return this.#runtime.data }
@@ -156,6 +197,7 @@ export class LitElementWw extends SignalWatcher(LitElement) {
 
   connectedCallback() {
     super.connectedCallback()
+    warnForDeclarationClashes(this)
     this.renderRoot.addEventListener("slotchange", this.#slotChanged)
     this.#runtime.connect()
   }

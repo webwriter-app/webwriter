@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/widget",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "DOM-backed runtime for WebWriter widgets",
   "license": "MIT",
   "type": "module",

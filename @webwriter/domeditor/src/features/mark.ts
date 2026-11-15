@@ -3,25 +3,30 @@ import {UndoManager, type Transaction} from "yjs"
 import {
   canonicalMarkName,
   excludedMarkNames,
+  emptyRubyState,
+  fontFamilyOptions,
   fontSizeOptions,
   hasStandardMarkShortcut,
   isMarkElement,
   isMarkAttributeName,
   isStyleMarkName,
+  isWidgetMarkName,
   markAttributeNames,
   markAttributeOptionsFor,
   markNames,
   mergedMarkGroupFor,
   primaryMarkOptions,
   styleMarkNames,
+  widgetMarkNames,
   type MarkAttributeValues,
   type MarkName,
   type RubyComponentState,
   type RubyState,
   type StyleMarkName,
   type StyleMarkValues,
+  type WidgetMarkName,
 } from "../marks"
-import {$, authoredClassValue, cloneRangeContents, cloneWithoutEditorMarkers, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, isParagraphContent, textOffsetIn, textPointAtOffset, uiMotionDisabled} from "../utility"
+import {$, authoredClassValue, cloneRangeContents, cloneWithoutEditorMarkers, focusedWidgetHost, isContentfulWidget, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, isParagraphContent, textOffsetIn, textPointAtOffset, uiMotionDisabled, widgetHostForShadowInteraction} from "../utility"
 import {clearPresentationState, setPresentationState} from "../presentation-state.js"
 import {SVG_NAMESPACE} from "../graphic"
 import {isAuthoredMutation} from "../editor-artifacts"
@@ -32,6 +37,7 @@ import {attachmentWarningBytes, isLinkEdit, isLinkKind, linkKindFromAttributes, 
 import {attachmentConfirmationEvent} from "../editor-bridge"
 import {fontStylesheetFamily, fontFamilies, fontWithFallback, syncFontResources} from "../fonts"
 import {mergeEmbeddedFonts} from "../local-fonts"
+import {parseWidgetMarks} from "../schema"
 import ianaTLDList from "../iana-tlds.txt?raw"
 
 // Refresh this offline snapshot from https://data.iana.org/TLD/tlds-alpha-by-domain.txt.
@@ -51,6 +57,7 @@ export type MarkState = {
   popupActive?: boolean
   /** Marks a containing widget allows; absent when all marks are allowed. */
   allowedMarks?: MarkName[]
+  widgetMarks?: WidgetMarkName[]
 }
 
 type TextSlice = {
@@ -614,6 +621,11 @@ export class MarkFeature extends EditorFeature {
     selectLinkKind: ({kind, toggle}: {type: "selectLinkKind", kind: LinkKind, toggle?: boolean}) => this.selectLinkKind(kind, toggle),
     removeLinkKind: ({kind}: {type: "removeLinkKind", kind: LinkKind}) => this.removeLinkKind(kind),
     cancelLinkKindDraft: ({identity}: {type: "cancelLinkKindDraft", identity: string}) => {
+      if(this.#widgetLinkDraft?.identity === identity) {
+        this.#widgetLinkDraft = null
+        this.editor.postMarkState()
+        return
+      }
       if(this.linkKindDraft?.token !== identity) return
       this.linkKindDraft = null
       this.editor.postMarkState()
@@ -663,6 +675,94 @@ export class MarkFeature extends EditorFeature {
     decreaseFontSize: ({}: {type: "decreaseFontSize"}) => this.adjustFontSize(-1),
     removeMarks: ({}: {type: "removeMarks"}) => this.removeMarks(),
   } as const
+
+  #widgetMarkStates = new WeakMap<Element, {values: Partial<Record<WidgetMarkName, boolean | string>>, identity: string}>()
+  #widgetLinkDraft: {widget: Element, identity: string} | null = null
+  #widgetFocus: {widget: HTMLElement, target: HTMLElement} | null = null
+  resolveWidgetShortcut?: (event: KeyboardEvent) => string | undefined
+
+  captureListeners: DocumentListenerMap = {
+    "ww-markstate": event => {
+      const widget = this.editor.features.widget.hostEventTarget(event)
+      if(!widget || !event.detail || typeof event.detail !== "object" || Array.isArray(event.detail)) return
+      const values = Object.fromEntries(Object.entries(event.detail).filter(([name, value]) => isWidgetMarkName(name)
+        && (isStyleMarkName(name) ? typeof value === "string" : typeof value === "boolean" || name === "a" && typeof value === "string")))
+      this.#widgetMarkStates.set(widget, {values, identity: crypto.randomUUID()})
+      if(this.#widgetLinkDraft?.widget === widget) this.#widgetLinkDraft = null
+      if(this.widgetMarkContext()?.widget === widget) this.editor.postMarkState()
+    },
+    focusin: event => {
+      const widget = focusedWidgetHost()
+      const origin = event.composedPath()[0]
+      const previous = this.#widgetFocus
+      this.#widgetFocus = widget && this.editor.features.widget.isWidget(widget)
+        ? {widget, target: origin instanceof HTMLElement ? origin : widget} : null
+      if(this.#widgetLinkDraft?.widget !== widget) this.#widgetLinkDraft = null
+      if(this.#widgetFocus || previous) this.editor.postMarkState()
+    },
+    focusout: event => {
+      if(!widgetHostForShadowInteraction(event, this.editor.schema)) return
+      // Focus can leave the frame through the ribbon. During focusout the
+      // browser can still report that this frame has focus.
+      requestAnimationFrame(() => {
+        if(!this.isEnabled) return
+        this.editor.postMarkState()
+      })
+    },
+    pointerdown: event => {
+      if(this.#widgetFocus && widgetHostForShadowInteraction(event, this.editor.schema) !== this.#widgetFocus.widget) {
+        this.#widgetFocus = null
+        this.#widgetLinkDraft = null
+      }
+    },
+    keydown: event => {
+      if(widgetHostForShadowInteraction(event, this.editor.schema) && this.widgetMarkContext()) this.handleShortcut(event)
+    },
+  }
+
+  private widgetMarkContext() {
+    if(this.editor.options.reader || this.editor.isEditingLocked) return null
+    const focused = focusedWidgetHost()
+    const retained = this.#widgetFocus?.target.isConnected && window !== window.parent && !document.hasFocus() ? this.#widgetFocus : null
+    const captured = this.editor.features.selection.captureSelectedWidget
+    const widget = focused ?? retained?.widget ?? (captured && this.#widgetMarkStates.has(captured) ? captured : null)
+    if(!widget || !document.body.contains(widget) || !this.editor.features.widget.isWidget(widget)) return null
+    const selection = document.getSelection()
+    if(isContentfulWidget(widget, this.editor.schema) && selection?.anchorNode && selection.focusNode
+      && widget.contains(selection.anchorNode) && widget.contains(selection.focusNode)
+      && ($.isTextSelection || $.isEmptySelection || $.isGapSelection) && !widget.shadowRoot?.activeElement) return null
+    const raw = (widget.constructor as {marks?: unknown}).marks
+    const declared = parseWidgetMarks(typeof raw === "string" ? raw : "")
+    let field = widget.shadowRoot?.activeElement ?? (retained?.widget === widget ? retained.target : null)
+    while(field?.shadowRoot?.activeElement) field = field.shadowRoot.activeElement
+    const restriction = field?.closest("[data-ww-text]")?.getAttribute("data-ww-marks")
+    const allowed = parseWidgetMarks(restriction)
+    const names = widgetMarkNames.filter(name => (!declared || declared.includes(name)) && (!allowed || allowed.includes(name)))
+    const report = this.#widgetMarkStates.get(widget)
+    return {widget, names, state: report?.values ?? {}, identity: report?.identity}
+  }
+
+  focusWidgetText() {
+    const context = this.widgetMarkContext()
+    if(!context?.names.length || this.#widgetFocus?.widget !== context.widget || !this.#widgetFocus.target.isConnected) return false
+    let {target} = this.#widgetFocus
+    let active = context.widget.shadowRoot?.activeElement
+    while(active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement
+    if(active instanceof HTMLElement) target = active
+    window.focus()
+    if(target.isConnected) target.focus({preventScroll: true})
+    return document.activeElement === context.widget
+  }
+
+  private sendWidgetMark(context: NonNullable<ReturnType<MarkFeature["widgetMarkContext"]>>, name: WidgetMarkName, value?: string | null) {
+    if(!context.names.includes(name)) return false
+    if(document.activeElement !== context.widget) this.focusWidgetText()
+    if(!context.widget.isConnected) return false
+    const handled = !context.widget.dispatchEvent(new CustomEvent("ww-mark", {bubbles: true, composed: true, cancelable: true,
+      detail: {name, value}}))
+    if(handled) this.editor.postMarkState()
+    return handled
+  }
 
   activeListeners: DocumentListenerMap = {
     beforeinput: event => this.handleBeforeInput(event),
@@ -729,6 +829,9 @@ export class MarkFeature extends EditorFeature {
     this.attachmentConfirmation?.resolve(false)
     this.attachmentConfirmation = null
     this.clearStoredMarks()
+    this.#widgetLinkDraft = null
+    this.#widgetFocus = null
+    this.#widgetMarkStates = new WeakMap()
     super.disable()
   }
 
@@ -768,6 +871,12 @@ export class MarkFeature extends EditorFeature {
   /** Reads the current selection and its ancestors afresh on every call. */
   getState(): MarkState {
     if(this.editor.features.table.hasCellSelection) return {canMark: false, marks: []}
+    const widget = this.widgetMarkContext()
+    if(widget) {
+      const allowedMarks = widget.names.filter((name): name is MarkName => !isStyleMarkName(name))
+      return {canMark: widget.names.length > 0, marks: allowedMarks.filter(name => Boolean(widget.state[name])),
+        allowedMarks, widgetMarks: widget.names}
+    }
     const state = this.getUnrestrictedState()
     if(this.storedPopup || this.linkPopupToggle()) state.popupActive = true
     const allowed = this.svgContext() || this.editor.features.math.activeMath
@@ -806,6 +915,9 @@ export class MarkFeature extends EditorFeature {
 
   /** Inline span style values shared by the entire selection, or effective at a caret. */
   getStyleState(): StyleMarkValues {
+    const widget = this.widgetMarkContext()
+    if(widget) return Object.fromEntries(widget.names.flatMap(name => isStyleMarkName(name) && typeof widget.state[name] === "string"
+      ? [[name, widget.state[name]]] : []))
     const svg = this.svgContext()
     if(svg) return this.svgState(svg).styles
     if(this.editor.features.math.activeMath) {
@@ -828,6 +940,7 @@ export class MarkFeature extends EditorFeature {
 
   /** Element-specific attribute values shared by the selected runs. */
   getAttributeState(): MarkAttributeValues {
+    if(this.widgetMarkContext()) return {}
     const svg = this.svgContext()
     if(svg) return this.svgState(svg).attributes
     this.clearStoredMarksIfSelectionChanged()
@@ -898,6 +1011,16 @@ export class MarkFeature extends EditorFeature {
   }
 
   getLinkState(): LinkSelectionState | null {
+    const widget = this.widgetMarkContext()
+    if(widget) {
+      if(!widget.names.includes("a")) return null
+      const draft = this.#widgetLinkDraft?.widget === widget.widget ? this.#widgetLinkDraft : null
+      const identity = draft?.identity ?? (widget.state.a ? widget.identity : undefined)
+      if(!identity) return null
+      const href = typeof widget.state.a === "string" ? widget.state.a : ""
+      return {active: true, kind: "link", identity, href, text: "",
+        attributes: {}, targets: [], referenceAllowed: false, plainOnly: true}
+    }
     const draft = this.linkKindDraft
     const selection = this.linkSelection(!!draft)
     const pending = draft && draft.identity === selection?.identity ? draft : null
@@ -939,7 +1062,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   private attachmentTarget(allowDraft = true) {
-    if(this.editor.isEditingLocked || this.editor.features.math.activeMath || !this.isMarkAllowed("a")) return null
+    if(this.editor.isEditingLocked || this.widgetMarkContext() || this.editor.features.math.activeMath || !this.isMarkAllowed("a")) return null
     if(!allowDraft) {
       const selection = document.getSelection()
       if(!selection?.rangeCount) return null
@@ -1272,6 +1395,8 @@ export class MarkFeature extends EditorFeature {
   }
 
   removeLinkKind(kind: LinkKind): boolean {
+    const widget = this.widgetMarkContext()
+    if(widget) return kind === "link" && Boolean(widget.state.a) && this.sendWidgetMark(widget, "a", null)
     if(!isLinkKind(kind) || this.editor.isEditingLocked || this.editor.features.math.activeMath) return false
     this.clearStoredMarksIfSelectionChanged()
     const current = this.linkSelection(true)
@@ -1299,6 +1424,14 @@ export class MarkFeature extends EditorFeature {
   /** Choose a link type for the live selection. Keyboard edits commit the destination. */
   selectLinkKind(kind: LinkKind, toggle = false): boolean {
     if(!isLinkKind(kind) || this.editor.isEditingLocked || this.editor.features.math.activeMath) return false
+    const widget = this.widgetMarkContext()
+    if(widget) {
+      if(kind !== "link" || !widget.names.includes("a")) return false
+      if(toggle && widget.state.a) return this.sendWidgetMark(widget, "a", null)
+      this.#widgetLinkDraft = {widget: widget.widget, identity: crypto.randomUUID()}
+      this.editor.postMarkState()
+      return true
+    }
     this.clearStoredMarksIfSelectionChanged()
     if(this.svgContext() && kind !== "link" && kind !== "cross-reference") return false
 
@@ -1378,6 +1511,17 @@ export class MarkFeature extends EditorFeature {
   editLink(edit: LinkEdit): boolean {
     if(this.editor.isEditingLocked) return false
     if(!isLinkEdit(edit)) throw new TypeError("Invalid link edit")
+    const widget = this.widgetMarkContext()
+    if(widget) {
+      const href = edit.href.trim() ? normalizeLinkHref(edit.href) : null
+      if((edit.kind && edit.kind !== "link") || edit.identity !== this.getLinkState()?.identity || edit.href.trim() && !href) return false
+      const handled = this.sendWidgetMark(widget, "a", href)
+      if(this.#widgetLinkDraft) {
+        this.#widgetLinkDraft = null
+        this.editor.postMarkState()
+      }
+      return handled
+    }
     const state = this.getLinkState()
     if(!state || state.identity !== edit.identity) throw new Error("The selected link changed. Select it again before applying.")
     if(edit.kind && edit.kind !== state.kind) throw new Error("The link type changed. Select it again before applying.")
@@ -1450,6 +1594,7 @@ export class MarkFeature extends EditorFeature {
 
   /** Structured state for the ruby element resolved from the current live selection. */
   getRubyState(): RubyState {
+    if(this.widgetMarkContext()) return emptyRubyState
     const ruby = this.selectedRuby()
     const context = this.getSelection()
     if(!ruby) return {
@@ -1535,6 +1680,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   togglePopup(): boolean {
+    if(this.widgetMarkContext()) return false
     if(this.editor.isEditingLocked) return false
     this.clearStoredMarksIfSelectionChanged()
     const toggle = this.selectedPopupToggle()
@@ -1570,7 +1716,7 @@ export class MarkFeature extends EditorFeature {
 
   /** Turn one live, contiguous phrasing selection into a native popup toggle. */
   insertPopup(replaceLink?: HTMLAnchorElement): boolean {
-    if(this.editor.isEditingLocked) return false
+    if(this.editor.isEditingLocked || this.widgetMarkContext()) return false
     if(this.selectionInPopupContent()) return false
     const context = this.getSelection()
     if(!context || context.split || context.block.namespaceURI !== "http://www.w3.org/1999/xhtml") return false
@@ -1798,6 +1944,8 @@ export class MarkFeature extends EditorFeature {
   }
 
   addMark(mark: MarkName): boolean {
+    const widget = this.widgetMarkContext()
+    if(widget) return !widget.state[mark] && this.sendWidgetMark(widget, mark)
     const svg = this.svgContext()
     if(svg) return this.setSVGMark(svg, mark, true)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark, true)
@@ -1830,6 +1978,8 @@ export class MarkFeature extends EditorFeature {
   }
 
   removeMark(mark: MarkName): boolean {
+    const widget = this.widgetMarkContext()
+    if(widget) return Boolean(widget.state[mark]) && this.sendWidgetMark(widget, mark, mark === "a" ? null : undefined)
     const svg = this.svgContext()
     if(svg) return this.setSVGMark(svg, mark, false)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark, false)
@@ -1842,6 +1992,8 @@ export class MarkFeature extends EditorFeature {
   }
 
   toggleMark(mark: MarkName) {
+    const widget = this.widgetMarkContext()
+    if(widget) return this.sendWidgetMark(widget, mark)
     const svg = this.svgContext()
     if(svg) return this.setSVGMark(svg, mark)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark)
@@ -1859,6 +2011,8 @@ export class MarkFeature extends EditorFeature {
 
   /** Toggles all exact tag variants represented by one merged drawer control. */
   toggleMarkGroup(mark: MarkName) {
+    const widget = this.widgetMarkContext()
+    if(widget) return this.sendWidgetMark(widget, mark)
     const svg = this.svgContext()
     if(svg) return this.setSVGMark(svg, mark)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark)
@@ -1886,6 +2040,7 @@ export class MarkFeature extends EditorFeature {
 
   /** Sets all exact mark tags represented by one drawer group. */
   setMarkGroup(primary: MarkName, marks: MarkName[]) {
+    if(this.widgetMarkContext()) return false
     const svg = this.svgContext()
     if(svg) return this.setSVGMark(svg, primary, marks.length > 0)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(primary, marks.length > 0)
@@ -1924,6 +2079,7 @@ export class MarkFeature extends EditorFeature {
 
   /** Replaces a merged mark's exact HTML tag while preserving the selected text. */
   setMarkType(primary: MarkName, mark: MarkName) {
+    if(this.widgetMarkContext()) return false
     const svg = this.svgContext()
     if(svg) return this.setSVGMark(svg, primary, true)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(primary, true)
@@ -1958,6 +2114,12 @@ export class MarkFeature extends EditorFeature {
   /** Sets or removes one supported element-specific attribute on active mark wrappers.
    * An empty download value enables downloads without a filename; null removes it. */
   setMarkAttribute(mark: MarkName, attribute: string, value: string | null): boolean {
+    const widget = this.widgetMarkContext()
+    if(widget) {
+      if(mark !== "a" || attribute !== "href") return false
+      const href = value ? normalizeLinkHref(value) : null
+      return (!value || !!href) && this.sendWidgetMark(widget, "a", href)
+    }
     if(mark === "a" && attribute === "data-reference" && value) {
       const reference = parseReference(value)
       if(!reference) throw new TypeError("References require CSL-JSON with a title and type")
@@ -2032,6 +2194,12 @@ export class MarkFeature extends EditorFeature {
 
   /** Sets one inline CSS property on span marks, or removes it for the default option. */
   setStyleMark(property: StyleMarkName, value: string, fontStylesheet?: string): boolean {
+    const widget = this.widgetMarkContext()
+    if(widget) {
+      if(property === "font-family" && !fontFamilyOptions.some(option => option.value === value)) return false
+      const normalized = this.normalizeStyleValue(property, value)
+      return (!value.trim() || !!normalized) && this.sendWidgetMark(widget, property, normalized || null)
+    }
     const normalizedValue = property === "font-family" ? fontWithFallback(value) : value
     const changed = this.applyStyleMark(property, normalizedValue)
     if(property === "font-family") {
@@ -2121,8 +2289,8 @@ export class MarkFeature extends EditorFeature {
 
   adjustFontSize(direction: -1 | 1) {
     const state = this.getState()
-    if(!state.canMark) return false
-    const current = Number.parseFloat(this.getStyleState()["font-size"] ?? "") || this.computedFontSize() || 16
+    if(!state.canMark || state.widgetMarks?.includes("font-size") === false) return false
+    const current = Number.parseFloat(this.getStyleState()["font-size"] ?? "") || (!state.widgetMarks && this.computedFontSize()) || 16
     const sizes = fontSizeOptions.flatMap(option => {
       const size = Number.parseFloat(option.value)
       return Number.isFinite(size)? [size]: []
@@ -2135,6 +2303,7 @@ export class MarkFeature extends EditorFeature {
 
   /** Clearing marks also accepts structural selections with no editable text. */
   get canRemoveMarks() {
+    if(this.widgetMarkContext()) return false
     return !!this.editor.features.selection.selectedSectionElement
       || !!this.editor.features.selection.captureSelectedElement
       || this.editor.features.table.hasCellSelection
@@ -2144,6 +2313,7 @@ export class MarkFeature extends EditorFeature {
 
   /** Removes every supported mark from the live selection, including structural scopes. */
   removeMarks() {
+    if(this.widgetMarkContext()) return false
     const selection = document.getSelection()
     if(!selection) return false
     const section = this.editor.features.selection.selectedSectionElement
@@ -2682,7 +2852,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   private getCaret(): MarkCaret | null {
-    if(this.editor.features.table.hasCellSelection) return null
+    if(this.editor.features.table.hasCellSelection || this.widgetMarkContext()) return null
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode || !selection.isCollapsed) return null
     if($.isGapSelection || $.isEmptyDocumentSelection) return null
@@ -2927,6 +3097,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   private getSelection(): MarkSelection | null {
+    if(this.widgetMarkContext()) return null
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode || selection.isCollapsed) return null
 
@@ -3030,7 +3201,19 @@ export class MarkFeature extends EditorFeature {
   }
 
   private handleShortcut(event: KeyboardEvent) {
-    if(event.defaultPrevented || this.editor.features.selection.isCaptureSelection && !this.isSVGTextSelection) return
+    if(event.defaultPrevented || event.isComposing) return
+    const widget = this.widgetMarkContext()
+    if(!widget && this.editor.features.selection.isCaptureSelection && !this.isSVGTextSelection) return
+    if(widget && this.resolveWidgetShortcut) {
+      const action = this.resolveWidgetShortcut(event)
+      if(action !== "mark:b" && action !== "mark:i" && action !== "mark:u") return
+      const name = action.at(-1) as "b" | "i" | "u"
+      if(!widget.names.includes(name)) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.sendWidgetMark(widget, name)
+      return
+    }
     // Option can transform event.key into a symbol on macOS. Prefer the
     // physical letter code so the displayed Option+Shift shortcut still
     // works, then fall back for synthetic and older keyboard events.
@@ -3041,6 +3224,7 @@ export class MarkFeature extends EditorFeature {
     const standard = Boolean(option && hasStandardMarkShortcut(option)
       && modifierKeyDown(event) && !event.altKey && !event.shiftKey)
     const legacy = Boolean(option && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey)
+    if(widget && (!option || !["b", "i", "u"].includes(option.name) || !widget.names.includes(option.name))) return
     if(!option || excludedMarkNames.includes(option.name) || !standard && !legacy || !this.getState().canMark) return
 
     event.preventDefault()

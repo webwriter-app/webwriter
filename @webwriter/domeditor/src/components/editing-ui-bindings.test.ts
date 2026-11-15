@@ -27,6 +27,7 @@ const properties = (): EditingUIProperties => ({
   inputLinkKind: null,
   marks: [],
   allowedMarks: null,
+  widgetMarks: null,
   markStyles: {},
   markAttributes: {},
   ruby: {...emptyRubyState},

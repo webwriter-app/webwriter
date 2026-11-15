@@ -296,7 +296,7 @@ export class WidgetDrawer extends LitElement {
         if(attribute.startsWith("on") || ["srcdoc", "style", "class", "is", "contenteditable", "spellcheck", "data-webwriter-editor-only", "standalone"].includes(attribute)) {
           throw new TypeError(`The ${attribute} attribute cannot be set as an option.`)
         }
-        const text = widgetOptionAttributeValue(option.type, value, option.multiple)
+        const text = widgetOptionAttributeValue(option.type, value, option.multiple, option.inverted)
         if(text === null) widget.removeAttribute(option.attribute)
         else {
           const url = text.toLowerCase().replace(/[\u0000-\u0020]/g, "")

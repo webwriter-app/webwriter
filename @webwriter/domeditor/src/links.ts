@@ -43,6 +43,7 @@ export function normalizeLinkHref(input: string): string | null {
 /** A disposable view of the current DOM selection for the link keyboard. */
 export type LinkSelectionState = {
   active: boolean
+  plainOnly?: boolean
   kind?: InputLinkKind
   identity: string
   href: string
@@ -83,6 +84,7 @@ export function isLinkSelectionState(value: unknown): value is LinkSelectionStat
   if(!value || typeof value !== "object" || Array.isArray(value)) return false
   const state = value as LinkSelectionState
   return typeof state.active === "boolean" && typeof state.identity === "string" && !!state.identity
+    && (state.plainOnly === undefined || typeof state.plainOnly === "boolean")
     && (state.kind === undefined || isInputLinkKind(state.kind))
     && typeof state.href === "string" && typeof state.text === "string"
     && (state.referenceAllowed === undefined || typeof state.referenceAllowed === "boolean")

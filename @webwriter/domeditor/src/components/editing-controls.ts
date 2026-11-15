@@ -61,6 +61,8 @@ import {
   type MarkOption,
   type RubyState,
   type StyleMarkValues,
+  type StyleMarkName,
+  type WidgetMarkName,
 } from "../marks"
 import {
   imageMapAreaAttributeOptions,
@@ -155,6 +157,7 @@ export abstract class EditingControls extends LitElement {
     attachmentActive: {type: Boolean, attribute: false},
     inputLinkKind: {attribute: false},
     allowedMarks: {attribute: false},
+    widgetMarks: {attribute: false},
     markStyles: {attribute: false},
     markAttributes: {attribute: false},
     ruby: {attribute: false},
@@ -222,6 +225,7 @@ export abstract class EditingControls extends LitElement {
 
   /** Marks a containing widget allows; null when all marks are allowed. */
   allowedMarks: MarkName[] | null = null
+  widgetMarks: WidgetMarkName[] | null = null
 
   markStyles: StyleMarkValues = {}
 
@@ -437,7 +441,7 @@ export abstract class EditingControls extends LitElement {
         icon=${option.icon}
         shortcut=${shortcut}
         ?active=${active}
-        ?disabled=${!this.canMark || !!this.allowedMarks && !this.allowedMarks.includes(option.name)}
+        ?disabled=${this.markDisabled(option.name)}
       ></ribbon-button>
     `
   }
@@ -497,8 +501,16 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  private moreMarkDisabled(mark: MarkName) {
+  protected markDisabled(mark: MarkName) {
     return !this.canMark || this.allowedMarks?.includes(mark) === false
+  }
+
+  protected styleMarkDisabled(mark: StyleMarkName) {
+    return !this.canMark || this.widgetMarks?.includes(mark) === false
+  }
+
+  private moreMarkDisabled(mark: MarkName) {
+    return this.markDisabled(mark)
       || (mark !== "s" && (this.svgText || !!this.math?.active))
   }
 
@@ -561,6 +573,7 @@ export abstract class EditingControls extends LitElement {
         icon="Formula"
         shortcut=${this.commandShortcut("Formula")}
         .submenu=${insertMathStructureButtons}
+        ?disabled=${!!this.widgetMarks}
       ></ribbon-button>
     `
   }
@@ -591,10 +604,10 @@ export abstract class EditingControls extends LitElement {
         icon="MarkLink"
         action="mark:a"
         shortcut=${this.commandShortcut("mark:a")}
-        ?dropdown-on-click=${this.allowedMarks?.includes("a") === false && this.activeLinkKind !== "popup"}
-        .dropdown=${this.renderLinkDropdown()}
+        ?dropdown-on-click=${!this.widgetMarks && this.allowedMarks?.includes("a") === false && this.activeLinkKind !== "popup"}
+        .dropdown=${this.widgetMarks ? null : this.renderLinkDropdown()}
         ?active=${this.activeLinkKind === "link"}
-        ?disabled=${!this.canMark || this.math?.active}
+        ?disabled=${this.widgetMarks ? this.markDisabled("a") : !this.canMark || this.math?.active}
       ></ribbon-button>
     `
   }
@@ -613,8 +626,9 @@ export abstract class EditingControls extends LitElement {
           shortcut=${this.commandShortcut("font-picker:font-family")}
           default-value-label="Font"
           .options=${fontFamilyOptions}
+          .builtInFontsOnly=${!!this.widgetMarks}
           .value=${this.markStyles["font-family"] ?? ""}
-          ?disabled=${!this.canMark}
+          ?disabled=${this.styleMarkDisabled("font-family")}
         ></ribbon-combobox>
         <ribbon-combobox
           class="font-size"
@@ -624,7 +638,7 @@ export abstract class EditingControls extends LitElement {
           default-value-label="Size"
           .options=${fontSizeOptions}
           .value=${this.markStyles["font-size"] ?? ""}
-          ?disabled=${!this.canMark}
+          ?disabled=${this.styleMarkDisabled("font-size")}
         ></ribbon-combobox>
         <ribbon-button
           compact
@@ -632,7 +646,7 @@ export abstract class EditingControls extends LitElement {
           action="increaseFontSize"
           icon="IncreaseFontSize"
           shortcut=${this.commandShortcut("increaseFontSize")}
-          ?disabled=${!this.canMark}
+          ?disabled=${this.styleMarkDisabled("font-size")}
         ></ribbon-button>
         <ribbon-button
           compact
@@ -640,7 +654,7 @@ export abstract class EditingControls extends LitElement {
           action="decreaseFontSize"
           icon="DecreaseFontSize"
           shortcut=${this.commandShortcut("decreaseFontSize")}
-          ?disabled=${!this.canMark}
+          ?disabled=${this.styleMarkDisabled("font-size")}
         ></ribbon-button>
         <ribbon-combobox
           class="mark-text-color"
@@ -650,7 +664,7 @@ export abstract class EditingControls extends LitElement {
           variant="color"
           .options=${textColorOptions}
           .value=${this.markStyles.color ?? ""}
-          ?disabled=${!this.canMark}
+          ?disabled=${this.styleMarkDisabled("color")}
         ></ribbon-combobox>
         <ribbon-combobox
           class="mark-background-color"
@@ -660,7 +674,7 @@ export abstract class EditingControls extends LitElement {
           variant="color"
           .options=${backgroundColorOptions}
           .value=${this.markStyles["background-color"] ?? ""}
-          ?disabled=${!this.canMark}
+          ?disabled=${this.styleMarkDisabled("background-color")}
         ></ribbon-combobox>
         ${primaryDrawerMarkNames.map(mark => this.visibleMarkButton(mark))}
         <ribbon-button
@@ -671,7 +685,7 @@ export abstract class EditingControls extends LitElement {
           action="removeMarks"
           icon="RemoveMarks"
           shortcut=${this.commandShortcut("removeMarks")}
-          ?disabled=${!this.canMark && !this.canRemoveMarks}
+          ?disabled=${!!this.widgetMarks || !this.canMark && !this.canRemoveMarks}
         ></ribbon-button>
         ${this.renderMoreMarksButton()}
         ${this.renderFormulaButton()}

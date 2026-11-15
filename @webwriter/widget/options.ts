@@ -27,6 +27,8 @@ interface BaseOptionDeclaration<TypeHint=any> extends OptionAvailability {
 
 export interface BooleanOptionDeclaration extends BaseOptionDeclaration<BooleanConstructor | "boolean"> {
   control?: "checkbox" | "switch"
+  /** An attribute-backed option is true when its negative attribute is absent. */
+  inverted?: boolean
 }
 
 /** A boolean widget capability shown under Edit in element distribution permissions. */

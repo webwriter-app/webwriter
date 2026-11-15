@@ -105,10 +105,10 @@
     },
     "@webwriter/lit": {
       "name": "@webwriter/lit",
-      "version": "3.0.0",
+      "version": "3.1.0",
       "dependencies": {
         "@lit-labs/signals": "0.3.0",
-        "@webwriter/widget": "^1.0.0",
+        "@webwriter/widget": "^1.1.0",
       },
       "devDependencies": {
         "esbuild": "^0.25.4",
@@ -151,7 +151,7 @@
     },
     "@webwriter/widget": {
       "name": "@webwriter/widget",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "devDependencies": {
         "esbuild": "^0.25.4",
       },

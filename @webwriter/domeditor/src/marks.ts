@@ -93,6 +93,14 @@ export const styleMarkNames = [
 export type StyleMarkName = typeof styleMarkNames[number]
 export type StyleMarkValues = Partial<Record<StyleMarkName, string>>
 
+export type WidgetMarkName = MarkName | StyleMarkName
+export const widgetMarkNames: readonly WidgetMarkName[] = [...primaryMarkNames, ...secondaryMarkNames, ...styleMarkNames]
+  .filter(name => !["abbr", "time", "data", "bdo", "ruby", "span"].includes(name))
+
+export function isWidgetMarkName(value: unknown): value is WidgetMarkName {
+  return widgetMarkNames.some(name => name === value)
+}
+
 export type StyleMarkOption = {
   label: string
   value: string

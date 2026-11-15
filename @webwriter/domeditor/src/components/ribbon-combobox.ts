@@ -19,6 +19,7 @@ export type RibbonComboboxChangeDetail = {
 /** A compact, keyboard-accessible ribbon picker with a custom listbox. */
 export class RibbonCombobox extends LitElement {
   static properties = {
+    builtInFontsOnly: {attribute: false},
     defaultValueLabel: {type: String, attribute: "default-value-label"},
     disabled: {type: Boolean, reflect: true},
     label: {type: String},
@@ -239,6 +240,7 @@ export class RibbonCombobox extends LitElement {
   multiple = false
   name = ""
   options: readonly StyleMarkOption[] = []
+  builtInFontsOnly = false
   swatches: readonly string[] = []
   values: readonly string[] = []
   value = ""
@@ -402,6 +404,7 @@ export class RibbonCombobox extends LitElement {
   render() {
     if(this.name === "font-family") return html`<font-combobox
       .label=${this.label} .value=${this.value} .shortcut=${this.shortcut} ?disabled=${this.disabled}
+      .builtInOnly=${this.builtInFontsOnly}
       @font-change=${(event: CustomEvent<{value: string, fontStylesheet?: string}>) => {
         event.stopPropagation()
         this.value = event.detail.value
