@@ -1596,7 +1596,12 @@ body.ww-board:empty::before {
   display: none;
 }
 
-:state(ww-empty-selected) {
+/* Only the empty-document caret uses this anchor, and it appears only for BODY
+ * or a [role~="document"] child of BODY, which alone carry this state. With
+ * the position of an empty paragraph in an active rule, every insertion into
+ * BODY, such as Enter, would restyle all paragraphs once any positional rule
+ * has matched there before. */
+:state(ww-empty-root-selected) {
   anchor-name: --empty-selected;
 }
 
@@ -1634,11 +1639,11 @@ body:state(ww-element-selected):state(ww-style-target-hovered) {
   anchor-name: --transform-containing-block, --hover-anchor;
 }
 
-:state(ww-empty-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered)):not(table *) {
+:state(ww-empty-root-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered)):not(table *) {
   anchor-name: --empty-selected, --hover-anchor;
 }
 
-:state(ww-empty-selected):state(ww-style-target-hovered):not(table *) {
+:state(ww-empty-root-selected):state(ww-style-target-hovered):not(table *) {
   anchor-name: --empty-selected, --hover-anchor;
 }
 
@@ -1702,15 +1707,13 @@ body:has(> [role~="document"]:state(ww-empty-selected))::part(empty-document-car
   min-height: 1lh;
 }
 
-menu:empty {
-  &:state(ww-empty-selected) {
-    &::before {
-      content: "";
-      display: list-item;
-      color: gray;
-      visibility: visible;
-    }
-  }
+/* Written flat so that the state names its type: a nested &:state() would
+ * carry the position of every empty-selected block, not only of menus. */
+menu:empty:state(ww-empty-selected)::before {
+  content: "";
+  display: list-item;
+  color: gray;
+  visibility: visible;
 }
 
 body:has(:state(ww-transform-target)):has(:is(:state(ww-drop-caret-before), :state(ww-drop-caret-after)))::part(transform-overlay) {

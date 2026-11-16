@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {hasPresentationState, resolvePresentationSelector} from "./presentation-state.js"
+import {clearPresentationState, hasPresentationState, resolvePresentationSelector, setPresentationState} from "./presentation-state.js"
 import { afterAll, beforeAll, describe, it, expect, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
@@ -401,7 +401,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body table:is\(:hover, :state\(ww-pointer-hovered\)\)\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
     expect(editorStyleString).toMatch(/:state\(ww-element-selected\):is\(:hover, :state\(ww-pointer-hovered\), :state\(ww-element-hovered\)\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
     expect(editorStyleString).toMatch(/:state\(ww-element-selected\):state\(ww-style-target-hovered\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
-    expect(editorStyleString).toMatch(/:state\(ww-empty-selected\):is\(:hover, :state\(ww-pointer-hovered\), :state\(ww-element-hovered\)\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--empty-selected, --hover-anchor;/)
+    expect(editorStyleString).toMatch(/:state\(ww-empty-root-selected\):is\(:hover, :state\(ww-pointer-hovered\), :state\(ww-element-hovered\)\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--empty-selected, --hover-anchor;/)
     expect(editorStyleString).toContain("anchor-name: --ww-popup-bubble, --hover-anchor;")
     expect(editorStyleString).toContain("anchor-name: --ww-popup-bubble, --selection-anchor;")
     expect(editorStyleString).toContain("anchor-name: --ww-popup-bubble, --selection-anchor, --hover-anchor;")
@@ -449,6 +449,40 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).not.toContain("audio:state(ww-media-empty)::-webkit-media-controls-enclosure")
     expect(editorStyleString).not.toMatch(/:is\([^)]*audio[^)]*\):state\(ww-media-empty\)\s*\{/)
     expect(editorStyleString).not.toMatch(/body:has\(:state\(ww-media-empty\):is\(:state\(ww-gap-before-selected\), :state\(ww-gap-after-selected\)\)\)::part\(gap-caret\)\s*\{[\s\S]*?display:\s*none;/)
+  })
+
+  it("names the empty-selection anchor only on the roots whose empty-document caret uses it", () => {
+    // The caret is shown only for BODY or a [role~="document"] child of BODY.
+    // Once BODY has matched any positional rule, each insertion into it while
+    // a rule holds an empty paragraph's position restyles every paragraph, so
+    // no rule may carry the position of an ordinary empty block.
+    const css = editorStyleString.replace(/\/\*[\s\S]*?\*\//g, "")
+    const rules = Array.from(css.matchAll(/([^{}]+)\{([^{}]*)\}/g), ([, selector, body]) => [selector.trim(), body] as const)
+    const anchorRules = rules.filter(([, body]) => /anchor-name:[^;]*--empty-selected/.test(body)).map(([selector]) => selector)
+    const hover = ":is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered))"
+    expect(anchorRules).toEqual([
+      ":state(ww-empty-root-selected)",
+      `:state(ww-empty-root-selected)${hover}:not(table *)`,
+      ":state(ww-empty-root-selected):state(ww-style-target-hovered):not(table *)",
+      `body:state(ww-empty-selected)${hover}`,
+      "body:state(ww-empty-selected):state(ww-style-target-hovered)",
+    ])
+    // BODY:has(…) tests are decided by presentation-state.js, not by CSS.
+    const stateRules = rules.map(([selector]) => selector).filter(selector => /:state\(ww-empty-(root-)?selected\)/.test(selector) && !/^body:has\(/.test(selector))
+    expect(stateRules.length).toBeGreaterThan(anchorRules.length)
+    document.body.innerHTML = "<p>one</p><p></p><p>two</p>"
+    const paragraph = document.body.children[1]
+    try {
+      setPresentationState(paragraph, "empty-selected")
+      for(const selector of stateRules) expect(resolvePresentationSelector(document, selector)).not.toContain("p:nth-child(2)")
+      setPresentationState(document.body, "empty-root-selected")
+      expect(resolvePresentationSelector(document, anchorRules[0])).toBe(":where(body):not(.ww-inactive-presentation)")
+    }
+    finally {
+      clearPresentationState(paragraph, "empty-selected")
+      clearPresentationState(document.body, "empty-root-selected")
+      document.body.replaceChildren()
+    }
   })
 
   it("restores the default paragraph after a direct DOM change empties the body", async () => {

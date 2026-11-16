@@ -20,8 +20,8 @@ import type {Transaction} from "yjs"
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
 const selectionPresentationStates = ["gap-before-selected", "gap-after-selected", "element-selected",
-  "element-capture-selected", "text-selected", "empty-selected", "caption-placeholder", "caption-editing",
-  "gap-caret-visible", "touch-caret-visible", "node-selection-active", "atomic-range-selected", "atomic-range-active", "flow-excluded",
+  "element-capture-selected", "text-selected", "empty-selected", "empty-root-selected", "caption-placeholder", "caption-editing",
+  "gap-caret-visible", "gap-caret-host", "touch-caret-visible", "node-selection-active", "node-caret-host", "atomic-range-selected", "atomic-range-active", "flow-excluded",
   "math-boundary-caret", "math-caret-inside-left", "math-caret-inside-right", "math-caret-outside-left", "math-caret-outside-right",
   "popup-boundary-caret", "popup-caret-inside-left", "popup-caret-inside-right", "popup-caret-outside-left", "popup-caret-outside-right"]
 function arrowDirection(key: string) {
@@ -2423,7 +2423,8 @@ export class SelectionFeature extends EditorFeature {
       : retainedKind === "empty" ? "empty-selected" : "element-selected"
     batchPresentationStates(document, () => this.#selectionMarkers.forEach(element => {
       const removed = selectionPresentationStates.filter(marker => !(
-        element === retainedElement && (marker === retainedMarker || marker === "element-capture-selected" && retainedKind === "capture")
+        element === retainedElement && (marker === retainedMarker || marker === "element-capture-selected" && retainedKind === "capture"
+          || marker === "empty-root-selected" && retainedKind === "empty")
         || element === document.body && retainedElement && (retainedKind === "node" || retainedKind === "capture") && marker === "node-selection-active"
       ))
       clearPresentationState(element, ...removed)
@@ -2946,6 +2947,12 @@ export class SelectionFeature extends EditorFeature {
       const element = getContainer($.commonAncestor)
       if(!element) return
       this.#markSelection(element, "empty-selected")
+      // Only these roots name the empty-document caret's anchor. A separate
+      // state keeps the positions of other empty blocks out of those rules:
+      // once BODY has matched any positional rule, each insertion beside an
+      // active `p:nth-child()` path restyles every paragraph.
+      if(element === document.body || element.matches('body > [role~="document"]')) this.#markSelection(element, "empty-root-selected")
+      else clearPresentationState(element, "empty-root-selected")
       if(element.matches("li")) this.editor.features.list.refreshSelectionPresentation()
       if(element === getDocumentRoot()) {
         const caret = this.emptyDocumentCaret ?? this.#createEmptyDocumentCaret()

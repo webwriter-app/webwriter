@@ -3461,7 +3461,32 @@ describe("processSelection()", () => {
 
     expect($.anchor).toBe(template)
     expect(hasPresentationState(template, "empty-selected")).toBe(true)
+    expect(hasPresentationState(template, "empty-root-selected")).toBe(true)
     expect(feature.emptyDocumentCaret).toBeInTheDocument()
+  })
+  it("marks only BODY and document roots as empty roots, and clears the mark when the caret leaves", () => {
+    document.body.innerHTML = '<p>one</p><p></p><demo-widget role="document"></demo-widget>'
+    const [paragraph, empty, root] = Array.from(document.body.children)
+
+    $.move(empty, 0)
+    feature.processSelection()
+    expect(hasPresentationState(empty, "empty-selected")).toBe(true)
+    expect(hasPresentationState(empty, "empty-root-selected")).toBe(false)
+
+    $.move(root, 0)
+    feature.processSelection()
+    expect(hasPresentationState(root, "empty-selected")).toBe(true)
+    expect(hasPresentationState(root, "empty-root-selected")).toBe(true)
+    // Retained while the caret stays in the same empty root.
+    feature.processSelection()
+    expect(hasPresentationState(root, "empty-root-selected")).toBe(true)
+
+    $.move(paragraph.firstChild!, 1)
+    feature.processSelection()
+    expect(hasPresentationState(root, "empty-selected")).toBe(false)
+    expect(hasPresentationState(root, "empty-root-selected")).toBe(false)
+    expect(empty.outerHTML).toBe("<p></p>")
+    expect(root.outerHTML).toBe('<demo-widget role="document"></demo-widget>')
   })
   it("does not reinterpret a list template as an empty authored list", () => {
     document.body.innerHTML = '<ul is="list-widget" role="document"></ul>'
