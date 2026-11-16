@@ -368,7 +368,13 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toContain("::part(hover-caret-native),")
     expect(editorStyleString).not.toMatch(/body[^{]*:has\([^{]*:hover[^{]*::part\(/)
     expect(editorStyleString).toMatch(/:state\(ww-element-selected\)\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
-    expect(editorStyleString).toMatch(/body:state\(ww-node-selection-active\),\s*body:state\(ww-node-selection-active\)\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
+    // Native caret suppression names the elements around the selection, not
+    // every element: a state on BODY above `*` or `::selection` restyles the
+    // whole document whenever it changes.
+    expect(editorStyleString).toMatch(/\n:state\(ww-node-caret-host\),\s*:state\(ww-node-caret-host\)\s+\*\s*\{\s*caret-color:\s*transparent\s*!important;\s*\}/)
+    expect(editorStyleString).toMatch(/@layer webwriter-theme \{\s*:state\(ww-gap-caret-host\)\s*\{\s*caret-color:\s*transparent;\s*\}\s*\}\s*body:state\(ww-gap-caret-host\)\s*\{\s*caret-color:\s*transparent\s*!important;\s*\}/)
+    expect(editorStyleString).not.toMatch(/body:state\(ww-(?:gap-caret-visible|node-selection-active)\)(?:\s+\*)?\s*[,{][^}]*caret-color/)
+    expect(editorStyleString).not.toMatch(/ww-gap-caret-visible[^{]*\{[^}]*::selection/)
     expect(editorStyleString).toMatch(/body:state\(ww-node-selection-active\)\s+:state\(ww-element-capture-selected\),\s*body:state\(ww-node-selection-active\)\s+math:state\(ww-element-capture-selected\)\s+\*\s*\{[\s\S]*?caret-color:\s*auto\s*!important;/)
     expect(editorStyleString).toMatch(/body:state\(ww-table-cell-selection\),\s*body:state\(ww-table-cell-selection\)\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body:state\(ww-table-cell-selection\)::selection,\s*body:state\(ww-table-cell-selection\)\s+\*::selection\s*\{[\s\S]*?background:\s*transparent;/)

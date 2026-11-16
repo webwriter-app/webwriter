@@ -4,7 +4,7 @@ import '@testing-library/jest-dom/vitest'
 import * as Y from "yjs"
 
 import { DOMEditor } from "../domeditor"
-import { SelectionFeature } from "./selection"
+import { SelectionFeature, nativeCaretHosts } from "./selection"
 import { $ } from "../utility"
 import {hasPresentationState, presentationStateElements, setPresentationState, setPresentationStates} from "../presentation-state.js"
 import { replayHostPointer, selectionChangeEvent } from "../editor-bridge"
@@ -7535,39 +7535,130 @@ describe("selectDropRange", () => {
 })
 
 describe("selection paint rules", () => {
-  it("keeps caret and selection paint installed while the same gap is processed again", () => {
-    document.body.innerHTML = "<p>before</p><ul><li>item</li></ul><p>after</p>"
+  // Rendered text has client rects in a browser; happy-dom reports none.
+  const renderText = () => vi.spyOn(Range.prototype, "getClientRects").mockImplementation(function(this: Range) {
+    return (/[^ \t\n\r\f]/.test(this.startContainer.textContent ?? "") ? [new DOMRect(0, 0, 10, 10)] : []) as unknown as DOMRectList
+  })
+  const caretHosts = (state: string) => presentationStateElements(document, state)
+  afterEach(() => vi.restoreAllMocks())
+
+  it("keeps caret paint installed while the same gap is processed again", () => {
+    renderText()
+    document.body.innerHTML = "<p>before</p><ul><li>item</li></ul><p>after</p><p>far</p>"
     const list = document.querySelector("ul")!
+    const [before, , after, far] = Array.from(document.body.children)
     $.selectGap(list, "before")
     feature.processSelection()
     expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(true)
     expect(hasPresentationState(list, "gap-before-selected")).toBe(true)
+    // The native caret is hidden where Chromium can paint it, not by a rule
+    // for every element, which restyles the whole document on each change.
+    expect(caretHosts("gap-caret-host")).toEqual([before, list, after])
+    expect(hasPresentationState(document.body, "gap-caret-host")).toBe(false)
+    expect(hasPresentationState(far, "gap-caret-host")).toBe(false)
 
-    // This DOM replaces a rule to change its selector. The rule for BODY in
-    // this state hides the native caret and selection of every element.
+    // This DOM replaces a rule to change its selector.
     const replaced = vi.spyOn(CSSStyleSheet.prototype, "insertRule")
     const selectors = () => replaced.mock.calls.map(([text]) => text.slice(0, text.indexOf("{")).trim())
-    const hidden = "body:where(body):not(.ww-inactive-presentation)", shown = "body.ww-inactive-presentation:not(*)"
     try {
       // Processing clears the previous markers before it marks the current
-      // selection, and reads layout in between. The anchor of the gap follows
-      // immediately; a rule that only repaints must not leave and return,
-      // because each change of it restyles the whole document.
+      // selection, and reads layout in between. A rule that only repaints
+      // must not leave and return.
       feature.processSelection()
       expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(true)
       expect(selectors().some(selector => selector.includes("body > ul:nth-child(2)"))).toBe(true)
-      expect(selectors()).not.toContain(shown)
-      expect(selectors()).not.toContain(hidden)
+      expect(selectors().some(selector => selector.includes("body:where(body)") || selector.includes("body.ww-inactive-presentation"))).toBe(false)
+      expect(caretHosts("gap-caret-host")).toEqual([before, list, after])
 
-      // Leaving the gap removes the rule once, when processing ends.
-      replaced.mockClear()
       $.move(document.querySelector("li")!.firstChild!, 2)
       feature.processSelection()
       expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
-      expect(selectors().filter(selector => selector === shown)).toHaveLength(1)
-      expect(selectors()).not.toContain(hidden)
-      expect(document.body.innerHTML).toBe("<p>before</p><ul><li>item</li></ul><p>after</p>")
+      expect(caretHosts("gap-caret-host")).toEqual([])
+      expect(document.body.innerHTML).toBe("<p>before</p><ul><li>item</li></ul><p>after</p><p>far</p>")
     }
     finally { replaced.mockRestore() }
+  })
+
+  it("hides the native caret of a node selection around the selected node", () => {
+    renderText()
+    document.body.innerHTML = "<p>zero</p><p>one</p><p>two</p><hr><p>three</p><p>four</p><p>five</p>"
+    const [zero, one, two, rule, three, four, five] = Array.from(document.body.children)
+    $.selectElement(rule)
+    feature.processSelection()
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(true)
+    expect(hasPresentationState(rule, "element-selected")).toBe(true)
+    // Both range boundaries: up to the nearest caret position on each side,
+    // plus one more element.
+    expect(caretHosts("node-caret-host")).toEqual([one, two, rule, three, four])
+    expect(hasPresentationState(zero, "node-caret-host")).toBe(false)
+    expect(hasPresentationState(five, "node-caret-host")).toBe(false)
+    expect(hasPresentationState(document.body, "node-caret-host")).toBe(false)
+
+    $.move(four.firstChild!, 1)
+    feature.processSelection()
+    expect(hasPresentationState(document.body, "node-selection-active")).toBe(false)
+    expect(caretHosts("node-caret-host")).toEqual([])
+    expect(editor.toHTML(true)).not.toMatch(/caret-host|◆/)
+  })
+})
+
+describe("nativeCaretHosts()", () => {
+  const hostsAt = (container: Node, offset: number, focus = container, focusOffset = offset) => {
+    document.getSelection()!.setBaseAndExtent(container, offset, focus, focusOffset)
+    return nativeCaretHosts(document.getSelection()!)
+  }
+  beforeEach(() => {
+    // The editing frame is editable as a whole.
+    document.body.contentEditable = "true"
+    vi.spyOn(Range.prototype, "getClientRects").mockImplementation(function(this: Range) {
+      return (/[^ \t\n\r\f]/.test(this.startContainer.textContent ?? "") ? [new DOMRect(0, 0, 10, 10)] : []) as unknown as DOMRectList
+    })
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    document.body.removeAttribute("contenteditable")
+  })
+
+  it("collects the blocks beside a gap up to the nearest caret position and one more", () => {
+    document.body.innerHTML = "<p>a</p><p>b</p>\n  <p>c</p><p>d</p><p>e</p>"
+    const [a, b, c, d, e] = Array.from(document.body.children)
+    expect(new Set(hostsAt(document.body, 3))).toEqual(new Set([b, a, c, d]))
+    expect(hostsAt(document.body, 0)).toEqual([a, b])
+    expect(hostsAt(document.body, document.body.childNodes.length)).toEqual([e, d])
+    expect(hostsAt(b.firstChild!, 1)).toEqual([b])
+  })
+
+  it("passes content that cannot hold a caret position", () => {
+    document.body.innerHTML = '<p>a</p><div></div><p style="display: none">hidden</p><p inert>inert</p><p style="visibility: hidden">ghost</p><!-- note --><p>b</p><p>c</p><p>d</p>'
+    const [a, empty, hidden, inert, ghost, b, c, d] = Array.from(document.body.children)
+    const hosts = hostsAt(document.body, 1)
+    expect(new Set(hosts)).toEqual(new Set([a, empty, inert, ghost, b, c]))
+    expect(hosts).not.toContain(hidden)
+    expect(hosts).not.toContain(d)
+  })
+
+  it("stops at atomic content and non-editable elements", () => {
+    document.body.innerHTML = '<p>a</p><hr><p>b</p><div contenteditable="false">fixed</div><p>c</p>'
+    const [a, rule, b, fixed, c] = Array.from(document.body.children)
+    expect(new Set(hostsAt(document.body, 1))).toEqual(new Set([a, rule, b]))
+    expect(new Set(hostsAt(document.body, 3))).toEqual(new Set([b, rule, fixed, c]))
+  })
+
+  it("includes a container whose own text is beside the boundary", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>text<ul><li>item</li></ul></td></tr></tbody></table><p>after</p>"
+    const cell = document.querySelector("td")!, list = document.querySelector("ul")!
+    expect(new Set(hostsAt(cell, 1))).toEqual(new Set([cell, list]))
+  })
+
+  it("falls back to BODY when no caret position is near the boundary", () => {
+    document.body.innerHTML = "<section><div></div></section><p>after</p>"
+    const section = document.querySelector("section")!
+    expect(hostsAt(section, 1)).toEqual([document.body])
+  })
+
+  it("covers both boundaries of a range around a node", () => {
+    document.body.innerHTML = "<p>a</p><custom-widget></custom-widget><p>b</p><p>c</p>"
+    const [a, widget, b, c] = Array.from(document.body.children)
+    expect(new Set(hostsAt(document.body, 1, document.body, 2))).toEqual(new Set([a, widget, b, c]))
   })
 })

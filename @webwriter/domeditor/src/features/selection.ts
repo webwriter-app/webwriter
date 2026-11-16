@@ -57,6 +57,78 @@ function isCaretAtStartOf(element: Element) {
   return node === element && offset === 0
 }
 
+const nativeCaretAtomicElements = "img, hr, br, input, textarea, select, button, video, audio, iframe, embed, object, canvas, svg, math, table, meter, progress"
+
+/** Whether Chromium can place a caret in or beside this rendered content. */
+function holdsNativeCaret(node: Node) {
+  const element = isElement(node) ? node : node.parentElement
+  if(!element || element.closest("[inert]") || ["hidden", "collapse"].includes(getComputedStyle(element).visibility)) return false
+  if(isElement(node)) return node.getClientRects().length > 0
+  const range = document.createRange()
+  range.selectNodeContents(node)
+  return range.getClientRects().length > 0
+}
+
+function containsNativeCaretPosition(element: Element) {
+  if(element.matches(nativeCaretAtomicElements) || !(element as HTMLElement).isContentEditable) return holdsNativeCaret(element)
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
+  for(let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if((node.nodeType === Node.TEXT_NODE || isElement(node) && node.matches(nativeCaretAtomicElements)) && holdsNativeCaret(node)) return true
+  }
+  return false
+}
+
+/** Adds the elements whose caret color Chromium may use at a boundary: it
+ * paints a caret at the nearest caret position, and takes its color from
+ * the element holding it. Collects siblings outward from the boundary up to
+ * the first that holds a position, plus one more as a margin. Returns false
+ * when the container holds none, so the caret may be painted outside it. */
+function addNativeCaretHosts(container: Node, offset: number, hosts: Set<Element>): boolean {
+  if(!isElement(container)) {
+    const parent = container.parentNode
+    if(container.parentElement && container.nodeType === Node.TEXT_NODE && holdsNativeCaret(container)) {
+      hosts.add(container.parentElement)
+      return true
+    }
+    return parent ? addNativeCaretHosts(parent, Array.from(parent.childNodes).indexOf(container as ChildNode) + (offset > 0 ? 1 : 0), hosts) : false
+  }
+  const nodes = container.childNodes
+  let found = false
+  for(const step of [-1, 1]) {
+    let margin = false
+    for(let index = step < 0 ? offset - 1 : offset; index >= 0 && index < nodes.length; index += step) {
+      const node = nodes[index]
+      if(isElement(node)) {
+        if(getComputedStyle(node).display === "none") continue
+        hosts.add(node)
+        if(margin) break
+        margin = containsNativeCaretPosition(node)
+        found ||= margin
+      }
+      else if(!margin && node.nodeType === Node.TEXT_NODE && holdsNativeCaret(node)) {
+        hosts.add(container)
+        found = true
+        break
+      }
+    }
+  }
+  return found
+}
+
+/** The elements whose caret color decides the native caret Chromium paints
+ * for a selection: around each range boundary, or BODY when the boundaries
+ * do not narrow it down. */
+export function nativeCaretHosts(selection: Selection) {
+  const hosts = new Set<Element>()
+  let found = selection.rangeCount > 0
+  for(let index = 0; found && index < selection.rangeCount; index++) {
+    const range = selection.getRangeAt(index)
+    found = addNativeCaretHosts(range.startContainer, range.startOffset, hosts)
+      && (range.collapsed || addNativeCaretHosts(range.endContainer, range.endOffset, hosts))
+  }
+  return found ? Array.from(hosts) : [document.body]
+}
+
 /** Editing feature that visualizes the current selection. It classifies every
  * selection change into an editing-relevant kind (element, text, gap, empty)
  * and applies the corresponding selection presentation state, manages the
@@ -2402,6 +2474,21 @@ export class SelectionFeature extends EditorFeature {
     return `calc(${fixedClientX(left)}px + max(0px, (${right - left}px - ${maximum}) / 2))`
   }
 
+  /** States where the native caret of the current selection is hidden: in
+   * the given elements and wherever Chromium could paint it. A rule for every
+   * element would restyle the whole document on each change of the state. */
+  #markNativeCaretHosts(marker: "gap-caret-host" | "node-caret-host", ...elements: Element[]) {
+    const selection = document.getSelection()
+    const hosts = new Set([...elements, ...selection ? nativeCaretHosts(selection) : [document.body]])
+    batchPresentationStates(document, () => hosts.forEach(host => this.#markSelection(host, marker)))
+  }
+
+  /** A node selection keeps a native range around the node. */
+  #markNodeSelection(...elements: Element[]) {
+    this.#markSelection(document.body, "node-selection-active")
+    this.#markNativeCaretHosts("node-caret-host", ...elements)
+  }
+
   /** Retains marker owners so removal also cleans disconnected content. */
   #markSelection(element: Element, ...markers: string[]) {
     setPresentationStates(element, ...markers)
@@ -2731,7 +2818,6 @@ export class SelectionFeature extends EditorFeature {
       this.editor.features.transformation.syncGroupSelection(elements)
       this.editor.features.board.refresh()
       this.editor.features.manipulation.refreshNodeDragTarget(null)
-      this.#markSelection(document.body, "node-selection-active")
       for(const element of elements) {
         this.#revealDetails(element.parentNode)
         this.#markSelection(element, "element-selected", "atomic-range-selected")
@@ -2742,6 +2828,7 @@ export class SelectionFeature extends EditorFeature {
         this.editor.addAppendix(overlay)
         this.#atomicOverlays.set(element, overlay)
       }
+      this.#markNodeSelection(...elements)
       this.#positionAtomicOverlays()
       if(refreshGraphic) this.editor.features.graphic.refresh()
       this.editor.features.layout.refresh()
@@ -2886,7 +2973,7 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     if(kind === "capture" && capturedElement) {
-      this.#markSelection(document.body, "node-selection-active")
+      this.#markNodeSelection(capturedElement)
       this.#markSelection(capturedElement, "element-selected", "element-capture-selected")
       this.#showSelectionCaret("capture")
       if(capturedElement.localName === "math" && sel) this.#showAtomicOverlays(sel)
@@ -2895,7 +2982,7 @@ export class SelectionFeature extends EditorFeature {
     if(kind === "section") {
       const section = this.selectedSectionElement
       if(!section) return
-      this.#markSelection(document.body, "node-selection-active")
+      this.#markNodeSelection(section)
       this.#markSelection(section, "element-selected")
       this.#showSelectionCaret("node")
       return
@@ -2928,13 +3015,16 @@ export class SelectionFeature extends EditorFeature {
 
         setPart(gapCaret, `gap-caret-gap-${placement}-selected`)
         this.#markSelection(document.body, "gap-caret-visible")
+        // The collapsed native range still paints a caret at the nearest
+        // caret position.
+        this.#markNativeCaretHosts("gap-caret-host")
       }
 
     }
     else if(kind === "element") {
       const element = sel.anchorNode!.childNodes.item(Math.min(sel.anchorOffset, sel.focusOffset)) as Element
       if(isElement(element)) {
-        this.#markSelection(document.body, "node-selection-active")
+        this.#markNodeSelection(element)
         this.#markSelection(element, "element-selected")
         this.#showSelectionCaret("node")
       }

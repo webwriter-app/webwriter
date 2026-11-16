@@ -491,10 +491,12 @@ body:state(ww-element-selected) {
 }
 
 /* A DOM Selection around a node still paints its focus-edge text caret in
- * Chromium. Suppress that background caret everywhere in the editable
- * document while the editor's node-selection overlay is active. */
-body:state(ww-node-selection-active),
-body:state(ww-node-selection-active) * {
+ * Chromium. Suppress that background caret while the editor's node-selection
+ * overlay is active, in the selected nodes and wherever Chromium can paint it,
+ * which the selection feature states. A rule for every element would restyle
+ * the whole document whenever a node selection begins or ends. */
+:state(ww-node-caret-host),
+:state(ww-node-caret-host) * {
   caret-color: transparent !important;
 }
 
@@ -1305,12 +1307,20 @@ body:state(ww-graphic-manipulating) * {
   content: "";
 }
 
-body:state(ww-gap-caret-visible) {
-  caret-color: transparent !important;
-
-  & ::selection {
-    background: transparent !important;
+/* A gap selection is collapsed, so it paints no range highlight, but Chromium
+ * still paints its native caret at the nearest caret position. The selection
+ * feature states the elements whose caret color that caret can take; a rule
+ * for every element would restyle the whole document whenever the gap caret
+ * appears or disappears. As when the color is inherited from BODY, a caret
+ * color authored on such an element stays authoritative. */
+@layer webwriter-theme {
+  :state(ww-gap-caret-host) {
+    caret-color: transparent;
   }
+}
+
+body:state(ww-gap-caret-host) {
+  caret-color: transparent !important;
 }
 
 body:has(:state(ww-transform-target)):has(:is(:state(ww-drop-caret-before), :state(ww-drop-caret-after))) {
