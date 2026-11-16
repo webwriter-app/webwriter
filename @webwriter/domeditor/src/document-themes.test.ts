@@ -173,8 +173,14 @@ describe("document themes", () => {
       expect(theme.source).toContain("--ww-flow-margin-left: auto;\n        --ww-flow-margin-right: 0;")
       expect(theme.source).toContain(":where(:is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover], .◆hotspot-popup[popover]))")
       expect(theme.source).toContain("max-inline-size: max(var(--ww-float-width), var(--ww-float-size, 0px));")
-      expect(theme.source).toContain("clear: left;")
+      expect(theme.source).toContain("clear: var(--ww-left-float, left);")
       expect(theme.source).toContain("clear: right;")
+      // Left floats that share the right lane read their placement from BODY.
+      // A rule for the floats after BODY:has() makes the style engine test it
+      // for every change under BODY, including in an editor's shadow tree.
+      expect(theme.source).toContain("float: var(--ww-left-float, left) !important;")
+      expect(theme.source).toContain("--ww-left-float: right;\n      --ww-left-float-shared: 1;\n      --ww-left-float-width: var(--ww-right-column-width);")
+      expect(theme.source).not.toMatch(/:has\([^{]*\{[^{}]*:is\(\.ww-float-left, \.ww-float-right, \[style\*="float: left"\][^{}]*\{\s*--ww-float-width/)
       expect(editingDocumentThemeSource(theme)).toBe(theme.source.replaceAll(".◆hotspot-popup", ":state(ww-hotspot-popup)"))
       expect(theme.source).toMatch(/p:not\(\[is\]\)\s*\{\s*display: flow-root;\s*min-inline-size: min\(300px, 100%\);/)
       expect(theme.source).toContain("@container (width < 720px)")
@@ -272,7 +278,7 @@ describe("document themes", () => {
     const landmarks = source.slice(source.indexOf(" * Landmarks"), source.indexOf(" * Section\n"))
     expect(landmarks).toContain("display: flow-root;")
     expect(landmarks).not.toMatch(/display:\s*(?:grid|flex)|grid-|column-count/)
-    expect(source).toContain("clear: left;")
+    expect(source).toContain("clear: var(--ww-left-float, left);")
     expect(source).toContain("clear: right;")
     expect(source).toContain("--ww-left-lane: calc(var(--ww-left-column-width) + var(--ww-float-gap));")
     expect(source).toContain("@container (width >= 720px)")

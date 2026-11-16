@@ -281,13 +281,17 @@
         --ww-left-column-width: min(var(--ww-left-column-ideal), calc(var(--ww-side-budget) - min(var(--ww-right-column-ideal), var(--ww-side-budget) / 2)));
         --ww-right-column-width: min(var(--ww-right-column-ideal), calc(var(--ww-side-budget) - min(var(--ww-left-column-ideal), var(--ww-side-budget) / 2)));
       }
+      /* BODY states where a left float goes when both sides share the right
+       * lane. A rule for the floats after BODY's :has() would make the style
+       * engine test it for every change under BODY, also in an editor's shadow
+       * tree, and restyle the whole document each time. */
       :is(.ww-float-left, [style*="float: left"], [style*="float:left"]) {
-        --ww-float-width: var(--ww-left-column-width);
-        float: left !important;
-        clear: left;
+        --ww-float-width: var(--ww-left-float-width, var(--ww-left-column-width));
+        float: var(--ww-left-float, left) !important;
+        clear: var(--ww-left-float, left);
         inline-size: min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width)) !important;
-        margin-left: calc(0px - var(--ww-left-lane)) !important;
-        margin-right: calc(var(--ww-left-lane) - min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width))) !important;
+        margin-left: calc((1 - var(--ww-left-float-shared, 0)) * (0px - var(--ww-left-lane)) + var(--ww-left-float-shared, 0) * (var(--ww-right-lane) - min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width)))) !important;
+        margin-right: calc((1 - var(--ww-left-float-shared, 0)) * (var(--ww-left-lane) - min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width))) + var(--ww-left-float-shared, 0) * (0px - var(--ww-right-lane))) !important;
       }
       :is(.ww-float-right, [style*="float: right"], [style*="float:right"]) {
         --ww-float-width: var(--ww-right-column-width);
@@ -318,14 +322,10 @@
       --ww-right-lane: calc(var(--ww-right-column-width) + var(--ww-float-gap));
       --ww-alignment-left: 0px;
       --ww-alignment-right: max(0px, calc(100% - var(--ww-prose-max, 45rem)));
-
-      :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
-        --ww-float-width: var(--ww-right-column-width);
-        float: right !important;
-        clear: right;
-        margin-right: calc(0px - var(--ww-right-lane)) !important;
-        margin-left: calc(var(--ww-right-lane) - min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width))) !important;
-      }
+      /* A left float is placed like a right float. */
+      --ww-left-float: right;
+      --ww-left-float-shared: 1;
+      --ww-left-float-width: var(--ww-right-column-width);
       --ww-flow-margin-left: 0;
       --ww-flow-margin-right: auto;
       :is(&, & > main, & > article, & > section) > :is(.ww-popup-content[popover], .◆hotspot-popup[popover]) {

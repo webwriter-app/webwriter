@@ -1,6 +1,6 @@
 // SHA-256 fingerprints (first 16 bytes) of stock theme CSS from 161b22fa
 // through a106bc0c (before Full width), the bundled layout examples,
-// and snapshots taken before the widget sizing, list marker, caption layout, table layout, figure resize, and float alignment restyling updates.
+// and snapshots taken before the widget sizing, list marker, caption layout, table layout, figure resize, float alignment restyling, and shared float lane restyling updates.
 // Hash the complete stylesheet text after normalizing HTML line endings so
 // an authored edit anywhere in a theme prevents replacement.
 export const legacyDocumentThemeFingerprints = {
@@ -49,6 +49,9 @@ export const legacyDocumentThemeFingerprints = {
     "49fd659d1f640b1cceeb2a256786a467",
     "d5cb1274b78c94ffb225032d5ea6e967",
     "72e671f72b17bbf032543493c081f4e5",
+    "9ae3c67ccfefdf8a29bf615ba2c15b9a",
+    "e767517e9acbfbb2e013c9cc199790a4",
+    "c3cb935e6e4f6e396f1a615e547da6a8",
   ],
   water: [
     "cc67997fc403e58f477b44ad01b5f68b",
@@ -83,6 +86,9 @@ export const legacyDocumentThemeFingerprints = {
     "fd56911b15c073da1edbe803ab969459",
     "dcadd669d66716557afed6c6ee2f8d76",
     "e7595146372354bc8b179a25fc0e7ff5",
+    "ca3ff3606a297912b7ca387cbbdbb91f",
+    "8e16b05939598bfdaaec450d2b667cad",
+    "8e04b75e644707b3f470dbd7623761ee",
   ],
   simple: [
     "1538c0c15e99c1a5894125234a3f3061",
@@ -117,6 +123,9 @@ export const legacyDocumentThemeFingerprints = {
     "30a4df69fb67e6ce9f3eff9a5c647146",
     "aecfd853624abfde80cc96765a2e2897",
     "efa72a26fe664d070197c0e08dedc457",
+    "8c98738ad4f78ce0f32c60724493b828",
+    "999feca706d8b98e0accc9f4fefdac9c",
+    "7612fa86e296770e51e6b96b4521b431",
   ],
   sakura: [
     "f1c2fdf993435958f545d65ff1012551",
@@ -151,6 +160,9 @@ export const legacyDocumentThemeFingerprints = {
     "17b71840b5d48bf7a53ab3f155450660",
     "3250d7bc12e53db4f6627f3367416db4",
     "7bda3fe92077a6717b021d6d5f35a02d",
+    "4bbbd7331fe9d8fdcc0c19df47aba8e4",
+    "39cb37ae3fe830363e7f05d547ab66ea",
+    "bbe0211ac7c6e2cc04edbce5b0a726d8",
   ],
   pico: [
     "41b3ddaf1c597ece591b363804ebb9ac",
@@ -185,6 +197,9 @@ export const legacyDocumentThemeFingerprints = {
     "919873c8f9c01d722076e5828bc68a36",
     "ffa50ef879b36daac1ac34c386c46f4e",
     "2d461f2425df5c887cd86fbeffe0ee1b",
+    "a119c3acb5cac803de6439787fd11948",
+    "c6528af2974f715e6f926f1aa4ced8e2",
+    "e50e90f126f1f998623f33a9f3ec84f6",
   ],
   holiday: [
     "85996d7e1b826a54d9d6b435ca38a492",
@@ -219,5 +234,8 @@ export const legacyDocumentThemeFingerprints = {
     "b52a26b97ecb55e4cfafeb04fa9104cd",
     "f78742a893e4819c8226e133995127d9",
     "02d5ffaeba98d2d766faa881c31f3c29",
+    "78e2d1b24464a5cb3029e7a293b5d859",
+    "f13cd34d7460c1c6732a9054507b294a",
+    "16ea17043057567e916a0a09812d9b34",
   ],
 }
