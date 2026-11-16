@@ -322,7 +322,7 @@ customElements.define("ww-item-list", WwItemList)
 ```
 
 - The module handles a key only when it comes from inside the widget, or from anywhere while the widget is fullscreen. It attaches nothing to `window`.
-- Give the widget something focusable, such as a stage with `tabindex="0"`. A click on a canvas leaves the focus on the page, and the keys never arrive. The widget warns in development when nothing can take the focus.
+- Give the widget something focusable, such as a stage with `tabindex="0"`. A click on a canvas leaves the focus on the page, and the keys never arrive. When an action declares a key, the widget warns once in development if its template holds nothing that can take the focus: a `tabindex`, a control, an editable region, or a custom element, which may hold a focusable part. The check runs after the first render that puts something other than styles into the shadow root, so a widget that renders its stage later is not reported for the renders before it.
 - A key that belongs to something else is left alone: text entry, an element with a text role, an editable region of the widget, a caret in the authored children, and a key that the focused control uses itself, such as Space on a button or an arrow on a slider. The module ignores keys during text composition.
 - Letters ignore case and modifiers must match exactly. A shortcut on a letter or digit also matches the key at its position on a Latin keyboard, when the key produces a letter of another script or when the combination has Alt and the key produces no Latin letter or digit.
 - The editor keeps `Mod+Z`, `Mod+Shift+Z`, `Mod+Y`, and `Mod+S`. The module ignores them and warns in development.
@@ -335,7 +335,7 @@ customElements.define("ww-item-list", WwItemList)
 
 Drag lets a reader or an author pick up items and put them on targets. The items can be authored children or elements that the template renders. Use it to reorder, to move between lists, to copy from a palette, to place an item at a point, or to draw a link from an item to a target.
 
-Import `Drag` from `@webwriter/lit/drag`. The module also exports the types `DragCommitDetail`, `DragPickDetail`, and `DragEffect`. The controller has `item`, the element being dragged or picked up, and `via`, which is `"pointer"`, `"keyboard"`, `"click"`, or null. The options are `can`, `rendered`, `messages`, `lift`, `duration`, and `easing`.
+Import `Drag` from `@webwriter/lit/drag`. The module also exports the types `DragCommitDetail`, `DragPickDetail`, `DragEffect`, and `DragViewport`. The controller has `item`, the element being dragged or picked up, and `via`, which is `"pointer"`, `"keyboard"`, `"click"`, or null. The options are `can`, `rendered`, `messages`, `lift`, `duration`, `easing`, and `viewport`. `viewport` takes the `core` of a [Viewport](#viewport) for a target in world coordinates.
 
 | Marker | Goes on | Meaning |
 |---|---|---|
@@ -348,6 +348,7 @@ Import `Drag` from `@webwriter/lit/drag`. The module also exports the types `Dra
 | `data-ww-drop="kind …"` | A target | The kinds the target accepts. |
 | `data-ww-drop-position="index"` | A target | The target also resolves a place among its items. |
 | `data-ww-drop-position="point"` | A target | The target resolves a point on its surface. `data-ww-drop-grid="step"` snaps it. |
+| `data-ww-drop-space="world"` | A point target that is the window of a canvas viewport | The point is in the viewport's world coordinates, under its pan and zoom, and the grid is in world units. Pass `{viewport: viewport.core}` as the `viewport` option. The view pans while the pointer is held at the edge of the window. See [Dropping into a viewport](#dropping-into-a-viewport). |
 | `data-ww-drop-max="n"` | A target | The capacity. `data-ww-drop-full="swap"` accepts an item when the target is full and reports the occupant as `displaced`. |
 | `data-ww-drop-linked="key …"` | A target of links | The keys of the items linked to it, so that capacity and swap hold for links too. |
 | `data-ww-label` | An item or a target | Its name in announcements. |
@@ -356,6 +357,8 @@ Import `Drag` from `@webwriter/lit/drag`. The module also exports the types `Dra
 |---|---|---|
 | `ww-dragpick` | The item | The item was picked up. A handler can remove entries from `detail.candidates`. `preventDefault()` refuses the pick-up. |
 | `ww-dragcommit` | The target | The item was dropped. `detail` has `item`, `key`, `kind`, `effect`, `source`, `target`, `displaced`, `index`, `before`, `x`, `y`, and `slot`. `preventDefault()` refuses the drop. |
+
+In `ww-dragcommit`, `index` and `before` are set for an index target and null otherwise. `x` and `y` are set for a point target and null otherwise: the place of the item's top-left corner in the target's own coordinates, the ones that `left` and `top` of an absolutely positioned child use, snapped to `data-ww-drop-grid`. With `data-ww-drop-space="world"` they are world coordinates. `slot` is the name of the target's slot for a slotted item that moves.
 
 Both events are cancelable and bubble. The first example orders authored children and picks them up by pointer and keyboard only, because a click selects them. The children are focusable in the authored markup, such as `<li tabindex="0">`. Drag moves the children itself.
 
@@ -440,7 +443,7 @@ customElements.define("ww-rank-list", WwRankList)
 ```
 
 - An item is picked up by a pointer drag, by Space or Enter, or by a click. It is dropped by releasing it on a target, by a click on a target, or by the arrow keys and Enter. Escape, a canceled pointer, and a release outside a target commit nothing.
-- An item that leaves out `keyboard` in `data-ww-drag-via` needs another way to be moved without a pointer. The arrow keys step through the places of an index target. In a point target they move the item by the grid step, or by 10 pixels without a grid and 1 pixel with Shift. Tab switches between targets.
+- An item that leaves out `keyboard` in `data-ww-drag-via` needs another way to be moved without a pointer. The arrow keys step through the places of an index target. In a point target they move the item by the grid step, or by 10 pixels without a grid and 1 pixel with Shift (world units in a target with `data-ww-drop-space="world"`). Tab switches between targets.
 - The module asks `can` before a drag starts, while it runs, and before it commits. The module has no edit mode of its own. Pass a function that reads [Permissions](#permissions).
 - The commit event and the render after it form one undo step.
 - For an authored child that moves, the module puts it before the item at `detail.before`, with `moveBefore()` where the browser has it so that a child widget keeps its state, and writes the target slot's name to the child's `slot` attribute. It writes nothing else to authored elements. A drop on the item's own place is no commit.
@@ -454,7 +457,7 @@ customElements.define("ww-rank-list", WwRankList)
 
 Viewport zooms and pans one window onto content that is larger than the widget. Use it for a diagram, a map, a floor plan, or a canvas.
 
-Import `Viewport` from `@webwriter/lit/viewport`. The controller has `x`, `y`, `scale`, `min`, `max`, `width`, and `height`. The methods are `zoomBy(factor, about?)`, `zoomTo(scale, about?)`, `panBy(dx, dy)`, `fit()`, `toWorld(clientX, clientY)`, `toClient(worldX, worldY)`, and `contentChanged()`. A world point `w` is drawn at `w * scale + (x, y)` in CSS pixels from the top-left corner of the window.
+Import `Viewport` from `@webwriter/lit/viewport`. The controller has `x`, `y`, `scale`, `min`, `max`, `width`, and `height`. The methods are `zoomBy(factor, about?)`, `zoomTo(scale, about?)`, `panBy(dx, dy)`, `fit(call?)`, `fitted()`, `centerOn(point, scale?, motion?)`, `setView(view, motion?)`, `autoPan(clientX, clientY)`, `autoPanWhile(source)`, `toWorld(clientX, clientY)`, `toClient(worldX, worldY)`, and `contentChanged()`. A world point `w` is drawn at `w * scale + (x, y)` in CSS pixels from the top-left corner of the window. The module also exports the types `ViewportFitCall`, `ViewportFitDetail`, `ViewportFitOptions`, `ViewportFollow`, `ViewportMotion`, `ViewportSnapshot`, `ViewportStart`, `ViewportWheel`, and `WorldBox`.
 
 | Declaration | Meaning |
 |---|---|
@@ -467,7 +470,9 @@ Import `Viewport` from `@webwriter/lit/viewport`. The controller has `x`, `y`, `
 | `data-ww-viewport-save="name"` | The widget attribute that keeps the view as `x y scale`, the world point in the center of the window and the scale. |
 | `data-ww-viewport-controls` | An element that receives four buttons: zoom out, zoom in, the current percent (which resets to 100 %), and fit. |
 
-The options are `can`, `canSave`, `bounds`, `margin`, `adapter`, `rendered`, and `messages`. `bounds` returns the extent of the content in world coordinates for the canvas form. Fit shows it, and panning stays within it.
+The attributes in the subsections below refine the wheel, the first view, the fit, and drops. Each of them has an option, and an attribute on the window wins over its option.
+
+The options are `can`, `canSave`, `bounds`, `margin`, `adapter`, `rendered`, `messages`, and the options behind the attributes below: `wheel`, `start`, `resize`, and `fit`. `bounds` returns the extent of the content in world coordinates for the canvas form. Fit shows it, and panning stays within it. `margin` is how far in CSS pixels the content can be panned past each edge of `bounds`.
 
 ```ts
 import {LitElementWw} from "@webwriter/lit"
@@ -522,6 +527,215 @@ customElements.define("ww-floor-plan", WwFloorPlan)
 - The scroll form writes its zoom into the module's own style sheet, not into the template.
 - The controller renders the widget again when the scale changes, and in the canvas form also when the position or size changes.
 
+The next example is a map in the canvas form. It zooms with the plain wheel, opens on a chosen place, fits with some room around the content, glides to a site on a button, and shows why the view was last fitted. The subsections explain each part.
+
+```ts
+import {css, html} from "lit"
+import {LitElementWw} from "@webwriter/lit"
+import {Viewport, type ViewportFitDetail} from "@webwriter/lit/viewport"
+
+type Site = {id: string; name: string; x: number; y: number}
+
+const SITES: Site[] = [
+  {id: "gate", name: "Gate", x: 140, y: 120},
+  {id: "hall", name: "Hall", x: 520, y: 360},
+  {id: "tower", name: "Tower", x: 980, y: 640},
+]
+const BOARD = {x: 0, y: 0, width: 1200, height: 800}
+
+class WwSiteMap extends LitElementWw {
+  static properties = {
+    reason: {state: true},
+  }
+
+  static styles = css`
+    .board { position: relative; height: 280px; overflow: hidden; border: 1px solid #c8c8c8; background: #f4f4f5; }
+    .world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+    .site { position: absolute; padding: 2px 8px; border: 1px solid #475569; background: white; white-space: nowrap; }
+    [data-ww-viewport-controls] { position: absolute; right: 6px; top: 6px; }
+  `
+
+  declare reason: string
+
+  #viewport = new Viewport(this, {
+    bounds: () => BOARD,
+    wheel: "zoom",
+    start: () => ({centre: SITES[0], scale: 1.5}),
+    fit: {padding: 24, maxScale: 1},
+  })
+
+  constructor() {
+    super()
+    this.reason = ""
+    this.addEventListener("ww-viewportfit", (event: Event) => {
+      this.reason = (event as CustomEvent<ViewportFitDetail>).detail.reason
+    })
+  }
+
+  render() {
+    const {x, y, scale} = this.#viewport
+    return html`
+      <div class="board" data-ww-viewport="canvas" data-ww-viewport-zoom="0.25 4" aria-label="Site map">
+        <div class="world" style="transform: translate(${x}px, ${y}px) scale(${scale})">
+          ${SITES.map(site => html`<span class="site" style="left: ${site.x}px; top: ${site.y}px">${site.name}</span>`)}
+        </div>
+        <span data-ww-viewport-controls></span>
+      </div>
+      ${SITES.map(site => html`<button @click=${() => this.#viewport.centerOn(site, 2, {animate: true})}>${site.name}</button>`)}
+      <button @click=${() => this.#viewport.fit({animate: true})}>Whole map</button>
+      <output>${this.reason}</output>
+    `
+  }
+}
+
+customElements.define("ww-site-map", WwSiteMap)
+```
+
+#### Wheel
+
+`data-ww-viewport-wheel` (option `wheel`) says what the plain wheel does over the window. `Ctrl` or `⌘` with the wheel and a pinch on a trackpad zoom in every mode.
+
+| Value | The plain wheel |
+|---|---|
+| `pan` | Pans. This is the default. |
+| `zoom` | Zooms about the pointer. A sideways wheel (one with only `deltaX`) still pans. |
+| `page` | Is left to the page, so that the page scrolls over the window. This applies to the canvas form. A scroll container scrolls natively anyway. |
+
+At the limit of the view a panning wheel goes on to the page. Use `zoom` for a surface that fills the screen, such as a diagram editor, and `page` for a window that sits inside a longer page.
+
+#### Start view and centering
+
+The first view of a window is applied once, when the window first has a size. The order is a view carried over from a replaced window, the saved view, the start view, and then the fit. A saved view always wins over the start view.
+
+`data-ww-viewport-start` takes `fit` or `x y scale`. The numbers are the world point in the center of the window and the scale, as in `data-ww-viewport-save`. The scale is optional and defaults to 1. The option `start` takes a value or a function that the module asks once.
+
+| `start` value | First view |
+|---|---|
+| `"fit"` | The fitted view, as if there were no start view. |
+| `{centre, scale?}` | A world point in the center of the window. |
+| `{x, y, scale?}` | The position of the world's origin, in CSS pixels from the corner of the window. |
+| `{box}` | A box of the world, fitted once. The view stays there until something changes it. |
+
+`centerOn(point, scale?, motion?)` puts a world point in the center of the window and optionally sets the scale. `setView({x, y, scale?})` sets where the world's origin is drawn, and `setView({scale})` sets the scale about the center. Both return a promise that resolves when the view is there. `{animate: true}` glides for 350 ms, and a number is the duration in milliseconds. The animation never runs for a reader who prefers reduced motion, and any other change of the view ends it, which also settles the promise. A call before the window has a size is applied when the window opens. After either call the view is no longer a fitted view.
+
+#### Fitting
+
+A fit shows the content in the window. The content is the box that `fit.target` returns, or else the box that `bounds` returns, in the canvas form, and the first child of the window in the scroll form. A view counts as fitted from its first view, when there is no saved or start view, and after `fit()`, the fit button, and the `0` key. It stays fitted until something else changes it: a zoom, a pan, `zoomTo`, `zoomBy`, `panBy`, `setView`, `centerOn`, or a start or saved view.
+
+| Attribute | Option `fit` | Meaning |
+|---|---|---|
+| `data-ww-viewport-fit-padding="px"` | `padding` | Room kept free around the content (canvas form). |
+| `data-ww-viewport-fit-max="scale"` | `maxScale` | The largest scale a fit chooses, so that small content is not enlarged. |
+| `data-ww-viewport-fit-inset="top right bottom left"` | `inset` | A part of the window that something else covers, such as a drawer. One to four numbers, as CSS margins. The option takes a number or `{top, right, bottom, left}` (canvas form). |
+| `data-ww-viewport-follow="all\|window\|none"` | `follow` | When a fitted view fits again by itself. |
+| | `target` | A function that returns the box to fit instead of `bounds`, such as the gates instead of the whole board. The fit button and the `0` key use it too (canvas form). |
+
+`fit` may also be a function, which the module asks at every fit.
+
+`follow` takes these values.
+
+- `all` (the default) fits again when the window or the content changes size.
+- `window` fits again only when the window changes size.
+- `none` never fits again: the view is fitted once and then left alone.
+
+A view that is not fitted keeps its place when the window resizes. `data-ww-viewport-resize="offset|centre"` (option `resize`) says what stays still: the screen offset of the world (the default), or the world point in the center of the window.
+
+`fit(call?)` returns a promise with the snapshot of the view (`x`, `y`, `scale`, `min`, `max`, `width`, `height`). The call takes `animate`, which works as for `centerOn()` and applies to the canvas form only, a `follow` for this fit alone, and `box`, a box of the world to fit instead of the content (canvas form). `fit({follow: "none"})` fits once and leaves the view alone, and `fit({box})` does the same for a chosen box. In the external form the library fits and ignores the options.
+
+`fitted()` returns a promise that resolves when the view is a fitted one that is up to date: at once if it is, and otherwise after the next fit. It rejects with an `AbortError` when the widget disconnects first. Await it before code that needs the view, such as a first measurement.
+
+After every fit the host dispatches `ww-viewportfit`. Its `detail` is the snapshot and a `reason`: `open` for the first view, `request` for `fit()`, the fit button, or the `0` key, and `follow` for a fit that the module made because the window or the content changed size.
+
+#### Panning at the edge
+
+`autoPan(clientX, clientY)` is one step of panning for a pointer in a band at the edge of the window. The band is 64 pixels wide, or a quarter of the window when that is smaller. The view moves towards what lies beyond, up to 16 pixels per call and faster the closer the pointer is to the edge. The method returns whether the view moved, does nothing for a pointer outside the window, and stops at the limits of the view.
+
+Call it once per animation frame during a drag that began elsewhere. `autoPanWhile(source)` does that for you until the gesture ends. `source` is any object with `last.clientX`, `last.clientY`, and an `ended` abort signal, such as a `PointerGesture` from `@webwriter/widget/gesture`. [Drag](#drag) calls `autoPan` by itself for a target in world coordinates.
+
+#### Dropping into a viewport
+
+A drag that ends on the window of a canvas viewport gives the point in the world, under the pan and zoom of the view. Mark the window as a point target in world coordinates with `data-ww-drop-space="world"` and pass the viewport's `core` as the `viewport` option of [Drag](#drag).
+
+```html
+<div data-ww-viewport="canvas" data-ww-drop="chip" data-ww-drop-position="point" data-ww-drop-space="world" data-ww-drop-grid="20"></div>
+```
+
+`ww-dragcommit` then reports `x` and `y` as the world point under the top-left corner of the lifted item. `data-ww-drop-grid` is in world units. The arrow keys move a keyboard drop by one grid cell, or by 10 world units without a grid and 1 with Shift. The view pans while the pointer is held at the edge of the window. Without the `viewport` option the target is measured as an ordinary point target, and the widget warns in development.
+
+The example takes a chip from a sidebar and places it on the board. The sidebar can cover the left side of the window, so the fit leaves that part free with `data-ww-viewport-fit-inset`.
+
+```ts
+import {css, html} from "lit"
+import {repeat} from "lit/directives/repeat.js"
+import {LitElementWw} from "@webwriter/lit"
+import {Drag, type DragCommitDetail} from "@webwriter/lit/drag"
+import {Viewport} from "@webwriter/lit/viewport"
+
+type Chip = {id: string; x: number; y: number}
+
+class WwChipBoard extends LitElementWw {
+  static properties = {
+    chips: {state: true},
+    drawer: {type: Boolean},
+  }
+
+  static styles = css`
+    :host { display: flex; height: 260px; }
+    .side { width: 100px; padding: 6px; border: 1px solid #c8c8c8; }
+    .source { padding: 4px; border: 1px solid #555; background: white; cursor: grab; touch-action: none; }
+    .board { position: relative; flex: 1; min-width: 0; overflow: hidden; border: 1px solid #c8c8c8; background: #f4f4f5; }
+    .world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+    .chip { position: absolute; width: 60px; height: 30px; box-sizing: border-box; border: 1px solid #555; background: #bfdbfe; }
+    [data-ww-drop-over] { background-color: #e0f2fe; }
+  `
+
+  declare chips: Chip[]
+  declare drawer: boolean
+
+  #viewport = new Viewport(this, {bounds: () => ({x: 0, y: 0, width: 1200, height: 800})})
+  #drag = new Drag(this, {viewport: this.#viewport.core})
+
+  constructor() {
+    super()
+    this.chips = []
+    this.drawer = false
+  }
+
+  #drop(event: CustomEvent<DragCommitDetail>) {
+    const {x, y} = event.detail
+    if (x === null || y === null) return
+    this.chips = [...this.chips, {id: `chip-${this.chips.length}`, x, y}]
+  }
+
+  render() {
+    const {x, y, scale} = this.#viewport
+    return html`
+      <div class="side">
+        <div class="source" data-ww-drag="chip" data-ww-drag-effect="copy" data-ww-key="and" data-ww-label="AND gate" tabindex="0">AND</div>
+      </div>
+      <div
+        class="board"
+        data-ww-viewport="canvas"
+        data-ww-viewport-fit-inset=${this.drawer ? "0 0 0 100" : "0"}
+        data-ww-drop="chip"
+        data-ww-drop-position="point"
+        data-ww-drop-space="world"
+        data-ww-drop-grid="20"
+        aria-label="Board"
+        @ww-dragcommit=${this.#drop}
+      >
+        <div class="world" style="transform: translate(${x}px, ${y}px) scale(${scale})">
+          ${repeat(this.chips, chip => chip.id, chip => html`<div class="chip" style="left: ${chip.x}px; top: ${chip.y}px"></div>`)}
+        </div>
+        <span data-ww-viewport-controls></span>
+      </div>
+    `
+  }
+}
+
+customElements.define("ww-chip-board", WwChipBoard)
+```
+
 ### Help
 
 Help shows an overlay with one label for each marked control. Use it for a toolbar or a tool with controls that a reader may not recognize.
@@ -569,28 +783,41 @@ Scene draws a description of nodes, shapes, paths, text, and images, and reports
 
 Import `SceneController` from `@webwriter/lit/scene`, and `sceneElements` and the event types from `@webwriter/widget/scene`. Register the elements in the widget's scoped registry with `static scopedElements = {...sceneElements}`. For WebGL rendering, register `PixiScene` from `@webwriter/widget/scene/pixi` as `ww-scene`. Only this import bundles `pixi.js`. Use `webglAvailable()` from `@webwriter/widget/scene` to select the renderer.
 
-The controller has `marquee`, `extent()`, `restyle()`, and `remeasure()`. The options are `can`, `viewport`, `rendered`, and `messages`. `can` is a function `(action, item)` or a map from an action to a permission name, such as `{move: "allowMoving"}`. The actions are `select`, `move`, `resize`, and `connect`. `viewport` takes the `core` of a [Viewport](#viewport) for a scene that is the window of a canvas viewport.
+The controller has `marquee`, `extent()`, `measureText(text, source?)`, `ready`, `toScene(clientX, clientY)`, `toClient(x, y)`, `itemAt(point, {client}?)`, `itemsAt(point, {client}?)`, `endsOf(path)`, `wiresAt(reference)`, `restyle()`, and `remeasure()`. `extent()` and `measureText()` answer for the widget's first `ww-scene`. The options are `can`, `viewport`, `rendered`, `messages`, and `undoHost`.
+
+`can` is a function `(action, item, port?)` or a map from an action to a permission name, such as `{move: "allowMoving"}`. The actions are `select`, `move`, `resize`, and `connect`. For a connection that starts or ends at a port, a function also gets the port element, so that it can refuse one port and not the whole node. `viewport` takes the `core` of a [Viewport](#viewport) for a scene that is the window of a canvas viewport. `undoHost` is the element on which a commit opens its undo step. The editor takes a step only from an event that starts on the widget itself, so a controller in a component inside the widget passes `"outermost"` (the host at the top of the shadow roots above the scene), the widget, or a function that returns it. Without it the step starts on the host of the scene's shadow root.
 
 | Element | Attributes | Draws |
 |---|---|---|
-| `ww-scene` | `select="none\|single\|multiple"`, `grid` | The scene. `grid` snaps moves and resizes to its multiples. |
-| `ww-node` | `x`, `y`, `width`, `height`, `resizable`, `keep-ratio` | The HTML content of the node at a scene position. |
-| `ww-group` | `x`, `y`, `scale` | Its children, moved and scaled together. |
-| `ww-shape` | `kind="rect\|circle\|polygon"`, `x`, `y`, `width`, `height`, `r`, `points` | A shape. |
-| `ww-path` | `from`, `to`, `route="straight\|step\|curve"` | A line between two ports, written `node:port`. A path without `from` and `to` follows its `points` property, relative to its `x` and `y`. |
-| `ww-text` | `x`, `y` | Its text content. |
-| `ww-image` | `x`, `y`, `width`, `height`, `href` | A picture. The `source` property takes an image source such as a canvas. |
+| `ww-scene` | `select="none\|single\|multiple"`, `grid`, `move-step`, `connect-click`, `background="dots\|lines"`, `background-spacing` | The scene. `grid` snaps moves and resizes to its multiples. `move-step` is how far an arrow key moves an item (five times as far with Shift). Without it the step is the grid, or 1 and 10 without a grid. `connect-click` lets a click on a port pick a wire up. `background` draws a grid below everything that follows the view. |
+| `ww-node` | `x`, `y`, `width`, `height`, `resizable`, `keep-ratio`, `outline="rect\|rounded\|circle\|ellipse"`, `radius` | The HTML content of the node at a scene position. `outline` is the shape where a path ends at the whole node. The selection outline follows it. |
+| `ww-group` | `x`, `y`, `scale`, `frame`, `padding`, `label`, `radius` | Its children, moved and scaled together. With `frame` it is also drawn as a box around its members. |
+| `ww-shape` | `kind="rect\|circle\|polygon"`, `x`, `y`, `width`, `height`, `r`, `points`, `radius`, `rotate`, `resizable` | A shape. A circle is placed by its center. `radius` rounds the corners of a rect. `rotate` turns a rect about its center and a polygon about `x`, `y`. A rect that is `resizable` has handles while it is selected. |
+| `ww-path` | `from`, `to`, `route="straight\|step\|curve\|arc\|orthogonal"`, `bend`, `loop`, `waypoints`, `marker-start`, `marker-end`, `hit-width`, `rewire` | A line between two ends, each written `node:port` or `node`. A path without `from` and `to` follows its `points` property, relative to its `x` and `y`. |
+| `ww-text` | `x`, `y`, `rotate`; as a label also `at`, `along`, `side`, `gap`, `follow` | Its text content. Inside a `ww-path` it is a label of the path. |
+| `ww-image` | `x`, `y`, `width`, `height`, `href`, `resizable` | A picture. The `source` property takes an image source such as a canvas. |
 | `ww-sprites` | `texture` | A batch of sprites from its `items` property. Pixi renderer only. |
 
-Every element also takes `data-ww-key`, `selected`, `selectable`, `movable`, and `aria-label`. A path refers to a node by its key, and the events report keys. Style drawn elements with CSS: they take `stroke`, `fill`, and the font properties from their computed style. A port is an element with `data-ww-port="name"` inside a node. `data-ww-link="kind"` on a port starts a wire. `data-ww-accept="kind …"` on a port accepts wires of these kinds. `data-ww-side` sets the side where a path leaves a port.
+Every element also takes `data-ww-key`, `selected`, `selectable`, `movable`, and `aria-label`, and the [constraints](#constraints) below. A path refers to a node by its key, and the events report keys. Style drawn elements with CSS: they take `stroke`, `fill`, and the font properties from their computed style. `--ww-scene-selection` sets the color of the selection outline and of the handles. A port is an element with `data-ww-port="name"` inside a node. `data-ww-link="kind"` on a port starts a wire. `data-ww-accept="kind …"` on a port accepts wires of these kinds. `data-ww-side="left|right|top|bottom"` sets the side where a path leaves a port. Without it the port faces the nearest edge of its node.
 
 | Event | Meaning |
 |---|---|
 | `ww-select` | The reader asks for a selection. `detail.keys` and `detail.items`. |
-| `ww-move` | The reader moved items. `detail.items` has the key and the new `x` and `y` of each item. `detail.dx` and `detail.dy` give the movement of the lead item. |
-| `ww-resize` | The reader resized a node. `detail` has `key`, `item`, `x`, `y`, `width`, and `height`. |
-| `ww-connect` | The reader connected two ports. `detail` has `from`, `to` (`node:port`), `kind`, `source`, and `target`. |
+| `ww-move` | The reader moved items. `detail.items` has the key and the new `x` and `y` of each item. `detail.dx` and `detail.dy` give the movement of the lead item. `detail.pointer` is where the pointer was, or null for a move by keyboard. |
+| `ww-moving` | A step of a move, and once more when it is over. It informs, writes nothing, and cannot be canceled. `detail` is that of `ww-move` with `state` (`move` or `end`) and `committed`. |
+| `ww-resize` | The reader resized a node, or a rect or an image that is `resizable`. `detail` has `key`, `item`, `x`, `y`, `width`, and `height`. |
+| `ww-resizing` | A step of a resize, and once more when it is over. It is to a resize what `ww-moving` is to a move, with `state` `resize` or `end`. |
+| `ww-connect` | The reader connected two ports, or two whole nodes. `detail` has `from`, `to` (`node:port`, or `node`), `kind`, `source`, `target`, and `pointer`. |
+| `ww-reconnect` | The reader took an end of a wire to another port. `detail` has `path`, `end`, the new `from` and `to`, `previous`, `kind`, `source`, `target`, and `pointer`. |
+| `ww-disconnect` | The reader let an end of a wire go where no port is. `detail` has `path`, `end`, `from`, `to`, `kind`, and `pointer`. |
+| `ww-connecting` | A wire is held. `detail` says which port it is over. |
+| `ww-activate` | A click, a double click, or Enter or Space on an item, also on one that is selected already. |
+| `ww-context` | A context menu, the menu key, or a long press by touch, on an item or on the background. |
+| `ww-background` | A click, a double click, or a long press on the background. |
+| `ww-ready` | The first layout has settled. |
 | `ww-sceneerror` | The scene cannot draw something. `detail.code` is `load`, `unsupported`, or `webgl`. |
+
+All events bubble out of the widget's shadow root. `pointer` is `{x, y, clientX, clientY}`: the scene point and the client point.
 
 ```ts
 import {css, html} from "lit"
@@ -667,9 +894,473 @@ customElements.define("ww-boxes", WwBoxes)
 - The selection is the widget's. The scene reads the `selected` attribute and asks for a change with `ww-select`.
 - The module asks `can` before a selection, move, resize, or connection, during it, and before it commits. An interaction ends when the answer turns false.
 - Pointer, touch, and keyboard all work. A node that is `selectable` or `movable` takes focus. Arrow keys move the selection and commit after a short rest. Moves and wires are announced in a live region.
-- The scene writes no position or size to its elements. A preview is a Web Animation that ends with the interaction. A `selectable` or `movable` node without a `tabindex` gets `tabindex="0"`. A port that starts a wire gets `tabindex`, `role="button"`, and an `aria-label` where the template sets none, while the reader may connect, and loses them again. Drawn elements and `ww-scene` have custom states such as `:state(hover)` for CSS.
+- The undo step of a commit is opened on the host of the scene's shadow root. For a scene in a component inside the widget use the option `undoHost`.
+- The scene writes no position or size to its elements. A preview is a Web Animation that ends with the interaction. A `selectable` or `movable` node without a `tabindex` gets `tabindex="0"`. A port that starts a wire gets `tabindex`, `role="button"`, and an `aria-label` where the template sets none, while the reader may connect, and loses them again.
+- Drawn elements and `ww-scene` have custom states for CSS: `:state(hover)` on a drawn item, `:state(failed)` on an image that did not load, `:state(rewiring)` on a path whose end is held, and `:state(wiring)` and `:state(marquee)` on the scene. `ww-scene::part(link)` is the pending wire, `ww-scene::part(resize)` the handles of a rect or image, and `ww-node::part(handle)` the handles of a node.
 - A scene inside a scrolling `data-ww-viewport` is zoomed from outside. Pass `viewport` only for the canvas form.
 - Call `restyle()` after a style change that no observer sees, and `remeasure()` when ports moved without a change of the document.
+
+#### Paths, markers, and labels
+
+A path ends at a port (`from="a:out"`) or at a whole node (`from="a"`). A node that declares an `outline` is met on that outline, and a node without an `outline` is met at its center. An attached path follows its nodes while they are dragged, moved by keyboard, or resized, and follows the nodes of a group that moves. A path without `from` and `to` is drawn along its `points` property instead.
+
+| Attribute of a `ww-path` | Meaning |
+|---|---|
+| `route` | `straight` (the default), `step`, `curve`, `arc`, or `orthogonal`. `step` and `curve` leave a whole node on the side that faces the other end. |
+| `bend` | A number. The path becomes an arc. The control point of the arc is `bend` times the length of the line between the ends away from its middle, to the left of the way from start to end when `bend` is positive. Two paths between the same nodes, one each way, with the same `bend` stay apart. `route="arc"` without `bend` has 0.25, and `bend="0"` is a line. |
+| `loop` | An angle in degrees, 0 up and clockwise. A path from a node to itself becomes a loop that leaves and returns where the outline of the node lets it out. An empty value is 45. |
+| `waypoints` | The widget's own route: `x,y` pairs, each from the start end, or from the end with `e:` in front, as in `waypoints="20,0 20,-60 e:-20,-60 e:-20,0"`. The route follows its nodes because the points are relative to the ends. |
+| `marker-start`, `marker-end` | `none`, `arrow`, `open-arrow`, `triangle`, `triangle-filled`, `diamond`, `diamond-filled`, `circle`, or `circle-open`. |
+| `hit-width` | The width, in pixels, of the band in which the path takes the pointer. The default is 12. |
+| `rewire` | Lets the reader take an end to another port. See [Wires](#wires). |
+
+`route="orthogonal"` draws horizontal and vertical segments. Each end leaves at its side. The middle segment runs halfway between the ends if no other node is in the way. Otherwise it runs at the nearest free place beside the nodes in the way, 12 pixels clear, and if there is none, the path goes out, across above or below, and in. The route does not avoid other paths and is laid out again whenever a node moves, so use it for scenes of tens of nodes. For more nodes, compute the route in the widget and pass `waypoints`.
+
+A marker has the stroke color of the path and is 8 pixels plus twice the stroke width long. `--ww-scene-marker-size` sets another length. A hollow marker (`triangle`, `diamond`, and `circle-open`) is filled with `--ww-scene-marker-fill`, which is none by default. The path ends at the base of the marker, and an open arrow ends at its tip. A marker shrinks on a path that is too short for it and is never dashed. Markers and labels take the pointer with their path and are part of its selection outline.
+
+A `ww-text` inside a `ww-path` is a label of the path. A path may have several. A label is drawn with the path, takes the pointer with it, and has no tab stop of its own. Label text is not part of the accessible name of the path, so set `aria-label` on a path whose label matters.
+
+| Attribute of a label | Meaning |
+|---|---|
+| `at` | `start`, `middle` (the default), `end`, or a fraction between 0 and 1 of the length of the path. |
+| `along` | Pixels to move along the line, positive towards the end. |
+| `side` | `on` the line (the default), or beside it: `left` or `right` of the way, `above`, or `below`. |
+| `gap` | Pixels between the line and the box of the label when it is beside the line. The default is 4. |
+| `follow` | Turns the label to the direction of the line, upright. `rotate` sets an angle instead. |
+
+The example draws a small state machine. The states are circles, the two transitions between them are arcs with the same `bend`, and a loop leaves the busy state. Each transition has an arrow and a label. The scene shows a dotted background and a framed group, and sizes each state to its name with `measureText()`.
+
+```ts
+import {css, html} from "lit"
+import {ifDefined} from "lit/directives/if-defined.js"
+import {LitElementWw} from "@webwriter/lit"
+import {SceneController} from "@webwriter/lit/scene"
+import {sceneElements, type MoveDetail} from "@webwriter/widget/scene"
+
+type State = {id: string; x: number; y: number}
+type Transition = {id: string; from: string; to: string; label: string; bend?: number; loop?: number}
+
+class WwStateMachine extends LitElementWw {
+  static scopedElements = {...sceneElements}
+
+  static properties = {
+    states: {type: Array, reflect: true},
+  }
+
+  static styles = css`
+    ww-scene { height: 260px; color: #334155; --ww-scene-grid-color: #94a3b8; }
+    ww-node { display: grid; place-items: center; box-sizing: border-box; background: white; border: 2px solid #334155; }
+    ww-path { stroke: #334155; stroke-width: 2px; }
+    ww-path ww-text { fill: #1e293b; font-size: 13px; white-space: pre-line; background-color: white; padding: 0 4px; }
+    ww-group { fill: #f1f5f9; stroke: #94a3b8; stroke-dasharray: 4 3; color: #64748b; }
+    ww-text.title { fill: #0f172a; font-size: 14px; stroke: white; stroke-width: 3px; }
+  `
+
+  declare states: State[]
+
+  #transitions: Transition[] = [
+    {id: "go", from: "idle", to: "busy", label: "start", bend: 0.25},
+    {id: "back", from: "busy", to: "idle", label: "stop", bend: 0.25},
+    {id: "retry", from: "busy", to: "busy", label: "retry\nlater", loop: 45},
+  ]
+
+  #scene = new SceneController(this)
+
+  constructor() {
+    super()
+    this.states = [{id: "idle", x: 40, y: 80}, {id: "busy", x: 260, y: 80}]
+  }
+
+  #move(event: CustomEvent<MoveDetail>) {
+    const moved = new Map(event.detail.items.map(item => [item.key, item]))
+    this.states = this.states.map(state => {
+      const to = moved.get(state.id)
+      return to ? {...state, x: to.x, y: to.y} : state
+    })
+  }
+
+  render() {
+    return html`
+      <ww-scene select="single" background="dots" background-spacing="20" @ww-move=${this.#move}>
+        <ww-group frame label="Machine" padding="16">
+          ${this.states.map(state => {
+            const width = Math.max(64, this.#scene.measureText(state.id, {fontSize: 14}).width + 24)
+            return html`
+              <ww-node data-ww-key=${state.id} x=${state.x} y=${state.y} width=${width} height="64" outline="circle" selectable movable>${state.id}</ww-node>
+            `
+          })}
+        </ww-group>
+        ${this.#transitions.map(
+          transition => html`
+            <ww-path
+              data-ww-key=${transition.id}
+              from=${transition.from}
+              to=${transition.to}
+              bend=${ifDefined(transition.bend)}
+              loop=${ifDefined(transition.loop)}
+              marker-end="arrow"
+              hit-width="24"
+            >
+              <ww-text side="above" at="middle">${transition.label}</ww-text>
+            </ww-path>
+          `,
+        )}
+        <ww-text class="title" x="8" y="8">States: ${this.states.length}</ww-text>
+      </ww-scene>
+    `
+  }
+}
+
+customElements.define("ww-state-machine", WwStateMachine)
+```
+
+#### Shapes, text, groups, and the background
+
+`ww-shape kind="rect"` takes `radius` for rounded corners. `rotate` (degrees, clockwise) turns a rect about its center, and a polygon and a text about their `x`, `y`.
+
+A `ww-text` is a text of one or more lines at `x`, `y`. The scene reads these properties of its style.
+
+- `white-space: pre-line` (also `pre` and `pre-wrap`) keeps the line breaks of its text. Otherwise line breaks are spaces. `line-height` sets the distance of the lines.
+- `text-anchor` (`start`, `middle`, `end`) says which end of the lines is at `x`.
+- `dominant-baseline` says what `y` is: the top of the text (the default), its middle (`middle` or `central`), its bottom (`text-after-edge`), or the alphabetic baseline of the first line (`alphabetic`). The Pixi renderer puts that baseline about 0.8 em below the top of the line.
+- `stroke` and `stroke-width` make a halo under the letters. `background-color`, `padding`, and `border-radius` make a box behind it. A label of a path has them too.
+
+`measureText(text, source?)` of the controller (and of `ww-scene`) tells the size a text will have before anything is drawn: `{width, height, lines, lineHeight}` in scene pixels, with the widest line and the height of all lines. `source` is an element whose font is used, such as a `ww-text`, or some entries of a font (`{fontSize: 14}`; the other entries are `fontFamily`, `fontWeight`, `fontStyle`, and `lineHeight`). Without a `source` the font of the scene is used. `\n` breaks lines. Use it to size a node to its label. The result is zero until the scene has been connected. `extent()` includes texts with their padding, the markers and labels of paths, rotated outlines, and the frames of groups.
+
+A `ww-group` with `frame` is drawn as a box around its members: nodes, drawn items, and other groups. `padding` is the distance in pixels (8 by default), `radius` rounds the corners, and `label` appears above the box. The box has the `fill`, `stroke`, `stroke-width`, and `stroke-dasharray` of the group and follows its members while they move. An empty group has no box. Where the group is selectable or movable, a press anywhere inside the box moves the group and what it holds.
+
+`background="dots"` or `"lines"` on `ww-scene` draws a grid below everything, with its marks at the multiples of `background-spacing` (or of `grid`, or 20). The grid follows the view, covers the visible part of the scene, and is drawn as one tiled pattern. `--ww-scene-grid-color` and `--ww-scene-grid-size` (the radius of a dot, the width of a line) style it. It takes no pointer and is no part of `extent()`.
+
+#### Reacting while the reader acts
+
+The commit events (`ww-select`, `ww-move`, `ww-resize`, `ww-connect`, `ww-reconnect`, and `ww-disconnect`) are the place to change the model. The other events inform. They write nothing and cannot be canceled, except `ww-connecting` and `ww-context`, which say so. Each is sent on the item it is about. `ww-select`, `ww-background`, and `ww-ready` are sent on the scene.
+
+- **`ww-moving`** comes for every step of a move by pointer or by keyboard, and once more after it. `detail.items` are where the items are shown now: previewed during the move, and where the attributes put them at its end (`state` is `end`, and `committed` says whether the widget took the move). Update what depends on a dragged item from it, such as a readout that follows the item, and keep the result out of the model. A move that is canceled ends with `end` and `committed: false`, and the display returns to the model. Paths that are attached to nodes follow the preview by themselves. `ww-resizing` is the same for a resize.
+- **Where the pointer is.** `detail.pointer` of `ww-moving`, `ww-move`, `ww-connect`, and `ww-activate` is `{x, y, clientX, clientY}`, or null for the keyboard. Use the client point for a drop outside the scene, such as `document.elementFromPoint` for a trash can, and the scene point for a drop on something that is in the model.
+- **`ww-activate`** comes after every click, also on an item that is selected already (then there is no `ww-select`), with `detail.count` 2 for a double click, and for Enter or Space (`via` is `keyboard`). `detail.item` is the item that a click acts on, as `ww-select` reports it: the nearest of the pressed item and the groups around it that is selectable or movable. `detail.hit` is the item that was pressed, such as a neuron inside a movable layer, `detail.groups` are the groups around it, and `detail.target` is the element that was pressed. `detail` also has `key`, `shiftKey`, `ctrlKey`, `altKey`, and `metaKey`. A click on a control inside a node (a button, a link, a field) is the control's and is not reported.
+- **`ww-context`** comes for a context menu, the menu key, and a long press by touch. `detail.kind` is `node`, `path`, `shape`, `text`, `image`, `group`, `sprites`, or `background`. `detail.key`, `detail.hit`, `detail.item`, `detail.groups`, and `detail.target` say what was hit, `detail.point` says where (for the menu key, the middle of the item), and `detail.via` is `pointer`, `keyboard`, or `touch`. Cancel the event to keep the browser's menu away and show the widget's own. Where a long press by touch already means something (it adds to the selection in multiple selection and draws a marquee on the background), it is not a context menu.
+- **`ww-background`** comes for a click, a double click, and a long press on the background, with `detail.gesture` of `click`, `dblclick`, or `longpress`, the scene `point`, `pointerType`, and the modifier keys. A drag is not a click. It also comes where nothing can be selected.
+- **`ww-ready`** and `ready` say that the first layout has settled: the fonts are loaded, the nodes are measured, and the paths are drawn, so `extent()` is what it will stay. A scene that is not shown settles when it is. Fit a viewport to `extent()` then.
+
+The example shows the distance between two stops live while one of them is dragged, adds a stop on a double click on the background, shows the last item that was clicked, and replaces the browser's menu on a node.
+
+```ts
+import {css, html, nothing} from "lit"
+import {LitElementWw} from "@webwriter/lit"
+import {SceneController, type ActivateDetail, type BackgroundDetail, type ContextDetail, type MoveDetail, type MovingDetail} from "@webwriter/lit/scene"
+import {sceneElements} from "@webwriter/widget/scene"
+
+type Stop = {id: string; x: number; y: number}
+
+class WwStopMap extends LitElementWw {
+  static scopedElements = {...sceneElements}
+
+  static properties = {
+    stops: {type: Array, reflect: true},
+    live: {state: true},
+    active: {state: true},
+    menu: {state: true},
+  }
+
+  static styles = css`
+    :host { position: relative; display: block; }
+    ww-scene { height: 240px; border: 1px solid #c8c8c8; }
+    ww-node { padding: 6px 12px; background: white; border: 1px solid #475569; }
+    ww-path { stroke: #475569; stroke-width: 2px; }
+    .menu { position: absolute; padding: 4px; background: white; border: 1px solid #475569; }
+  `
+
+  declare stops: Stop[]
+  declare live: Record<string, {x: number; y: number}> | null
+  declare active: string
+  declare menu: {key: string; left: number; top: number} | null
+
+  #scene = new SceneController(this)
+
+  constructor() {
+    super()
+    this.stops = [{id: "a", x: 30, y: 40}, {id: "b", x: 240, y: 120}]
+    this.live = null
+    this.active = ""
+    this.menu = null
+  }
+
+  #moving(event: CustomEvent<MovingDetail>) {
+    const {state, items} = event.detail
+    this.live = state === "move" ? Object.fromEntries(items.map(item => [item.key, {x: item.x, y: item.y}])) : null
+  }
+
+  #move(event: CustomEvent<MoveDetail>) {
+    const moved = new Map(event.detail.items.map(item => [item.key, item]))
+    this.stops = this.stops.map(stop => {
+      const to = moved.get(stop.id)
+      return to ? {...stop, x: to.x, y: to.y} : stop
+    })
+  }
+
+  #background(event: CustomEvent<BackgroundDetail>) {
+    if (event.detail.gesture !== "dblclick" && event.detail.gesture !== "longpress") return
+    const {x, y} = event.detail.point
+    this.stops = [...this.stops, {id: `s${this.stops.length + 1}`, x, y}]
+  }
+
+  #activate(event: CustomEvent<ActivateDetail>) {
+    this.active = event.detail.key
+  }
+
+  #context(event: CustomEvent<ContextDetail>) {
+    if (event.detail.kind !== "node") return
+    event.preventDefault()
+    const box = this.getBoundingClientRect()
+    this.menu = {key: event.detail.key, left: event.detail.point.clientX - box.left, top: event.detail.point.clientY - box.top}
+  }
+
+  #remove() {
+    const key = this.menu?.key
+    this.stops = this.stops.filter(stop => stop.id !== key)
+    this.menu = null
+  }
+
+  render() {
+    const place = (stop: Stop) => this.live?.[stop.id] ?? stop
+    const [first, second] = this.stops.map(place)
+    const distance = first && second ? Math.round(Math.hypot(second.x - first.x, second.y - first.y)) : 0
+    return html`
+      <ww-scene
+        select="single"
+        @ww-moving=${this.#moving}
+        @ww-move=${this.#move}
+        @ww-background=${this.#background}
+        @ww-activate=${this.#activate}
+        @ww-context=${this.#context}
+      >
+        ${this.stops.length > 1 ? html`<ww-path from=${this.stops[0].id} to=${this.stops[1].id}></ww-path>` : nothing}
+        ${this.stops.map(stop => html`<ww-node data-ww-key=${stop.id} x=${stop.x} y=${stop.y} selectable movable>Stop ${stop.id}</ww-node>`)}
+      </ww-scene>
+      <output>Distance ${distance}, last clicked ${this.active || "none"}</output>
+      ${this.menu ? html`<div class="menu" style="left: ${this.menu.left}px; top: ${this.menu.top}px"><button @click=${this.#remove}>Remove</button></div>` : nothing}
+    `
+  }
+}
+
+customElements.define("ww-stop-map", WwStopMap)
+```
+
+#### Wires
+
+A port is an element with `data-ww-port`. It starts a wire with `data-ww-link="kind"` and takes wires with `data-ww-accept="kind …"`. By default a wire is dragged from a port to a port.
+
+- **Capacity.** `data-ww-capacity="1"` on a port, or on a node, limits the wires at it. A port that is full starts no wire (also not by keyboard) and is not offered as a target, so the template does not have to take its attributes away. The count includes the paths with `from` or `to` at it. `can` is asked with the port as its third argument, to refuse a port by another rule.
+- **Whole nodes.** `data-ww-link` and `data-ww-accept` on the `ww-node` itself make the whole node the place a wire starts and ends. A press anywhere on it draws a wire instead of moving it, so set the attributes only in the mode that draws wires. The wire is written with the bare key: `from="a" to="b"`. The target is the node under the pointer, within its outline. The keyboard starts a wire from a focused node with Enter.
+- **Taking a wire from a port.** A `ww-path` with `rewire` (`to`, `from`, or `from to`; an empty value is `to`) lets the reader grab that end of the wire and take it to another port (`ww-reconnect`) or let it go where no port is (`ww-disconnect`). The end is grabbed at its port when that port starts no wire (it has no `data-ww-link`, or it is full), and on the path within 16 pixels of the end. A path with `rewire` takes the pointer in a band like a selectable one. While an end is held the path has `:state(rewiring)`. The kind of the wire is the kind of the end that stays. The widget changes `from` or `to` of the path, or removes it, and `preventDefault()` refuses. A click on the end that does not move it selects the path.
+- **A click on a port.** `connect-click` on the scene lets a click on a port pick the wire up. The wire follows the pointer, a click on a port that takes it connects, and a click elsewhere or Escape cancels. Dragging still works.
+- **While a wire is held**, `ww-connecting` is sent on the port it started at. `detail` has `from`, `to`, `kind`, `source`, `target`, `via` (`pointer`, `click`, or `keyboard`), `pointer`, and `state` (`move` for every step, once with `end` when the wire is put down). `from` and `to` are the ends the wire has if it is dropped now, and the end without a port under it is null. `target` is the port the wire is over, or null. For an end of an existing path that is moved, `detail.path` and `detail.end` are set. Use it to preview the result or to mark forbidden targets. The scene has `:state(wiring)`, a candidate port has `data-ww-port-candidate`, and the port under the pointer has `data-ww-port-over`. The pending wire is `part="link"` of the scene, as in `ww-scene::part(link) {stroke: red}`. A widget that draws its own cancels the `move` event, and the scene then draws none.
+- **Which ports a wire has.** `endsOf(path)` returns the two ends of an attached path as `{reference, node, port, element}`, so that a click on a wire can tell which port it ends in. `wiresAt("node:port")` returns the paths that end at that port. `wiresAt("node")` returns the paths that end at the node as a whole, without those at its ports.
+
+The example connects a source to two blocks. The source output takes two wires, and each input takes one. Wires can be taken to another input or dropped to remove them, and a click on a port starts a wire. A permission lets learners wire, and `can` refuses one port by its name.
+
+```ts
+import {css, html} from "lit"
+import {LitElementWw} from "@webwriter/lit"
+import {Permissions} from "@webwriter/lit/permissions"
+import {SceneController, type ConnectDetail, type DisconnectDetail, type MoveDetail, type ReconnectDetail} from "@webwriter/lit/scene"
+import {sceneElements} from "@webwriter/widget/scene"
+
+type Wire = {id: string; from: string; to: string}
+
+class WwSignalBoard extends LitElementWw {
+  static scopedElements = {...sceneElements}
+
+  static properties = {
+    wires: {type: Array, reflect: true},
+    allowWiring: {type: Boolean, attribute: "allow-wiring", reflect: true},
+    places: {state: true},
+  }
+
+  static permissions = {
+    allowWiring: {label: {_: "Learners may wire the blocks"}},
+  }
+
+  static styles = css`
+    ww-scene { height: 220px; border: 1px solid #c8c8c8; --ww-scene-selection: #db2777; }
+    ww-node { box-sizing: border-box; padding: 8px; background: white; border: 1px solid #475569; }
+    .port { position: absolute; top: 20px; width: 14px; height: 14px; border-radius: 50%; background: #2563eb; }
+    .out { right: -7px; }
+    .in { left: -7px; background: #16a34a; }
+    .port[data-ww-port-candidate] { box-shadow: 0 0 0 3px #facc15; }
+    .port[data-ww-port-over] { box-shadow: 0 0 0 3px #ea580c; }
+    ww-path { stroke: #475569; stroke-width: 2px; }
+    ww-path:state(rewiring) { opacity: 0.3; }
+    ww-scene::part(link) { stroke: #dc2626; stroke-width: 3px; }
+  `
+
+  declare wires: Wire[]
+  declare allowWiring: boolean
+  declare places: Record<string, {x: number; y: number}>
+
+  #permissions = new Permissions(this)
+  #scene = new SceneController(this, {
+    // A connection that starts or ends at a port is asked with that port as the third argument.
+    can: (action, _item, port) => {
+      if (action !== "connect") return true
+      return this.#permissions.can("allowWiring") && !(port instanceof HTMLElement && port.dataset.wwPort === "reserved")
+    },
+  })
+
+  constructor() {
+    super()
+    this.wires = [{id: "w1", from: "source:out", to: "gain:in"}]
+    this.allowWiring = false
+    this.places = {source: {x: 20, y: 30}, gain: {x: 240, y: 30}, sink: {x: 240, y: 130}}
+  }
+
+  #move(event: CustomEvent<MoveDetail>) {
+    const places = {...this.places}
+    for (const {key, x, y} of event.detail.items) places[key] = {x, y}
+    this.places = places
+  }
+
+  #connect(event: CustomEvent<ConnectDetail>) {
+    const {from, to} = event.detail
+    this.wires = [...this.wires, {id: `w${Date.now()}`, from, to}]
+  }
+
+  #reconnect(event: CustomEvent<ReconnectDetail>) {
+    const {path, from, to} = event.detail
+    this.wires = this.wires.map(wire => (wire.id === path.getAttribute("data-ww-key") ? {...wire, from, to} : wire))
+  }
+
+  #disconnect(event: CustomEvent<DisconnectDetail>) {
+    this.wires = this.wires.filter(wire => wire.id !== event.detail.path.getAttribute("data-ww-key"))
+  }
+
+  render() {
+    const block = (key: string, label: string, ports: unknown) => html`
+      <ww-node data-ww-key=${key} x=${this.places[key].x} y=${this.places[key].y} width="110" height="56" selectable movable>${label}${ports}</ww-node>
+    `
+    return html`
+      <ww-scene select="single" connect-click @ww-move=${this.#move} @ww-connect=${this.#connect} @ww-reconnect=${this.#reconnect} @ww-disconnect=${this.#disconnect}>
+        ${this.wires.map(wire => html`<ww-path data-ww-key=${wire.id} from=${wire.from} to=${wire.to} route="orthogonal" marker-end="arrow" rewire="from to" hit-width="20" selectable></ww-path>`)}
+        ${block("source", "Source", html`<span class="port out" data-ww-port="out" data-ww-link="signal" data-ww-capacity="2"></span>`)}
+        ${block("gain", "Gain", html`<span class="port in" data-ww-port="in" data-ww-accept="signal" data-ww-capacity="1"></span>`)}
+        ${block("sink", "Sink", html`<span class="port in" data-ww-port="in" data-ww-accept="signal" data-ww-capacity="1"></span>`)}
+      </ww-scene>
+    `
+  }
+}
+
+customElements.define("ww-signal-board", WwSignalBoard)
+```
+
+#### Constraints
+
+Constraints are attributes of the item, read while it is moved or resized, by pointer and by keyboard. The preview obeys them.
+
+| Attribute | Meaning |
+|---|---|
+| `axis="x"` or `axis="y"` | The item moves along that axis only. |
+| `min-x`, `max-x`, `min-y`, `max-y` | The `x` and `y` of the item stay between these. |
+| `bounds="x y width height"` | The whole box of the item stays inside this box, when it moves and when an edge is dragged. |
+| `grid` | A snap grid of the item itself, instead of the scene's. |
+| `resizable` | Handles of the selected item: all eight without a value, or the ones named, as in `resizable="s"` or `resizable="e w"`. `n`, `e`, `s`, and `w` are the edges, and `ne`, `se`, `sw`, and `nw` the corners. For a node, a rect, and an image. |
+| `min-width`, `min-height`, `max-width`, `max-height` | The size limits of a resize. The edge that is dragged stops. A node has a minimum of 16 without them. |
+| `keep-ratio` | A node keeps its proportions while it is resized. |
+
+Several items that move together keep every limit of every item. A key that is pressed against a limit does not go on counting. The handles of a rect and an image are in the scene's own tree, and as large on the screen at any zoom. A rect that is turned has none. The scene attribute `move-step` sets the step of the arrow keys. Limits apply to items that are `movable`. A member of a group that moves follows the group.
+
+The example moves a task bar along one axis in steps of 20 and resizes it by its side edges, and keeps a marker inside a band.
+
+```ts
+import {css, html} from "lit"
+import {LitElementWw} from "@webwriter/lit"
+import {SceneController, type MoveDetail, type ResizeDetail} from "@webwriter/lit/scene"
+import {sceneElements} from "@webwriter/widget/scene"
+
+type Box = {x: number; y: number; width: number; height: number}
+
+class WwSchedule extends LitElementWw {
+  static scopedElements = {...sceneElements}
+
+  static properties = {
+    task: {state: true},
+    marker: {state: true},
+  }
+
+  static styles = css`
+    ww-scene { height: 160px; border: 1px solid #c8c8c8; }
+    ww-node { box-sizing: border-box; background: #dbeafe; border: 1px solid #2563eb; }
+    ww-shape { fill: #fde68a; stroke: #b45309; }
+  `
+
+  declare task: Box
+  declare marker: Box
+
+  #scene = new SceneController(this)
+
+  constructor() {
+    super()
+    this.task = {x: 40, y: 20, width: 120, height: 32}
+    this.marker = {x: 40, y: 80, width: 24, height: 40}
+  }
+
+  #move(event: CustomEvent<MoveDetail>) {
+    for (const {key, x, y} of event.detail.items) {
+      if (key === "task") this.task = {...this.task, x, y}
+      if (key === "marker") this.marker = {...this.marker, x, y}
+    }
+  }
+
+  #resize(event: CustomEvent<ResizeDetail>) {
+    const {key, ...box} = event.detail
+    if (key === "task") this.task = {x: box.x, y: box.y, width: box.width, height: box.height}
+    if (key === "marker") this.marker = {x: box.x, y: box.y, width: box.width, height: box.height}
+  }
+
+  render() {
+    return html`
+      <ww-scene select="single" move-step="10" @ww-move=${this.#move} @ww-resize=${this.#resize}>
+        <ww-node
+          data-ww-key="task"
+          x=${this.task.x}
+          y=${this.task.y}
+          width=${this.task.width}
+          height=${this.task.height}
+          axis="x"
+          min-x="0"
+          max-x="400"
+          grid="20"
+          resizable="e w"
+          min-width="40"
+          max-width="240"
+          selectable
+          movable
+        >Build</ww-node>
+        <ww-shape
+          data-ww-key="marker"
+          kind="rect"
+          x=${this.marker.x}
+          y=${this.marker.y}
+          width=${this.marker.width}
+          height=${this.marker.height}
+          bounds="0 70 400 80"
+          resizable="n s"
+          min-height="20"
+          selectable
+          movable
+        ></ww-shape>
+      </ww-scene>
+    `
+  }
+}
+
+customElements.define("ww-schedule", WwSchedule)
+```
+
+#### Hit testing
+
+`itemAt(point)` returns the topmost item at a point, or null for the background. `itemsAt(point)` returns all items there, the topmost first. The point is in scene coordinates, or in client coordinates with `{client: true}`. `toScene(clientX, clientY)` and `toClient(x, y)` convert between the two through the view.
+
+The answer comes from geometry and works for any point, also where no pointer is. A node counts inside its outline, a path in its hit band and on its markers and labels, and a shape, a text, or an image anywhere inside it, filled or not. A group counts only in its frame. Nodes are above everything that is drawn, and drawn items count from the last in the template to the first. An item with `pointer-events: none` is left out.
 
 ### Playback
 
