@@ -1,0 +1,74 @@
+# GitLab-Pipeline für WebWriter (edumix/products/webwriter).
+# MR: Typecheck, Unit-Tests und Image-Build-Prüfung. dev: Image bauen, nach
+# registry.team.edumix.eu pushen und den Digest an edumix-cluster übergeben; Flux rollt ihn auf
+# Staging aus. Production wird in edumix-cluster je App manuell freigegeben (release:apply).
+# Die Pipeline hat keinen Cluster-Zugang und keinen Schreib-Token für edumix-cluster.
+include:
+  - project: edumix/infrastructure/edumix-cluster
+    ref: main
+    file: ci/templates/app.gitlab-ci.yml
+    inputs:
+      app: webwriter
+
+stages: [check, test, build, gitops]
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH =~ /^(dev|staging|main)$/'
+    - when: never
+
+default:
+  interruptible: true
+  tags:
+    - node4-ci
+
+variables:
+  # Origins werden derzeit beim Build eingebrannt (Dockerfile ARG). Als Projektvariablen in
+  # GitLab setzen. Solange das so ist, ist das Image Staging-spezifisch und darf nicht nach
+  # Production freigegeben werden (edumix-cluster docs/APPS.md): Origins zur Laufzeit lesen.
+  WEBWRITER_APP_ORIGIN: https://webwriter.dev.edumix.eu
+  WEBWRITER_EDITOR_ORIGIN: ""
+
+# Wie im Dockerfile: Vite läuft unter Node, Abhängigkeiten über bun.
+.domeditor:
+  image: node:22-slim  # wie im Dockerfile
+  variables:
+    BUN_INSTALL_CACHE_DIR: $CI_PROJECT_DIR/.cache/bun
+  cache:
+    key:
+      prefix: bun
+      files: [bun.lock]
+    paths: [.cache/bun]
+  before_script:
+    - npm install -g bun@1.2
+    - bun install --frozen-lockfile
+    - cd @webwriter/domeditor
+
+typecheck:
+  extends: .domeditor
+  stage: check
+  script:
+    - npm run typecheck
+  # Lokal derzeit rot (doppelte yjs-Typen); sobald grün, allow_failure entfernen.
+  allow_failure: true
+
+unit:
+  extends: .domeditor
+  stage: test
+  script:
+    - npx vitest run --reporter=default --reporter=junit --outputFile.junit=junit.xml
+  artifacts:
+    when: always
+    reports:
+      junit: "@webwriter/domeditor/junit.xml"
+  # Erst blockierend machen, wenn die Suite in CI stabil grün ist.
+  allow_failure: true
+
+# Blockierend: der Image-Build enthält den vollständigen Vite-Build.
+image:webwriter:
+  extends: .edumix:image
+  variables:
+    IMAGE_NAME: ""
+    IMAGE_CONTEXT: .
+    IMAGE_BUILD_ARGS: VITE_APP_ORIGIN=$WEBWRITER_APP_ORIGIN VITE_EDITOR_ORIGIN=$WEBWRITER_EDITOR_ORIGIN
