@@ -1216,7 +1216,8 @@ describe("document hover outlines around native floats", () => {
     rect(target, 0, 0, 100, 80)
     rect(float, 0, 0, 30, 30)
     const query = vi.spyOn(document.body, "querySelectorAll")
-    const scans = () => query.mock.calls.filter(([selector]) => selector === "*").length
+    // Discovery tests every element or, when float sources are selectable, only those.
+    const scans = () => query.mock.calls.filter(([selector]) => selector === "*" || String(selector).includes('[style*="float"]')).length
     expect(feature.floatExclusions(target)).toHaveLength(0)
     const initial = scans()
     for(let i = 0; i < 5; i++) expect(feature.floatExclusions(target)).toHaveLength(0)
@@ -1233,6 +1234,69 @@ describe("document hover outlines around native floats", () => {
     expect(feature.floatExclusions(target)).toHaveLength(1)
     feature.disable()
     expect(target.className).not.toContain("◆")
+  })
+
+  it("states native hover and its suppression on the outline instead of through BODY:has(:hover)", () => {
+    const paragraph = el("p", "text") as HTMLElement
+    const figure = el("figure") as HTMLElement
+    figure.innerHTML = "<img><figcaption>Caption</figcaption>"
+    const caption = figure.querySelector("figcaption")!
+    const parts = () => (feature.hoverCaret!.getAttribute("part") ?? "").split(/\s+/)
+
+    paragraph.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    expect(parts()).toContain("hover-caret-native")
+    expect(parts()).not.toContain("hover-caret-suppressed")
+
+    paragraph.dispatchEvent(new PointerEvent("pointerout", {bubbles: true, relatedTarget: caption}))
+    caption.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    expect(parts()).toContain("hover-caret-native")
+    expect(parts()).toContain("hover-caret-suppressed")
+
+    caption.dispatchEvent(new PointerEvent("pointerout", {bubbles: true, relatedTarget: null}))
+    expect(parts()).not.toContain("hover-caret-native")
+    expect(parts()).not.toContain("hover-caret-suppressed")
+
+    paragraph.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    feature.disable()
+    expect(paragraph.outerHTML).not.toContain("hover")
+  })
+
+  it("tests only elements a float declaration can match and every element when a sheet is unreadable", () => {
+    const target = el("p", "text") as HTMLElement
+    const others = Array.from({length: 20}, () => el("p", "unrelated") as HTMLElement)
+    const float = el("aside") as HTMLElement
+    rect(target, 0, 0, 100, 80)
+    rect(float, 0, 0, 30, 30)
+    const style = document.createElement("style")
+    style.textContent = "aside { float: left }"
+    document.head.append(style)
+    const computed = getComputedStyle
+    const tested = new Set<Element>()
+    vi.spyOn(globalThis, "getComputedStyle").mockImplementation((element, pseudo) => {
+      tested.add(element)
+      return element === float ? {float: "left", marginLeft: "0", marginRight: "0", marginTop: "0", marginBottom: "0"} as CSSStyleDeclaration : computed(element, pseudo)
+    })
+    try {
+      expect(feature.floatExclusions(target)).toHaveLength(1)
+      expect(others.filter(other => tested.has(other))).toHaveLength(0)
+
+      // A nested rule is queried without its parent, which only widens it.
+      const rule = style.sheet!.cssRules[0] as CSSStyleRule
+      const nested = (selectorText: string) => ({selectorText, style: {getPropertyValue: (name: string) => name === "float" ? "right" : ""}})
+      Object.defineProperty(rule, "cssRules", {configurable: true, value: [nested("> .note, .other")]})
+      window.dispatchEvent(new Event("resize"))
+      tested.clear()
+      expect(feature.floatExclusions(target)).toHaveLength(1)
+      expect(others.filter(other => tested.has(other))).toHaveLength(0)
+
+      // A negated parent cannot be widened, so every element is tested.
+      Object.defineProperty(rule, "cssRules", {configurable: true, value: [nested(":not(&) > p")]})
+      window.dispatchEvent(new Event("resize"))
+      tested.clear()
+      expect(feature.floatExclusions(target)).toHaveLength(1)
+      expect(others.every(other => tested.has(other))).toBe(true)
+    }
+    finally { style.remove() }
   })
 
   it("rediscovers CSSOM float changes after cache expiry and on resize", () => {

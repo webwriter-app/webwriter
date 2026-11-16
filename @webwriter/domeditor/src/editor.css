@@ -473,8 +473,8 @@ body::part(insertion-preview) {
 /* Chromium paints a text caret at a backward range's paragraph endpoint even
  * when the range already contains an atomic element. Its range overlay is the
  * visible selection in that case. */
-body:has(:state(ww-atomic-range-selected)),
-body:has(:state(ww-atomic-range-selected)) * {
+body:state(ww-atomic-range-active),
+body:state(ww-atomic-range-active) * {
   caret-color: transparent !important;
 }
 
@@ -600,7 +600,7 @@ body::part(hover-caret) {
 }
 
 body::part(hover-caret-transformed),
-body:not(.ww-slides):has(> *:is(:hover, :state(ww-pointer-hovered)))::part(hover-caret),
+body:not(.ww-slides):not(.ww-inactive-presentation)::part(hover-caret-native),
 body:has(:state(ww-element-hovered))::part(hover-caret),
 body:state(ww-element-hovered)::part(hover-caret),
 body:has(:state(ww-style-target-hovered))::part(hover-caret),
@@ -652,11 +652,11 @@ body::part(hover-caret-board) {
   display: none !important;
 }
 
-body:has(:state(ww-element-capture-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered), :state(ww-style-target-hovered)))::part(hover-caret) {
-  display: none;
-}
-
-body:has(:is(summary, figcaption):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered), :state(ww-style-target-hovered)))::part(hover-caret) {
+/* A hovered capture selection, summary or caption keeps its own outline.
+ * The selection feature states that on the outline: :hover inside BODY:has()
+ * would restyle the whole document on every hover change. The repeated
+ * negation keeps the specificity of the rules this replaces. */
+body:not(.ww-inactive-presentation):not(.ww-inactive-presentation)::part(hover-caret-suppressed) {
   display: none;
 }
 

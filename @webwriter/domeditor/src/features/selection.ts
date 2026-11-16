@@ -20,7 +20,7 @@ type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap"
 
 const selectionPresentationStates = ["gap-before-selected", "gap-after-selected", "element-selected",
   "element-capture-selected", "text-selected", "empty-selected", "caption-placeholder", "caption-editing",
-  "gap-caret-visible", "touch-caret-visible", "node-selection-active", "atomic-range-selected", "flow-excluded",
+  "gap-caret-visible", "touch-caret-visible", "node-selection-active", "atomic-range-selected", "atomic-range-active", "flow-excluded",
   "math-boundary-caret", "math-caret-inside-left", "math-caret-inside-right", "math-caret-outside-left", "math-caret-outside-right",
   "popup-boundary-caret", "popup-caret-inside-left", "popup-caret-inside-right", "popup-caret-outside-left", "popup-caret-outside-right"]
 function arrowDirection(key: string) {
@@ -91,12 +91,13 @@ export class SelectionFeature extends EditorFeature {
   #hoverOwner: Element | null = null
   #floatObserver: MutationObserver | null = null
   #floatCandidates: {root: Element, elements: Element[], expires: number} | null = null
-  readonly #invalidateFloatCandidates = () => { this.#floatCandidates = null }
+  readonly #invalidateFloatCandidates = () => { this.#floatCandidates = null; this.#outOfFlowContent = null }
 
   readonly #handlePresentationChanges = (records: MutationRecord[]) => {
     if(records.some(isAuthoredMutation)) {
       flushPresentationStyles(document)
-      this.#invalidateFloatCandidates()
+      // Text edits cannot change which elements float.
+      if(records.some(record => record.type !== "characterData" && isAuthoredMutation(record))) this.#invalidateFloatCandidates()
       this.#refreshGapCaretInlinePosition()
       // Geometry changes leave native anchor bindings intact. Refresh the
       // rules if a mutation could change anchor names or remove a marker.
@@ -110,16 +111,95 @@ export class SelectionFeature extends EditorFeature {
     }
   }
 
+  #hasRunningAuthoredAnimation() {
+    return Boolean(document.getAnimations?.().some(animation =>
+      animation.playState === "running" && (animation.effect as KeyframeEffect | null)?.target?.getRootNode() === document))
+  }
+
+  /** Selects at least every element that a style rule with one of the given
+   * declarations, or one of the given other sources, can match. Callers test
+   * the matches, so a nested or scoped rule may ignore its context. Null when
+   * a rule cannot be read or widened that way, so every element must be tested. */
+  #styleSourceSelector(declares: (style: CSSStyleDeclaration) => boolean, sources: string[]) {
+    const selectors = [...sources]
+    // Without its parent rule, `&` can be any element and a leading
+    // combinator any relation. Negating `&` or naming the scope root cannot
+    // be widened like that.
+    const widen = (selector: string) => {
+      if(selector.includes(":scope") || selector.includes("&") && selector.includes(":not(")) return null
+      const parts: string[] = []
+      let depth = 0, start = 0
+      for(let index = 0; index <= selector.length; index++) {
+        const character = selector[index]
+        if(character === "(" || character === "[") depth++
+        else if(character === ")" || character === "]") depth--
+        else if(character === undefined || character === "," && depth === 0) {
+          parts.push(selector.slice(start, index).trim().replace(/^[>+~]\s*/, "").replaceAll("&", "*"))
+          start = index + 1
+        }
+      }
+      return parts.every(Boolean) ? parts.join(", ") : null
+    }
+    const visit = (rules: CSSRuleList, relative: boolean): boolean => {
+      for(const rule of Array.from(rules) as (CSSRule & {selectorText?: string, style?: CSSStyleDeclaration, cssRules?: CSSRuleList, styleSheet?: CSSStyleSheet | null})[]) {
+        if(rule.styleSheet && !sheet(rule.styleSheet)) return false
+        const styled = typeof rule.selectorText === "string"
+        if(styled && rule.style && declares(rule.style)) {
+          const selector = relative ? widen(rule.selectorText!) : rule.selectorText!
+          if(!selector) return false
+          selectors.push(selector)
+        }
+        if(rule.cssRules?.length && !visit(rule.cssRules, relative || styled || rule.constructor.name === "CSSScopeRule")) return false
+      }
+      return true
+    }
+    const sheet = (value: CSSStyleSheet) => {
+      try { return visit(value.cssRules, false) }
+      catch { return false }
+    }
+    return [...Array.from(document.styleSheets), ...document.adoptedStyleSheets].every(sheet) ? selectors.join(", ") : null
+  }
+
+  #outOfFlowContent: {root: Element, present: boolean, expires: number} | null = null
+
+  /** Whether arrow keys can meet floated, positioned or popup content in a
+   * flow. Asked on every arrow key, so the answer is kept like the float
+   * candidates: until an authored change, a resize, or a short expiry that
+   * covers CSSOM edits. */
+  #hasOutOfFlowContent(root: Element) {
+    this.#handlePresentationChanges(this.#floatObserver?.takeRecords() ?? [])
+    const now = performance.now()
+    if(!this.#outOfFlowContent || this.#outOfFlowContent.root !== root || this.#outOfFlowContent.expires <= now || this.#hasRunningAuthoredAnimation()) {
+      const floats = (style: CSSStyleDeclaration) => !["", "none"].includes(style.getPropertyValue("float").trim())
+      const selector = this.#styleSourceSelector(style => floats(style) || ["absolute", "fixed"].includes(style.getPropertyValue("position").trim()),
+        ['[style*="float"]', '[style*="position"]', "[align]", "[popover]", "dialog"])
+      let sources: Element[] | null = null
+      if(selector) {
+        try { sources = Array.from(root.querySelectorAll(selector)) }
+        catch { sources = null }
+      }
+      this.#outOfFlowContent = {root, present: isOutOfFlow(root) || (sources ?? Array.from(root.querySelectorAll("*"))).some(isOutOfFlow), expires: now + 250}
+    }
+    return this.#outOfFlowContent.present
+  }
+
   #currentFloatCandidates() {
     this.#handlePresentationChanges(this.#floatObserver?.takeRecords() ?? [])
     const root = getDocumentRoot()
+    const floats = (style: CSSStyleDeclaration) => !["", "none"].includes(style.getPropertyValue("float").trim())
     // CSSOM edits have no mutation event. Periodically rediscover candidates;
     // running authored animations can change float membership every frame.
-    const animating = document.getAnimations?.().some(animation =>
-      animation.playState === "running" && (animation.effect as KeyframeEffect | null)?.target?.getRootNode() === document)
     const now = performance.now()
-    if(!this.#floatCandidates || this.#floatCandidates.root !== root || this.#floatCandidates.expires <= now || animating) {
-      const elements = Array.from(root.querySelectorAll("*")).filter(element =>
+    if(!this.#floatCandidates || this.#floatCandidates.root !== root || this.#floatCandidates.expires <= now || this.#hasRunningAuthoredAnimation()) {
+      // Computing every element's style is proportional to the document.
+      // Test only elements that some float declaration can match.
+      let sources: Element[] | null = null
+      const selector = this.#styleSourceSelector(floats, ['[style*="float"]', "[align]"])
+      if(selector) {
+        try { sources = Array.from(root.querySelectorAll(selector)) }
+        catch { sources = null }
+      }
+      const elements = (sources ?? Array.from(root.querySelectorAll("*"))).filter(element =>
         !atomicEditingContainer(element.parentElement, this.editor.schema)
         && ["left", "right"].includes(getComputedStyle(element).float))
       this.#floatCandidates = {root, elements, expires: now + 250}
@@ -965,6 +1045,8 @@ export class SelectionFeature extends EditorFeature {
     window.addEventListener("resize", this.#invalidateFloatCandidates)
     window.addEventListener("resize", this.#refreshGapCaretInlinePosition)
     document.addEventListener("load", this.#invalidateFloatCandidates, true)
+    document.addEventListener("pointerover", this.#trackNativeHover, {capture: true, passive: true})
+    document.addEventListener("pointerout", this.#trackNativeHover, {capture: true, passive: true})
     this.#ensureHoverCaret()
     window.addEventListener("focus", this.#handleWindowFocus)
     window.addEventListener("blur", this.#handleWindowBlur)
@@ -981,6 +1063,9 @@ export class SelectionFeature extends EditorFeature {
     window.removeEventListener("resize", this.#invalidateFloatCandidates)
     window.removeEventListener("resize", this.#refreshGapCaretInlinePosition)
     document.removeEventListener("load", this.#invalidateFloatCandidates, true)
+    document.removeEventListener("pointerover", this.#trackNativeHover, true)
+    document.removeEventListener("pointerout", this.#trackNativeHover, true)
+    this.#nativeBodyHover = null
     this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
     window.removeEventListener("focus", this.#handleWindowFocus)
     window.removeEventListener("blur", this.#handleWindowBlur)
@@ -1027,10 +1112,37 @@ export class SelectionFeature extends EditorFeature {
   }
 
   #pointerHovered = new Set<Element>()
+  #nativeBodyHover: Element | null = null
+
+  /** The hover outline is shown and hidden through parts of the outline
+   * itself. A BODY:has(:hover)::part() rule cannot narrow what it affects, so
+   * every hover change would restyle the whole document. */
+  readonly #trackNativeHover = (event: PointerEvent) => {
+    const target = event.type === "pointerout" ? event.relatedTarget : event.target
+    this.#nativeBodyHover = target instanceof Element && target !== document.body && document.body.contains(target) ? target : null
+    this.#syncHoverParts()
+  }
+
+  #syncHoverParts() {
+    const caret = this.hoverCaret
+    if(!caret) return
+    const native = this.#nativeBodyHover?.isConnected ? this.#nativeBodyHover : null
+    const captured = presentationStateElements(document, "element-capture-selected")
+    const quiet = (element: Element) => element.matches("summary, figcaption") || captured.includes(element)
+    let suppressed = [...this.#pointerHovered, ...presentationStateElements(document, "element-hovered", "style-target-hovered")].some(quiet)
+    for(let element = native; element && element !== document.body && !suppressed; element = element.parentElement) suppressed = quiet(element)
+    setPart(caret, "hover-caret-native", Boolean(native) || this.#pointerHovered.size > 0)
+    setPart(caret, "hover-caret-suppressed", suppressed)
+  }
 
   #updatePointerHover(target: Element | null) {
     const hovered = new Set<Element>()
-    for(let element = target; element && element !== document.body && document.body.contains(element); element = element.parentElement) {
+    // The state stands in for :hover while a pressed pointer keeps native
+    // hover on its starting element. Rewriting its rules restyles every
+    // element they can match, so leave a natively hovered chain to :hover.
+    let nativelyHovered = false
+    try { nativelyHovered = Boolean(target?.matches(":hover")) } catch { nativelyHovered = false }
+    for(let element = nativelyHovered ? null : target; element && element !== document.body && document.body.contains(element); element = element.parentElement) {
       hovered.add(element)
     }
     batchPresentationStates(document, () => {
@@ -1040,6 +1152,7 @@ export class SelectionFeature extends EditorFeature {
       for(const element of hovered) setPresentationState(element, "pointer-hovered")
     })
     this.#pointerHovered = hovered
+    this.#syncHoverParts()
     if(this.#drag) {
       this.#nativeHoverTarget = target
       this.#refreshHoverGeometry()
@@ -1911,6 +2024,7 @@ export class SelectionFeature extends EditorFeature {
   #refreshHoverGeometry = () => {
     if(this.#hoverFrame !== null) cancelAnimationFrame(this.#hoverFrame)
     this.#hoverFrame = null
+    this.#syncHoverParts()
     const explicit = (presentationStateElements(document, "element-hovered", "style-target-hovered")[0] ?? null)
     const freeform = this.editor.features.canvas.active || this.editor.features.slides.active
     const native = this.#nativeHoverTarget
@@ -2286,6 +2400,13 @@ export class SelectionFeature extends EditorFeature {
   #markSelection(element: Element, ...markers: string[]) {
     setPresentationStates(element, ...markers)
     this.#selectionMarkers.add(element)
+    // BODY states the presence of an atomic range for its descendants. A
+    // :has() rule with a descendant subject would restyle the whole document
+    // whenever any :has() argument on BODY changes, such as native hover.
+    if(markers.includes("atomic-range-selected") && element !== document.body) {
+      setPresentationState(document.body, "atomic-range-active")
+      this.#selectionMarkers.add(document.body)
+    }
   }
 
   /** Clears the previous presentation, including markers on removed nodes. */
@@ -2965,7 +3086,7 @@ export class SelectionFeature extends EditorFeature {
         ev.preventDefault()
       }
       else if(direction && !ev.defaultPrevented && !ev.altKey && !modifierKeyDown(ev) && !$.isElementSelection
-        && (isOutOfFlow($.flowRoot) || Array.from($.flowRoot.querySelectorAll("*")).some(isOutOfFlow))) {
+        && this.#hasOutOfFlowContent($.flowRoot)) {
         ev.preventDefault()
         const granularity = ev.key === "ArrowUp" || ev.key === "ArrowDown" ? "line" : "character"
         ev.shiftKey ? $.extendBy(granularity, direction) : $.moveBy(granularity, direction)

@@ -362,7 +362,11 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(selection-caret-node\),[\s\S]*?body::part\(selection-caret-capture\)\s*\{[\s\S]*?left:\s*anchor\(left\);[\s\S]*?width:\s*anchor-size\(width\);[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).toMatch(/body::part\(selection-caret-capture\)\s*\{[\s\S]*?outline:\s*2px solid var\(--sl-color-primary-400\);/)
     expect(editorStyleString).toMatch(/body\s+\*:not\(\s*:where\(/)
-    expect(editorStyleString).toContain("body:has(:state(ww-element-capture-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered), :state(ww-style-target-hovered)))::part(hover-caret) {\n  display: none;")
+    // Hover inside BODY:has() would restyle the whole document on every hover
+    // change; the selection feature states it on the outline's parts.
+    expect(editorStyleString).toMatch(/::part\(hover-caret-suppressed\) \{\n  display: none;/)
+    expect(editorStyleString).toContain("::part(hover-caret-native),")
+    expect(editorStyleString).not.toMatch(/body[^{]*:has\([^{]*:hover[^{]*::part\(/)
     expect(editorStyleString).toMatch(/:state\(ww-element-selected\)\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body:state\(ww-node-selection-active\),\s*body:state\(ww-node-selection-active\)\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body:state\(ww-node-selection-active\)\s+:state\(ww-element-capture-selected\),\s*body:state\(ww-node-selection-active\)\s+math:state\(ww-element-capture-selected\)\s+\*\s*\{[\s\S]*?caret-color:\s*auto\s*!important;/)
@@ -411,7 +415,8 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toContain("body::part(hover-caret)")
     expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\)::before\s*\{[\s\S]*?content:\s*"Summary";/)
     expect(editorStyleString).toMatch(/summary,\s*figcaption\s*\{\s*cursor:\s*text;/)
-    expect(editorStyleString).toMatch(/body:has\(:is\(summary, figcaption\):is\(:hover, :state\(ww-pointer-hovered\), :state\(ww-element-hovered\), :state\(ww-style-target-hovered\)\)\)::part\(hover-caret\)\s*\{\s*display:\s*none;/)
+    // The selection feature marks a hovered summary or caption on the outline itself.
+    expect(editorStyleString).toMatch(/::part\(hover-caret-suppressed\)\s*\{\s*display:\s*none;/)
     expect(editorStyleString).toMatch(/summary::after\s*\{\s*cursor:\s*pointer;\s*\}/)
     expect(editorStyleString).not.toMatch(/summary:is\([^{}]*\)::after\s*\{[^}]*content:/)
     expect(editorStyleString).toMatch(/details > summary:first-child \+ p:last-child:is\(:empty, :has\(> br:only-child\)\)::after\s*\{\s*content:\s*"Details";/)
