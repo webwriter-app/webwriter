@@ -8,6 +8,8 @@ export function createAnchorPositioner(doc = document) {
   const state = doc[key] ??= {sequence: 0, bindings: new Set(), sheets: new Map(), offsets: new Map(), queued: false}
   state.offsets ??= new Map()
   state.observers ??= new Map()
+  state.authored ??= new Map()
+  state.installed ??= new Map()
   const owned = new Map()
   const view = doc.defaultView
   const rootOf = node => node.getRootNode()
@@ -20,8 +22,20 @@ export function createAnchorPositioner(doc = document) {
     let record = state.observers.get(root)
     if(!record) {
       const bindings = new Set()
-      const observer = new view.MutationObserver(records => {
-        if(!records.some(record => record.type === "attributes" || [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1))) return
+      const handle = records => {
+        // Authored anchor names are read once per target. Reread them when an
+        // authored style source of a bound target may have changed.
+        const styleSource = node => node.nodeType === 1 && (node.localName === "style" || node.localName === "link")
+        if(records.some(record => record.type === "attributes"
+          ? record.attributeName !== "id" && [...bindings].some(binding => record.target.contains(binding.target))
+            && (record.attributeName === "class" || `${record.oldValue ?? ""};${record.target.getAttribute("style") ?? ""}`.includes("anchor-name"))
+          : styleSource(record.target) || [...record.addedNodes, ...record.removedNodes].some(styleSource))) {
+          state.authoredChanged = true
+          state.schedule()
+          return
+        }
+        if(!records.some(record => record.type === "attributes" ? record.attributeName === "id"
+          : [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1))) return
         for(const binding of bindings) {
           if(!binding.control.isConnected || !binding.target.isConnected
             || binding.controlSelector() !== binding.lastControlSelector || binding.targetSelector() !== binding.lastTargetSelector) {
@@ -29,9 +43,10 @@ export function createAnchorPositioner(doc = document) {
             break
           }
         }
-      })
-      observer.observe(root, {childList: true, subtree: true, attributes: true, attributeFilter: ["id"]})
-      record = {observer, bindings}
+      }
+      const observer = new view.MutationObserver(handle)
+      observer.observe(root, {childList: true, subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ["id", "class", "style"]})
+      record = {observer, bindings, handle}
       state.observers.set(root, record)
     }
     record.bindings.add(binding)
@@ -83,13 +98,41 @@ export function createAnchorPositioner(doc = document) {
       state.queued = false
       for(const binding of [...state.bindings]) if(!binding.target.isConnected || !binding.control.isConnected) binding.release()
       const scopes = new Set([...state.sheets.keys(), ...Array.from(state.bindings, binding => binding.scope)])
+      for(const binding of state.bindings) binding.ensure.forEach(repair => repair())
+      // The installed rules replace a target's authored anchor names with a
+      // merged list, so the authored value is only readable without them.
+      // Removing an adopted sheet restyles its whole scope: keep the value
+      // read when a target was first bound, and remove the sheets only when
+      // an authored style source changed or a positional rule still matches
+      // a newly bound target.
+      const ownName = name => name.startsWith("--ww-ui-anchor-")
+      const authored = new Map()
+      const cached = (element, pseudo) => state.authored.get(element)?.get(pseudo)
+      let reread = Boolean(state.authoredChanged)
+      state.authoredChanged = false
+      if(!reread) for(const binding of state.bindings) {
+        if(cached(binding.target, binding.pseudo) !== undefined) continue
+        if((state.installed.get(binding.scope) ?? []).some(selector => {
+          try { return binding.target.matches(selector) } catch { return true }
+        })) { reread = true; break }
+      }
       const previous = new Map()
-      for(const scope of scopes) {
+      if(reread) for(const scope of scopes) {
         previous.set(scope, [...scope.adoptedStyleSheets])
         const sheet = state.sheets.get(scope)?.sheet
         if(sheet) scope.adoptedStyleSheets = scope.adoptedStyleSheets.filter(value => value !== sheet)
       }
-      const sources = new Map(), templates = new Map()
+      const authoredName = (element, pseudo) => {
+        let names = authored.get(element)
+        if(!names) { names = new Map(); authored.set(element, names) }
+        if(!names.has(pseudo)) {
+          const known = reread ? undefined : cached(element, pseudo)
+          names.set(pseudo, known ?? view.getComputedStyle(element, pseudo || null).getPropertyValue("anchor-name")
+            .split(",").map(name => name.trim()).filter(name => name && name !== "none" && !ownName(name)).join(","))
+        }
+        return names.get(pseudo)
+      }
+      const sources = new Map(), templates = new Map(), installed = new Map()
       // Gecko's fixed anchor origin can differ from the target's client rect
       // in document layout. The gutter is an initial estimate; the rendered
       // frame below supplies the exact correction for this scope.
@@ -107,7 +150,6 @@ export function createAnchorPositioner(doc = document) {
             "@position-try --ww-ui-popup-above {position-area:top span-all;justify-self:anchor-center;margin-inline:8px}",
           ] : []
           for(const binding of bindings) {
-            binding.ensure.forEach(repair => repair())
             binding.lastControlSelector = binding.controlSelector()
             binding.lastTargetSelector = binding.targetSelector()
             let target = targets.get(binding.target)
@@ -119,17 +161,21 @@ export function createAnchorPositioner(doc = document) {
               : binding.css
             rules.push(`${binding.lastControlSelector} {position:fixed;position-anchor:${binding.name} !important;${css}}`)
           }
+          const targetSelectors = []
           for(const [element, pseudos] of targets) for(const [pseudo, bindings] of pseudos) {
-            const existing = view.getComputedStyle(element, pseudo || null).getPropertyValue("anchor-name")
-            const names = [existing && existing !== "none" ? existing : "", ...bindings.map(binding => binding.name)].filter(Boolean)
+            const names = [authoredName(element, pseudo), ...bindings.map(binding => binding.name)].filter(Boolean)
             rules.push(`${bindings[0].lastTargetSelector}${pseudo} {anchor-name:${names.join(",")} !important}`)
+            if(!targetSelectors.includes(bindings[0].lastTargetSelector)) targetSelectors.push(bindings[0].lastTargetSelector)
           }
+          installed.set(scope, targetSelectors)
           const template = rules.join("\n")
           templates.set(scope, template)
           sources.set(scope, template.replaceAll("__ww_offset__", String(state.offsets.get(scope) ?? gutter)))
         }
       }
       finally { for(const [scope, sheets] of previous) scope.adoptedStyleSheets = sheets }
+      state.authored = authored
+      state.installed = installed
       for(const [scope, source] of sources) {
         let record = state.sheets.get(scope)
         if(!source) {
@@ -200,7 +246,15 @@ export function createAnchorPositioner(doc = document) {
     release(control) { owned.get(control)?.release() },
     // A feature with no anchors must not rebuild another feature's sheets.
     // Pending releases still need to flush, including the last binding.
-    refresh() { if(owned.size || state.queued) state.refresh() },
+    refresh() {
+      // A caller may refresh in the task that changed a target's style or
+      // position, before those records are delivered.
+      for(const {observer, handle} of state.observers.values()) {
+        const records = observer.takeRecords()
+        if(records.length) handle(records)
+      }
+      if(owned.size || state.queued) state.refresh()
+    },
     destroy() { for(const binding of [...owned.values()]) binding.release(); state.refresh() },
   }
 }
