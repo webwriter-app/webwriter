@@ -1,6 +1,6 @@
 /** Bind editor UI to live elements without putting UI or positioning styles in
  * authored content. Names and ::part rules share the nearest common tree. */
-import {clearPresentationState, hasPresentationState, presentationElementSelector, setPresentationState} from "./presentation-state.js"
+import {clearPresentationState, hasPresentationState, presentationElementSelector, presentationSpecificity, setPresentationState} from "./presentation-state.js"
 const defaultAnchorCSS = "left:anchor(left) !important;top:anchor(top);width:anchor-size(width);height:anchor-size(height);position-visibility:anchors-visible;"
 
 export function createAnchorPositioner(doc = document) {
@@ -70,7 +70,7 @@ export function createAnchorPositioner(doc = document) {
       cleanup.push(() => clearPresentationState(element, stateName))
       return () => {
         const selector = presentationElementSelector(element, true, scope)
-        return selector ? `:where(${selector}):nth-child(n)` : ":not(*)"
+        return selector ? `:where(${selector})${presentationSpecificity}` : ":not(*)"
       }
     }
     const part = stateName

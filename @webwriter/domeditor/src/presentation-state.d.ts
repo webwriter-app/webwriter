@@ -1,3 +1,4 @@
+export const presentationSpecificity: string
 export function presentationElementSelector(element: Element, preferId?: boolean, scope?: Document | ShadowRoot): string | null
 export function presentationStateSelector(doc: Document, state: string): string
 export function refreshPresentationStyles(doc: Document): void

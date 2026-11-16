@@ -6,6 +6,11 @@ const presentationToken = /:state\(ww-([\w-]+)\)/g
 // Keep inactive branches impossible to match while giving the style engine a
 // class key for rule indexing and ancestor rejection. This class is never set.
 const inactivePresentationSelector = ".ww-inactive-presentation:not(*)"
+/** Raises a :where() path to the specificity of one class. A positional
+ * pseudo-class such as :nth-child(n) would do the same, but on a compound
+ * without a tag or class it makes every insertion and removal restyle the
+ * subtrees of all siblings. This class is never set, so the test always holds. */
+export const presentationSpecificity = ":not(.ww-inactive-presentation)"
 
 const changesPresentationSelector = record => record.type === "attributes"
   || [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1)
@@ -72,7 +77,7 @@ export function presentationStateSelector(doc, state) {
   const paths = Array.from(doc[presentationDocumentKey]?.elements.get(state) ?? [],
     element => presentationElementSelector(element, true)).filter(Boolean)
   if(paths.length === 1 && paths[0] === ":root") return ":root"
-  return paths.length ? `:where(${paths.join(", ")}):nth-child(n)` : inactivePresentationSelector
+  return paths.length ? `:where(${paths.join(", ")})${presentationSpecificity}` : inactivePresentationSelector
 }
 
 function setPresentationRuleSelector(entry, selector) {
