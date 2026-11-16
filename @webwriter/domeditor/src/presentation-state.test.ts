@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it} from "vitest"
+import {afterEach, describe, expect, it, vi} from "vitest"
 import {clearPresentationState, hasPresentationState, presentationStateElements, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
 
 afterEach(() => document.body.replaceChildren())
@@ -26,6 +26,75 @@ describe("presentation state", () => {
       clearPresentationState(target, "element-selected")
       expect(document.querySelector(selector())).toBeNull()
       release()
+    }
+  })
+
+  it("decides a BODY:has() state test itself and leaves no :has() for the style engine", async () => {
+    document.body.innerHTML = "<section><p>one</p></section><p>two</p>"
+    const direct = document.body.lastElementChild!
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(`
+      body:not(.plain):has(> p:state(ww-element-hovered):last-child)::part(caret) { color: red; }
+      section:has(> :state(ww-element-hovered)) { color: blue; }
+    `)
+    // Happy DOM answers :has(:where(…)) incorrectly. Stand in for the engine:
+    // the probe is supported, and BODY's answer is what the test dictates.
+    const matches = Element.prototype.matches
+    let answer = false
+    const asked: string[] = []
+    const engine = vi.spyOn(Element.prototype, "matches").mockImplementation(function(this: Element, selector: string) {
+      if(selector === ":has(:where(p))") return true
+      if(selector === ":has(:where(div))") return false
+      if(this === document.body && selector.startsWith(":has(")) { asked.push(selector); return answer }
+      return matches.call(this, selector)
+    })
+    const release = trackPresentationStyles(document, sheet)
+    const selector = (index: number) => (sheet.cssRules[index] as CSSStyleRule).selectorText
+    try {
+      // No element is in the state: decided without asking the engine.
+      expect(asked).toEqual([])
+      expect(selector(0)).toBe("body:not(.plain):is(p.ww-inactive-presentation:not(*):last-child):not(*)::part(caret)")
+      // Another element's test stays in CSS, where its effect is local.
+      expect(selector(1)).toContain("section:has(> ")
+
+      answer = true
+      setPresentationState(direct, "element-hovered")
+      expect(asked).toHaveLength(1)
+      expect(asked[0]).toMatch(/^:has\(> p:where\(.*p:nth-child\(2\)\):not\(\.ww-inactive-presentation\):last-child\)$/)
+      // True, with the specificity of the test it replaces.
+      expect(selector(0)).toBe("body:not(.plain):not(:is(p.ww-inactive-presentation:not(*):last-child):not(*))::part(caret)")
+      expect(selector(0)).not.toContain(":has(")
+
+      // The decision follows the document around the element, not only the state.
+      answer = false
+      direct.after(document.createElement("p"))
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(asked).toHaveLength(2)
+      expect(selector(0)).toBe("body:not(.plain):is(p.ww-inactive-presentation:not(*):last-child):not(*)::part(caret)")
+      expect(direct.outerHTML).toBe("<p>two</p>")
+    }
+    finally {
+      clearPresentationState(direct, "element-hovered")
+      release()
+      engine.mockRestore()
+      expect(selector(0)).toContain(":has(> p:state(ww-element-hovered):last-child)")
+    }
+  })
+
+  it("leaves a BODY:has() state test to CSS where the engine cannot decide it", () => {
+    document.body.innerHTML = "<p>one</p>"
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync("body:has(:state(ww-element-hovered))::part(caret) { display: block; }")
+    const engine = vi.spyOn(Element.prototype, "matches").mockImplementation(() => false)
+    const release = trackPresentationStyles(document, sheet)
+    try {
+      setPresentationState(document.body.firstElementChild, "element-hovered")
+      expect((sheet.cssRules[0] as CSSStyleRule).selectorText).toMatch(/^body:has\(:where\(.*\):not\(\.ww-inactive-presentation\)\)::part\(caret\)$/)
+    }
+    finally {
+      clearPresentationState(document.body.firstElementChild, "element-hovered")
+      release()
+      engine.mockRestore()
     }
   })
 

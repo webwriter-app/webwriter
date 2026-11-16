@@ -80,6 +80,102 @@ export function presentationStateSelector(doc, state) {
   return paths.length ? `:where(${paths.join(", ")})${presentationSpecificity}` : inactivePresentationSelector
 }
 
+/** Splits a selector list at its top-level commas. */
+function selectorAlternatives(text) {
+  const parts = []
+  let depth = 0, start = 0
+  for(let index = 0; index <= text.length; index++) {
+    const character = text[index]
+    if(character === "(" || character === "[") depth++
+    else if(character === ")" || character === "]") depth--
+    else if(character === undefined || character === "," && depth === 0) {
+      parts.push(text.slice(start, index).trim())
+      start = index + 1
+    }
+  }
+  return parts
+}
+
+/** The index after the parenthesis closing the one opened before `from`. */
+function closingParenthesis(text, from) {
+  let depth = 1
+  for(let index = from; index < text.length; index++) {
+    if(text[index] === "(") depth++
+    else if(text[index] === ")" && --depth === 0) return index + 1
+  }
+  return -1
+}
+
+/** The :has() tests that a compound starting with BODY applies to presentation
+ * states, as [start, end, argument] in the template. */
+function hostHasTests(template) {
+  const tests = []
+  let depth = 0, compound = 0
+  for(let index = 0; index < template.length; index++) {
+    const character = template[index]
+    if(character === "(" || character === "[") depth++
+    else if(character === ")" || character === "]") depth--
+    else if(depth === 0 && /[\s,>+~]/.test(character)) compound = index + 1
+    else if(depth === 0 && template.startsWith(":has(", index) && /^body(?![\w-])/.test(template.slice(compound))) {
+      const end = closingParenthesis(template, index + 5)
+      if(end < 0) break
+      const argument = template.slice(index + 5, end - 1)
+      if(argument.search(presentationToken) >= 0) tests.push([index, end, argument])
+      presentationToken.lastIndex = 0
+      index = end - 1
+    }
+  }
+  return tests
+}
+
+/** Whether every alternative of a :has() argument needs an element in some
+ * state, so that it cannot match while those states are unused. */
+function needsPresentationState(argument) {
+  let positive = argument
+  for(let index = positive.indexOf(":not("); index >= 0; index = positive.indexOf(":not(")) {
+    const end = closingParenthesis(positive, index + 5)
+    if(end < 0) return false
+    positive = positive.slice(0, index) + positive.slice(end)
+  }
+  return selectorAlternatives(positive).every(alternative => alternative.search(presentationToken) >= 0)
+}
+
+/** Decides BODY:has(…state…) here and leaves a constant in the rule. As CSS,
+ * such a test in front of ::part() or a descendant is invalidated by every
+ * insertion, removal and hover change anywhere in BODY, including in the
+ * shadow appendix, and each time restyles the whole document because nothing
+ * narrows what the rule can affect. The constant keeps the test's specificity. */
+function resolveHostHas(data, template, pass) {
+  const tests = hostHasTests(template)
+  if(!tests.length) return template
+  // Some DOM implementations answer :has(:where(…)) incorrectly without
+  // throwing. Leave the test to CSS there. Asked once per update of the rules.
+  if(pass.decides === undefined) {
+    const probe = data.doc.createElement("div")
+    probe.append(data.doc.createElement("p"))
+    try { pass.decides = probe.matches(":has(:where(p))") && !probe.matches(":has(:where(div))") }
+    catch { pass.decides = false }
+  }
+  if(!pass.decides) return template
+  let resolved = ""
+  let position = 0
+  for(const [start, end, argument] of tests) {
+    const states = Array.from(argument.matchAll(presentationToken), match => match[1])
+    let matches = false
+    if(states.some(state => data.elements.get(state)?.size) || !needsPresentationState(argument)) {
+      const selector = argument.replace(presentationToken, (_, state) => presentationStateSelector(data.doc, state))
+      try { matches = data.doc.body.matches(`:has(${selector})`) }
+      // Leave the rule to CSS where the selector cannot be evaluated.
+      catch { return template }
+    }
+    const inactive = selectorAlternatives(argument.replace(presentationToken, inactivePresentationSelector))
+      .map(alternative => alternative.replace(/^[>+~]\s*/, "")).join(", ")
+    resolved += template.slice(position, start) + (matches ? `:not(:is(${inactive}):not(*))` : `:is(${inactive}):not(*)`)
+    position = end
+  }
+  return resolved + template.slice(position)
+}
+
 function setPresentationRuleSelector(entry, selector) {
   try { entry.rule.selectorText = selector }
   catch(error) {
@@ -100,13 +196,16 @@ function updatePresentationRules(data) {
   for(const state of data.changed) {
     if(!data.rules.has(state)) continue
     const selector = presentationStateSelector(data.doc, state)
-    if(data.selectors.get(state) === selector) continue
+    const unchanged = data.selectors.get(state) === selector
     data.selectors.set(state, selector)
-    for(const rule of data.rules.get(state)) rules.add(rule)
+    // A test decided here also depends on the document around the element.
+    for(const rule of data.rules.get(state)) if(!unchanged || rule.hostHas) rules.add(rule)
   }
   data.changed.clear()
+  const pass = {}
   for(const entry of rules) {
-    const selector = entry.template.replace(presentationToken, (_, state) => data.selectors.get(state) ?? inactivePresentationSelector)
+    const selector = (entry.hostHas ? resolveHostHas(data, entry.template, pass) : entry.template)
+      .replace(presentationToken, (_, state) => data.selectors.get(state) ?? inactivePresentationSelector)
     if(selector !== entry.selector) {
       setPresentationRuleSelector(entry, selector)
       entry.selector = selector
@@ -141,7 +240,7 @@ export function trackPresentationStyles(doc, sheet) {
       if(template) {
         const states = new Set(Array.from(template.matchAll(presentationToken), match => match[1]))
         if(states.size) {
-          const entry = {rule, parent, template, selector: null, states}
+          const entry = {rule, parent, template, selector: null, states, hostHas: hostHasTests(template).length > 0}
           for(const state of states) {
             let listeners = data.rules.get(state)
             if(!listeners) data.rules.set(state, listeners = new Set())
