@@ -2611,6 +2611,51 @@ describe("processSelection()", () => {
     expect(paragraph.innerHTML).toBe(authored)
   })
 
+  it("overlays the atomic content inside a range of a long document and tests no block outside it", () => {
+    const blocks = (from: number, to: number) => Array.from({length: to - from}, (_, index) => `<p class="far">Block ${from + index}</p>`).join("")
+    document.body.innerHTML = `${blocks(0, 30)}<test-widget id="before"></test-widget><p id="start">start text</p>`
+      + '<test-widget id="top"></test-widget><section><p>in a section <img id="inline"></p><div><test-widget id="nested"></test-widget></div></section>'
+      + '<table><tbody><tr><td><test-widget id="cell"></test-widget></td><td>second</td></tr></tbody></table>'
+      + `<details open><summary>Summary</summary><p id="end">end text<input id="after-end"></p></details><test-widget id="after"></test-widget>${blocks(30, 60)}`
+    const authored = editor.toHTML(true)
+    const start = document.querySelector("#start")!.firstChild!, end = document.querySelector("#end")!.firstChild!
+    const far = new Set<Node>(document.querySelectorAll(".far"))
+    const intersectsNode = vi.spyOn(Range.prototype, "intersectsNode")
+    try {
+      document.getSelection()!.setBaseAndExtent(start, 2, end, 3)
+      feature.processSelection(true)
+      expect(intersectsNode.mock.calls.some(([node]) => far.has(node))).toBe(false)
+    }
+    finally { intersectsNode.mockRestore() }
+
+    const selected = (id: string) => hasPresentationState(document.getElementById(id), "atomic-range-selected")
+    // The table is covered as a whole, so its cell's widget has no outline of its own.
+    expect(["before", "top", "inline", "nested", "cell", "after-end", "after"].filter(selected)).toEqual(["top", "inline", "nested"])
+    expect(hasPresentationState(document.querySelector("table"), "atomic-range-selected")).toBe(true)
+    expect(hasPresentationState(document.querySelector("details"), "atomic-range-selected")).toBe(false)
+    expect(atomicOverlays()).toHaveLength(4)
+
+    // A backwards range over the same content is presented the same way.
+    document.getSelection()!.setBaseAndExtent(end, 3, start, 2)
+    feature.processSelection(true)
+    expect(["before", "top", "inline", "nested", "cell", "after-end", "after"].filter(selected)).toEqual(["top", "inline", "nested"])
+    expect(atomicOverlays()).toHaveLength(4)
+
+    // A range that only partly covers the table reaches into its cells.
+    const second = document.querySelectorAll("td")[1].firstChild!
+    document.getSelection()!.setBaseAndExtent(start, 2, second, 3)
+    feature.processSelection(true)
+    expect(["before", "top", "inline", "nested", "cell", "after-end", "after"].filter(selected)).toEqual(["top", "inline", "nested", "cell"])
+    expect(hasPresentationState(document.querySelector("table"), "atomic-range-selected")).toBe(false)
+    expect(atomicOverlays()).toHaveLength(4)
+
+    $.move(start, 0)
+    feature.processSelection()
+    expect(atomicOverlays()).toHaveLength(0)
+    expect(editor.toHTML(true)).toBe(authored)
+    expect(authored).not.toMatch(/atomic-selection-overlay|◆/)
+  })
+
   it.each([
     "<img>", '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>',
     "<video></video>", "<audio></audio>", "<iframe></iframe>", "<figure><img></figure>",

@@ -12,6 +12,7 @@ import {inlineMathRoot, mathOutsidePoint, mathRoot} from "../math"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {isTextFieldInteraction} from "../utility"
 import {createAnchorPositioner} from "../utility"
+import {childNodesInRange} from "../utility"
 import type {ElementSelectionType} from "../editor-bridge"
 import type {BoxGeometry} from "./transformation"
 import type {Transaction} from "yjs"
@@ -291,9 +292,14 @@ export class SelectionFeature extends EditorFeature {
     if(selection.isCollapsed || !selection.rangeCount) return
     if((this.editor.features.canvas.active || this.editor.features.slides.active) && $.selectedElement) return
     const range = selection.getRangeAt(0)
+    // Only the children between the range's boundaries can intersect it.
+    // Testing each child of the document root takes time proportional to the
+    // document for every selection refresh.
+    const visitChildren = (parent: Element) => {
+      for(const child of childNodesInRange(parent, range)) if(isElement(child)) visit(child)
+    }
     const visit = (element: Element) => {
-      if(!range.intersectsNode(element) || !$.includesNode(element)) return
-      const children = element.children
+      if(!$.includesNode(element)) return
       const isTable = element.localName === "table"
       const isDetails = element.localName === "details"
       const isFormula = element.localName === "math" && mathRoot(element) === element
@@ -321,9 +327,9 @@ export class SelectionFeature extends EditorFeature {
         // Partial ranges can still fully select atomic descendants.
         if(!isTable && !isDetails) return
       }
-      Array.from(children).forEach(visit)
+      visitChildren(element)
     }
-    Array.from(getDocumentRoot().children).forEach(visit)
+    visitChildren(getDocumentRoot())
     this.#positionAtomicOverlays()
   }
 

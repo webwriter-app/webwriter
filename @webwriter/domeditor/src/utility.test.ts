@@ -14,6 +14,7 @@ import {
 } from "./utility"
 import { Schema } from "./schema"
 import {clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, nodeEdgeRect, isTextFieldInteraction} from "./utility"
+import {childNodesInRange, nodesInRange} from "./utility"
 import {authoredDetailsOpen, hasTemporaryDetailsState, markTemporaryDetailsState, widgetLookupForTags} from "./editor-artifacts"
 
 describe("native text field interactions", () => {
@@ -930,6 +931,29 @@ describe("isTextSelection", () => {
     const paragraph = document.querySelector("p")!
     $.selectRange(paragraph, 1, paragraph, 3)
     expect($.isTextSelection).toBe(true)
+  })
+  it("classifies a range among many siblings from the content between its boundaries", () => {
+    const far = Array.from({length: 40}, (_, index) => `<p class="far"><inline-widget></inline-widget>far ${index}</p>`).join("")
+    setBody(`${far}bare <b>bold <i>nested</i></b><!--keep--> text<section>inline <u>section</u></section>tail<p id="block">block</p>${far}`)
+    const outside = new Set<Node>(document.querySelectorAll(".far, .far *"))
+    const start = document.querySelector("b")!.previousSibling!, tail = document.querySelector("section")!.nextSibling!
+    const block = document.querySelector("#block")!
+    const intersectsNode = vi.spyOn(Range.prototype, "intersectsNode")
+    try {
+      // Text, marks and a transparent section directly in the long parent.
+      $.selectRange(start, 2, tail, 2)
+      expect($.isTextSelection).toBe(true)
+      $.selectRange(tail, 2, start, 2)
+      expect($.isTextSelection).toBe(true)
+      // The same range extended into the following block.
+      $.selectRange(start, 2, block.firstChild!, 2)
+      expect($.isTextSelection).toBe(false)
+      // A range that reaches a widget in a neighbouring paragraph.
+      $.selectRange(document.querySelectorAll(".far")[39].lastChild!, 1, start, 2)
+      expect($.isTextSelection).toBe(false)
+      expect(intersectsNode.mock.calls.filter(([node]) => outside.has(node)).length).toBeLessThan(8)
+    }
+    finally { intersectsNode.mockRestore() }
   })
 })
 
@@ -2193,5 +2217,112 @@ describe("clearInlinePlacement", () => {
     expect(element.getAttribute("style")).toBe("color: red;")
     expect(element.getAttribute("data-authored")).toBe("keep")
     expect(Array.from(element.childNodes)).toEqual([comment, child])
+  })
+})
+
+describe("childNodesInRange() and nodesInRange()", () => {
+  // Irregular but valid content: bare text, comments, an empty element, a
+  // custom element, nested sections and a table next to each other.
+  const html = 'lead<!--note--><p>one <b>bold</b><i></i> tail</p><custom-card><span>slot</span></custom-card>'
+    + '<section><p>two</p>bare<div><table><tbody><tr><td>cell</td><td></td></tr></tbody></table></div></section><hr><p>three</p>'
+  const boundaries = (root: Node) => {
+    const points: [Node, number][] = []
+    const visit = (node: Node) => {
+      const length = node.nodeType === Node.ELEMENT_NODE ? node.childNodes.length : (node as CharacterData).length
+      for(let offset = 0; offset <= length; offset++) points.push([node, offset])
+      node.childNodes.forEach(visit)
+    }
+    visit(root)
+    return points
+  }
+  const eachRange = (root: Node, visit: (range: Range) => void) => {
+    const points = boundaries(root)
+    for(let start = 0; start < points.length; start++) for(let end = start; end < points.length; end++) {
+      const range = document.createRange()
+      range.setStart(...points[start])
+      // Boundaries are listed in tree order of their containers, not of the
+      // points; a later entry before the start collapses the range onto it.
+      range.setEnd(...points[end])
+      visit(range)
+    }
+  }
+  const describeRange = (range: Range) => `${range.startContainer.nodeName}@${range.startOffset}..${range.endContainer.nodeName}@${range.endOffset}`
+
+  it("returns exactly the children a range intersects, for every range and parent", () => {
+    document.body.innerHTML = html
+    const parents = [document.body, ...Array.from(document.body.querySelectorAll("*"))]
+    let ranges = 0
+    eachRange(document.body, range => {
+      ranges++
+      for(const parent of parents) {
+        const expected = Array.from(parent.childNodes).filter(node => range.intersectsNode(node))
+        expect(childNodesInRange(parent, range), `${describeRange(range)} in ${parent.nodeName}`).toEqual(expected)
+      }
+    })
+    expect(ranges).toBeGreaterThan(1000)
+  })
+
+  it("tests only children between the boundaries of a range in a long parent", () => {
+    document.body.innerHTML = Array.from({length: 400}, (_, index) => `<p>${index}</p>`).join("")
+    const range = document.createRange()
+    range.setStart(document.body, 200)
+    range.setEnd(document.body.children[202].firstChild!, 1)
+    const intersectsNode = vi.spyOn(Range.prototype, "intersectsNode")
+    try {
+      expect(childNodesInRange(document.body, range)).toEqual(Array.from(document.body.children).slice(200, 203))
+      expect(intersectsNode.mock.calls.length).toBeLessThan(10)
+      range.collapse(true)
+      intersectsNode.mockClear()
+      expect(childNodesInRange(document.body, range)).toEqual([])
+      expect(intersectsNode.mock.calls.length).toBeLessThan(10)
+    }
+    finally { intersectsNode.mockRestore() }
+  })
+
+  it("has no children for a range in another tree", () => {
+    document.body.innerHTML = "<p>attached</p>"
+    const detached = document.createElement("div")
+    detached.innerHTML = "<p>detached</p>"
+    const range = document.createRange()
+    range.selectNodeContents(detached)
+    expect(childNodesInRange(document.body, range)).toEqual([])
+    range.selectNodeContents(document.body)
+    expect(childNodesInRange(detached, range)).toEqual([])
+  })
+
+  it.each([
+    ["text", NodeFilter.SHOW_TEXT],
+    ["element", NodeFilter.SHOW_ELEMENT],
+    ["comment and text", NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT],
+  ])("walks the %s nodes a range intersects, except the ancestors of its start", (_name, whatToShow) => {
+    document.body.innerHTML = html
+    const roots = [document.body, document.querySelector("section")!, document.querySelector("p")!]
+    eachRange(document.body, range => {
+      for(const root of roots) {
+        const startAncestors = new Set<Node>()
+        for(let node: Node | null = range.startContainer; node; node = node.parentNode) {
+          if(node.nodeType === Node.ELEMENT_NODE) startAncestors.add(node)
+        }
+        const expected: Node[] = []
+        const walker = document.createTreeWalker(root, whatToShow)
+        while(walker.nextNode()) {
+          if(range.intersectsNode(walker.currentNode) && !startAncestors.has(walker.currentNode)) expected.push(walker.currentNode)
+        }
+        expect(Array.from(nodesInRange(range, root, whatToShow)), `${describeRange(range)} in ${root.nodeName}`).toEqual(expected)
+      }
+    })
+  })
+
+  it("starts the walk at the range instead of at the root", () => {
+    document.body.innerHTML = Array.from({length: 400}, (_, index) => `<p>text ${index}</p>`).join("")
+    const range = document.createRange()
+    range.setStart(document.body, 300)
+    range.setEnd(document.body, 301)
+    const intersectsNode = vi.spyOn(Range.prototype, "intersectsNode")
+    try {
+      expect(Array.from(nodesInRange(range, document.body, NodeFilter.SHOW_TEXT))).toEqual([document.body.children[300].firstChild])
+      expect(intersectsNode.mock.calls.length).toBeLessThan(5)
+    }
+    finally { intersectsNode.mockRestore() }
   })
 })
