@@ -7508,3 +7508,41 @@ describe("selectDropRange", () => {
     expect(document.getSelection()!.anchorOffset).toBe(2)
   })
 })
+
+describe("selection paint rules", () => {
+  it("keeps caret and selection paint installed while the same gap is processed again", () => {
+    document.body.innerHTML = "<p>before</p><ul><li>item</li></ul><p>after</p>"
+    const list = document.querySelector("ul")!
+    $.selectGap(list, "before")
+    feature.processSelection()
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(true)
+    expect(hasPresentationState(list, "gap-before-selected")).toBe(true)
+
+    // This DOM replaces a rule to change its selector. The rule for BODY in
+    // this state hides the native caret and selection of every element.
+    const replaced = vi.spyOn(CSSStyleSheet.prototype, "insertRule")
+    const selectors = () => replaced.mock.calls.map(([text]) => text.slice(0, text.indexOf("{")).trim())
+    const hidden = "body:where(body):not(.ww-inactive-presentation)", shown = "body.ww-inactive-presentation:not(*)"
+    try {
+      // Processing clears the previous markers before it marks the current
+      // selection, and reads layout in between. The anchor of the gap follows
+      // immediately; a rule that only repaints must not leave and return,
+      // because each change of it restyles the whole document.
+      feature.processSelection()
+      expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(true)
+      expect(selectors().some(selector => selector.includes("body > ul:nth-child(2)"))).toBe(true)
+      expect(selectors()).not.toContain(shown)
+      expect(selectors()).not.toContain(hidden)
+
+      // Leaving the gap removes the rule once, when processing ends.
+      replaced.mockClear()
+      $.move(document.querySelector("li")!.firstChild!, 2)
+      feature.processSelection()
+      expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
+      expect(selectors().filter(selector => selector === shown)).toHaveLength(1)
+      expect(selectors()).not.toContain(hidden)
+      expect(document.body.innerHTML).toBe("<p>before</p><ul><li>item</li></ul><p>after</p>")
+    }
+    finally { replaced.mockRestore() }
+  })
+})

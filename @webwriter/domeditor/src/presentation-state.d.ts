@@ -10,5 +10,6 @@ export function setPresentationStates(element: Element | null | undefined, ...st
 export function clearPresentationState(element: Element | null | undefined, ...states: string[]): void
 export function clearEditorPresentation(doc: Document): void
 export function batchPresentationStates<T>(doc: Document, update: () => T): T
+export function deferPresentationPaint<T>(doc: Document, update: () => T): T
 export function presentationStateElements<T extends Element = Element>(root: Document | Element | ShadowRoot, ...states: string[]): T[]
 export function resolvePresentationSelector(doc: Document, selector: string): string

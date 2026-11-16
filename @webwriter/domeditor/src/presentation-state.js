@@ -13,6 +13,8 @@ const inactivePresentationSelector = ".ww-inactive-presentation:not(*)"
  * without a tag or class it makes every insertion and removal restyle the
  * subtrees of all siblings. This class is never set, so the test always holds. */
 export const presentationSpecificity = ":not(.ww-inactive-presentation)"
+// A rule that sets only these never changes geometry.
+const paintProperties = new Set(["caret-color", "cursor"])
 
 const changesPresentationSelector = record => record.type === "attributes"
   || [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1)
@@ -20,7 +22,8 @@ const changesPresentationSelector = record => record.type === "attributes"
 function presentationDocument(doc) {
   let data = doc[presentationDocumentKey]
   if(data) return data
-  data = {doc, elements: new Map(), rules: new Map(), types: new Map(), selectors: new Map(), observer: null, changed: new Set(), depth: 0}
+  data = {doc, elements: new Map(), rules: new Map(), types: new Map(), selectors: new Map(), observer: null, changed: new Set(), depth: 0,
+    deferring: 0, deferred: new Map()}
   doc[presentationDocumentKey] = data
   return data
 }
@@ -139,6 +142,16 @@ function typePresentationTokens(template) {
     }
   }
   return typed + template.slice(copied)
+}
+
+/** Whether a rule changes only how the caret, the pointer or the selection
+ * is painted. */
+function paintsOnly(rule) {
+  if(!selectorAlternatives(rule.selectorText).every(alternative => alternative.endsWith("::selection"))) {
+    for(let index = 0; index < rule.style.length; index++) if(!paintProperties.has(rule.style.item(index))) return false
+  }
+  for(const child of rule.cssRules ?? []) if(!child.selectorText || !child.style || !paintsOnly(child)) return false
+  return true
 }
 
 /** Splits a selector list at its top-level commas. */
@@ -273,9 +286,33 @@ function updatePresentationRules(data) {
   for(const entry of rules) {
     const selector = (entry.hostHas ? resolveHostHas(data, entry.template, pass) : entry.template)
       .replace(presentationToken, (_, state, type = "") => data.selectors.get(`${state}@${type}`) ?? inactivePresentationSelector)
-    if(selector !== entry.selector) {
+    if(selector === entry.selector) data.deferred.delete(entry)
+    else if(data.deferring && entry.paintOnly) data.deferred.set(entry, selector)
+    else {
+      data.deferred.delete(entry)
       setPresentationRuleSelector(entry, selector)
       entry.selector = selector
+    }
+  }
+}
+
+/** Runs an update that may clear a state and set it again, and installs what
+ * only repaints once at its end. A rule such as BODY:state(…) * applies to
+ * every element, so each change of it restyles the whole document, and a
+ * layout read between clearing and setting would do that twice for nothing.
+ * Rules that affect geometry still change immediately. */
+export function deferPresentationPaint(doc, update) {
+  const data = presentationDocument(doc)
+  data.deferring++
+  try { return update() }
+  finally {
+    if(!--data.deferring) {
+      for(const [entry, selector] of data.deferred) {
+        if(selector === entry.selector) continue
+        setPresentationRuleSelector(entry, selector)
+        entry.selector = selector
+      }
+      data.deferred.clear()
     }
   }
 }
@@ -310,7 +347,7 @@ export function trackPresentationStyles(doc, sheet) {
         const states = new Set(tokens.map(match => match[1]))
         if(states.size) {
           const entry = {rule, parent, source, template, selector: null, states, hostHas: hostHasTests(template).length > 0,
-            variants: Array.from(new Set(tokens.map(match => `${match[1]}@${match[2] ?? ""}`)))}
+            variants: Array.from(new Set(tokens.map(match => `${match[1]}@${match[2] ?? ""}`))), paintOnly: paintsOnly(rule)}
           for(const match of tokens) {
             const state = match[1], type = match[2] ?? ""
             let listeners = data.rules.get(state)
@@ -341,7 +378,10 @@ export function trackPresentationStyles(doc, sheet) {
         data.types.delete(state)
       }
     }
-    for(const entry of entries) setPresentationRuleSelector(entry, entry.source)
+    for(const entry of entries) {
+      data.deferred.delete(entry)
+      setPresentationRuleSelector(entry, entry.source)
+    }
     updatePresentationObserver(data)
   }
 }

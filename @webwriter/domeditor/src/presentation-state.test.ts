@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
-import {clearPresentationState, hasPresentationState, presentationElementSelector, presentationStateElements, resolvePresentationSelector, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
+import {clearPresentationState, deferPresentationPaint, hasPresentationState, presentationElementSelector, presentationStateElements, resolvePresentationSelector, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
 
 afterEach(() => document.body.replaceChildren())
 
@@ -159,6 +159,61 @@ describe("presentation state", () => {
     last.id = "figure"
     expect(presentationElementSelector(figure.children[0], true)).toBe(":root > body > main:first-child > figure:nth-child(2) > img:first-child")
     expect(document.body.innerHTML).toBe('<main><p>one</p><figure id="figure"><img><span></span><figcaption>two</figcaption></figure><p id="figure">three</p></main>')
+  })
+
+  it("installs paint-only rules once when an update clears a state and sets it again", () => {
+    document.body.innerHTML = "<p>one</p><p>two</p>"
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(`
+      body:state(ww-node-selection-active), body:state(ww-node-selection-active) * { caret-color: transparent !important; cursor: default; }
+      body:state(ww-node-selection-active) *::selection { background: transparent; }
+      body:state(ww-node-selection-active) { margin-block-end: 1em; caret-color: transparent; }
+    `)
+    const release = trackPresentationStyles(document, sheet)
+    // Read the rules again each time: a DOM without a writable selectorText
+    // has them replaced.
+    const text = (index: number) => (sheet.cssRules[index] as CSSStyleRule).selectorText
+    const writes: string[][] = [[], [], []]
+    const snapshot = () => writes.forEach((seen, index) => { if(seen.at(-1) !== text(index)) seen.push(text(index)) })
+    const active = "body:where(body):not(.ww-inactive-presentation)", inactive = "body.ww-inactive-presentation:not(*)"
+    try {
+      setPresentationState(document.body, "node-selection-active")
+      snapshot()
+      deferPresentationPaint(document, () => {
+        clearPresentationState(document.body, "node-selection-active")
+        snapshot()
+        // Geometry follows the state immediately; caret, cursor and selection
+        // paint wait for the end of the update.
+        expect(text(0)).toBe(`${active}, ${active} *`)
+        expect(text(1)).toBe(`${active} *::selection`)
+        expect(text(2)).toBe(inactive)
+        setPresentationState(document.body, "node-selection-active")
+        snapshot()
+      })
+      snapshot()
+      expect(writes[0]).toEqual([`${active}, ${active} *`])
+      expect(writes[1]).toEqual([`${active} *::selection`])
+      expect(writes[2]).toEqual([active, inactive, active])
+
+      // A state that stays cleared is installed when the update ends, also
+      // when the update throws.
+      expect(() => deferPresentationPaint(document, () => {
+        clearPresentationState(document.body, "node-selection-active")
+        expect(text(0)).toBe(`${active}, ${active} *`)
+        throw new Error("failed")
+      })).toThrow("failed")
+      expect(text(0)).toBe(`${inactive}, ${inactive} *`)
+      expect(text(1)).toBe(`${inactive} *::selection`)
+
+      // Outside such an update every rule changes immediately.
+      setPresentationState(document.body, "node-selection-active")
+      expect(text(0)).toBe(`${active}, ${active} *`)
+      expect(document.body.outerHTML).toBe("<body><p>one</p><p>two</p></body>")
+    }
+    finally {
+      clearPresentationState(document.body, "node-selection-active")
+      release()
+    }
   })
 
   it("uses an authored ID for dialog presentation and revalidates changes to it", async () => {

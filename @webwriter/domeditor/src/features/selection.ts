@@ -1,4 +1,4 @@
-import {batchPresentationStates, clearPresentationState, flushPresentationStyles, hasPresentationState, presentationStateElements, setPresentationState, setPresentationStates} from "../presentation-state.js"
+import {batchPresentationStates, clearPresentationState, deferPresentationPaint, flushPresentationStyles, hasPresentationState, presentationStateElements, setPresentationState, setPresentationStates} from "../presentation-state.js"
 import { DocumentListenerMap, EditorFeature } from "."
 import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isCaretAtBoundary, isEmptyParagraph, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, setPart, textOffsetIn, textPointAtOffset, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
@@ -2660,7 +2660,14 @@ export class SelectionFeature extends EditorFeature {
    * document Selection. This is the invariant boundary used by native
    * selectionchange events and every editor-driven refresh. Passive refreshes
    * preserve the last interaction's scroll target without revealing it again. */
-  processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true, refreshGraphic = true} = {}) {
+  processSelection(inDragSelection=this.isInDragSelection, options: {scrollIntoView?: boolean, refreshGraphic?: boolean} = {}) {
+    // The previous presentation is cleared before the current one is marked.
+    // Caret, cursor and selection paint that both share stays installed, so a
+    // layout read in between does not restyle the document for it twice.
+    deferPresentationPaint(document, () => this.#processSelection(inDragSelection, options))
+  }
+
+  #processSelection(inDragSelection: boolean, {scrollIntoView = true, refreshGraphic = true}: {scrollIntoView?: boolean, refreshGraphic?: boolean}) {
     if(this.#boxDrag || this.#settingBoxSelection || $.isSettingRanges) return
     flushPresentationStyles(document)
     if(!this.editor.allowsSelection("select")) {
