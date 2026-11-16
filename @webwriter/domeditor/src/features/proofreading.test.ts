@@ -19,7 +19,7 @@ let editor: DOMEditor
 let highlights: Map<string, unknown>
 let check: ReturnType<typeof vi.fn<(text: string, language: string) => Promise<ProofreadingIssue[]>>>
 let dispose: ReturnType<typeof vi.fn<() => Promise<void>>>
-let review: ReturnType<typeof vi.fn<() => Promise<AccessibilityFinding[]>>>
+let review: ReturnType<typeof vi.fn<(root: Element, schema: unknown) => Promise<AccessibilityFinding[]>>>
 let disposeReview: ReturnType<typeof vi.fn<() => void>>
 
 const spelling = (start = 0, end = 3, text = "the"): ProofreadingIssue => ({
@@ -62,6 +62,13 @@ async function start() {
   return editor.features.proofreading.state().issues
 }
 
+/** The review panel's explicit check, which alone reviews accessibility. */
+async function checkManually() {
+  editor.features.proofreading.actions.checkProofreading({type: "checkProofreading"})
+  await editor.features.proofreading.checkNow(true)
+  return editor.features.proofreading.state().issues
+}
+
 function content(html: string) {
   document.body.innerHTML = html
   editor.doc.syncFromDOM()
@@ -82,6 +89,29 @@ function contextMenu(target: Element = document.querySelector("p")!, clientX = 2
 function hover(target: Element = document.querySelector("p")!, clientX = 25, clientY = 35) {
   target.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, clientX, clientY}))
 }
+
+/** Elements whose computed style the prose projection reads during `action`.
+ * Other features read computed styles too, so only its own reads count. */
+function projected(action: () => void) {
+  const elements: Element[] = []
+  const read = window.getComputedStyle
+  const spy = vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
+    if(new Error().stack?.includes("/features/proofreading.ts")) elements.push(element)
+    return read.call(window, element, pseudo)
+  })
+  try { action() }
+  finally { spy.mockRestore() }
+  return elements
+}
+
+/** Starts a fresh editor whose timers, including those of its startup, are faked. */
+function fakeTimers() {
+  editor.destroy()
+  vi.useFakeTimers({toFake: ["setTimeout", "clearTimeout"]})
+  editor = new DOMEditor({accessibilityReviewEnabled: true})
+}
+
+const accessibilityIssues = () => editor.features.proofreading.state().issues.filter(issue => issue.kind === "accessibility")
 
 describe("proofreading prose extraction", () => {
   it("joins inline text without merging block, line break or atomic boundaries", () => {
@@ -301,10 +331,16 @@ describe("proofreading feature", () => {
     editor.features.proofreading.actions.checkProofreading({type: "checkProofreading"})
     await editor.features.proofreading.checkNow()
     expect(editor.features.proofreading.state().error).toBe("Unavailable")
+    expect(review).not.toHaveBeenCalled()
     editor.features.proofreading.retry()
     await editor.features.proofreading.checkNow()
     expect(editor.features.proofreading.state()).toMatchObject({documentEnabled: false, ready: true, error: null})
     expect(editor.features.proofreading.state().issues).toHaveLength(1)
+    // Retrying completes the explicit check that failed, including its review.
+    expect(review).toHaveBeenCalledOnce()
+    editor.features.proofreading.retry()
+    await editor.features.proofreading.checkNow()
+    expect(review).toHaveBeenCalledOnce()
   })
 
   it("does not load the checker for a disabled document default, even with dictionary words", async () => {
@@ -318,7 +354,7 @@ describe("proofreading feature", () => {
     editor.features.proofreading.setDocumentChecking(true)
     await editor.features.proofreading.checkNow()
     expect(createProofreader).toHaveBeenCalledOnce()
-    expect(createAccessibilityReviewer).toHaveBeenCalledOnce()
+    expect(createAccessibilityReviewer).not.toHaveBeenCalled()
     expect(check).toHaveBeenCalledWith("teh example.", "en-US", ["Teh"])
     expect(editor.features.proofreading.state().issues).toEqual([])
   })
@@ -327,7 +363,7 @@ describe("proofreading feature", () => {
     const image = document.createElement("img")
     document.body.append(image)
     review.mockResolvedValue([{element: image, rule: "image-alt", message: "Needs alt text", text: "<img>", helpUrl: "https://example.com/rule"}])
-    await start()
+    await checkManually()
     expect(editor.features.proofreading.state().issues.map(issue => issue.kind)).toEqual(["spelling", "accessibility"])
     editor.features.proofreading.setChecking(false)
     expect(editor.features.proofreading.state()).toMatchObject({allowed: false, enabled: false, issues: []})
@@ -341,48 +377,142 @@ describe("proofreading feature", () => {
     editor.features.proofreading.setChecking(true)
     await editor.features.proofreading.checkNow()
     expect(editor.features.proofreading.state()).toMatchObject({allowed: true, enabled: true})
-    expect(editor.features.proofreading.state().issues.map(issue => issue.kind)).toEqual(["spelling", "accessibility"])
-  })
-
-  it("keeps automatic accessibility unloaded until the document is saved once", async () => {
-    editor.destroy()
-    editor = new DOMEditor()
-    await start()
-    expect(check).toHaveBeenCalled()
-    expect(createAccessibilityReviewer).not.toHaveBeenCalled()
     expect(editor.features.proofreading.state().issues.map(issue => issue.kind)).toEqual(["spelling"])
+    expect(review).toHaveBeenCalledTimes(accessibilityCalls)
+    expect((await checkManually()).map(issue => issue.kind)).toEqual(["spelling", "accessibility"])
+  })
 
-    document.querySelector("p")!.textContent = "teh draft."
-    await editor.features.proofreading.checkNow(true)
+  it("never reviews accessibility without an explicit check", async () => {
+    fakeTimers()
+    try {
+      const feature = editor.features.proofreading
+      const wait = async () => {
+        feature.state()
+        await vi.advanceTimersByTimeAsync(30_000)
+        await feature.checkNow(true)
+      }
+      // Opening a document whose host enabled the review.
+      await wait()
+      expect(check).toHaveBeenCalledWith("teh example.", "en-US", [])
+      const text = document.querySelector("p")!.firstChild as Text
+      text.data = "teh edit."
+      await wait()
+      expect(check).toHaveBeenLastCalledWith("teh edit.", "en-US", [])
+      feature.actions.setAccessibilityReviewEnabled({type: "setAccessibilityReviewEnabled", enabled: false})
+      feature.actions.setAccessibilityReviewEnabled({type: "setAccessibilityReviewEnabled", enabled: true})
+      await wait()
+      expect(feature.setDictionary(["teh"])).toBe(true)
+      await wait()
+      expect(check).toHaveBeenLastCalledWith("teh edit.", "en-US", ["teh"])
+      feature.retry()
+      await feature.checkNow()
+      feature.setDocumentChecking(false)
+      feature.setDocumentChecking(true)
+      await wait()
+      feature.setChecking(false)
+      feature.setChecking(true)
+      await wait()
+      document.documentElement.setAttribute("dir", "ltr")
+      document.body.append(document.createElement("img"))
+      await wait()
+      expect(createAccessibilityReviewer).not.toHaveBeenCalled()
+      expect(review).not.toHaveBeenCalled()
+    }
+    finally {
+      vi.useRealTimers()
+      document.documentElement.removeAttribute("dir")
+    }
+  })
+
+  it("reviews the whole page once when the review panel asks for a check", async () => {
+    content('<p>teh example.</p><img alt="">')
+    const feature = editor.features.proofreading
+    const image = document.querySelector("img")!
+    review.mockResolvedValue([{element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>",
+      helpUrl: "https://example.com/rule"}])
+    expect((await start()).map(issue => issue.kind)).toEqual(["spelling"])
     expect(createAccessibilityReviewer).not.toHaveBeenCalled()
-    editor.features.proofreading.actions.setAccessibilityReviewEnabled({type: "setAccessibilityReviewEnabled", enabled: true})
-    await vi.waitFor(() => expect(review).toHaveBeenCalledOnce())
-    expect(createAccessibilityReviewer).toHaveBeenCalledOnce()
-    document.querySelector("p")!.textContent = "teh saved edit."
-    await editor.features.proofreading.checkNow(true)
+
+    const issues = await checkManually()
+    expect(issues.map(issue => issue.kind)).toEqual(["spelling", "accessibility"])
+    expect(review).toHaveBeenCalledOnce()
+    expect(review.mock.calls[0][0]).toBe(document.body)
+    expect(review.mock.calls[0][1]).toBe(editor.schema)
+
+    // Later prose checks keep the findings without reviewing again.
+    await feature.checkNow()
+    expect(feature.setDictionary(["other"])).toBe(true)
+    await feature.checkNow(true)
+    feature.retry()
+    await feature.checkNow()
+    expect(review).toHaveBeenCalledOnce()
+    expect(feature.state().issues).toEqual(issues)
+    expect(feature.selectIssue(issues[1].id)).toBe(true)
+
+    // The next explicit check reviews again and keeps unchanged findings' ids.
+    expect(await checkManually()).toEqual(issues)
     expect(review).toHaveBeenCalledTimes(2)
+    expect(review.mock.calls[1][0]).toBe(document.body)
+    document.getSelection()!.removeAllRanges()
   })
 
-  it("allows a manual accessibility check before saving without enabling automatic review", async () => {
-    editor.features.proofreading.setAccessibilityReviewEnabled(false)
-    editor.features.proofreading.actions.checkProofreading({type: "checkProofreading"})
-    await editor.features.proofreading.checkNow()
+  it("withdraws an unfinished review when the document is edited", async () => {
+    content('<p>teh example.</p><img alt="">')
+    const feature = editor.features.proofreading
+    const image = document.querySelector("img")!
+    await start()
+    let finish!: (findings: AccessibilityFinding[]) => void
+    review.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    feature.actions.checkProofreading({type: "checkProofreading"})
+    const pending = feature.checkNow(true)
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    ;(document.querySelector("p")!.firstChild as Text).data = "teh edit."
+    finish([{element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>", helpUrl: "https://example.com/rule"}])
+    await pending
+    await feature.checkNow(true)
+    await feature.checkNow()
     expect(review).toHaveBeenCalledOnce()
-    document.querySelector("p")!.textContent = "teh changed draft."
-    await editor.features.proofreading.checkNow(true)
-    expect(review).toHaveBeenCalledOnce()
-    expect(editor.features.proofreading.state().issues[0].kind).toBe("spelling")
+    expect(accessibilityIssues()).toEqual([])
+    expect(check).toHaveBeenLastCalledWith("teh edit.", "en-US", [])
   })
 
-  it("does not load accessibility after saving while Issues is disabled", async () => {
-    editor.features.proofreading.setAccessibilityReviewEnabled(false)
-    editor.features.proofreading.setDocumentChecking(false)
-    editor.features.proofreading.setAccessibilityReviewEnabled(true)
-    await editor.features.proofreading.checkNow()
-    expect(createAccessibilityReviewer).not.toHaveBeenCalled()
-    editor.features.proofreading.setDocumentChecking(true)
-    await editor.features.proofreading.checkNow()
-    expect(review).toHaveBeenCalledOnce()
+  it("drops findings of removed elements and puts edited ones out of date without a review", async () => {
+    content('<p>teh example.</p><img alt=""><img alt=""><input>')
+    const feature = editor.features.proofreading
+    const [first, second] = Array.from(document.querySelectorAll("img"))
+    const input = document.querySelector("input")!
+    const finding = (element: Element, rule: string) => ({element, rule, message: rule, text: `<${element.localName}>`, helpUrl: "https://example.com/rule"})
+    review.mockResolvedValue([finding(document.documentElement, "document-title"), finding(first, "image-alt"), finding(second, "image-alt"),
+      finding(input, "label")])
+    await checkManually()
+    const [page, , edited, untouched] = accessibilityIssues()
+    expect(accessibilityIssues()).toHaveLength(4)
+    review.mockClear()
+    try {
+      // The finding leaves with its element.
+      first.remove()
+      expect(accessibilityIssues()).toEqual([page, edited, untouched])
+      // A finding stays listed after its element changed, but its actions wait for the next check.
+      second.setAttribute("alt", "A chart")
+      expect(accessibilityIssues()).toEqual([page, edited, untouched])
+      expect(feature.selectIssue(edited.id)).toBe(false)
+      expect(feature.ignore(edited.id)).toBe(false)
+      // Every edit lies inside the page element, so its findings are out of date as well.
+      expect(feature.selectIssue(page.id)).toBe(false)
+      expect(feature.selectIssue(untouched.id)).toBe(true)
+      await feature.checkNow()
+      await feature.checkNow(true)
+      expect(accessibilityIssues()).toEqual([page, edited, untouched])
+      expect(feature.selectIssue(edited.id)).toBe(false)
+      expect(review).not.toHaveBeenCalled()
+
+      // Only the next explicit check replaces them.
+      review.mockResolvedValue([finding(input, "label")])
+      await checkManually()
+      expect(accessibilityIssues()).toEqual([untouched])
+      expect(feature.selectIssue(untouched.id)).toBe(true)
+    }
+    finally { document.getSelection()!.removeAllRanges() }
   })
 
   it("combines prose and accessibility findings without per-element pills", async () => {
@@ -393,7 +523,7 @@ describe("proofreading feature", () => {
     review.mockResolvedValue([{element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>",
       helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt"}])
 
-    const issues = await start()
+    const issues = await checkManually()
     expect(issues.map(issue => issue.kind)).toEqual(["spelling", "accessibility"])
     expect(issues[1]).toMatchObject({kind: "accessibility", text: "<img>", helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt", suggestions: []})
     expect(editor.appendix.querySelectorAll('[part~="accessibility-issue-pill"]')).toHaveLength(0)
@@ -412,7 +542,7 @@ describe("proofreading feature", () => {
     vi.spyOn(editor.features.media, "cropViewport").mockReturnValue(null)
     review.mockResolvedValue([{element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>",
       helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt"}])
-    const [issue] = await start()
+    const [issue] = await checkManually()
 
     hover(image)
     expect(editor.features.proofreading.state().hoveredIssueId).toBe(issue.id)
@@ -446,7 +576,7 @@ describe("proofreading feature", () => {
     vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 40, 20))
     vi.spyOn(editor.features.transformation, "boxTransformed").mockReturnValue(true)
     review.mockResolvedValue([{element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>", helpUrl: "https://example.com/rule"}])
-    await start()
+    await checkManually()
     contextMenu(image)
     const outline = editor.appendix.querySelector<HTMLElement>('[part~="accessibility-issue-outline"]')!
     const popup = editor.appendix.querySelector<HTMLElement>(".◆proofreading-popup")!
@@ -470,7 +600,7 @@ describe("proofreading feature", () => {
       {element: document.body, rule: "landmark-one-main", message: "Add a main landmark", text: "<body>", helpUrl: "https://example.com/main"},
       {element: input, rule: "label", message: "Form elements must have labels", text: "<input>", helpUrl: "https://example.com/label"},
     ])
-    const issues = await start()
+    const issues = await checkManually()
     hover(input)
     expect(editor.features.proofreading.state().hoveredIssueId).toBe(issues[1].id)
     expect(contextMenu(input).defaultPrevented).toBe(true)
@@ -483,24 +613,21 @@ describe("proofreading feature", () => {
     const finding = (element: Element) => ({element, rule: "image-alt", message: "Image needs alternative text", text: element.getAttribute("alt") || "<img>",
       helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt"})
     review.mockImplementation(async () => [finding(image)])
-    let [issue] = await start()
+    let [issue] = await checkManually()
     const ignoredId = issue.id
     expect(editor.features.proofreading.ignore(issue.id)).toBe(true)
     expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).toBeNull()
-    await editor.features.proofreading.checkNow()
-    expect(editor.features.proofreading.state().issues).toEqual([])
+    expect(await checkManually()).toEqual([])
 
     // A related element can resolve a rule without changing the target itself.
     review.mockResolvedValueOnce([])
-    await editor.features.proofreading.checkNow()
-    await editor.features.proofreading.checkNow()
-    const restored = editor.features.proofreading.state().issues[0]
+    await checkManually()
+    const [restored] = await checkManually()
     expect(restored.kind).toBe("accessibility")
     expect(editor.features.proofreading.ignore(restored.id)).toBe(true)
 
     image.setAttribute("alt", "A chart")
-    await editor.features.proofreading.checkNow()
-    ;[issue] = editor.features.proofreading.state().issues
+    ;[issue] = await checkManually()
     expect(issue).toMatchObject({kind: "accessibility", text: "A chart"})
     expect(issue.id).not.toBe(ignoredId)
 
@@ -508,8 +635,7 @@ describe("proofreading feature", () => {
     replacement.alt = ""
     image.replaceWith(replacement)
     review.mockImplementation(async () => [finding(replacement)])
-    await editor.features.proofreading.checkNow()
-    const [replacementIssue] = editor.features.proofreading.state().issues
+    const [replacementIssue] = await checkManually()
     expect(replacementIssue).toMatchObject({kind: "accessibility", text: "<img>"})
     expect(replacementIssue.id).not.toBe(issue.id)
   })
@@ -521,7 +647,7 @@ describe("proofreading feature", () => {
     vi.spyOn(image, "getClientRects").mockReturnValue([new DOMRect(20, 30, 40, 20)] as unknown as DOMRectList)
     const finding = {element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>", helpUrl: "https://example.com/rule"}
     review.mockResolvedValue([finding])
-    const [issue] = await start()
+    const [issue] = await checkManually()
     contextMenu(image)
     expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).not.toBeNull()
 
@@ -529,12 +655,16 @@ describe("proofreading feature", () => {
     expect(editor.features.proofreading.selectIssue(issue.id)).toBe(false)
     expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).toBeNull()
     expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
+    // The finding stays listed, out of date, until the next explicit check.
     await editor.features.proofreading.checkNow()
-    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+    expect(editor.features.proofreading.state().issues).toEqual([issue])
+    expect(editor.features.proofreading.selectIssue(issue.id)).toBe(false)
+    expect(review).toHaveBeenCalledOnce()
 
     let finish!: (findings: AccessibilityFinding[]) => void
     review.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
-    const pending = editor.features.proofreading.checkNow()
+    editor.features.proofreading.actions.checkProofreading({type: "checkProofreading"})
+    const pending = editor.features.proofreading.checkNow(true)
     await vi.waitFor(() => expect(finish).toBeDefined())
     expect(editor.features.proofreading.setDocumentChecking(false)).not.toBe(false)
     finish([finding])
@@ -552,7 +682,7 @@ describe("proofreading feature", () => {
     vi.spyOn(image, "getClientRects").mockReturnValue([new DOMRect(20, 30, 40, 20)] as unknown as DOMRectList)
     review.mockResolvedValue(["first", "second"].map(rule => ({element: image, rule, message: rule,
       text: "<img>", helpUrl: "https://example.com/rule"})))
-    const issues = await start()
+    const issues = await checkManually()
     expect(issues).toHaveLength(2)
     expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
     contextMenu(image)
@@ -560,6 +690,7 @@ describe("proofreading feature", () => {
     expect(editor.appendix.querySelectorAll('[part~="accessibility-issue-outline"]')).toHaveLength(1)
     image.remove()
     await vi.waitFor(() => expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull())
+    expect(editor.features.proofreading.state().issues).toEqual([])
     expect(editor.features.proofreading.selectIssue(issues[1].id)).toBe(false)
     expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).toBeNull()
     expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
@@ -1284,6 +1415,147 @@ describe("proofreading feature", () => {
     await editor.features.proofreading.checkNow()
     expect(editor.features.proofreading.state().error).toBeNull()
     expect(editor.features.proofreading.state().issues).toHaveLength(1)
+  })
+
+  it("projects only the edited block after typing and keeps diagnostics in other blocks", async () => {
+    content('<p>teh first.</p><ul><li>teh second.</li><li>teh third.</li></ul><p>teh <em>fourth</em>.</p>')
+    const feature = editor.features.proofreading
+    const issues = await start()
+    expect(issues).toHaveLength(4)
+    const [first, list] = Array.from(document.body.children)
+    const painted = highlights.get("webwriter-spelling") as Set<Range>
+    const ranges = [...painted]
+    const text = first.firstChild as Text
+    try {
+      expect(projected(() => { text.data = "the first."; feature.state() })).toEqual([first])
+      // The cards remain; only the edited block loses its underline and actions.
+      expect(feature.state().issues).toEqual(issues)
+      expect([...painted]).toHaveLength(3)
+      expect([...painted].every((range, index) => range === ranges[index + 1])).toBe(true)
+      expect(feature.selectIssue(issues[0].id)).toBe(false)
+      expect(feature.selectIssue(issues[3].id)).toBe(true)
+      // The block is revalidated again once its text matches the checked run.
+      expect(projected(() => { text.data = "teh first."; feature.state() })).toEqual([first])
+      expect(painted.size).toBe(4)
+      expect(feature.selectIssue(issues[0].id)).toBe(true)
+      // Other runs of an edited block are revalidated with it and stay current.
+      const item = list.firstElementChild!.firstChild as Text
+      expect(projected(() => { item.data = "the second."; feature.state() })).toEqual([list, ...Array.from(list.children)])
+      expect(feature.selectIssue(issues[1].id)).toBe(false)
+      expect(feature.selectIssue(issues[2].id)).toBe(true)
+      expect(feature.selectIssue(issues[0].id)).toBe(true)
+    }
+    finally { document.getSelection()!.removeAllRanges() }
+  })
+
+  it("revalidates a block whose own attributes change which prose is eligible", async () => {
+    content('<p>teh first.</p><p>teh second.</p>')
+    const feature = editor.features.proofreading
+    const [first, second] = await start()
+    const paragraph = document.querySelector("p")!
+    const set = (name: string, value: string) => projected(() => { paragraph.setAttribute(name, value); feature.state() })
+    try {
+      expect(set("class", "note")).toEqual([paragraph])
+      expect(feature.selectIssue(first.id)).toBe(true)
+      expect(set("lang", "de")).toEqual([paragraph])
+      expect(feature.selectIssue(first.id)).toBe(false)
+      expect(feature.selectIssue(second.id)).toBe(true)
+      expect(set("lang", "en-US")).toEqual([paragraph])
+      expect(feature.selectIssue(first.id)).toBe(true)
+      expect(set("style", "display: none")).toEqual([paragraph])
+      expect(feature.selectIssue(first.id)).toBe(false)
+      expect(set("style", "")).toEqual([paragraph])
+      expect(feature.selectIssue(first.id)).toBe(true)
+      expect(set("hidden", "")).toEqual([paragraph])
+      expect(feature.selectIssue(first.id)).toBe(false)
+      expect(feature.selectIssue(second.id)).toBe(true)
+      expect(feature.state().issues).toEqual([first, second])
+    }
+    finally { document.getSelection()!.removeAllRanges() }
+  })
+
+  it("projects the whole document when an edit reaches the root's own line or page-level state", async () => {
+    content('<p>teh first.</p>teh loose <b>text</b>.<p>teh last.</p>')
+    const feature = editor.features.proofreading
+    const [first, loose, last] = await start()
+    const paragraphs = document.querySelectorAll("p")
+    try {
+      // A run beside root-level text depends on its siblings as well.
+      expect(projected(() => { paragraphs[1].firstChild!.textContent = "the last."; feature.state() })).toContain(paragraphs[0])
+      expect(feature.selectIssue(last.id)).toBe(false)
+      expect(feature.selectIssue(loose.id)).toBe(true)
+      expect(feature.selectIssue(first.id)).toBe(true)
+      document.querySelector("b")!.firstChild!.textContent = "words"
+      expect(feature.selectIssue(loose.id)).toBe(false)
+      expect(feature.selectIssue(first.id)).toBe(true)
+
+      content('<p>teh first.</p><p>teh second.</p>')
+      const [one, two] = await start()
+      expect(projected(() => { document.documentElement.setAttribute("lang", "de"); feature.state() }))
+        .toEqual([document.body, ...Array.from(document.body.children)])
+      expect(feature.selectIssue(one.id)).toBe(false)
+      expect(feature.selectIssue(two.id)).toBe(false)
+      document.documentElement.setAttribute("lang", "en-US")
+      expect(feature.selectIssue(one.id)).toBe(true)
+      expect(feature.selectIssue(two.id)).toBe(true)
+    }
+    finally { document.getSelection()!.removeAllRanges() }
+  })
+
+  it("selects the issue at the caret from its live range without projecting the document", async () => {
+    content('<p>teh first.</p><p>teh second.</p>')
+    const feature = editor.features.proofreading
+    const [first, second] = await start()
+    const text = document.querySelectorAll("p")[1].firstChild as Text
+    const selection = document.getSelection()!
+    const caret = (offset: number) => projected(() => {
+      selection.setBaseAndExtent(text, offset, text, offset)
+      document.dispatchEvent(new Event("selectionchange"))
+    })
+    try {
+      expect(caret(1)).toEqual([])
+      expect(feature.state().hoveredIssueId).toBe(second.id)
+      expect(caret(6)).toEqual([])
+      expect(feature.state().hoveredIssueId).toBeNull()
+      // An edit noticed by the caret move projects its own block only, and the
+      // issue it made stale is no longer selected.
+      text.data = "teh changed."
+      expect(caret(1)).toEqual([text.parentElement])
+      expect(feature.state().hoveredIssueId).toBeNull()
+      expect(feature.state().issues).toEqual([first, second])
+    }
+    finally { selection.removeAllRanges() }
+  })
+
+  it("leaves no timers behind when disabled or destroyed", async () => {
+    fakeTimers()
+    try {
+      const feature = editor.features.proofreading
+      const text = document.querySelector("p")!.firstChild as Text
+      await checkManually()
+      // The prose check after an edit is the only timer the feature keeps.
+      const idle = vi.getTimerCount()
+      text.data = "teh edit."
+      feature.state()
+      expect(vi.getTimerCount()).toBe(idle + 1)
+      feature.disable()
+      expect(vi.getTimerCount()).toBe(idle)
+
+      feature.enable()
+      await checkManually()
+      const enabled = vi.getTimerCount()
+      text.data = "teh other edit."
+      feature.state()
+      expect(vi.getTimerCount()).toBe(enabled + 1)
+      check.mockClear()
+      review.mockClear()
+      editor.destroy()
+      expect(vi.getTimerCount()).toBeLessThanOrEqual(enabled)
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(check).not.toHaveBeenCalled()
+      expect(review).not.toHaveBeenCalled()
+    }
+    finally { vi.useRealTimers() }
   })
 
   it("cleans up its own highlights, observers and checker on destruction", async () => {
