@@ -26,7 +26,7 @@ import {
   type StyleMarkValues,
   type WidgetMarkName,
 } from "../marks"
-import {$, authoredClassValue, cloneRangeContents, cloneWithoutEditorMarkers, focusedWidgetHost, isContentfulWidget, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, isParagraphContent, textOffsetIn, textPointAtOffset, uiMotionDisabled, widgetHostForShadowInteraction} from "../utility"
+import {$, authoredClassValue, cloneRangeContents, nodesInRange, cloneWithoutEditorMarkers, focusedWidgetHost, isContentfulWidget, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, isParagraphContent, textOffsetIn, textPointAtOffset, uiMotionDisabled, widgetHostForShadowInteraction} from "../utility"
 import {clearPresentationState, setPresentationState} from "../presentation-state.js"
 import {SVG_NAMESPACE} from "../graphic"
 import {isAuthoredMutation} from "../editor-artifacts"
@@ -2933,13 +2933,15 @@ export class MarkFeature extends EditorFeature {
 
   private selectionContainsRuby(context: MarkSelection) {
     if(context.text.some(({node}) => this.rubyAt(node) !== null)) return true
-    const walker = document.createTreeWalker(context.block, NodeFilter.SHOW_ELEMENT)
-    while(walker.nextNode()) {
-      const element = walker.currentNode as Element
-      if(element.namespaceURI === "http://www.w3.org/1999/xhtml"
-        && element.localName === "ruby"
-        && context.range.intersectsNode(element)) return true
+    const ruby = (element: Element) => element.namespaceURI === "http://www.w3.org/1999/xhtml" && element.localName === "ruby"
+    // As in resolveSelection: the ancestors of the range's start, then the
+    // elements from there to its end, instead of every element of the block.
+    const {range, block} = context
+    if(block.contains(range.startContainer)) {
+      for(let ancestor = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+        ancestor && ancestor !== block; ancestor = ancestor.parentElement) if(ruby(ancestor) && range.intersectsNode(ancestor)) return true
     }
+    for(const element of nodesInRange(range, block, NodeFilter.SHOW_ELEMENT)) if(ruby(element as Element)) return true
     return false
   }
 
@@ -3141,10 +3143,7 @@ export class MarkFeature extends EditorFeature {
     // Keep the existing inline operation for a contiguous phrasing range.
     // Structural selections and holes around atomic content use text runs.
     let split = startBlock !== endBlock || !startBlock && range.startContainer !== range.endContainer
-    const walker = document.createTreeWalker(block, NodeFilter.SHOW_ELEMENT)
-    while(walker.nextNode()) {
-      const element = walker.currentNode as Element
-      if(!range.intersectsNode(element)) continue
+    const inspect = (element: Element) => {
       if(!$.includesNode(element)
         || !this.isEditableHTMLContext(element, document.body)
         || !this.editor.schema.isPhrasing(element)
@@ -3152,6 +3151,12 @@ export class MarkFeature extends EditorFeature {
           && !isParagraphContent(element)
           && !this.editor.schema.findValidContentTypes(element).includes("#text")) split = true
     }
+    // The elements the range intersects are the ancestors of its start and
+    // the elements from there to its end. Testing every element of the block
+    // takes time proportional to the document when the block is BODY.
+    for(let ancestor = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+      ancestor && ancestor !== block; ancestor = ancestor.parentElement) inspect(ancestor)
+    for(const element of nodesInRange(range, block, NodeFilter.SHOW_ELEMENT)) inspect(element as Element)
 
     // A single text slice never extracts surrounding elements.
     if(range.startContainer === range.endContainer && range.startContainer instanceof Text) split = false
@@ -3197,10 +3202,9 @@ export class MarkFeature extends EditorFeature {
 
   private selectedText(range: Range, block: Element) {
     const slices: TextSlice[] = []
-    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
-    while(walker.nextNode()) {
-      const node = walker.currentNode as Text
-      if(!range.intersectsNode(node) || block.namespaceURI !== SVG_NAMESPACE
+    // Walk the range, not the block: BODY is the block of a selected element.
+    for(const node of nodesInRange(range, block, NodeFilter.SHOW_TEXT) as Generator<Text, void, undefined>) {
+      if(block.namespaceURI !== SVG_NAMESPACE
         && (!$.includesNode(node) || !this.isEditableHTMLContext(node, document.body))) continue
 
       const startRelation = range.comparePoint(node, 0)

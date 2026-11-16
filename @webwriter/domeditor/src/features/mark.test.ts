@@ -509,6 +509,59 @@ describe("MarkFeature toggles", () => {
     expect(cleanHTML()).not.toContain("◆")
   })
 
+  it("reads and applies marks among many blocks from the selected range alone", () => {
+    const far = Array.from({length: 8}, (_, index) => `<p class="far"><b>far ${index}</b></p>`).join("")
+    document.body.innerHTML = `${far}<p id="first">first <i>italic</i></p><ul><li>item <test-widget>widget</test-widget><!--keep--></li></ul>bare<p id="last"><b>last</b> tail</p>${far}`
+    const first = document.querySelector("#first")!, last = document.querySelector("#last")!
+    const outside = new Set<Node>()
+    for(const paragraph of document.querySelectorAll(".far")) {
+      outside.add(paragraph).add(paragraph.firstChild!).add(paragraph.firstChild!.firstChild!)
+    }
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = cleanHTML()
+    const intersectsNode = vi.spyOn(Range.prototype, "intersectsNode")
+    try {
+      // BODY is the block of a selected element; its other blocks are bold.
+      $.selectElement(first)
+      expect(feature.getState()).toEqual({canMark: true, marks: ["i"]})
+      $.selectElement(last)
+      expect(feature.getState()).toEqual({canMark: true, marks: ["b"]})
+      // Each walk ends at the first node behind the range, the only one
+      // outside it that is tested: far fewer than the 48 outside nodes.
+      expect(intersectsNode.mock.calls.filter(([node]) => outside.has(node)).length).toBeLessThan(10)
+    }
+    finally { intersectsNode.mockRestore() }
+    // A range through a list, an atomic widget and bare text, ending at an
+    // element boundary behind the last paragraph's text.
+    $.selectRange(first.firstChild!, 2, last, last.childNodes.length)
+    expect(feature.getState().canMark).toBe(true)
+    expect(feature.toggleMark("u")).toBe(true)
+    editor.doc.syncFromDOM()
+    expect(document.getSelection()!.toString().replace(/\s+/g, " ")).toContain("rst italic")
+    const underlined = (root: Element) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      let text = ""
+      while(walker.nextNode()) if(walker.currentNode.parentElement!.closest("u")) text += walker.currentNode.textContent
+      return text
+    }
+    expect(underlined(first)).toBe("rst italic")
+    expect(first.textContent).toBe("first italic")
+    const item = document.querySelector("li")!, widget = item.querySelector("test-widget")!
+    expect(underlined(item)).toBe("item ")
+    expect(widget.innerHTML).toBe("widget")
+    expect(widget.nextSibling?.nodeType).toBe(Node.COMMENT_NODE)
+    expect(underlined(last)).toBe("last tail")
+    expect(document.querySelectorAll(".far u")).toHaveLength(0)
+    expect(document.querySelectorAll(".far")).toHaveLength(16)
+    expect(cleanHTML()).not.toMatch(/◆|data-domeditor-mark-boundary/)
+    const marked = cleanHTML()
+    editor.doc.undo()
+    expect(cleanHTML()).toBe(original)
+    editor.doc.redo()
+    expect(cleanHTML()).toBe(marked)
+  })
+
   it("clears marks from selected text and images across blocks as one undoable edit", () => {
     const section = setContent('<section><p><b>before<img alt="keep"><i>one</i></b></p><!--keep--><p><span style="color: red"><u>two</u><br>after</span></p></section>')
     const first = section.querySelector("b")!.firstChild!, last = section.querySelector("span")!.lastChild!
