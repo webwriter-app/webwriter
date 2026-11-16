@@ -7,10 +7,12 @@ import {
   isMarkAttributeName,
   isRubyState,
   isStyleMarkName,
+  isWidgetMarkName,
   type MarkAttributeValues,
   type MarkName,
   type RubyState,
   type StyleMarkValues,
+  type WidgetMarkName,
 } from "./marks"
 import {isDocumentBlobAsset, isEditorStateUpdate, type EditorStateSnapshot} from "./editor-state"
 import {isMediaType, type MediaSelectionState} from "./media"
@@ -575,6 +577,8 @@ export type MarkStateChangeDetail = {
   marks: MarkName[]
   /** Marks a containing widget allows; absent when all marks are allowed. */
   allowedMarks?: MarkName[]
+  /** Present for widget-owned text, with the element and style marks it accepts. */
+  widgetMarks?: WidgetMarkName[]
   /** Inline style marks shared by the selection or effective at the caret. */
   styles?: StyleMarkValues
   /** Element-specific attributes shared by the selected mark wrappers. */
@@ -1050,6 +1054,8 @@ export function isMarkStateChangeMessage(value: unknown): value is MarkStateChan
     || message.detail!.popupActive !== undefined && typeof message.detail!.popupActive !== "boolean"
     || message.detail!.canRemoveMarks !== undefined && typeof message.detail!.canRemoveMarks !== "boolean") return false
   const allowedMarks = message.detail!.allowedMarks
+  const widgetMarks = message.detail!.widgetMarks
+  if(widgetMarks !== undefined && !(Array.isArray(widgetMarks) && widgetMarks.every(isWidgetMarkName))) return false
   if(allowedMarks !== undefined && !(Array.isArray(allowedMarks)
     && allowedMarks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark))) return false
   const styles = message.detail!.styles

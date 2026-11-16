@@ -1,25 +1,28 @@
-// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/index.ts
+// index.ts
 import { LitElement as LitElement2, adoptStyles } from "lit";
 import { SignalWatcher } from "@lit-labs/signals";
 import {
   WidgetRuntime,
+  hasComputedDeclarations,
+  resolveDeclarations,
   widgetLanguage,
   widgetRuntimeAttributes
 } from "@webwriter/widget";
 import {
-  isDataBlockType
+  isDataBlockType,
+  resolveDeclarations as resolveDeclarations2
 } from "@webwriter/widget";
 export * from "@lit-labs/signals";
 
-// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-drawer.ts
+// widget-drawer.ts
 import { LitElement, css as css2, html as html2, nothing as nothing2 } from "lit";
 import { live } from "lit/directives/live.js";
 
-// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-option-controls.ts
+// widget-option-controls.ts
 import { html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 
-// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-options.ts
+// widget-options.ts
 var widgetOptionTypes = [
   "boolean",
   "string",
@@ -151,6 +154,7 @@ function widgetOptionState(name, declaration, value, locale) {
     label: text(decl.label, locale) ?? titleCase(name),
     attribute: widgetOptionAttribute(name, decl),
     value: widgetOptionValue(value),
+    ...type === "boolean" && decl.attribute !== false && decl.inverted === true ? { inverted: true } : {},
     description: text(decl.description, locale),
     placeholder: text(decl.placeholder, locale),
     multiline: decl.multiline === true || void 0,
@@ -194,8 +198,8 @@ function widgetActionState(name, declaration, locale) {
     } } : {}
   };
 }
-function widgetOptionAttributeValue(type, value, multiple = false) {
-  if (type === "boolean") return value === true ? "" : null;
+function widgetOptionAttributeValue(type, value, multiple = false, inverted = false) {
+  if (type === "boolean") return value === !inverted ? "" : null;
   if (value === null || value === "") return null;
   if (type === "object" || type === "array" || type === "select" && multiple) return JSON.stringify(value);
   return String(value);
@@ -243,6 +247,7 @@ function readWidgetOption(widget, name, raw, locale) {
   } catch {
   }
   const option = widgetOptionState(name, declaration, value, locale);
+  if (option.inverted && option.attribute !== null) return { ...option, value: !widget.hasAttribute(option.attribute) };
   if (value !== void 0 || option.attribute === null) return option;
   const attribute = widget.getAttribute(option.attribute);
   const parsed = option.type === "boolean" ? attribute !== null : option.type === "number" && attribute !== null ? Number(attribute) : attribute;
@@ -302,7 +307,7 @@ function widgetConversionMethod(widget, declaration) {
   }
 }
 
-// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-option-controls.ts
+// widget-option-controls.ts
 function widgetOptionInputValue(option, target) {
   if (option.type === "boolean") return target.checked;
   if (option.type === "select" && option.multiple) {
@@ -528,7 +533,7 @@ function renderWidgetOptions(options, actions, groups, renderField, renderAction
   </div>`;
 }
 
-// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-option-controls.styles.ts
+// widget-option-controls.styles.ts
 import { css } from "lit";
 var widgetOptionControlStyles = css`
   .widget-options {
@@ -625,7 +630,7 @@ var widgetOptionControlStyles = css`
 
 `;
 
-// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-result-storage.ts
+// widget-result-storage.ts
 var WidgetResultConflict = class extends Error {
   constructor() {
     super("A newer result is already saved.");
@@ -734,7 +739,7 @@ function widgetResultKey(widget) {
   return `webwriter:widget-result:${JSON.stringify([origin, pathname, search, path])}`;
 }
 
-// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-result-binding.ts
+// widget-result-binding.ts
 function widgetResultBlock(widget) {
   return Array.from(widget.children).find((child) => child.localName === "script" && child.namespaceURI === "http://www.w3.org/1999/xhtml" && child.getAttribute("slot") === "data" && isWidgetResultType(child.getAttribute("type")) && !child.hasAttribute("src"));
 }
@@ -858,7 +863,7 @@ var WidgetResultBinding = class {
   }
 };
 
-// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/widget-drawer.ts
+// widget-drawer.ts
 var authoredDefaults = /* @__PURE__ */ new WeakMap();
 var browser = { kind: "browser" };
 var WidgetDrawer = class extends LitElement {
@@ -1126,7 +1131,7 @@ var WidgetDrawer = class extends LitElement {
         if (attribute.startsWith("on") || ["srcdoc", "style", "class", "is", "contenteditable", "spellcheck", "data-webwriter-editor-only", "standalone"].includes(attribute)) {
           throw new TypeError(`The ${attribute} attribute cannot be set as an option.`);
         }
-        const text2 = widgetOptionAttributeValue(option.type, value, option.multiple);
+        const text2 = widgetOptionAttributeValue(option.type, value, option.multiple, option.inverted);
         if (text2 === null) widget.removeAttribute(option.attribute);
         else {
           const url = text2.toLowerCase().replace(/[\u0000-\u0020]/g, "");
@@ -1312,15 +1317,58 @@ var WidgetDrawer = class extends LitElement {
   }
 };
 
-// ../../../../../../private/tmp/webwriter-widget-runtime.vWw9BE/@webwriter/lit/index.ts
+// index.ts
 var registries = /* @__PURE__ */ new WeakMap();
+var warnedDeclarations = /* @__PURE__ */ new WeakMap();
+function warnForDeclarationClashes(widget) {
+  const location = widget.ownerDocument.defaultView?.location;
+  if (!("litIssuedWarnings" in globalThis) && !["localhost", "127.0.0.1", "[::1]"].includes(location?.hostname ?? "")) return;
+  const owner = widget.constructor;
+  let warned = warnedDeclarations.get(owner);
+  if (!warned) warnedDeclarations.set(owner, warned = /* @__PURE__ */ new Set());
+  const own = widget;
+  const isMap = (value) => {
+    if (!value || typeof value !== "object") return false;
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+  };
+  for (const name of ["permissions", "options", "actions", "data", "localize"]) {
+    if (warned.has(name)) continue;
+    let valid;
+    try {
+      const value = own[name];
+      valid = name === "data" ? !Object.hasOwn(widget, name) : value === void 0 || (name === "localize" ? typeof value?.getLocale === "function" && typeof value?.setLocale === "function" : isMap(value) && Object.values(value).every(isMap));
+    } catch {
+      valid = false;
+    }
+    if (!valid) {
+      warned.add(name);
+      console.warn(`<${widget.localName}> uses "${name}" for a value that conflicts with the WebWriter widget API.`);
+    }
+  }
+}
 var LitElementWw = class extends SignalWatcher(LitElement2) {
+  // Wider than CustomElementConstructor: component libraries type properties such as
+  // `autocorrect` differently from the DOM library, and their classes have to fit here.
   static scopedElements = {};
+  // A text of a static declaration may be a function of the widget, for a text from the widget's own catalog.
   static options = {};
   static actions = {};
   static optionGroups = {};
   static dataType = void 0;
   localize;
+  constructor() {
+    super();
+    const declared = this.constructor;
+    for (const kind of ["options", "actions", "permissions", "optionGroups"]) {
+      if (kind in this || !hasComputedDeclarations(declared[kind])) continue;
+      Object.defineProperty(this, kind, {
+        configurable: true,
+        get: () => resolveDeclarations(this, declared[kind]),
+        set: (value) => Object.defineProperty(this, kind, { value, writable: true, configurable: true, enumerable: true })
+      });
+    }
+  }
   /** One native registry per concrete widget class, shared by its instances. */
   get registry() {
     const constructor = this.constructor;
@@ -1390,6 +1438,9 @@ var LitElementWw = class extends SignalWatcher(LitElement2) {
     dataChanged: (value, context) => this.dataChanged(value, context),
     dataError: (error, context) => this.dataError(error, context)
   });
+  get widgetRuntime() {
+    return this.#runtime;
+  }
   languageChanged() {
     this.#runtime.contextChanged();
   }
@@ -1419,6 +1470,7 @@ var LitElementWw = class extends SignalWatcher(LitElement2) {
   #slotChanged = () => this.requestUpdate();
   connectedCallback() {
     super.connectedCallback();
+    warnForDeclarationClashes(this);
     this.renderRoot.addEventListener("slotchange", this.#slotChanged);
     this.#runtime.connect();
   }
@@ -1445,6 +1497,7 @@ export {
   readWidgetOption,
   renderWidgetOptionField,
   renderWidgetOptions,
+  resolveDeclarations2 as resolveDeclarations,
   validWidgetOptionValue,
   widgetActionRows,
   widgetActionState,

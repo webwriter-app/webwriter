@@ -1,5 +1,7 @@
 import {createAnchorPositioner} from "./anchor-positioning.js"
-import {readDistributionConfigs} from "./distribution-dom"
+import {localDistributionInstruction, readDistributionConfigs} from "./distribution-dom"
+import {encodeDistributionConfig} from "./distribution.js"
+import type {DistributionConfig} from "./distribution.js"
 import {fixedClientX} from "./utility"
 
 const markerPart = "distribution-private-marker"
@@ -42,13 +44,23 @@ export function observePrivateDistributionRegions(root: Document, appendToEditor
   const resize = new view.ResizeObserver(updateGraphicMarkers)
   const geometryObserver = new view.MutationObserver(updateGraphicMarkers)
 
+  // The policies of the last read, or null when it failed. A read visits
+  // every element; `changesPolicies` decides from these whether a change to
+  // the document can have altered them.
+  let known: Map<Element, DistributionConfig> | null = null
+  let knownOutsideTree = false
   const refresh = () => {
     const hidden = new Set<Element>()
+    known = null
     try {
-      for(const [target, config] of readDistributionConfigs(root)) {
+      const configs = readDistributionConfigs(root)
+      for(const [target, config] of configs) {
         if(config.view !== false) continue
         if(target && (target === root.documentElement || root.body?.contains(target))) hidden.add(target)
       }
+      known = configs
+      // An owner in template content is not a descendant of its template.
+      knownOutsideTree = [...configs.keys()].some(owner => !root.documentElement.contains(owner))
     }
     catch { /* Invalid policies are reported by the distribution controls. */ }
     const regions = new Set([...hidden].filter(target => {
@@ -99,10 +111,37 @@ export function observePrivateDistributionRegions(root: Document, appendToEditor
     }
     updateGraphicMarkers()
   }
+  /** Whether added or removed elements can change which element owns which
+   * policy. A policy is a child of its owner, so elements without one leave
+   * every other owner as it was. Anything unclear counts as a change. */
+  const changesPolicies = (record: MutationRecord, compared: Set<Node>) => {
+    const policies = known, owner = record.target
+    if(!policies || owner.nodeType !== 1 || [...markers.values()].some(marker => !marker.isConnected)) return true
+    try {
+      // A raw-text owner's policy depends on which child is its last.
+      if(!compared.has(owner)) {
+        compared.add(owner)
+        const before = policies.get(owner as Element), after = localDistributionInstruction(owner as Element)?.config
+        if((before || after) && (!before || !after || encodeDistributionConfig(before) !== encodeDistributionConfig(after))) return true
+      }
+      for(const node of record.removedNodes) {
+        if(node.nodeType !== 1) continue
+        if(knownOutsideTree) return true
+        for(const element of policies.keys()) if(element === node || node.contains(element)) return true
+      }
+      for(const node of record.addedNodes) {
+        if(node.nodeType === 1 && readDistributionConfigs({documentElement: node as HTMLElement}).size) return true
+      }
+      return false
+    }
+    catch { return true }
+  }
   const observer = new view.MutationObserver(records => {
+    const compared = new Set<Node>()
     if(records.some(record => record.target === root.head || record.target.parentNode === root.head
       || record.attributeName === "id" || record.type === "characterData" && [7, 8].includes(record.target.nodeType)
-      || record.type === "childList" && [...record.addedNodes, ...record.removedNodes].some(node => [1, 7, 8].includes(node.nodeType)))) refresh()
+      || record.type === "childList" && ([...record.addedNodes, ...record.removedNodes].some(node => [7, 8].includes(node.nodeType))
+        || [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1) && changesPolicies(record, compared)))) refresh()
   })
   observer.observe(root, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["id"]})
   root.addEventListener("scroll", updateGraphicMarkers, {capture: true, passive: true})

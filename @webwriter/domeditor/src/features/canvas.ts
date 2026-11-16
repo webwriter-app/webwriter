@@ -76,9 +76,27 @@ export class CanvasFeature extends EditorFeature {
     return true
   }
 
+  /** The conversion test reads every child of BODY and is requested with each
+   * selection change. Its answer only depends on which nodes BODY contains
+   * directly, so it is kept until one of them is added, removed or retyped. */
+  private bodyContentConvertible: boolean | null = null
+  private noteMutations(records: MutationRecord[]) {
+    if(records.some(record => record.target === document.body ? record.type === "childList"
+      : record.type === "characterData" && record.target.parentNode === document.body)) this.bodyContentConvertible = null
+    return records.length > 0
+  }
+  private readonly observeMutations = (records: MutationRecord[]) => { if(this.noteMutations(records)) this.schedule() }
+
   getState(): DocumentLayoutState {
-    return {mode: this.active ? "canvas" : "document", zoom: Math.round(this.zoom * 100),
-      canConvert: getDocumentRoot() === document.body && (this.active || this.canConvertContent(document.body.childNodes))}
+    let canConvert = getDocumentRoot() === document.body
+    if(canConvert && !this.active) {
+      // Commands ask before their mutation records are delivered. Records
+      // taken here still schedule their refresh when they would have arrived.
+      if(!this.observer) this.bodyContentConvertible = null
+      else if(this.noteMutations(this.observer.takeRecords())) queueMicrotask(this.schedule)
+      canConvert = this.bodyContentConvertible ??= this.canConvertContent(document.body.childNodes)
+    }
+    return {mode: this.active ? "canvas" : "document", zoom: Math.round(this.zoom * 100), canConvert}
   }
 
   private isEmptyParagraph(element: Element): element is HTMLParagraphElement {
@@ -630,7 +648,8 @@ export class CanvasFeature extends EditorFeature {
       .◆canvas-control-buttons { display: contents; }
     `)
     this.editor.appendix.adoptedStyleSheets = [...this.editor.appendix.adoptedStyleSheets, this.stylesheet]
-    this.observer = new MutationObserver(this.schedule)
+    this.bodyContentConvertible = null
+    this.observer = new MutationObserver(this.observeMutations)
     this.observer.observe(document.documentElement, {subtree: true, childList: true, attributes: true, characterData: true})
     window.addEventListener("blur", this.release)
     window.addEventListener("resize", this.onResize)

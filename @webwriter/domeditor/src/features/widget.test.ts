@@ -37,6 +37,7 @@ class LitOptionsWidget extends LitElement {
   static properties = {
     fooBar: {type: String, attribute: "foo-bar", reflect: true},
     explicit: {type: String, attribute: "lit-name", reflect: true},
+    notAllowed: {type: Boolean, attribute: "not-allowed", reflect: true},
     localOnly: {type: String, attribute: false},
     stateOnly: {state: true},
     allowRetry: {type: Boolean, attribute: "allow-retry", reflect: true},
@@ -55,6 +56,7 @@ class LitOptionsWidget extends LitElement {
   declare allowRetry: boolean
   declare fooBar: string
   declare explicit: string
+  declare notAllowed: boolean
   localOnly = "local"
   stateOnly = "state"
   protected createRenderRoot() { return this }
@@ -95,6 +97,91 @@ beforeEach(() => {
 afterAll(() => editor.destroy())
 
 describe("WidgetFeature", () => {
+  const widgetTransactionEvent = (widget: Element, phase: "start" | "end") => {
+    widget.dispatchEvent(new CustomEvent(`ww-transaction${phase}`, {bubbles: true, composed: true}))
+  }
+
+  it("groups delayed widget changes and participant data through the last nested end, excluding remote changes", async () => {
+    editor.schema.extendWidgets([{tagName: "demo-widget", editingConfig: {sharedData: true}}])
+    document.body.innerHTML = '<demo-widget id="outer"><demo-widget id="inner"><script type="application/json" slot="data">{"answer":0}</script></demo-widget></demo-widget>'
+    editor.features.widget.refresh()
+    editor.doc.syncFromDOM()
+    const outer = document.querySelector("#outer")!, inner = document.querySelector("#inner")!
+    const data = inner.querySelector("script")!
+    await editor.doc.widgetData.whenReady()
+    widgetTransactionEvent(outer, "start")
+    outer.setAttribute("status", "updated")
+    widgetTransactionEvent(inner, "start")
+    widgetTransactionEvent(outer, "end")
+    await new Promise(resolve => setTimeout(resolve))
+    editor.doc.doc.transact(() => {
+      const shared = sharedDOMBody(editor.doc.doc).toArray().find(node => node instanceof Y.XmlElement && node.getAttribute("id") === "outer") as Y.XmlElement
+      shared.setAttribute("remote", "retained")
+    }, "remote")
+    inner.setAttribute("status", "updated")
+    data.textContent = '{"answer":1}'
+    widgetTransactionEvent(inner, "end")
+
+    editor.doc.undo()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(outer.getAttribute("remote")).toBe("retained")
+    expect(outer.hasAttribute("status")).toBe(false)
+    expect(inner.hasAttribute("status")).toBe(false)
+    expect(data.textContent).toBe('{"answer":0}')
+    editor.doc.redo()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(outer.getAttribute("status")).toBe("updated")
+    expect(inner.getAttribute("status")).toBe("updated")
+    expect(data.textContent).toBe('{"answer":1}')
+  })
+
+  it("closes abandoned groups after removal, timeout, and feature teardown", async () => {
+    document.body.innerHTML = '<demo-widget id="removed"></demo-widget><demo-widget id="retained"></demo-widget><p>Text</p>'
+    const removed = document.querySelector("#removed")!, retained = document.querySelector("#retained")!
+    const p = document.querySelector("p")!
+    editor.doc.syncFromDOM()
+    widgetTransactionEvent(removed, "start")
+    removed.remove()
+    await new Promise(resolve => setTimeout(resolve))
+    p.setAttribute("title", "separate")
+    editor.doc.undo()
+    expect(p.hasAttribute("title")).toBe(false)
+    expect(document.querySelector("#removed")).toBeNull()
+
+    vi.useFakeTimers()
+    try {
+      widgetTransactionEvent(retained, "start")
+      retained.setAttribute("status", "timed out")
+      vi.advanceTimersByTime(10_000)
+      p.setAttribute("title", "after timeout")
+      editor.doc.undo()
+      expect(retained.getAttribute("status")).toBe("timed out")
+      expect(p.hasAttribute("title")).toBe(false)
+
+      widgetTransactionEvent(retained, "start")
+      retained.setAttribute("status", "closed on teardown")
+      editor.features.widget.disable()
+      p.setAttribute("title", "after teardown")
+      editor.doc.undo()
+      expect(retained.getAttribute("status")).toBe("closed on teardown")
+      expect(p.hasAttribute("title")).toBe(false)
+    }
+    finally {
+      vi.useRealTimers()
+      editor.features.widget.enable()
+    }
+  })
+
+  it("leaves history untouched for an empty widget transaction", () => {
+    document.body.innerHTML = '<demo-widget id="empty"></demo-widget>'
+    const widget = document.querySelector("#empty")!
+    editor.doc.syncFromDOM()
+    widgetTransactionEvent(widget, "start")
+    widgetTransactionEvent(widget, "end")
+    editor.doc.undo()
+    expect(document.querySelector("#empty")).toBeNull()
+  })
+
   it("prefills newly connected empty widgets recursively from their content rules", async () => {
     editor.schema.extendWidgets([
       {tagName: "demo-choice", editingConfig: {content: "demo-choice-item+"}},
@@ -593,6 +680,45 @@ describe("widget options", () => {
     expect(() => set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "handler", value: "evil()"})).toThrow("cannot be set")
     expect(() => set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "unknown", value: 1})).toThrow("no option")
     expect(() => set({type: "setWidgetOption", path: [0], localName: "other-widget", name: "count", value: 1})).toThrow("changed")
+  })
+
+  it("writes the negative attribute for an inverted boolean option", async () => {
+    document.body.innerHTML = '<demo-lit-options id="options-widget"></demo-lit-options>'
+    const widget = document.querySelector("demo-lit-options") as LitOptionsWidget
+    await widget.updateComplete
+    Object.defineProperty(widget, "dynamicOptions", {value: {notAllowed: {type: Boolean, inverted: true}}})
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const options = () => editor.features.widget.getOptionsState([widget])!.options
+    expect(options().find(option => option.name === "notAllowed")!.value).toBe(true)
+    expect(widget.hasAttribute("not-allowed")).toBe(false)
+
+    editor.getActionHandler("setWidgetOption")({type: "setWidgetOption", path: [0], localName: "demo-lit-options", name: "notAllowed", value: false})
+    expect(widget.hasAttribute("not-allowed")).toBe(true)
+    expect(options().find(option => option.name === "notAllowed")!.value).toBe(false)
+    await widget.updateComplete
+    editor.doc.undo()
+    expect(widget.hasAttribute("not-allowed")).toBe(false)
+    expect(options().find(option => option.name === "notAllowed")!.value).toBe(true)
+  })
+
+  it("captures attributes reflected in a Lit update after a property-only drawer write", async () => {
+    document.body.innerHTML = '<demo-lit-options id="options-widget"></demo-lit-options>'
+    const widget = document.querySelector("demo-lit-options") as LitOptionsWidget
+    await widget.updateComplete
+    Object.defineProperty(widget, "dynamicOptions", {value: {notAllowed: {type: Boolean, attribute: false}}})
+    editor.doc.syncFromDOM()
+    editor.getActionHandler("setWidgetOption")({type: "setWidgetOption", path: [0], localName: "demo-lit-options", name: "notAllowed", value: true})
+    expect(widget.hasAttribute("not-allowed")).toBe(false)
+    await widget.updateComplete
+    expect(widget.hasAttribute("not-allowed")).toBe(true)
+
+    widget.setAttribute("title", "separate edit")
+    editor.doc.undo()
+    expect(widget.hasAttribute("title")).toBe(false)
+    expect(widget.hasAttribute("not-allowed")).toBe(true)
+    editor.doc.undo()
+    expect(widget.hasAttribute("not-allowed")).toBe(false)
   })
 
   it("uses Lit attribute metadata unless the option overrides it", async () => {

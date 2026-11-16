@@ -2770,6 +2770,94 @@ for(let attempt = 0; !lifecycleFrame.contentWindow?.editor && attempt < 200; att
 assert(lifecycleFrame.contentWindow?.editor, "lifecycle fixture did not initialize")
 document.body.focus({preventScroll: true})
 
+await check("widget-owned marks work through the ribbon and built-in font picker", async () => {
+  const {AppRibbon} = await import("../src/components/ribbon")
+  const ribbon = new AppRibbon()
+  const frame = document.createElement("iframe")
+  const container = document.createElement("div")
+  container.style.cssText = "position:fixed;left:0;top:0;width:900px;background:white"
+  frame.style.cssText = "width:100%;height:250px;border:0"
+  frame.srcdoc = '<!doctype html><body><p>Outside</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  container.append(ribbon, frame)
+  nativeRootEditor.addAppendix(container)
+  // Exercise the expanded toolbar inside the smaller headless viewport.
+  Object.assign(ribbon, {heightConstrained: false, expanded: true})
+  try {
+    for(let attempt = 0; !frame.contentWindow?.editor && attempt < 160; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    const doc = frame.contentDocument!, view = frame.contentWindow as unknown as typeof globalThis & {editor: DOMEditor}
+    assert(view.editor, "native editor frame did not initialize")
+    const child = view.editor, mark = child.features.mark
+    const name = "native-marked-widget"
+    view.customElements.define(name, class extends view.HTMLElement { static marks = "b a font-family" })
+    child.schema.extendWidgets([{tagName: name}])
+    const widget = doc.createElement(name)
+    const root = widget.attachShadow({mode: "open"})
+    root.innerHTML = '<div contenteditable="true" tabindex="0">Widget label</div>'
+    const field = root.querySelector("div")!
+    doc.body.append(widget)
+    const focusTrace: string[] = []
+    const identifyFocus = () => `${doc.hasFocus()}:${doc.activeElement?.localName}:${root.activeElement?.localName}`
+    field.addEventListener("focus", () => focusTrace.push(`focus ${identifyFocus()}`))
+    field.addEventListener("blur", () => focusTrace.push(`blur ${identifyFocus()}`))
+    const report = () => widget.dispatchEvent(new view.CustomEvent("ww-markstate", {bubbles: true, composed: true,
+      detail: {b: widget.hasAttribute("bold"), a: widget.getAttribute("link") ?? false, "font-family": widget.getAttribute("font") ?? ""}}))
+    widget.addEventListener("ww-mark", event => {
+      const {name, value} = (event as CustomEvent).detail
+      if(name === "b") widget.toggleAttribute("bold")
+      if(name === "a" && value) widget.setAttribute("link", value)
+      if(name === "font-family" && value) {
+        focusTrace.push(`command ${identifyFocus()}`)
+        widget.setAttribute("font", value)
+      }
+      event.preventDefault()
+      report()
+    })
+    const updateRibbon = () => {
+      const state = mark.getState()
+      Object.assign(ribbon, {canMark: state.canMark, marks: state.marks, allowedMarks: state.allowedMarks ?? null,
+        widgetMarks: state.widgetMarks ?? null, markStyles: mark.getStyleState()})
+    }
+    ribbon.addEventListener("ribbon-button-click", event => {
+      if((event as CustomEvent).detail.label === "mark:b") mark.toggleMark("b")
+      updateRibbon()
+    })
+    ribbon.addEventListener("ribbon-combobox-change", event => {
+      const {name, value} = (event as CustomEvent).detail
+      if(name === "font-family") mark.setStyleMark(name, value)
+      updateRibbon()
+    })
+    field.focus()
+    report()
+    updateRibbon()
+    await ribbon.updateComplete
+    await layoutFrame()
+    const drawer = ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Marks"]')!
+    const button = (mark: string) => drawer.querySelector<RibbonButton>(`ribbon-button[action="mark:${mark}"]`)!
+    assert(!button("b").disabled && button("i").disabled, "widget permissions did not reach the ribbon")
+    button("b").shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await ribbon.updateComplete
+    assert(widget.hasAttribute("bold") && button("b").active, "the ribbon did not apply and display widget bold")
+    assert(button("b").getBoundingClientRect().width > 12, "the bold control is clipped")
+
+    await ribbon.openFontPicker("font-family")
+    await layoutFrame()
+    const combo = drawer.querySelector('ribbon-combobox[name="font-family"]')!.shadowRoot!.querySelector("font-combobox")!
+    const listbox = combo.shadowRoot!.querySelector<HTMLElement>(".listbox")!
+    const options = [...listbox.querySelectorAll<HTMLElement>("[role=option]")]
+    const box = listbox.getBoundingClientRect()
+    assert(options.length >= 7 && box.width > 100 && box.width < 185 && box.left >= -1 && box.right <= container.clientWidth + 1,
+      `built-in font list does not fit its ribbon container: ${JSON.stringify(box.toJSON())}`)
+    assert(!listbox.textContent?.includes("Custom fonts"), "widget font list offered custom fonts")
+    options.find(option => option.textContent?.includes("Georgia"))!.click()
+    await layoutFrame()
+    assert(widget.getAttribute("font")?.replaceAll('"', '') === "Georgia, serif", "font picker lost the widget command target")
+    focusTrace.push(`before restore ${identifyFocus()}`)
+    assert(mark.focusWidgetText() && root.activeElement === field, `the editor could not restore widget focus: ${focusTrace.join(", ")}, ${identifyFocus()}`)
+    assert(!button("a").shadowRoot!.querySelector(".submenu-trigger"), "link offered extra link kinds for widget text")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); container.remove() }
+})
+
 await check("widget shadow interactions capture hosts while slotted children stay editable", async () => {
   editor.schema.extendWidgets([{tagName: "native-content-capture-widget", editingConfig: {content: "flow*"}}])
   for(const mode of ["open", "closed"] as const) {

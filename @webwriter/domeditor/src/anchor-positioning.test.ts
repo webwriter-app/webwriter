@@ -38,6 +38,68 @@ describe("shared UI anchor positioning", () => {
     expect(sheets().some(sheet => source(sheet).includes("--ww-ui-anchor-"))).toBe(false)
   })
 
+  it("refreshes stable bindings without replacing adopted sheets or rereading authored names", () => {
+    document.body.innerHTML = '<button></button><div style="anchor-name: --authored">Target</div>'
+    const control = document.querySelector("button")!, target = document.querySelector("div")!
+    const ui = positioner()
+    ui.bind(control, target)
+    ui.refresh()
+    const adopted = sheets(), css = source(adopted.at(-1)!)
+    expect(css).toContain("--authored")
+    const assignments: CSSStyleSheet[][] = []
+    const original = Object.getOwnPropertyDescriptor(document, "adoptedStyleSheets")
+    let current = adopted
+    Object.defineProperty(document, "adoptedStyleSheets", {configurable: true,
+      get: () => current,
+      set: value => { assignments.push(value); current = value }})
+    const style = vi.spyOn(window, "getComputedStyle")
+    try {
+      ui.refresh()
+      ui.refresh()
+      expect(assignments).toEqual([])
+      expect(style).not.toHaveBeenCalled()
+      expect(source(current.at(-1)!)).toBe(css)
+    }
+    finally {
+      if(original) Object.defineProperty(document, "adoptedStyleSheets", original)
+      else delete (document as unknown as Record<string, unknown>).adoptedStyleSheets
+      document.adoptedStyleSheets = current
+    }
+  })
+
+  it("rereads authored anchor names after an authored style source of a target changes", async () => {
+    document.body.innerHTML = '<button></button><div style="anchor-name: --authored">Target</div>'
+    const control = document.querySelector("button")!, target = document.querySelector<HTMLElement>("div")!
+    const ui = positioner()
+    ui.bind(control, target)
+    ui.refresh()
+    expect(source(sheets().at(-1)!)).toContain("--authored,--ww-ui-anchor-")
+
+    target.style.setProperty("anchor-name", "--renamed")
+    await Promise.resolve()
+    ui.refresh()
+    const renamed = source(sheets().at(-1)!)
+    expect(renamed).toContain("--renamed,--ww-ui-anchor-")
+    expect(renamed).not.toContain("--authored")
+
+    target.removeAttribute("style")
+    await Promise.resolve()
+    ui.refresh()
+    expect(source(sheets().at(-1)!)).toMatch(/anchor-name: ?--ww-ui-anchor-\d+ !important/)
+  })
+
+  it("never mistakes its own anchor names for authored ones when a target is rebound", () => {
+    document.body.innerHTML = "<button></button><button></button><div>Target</div>"
+    const [first, second] = document.querySelectorAll("button"), target = document.querySelector("div")!
+    const ui = positioner()
+    ui.bind(first, target)
+    ui.refresh()
+    ui.release(first)
+    ui.bind(second, target)
+    ui.refresh()
+    expect(source(sheets().at(-1)!).match(/--ww-ui-anchor-\d+/g)).toHaveLength(2)
+  })
+
   it("calibrates a Gecko frame against its target when the gutter estimate is short", () => {
     document.body.innerHTML = '<button id="frame"></button><p>Target</p>'
     const frame = document.querySelector("button")!

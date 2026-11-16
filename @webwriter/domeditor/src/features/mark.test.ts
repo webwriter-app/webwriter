@@ -27,6 +27,66 @@ function selectText(node: Text, start = 0, end = node.length) {
 
 const cleanHTML = () => editor.toHTML(true)
 
+class MarkedWidget extends HTMLElement {
+  static marks = "b i a color font-family popup ruby"
+
+  constructor() {
+    super()
+    this.attachShadow({mode: "open"}).innerHTML = '<div contenteditable="true" data-ww-text data-ww-marks="b a color font-family" tabindex="0">Label</div><slot></slot>'
+  }
+}
+customElements.define("demo-marked-widget", MarkedWidget)
+
+describe("widget-owned text marks", () => {
+  it("routes declared commands and state through the widget host, including a plain link and the bold shortcut", () => {
+    editor.schema.extendWidgets([{tagName: "demo-marked-widget", editingConfig: {content: "p*", marks: "i"}}])
+    const paragraph = setContent('<p>Outside</p><demo-marked-widget><p>Slotted</p></demo-marked-widget>')
+    selectText(paragraph.firstChild as Text)
+    const widget = document.querySelector<MarkedWidget>("demo-marked-widget")!
+    const field = widget.shadowRoot!.querySelector<HTMLElement>("[data-ww-text]")!
+    field.focus()
+    const mark = vi.fn((event: Event) => event.preventDefault())
+    widget.addEventListener("ww-mark", mark)
+    const report = (detail: object) => widget.dispatchEvent(new CustomEvent("ww-markstate", {detail, bubbles: true, composed: true}))
+    report({b: true, i: true, color: "#c00", ruby: true, a: false})
+    expect(feature.getState()).toMatchObject({canMark: true, widgetMarks: ["b", "a", "font-family", "color"], marks: ["b"]})
+    expect(feature.getStyleState()).toEqual({color: "#c00"})
+
+    const shortcut = new KeyboardEvent("keydown", {key: "b", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true, composed: true})
+    field.dispatchEvent(shortcut)
+    expect(shortcut.defaultPrevented).toBe(true)
+    expect(mark.mock.calls.at(-1)?.[0]).toMatchObject({detail: {name: "b", value: undefined}})
+    feature.resolveWidgetShortcut = event => event.key === "d" ? "mark:b" : undefined
+    try {
+      const remapped = new KeyboardEvent("keydown", {key: "d", ctrlKey: true, bubbles: true, composed: true, cancelable: true})
+      field.dispatchEvent(remapped)
+      expect(remapped.defaultPrevented).toBe(true)
+      expect(mark).toHaveBeenCalledTimes(2)
+    }
+    finally { feature.resolveWidgetShortcut = undefined }
+    expect(feature.toggleMark("i")).toBe(false)
+    expect(feature.setStyleMark("font-family", "A web font, serif")).toBe(false)
+    expect(feature.setStyleMark("color", "")).toBe(true)
+    expect(mark.mock.calls.at(-1)?.[0]).toMatchObject({detail: {name: "color", value: null}})
+    expect(feature.togglePopup()).toBe(false)
+    expect(feature.selectLinkKind("cross-reference")).toBe(false)
+    expect(feature.selectLinkKind("link", true)).toBe(true)
+    const draft = feature.getLinkState()!
+    expect(draft).toMatchObject({plainOnly: true, kind: "link", targets: []})
+    expect(feature.editLink({identity: draft.identity, href: "https://example.com/", attributes: {}, kind: "link"})).toBe(true)
+    expect(mark.mock.calls.at(-1)?.[0]).toMatchObject({detail: {name: "a", value: "https://example.com/"}})
+
+    widget.removeEventListener("ww-mark", mark)
+    expect(feature.toggleMark("b")).toBe(false)
+    expect(paragraph.outerHTML).toBe("<p>Outside</p>")
+    field.blur()
+    selectText(widget.querySelector("p")!.firstChild as Text)
+    expect(feature.getState().widgetMarks).toBeUndefined()
+    expect(feature.toggleMark("i")).toBe(true)
+    expect(widget.querySelector("p")!.innerHTML).toBe("<i>Slotted</i>")
+  })
+})
+
 describe("MarkFeature DOM state", () => {
   it("wraps selected inline content in a popup while preserving surrounding markup", () => {
     const paragraph = setContent('<p>Before <em>selected <b>words</b></em> after</p>')
@@ -447,6 +507,59 @@ describe("MarkFeature toggles", () => {
     expect(paragraph.innerHTML).toBe(`<b>before</b>${original}<b>after</b>`)
     expect($.selectedElement).toBe(node)
     expect(cleanHTML()).not.toContain("◆")
+  })
+
+  it("reads and applies marks among many blocks from the selected range alone", () => {
+    const far = Array.from({length: 8}, (_, index) => `<p class="far"><b>far ${index}</b></p>`).join("")
+    document.body.innerHTML = `${far}<p id="first">first <i>italic</i></p><ul><li>item <test-widget>widget</test-widget><!--keep--></li></ul>bare<p id="last"><b>last</b> tail</p>${far}`
+    const first = document.querySelector("#first")!, last = document.querySelector("#last")!
+    const outside = new Set<Node>()
+    for(const paragraph of document.querySelectorAll(".far")) {
+      outside.add(paragraph).add(paragraph.firstChild!).add(paragraph.firstChild!.firstChild!)
+    }
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = cleanHTML()
+    const intersectsNode = vi.spyOn(Range.prototype, "intersectsNode")
+    try {
+      // BODY is the block of a selected element; its other blocks are bold.
+      $.selectElement(first)
+      expect(feature.getState()).toEqual({canMark: true, marks: ["i"]})
+      $.selectElement(last)
+      expect(feature.getState()).toEqual({canMark: true, marks: ["b"]})
+      // Each walk ends at the first node behind the range, the only one
+      // outside it that is tested: far fewer than the 48 outside nodes.
+      expect(intersectsNode.mock.calls.filter(([node]) => outside.has(node)).length).toBeLessThan(10)
+    }
+    finally { intersectsNode.mockRestore() }
+    // A range through a list, an atomic widget and bare text, ending at an
+    // element boundary behind the last paragraph's text.
+    $.selectRange(first.firstChild!, 2, last, last.childNodes.length)
+    expect(feature.getState().canMark).toBe(true)
+    expect(feature.toggleMark("u")).toBe(true)
+    editor.doc.syncFromDOM()
+    expect(document.getSelection()!.toString().replace(/\s+/g, " ")).toContain("rst italic")
+    const underlined = (root: Element) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      let text = ""
+      while(walker.nextNode()) if(walker.currentNode.parentElement!.closest("u")) text += walker.currentNode.textContent
+      return text
+    }
+    expect(underlined(first)).toBe("rst italic")
+    expect(first.textContent).toBe("first italic")
+    const item = document.querySelector("li")!, widget = item.querySelector("test-widget")!
+    expect(underlined(item)).toBe("item ")
+    expect(widget.innerHTML).toBe("widget")
+    expect(widget.nextSibling?.nodeType).toBe(Node.COMMENT_NODE)
+    expect(underlined(last)).toBe("last tail")
+    expect(document.querySelectorAll(".far u")).toHaveLength(0)
+    expect(document.querySelectorAll(".far")).toHaveLength(16)
+    expect(cleanHTML()).not.toMatch(/◆|data-domeditor-mark-boundary/)
+    const marked = cleanHTML()
+    editor.doc.undo()
+    expect(cleanHTML()).toBe(original)
+    editor.doc.redo()
+    expect(cleanHTML()).toBe(marked)
   })
 
   it("clears marks from selected text and images across blocks as one undoable edit", () => {

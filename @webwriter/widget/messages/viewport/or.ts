@@ -1,0 +1,11 @@
+import type {Catalog} from "../../messages.js"
+import type {ViewportMessages} from "./index.js"
+
+export default {
+  viewport: "ଦୃଶ୍ୟ",
+  zoomOut: "ଜୁମ୍ କମାନ୍ତୁ",
+  zoomIn: "ଜୁମ୍ ବଢ଼ାନ୍ତୁ",
+  percent: percent => `${percent}%`,
+  reset: percent => `ଜୁମ୍ ${percent}%। 100% କୁ ରିସେଟ୍ କରନ୍ତୁ`,
+  fit: "ସବୁ ଦେଖାନ୍ତୁ",
+} satisfies Catalog<ViewportMessages>

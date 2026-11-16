@@ -67,6 +67,10 @@ describe("CSS-only Slides layout", () => {
     $.move(paragraph.firstChild!, 2)
     editor.features.selection.processSelection()
     expect(hasPresentationState(slide, "empty-selected")).toBe(false)
+    // Caret paint is installed when processing ends, after its last change to
+    // the DOM. Happy DOM keeps computed styles until a node changes.
+    const probe = document.createElement("span")
+    editor.appendix.append(probe); probe.remove()
     expect(getComputedStyle(paragraph).caretColor).not.toBe("transparent")
     expect(editor.toHTML(true)).not.toContain("◆")
   })

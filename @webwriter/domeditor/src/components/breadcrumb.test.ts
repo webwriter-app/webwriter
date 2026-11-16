@@ -83,6 +83,101 @@ describe("breadcrumb path separators", () => {
   })
 })
 
+describe("breadcrumb outline lookups", () => {
+  const mount = async (configure: (breadcrumb: DomEditorBreadcrumb) => void) => {
+    const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+    configure(breadcrumb)
+    document.body.append(breadcrumb)
+    await breadcrumb.updateComplete
+    return breadcrumb
+  }
+  const toggles = (breadcrumb: DomEditorBreadcrumb) => Array.from(
+    breadcrumb.shadowRoot!.querySelectorAll(".separator-trigger"), toggle => toggle.getAttribute("aria-label"))
+  const sections = (breadcrumb: DomEditorBreadcrumb) => Array.from(
+    breadcrumb.shadowRoot!.querySelectorAll<HTMLElement>(".section-item"), section => section.dataset.sectionPath)
+
+  it("resolves authored paths that are not outline child positions, keeping the first of duplicates", async () => {
+    // The list sits inside a section the outline looks through, and a popup
+    // button is listed where its wrapper is authored.
+    const breadcrumb = await mount(breadcrumb => {
+      breadcrumb.path = [
+        {path: [], name: "Document"},
+        {path: [3, 0], name: "List"},
+        {path: [3, 0, 2], name: "List Item"},
+        {path: [1, 0, 4], name: "Popup"},
+      ]
+      breadcrumb.tree = {path: [], name: "Document", children: [
+        {path: [1, 0, 4], name: "Popup", children: [{path: [7], name: "Popup Content", children: []}]},
+        {path: [3, 0], name: "List", sections: [{path: [3], type: "section", name: "Section"}], children: [
+          {path: [3, 0, 2], name: "List Item", children: []},
+          {path: [1, 0, 4], name: "Popup", sections: [{path: [9], type: "aside", name: "Aside"}], children: []},
+        ]},
+      ]}
+    })
+    expect(toggles(breadcrumb)).toEqual(["Show Document tree", "Show List tree", "Show Popup tree"])
+    expect(sections(breadcrumb)).toEqual(["3"])
+  })
+
+  it("looks up a replaced tree instead of the one it indexed", async () => {
+    const breadcrumb = await mount(breadcrumb => {
+      breadcrumb.path = [{path: [], name: "Document"}, {path: [0], name: "Quote"}]
+      breadcrumb.tree = {path: [], name: "Document", children: [{path: [0], name: "Quote", children: []}]}
+    })
+    expect(toggles(breadcrumb)).toEqual(["Show Document tree"])
+    breadcrumb.tree = {path: [], name: "Document", children: [{path: [0], name: "Quote",
+      sections: [{path: [0, 1], type: "footer", name: "Footer"}], children: [{path: [0, 0], name: "Paragraph", children: []}]}]}
+    await breadcrumb.updateComplete
+    expect(toggles(breadcrumb)).toEqual(["Show Document tree", "Show Quote tree"])
+    expect(sections(breadcrumb)).toEqual(["0,1"])
+  })
+
+  it("reads chevrons and sections from path items while the outline is not supplied", async () => {
+    const breadcrumb = await mount(breadcrumb => {
+      breadcrumb.path = [
+        {path: [], name: "Document"},
+        {path: [0], name: "Quote", sections: [{path: [0, 3], type: "header", name: "Header"}]},
+        {path: [0, 0], name: "Paragraph"},
+      ]
+      breadcrumb.pathItems = [
+        {path: [], name: "", children: [{path: [0], name: "", children: []}]},
+        {path: [0], name: "", sections: [{path: [0, 3], type: "header", name: "Header"}, {path: [0, 1], type: "footer", name: "Footer"}],
+          children: [{path: [0, 0], name: "", children: []}]},
+        {path: [0, 0], name: "", children: []},
+      ]
+    })
+    expect(breadcrumb.tree).toBeNull()
+    expect(toggles(breadcrumb)).toEqual(["Show Document tree", "Show Quote tree"])
+    expect(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list > .separator")).toHaveLength(2)
+    expect(sections(breadcrumb)).toEqual(["0,3", "0,1"])
+
+    // The host replaces the items when the outline changes.
+    breadcrumb.pathItems = [
+      {path: [], name: "", children: [{path: [0], name: "", children: []}]},
+      {path: [0], name: "", children: [{path: [0, 0], name: "", children: []}]},
+      {path: [0, 0], name: "", children: [{path: [0, 0, 0], name: "", children: []}]},
+    ]
+    await breadcrumb.updateComplete
+    expect(toggles(breadcrumb)).toEqual(["Show Document tree", "Show Quote tree", "Show Paragraph tree"])
+    expect(sections(breadcrumb)).toEqual(["0,3"])
+  })
+
+  it("prefers path items over a stale tree for the path, and the tree for the open outline", async () => {
+    const breadcrumb = await mount(breadcrumb => {
+      breadcrumb.path = [{path: [], name: "Document"}, {path: [0], name: "Quote"}]
+      breadcrumb.tree = {path: [], name: "Document", children: [
+        {path: [0], name: "Quote", children: [{path: [0, 0], name: "Paragraph", children: []}]},
+        {path: [1], name: "Other", children: []},
+      ]}
+      breadcrumb.pathItems = [{path: [], name: "", children: [{path: [0], name: "", children: []}]}, {path: [0], name: "", children: []}]
+    })
+    expect(toggles(breadcrumb)).toEqual(["Show Document tree"])
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
+    await breadcrumb.updateComplete
+    const menu = breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!
+    expect(menu.groups[0].buttons.map(button => typeof button === "string" ? button : button.action)).toEqual(["outline:0", "outline:1"])
+  })
+})
+
 describe("image hotspot breadcrumb indicator", () => {
   it("places a hand click indicator beside the Image label", async () => {
     const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb

@@ -1177,13 +1177,20 @@ export class EditingSelection {
     const range = this.range
     // Cloning selected content runs custom-element constructors. Selection
     // queries must inspect the live DOM without creating widget instances.
-    const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_ELEMENT, {
-      acceptNode: node => this.includesNode(node) && range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
-    })
-    while(walker.nextNode()) {
-      if(!isMarkElement(walker.currentNode) && !isSectionElement(walker.currentNode)
-        && !inlineMathRoot(walker.currentNode) && !isParagraphContent(walker.currentNode)) return false
+    // Descend only through the included elements the range intersects, found
+    // from its boundaries: a range across blocks has BODY as its ancestor,
+    // and testing each of BODY's children costs time proportional to the
+    // document for every selection change.
+    const textual = (parent: Node): boolean => {
+      for(const node of childNodesInRange(parent, range)) {
+        if(!isElement(node) || !this.includesNode(node)) continue
+        if(!isMarkElement(node) && !isSectionElement(node)
+          && !inlineMathRoot(node) && !isParagraphContent(node)) return false
+        if(!textual(node)) return false
+      }
+      return true
     }
+    if(!textual(range.commonAncestorContainer)) return false
     return Boolean(range.toString())
   }
 
@@ -1323,23 +1330,14 @@ export class EditingSelection {
     const range = this.range
     if(range.collapsed || !(range.commonAncestorContainer instanceof Element)) return []
     const excluded: Element[] = []
-    const childAtBoundary = (parent: Element, container: Node, offset: number, start: boolean): ChildNode | null => {
-      if(container === parent) return parent.childNodes.item(start ? offset : offset - 1)
-      if(parent.contains(container)) {
-        let child = container
-        while(child.parentNode !== parent) child = child.parentNode!
-        return child as ChildNode
-      }
-      return start ? parent.firstChild : parent.lastChild
-    }
     const visit = (element: Element) => {
       if(!range.intersectsNode(element)) return
       if(!this.includesNode(element) && !element.contains(this.flowRoot)) {
         excluded.push(element)
         return
       }
-      const firstChild = childAtBoundary(element, range.startContainer, range.startOffset, true)
-      const lastChild = childAtBoundary(element, range.endContainer, range.endOffset, false)
+      const firstChild = rangeBoundaryChild(element, range.startContainer, range.startOffset, true)
+      const lastChild = rangeBoundaryChild(element, range.endContainer, range.endOffset, false)
       if(!firstChild || !lastChild) return
       for(let child: ChildNode | null = firstChild; child; child = child.nextSibling) {
         if(isElement(child)) visit(child)
@@ -1664,6 +1662,74 @@ export function getContainer(node: Node) {
   while(element && (isMarkElement(element) || isSectionElement(element))
     && !boardLayoutRole(element) && slideLayoutRole(element) !== "slide" && !isOutOfFlow(element)) element = element.parentElement
   return element!
+}
+
+/** The child of `parent` at one boundary of a range that reaches into or
+ * across it: the child holding or beside that boundary, else the outermost
+ * child on that side. */
+function rangeBoundaryChild(parent: Node, container: Node, offset: number, start: boolean): ChildNode | null {
+  if(container === parent) return parent.childNodes.item(start ? offset : offset - 1)
+  if(parent.contains(container)) {
+    let child = container
+    while(child.parentNode !== parent) child = child.parentNode!
+    return child as ChildNode
+  }
+  return start ? parent.firstChild : parent.lastChild
+}
+
+/** The children of `parent` that `range` intersects, in order. They lie
+ * between the range's boundaries, so only those are tested: testing every
+ * child takes time proportional to the parent, which is the whole document
+ * for a selection among BODY's children. */
+export function childNodesInRange(parent: Node, range: Range): ChildNode[] {
+  if(!range.intersectsNode(parent)) return []
+  const first = rangeBoundaryChild(parent, range.startContainer, range.startOffset, true)
+  const last = rangeBoundaryChild(parent, range.endContainer, range.endOffset, false)
+  // Both boundaries at one position in `parent` have no child between them.
+  if(!first || !last || first.previousSibling === last) return []
+  const nodes: ChildNode[] = []
+  for(let child: ChildNode | null = first; child; child = child.nextSibling) {
+    if(range.intersectsNode(child)) nodes.push(child)
+    if(child === last) break
+  }
+  return nodes
+}
+
+/** The nodes of the given types below `root` that `range` intersects, in
+ * document order, except the ancestors of the range's start. The walk begins
+ * at the range's start and ends at the first node past its end, instead of
+ * testing every node of `root`. */
+export function* nodesInRange(range: Range, root: Node, whatToShow: number): Generator<Node, void, undefined> {
+  const walker = (root.ownerDocument ?? root as Document).createTreeWalker(root, whatToShow)
+  const {startContainer, startOffset} = range
+  if(startContainer !== root && !root.contains(startContainer)) {
+    // A range that starts outside `root` can intersect any of its nodes.
+    for(let node = walker.nextNode(); node; node = walker.nextNode()) if(range.intersectsNode(node)) yield node
+    return
+  }
+  const data = startContainer.nodeType !== Node.ELEMENT_NODE && startContainer.nodeType !== Node.DOCUMENT_NODE
+    && startContainer.nodeType !== Node.DOCUMENT_FRAGMENT_NODE
+  if(data && startContainer === root) return
+  const first = data ? startContainer : startContainer.childNodes.item(startOffset)
+  if(first) {
+    walker.currentNode = first
+    if(whatToShow >>> (first.nodeType - 1) & 1) {
+      if(!range.intersectsNode(first)) return
+      yield first
+    }
+  }
+  else {
+    // The range starts behind the last child: continue after that subtree.
+    let last: Node = startContainer
+    while(last.lastChild) last = last.lastChild
+    walker.currentNode = last
+  }
+  // Every node from here on begins at or after the range's start, so the
+  // first one that does not intersect lies past the range's end.
+  for(let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if(!range.intersectsNode(node)) return
+    yield node
+  }
 }
 
 /** Splits the children of the point's container into those before the point

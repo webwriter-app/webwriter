@@ -62,7 +62,7 @@ import type {DocumentBlobAsset, EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
 import listMarkerStyleString from "./document-list-markers.css?raw"
 import * as Y from "yjs"
-import {offlinePackageStyleAttribute, originalPackageEntriesAttribute, originalURLAttribute, serializeDoctype, type HTMLDocumentParts} from "./serialization-primitives"
+import {offlineAssetsId, offlinePackageStyleAttribute, originalPackageEntriesAttribute, originalURLAttribute, serializeDoctype, type HTMLDocumentParts} from "./serialization-primitives"
 import type {DocumentHeadState} from "./document-head"
 import {upgradeBundledDocumentThemes} from "./document-themes"
 import {getSectionOption, isSectionElement} from "./sections"
@@ -553,8 +553,13 @@ export class DOMEditor {
         childList: true, subtree: true, characterData: true, attributes: true,
       })
       if(!initialYDoc && !options.reader) this.#ensureDocumentContent()
-      const beforeSyncFromDOM = options.reader ? undefined : (local: boolean) => {
+      const beforeSyncFromDOM = options.reader ? undefined : (local: boolean, records?: readonly MutationRecord[]) => {
         this.features.widget.flushMutations(local)
+        // The repairs below each query the whole document. Typed text can only
+        // empty or fill a disclosure or popup that contains it; it cannot move
+        // attribution, add frames or change any other structure they read.
+        if(records?.length && records.every(record => record.type === "characterData"
+          && !record.target.parentElement?.closest("details, [popover], .ww-popup"))) return
         this.features.attribution.normalize()
         this.features.list.ensureDetailsBodyContent()
         this.features.dialog.ensurePopupContent()
@@ -643,6 +648,7 @@ export class DOMEditor {
 
   allowsFeatureEvent(feature: import("./features").EditorFeature, event: Event) {
     if(!this.options.reader || feature.readerPermission === "view") return true
+    if(feature === this.features.widget && ["ww-transactionstart", "ww-transactionend"].includes(event.type)) return true
     const target = event.target instanceof Element ? event.target : event.target instanceof Node ? event.target.parentElement : null
     if(feature.readerPermission === "select") {
       // Release/cleanup events must still finish a gesture outside its region.
@@ -881,9 +887,42 @@ export class DOMEditor {
     if(!selection?.anchorNode) return
 
     this.doc.updateLocalSelection(selection)
-    this.postMarkState()
-    this.postCommentState()
-    this.postSelectionPath()
+    this.queueSelectionState({mark: true, comment: true, path: true})
+  }
+
+  readonly #queuedSelectionState = {mark: false, comment: false, path: false}
+  #selectionStateQueued = false
+  readonly #lastReactivePosts = new Map<string, string>()
+  #reactivePosting = false
+
+  /** Publishes selection-derived state once after everything that reacted to
+   * an edit or selection change has run. One keystroke reaches the mark,
+   * selection and comment features and the selection listener separately;
+   * each used to compute and post the same state itself. Commands that must
+   * answer the host synchronously keep calling the post methods directly. */
+  queueSelectionState(parts: {mark?: boolean, comment?: boolean, path?: boolean}) {
+    const queued = this.#queuedSelectionState
+    queued.mark ||= Boolean(parts.mark)
+    queued.comment ||= Boolean(parts.comment)
+    queued.path ||= Boolean(parts.path)
+    if(this.#selectionStateQueued) return
+    this.#selectionStateQueued = true
+    queueMicrotask(() => {
+      this.#selectionStateQueued = false
+      const {mark, comment, path} = queued
+      queued.mark = queued.comment = queued.path = false
+      if(this.#destroyed) return
+      // Mark state precedes the selection path, the established final bridge
+      // update for a change. A reaction that repeats what the host was last
+      // sent is not posted again.
+      this.#reactivePosting = true
+      try {
+        if(mark) this.postMarkState()
+        if(comment) this.postCommentState()
+        if(path) this.postSelectionPath()
+      }
+      finally { this.#reactivePosting = false }
+    })
   }
 
   private handleMessage = (ev: MessageEvent) => {
@@ -996,6 +1035,14 @@ export class DOMEditor {
   }
 
   private postBridgeEvent<T extends object>(type: string, detail: T) {
+    if(type === selectionChangeEvent || type === markStateChangeEvent || type === commentStateChangeEvent) {
+      let serialized: string | undefined
+      try { serialized = JSON.stringify(detail) }
+      catch { serialized = undefined }
+      if(serialized !== undefined && this.#reactivePosting && this.#lastReactivePosts.get(type) === serialized) return
+      if(serialized === undefined) this.#lastReactivePosts.delete(type)
+      else this.#lastReactivePosts.set(type, serialized)
+    }
     const event = new CustomEvent(type, {detail})
     window.dispatchEvent(event)
     this.postHostMessage({type: event.type, detail: event.detail})
@@ -1290,18 +1337,20 @@ export class DOMEditor {
       })
       return
     }
-    const attributes = this.features.mark.getAttributeState()
-    if(attributes.a?.download !== undefined && /^data:/i.test(attributes.a.href ?? "")) delete attributes.a.href
-    const attachment = this.features.mark.getAttachmentState()
-    this.postBridgeEvent(markStateChangeEvent, {
-      ...this.features.mark.getState(),
-      canRemoveMarks: this.features.mark.canRemoveMarks,
-      styles: this.features.mark.getStyleState(),
-      attributes,
-      link: attachment ? undefined : this.features.mark.getLinkState() ?? undefined,
-      attachment: attachment ?? undefined,
-      ruby: this.features.mark.getRubyState(),
-    })
+    this.postBridgeEvent(markStateChangeEvent, this.features.mark.readSelectionOnce(() => {
+      const attributes = this.features.mark.getAttributeState()
+      if(attributes.a?.download !== undefined && /^data:/i.test(attributes.a.href ?? "")) delete attributes.a.href
+      const attachment = this.features.mark.getAttachmentState()
+      return {
+        ...this.features.mark.getState(),
+        canRemoveMarks: this.features.mark.canRemoveMarks,
+        styles: this.features.mark.getStyleState(),
+        attributes,
+        link: attachment ? undefined : this.features.mark.getLinkState() ?? undefined,
+        attachment: attachment ?? undefined,
+        ruby: this.features.mark.getRubyState(),
+      }
+    }))
   }
 
   /** Sends in-document comment availability and active comment state. */
@@ -1600,10 +1649,28 @@ export class DOMEditor {
       const url = new URL(member.scriptUrl, base).href
       if(bundled.has(url)) widgetEntries.set(member.tagName, url)
     }
-    const offlineImports = this.features.widget.offlineImports(root, widgetEntries)
-    const {js, css} = await bundleOfflineModules(urls, plan.map, base, offlineImports)
+    const {imports, assets} = this.features.widget.offlineRequirements(root, widgetEntries)
+    const {js, css} = await bundleOfflineModules(urls, plan.map, base, imports)
     if(await hasOfflineModuleImports(js)) throw new Error("Offline package bundle contains unresolved module imports")
     const first = scripts[0].script
+    const embeddedAssets = await Promise.all([...assets].map(async ([url, mimeType]) => {
+      try {
+        const resource = await (await this.fetchResource(url)).blob()
+        // The declared MIME type takes priority over the response headers.
+        const blob = mimeType ? new Blob([resource], {type: mimeType}) : resource
+        return [url, await this.blobDataURL(blob)] as const
+      }
+      catch(error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        throw new Error(`Could not embed offline asset ${url}: ${reason}`, {cause: error})
+      }
+    }))
+    const manifest = first.ownerDocument.createElement("script")
+    manifest.id = offlineAssetsId
+    manifest.type = "application/json"
+    // A URL can contain an HTML raw-text terminator.
+    manifest.textContent = JSON.stringify(Object.fromEntries(embeddedAssets)).replaceAll("<", "\\u003c")
+    root.head.insertBefore(manifest, root.head.querySelector(":scope > script"))
     const bundle = documentElement.ownerDocument.createElement("script")
     bundle.type = "module"
     bundle.src = await this.blobDataURL(new Blob([js], {type: "text/javascript"}))

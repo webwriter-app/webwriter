@@ -9,7 +9,7 @@ const {providerDisconnect, sharedDocs, replicas} = vi.hoisted(() => ({providerDi
 const {graphicInputState} = vi.hoisted(() => ({graphicInputState: {
   graphic: {textEditingRange: null as Range | null, focusTextInput: vi.fn()},
   media: {isPlaceholderInteraction: false},
-  mark: {isSVGTextSelection: false}, selection: {captureSelectedElement: null as Element | null},
+  mark: {isSVGTextSelection: false, focusWidgetText: vi.fn(() => false)}, selection: {captureSelectedElement: null as Element | null},
 }}))
 vi.mock("./domeditor", () => ({
   DOMEditor: class {

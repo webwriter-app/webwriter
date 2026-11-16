@@ -438,9 +438,9 @@ describe("canvas document layout", () => {
       Array.from(sheet.cssRules).flatMap(rule => "cssRules" in rule ? Array.from((rule as CSSGroupingRule).cssRules) : [rule])
     ).find(rule => rule instanceof CSSStyleRule && rule.style.cursor === cursor) as CSSStyleRule
     setPresentationState(document.body, "canvas-hand")
-    expect(cursorRules("grab").selectorText).toContain("body:where(body):nth-child(n) *")
+    expect(cursorRules("grab").selectorText).toContain("body:where(body):not(.ww-inactive-presentation) *")
     setPresentationState(document.body, "canvas-panning")
-    expect(cursorRules("grabbing").selectorText).toContain("body:where(body):nth-child(n) *")
+    expect(cursorRules("grabbing").selectorText).toContain("body:where(body):not(.ww-inactive-presentation) *")
     editor.features.canvas.convert("document")
     expect(getComputedStyle(document.body).cursor).not.toBe("default")
   })

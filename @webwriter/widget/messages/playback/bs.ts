@@ -1,0 +1,12 @@
+import type {Catalog} from "../../messages.js"
+import type {PlaybackMessages} from "./index.js"
+
+export default {
+  play: "Pokreni",
+  pause: "Pauziraj",
+  step: "Korak naprijed",
+  back: "Korak nazad",
+  reset: "Vrati",
+  seek: "Pozicija",
+  rate: (_rate, shown) => `Brzina: ${shown}×`,
+} satisfies Catalog<PlaybackMessages>

@@ -146,11 +146,66 @@ function splitHTML(html: string): {parts: string[], urls: string[]} {
   return {parts, urls}
 }
 
-async function digestURL(url: string): Promise<string> {
-  if(!globalThis.crypto?.subtle || typeof TextEncoder === "undefined") throw new Error("SHA-256 is unavailable for document recovery")
-  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(url))
-  return toHexString(new Uint8Array(bytes))
+// The memo keeps its own copy of every URL it has hashed, which duplicates the
+// inline media of the open document in memory. 32 MiB of URL text holds a few
+// dozen embedded photos; a document with more is memoised in part instead of
+// growing the application without limit.
+const urlDigestMemoCharacters = 32 * 1024 * 1024
+
+/** Remembers the digests of inline data URLs between writes. A draft's
+ * embedded media is the same on nearly every checkpoint, so only media that
+ * is new to the draft is hashed. */
+export function createURLDigestMemo(limit = urlDigestMemoCharacters) {
+  const entries = new Map<string, {key: string, digest: string}>()
+  let characters = 0
+  const remember = (bytes: Uint8Array, digest: string, used: Set<string>) => {
+    if(typeof TextDecoder === "undefined") return
+    // A URL sliced from the serialized document would keep that whole string
+    // alive for as long as it is a key. Decode a copy that stands alone.
+    const key = new TextDecoder("utf-8", {ignoreBOM: true}).decode(bytes)
+    if(entries.has(key)) { used.add(key); return }
+    // Room is made by forgetting the URLs unused for longest, but none of this
+    // write's own: a document over the limit keeps a stable part memoised
+    // instead of replacing every entry on every write.
+    let kept = key.length
+    for(const candidate of used) kept += candidate.length
+    if(kept > limit) return
+    for(const candidate of entries.keys()) {
+      if(characters + key.length <= limit) break
+      if(used.has(candidate)) continue
+      entries.delete(candidate)
+      characters -= candidate.length
+    }
+    entries.set(key, {key, digest})
+    characters += key.length
+    used.add(key)
+  }
+  return {
+    /** Total length of the URLs currently remembered. */
+    get characters() { return characters },
+    /** SHA-256 digests, by URL, for the distinct URLs of one write. */
+    async digests(urls: Iterable<string>): Promise<Map<string, string>> {
+      const used = new Set<string>()
+      return new Map(await Promise.all([...new Set(urls)].map(async url => {
+        const known = entries.get(url)
+        if(known) {
+          // Reinsert under the stored copy, not under this write's slice.
+          entries.delete(known.key)
+          entries.set(known.key, known)
+          used.add(known.key)
+          return [url, known.digest] as const
+        }
+        if(!globalThis.crypto?.subtle || typeof TextEncoder === "undefined") throw new Error("SHA-256 is unavailable for document recovery")
+        const bytes = new TextEncoder().encode(url)
+        const digest = toHexString(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
+        remember(bytes, digest, used)
+        return [url, digest] as const
+      })))
+    },
+  }
 }
+
+const urlDigests = createURLDigestMemo()
 
 const blobChunkSize = 1024 * 1024
 const blobDigests = new WeakMap<Blob, Promise<string>>()
@@ -300,7 +355,7 @@ export async function writeDocumentRecovery(record: DocumentRecovery, input: str
   const documentKey = record.documentKey ?? htmlKey
   const snapshot = documentKey ? {...record, documentKey} : record
   const {parts, urls} = splitHTML(html)
-  const digests = new Map(await Promise.all([...new Set(urls)].map(async url => [url, await digestURL(url)] as const)))
+  const digests = await urlDigests.digests(urls)
   const assetDigests = urls.map(url => digests.get(url)!)
   const prepared = await prepareBlobAssets(blobAssets)
   const db = await openDatabase()

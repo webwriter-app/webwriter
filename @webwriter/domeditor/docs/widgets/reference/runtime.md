@@ -19,10 +19,23 @@ The widget class extends `HTMLElement` or a compatible class such as [`LitElemen
 | `static convertFrom` / `convertFrom`, `static convertTo` / `convertTo` | [DOM conversions and file import or export](../guides/conversions.md). |
 | `static aggregate` | [Aggregated View](aggregated-view.md) declaration for aggregate views. |
 | `static offlineImports(element)` | [Select optional dynamic imports](#offline-imports) for Offline HTML. |
+| `static offlineAssets(element)` | [Declare runtime files](#offline-assets) for Offline HTML. |
 
 The authoring tool gives an installed widget a persistent `id` if the widget has none. During editing, the authoring tool adds `contenteditable=""` to widgets that have no `contenteditable` attribute. The authoring tool saves and shares authored values such as `contenteditable="false"`. The authoring tool omits its temporary value from saved and shared HTML.
 
 The authoring tool handles shadow DOM events of the types in `propagateEvents`. The authoring tool also synchronizes changes that the widget makes to the authored DOM.
+
+## Undo transactions
+
+Dispatch bubbling, composed `ww-transactionstart` and `ww-transactionend` events from the widget host around one edit. Send the end event after the widget has finished writing its attributes, light DOM, and scoped data. Send one pair per widget and use `finally` to close the transaction if the edit fails. Overlapping widget transactions share an undo step. Empty transactions leave history untouched, and the editor closes an outstanding transaction after ten seconds or when its host leaves the document.
+
+## Formatting widget-owned text
+
+Set `static marks = "b i color"` to declare the ribbon controls available for the widget's own selection. Use HTML mark names and the style names `font-family`, `font-size`, `color`, and `background-color`. The default is an empty list. `editingConfig.marks` still governs authored light DOM children.
+
+Listen for the bubbling, cancelable `ww-mark` event on the widget host. Its detail contains `name` and `value`. Toggle an element mark when the value is undefined, set styles and plain link addresses with a string value, and clear them when the value is `null`. Call `preventDefault()` when the widget applies the command. A parent widget can handle a request that bubbles from its child.
+
+When the widget selection or formatting changes, dispatch a bubbling, composed `ww-markstate` event from the host with details such as `{b: true, color: "#c00", a: "https://example.com/"}`. The editor supports plain links and built-in fonts for widget-owned text. A focused shadow field marked `data-ww-text` can narrow its host's declared marks using `data-ww-marks`.
 
 ## Signals
 
@@ -58,6 +71,32 @@ static offlineImports(element) {
 The authoring tool bundles the selected imports and their dependencies. In the standalone file, an excluded call rejects with `OfflineImportError`. The usual bundle rules apply to static imports and to dynamic imports from modules without an `offlineImports` rule.
 
 [Manage dependencies](../guides/libraries.md#optimize-the-code-bundle) gives a loader example and steps to test the export.
+
+## Offline assets
+
+The optional `offlineAssets` method synchronously returns an array of `{url, mimeType?}` declarations. As with `offlineImports`, the tool passes a detached copy of each saved widget, including widgets in templates readers can insert. Read the copy to decide which files the reader can use. Use absolute, versioned HTTP(S) URLs without credentials or fragments.
+
+```js
+import {assetURL} from "@webwriter/widget"
+
+const sqliteWasm = "https://cdn.jsdelivr.net/npm/sql.js@1.16.0/dist/sql-wasm-browser.wasm"
+
+class CodeSql extends HTMLElement {
+  static offlineAssets(element) {
+    return element.hasAttribute("disable-execution") ? []
+      : [{url: sqliteWasm, mimeType: "application/wasm"}]
+  }
+
+  // Call when the reader clicks Run.
+  async loadSQLiteBytes() {
+    const response = await fetch(assetURL(sqliteWasm, this.ownerDocument))
+    if (!response.ok) throw new Error("Could not load SQLite")
+    return response.arrayBuffer()
+  }
+}
+```
+
+The exporter fetches each declared URL once and embeds it in the HTML. When supplied, `mimeType` sets the embedded media type. An asset that cannot be fetched fails the export. `assetURL(url, document?)` returns the original URL in the editor and regular HTML. In Offline HTML it returns an embedded data URL, or throws if the asset was not declared. Resolve the URL in the widget document before passing it to a worker.
 
 ## Conversions
 

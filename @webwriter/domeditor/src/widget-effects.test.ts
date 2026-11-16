@@ -129,3 +129,46 @@ it("resolves late definitions and disconnects when a source ID becomes ambiguous
   await vi.waitFor(() => expect(sum.signals.total.get()).toBe(2))
   expect(sum.getAttribute("left")).toBe("#source[value]")
 })
+
+it("re-reads the links only for content that can change them", async () => {
+  document.body.innerHTML = `
+    <reactive-source id="source"></reactive-source>
+    <reactive-transform id="sum" left="#source[value]"></reactive-transform>
+    <p>Text</p>`
+  const sum = document.getElementById("sum") as ReactiveTransform
+  const onChange = vi.fn()
+  runtime = mountWidgetEffects(document.body, {onChange})
+  await settle()
+  expect(sum.signals.total.get()).toBe(2)
+  onChange.mockClear()
+
+  // Ordinary editing: new blocks, inline formatting and their removal.
+  const paragraph = document.createElement("p")
+  paragraph.innerHTML = "More <em>text</em>"
+  document.querySelector("p")!.after(paragraph, document.createElement("hr"))
+  await settle()
+  paragraph.querySelector("em")!.remove()
+  paragraph.remove()
+  await settle()
+  expect(onChange).not.toHaveBeenCalled()
+  expect(sum.signals.total.get()).toBe(2)
+
+  // A wrapper without an ID of its own that brings a duplicate ID.
+  const wrapper = document.createElement("section")
+  wrapper.innerHTML = '<div><span id="source"></span></div>'
+  document.body.append(wrapper)
+  await vi.waitFor(() => expect(sum.left.get()).toBeNull())
+  expect(onChange).toHaveBeenCalledTimes(1)
+  wrapper.remove()
+  await vi.waitFor(() => expect(sum.signals.total.get()).toBe(2))
+
+  // A wrapper that brings a widget, and the removal of a wrapped source.
+  const nested = document.createElement("section")
+  nested.innerHTML = '<div><reactive-display effect="#sum[total]"></reactive-display></div>'
+  document.body.append(nested)
+  const display = nested.querySelector("reactive-display") as ReactiveDisplay
+  await vi.waitFor(() => expect(display.values).toEqual([2]))
+  const holder = document.createElement("div")
+  document.querySelector("reactive-source")!.replaceWith(holder)
+  await vi.waitFor(() => expect(sum.left.get()).toBeNull())
+})

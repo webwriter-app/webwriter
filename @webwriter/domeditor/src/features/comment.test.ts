@@ -613,3 +613,467 @@ describe("CommentFeature highlights and threads", () => {
 function commentHighlightNameForTest() {
   return "webwriter-comments"
 }
+
+// The pairwise comparison CommentFeature used before threads were grouped by
+// boundary. It stays here as the reference for which comments share a thread
+// and which comments a selection activates.
+type ReferenceComment = {kind: "node", id: string, marker: Comment}
+  | {kind: "span", id: string, marker: Comment, start: Comment, end: Comment}
+
+function referenceComments() {
+  const comments: ReferenceComment[] = []
+  const starts = new Map<string, Comment>()
+  for(const {node, marker} of markers()) {
+    if(marker.kind === "node") comments.push({kind: "node", id: marker.id, marker: node})
+    else if(marker.kind === "start") {
+      if(!starts.has(marker.id)) starts.set(marker.id, node)
+    }
+    else {
+      const start = starts.get(marker.id)
+      if(!start) continue
+      comments.push({kind: "span", id: marker.id, marker: start, start, end: node})
+      starts.delete(marker.id)
+    }
+  }
+  return comments.sort((a, b) => a.marker.compareDocumentPosition(b.marker) & Node.DOCUMENT_POSITION_PRECEDING ? 1 : -1)
+}
+
+function referenceRange(comment: ReferenceComment) {
+  const parent = comment.marker.parentNode
+  if(!comment.marker.isConnected || !parent) return null
+  const range = document.createRange()
+  if(comment.kind === "span") {
+    if(!comment.end.isConnected) return null
+    range.setStartAfter(comment.start)
+    range.setEndBefore(comment.end)
+  }
+  else if(parent === document.body) range.selectNodeContents(document.body)
+  else range.selectNode(parent)
+  return range
+}
+
+function referencePointsHaveNoAuthoredContentBetween(aContainer: Node, aOffset: number, bContainer: Node, bOffset: number) {
+  const a = document.createRange()
+  const b = document.createRange()
+  a.setStart(aContainer, aOffset)
+  a.collapse(true)
+  b.setStart(bContainer, bOffset)
+  b.collapse(true)
+  const order = a.compareBoundaryPoints(Range.START_TO_START, b)
+  if(order === 0) return true
+  const between = document.createRange()
+  if(order < 0) {
+    between.setStart(aContainer, aOffset)
+    between.setEnd(bContainer, bOffset)
+  }
+  else {
+    between.setStart(bContainer, bOffset)
+    between.setEnd(aContainer, aOffset)
+  }
+  const hasAuthoredContent = (node: Node): boolean => {
+    if(!between.intersectsNode(node)) return false
+    if(node instanceof Text) {
+      const start = between.startContainer === node ? between.startOffset : 0
+      const end = between.endContainer === node ? between.endOffset : node.length
+      return end > start
+    }
+    if(node instanceof Comment) return !parseCommentMarker(node)
+    if(node instanceof Element) return true
+    return Array.from(node.childNodes).some(hasAuthoredContent)
+  }
+  const root = between.commonAncestorContainer
+  if(root instanceof Text || root instanceof Comment) return !hasAuthoredContent(root)
+  return !Array.from(root.childNodes).some(hasAuthoredContent)
+}
+
+function referenceRangesHaveSameContent(a: Range, b: Range) {
+  return referencePointsHaveNoAuthoredContentBetween(a.startContainer, a.startOffset, b.startContainer, b.startOffset)
+    && referencePointsHaveNoAuthoredContentBetween(a.endContainer, a.endOffset, b.endContainer, b.endOffset)
+}
+
+function referenceThreads(comments = referenceComments()) {
+  const threads: {comments: ReferenceComment[], range: Range}[] = []
+  for(const comment of comments) {
+    const range = referenceRange(comment)
+    if(!range) continue
+    const thread = threads.find(candidate => referenceRangesHaveSameContent(candidate.range, range))
+    if(thread) thread.comments.push(comment)
+    else threads.push({comments: [comment], range})
+  }
+  return threads.map(thread => thread.comments.map(comment => comment.id))
+}
+
+function referenceComparePoints(a: Range, aStart: boolean, b: Range, bStart: boolean) {
+  const first = document.createRange()
+  const second = document.createRange()
+  first.setStart(aStart ? a.startContainer : a.endContainer, aStart ? a.startOffset : a.endOffset)
+  first.collapse(true)
+  second.setStart(bStart ? b.startContainer : b.endContainer, bStart ? b.startOffset : b.endOffset)
+  second.collapse(true)
+  return first.compareBoundaryPoints(Range.START_TO_START, second)
+}
+
+function referenceIsActive(comment: ReferenceComment, range: Range) {
+  const commentRange = referenceRange(comment)
+  if(!range.collapsed) return commentRange !== null && referenceRangesHaveSameContent(commentRange, range)
+  const parent = comment.marker.parentNode
+  if(comment.kind === "node" && parent && range.startContainer === parent
+    && range.startOffset === Array.from(parent.childNodes).indexOf(comment.marker) + 1) return true
+  return commentRange !== null && referenceComparePoints(commentRange, true, range, true) <= 0
+    && referenceComparePoints(commentRange, false, range, true) >= 0
+}
+
+const startMarker = (id: string) => `<!--webwriter:comment:start:${id}:${id}-->`
+const endMarker = (id: string) => `<!--webwriter:comment:end:${id}-->`
+const nodeMarker = (id: string) => `<!--webwriter:comment:node:${id}:${id}-->`
+
+/** Three separate comments in each paragraph: plain text, inside a mark, and across a nested mark. */
+function commentedSections(sections: number, paragraphs: number) {
+  let html = ""
+  for(let section = 0; section < sections; section++) {
+    html += "<section>"
+    for(let paragraph = 0; paragraph < paragraphs; paragraph++) {
+      const id = `s${section}p${paragraph}`
+      html += `<p>lead ${startMarker(`${id}a`)}plain${endMarker(`${id}a`)} and <b>${startMarker(`${id}b`)}bold${endMarker(`${id}b`)}</b>`
+        + ` then ${startMarker(`${id}c`)}mixed <i>nested</i>${endMarker(`${id}c`)} tail</p>`
+    }
+    html += "</section>"
+  }
+  return html
+}
+
+function seededRandom(seed: number) {
+  return () => {
+    seed = (seed + 0x6D2B79F5) | 0
+    let value = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+describe("CommentFeature thread grouping", () => {
+  type Identified = {id: string}
+  const internals = feature as unknown as {
+    comments(): Identified[]
+    activeComments(comments: Identified[], range: Range): Identified[]
+    groupThreads(comments: Identified[]): {comments: Identified[]}[]
+    isContent(node: Node): boolean
+  }
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0))
+  const grouping = () => feature.getState().threads!.map(thread => thread.comments.map(comment => comment.id))
+
+  /** Regular sections between two body comments, then a section of threads that are or are not shared. */
+  function setSharedThreadDocument(sections: number, paragraphs: number) {
+    document.body.innerHTML = nodeMarker("body1") + commentedSections(sections, paragraphs) + "<section>"
+      + `<p>${startMarker("same1")}${startMarker("same2")}same${endMarker("same2")}${endMarker("same1")}</p>`
+      + `<p id="empty">${startMarker("empty1")}${startMarker("empty2")}empty${endMarker("empty2")}${endMarker("empty1")}</p>`
+      + `<p>${startMarker("space1")} ${startMarker("space2")}space${endMarker("space2")}${endMarker("space1")}</p>`
+      + `<p>${startMarker("around1")}${startMarker("inner")}${endMarker("inner")}${startMarker("around2")}around${endMarker("around2")}${endMarker("around1")}</p>`
+      + `<p>${startMarker("authored1")}<!--authored-->${startMarker("authored2")}authored${endMarker("authored2")}${endMarker("authored1")}</p>`
+      + `<p>${startMarker("broken1")}<!--webwriter:comment:start:broken id:x-->${startMarker("broken2")}broken${endMarker("broken2")}${endMarker("broken1")}</p>`
+      + `<p>${endMarker("orphan")}${startMarker("wrap")}<em>element${nodeMarker("element1")}${nodeMarker("element2")}</em>${endMarker("wrap")} tail</p>`
+      + `<p>${startMarker("outer")}<b>${startMarker("marked")}marked${endMarker("marked")}</b>${endMarker("outer")}</p>`
+      + `<p><b><i>${startMarker("cross1")}${startMarker("cross2")}deep${endMarker("cross1")}${endMarker("cross2")}</i></b></p>`
+      + `<p>${startMarker("ends1")}${startMarker("ends2")}ends${endMarker("ends2")}.${endMarker("ends1")}</p>`
+      + "</section>" + nodeMarker("body2")
+    const empty = document.querySelector("#empty")!
+    empty.insertBefore(document.createTextNode(""), empty.childNodes[1])
+    empty.insertBefore(document.createTextNode(""), empty.lastChild)
+    const separate: string[][] = []
+    for(let section = 0; section < sections; section++) {
+      for(let paragraph = 0; paragraph < paragraphs; paragraph++) {
+        separate.push([`s${section}p${paragraph}a`], [`s${section}p${paragraph}b`], [`s${section}p${paragraph}c`])
+      }
+    }
+    return [
+      // Both body comments cover the whole body, however far apart their markers are.
+      ["body1", "body2"],
+      ...separate,
+      ["same1", "same2"],
+      // Empty text and other comments' markers are not content between two boundaries.
+      ["empty1", "empty2"],
+      ["space1"], ["space2"],
+      ["around1", "around2"], ["inner"],
+      // Authored comments and markers that do not parse are content.
+      ["authored1"], ["authored2"],
+      ["broken1"], ["broken2"],
+      // A span around exactly one element shares the thread of that element's own comments.
+      ["wrap", "element1", "element2"],
+      ["outer"], ["marked"],
+      ["cross1", "cross2"],
+      ["ends1"], ["ends2"],
+    ]
+  }
+
+  it("groups a few hundred comments spread over many paragraphs", () => {
+    const expected = setSharedThreadDocument(12, 8)
+    expect(feature.getState().count).toBe(12 * 8 * 3 + 24)
+    expect(grouping()).toEqual(expected)
+  })
+
+  it("groups shared and separate threads exactly as the pairwise comparison did", () => {
+    // happy-dom needs about a millisecond for each pairwise comparison, so
+    // the reference runs over the same shapes in fewer regular paragraphs.
+    const expected = setSharedThreadDocument(3, 6)
+    expect(referenceThreads()).toEqual(expected)
+    expect(grouping()).toEqual(expected)
+  }, 30_000)
+
+  it("matches the pairwise comparison for threads, selections and carets in irregular documents", () => {
+    const random = seededRandom(20261116)
+    const pick = <T,>(items: T[]) => items[Math.floor(random() * items.length)]
+    let compared = 0
+    const seen = {shared: 0, selected: 0, atCaret: 0}
+    for(let round = 0; round < 30; round++) {
+      let nextId = 0
+      const open: string[] = []
+      // What may sit between two markers: nothing, empty text or a stray
+      // marker (no content), or whitespace or an authored comment (content).
+      const separate = (parent: Node) => {
+        const roll = random()
+        if(roll < 0.2) parent.appendChild(document.createTextNode(""))
+        else if(roll < 0.3) parent.appendChild(document.createComment("webwriter:comment:end:orphan"))
+        else if(roll < 0.4) parent.appendChild(document.createTextNode(" "))
+        else if(roll < 0.45) parent.appendChild(document.createComment("authored"))
+      }
+      const fill = (parent: Node, depth: number) => {
+        for(let count = 2 + Math.floor(random() * 6); count > 0; count--) {
+          const roll = random()
+          if(roll < 0.1) {
+            const ids = Array.from({length: 2 + Math.floor(random() * 2)}, () => `s${nextId++}`)
+            for(const id of ids) {
+              parent.appendChild(document.createComment(`webwriter:comment:start:${id}:t`))
+              separate(parent)
+            }
+            if(random() < 0.5) parent.appendChild(document.createTextNode("reply"))
+            else fill(parent.appendChild(document.createElement("u")), 3)
+            for(const id of ids.sort(() => random() - 0.5)) {
+              separate(parent)
+              parent.appendChild(document.createComment(`webwriter:comment:end:${id}`))
+            }
+          }
+          else if(roll < 0.18) parent.appendChild(document.createTextNode(pick(["ab", "c", " "])))
+          else if(roll < 0.28) parent.appendChild(document.createTextNode(""))
+          else if(roll < 0.34) parent.appendChild(document.createComment(
+            pick(["authored", "webwriter:comment:start:bad id:x", "webwriter:comment:node:untexted", "webwriter:comment:end:orphan"])))
+          else if(roll < 0.54) {
+            const id = `s${nextId++}`
+            parent.appendChild(document.createComment(`webwriter:comment:start:${id}:t`))
+            open.push(id)
+          }
+          else if(roll < 0.74) {
+            if(open.length) parent.appendChild(document.createComment(
+              `webwriter:comment:end:${open.splice(Math.floor(random() * open.length), 1)[0]}`))
+          }
+          else if(roll < 0.82) parent.appendChild(document.createComment(`webwriter:comment:node:n${nextId++}:t`))
+          else if(depth < 3) {
+            const element = document.createElement(depth ? pick(["b", "i", "span"]) : pick(["p", "div"]))
+            parent.appendChild(element)
+            fill(element, depth + 1)
+          }
+        }
+      }
+      document.body.replaceChildren()
+      fill(document.body, 0)
+
+      const reference = referenceComments()
+      const threads = referenceThreads(reference)
+      expect(grouping(), document.body.innerHTML).toEqual(threads)
+      seen.shared += threads.filter(thread => thread.length > 1).length
+
+      const nearby = (container: Node, offset: number) => {
+        const points: [Node, number][] = [[container, offset]]
+        if(offset > 0) points.push([container, offset - 1])
+        if(offset < container.childNodes.length) points.push([container, offset + 1])
+        for(const child of [container.childNodes[offset - 1], container.childNodes[offset]]) {
+          if(child instanceof CharacterData) points.push([child, 0], [child, child.length], [child, Math.min(1, child.length)])
+          else if(child) points.push([child, 0], [child, child.childNodes.length])
+        }
+        return points
+      }
+      const selections: Range[] = []
+      const select = (start: [Node, number], end: [Node, number]) => {
+        const range = document.createRange()
+        range.setStart(...start)
+        range.setEnd(...end)
+        selections.push(range)
+      }
+      for(const comment of reference) {
+        const range = referenceRange(comment)!
+        const starts = nearby(range.startContainer, range.startOffset)
+        const ends = nearby(range.endContainer, range.endOffset)
+        select(starts[0], ends[0])
+        for(let sample = 0; sample < 6; sample++) select(pick(starts), pick(ends))
+        for(const point of [...starts, ...ends]) select(point, point)
+      }
+      const walker = document.createTreeWalker(document.body)
+      const nodes: Node[] = [document.body]
+      while(walker.nextNode()) nodes.push(walker.currentNode)
+      for(let sample = 0; sample < 12; sample++) {
+        const node = pick(nodes)
+        const length = node instanceof CharacterData ? node.length : node.childNodes.length
+        const point: [Node, number] = [node, Math.floor(random() * (length + 1))]
+        select(point, point)
+      }
+
+      const comments = internals.comments()
+      for(const range of selections) {
+        const expected = reference.filter(comment => referenceIsActive(comment, range)).map(comment => comment.id)
+        const where = `${document.body.innerHTML} @ ${range.startContainer.nodeName}:${range.startOffset}–${range.endContainer.nodeName}:${range.endOffset}`
+        expect(internals.activeComments(comments, range).map(comment => comment.id), where).toEqual(expected)
+        compared++
+        if(expected.length) seen[range.collapsed ? "atCaret" : "selected"]++
+      }
+    }
+    expect(compared).toBeGreaterThan(1000)
+    expect(seen.shared).toBeGreaterThan(20)
+    expect(seen.selected).toBeGreaterThan(300)
+    expect(seen.atCaret).toBeGreaterThan(300)
+  }, 60_000)
+
+  it("keeps Range work linear in the number of comments", async () => {
+    const highlights = {set: vi.fn(), delete: vi.fn()}
+    vi.stubGlobal("CSS", Object.assign(Object.create(CSS), {highlights}))
+    vi.stubGlobal("Highlight", class {})
+    const intersects = vi.spyOn(Range.prototype, "intersectsNode")
+    const ranges = vi.spyOn(document, "createRange")
+    document.body.innerHTML = commentedSections(10, 10)
+    const paragraphs = Array.from(document.querySelectorAll("p"))
+
+    let count = 0
+    for(let step = 0; step < 6; step++) {
+      const text = paragraphs[step * 17].firstChild!
+      $.move(text, step % 4)
+      document.dispatchEvent(new Event("selectionchange"))
+      await flush()
+      count = feature.getState().count
+    }
+    const bold = paragraphs[42].querySelector("b")!.childNodes[1]
+    $.selectRange(bold, 0, bold, 4)
+    document.dispatchEvent(new Event("selectionchange"))
+    await flush()
+    expect(feature.getState()).toMatchObject({active: true, activeCount: 1, text: "s4p2b"})
+
+    expect(count).toBe(300)
+    // Other features react to the same selection changes, so the counts are
+    // not zero. Comments add one live range per highlighted span, created
+    // once; the pairwise comparison created six ranges for each of the
+    // 44,850 pairs and walked the content between them.
+    expect(intersects.mock.calls.length).toBeLessThanOrEqual(count)
+    expect(ranges.mock.calls.length).toBeLessThanOrEqual(2 * count)
+  })
+
+  it("inspects each marker of a long reply chain once", () => {
+    const replies = 150
+    const ids = Array.from({length: replies}, (_, index) => `r${index}`)
+    document.body.innerHTML = `<p>before ${ids.map(startMarker).join("")}shared${ids.reverse().map(endMarker).join("")} after</p>`
+    const inspected = vi.spyOn(internals, "isContent")
+    const threads = internals.groupThreads(internals.comments())
+    expect(threads).toHaveLength(1)
+    expect(threads[0].comments).toHaveLength(replies)
+    expect(inspected.mock.calls.length).toBeLessThanOrEqual(3 * replies)
+  })
+
+  it("merges and splits threads when text between their markers is emptied or filled", async () => {
+    const paragraph = setContent("<p></p>")
+    const betweenStarts = document.createTextNode("x")
+    const betweenEnds = document.createTextNode("")
+    paragraph.append(
+      document.createComment("webwriter:comment:start:first:First"),
+      betweenStarts,
+      document.createComment("webwriter:comment:start:second:Second"),
+      "shared",
+      document.createComment("webwriter:comment:end:second"),
+      betweenEnds,
+      document.createComment("webwriter:comment:end:first"),
+    )
+    expect(grouping()).toEqual([["first"], ["second"]])
+
+    betweenStarts.data = ""
+    expect(grouping()).toEqual([["first", "second"]])
+    betweenStarts.data = "y"
+    await flush()
+    expect(grouping()).toEqual([["first"], ["second"]])
+    betweenStarts.deleteData(0, 1)
+    await flush()
+    expect(grouping()).toEqual([["first", "second"]])
+    betweenEnds.data = "z"
+    expect(grouping()).toEqual([["first"], ["second"]])
+    expect(grouping()).toEqual(referenceThreads())
+
+    // Text that stays non-empty cannot change the grouping, so it is not regrouped.
+    const group = vi.spyOn(internals, "groupThreads")
+    const walkers = vi.spyOn(document, "createTreeWalker")
+    betweenEnds.data = "zz"
+    expect(grouping()).toEqual([["first"], ["second"]])
+    ;(paragraph.childNodes[3] as Text).data = "shared text"
+    await flush()
+    expect(grouping()).toEqual([["first"], ["second"]])
+    expect(group).not.toHaveBeenCalled()
+    expect(walkers.mock.calls.filter(([, filter]) => filter === NodeFilter.SHOW_COMMENT)).toHaveLength(0)
+
+    betweenEnds.data = ""
+    expect(grouping()).toEqual([["first", "second"]])
+    expect(group).toHaveBeenCalledTimes(1)
+  })
+
+  it("groups threads once per document change, however often the selection changes", async () => {
+    document.body.innerHTML = commentedSections(2, 4)
+    const text = document.querySelector("p")!.firstChild!
+    await flush()
+    const group = vi.spyOn(internals, "groupThreads")
+    document.querySelector("section")!.append(document.createElement("hr"))
+    $.move(text, 1)
+    document.dispatchEvent(new Event("selectionchange"))
+    await flush()
+    expect(feature.getState().threads).toHaveLength(24)
+    expect(group).toHaveBeenCalledTimes(1)
+
+    for(let offset = 2; offset < 5; offset++) {
+      $.move(text, offset)
+      document.dispatchEvent(new Event("selectionchange"))
+      await flush()
+      feature.getState()
+    }
+    expect(group).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps the registered highlight until the comments change", async () => {
+    class TestHighlight {
+      readonly ranges: Range[]
+      constructor(...ranges: Range[]) {
+        this.ranges = ranges
+      }
+    }
+    const highlights = {set: vi.fn(), delete: vi.fn()}
+    vi.stubGlobal("CSS", Object.assign(Object.create(CSS), {highlights}))
+    vi.stubGlobal("Highlight", TestHighlight)
+    const texts = () => (highlights.set.mock.calls.at(-1)![1] as TestHighlight).ranges.map(range => range.toString())
+    const paragraph = setContent(`<p>a${startMarker("one")}bc${endMarker("one")}d</p>`)
+
+    for(let index = 0; index < 3; index++) {
+      document.dispatchEvent(new Event("selectionchange"))
+      await flush()
+    }
+    expect(highlights.set).toHaveBeenCalledTimes(1)
+    ;(paragraph.childNodes[2] as Text).data = "xyz"
+    document.dispatchEvent(new Event("selectionchange"))
+    await flush()
+    expect(highlights.set).toHaveBeenCalledTimes(1)
+    expect(texts()).toEqual(["xyz"])
+
+    paragraph.insertAdjacentHTML("beforeend", `${startMarker("two")}e${endMarker("two")}`)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(highlights.set).toHaveBeenCalledTimes(2)
+    expect(texts()).toEqual(["xyz", "e"])
+
+    highlights.delete.mockClear()
+    feature.setCommentHighlighting(false)
+    expect(highlights.delete).toHaveBeenCalledWith(commentHighlightNameForTest())
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(highlights.set).toHaveBeenCalledTimes(2)
+    feature.setCommentHighlighting(true)
+    expect(highlights.set).toHaveBeenCalledTimes(3)
+    expect(texts()).toEqual(["xyz", "e"])
+  })
+})

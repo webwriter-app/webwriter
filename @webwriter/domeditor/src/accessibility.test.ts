@@ -36,6 +36,7 @@ describe("accessibility reviewer", () => {
     const body = document.body
     await reviewer.check(body, schemaWith())
 
+    expect(mockRun).toHaveBeenCalledOnce()
     const [context, options] = mockRun.mock.calls[0]
     expect(context).toBe(document.documentElement)
     expect(options).toMatchObject({

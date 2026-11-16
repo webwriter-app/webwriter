@@ -138,7 +138,7 @@ export class LinkKeyboard extends LitElement {
       ${this.error && !this.dialogOpen ? html`<div role="alert">${this.error}</div>` : nothing}
       <div id="link-panel" class="panel">
         <div class="web-label-row"><label for="link-search">${label}</label>
-          ${kind === "link" ? html`<div class="web-options" role="group" aria-label="Link options">
+          ${kind === "link" && !this.state?.plainOnly ? html`<div class="web-options" role="group" aria-label="Link options">
             <label class="check"><input type="checkbox" .checked=${this.openNewTab} @change=${(event: Event) => this.openNewTab = (event.target as HTMLInputElement).checked}>Open in new tab</label>
           </div>` : nothing}
         </div>
@@ -295,6 +295,7 @@ export class LinkKeyboard extends LitElement {
     return attributes
   }
   #applyWeb() {
+    if(this.state?.plainOnly) { this.#apply(this.webHref.trim(), {}); return }
     const attributes = this.#currentAttributes()
     attributes["data-reference"] = null
     attributes["data-reference-locator"] = null

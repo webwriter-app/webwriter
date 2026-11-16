@@ -206,6 +206,18 @@ export function validateWidgetEffect(root: HTMLElement, widget: Element, attribu
   return `Circular signal connection: ${cycle.reverse().map(node => node.getAttribute("id") || node.localName).join(" → ")}`
 }
 
+/** Whether adding or removing this subtree can change the links: it holds a
+ * widget host, or an ID, which a reference names and which must be unique.
+ * Other content, such as a new paragraph, leaves every link as it is, so the
+ * whole document need not be searched for widgets again. */
+function affectsEffects(element: Element) {
+  if(isWidgetHost(element) || element.hasAttribute("id")) return true
+  for(const descendant of element.getElementsByTagName("*")) {
+    if(isWidgetHost(descendant) || descendant.hasAttribute("id")) return true
+  }
+  return false
+}
+
 /** Reconcile only the authored links. Signals and their subscriptions belong to widgets. */
 export function mountWidgetEffects(root: HTMLElement, {supports = isWidgetHost, onChange}: {
   supports?: (element: Element) => boolean
@@ -278,7 +290,7 @@ export function mountWidgetEffects(root: HTMLElement, {supports = isWidgetHost, 
           && (record.attributeName === "aria-label" || record.attributeName === "title"
             || widgetEffectDeclarations(target).has(record.attributeName ?? ""))
       }
-      return [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1)
+      return [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1 && affectsEffects(node as Element))
     })) schedule()
   })
   observer.observe(root.ownerDocument, {subtree: true, childList: true, attributes: true})

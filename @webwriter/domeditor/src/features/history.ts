@@ -32,6 +32,8 @@ type StoredCheckpoint = {
   changes: VersionHistoryChanges
   source: CheckpointSource
   restoredFrom?: string
+  /** When the run of coalesced automatic checkpoints this one continues began. */
+  startedAt?: number
 }
 
 type StoredComment = VersionHistoryComment
@@ -40,16 +42,31 @@ type StoredVersion = StoredCheckpoint & {checkpointIds: string[]}
 
 type PreparedCheckpoint = {
   source: string
+  /** Counted against `changesBase`, the checkpoint source expected to precede this one. */
   changes?: VersionHistoryChanges
+  changesBase?: CheckpointSource
   restoredFrom?: string
   stateDiff?: {beforeSource: CheckpointSource, afterSource: CheckpointSource, changes: VersionHistoryChanges}
 }
 
 const checkpointDelay = 700
+// Every checkpoint stores the whole document in the shared Y.Doc of each
+// replica, so automatic checkpoints are kept coarse. One is recorded when the
+// window of its run ends, or earlier where history is read or the page is
+// hidden. Within the window, an author's newest one is replaced, not appended.
+export const checkpointCoalescingWindow = 5 * 60_000
+// Automatic checkpoints kept beyond those that a saved version, comment,
+// restore, pending save, or open preview still refers to. The oldest go first.
+export const maxAutomaticCheckpoints = 40
 const deferredCheckpointSize = 100000
 const unsavedVersionId = "unsaved"
 
 const emptyChanges = (): VersionHistoryChanges => ({added: 0, removed: 0, modified: 0})
+const automaticLabel = (user: VersionHistoryUser) => `Edited by ${user.name}`
+/** Checkpoints recorded without an explicit label, including those stored
+ * before automatic checkpoints were bounded. */
+const isAutomaticCheckpoint = (checkpoint: StoredCheckpoint) =>
+  !checkpoint.restoredFrom && !!checkpoint.user && checkpoint.label === automaticLabel(checkpoint.user)
 const unknownAuthor: VersionHistoryUser = {clientId: -1, name: "Unknown author", initials: "?", color: safeCssColor(undefined)}
 const isEditorOnlyHistoryNode = (node: Node) => isInsideEditorOnlyNode(node instanceof Element ? node : node.parentElement)
 
@@ -64,11 +81,20 @@ export class HistoryFeature extends EditorFeature {
   #checkpointTimer: ReturnType<typeof setTimeout> | undefined
   #checkpointGeneration = 0
   #checkpointWorking = false
+  #checkpointMutations: MutationObserver | undefined
+  // When the first authored edit that still awaits a checkpoint arrived.
+  #pendingSince: number | undefined
+  #lastState: VersionHistoryState | undefined
+  #unrecordedStatePosted = false
+  // A collaborator may coalesce or prune a checkpoint between preparing and
+  // recording a save. Keep it available to this client until then.
+  readonly #preparedSaves = new Map<string, StoredCheckpoint>()
   readonly #checkpointAuthors = new Map<number, VersionHistoryUser>()
   #previewCheckpointId: string | null = null
   #previewChanges: VersionHistoryState["preview"] = null
   #previewCurrentSource: string | null = null
   #previewSource: CheckpointSource | null = null
+  #previewLabel = ""
   #currentCheckpointId: string | null = null
   #publishingSource: string | null = null
   #restoring = false
@@ -94,10 +120,11 @@ export class HistoryFeature extends EditorFeature {
     prepareVersionSave: async ({offline = false}: {type: "prepareVersionSave", offline?: boolean}) => {
       this.editor.doc.syncFromDOM()
       this.#flushCheckpoint()
-      const checkpointId = this.#recordPendingCheckpoint().id
+      const checkpoint = this.#recordPendingCheckpoint()
+      this.#preparedSaves.set(checkpoint.id, checkpoint)
       // serializeHTML clones synchronously before bundling offline assets.
       // Capture both snapshots in this action, before another edit can arrive.
-      return {checkpointId, source: await this.editor.serializeHTML(offline)}
+      return {checkpointId: checkpoint.id, source: await this.editor.serializeHTML(offline)}
     },
     recordVersionSave: ({checkpointId}: {type: "recordVersionSave", checkpointId: string}) =>
       this.#recordVersion(checkpointId),
@@ -134,6 +161,17 @@ export class HistoryFeature extends EditorFeature {
     drop: this.#rememberSelection,
   }
 
+  // A hidden page may be discarded before the window of a deferred checkpoint ends.
+  readonly #flushHiddenPage = () => {
+    if(!this.#previewCheckpointId) this.#flushCheckpoint()
+  }
+
+  passiveListeners: DocumentListenerMap = {
+    visibilitychange: () => {
+      if(document.visibilityState === "hidden") this.#flushHiddenPage()
+    },
+  }
+
   activeListeners: DocumentListenerMap = {
     beforeinput: event => {
       if(event.defaultPrevented || !["historyUndo", "historyRedo"].includes(event.inputType)) return
@@ -166,6 +204,7 @@ export class HistoryFeature extends EditorFeature {
       // A collaborator may publish the same snapshot before our debounce ends.
       this.#cancelCheckpoint()
       this.#checkpointAuthors.clear()
+      this.#pendingSince = undefined
     }
     else if(this.#checkpointWorking) this.#queueCheckpoint()
     this.postState(this.#state(source ?? undefined))
@@ -192,9 +231,12 @@ export class HistoryFeature extends EditorFeature {
     if(!authors) return
     for(const [clientId, value] of authors) this.#checkpointAuthors.set(clientId, this.#user(clientId, value))
     if(!authors.length) this.#checkpointAuthors.set(unknownAuthor.clientId, unknownAuthor)
+    const unrecorded = this.#pendingSince !== undefined
+    this.#pendingSince ??= Date.now()
     if(this.#previewCheckpointId) return
+    if(!unrecorded && this.#publishingSource === null) this.#postUnrecordedState()
     // Document transactions can arrive for every small DOM mutation. Keep the
-    // edit path cheap and serialize only at the debounce or a state boundary.
+    // edit path cheap and serialize only for a due checkpoint or a state boundary.
     this.#queueCheckpoint()
   }
 
@@ -214,6 +256,7 @@ export class HistoryFeature extends EditorFeature {
     this.#comments.observe(this.#handleHistoryChange)
     this.#versions.observe(this.#handleHistoryChange)
     this.editor.doc.doc.on("afterTransaction", this.#handleTransaction)
+    window.addEventListener("pagehide", this.#flushHiddenPage)
     if(this.#checkpoints.length === 0) this.#recordCheckpoint("Document created")
     else {
       this.#synchronizeCurrentCheckpoint()
@@ -236,8 +279,13 @@ export class HistoryFeature extends EditorFeature {
     this.#assets.unobserve(this.#handleAssetsChange)
     this.#assetIds.clear()
     this.editor.doc.doc.off("afterTransaction", this.#handleTransaction)
+    window.removeEventListener("pagehide", this.#flushHiddenPage)
     this.clearPreview()
     this.#checkpointAuthors.clear()
+    this.#pendingSince = undefined
+    this.#lastState = undefined
+    this.#unrecordedStatePosted = false
+    this.#preparedSaves.clear()
     this.#currentCheckpointId = null
     super.disable()
   }
@@ -259,7 +307,7 @@ export class HistoryFeature extends EditorFeature {
     const commentCounts = new Map<string, number>()
     comments.forEach(comment => commentCounts.set(comment.checkpointId, (commentCounts.get(comment.checkpointId) ?? 0) + 1))
     const checkpoints = this.#checkpoints.toArray()
-      .map(({source: _source, restoredFrom: _restoredFrom, ...checkpoint}) => ({
+      .map(({source: _source, restoredFrom: _restoredFrom, startedAt: _startedAt, ...checkpoint}) => ({
         ...checkpoint,
         user: {...checkpoint.user},
         changes: {...checkpoint.changes},
@@ -271,7 +319,7 @@ export class HistoryFeature extends EditorFeature {
     }
     const saved = this.#versions.toArray().sort((left, right) => left.timestamp - right.timestamp)
     const pending = this.#pendingCheckpoints()
-    const versions = saved.map(({source: versionSource, restoredFrom: _restoredFrom, ...version}) => ({
+    const versions = saved.map(({source: versionSource, restoredFrom: _restoredFrom, startedAt: _startedAt, ...version}) => ({
       ...version,
       user: {...version.user},
       changes: {...version.changes},
@@ -301,7 +349,7 @@ export class HistoryFeature extends EditorFeature {
         isCurrent: this.#sameSource(unsaved.source, source),
       })
     }
-    return {
+    return this.#lastState = {
       checkpoints,
       versions,
       comments,
@@ -312,7 +360,21 @@ export class HistoryFeature extends EditorFeature {
   }
 
   postState(state = this.state()) {
+    this.#unrecordedStatePosted = false
     if(this.isEnabled) this.editor.postHistoryState(state)
+  }
+
+  /** Edits await a checkpoint that is not due yet. Without serializing the
+   * document, all that is known is that it left every recorded entry. */
+  #postUnrecordedState() {
+    const state = this.#lastState
+    if(!state || state.preview) return
+    this.postState({
+      ...state,
+      versions: state.versions.map(version => ({...version, isCurrent: version.isUnsaved})),
+      currentCheckpointId: null,
+    })
+    this.#unrecordedStatePosted = true
   }
 
   clearPreview() {
@@ -322,6 +384,7 @@ export class HistoryFeature extends EditorFeature {
     this.#previewChanges = null
     this.#previewCurrentSource = null
     this.#previewSource = null
+    this.#previewLabel = ""
     if(!wasPreviewing) return false
     this.#restoring = true
     let appliedQueuedChanges = false
@@ -346,10 +409,17 @@ export class HistoryFeature extends EditorFeature {
     ].includes(type)
   }
 
-  #queueCheckpoint() {
+  #queueCheckpoint(delay = checkpointDelay) {
     this.#cancelCheckpoint()
     this.#checkpointTimer = setTimeout(() => {
       this.#checkpointTimer = undefined
+      // A pause before the checkpoint is due costs neither a serialization
+      // nor a shared update. Any edit until then restarts the debounce.
+      const wait = this.#checkpointDueAt() - Date.now()
+      if(wait > 0) {
+        this.#queueCheckpoint(wait)
+        return
+      }
       const source = this.#source()
       if(source.length < deferredCheckpointSize) this.#recordPendingCheckpoint(undefined, {source})
       else {
@@ -359,7 +429,14 @@ export class HistoryFeature extends EditorFeature {
           if(generation === this.#checkpointGeneration) this.#checkpointWorking = false
         })
       }
-    }, checkpointDelay)
+    }, delay)
+  }
+
+  /** The end of the window of the run that the pending automatic checkpoint
+   * continues, or else of the run that its first edit started. */
+  #checkpointDueAt() {
+    const {startedAt} = this.#retentionPlan(this.#pendingAuthor(), true)
+    return (startedAt ?? this.#pendingSince ?? 0) + checkpointCoalescingWindow
   }
 
   #cancelCheckpoint() {
@@ -367,6 +444,8 @@ export class HistoryFeature extends EditorFeature {
     this.#checkpointTimer = undefined
     this.#checkpointGeneration++
     this.#checkpointWorking = false
+    this.#checkpointMutations?.disconnect()
+    this.#checkpointMutations = undefined
   }
 
   #flushCheckpoint() {
@@ -376,54 +455,39 @@ export class HistoryFeature extends EditorFeature {
   }
 
   async #recordDeferredCheckpoint(source: string, generation: number) {
-    const checkpoints = this.#checkpoints.toArray()
-    const previousSource = checkpoints.at(-1)?.source ?? source
-    const diffSource = this.#versions.toArray().at(-1)?.source ?? checkpoints[0]?.source ?? source
-    const changes = await this.#deferredDiff(previousSource, source, generation)
-    if(!changes) return
-    const stateChanges = diffSource === previousSource ? changes : await this.#deferredDiff(diffSource, source, generation)
-    if(!stateChanges || generation !== this.#checkpointGeneration) return
-    // Direct DOM and template edits can precede collaboration notifications.
-    // Publish only if the captured source is still the authored document.
-    if(this.#source() !== source) {
-      this.#queueCheckpoint()
-      return
+    // Started in the task that captured the source, so that every later DOM
+    // mutation is recorded, with or without a collaboration notification.
+    let mutated = false as boolean
+    const mutations = this.#checkpointMutations = this.#observeDocument(() => { mutated = true })
+    try {
+      const {base} = this.#retentionPlan(this.#pendingAuthor(), true)
+      const previousSource = base?.source ?? source
+      const diffSource = this.#versions.toArray().at(-1)?.source ?? this.#checkpoints.toArray()[0]?.source ?? source
+      const changes = await this.#deferredDiff(previousSource, source, generation)
+      if(!changes) return
+      const stateChanges = this.#sameSource(diffSource, previousSource) ? changes : await this.#deferredDiff(diffSource, source, generation)
+      if(!stateChanges || generation !== this.#checkpointGeneration) return
+      // Direct DOM and template edits can precede collaboration notifications.
+      // Publish only if the captured source is still the authored document.
+      // Authored transactions advance the generation, so serialize again
+      // only when the DOM itself changed since the capture.
+      if((mutated || mutations.takeRecords().length > 0) && this.#source() !== source) {
+        this.#queueCheckpoint()
+        return
+      }
+      this.#recordPendingCheckpoint(undefined, {source, changes, changesBase: base?.source,
+        stateDiff: {beforeSource: diffSource, afterSource: source, changes: stateChanges}})
     }
-    this.#recordPendingCheckpoint(undefined, {source, changes, stateDiff: {beforeSource: diffSource, afterSource: source, changes: stateChanges}})
+    finally {
+      mutations.disconnect()
+      if(this.#checkpointMutations === mutations) this.#checkpointMutations = undefined
+    }
   }
 
-  #recordPendingCheckpoint(label?: string, prepared?: PreparedCheckpoint) {
-    const user = this.#pendingAuthor()
-    this.#checkpointAuthors.clear()
-    return this.#recordCheckpoint(label, prepared, user)
-  }
-
-  #recordCheckpoint(label?: string, prepared?: PreparedCheckpoint, user = this.#localUser()) {
-    const source = prepared?.source ?? this.#source()
-    const matchingCheckpoint = this.#checkpoints.toArray().at(-1)
-    if(matchingCheckpoint && this.#sameSource(matchingCheckpoint.source, source)) {
-      const previousCheckpointId = this.#currentCheckpointId
-      this.#currentCheckpointId = matchingCheckpoint.id
-      if(previousCheckpointId !== matchingCheckpoint.id) this.postState(this.#state(source))
-      return matchingCheckpoint
-    }
-    const previous = this.#checkpoints.toArray().at(-1)
-    const changes = prepared?.changes ?? (previous ? this.#diff(previous.source, source) : emptyChanges())
-    const assets = new Map<string, string>()
-    const checkpoint: StoredCheckpoint = {
-      id: this.#id("checkpoint"),
-      timestamp: Date.now(),
-      label: label ?? `Edited by ${user.name}`,
-      user,
-      changes,
-      source: this.#packSource(source, assets),
-      ...(prepared?.restoredFrom ? {restoredFrom: prepared.restoredFrom} : {}),
-    }
-    this.#currentCheckpointId = checkpoint.id
-    // Yjs observers may synchronously apply another authored DOM change while
-    // this checkpoint is being published. Keep the source snapshot only when
-    // the live DOM stayed still throughout that notification.
-    const observer = new MutationObserver(() => {})
+  /** Observes the document and every template fragment, which collaboration
+   * may not have been notified about yet. */
+  #observeDocument(callback: MutationCallback = () => {}) {
+    const observer = new MutationObserver(callback)
     const observationOptions: MutationObserverInit = {
       subtree: true, childList: true, characterData: true, attributes: true,
     }
@@ -434,6 +498,81 @@ export class HistoryFeature extends EditorFeature {
         if("content" in template) roots.push(template.content)
       })
     }
+    return observer
+  }
+
+  /** Ids that a saved version, comment, restore, pending save, or the open
+   * preview refers to. Their checkpoints are neither replaced nor pruned. */
+  #referencedCheckpointIds() {
+    const ids = new Set(this.#preparedSaves.keys())
+    if(this.#previewCheckpointId) ids.add(this.#previewCheckpointId)
+    for(const version of this.#versions.toArray()) version.checkpointIds.forEach(id => ids.add(id))
+    for(const comment of this.#comments.toArray()) ids.add(comment.checkpointId)
+    for(const checkpoint of this.#checkpoints.toArray()) if(checkpoint.restoredFrom) ids.add(checkpoint.restoredFrom)
+    return ids
+  }
+
+  /** Decides which stored checkpoints a new one supersedes: the same author's
+   * newest automatic checkpoint within the coalescing window, and the oldest
+   * automatic checkpoints beyond the cap. `base` precedes the new checkpoint. */
+  #retentionPlan(user: VersionHistoryUser, automatic: boolean, restoredFrom?: string) {
+    const stored = this.#checkpoints.toArray()
+    const referenced = this.#referencedCheckpointIds()
+    if(restoredFrom) referenced.add(restoredFrom)
+    // The first checkpoint is the baseline of unsaved changes and of the first save.
+    const disposable = stored.filter((checkpoint, index) =>
+      index > 0 && isAutomaticCheckpoint(checkpoint) && !referenced.has(checkpoint.id))
+    const newest = stored.at(-1)
+    const startedAt = newest?.startedAt ?? newest?.timestamp ?? 0
+    const age = Date.now() - startedAt
+    const replaced = automatic && newest && disposable.at(-1) === newest
+      && newest.user.clientId === user.clientId && newest.user.name === user.name
+      && age >= 0 && age < checkpointCoalescingWindow ? newest : undefined
+    const candidates = disposable.filter(checkpoint => checkpoint !== replaced)
+    const excess = candidates.length + (automatic ? 1 : 0) - maxAutomaticCheckpoints
+    const removed = new Set(candidates.filter(checkpoint => checkpoint.id !== this.#currentCheckpointId)
+      .slice(0, Math.max(0, excess)).map(checkpoint => checkpoint.id))
+    if(replaced) removed.add(replaced.id)
+    return {base: replaced ? stored.at(-2) : newest, removed, startedAt: replaced ? startedAt : undefined}
+  }
+
+  #recordPendingCheckpoint(label?: string, prepared?: PreparedCheckpoint) {
+    const user = this.#pendingAuthor()
+    this.#checkpointAuthors.clear()
+    this.#pendingSince = undefined
+    return this.#recordCheckpoint(label, prepared, user)
+  }
+
+  #recordCheckpoint(label?: string, prepared?: PreparedCheckpoint, user = this.#localUser()) {
+    const source = prepared?.source ?? this.#source()
+    const matchingCheckpoint = this.#checkpoints.toArray().at(-1)
+    if(matchingCheckpoint && this.#sameSource(matchingCheckpoint.source, source)) {
+      const previousCheckpointId = this.#currentCheckpointId
+      this.#currentCheckpointId = matchingCheckpoint.id
+      if(previousCheckpointId !== matchingCheckpoint.id || this.#unrecordedStatePosted) this.postState(this.#state(source))
+      return matchingCheckpoint
+    }
+    const {base, removed, startedAt} = this.#retentionPlan(user, label === undefined, prepared?.restoredFrom)
+    // A coalesced checkpoint counts its changes from the checkpoint before
+    // the one it replaces, so the replaced edits stay accounted for.
+    const changes = prepared?.changes && prepared.changesBase === base?.source ? prepared.changes
+      : base ? this.#diff(base.source, source) : emptyChanges()
+    const assets = new Map<string, string>()
+    const checkpoint: StoredCheckpoint = {
+      id: this.#id("checkpoint"),
+      timestamp: Date.now(),
+      label: label ?? automaticLabel(user),
+      user,
+      changes,
+      source: this.#packSource(source, assets),
+      ...(prepared?.restoredFrom ? {restoredFrom: prepared.restoredFrom} : {}),
+      ...(startedAt !== undefined ? {startedAt} : {}),
+    }
+    this.#currentCheckpointId = checkpoint.id
+    // Yjs observers may synchronously apply another authored DOM change while
+    // this checkpoint is being published. Keep the source snapshot only when
+    // the live DOM stayed still throughout that notification.
+    const observer = this.#observeDocument()
     const previousPublishingSource = this.#publishingSource
     this.#publishingSource = source
     let sourceChangedDuringPublication = false
@@ -441,6 +580,12 @@ export class HistoryFeature extends EditorFeature {
     try {
       this.editor.doc.doc.transact(() => {
         assets.forEach((url, id) => { if(!this.#assets.has(id)) this.#assets.set(id, url) })
+        // Deleting superseded snapshots in the same transaction lets Yjs
+        // collect their HTML. Resolve their positions only now.
+        const stored = removed.size ? this.#checkpoints.toArray() : []
+        for(let index = stored.length - 1; index >= 0; index--) {
+          if(removed.has(stored[index].id)) this.#checkpoints.delete(index)
+        }
         this.#checkpoints.push([checkpoint])
       }, this.#historyOrigin)
       committed = true
@@ -448,11 +593,16 @@ export class HistoryFeature extends EditorFeature {
     finally {
       sourceChangedDuringPublication = observer.takeRecords().length > 0
       observer.disconnect()
-      this.#publishingSource = previousPublishingSource
+      let publicationSource = source
+      try {
+        // Serialized before the publication ends, so that the edit it flushes
+        // is reported with this checkpoint's state.
+        if(committed && sourceChangedDuringPublication) publicationSource = this.#source()
+      }
+      finally { this.#publishingSource = previousPublishingSource }
       if(committed) {
-        const publicationSource = sourceChangedDuringPublication ? this.#source() : source
         this.postState(this.#state(publicationSource, prepared?.stateDiff ?? {
-          beforeSource: previous?.source ?? source,
+          beforeSource: base?.source ?? source,
           afterSource: source,
           changes,
         }))
@@ -462,9 +612,11 @@ export class HistoryFeature extends EditorFeature {
   }
 
   #recordVersion(checkpointId: string) {
-    const checkpoint = this.#checkpoints.toArray().find(checkpoint => checkpoint.id === checkpointId)
-    if(!checkpoint) throw new Error("That save is no longer available")
     const checkpoints = this.#checkpoints.toArray()
+    const stored = checkpoints.find(checkpoint => checkpoint.id === checkpointId)
+    const prepared = stored ?? this.#preparedSaves.get(checkpointId)
+    if(!prepared) throw new Error("That save is no longer available")
+    const {startedAt: _startedAt, ...checkpoint} = prepared
     const assigned = new Set(this.#versions.toArray().flatMap(version => version.checkpointIds))
     const previous = this.#versions.toArray().at(-1)
     const version: StoredVersion = {
@@ -474,10 +626,14 @@ export class HistoryFeature extends EditorFeature {
       label: "Saved version",
       user: this.#localUser(),
       changes: this.#diff(previous?.source ?? checkpoints[0].source, checkpoint.source),
-      checkpointIds: checkpoints.slice(0, checkpoints.indexOf(checkpoint) + 1)
+      // A checkpoint that a collaborator removed after it was prepared still
+      // closes the changes recorded up to its time.
+      checkpointIds: (stored ? checkpoints.slice(0, checkpoints.indexOf(stored) + 1)
+        : checkpoints.filter(entry => entry.timestamp <= checkpoint.timestamp))
         .filter(entry => !assigned.has(entry.id)).map(entry => entry.id),
     }
     this.editor.doc.doc.transact(() => this.#versions.push([version]), this.#historyOrigin)
+    this.#preparedSaves.delete(checkpointId)
     return this.state()
   }
 
@@ -653,6 +809,7 @@ export class HistoryFeature extends EditorFeature {
     this.#previewObserver?.disconnect()
     this.#previewCheckpointId = checkpointId
     this.#previewSource = checkpoint.source
+    this.#previewLabel = checkpoint.label
     this.#applySource(source)
     const changes = this.#diff(checkpoint.source, this.#previewCurrentSource!)
     this.#previewChanges = {
@@ -671,6 +828,9 @@ export class HistoryFeature extends EditorFeature {
     }
     return this.#versions.toArray().find(version => version.id === checkpointId)
       ?? this.#checkpoints.toArray().find(checkpoint => checkpoint.id === checkpointId)
+      // A collaborator may coalesce or prune the checkpoint shown in the preview.
+      ?? (checkpointId === this.#previewCheckpointId && this.#previewSource !== null
+        ? {source: this.#previewSource, id: checkpointId, label: this.#previewLabel} : undefined)
   }
 
   #pendingCheckpoints() {
