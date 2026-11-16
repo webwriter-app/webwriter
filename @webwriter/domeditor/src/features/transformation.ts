@@ -2598,12 +2598,21 @@ export class TransformationFeature extends EditorFeature {
         || !handle.draggable || !this.overlay.contains(handle)) return
       const target = this.target
       if(!this.isEnabled || this.editor.isEditingLocked || !target) { event.preventDefault(); return }
-      this.editor.features.selection.selectElement(target)
+      // The frame usually belongs to the element that is already selected and
+      // presented. Selecting it again would repeat the whole selection refresh
+      // at the start of every drag.
+      const selection = this.editor.features.selection
+      if($.selectedElement !== target || !hasPresentationState(target, "element-selected") || selection.isCaptureSelection
+        || selection.selectedSectionElement || this.editor.features.table.hasCellSelection
+        || this.editor.appendix.activeElement) selection.selectElement(target)
       this.editor.features.manipulation.startNodeDrag(event, target)
     },
     dragend: event => {
       const handle = event.composedPath()[0]
-      if(handle instanceof HTMLElement && handle.dataset.transformMode === "move" && handle.draggable && this.overlay.contains(handle)) {
+      // A drop has already ended the drag and its refresh rebuilt the drag
+      // surface; only a drag that ended without one is still to be cleaned up.
+      if(handle instanceof HTMLElement && handle.dataset.transformMode === "move" && handle.draggable && this.overlay.contains(handle)
+        && this.editor.features.manipulation.hasNodeDrag) {
         this.editor.features.manipulation.endNodeDrag()
       }
     },

@@ -7446,6 +7446,49 @@ describe("unified content transfer", () => {
     expect(document.body.querySelector("#◆float-drop-preview")).toBeNull()
   })
 
+  it("shares a float drop with BODY's column tokens as one change and refreshes its selection once", async () => {
+    vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(1800)
+    document.body.innerHTML = '<video style="width:40px;height:60px"></video><p>target</p><p>displaced content</p>'
+    const source = document.querySelector("video")!, target = document.querySelector("p")!
+    vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 200, 40, 60))
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 100, 30))
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const {data} = beginDrag(source)
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX: 120, clientY: 100}), source)).toBe(target)
+    await new Promise(resolve => setTimeout(resolve))
+    let changes = 0, tokens: string | null = null
+    const count = (transaction: {changed: Map<unknown, unknown>}) => { if(transaction.changed.size) changes++ }
+    editor.doc.doc.on("afterTransaction", count)
+    const process = vi.spyOn(editor.features.selection, "processSelection")
+    try {
+      document.body.dispatchEvent(transferEvent("drop", data, {clientX: 120, clientY: 100}))
+      // The tokens are authored state: written with the drop, not by a later refresh.
+      tokens = document.body.getAttribute("style")
+      expect(document.body.style.getPropertyValue("--ww-left-column-default-width")).not.toBe("")
+      expect(process).not.toHaveBeenCalled()
+      await new Promise(resolve => setTimeout(resolve))
+      await new Promise(resolve => setTimeout(resolve))
+      expect(changes).toBe(1)
+      expect(process).toHaveBeenCalledTimes(1)
+    }
+    finally { editor.doc.doc.off("afterTransaction", count) }
+    expectClassFloat(source, "left")
+    expect(source.nextElementSibling).toBe(target)
+    expect($.selectedElement).toBe(source)
+    expect(hasPresentationState(source, "element-selected")).toBe(true)
+
+    editor.doc.undo()
+    const restored = document.querySelector("video")!
+    expect(restored).not.toHaveClass("ww-float-left")
+    expect(restored.nextElementSibling).toBe(target)
+    expect(document.body.style.getPropertyValue("--ww-left-column-default-width")).toBe("")
+    editor.doc.redo()
+    expect(document.querySelector("video")).toHaveClass("ww-float-left")
+    expect(document.body.getAttribute("style")).toBe(tokens)
+    expect(editor.toHTML(true)).not.toMatch(/◆|float-drop-preview|node-drag-surface/)
+  })
+
   it("previews every successive paragraph in both drag directions without remeasurement", () => {
     document.body.innerHTML = '<p>first</p><p>second</p><p>third</p><video controls style="width:40px;height:120px"></video>'
     const source = document.querySelector("video")!, paragraphs = Array.from(document.querySelectorAll("p"))

@@ -3763,6 +3763,79 @@ describe("transform controls and geometry", () => {
 })
 
 describe("drop, cancellation, and document ownership", () => {
+  function transfer(type: string, data: DataTransfer, extra: Record<string, unknown> = {}) {
+    const event = new Event(type, {bubbles: true, cancelable: true, composed: true})
+    Object.assign(event, {dataTransfer: data, clientX: 10, clientY: 10, ...extra})
+    return event
+  }
+
+  it("starts a native drag of the presented selection from its frame without refreshing the selection again", () => {
+    vi.spyOn(DataTransfer.prototype, "setDragImage").mockImplementation(() => {})
+    document.body.innerHTML = '<p>before</p><demo-widget>source<!--keep--></demo-widget><p>after</p>'
+    const source = document.querySelector("demo-widget")!, other = document.querySelector("p")!
+    const authored = document.body.innerHTML
+    mockRect(source as HTMLElement)
+    selectNode(source)
+    expect(feature.target).toBe(source)
+    const edge = feature.overlay.querySelector<HTMLElement>(".◆transform-overlay-edge")!
+    expect(edge.draggable).toBe(true)
+    const process = vi.spyOn(editor.features.selection, "processSelection")
+    const start = vi.spyOn(editor.features.manipulation, "startNodeDrag")
+
+    edge.dispatchEvent(transfer("dragstart", new DataTransfer()))
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(start.mock.calls[0][1]).toBe(source)
+    expect(process).not.toHaveBeenCalled()
+    expect(editor.features.manipulation.draggedElement).toBe(source)
+    expect(editor.features.manipulation.hasNodeDrag).toBe(true)
+
+    // A drag that ends without a drop is cleaned up by its end.
+    edge.dispatchEvent(transfer("dragend", new DataTransfer()))
+    expect(editor.features.manipulation.hasNodeDrag).toBe(false)
+    expect(editor.features.manipulation.draggedElement).toBeNull()
+    expect($.selectedElement).toBe(source)
+
+    // The frame can outlive a selection that another source has moved on.
+    // The drag then still starts from a selected and presented element.
+    process.mockClear()
+    $.selectElement(other)
+    edge.dispatchEvent(transfer("dragstart", new DataTransfer()))
+    expect(process).toHaveBeenCalled()
+    expect($.selectedElement).toBe(source)
+    expect(hasPresentationState(source, "element-selected")).toBe(true)
+    expect(editor.features.manipulation.draggedElement).toBe(source)
+    edge.dispatchEvent(transfer("dragend", new DataTransfer()))
+    expect(document.body.innerHTML).toBe(authored)
+    expect(editor.toHTML(true)).not.toMatch(/◆|transform-overlay|node-drag-surface/)
+  })
+
+  it("keeps the drag surface built for a dropped element when its drag ends", () => {
+    vi.spyOn(DataTransfer.prototype, "setDragImage").mockImplementation(() => {})
+    document.body.innerHTML = '<demo-widget>source</demo-widget><p>one</p><p>two</p>'
+    const source = document.querySelector("demo-widget")!
+    mockRect(source as HTMLElement)
+    selectNode(source)
+    const edge = feature.overlay.querySelector<HTMLElement>(".◆transform-overlay-edge")!
+    const data = new DataTransfer()
+    edge.dispatchEvent(transfer("dragstart", data))
+    expect(editor.features.manipulation.hasNodeDrag).toBe(true)
+
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 3})
+    document.body.dispatchEvent(transfer("drop", data))
+    expect(document.body.lastElementChild).toBe(source)
+    expect(editor.features.manipulation.hasNodeDrag).toBe(false)
+    expect($.selectedElement).toBe(source)
+    const surface = editor.appendix.querySelector('[part~="node-drag-surface"]')
+    expect(surface).not.toBeNull()
+    const refresh = vi.spyOn(editor.features.manipulation, "refreshNodeDragTarget")
+
+    edge.dispatchEvent(transfer("dragend", data))
+    expect(refresh).not.toHaveBeenCalled()
+    expect(editor.appendix.querySelector('[part~="node-drag-surface"]')).toBe(surface)
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
+    expect(editor.toHTML(true)).not.toMatch(/◆|node-drag-surface/)
+  })
+
   it.each(["img", "demo-widget"])("changes native float without moving %s or changing its contents", tag => {
     const paragraph = targetElement()
     const target = paragraph.appendChild(document.createElement(tag))

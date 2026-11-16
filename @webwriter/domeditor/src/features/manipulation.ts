@@ -257,6 +257,8 @@ export class ManipulationFeature extends EditorFeature {
     const element = this.nodeDrag?.element
     return element && getDocumentRoot().contains(element) ? element : null
   }
+  /** Whether a native block drag has started and not yet been dropped or ended. */
+  get hasNodeDrag() { return this.nodeDrag !== null }
   private dropRangeCaret: HTMLElement | null = null
   private floatDropPreviewOwner: "transfer" | "transformation" | "insertion" | null = null
   private floatDropPreview: {container: Element, side: "left" | "right", rect: DOMRect} | null = null
@@ -2151,7 +2153,14 @@ export class ManipulationFeature extends EditorFeature {
     }
     finally {
       this.endNodeDrag(!dropped, !floated)
-      if(floated) this.editor.features.selection.queueSelectionRefresh()
+      if(floated) {
+        // BODY's column width tokens follow the new float. Written with the
+        // drop, they are synchronized together with it. Left to the queued
+        // refresh, they are a second shared change, which asks for a second
+        // refresh of the same selection.
+        this.editor.features.layout.refresh()
+        this.editor.features.selection.queueSelectionRefresh()
+      }
       else this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.processSelection())
     }
   }
