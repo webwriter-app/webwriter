@@ -419,8 +419,12 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/::part\(hover-caret-suppressed\)\s*\{\s*display:\s*none;/)
     expect(editorStyleString).toMatch(/summary::after\s*\{\s*cursor:\s*pointer;\s*\}/)
     expect(editorStyleString).not.toMatch(/summary:is\([^{}]*\)::after\s*\{[^}]*content:/)
-    expect(editorStyleString).toMatch(/details > summary:first-child \+ p:last-child:is\(:empty, :has\(> br:only-child\)\)::after\s*\{\s*content:\s*"Details";/)
-    expect(editorStyleString).toMatch(/details > summary:first-child \+ p:last-child:has\(> br:only-child\) > br\s*\{\s*display:\s*none;/)
+    // DETAILS tests for the pair: a sibling combinator between the subject and
+    // an unkeyed SUMMARY restyles every paragraph beside each inserted block.
+    const pair = "details:has(> summary:first-child):where(:not(:has(> :not(:first-child):not(:last-child)))) > p:last-child"
+    expect(editorStyleString).toContain(`${pair}:is(:empty, :has(> br:only-child))::after {\n  content: "Details";`)
+    expect(editorStyleString).toContain(`${pair}:has(> br:only-child) > br {\n  display: none;`)
+    expect(editorStyleString).not.toMatch(/summary:first-child \+ p\b/)
     expect(editorStyleString).toContain("body::part(virtual-list-caret)")
     expect(editorStyleString).not.toMatch(/^(?:html|body)(?::state\(ww-template-active\))?\s*\{[^}]*overflow(?:-x)?:\s*hidden;/m)
     expect(editorStyleString).not.toMatch(/body:state\(ww-template-active\)\s*\{/)

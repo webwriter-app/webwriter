@@ -1540,15 +1540,19 @@ summary:has(> br:only-child) > br {
   display: none;
 }
 
-/* The empty details body is a sibling of SUMMARY, not its child. */
-details > summary:first-child + p:last-child:is(:empty, :has(> br:only-child))::after {
+/* The empty details body is a sibling of SUMMARY, not its child. DETAILS
+ * tests for the pair of a summary and one more child: after "summary + p"
+ * the style engine cannot tell which siblings the rule concerns, and restyles
+ * every paragraph beside an element inserted into or removed from the
+ * document. */
+details:has(> summary:first-child):where(:not(:has(> :not(:first-child):not(:last-child)))) > p:last-child:is(:empty, :has(> br:only-child))::after {
   content: "Details";
   color: darkgray;
   pointer-events: none;
   user-select: none;
 }
 
-details > summary:first-child + p:last-child:has(> br:only-child) > br {
+details:has(> summary:first-child):where(:not(:has(> :not(:first-child):not(:last-child)))) > p:last-child:has(> br:only-child) > br {
   display: none;
 }
 
@@ -2694,7 +2698,11 @@ msqrt > mrow:only-child {
   border-top: var(--ww-radical-clearance) solid transparent;
 }
 
-mroot > :nth-child(2) {
+/* The index is the second of the two children. :nth-child(2) on a subject
+ * without a tag or class would restyle every sibling of an element inserted
+ * into or removed from any parent with a positional rule, and a sibling
+ * combinator before it their subtrees as well. */
+mroot > :last-child:where(:not(:first-child)) {
   border-bottom: 1px solid transparent;
 }
 
