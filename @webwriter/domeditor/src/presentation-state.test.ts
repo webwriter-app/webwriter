@@ -98,6 +98,48 @@ describe("presentation state", () => {
     }
   })
 
+  it("keeps the path of an element out of compounds that name another element type", () => {
+    document.body.innerHTML = "<p>one</p><p>two</p><p>three</p>"
+    const paragraph = document.body.children[1]
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(`
+      body:state(ww-empty-selected), body:state(ww-empty-selected) * { caret-color: transparent; }
+      html:not(:state(ww-canvas-active)) body:state(ww-empty-selected)::part(caret) { display: block; }
+      summary:is(:empty, [hidden]):state(ww-empty-selected)::before { content: ""; }
+      :state(ww-empty-selected) { outline: 1px solid; }
+      :is(td, p):state(ww-empty-selected) { color: red; }
+      P:state(ww-empty-selected) > span { color: blue; }
+    `)
+    const release = trackPresentationStyles(document, sheet)
+    const selector = (index: number) => (sheet.cssRules[index] as CSSStyleRule).selectorText
+    try {
+      setPresentationState(paragraph, "empty-selected")
+      // A positional path in front of a descendant makes the style engine
+      // restyle every sibling subtree on each insertion, even where the
+      // compound can never match the element.
+      expect(selector(0)).toBe("body.ww-inactive-presentation:not(*), body.ww-inactive-presentation:not(*) *")
+      expect(selector(1)).toBe("html:not(.ww-inactive-presentation:not(*)) body.ww-inactive-presentation:not(*)::part(caret)")
+      expect(selector(2)).not.toContain("nth-child")
+      expect(selector(3)).toContain("body > p:nth-child(2)")
+      expect(selector(4)).toContain("body > p:nth-child(2)")
+      expect(selector(5)).toContain("body > p:nth-child(2)")
+      expect(resolvePresentationSelector(document, "body:state(ww-empty-selected)")).toBe("body.ww-inactive-presentation:not(*)")
+      expect(resolvePresentationSelector(document, "p:state(ww-empty-selected)")).toBe("p:where(:root > body > p:nth-child(2)):not(.ww-inactive-presentation)")
+
+      setPresentationState(document.body, "empty-selected")
+      expect(selector(0)).toBe("body:where(body):not(.ww-inactive-presentation), body:where(body):not(.ww-inactive-presentation) *")
+      expect(selector(3)).toContain("body > p:nth-child(2), body")
+      expect(paragraph.outerHTML).toBe("<p>two</p>")
+    }
+    finally {
+      clearPresentationState(paragraph, "empty-selected")
+      clearPresentationState(document.body, "empty-selected")
+      release()
+      expect(selector(0)).toBe("body:state(ww-empty-selected), body:state(ww-empty-selected) *")
+      expect(selector(5).toLowerCase()).toBe("p:state(ww-empty-selected) > span")
+    }
+  })
+
   it("states a position only where an edge child or an authored ID cannot identify the element", () => {
     document.body.innerHTML = '<main><p>one</p><figure id="figure"><img><span></span><figcaption>two</figcaption></figure><p>three</p></main>'
     const [first, figure, last] = Array.from(document.querySelector("main")!.children)

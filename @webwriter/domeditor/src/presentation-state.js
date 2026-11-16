@@ -2,7 +2,9 @@
 // the node itself. Keep presentation state by identity and retarget rules when
 // a node moves, without writing editor state into the document.
 const presentationDocumentKey = Symbol.for("webwriter.presentation-state")
-const presentationToken = /:state\(ww-([\w-]+)\)/g
+// A tracked template also notes the type selector of a token's compound, as
+// :state(ww-name@type).
+const presentationToken = /:state\(ww-([\w-]+)(?:@([\w-]+))?\)/g
 // Keep inactive branches impossible to match while giving the style engine a
 // class key for rule indexing and ancestor rejection. This class is never set.
 const inactivePresentationSelector = ".ww-inactive-presentation:not(*)"
@@ -18,7 +20,7 @@ const changesPresentationSelector = record => record.type === "attributes"
 function presentationDocument(doc) {
   let data = doc[presentationDocumentKey]
   if(data) return data
-  data = {doc, elements: new Map(), rules: new Map(), selectors: new Map(), observer: null, changed: new Set(), depth: 0}
+  data = {doc, elements: new Map(), rules: new Map(), types: new Map(), selectors: new Map(), observer: null, changed: new Set(), depth: 0}
   doc[presentationDocumentKey] = data
   return data
 }
@@ -88,12 +90,55 @@ export function presentationElementSelector(element, preferId = false, scope = e
   return [root || (node === doc.body ? ":root > body" : ":root"), ...path.reverse()].join(" > ")
 }
 
-/** Match one state at the same specificity as a single class. */
-export function presentationStateSelector(doc, state) {
-  const paths = Array.from(doc[presentationDocumentKey]?.elements.get(state) ?? [],
-    element => presentationElementSelector(element, true)).filter(Boolean)
+/** Whether a type selector in a compound admits this element. */
+function hasPresentationType(element, type) {
+  return !type || element.localName === type
+    || element.namespaceURI === "http://www.w3.org/1999/xhtml" && element.localName === type.toLowerCase()
+}
+
+/** Match one state at the same specificity as a single class. A compound
+ * that names a type can only match elements of that type: leave the others
+ * out, so that a rule for BODY or SVG does not carry the positional path of a
+ * paragraph it can never match. */
+export function presentationStateSelector(doc, state, type = "", known = null) {
+  const paths = []
+  for(const element of doc[presentationDocumentKey]?.elements.get(state) ?? []) {
+    if(!hasPresentationType(element, type)) continue
+    let path = known?.get(element)
+    if(path === undefined) {
+      path = presentationElementSelector(element, true)
+      known?.set(element, path)
+    }
+    if(path) paths.push(path)
+  }
   if(paths.length === 1 && paths[0] === ":root") return ":root"
   return paths.length ? `:where(${paths.join(", ")})${presentationSpecificity}` : inactivePresentationSelector
+}
+
+/** Notes on each state token the type selector that starts its compound. */
+function typePresentationTokens(template) {
+  let typed = "", copied = 0
+  const compounds = [0]
+  for(let index = 0; index < template.length; index++) {
+    const character = template[index]
+    if(character === "\\") index++
+    else if(character === '"' || character === "'") {
+      index = template.indexOf(character, index + 1)
+      if(index < 0) break
+    }
+    else if(character === "(" || character === "[") compounds.push(index + 1)
+    else if(character === ")" || character === "]") { if(compounds.length > 1) compounds.pop() }
+    else if(/[\s,>+~]/.test(character)) compounds[compounds.length - 1] = index + 1
+    else if(template.startsWith(":state(ww-", index)) {
+      const end = template.indexOf(")", index)
+      if(end < 0) break
+      const type = /^[a-z][\w-]*(?![\w|-])/i.exec(template.slice(compounds.at(-1), index))?.[0]
+      typed += template.slice(copied, end) + (type ? `@${type}` : "") + ")"
+      copied = end + 1
+      index = end
+    }
+  }
+  return typed + template.slice(copied)
 }
 
 /** Splits a selector list at its top-level commas. */
@@ -179,7 +224,7 @@ function resolveHostHas(data, template, pass) {
     const states = Array.from(argument.matchAll(presentationToken), match => match[1])
     let matches = false
     if(states.some(state => data.elements.get(state)?.size) || !needsPresentationState(argument)) {
-      const selector = argument.replace(presentationToken, (_, state) => presentationStateSelector(data.doc, state))
+      const selector = argument.replace(presentationToken, (_, state, type) => presentationStateSelector(data.doc, state, type, pass.paths))
       try { matches = data.doc.body.matches(`:has(${selector})`) }
       // Leave the rule to CSS where the selector cannot be evaluated.
       catch { return template }
@@ -209,19 +254,25 @@ function setPresentationRuleSelector(entry, selector) {
 function updatePresentationRules(data) {
   if(data.depth || !data.changed.size) return
   const rules = new Set()
+  // One element often carries several states: resolve its path once.
+  const pass = {paths: new Map()}
   for(const state of data.changed) {
     if(!data.rules.has(state)) continue
-    const selector = presentationStateSelector(data.doc, state)
-    const unchanged = data.selectors.get(state) === selector
-    data.selectors.set(state, selector)
+    const changed = new Set()
+    for(const type of data.types.get(state)) {
+      const key = `${state}@${type}`
+      const selector = presentationStateSelector(data.doc, state, type, pass.paths)
+      if(data.selectors.get(key) === selector) continue
+      data.selectors.set(key, selector)
+      changed.add(key)
+    }
     // A test decided here also depends on the document around the element.
-    for(const rule of data.rules.get(state)) if(!unchanged || rule.hostHas) rules.add(rule)
+    for(const rule of data.rules.get(state)) if(rule.hostHas || rule.variants.some(key => changed.has(key))) rules.add(rule)
   }
   data.changed.clear()
-  const pass = {}
   for(const entry of rules) {
     const selector = (entry.hostHas ? resolveHostHas(data, entry.template, pass) : entry.template)
-      .replace(presentationToken, (_, state) => data.selectors.get(state) ?? inactivePresentationSelector)
+      .replace(presentationToken, (_, state, type = "") => data.selectors.get(`${state}@${type}`) ?? inactivePresentationSelector)
     if(selector !== entry.selector) {
       setPresentationRuleSelector(entry, selector)
       entry.selector = selector
@@ -252,16 +303,23 @@ export function trackPresentationStyles(doc, sheet) {
   const data = presentationDocument(doc), entries = []
   function register(parent) {
     for(const rule of parent.cssRules) {
-      const template = rule.selectorText
-      if(template) {
-        const states = new Set(Array.from(template.matchAll(presentationToken), match => match[1]))
+      const source = rule.selectorText
+      if(source) {
+        const template = typePresentationTokens(source)
+        const tokens = Array.from(template.matchAll(presentationToken))
+        const states = new Set(tokens.map(match => match[1]))
         if(states.size) {
-          const entry = {rule, parent, template, selector: null, states, hostHas: hostHasTests(template).length > 0}
-          for(const state of states) {
+          const entry = {rule, parent, source, template, selector: null, states, hostHas: hostHasTests(template).length > 0,
+            variants: Array.from(new Set(tokens.map(match => `${match[1]}@${match[2] ?? ""}`)))}
+          for(const match of tokens) {
+            const state = match[1], type = match[2] ?? ""
             let listeners = data.rules.get(state)
             if(!listeners) data.rules.set(state, listeners = new Set())
             listeners.add(entry)
-            data.selectors.delete(state)
+            let types = data.types.get(state)
+            if(!types) data.types.set(state, types = new Set())
+            types.add(type)
+            data.selectors.delete(`${state}@${type}`)
             data.changed.add(state)
           }
           entries.push(entry)
@@ -279,10 +337,11 @@ export function trackPresentationStyles(doc, sheet) {
       listeners?.delete(entry)
       if(!listeners?.size) {
         data.rules.delete(state)
-        data.selectors.delete(state)
+        for(const type of data.types.get(state) ?? []) data.selectors.delete(`${state}@${type}`)
+        data.types.delete(state)
       }
     }
-    for(const entry of entries) setPresentationRuleSelector(entry, entry.template)
+    for(const entry of entries) setPresentationRuleSelector(entry, entry.source)
     updatePresentationObserver(data)
   }
 }
@@ -354,5 +413,5 @@ export function presentationStateElements(root, ...states) {
 }
 
 export function resolvePresentationSelector(doc, selector) {
-  return selector.replace(presentationToken, (_, state) => presentationStateSelector(doc, state))
+  return typePresentationTokens(selector).replace(presentationToken, (_, state, type) => presentationStateSelector(doc, state, type))
 }
