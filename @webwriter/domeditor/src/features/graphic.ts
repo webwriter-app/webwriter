@@ -1638,8 +1638,14 @@ export class GraphicFeature extends EditorFeature {
     const target = this.editor.features.media.mediaDropTarget(event)
       ?? (event.target instanceof Node ? event.target : null)
     const direct = graphicContainerForNode(target)
-    const graphic = direct && getDocumentRoot().contains(direct) ? direct
-      : this.editor.hitTestBeneathAppendix(() => graphicContainerForNode(document.elementFromPoint?.(event.clientX, event.clientY) ?? null))
+    const root = getDocumentRoot()
+    // Only an SVG svg inside the root can qualify below. Without one, skip the
+    // hit test: its temporary appendix rule restyles the appendix on every
+    // dragover of an ordinary block drag.
+    const graphic = direct && root.contains(direct) ? direct
+      : root.getElementsByTagNameNS(SVG_NAMESPACE, "svg")[0]
+        ? this.editor.hitTestBeneathAppendix(() => graphicContainerForNode(document.elementFromPoint?.(event.clientX, event.clientY) ?? null))
+        : null
     return graphic?.isConnected && getDocumentRoot().contains(graphic)
       && !atomicEditingContainer(graphic.parentElement, this.editor.schema) ? graphic : null
   }
