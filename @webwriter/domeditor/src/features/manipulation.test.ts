@@ -8743,6 +8743,59 @@ describe("unified content transfer", () => {
     expect(caret.isConnected).toBe(false)
   })
 
+  it("hides the native caret of the selection, not of every element, while a drop position is shown", () => {
+    document.body.innerHTML = "<p>first</p><p>second</p><p>third</p><p>far</p>"
+    const [first, second, , far] = Array.from(document.body.children)
+    // Rendered text has client rects in a browser; happy-dom reports none.
+    vi.spyOn(Range.prototype, "getClientRects").mockImplementation(function(this: Range) {
+      return (/[^ \t\n\r\f]/.test(this.startContainer.textContent ?? "") ? [new DOMRect(0, 0, 10, 10)] : []) as unknown as DOMRectList
+    })
+    const hosts = () => presentationStateElements(document, "drop-caret-host")
+    $.move(first.firstChild!, 2)
+    const data = new DataTransfer()
+    data.setData("text/plain", "inserted")
+    const point = vi.spyOn($, "pointFromCoords").mockReturnValue({node: far.firstChild!, offset: 1})
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 0, 18))
+    expect(hosts()).toEqual([])
+
+    document.body.dispatchEvent(transferEvent("dragover", data))
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
+    // The caret stays in the first paragraph: only its color is at stake.
+    expect(hosts()).toEqual([first])
+    expect(hasPresentationState(document.body, "drop-caret-host")).toBe(false)
+    expect(hasPresentationState(far, "drop-caret-host")).toBe(false)
+
+    // The same selection is not resolved again on the next dragover.
+    const rects = vi.mocked(Range.prototype.getClientRects).mock.calls.length
+    document.body.dispatchEvent(transferEvent("dragover", data))
+    expect(vi.mocked(Range.prototype.getClientRects).mock.calls.length).toBe(rects)
+
+    // Another editing source moves the selection during the drag.
+    $.move(second.firstChild!, 1)
+    document.body.dispatchEvent(transferEvent("dragover", data))
+    expect(hosts()).toEqual([second])
+
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toMatch(/caret-host|◆/)
+    expect(editor.toHTML(true)).not.toMatch(/caret-host|◆/)
+
+    // Leaving the document clears the hosts with the drop position.
+    document.body.dispatchEvent(transferEvent("dragover", data))
+    document.dispatchEvent(Object.assign(transferEvent("dragleave", data), {clientX: -1, clientY: -1}))
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
+    expect(hosts()).toEqual([])
+
+    // Without rendered content near the selection the old scope applies.
+    vi.mocked(Range.prototype.getClientRects).mockImplementation(() => [] as unknown as DOMRectList)
+    point.mockReturnValue({node: far.firstChild!, offset: 1})
+    document.body.dispatchEvent(transferEvent("dragover", data))
+    expect(hosts()).toEqual([document.body])
+    document.body.dispatchEvent(transferEvent("drop", data))
+    expect(hosts()).toEqual([])
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
+    expect(editor.toHTML(true)).not.toMatch(/caret-host|◆/)
+  })
+
   it.each([
     ["p", "p"], ["p", "h1"], ["h2", "p"], ["h3", "h4"], ["h5", "h6"],
   ].flatMap(([sourceTag, targetTag]) => [0, 3, 6].map(offset => ({sourceTag, targetTag, offset}))))(

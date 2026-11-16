@@ -1,6 +1,6 @@
 import {remapPastedAuthoredIds} from "../authored-identities"
 import {hasDistributionInstructions, isDistributionPI} from "../distribution-dom"
-import {clearPresentationState, hasPresentationState, setPresentationState} from "../presentation-state.js"
+import {batchPresentationStates, clearPresentationState, hasPresentationState, setPresentationState} from "../presentation-state.js"
 import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
 import {documentThemeProperties, documentTypographyCSS, documentTypographyProperties, originalTypographyCSS} from "../document-theme-options"
 import {themeAccentProperties} from "../css-color"
@@ -263,6 +263,8 @@ export class ManipulationFeature extends EditorFeature {
   /** Whether a native block drag has started and not yet been dropped or ended. */
   get hasNodeDrag() { return this.nodeDrag !== null }
   private dropRangeCaret: HTMLElement | null = null
+  private dropCaretHosts: Element[] = []
+  private dropCaretSelection: readonly [Node | null, number, Node | null, number] | null = null
   private floatDropPreviewOwner: "transfer" | "transformation" | "insertion" | null = null
   private floatDropPreview: {container: Element, side: "left" | "right", rect: DOMRect} | null = null
   private floatDropHit: {container: Element, side: "left" | "right", rect: DOMRect} | null = null
@@ -606,6 +608,7 @@ export class ManipulationFeature extends EditorFeature {
       this.clearFloatDropPreview("transfer")
     }
     if(!hasPresentationState(document.body, "drop-selection-active")) setPresentationState(document.body, "drop-selection-active")
+    this.markDropCaretHosts()
     event.dataTransfer!.dropEffect = this.nodeDrag && !event.ctrlKey && !event.altKey ? "move" : "copy"
   }
 
@@ -642,7 +645,30 @@ export class ManipulationFeature extends EditorFeature {
     Object.assign(this.dropRangeCaret.style, {left, top: `${top}px`, height: `${gap ? 0 : rect.height}px`})
   }
 
+  /** While a drop position is shown, the selection keeps its place and its
+   * native caret. Hide that caret where the browser can paint it: a rule for
+   * every element would restyle the whole document when a drag enters and
+   * again when it ends. The selection is compared on each dragover because
+   * another editing source can move it during the drag. */
+  private markDropCaretHosts() {
+    const selection = document.getSelection()
+    const current = [selection?.anchorNode ?? null, selection?.anchorOffset ?? 0, selection?.focusNode ?? null, selection?.focusOffset ?? 0] as const
+    if(this.dropCaretSelection?.every((value, index) => value === current[index])) return
+    this.dropCaretSelection = current
+    const hosts = this.editor.features.selection.nativeCaretHosts
+    batchPresentationStates(document, () => {
+      for(const host of this.dropCaretHosts) if(!hosts.includes(host)) clearPresentationState(host, "drop-caret-host")
+      for(const host of hosts) setPresentationState(host, "drop-caret-host")
+    })
+    this.dropCaretHosts = hosts
+  }
+
   private clearDropSelection() {
+    batchPresentationStates(document, () => {
+      for(const host of this.dropCaretHosts) clearPresentationState(host, "drop-caret-host")
+    })
+    this.dropCaretHosts = []
+    this.dropCaretSelection = null
     clearPresentationState(document.body, "drop-selection-active")
     this.dropRangeCaret?.remove()
     this.dropRangeCaret = null

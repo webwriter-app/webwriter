@@ -2474,6 +2474,13 @@ export class SelectionFeature extends EditorFeature {
     return `calc(${fixedClientX(left)}px + max(0px, (${right - left}px - ${maximum}) / 2))`
   }
 
+  /** The elements whose caret color the native caret of the current selection
+   * can take; none without a selection, which paints no caret. */
+  get nativeCaretHosts(): Element[] {
+    const selection = document.getSelection()
+    return selection?.rangeCount ? nativeCaretHosts(selection) : []
+  }
+
   /** States where the native caret of the current selection is hidden: in
    * the given elements and wherever Chromium could paint it. A rule for every
    * element would restyle the whole document on each change of the state. */

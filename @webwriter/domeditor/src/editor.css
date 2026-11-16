@@ -1799,8 +1799,12 @@ body::part(gap-caret)::after {
     animation: var(--ww-ui-animation, blink 1s step-end 0s infinite);
 }
 
-body:state(ww-drop-selection-active),
-body:state(ww-drop-selection-active) * {
+/* While a drop position is shown, the selection keeps its native caret. The
+ * manipulation feature states the elements where the browser can paint it; a
+ * rule for every element would restyle the whole document when a drag enters
+ * and again when it ends. */
+:state(ww-drop-caret-host),
+:state(ww-drop-caret-host) * {
   caret-color: transparent !important;
 }
 
