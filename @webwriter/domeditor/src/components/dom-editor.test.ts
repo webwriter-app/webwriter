@@ -361,10 +361,10 @@ describe("incremental frame replica", () => {
     }
     publish()
     host.editorDocument = null
+    const initialTree = host.documentTree
     const tree = vi.spyOn(host, "buildDocumentTree")
     const canonical = vi.spyOn(host, "authoredDocumentSnapshot")
     const parse = vi.spyOn(DOMParser.prototype, "parseFromString")
-    const initialTree = host.documentTree
     ;(source.querySelector("p")!.firstChild as Text).data = "Changed"
     const message = publish()
     expect(host.editorBody.textContent).toBe("Changed")
@@ -381,11 +381,229 @@ describe("incremental frame replica", () => {
     expect(host.editorBody.children[0].getAttribute("style")).toContain("15px")
     expect(tree).not.toHaveBeenCalled()
     expect(parse).not.toHaveBeenCalled()
+    // A structural update only marks the outline stale. The breadcrumb then
+    // reads its own entries, and the whole outline waits for a reader.
     source.body.append(source.createElement("custom-widget"))
     publish()
-    expect(tree).toHaveBeenCalledTimes(1)
+    expect(tree).not.toHaveBeenCalled()
+    await editor.updateComplete
+    expect(tree.mock.calls).toEqual([[[[]]]])
+    expect(host.documentTree).not.toBe(initialTree)
+    expect(tree).toHaveBeenCalledTimes(2)
     expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "Widget"])
+    expect(tree).toHaveBeenCalledTimes(2)
     expect(host.editorDocument).toBeNull()
+  })
+
+  const outlineFixtures = {
+    document: ["", `<section><ul><li><p>a</p></li></ul><aside></aside><div><footer></footer></div><div class="note"><p>n</p></div></section>`
+      + `<p>text <b>bold <span>x</span><custom-inline></custom-inline></b><i></i></p>`
+      + `<figure><img src="a.png"><figcaption>cap</figcaption></figure>`
+      + `<figure><blockquote><header></header><p>q</p></blockquote></figure>`
+      + `<figure><p>one</p><p>two</p></figure>`
+      + `<table><tbody><tr><td><p>cell</p></td></tr></tbody></table>`
+      + `<details><summary>s</summary><p>d</p></details>`
+      + `<div class="ww-popup"><button popovertarget="pop">Open</button><div id="pop" popover><p>in</p></div><p>beside</p></div>`
+      + `<div class="ww-popup"><button popovertarget="far">Far</button></div>`
+      + `<img src="map.png" usemap="#m"><map name="m"><area popovertarget="spot"></map>`
+      + `<div id="spot" popover><p>spot</p></div>`
+      + `<blockquote><header></header><nav></nav></blockquote>`
+      + `<custom-widget><p>slot</p><script type="application/json">{}</script></custom-widget>`
+      + `<main><article><h2>t</h2><section></section></article></main>`
+      + `<div id="far" class="ww-popup-content" popover><section><p>far</p></section></div><p>last</p>`],
+    slides: ["ww-slides", `<div class="ww-slides-viewport"><section class="ww-slide"><h2>S</h2><aside></aside><nav class="ww-slide-directions"></nav></section>`
+      + `<section class="ww-slide"></section></div><nav class="ww-slides-navigation"></nav>`],
+    board: ["ww-board", `<section class="ww-board-group"><h2>G</h2><section class="ww-board-column"><h2>C</h2>`
+      + `<article class="ww-board-card"><p>card</p><footer></footer></article></section></section><section class="ww-board-column"></section>`],
+    canvas: ["ww-canvas", `<div class="ww-canvas-starting-view"></div><p>a</p><div><p>b</p></div>`
+      + `<figure><img src="a.png"></figure><blockquote><p>q</p><aside></aside></blockquote>`],
+    template: ["", `<!--keep--><demo-deck role="document"><section><p>one</p><aside></aside></section><p>two <b>bold</b></p></demo-deck>`],
+  }
+
+  it.each(Object.keys(outlineFixtures).flatMap(name => [[name, false], [name, true]] as const))(
+    "answers breadcrumb entries of a %s like its whole outline (isolated frame: %s)", async (name, isolated) => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const source = iframe.contentDocument!
+    const [layout, content] = outlineFixtures[name as keyof typeof outlineFixtures]
+    source.body.className = layout
+    source.body.innerHTML = content
+    if(isolated) {
+      host.editorOpaque = true
+      vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+      window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow, data: frameUpdate(host, source)}))
+      host.editorDocument = null
+    }
+    else host.documentTreeObserver.disconnect()
+    const whole = host.buildDocumentTree() as DocumentTreeItem
+    const find = (item: DocumentTreeItem, path: number[]): DocumentTreeItem | null => item.path.join() === path.join() ? item
+      : item.children.reduce<DocumentTreeItem | null>((match, child) => match ?? find(child, path), null)
+    const facts = (item: DocumentTreeItem | null | undefined) => item ? {sections: item.sections ?? [], children: item.children.length > 0} : null
+    const paths: number[][] = []
+    const collect = (element: {childNodes: ArrayLike<{nodeType: number}>}, path: number[]) => Array.from(element.childNodes).forEach((child, index) => {
+      if(child.nodeType !== 1) return
+      paths.push([...path, index])
+      collect(child as unknown as Element, [...path, index])
+    })
+    collect(host.editorBody, [])
+    expect(paths.length).toBeGreaterThan(5)
+    if(name === "template") expect(whole.path).toEqual([1])
+    else if(name !== "document") expect(whole.name).toBe(({slides: "Slides", board: "Board", canvas: "Canvas"} as Record<string, string>)[name])
+    const tree = vi.spyOn(host, "buildDocumentTree")
+    const answer = (path: number[], entries: number[][]) => {
+      host.selectionPath = entries.map(entry => ({path: entry, name: ""}))
+      const items = host.breadcrumbPathItems() as DocumentTreeItem[]
+      for(const entry of entries) {
+        expect({path: entry, facts: facts(items.find(item => item.path.join() === entry.join()))})
+          .toEqual({path: entry, facts: facts(find(whole, entry))})
+      }
+      return path
+    }
+    const ancestors = (path: number[]) => Array.from({length: path.length + 1}, (_, length) => path.slice(0, length))
+    const plain = paths.filter(path => !host.pathCrossesPopup(path))
+
+    // The entries of a selection, with earlier answers kept as selections move.
+    host.invalidateDocumentTree()
+    for(const path of plain) answer(path, ancestors(path))
+    // One entry alone, reached through ancestors that are not entries.
+    for(const path of plain) {
+      host.invalidateDocumentTree()
+      answer(path, [path])
+    }
+    expect(tree.mock.calls.length).toBeGreaterThan(plain.length)
+    expect(tree.mock.calls.every(([targets]) => Array.isArray(targets))).toBe(true)
+
+    // Popup parts are listed away from where they are authored: only the whole outline places them.
+    const popups = paths.filter(path => host.pathCrossesPopup(path))
+    expect(popups.length > 0).toBe(name === "document")
+    for(const path of popups) {
+      host.invalidateDocumentTree()
+      tree.mockClear()
+      answer(path, ancestors(path))
+      expect(tree.mock.calls).toEqual([[]])
+    }
+  })
+
+  it("keeps breadcrumb chevrons and sections current across structural updates, and builds the outline when it opens", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const host = editor as any
+    host.editorOpaque = true
+    host.fileHandle = {}
+    vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    const source = iframe.contentDocument!
+    source.body.innerHTML = "<blockquote><p>Quote</p></blockquote><ul><li></li></ul><p>Tail</p>"
+    const publish = async () => {
+      window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow, data: frameUpdate(host, source)}))
+      await editor.updateComplete
+      await breadcrumb.updateComplete
+    }
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await publish()
+    host.editorDocument = null
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type: selectionChangeEvent, detail: {path: [
+      {path: [], name: "Document", icon: "Document"},
+      {path: [1], name: "List", icon: "List"},
+      {path: [1, 0], name: "List Item", icon: "Lists"},
+    ]}}}))
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    const tree = vi.spyOn(host, "buildDocumentTree")
+    const toggles = () => Array.from(breadcrumb.shadowRoot!.querySelectorAll(".separator-trigger"), toggle => toggle.getAttribute("aria-label"))
+    const sections = () => Array.from(breadcrumb.shadowRoot!.querySelectorAll<HTMLElement>(".section-item"), section => section.dataset.sectionPath)
+    expect(toggles()).toEqual(["Show Document tree", "Show List tree"])
+    expect(sections()).toEqual([])
+    const items = breadcrumb.pathItems
+
+    // Typing changes no structure: nothing is read again.
+    ;(source.querySelector("p")!.firstChild as Text).data = "Quoted"
+    await publish()
+    expect(tree).not.toHaveBeenCalled()
+    expect(breadcrumb.pathItems).toBe(items)
+
+    // An edit elsewhere leaves the entries as they were, so the breadcrumb is not updated.
+    source.body.append(source.createElement("p"))
+    await publish()
+    expect(tree.mock.calls).toEqual([[[[], [1], [1, 0]]]])
+    expect(breadcrumb.pathItems).toBe(items)
+    expect(breadcrumb.tree).toBeNull()
+
+    // The selected item gains a child and an empty section.
+    const item = source.querySelector("li")!
+    item.append(source.createElement("p"), source.createElement("aside"))
+    await publish()
+    expect(breadcrumb.pathItems).not.toBe(items)
+    expect(toggles()).toEqual(["Show Document tree", "Show List tree", "Show List Item tree"])
+    expect(sections()).toEqual(["1,0,1"])
+    item.querySelector("p")!.remove()
+    await publish()
+    expect(toggles()).toEqual(["Show Document tree", "Show List tree"])
+    expect(sections()).toEqual(["1,0,0"])
+    expect(tree.mock.calls.every(([targets]) => Array.isArray(targets))).toBe(true)
+
+    // Opening the outline builds it, once, from the document as it is now.
+    tree.mockClear()
+    breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>(".separator-trigger")[0].click()
+    expect(tree.mock.calls).toEqual([[]])
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    expect(breadcrumb.treeOpen).toBe(true)
+    expect(breadcrumb.tree!.children.map(child => child.name)).toEqual(["Paragraph", "List", "Paragraph", "Paragraph"])
+    expect(breadcrumb.tree!.children[1].children[0].sections).toEqual([expect.objectContaining({path: [1, 0, 0], type: "aside"})])
+    const menu = breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!
+    expect(menu.groups[0].buttons.map(button => typeof button === "string" ? button : button.action))
+      .toEqual(["outline:0,0", "outline:1", "outline:2", "outline:3"])
+    expect(tree).toHaveBeenCalledOnce()
+
+    // An authored change closes the popup, and the stale outline is dropped.
+    source.body.append(source.createElement("hr"))
+    await publish()
+    expect(breadcrumb.treeOpen).toBe(false)
+    expect(breadcrumb.tree).toBeNull()
+    expect(tree.mock.calls.slice(1).every(([targets]) => Array.isArray(targets))).toBe(true)
+  })
+
+  it("rebuilds an open outline at most once per frame", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    iframe.contentDocument!.body.innerHTML = "<p>One</p>"
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await editor.updateComplete
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    const opened = breadcrumb.tree
+    expect(opened!.children.map(child => child.name)).toEqual(["Paragraph"])
+    const tree = vi.spyOn(host, "buildDocumentTree")
+    const frames: FrameRequestCallback[] = []
+    const request = vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => frames.push(callback))
+    const cancel = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
+    try {
+      // Changes that leave the popup open, such as editor-owned nodes.
+      host.documentTreeObserver.disconnect()
+      iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("ul"))
+      for(let update = 0; update < 3; update++) host.invalidateDocumentTree()
+      await editor.updateComplete
+      expect(frames).toHaveLength(1)
+      expect(tree.mock.calls.every(([targets]) => Array.isArray(targets))).toBe(true)
+      expect(breadcrumb.tree).toBe(opened)
+      tree.mockClear()
+      frames[0](0)
+      expect(tree.mock.calls).toEqual([[]])
+      await editor.updateComplete
+      expect(breadcrumb.tree!.children.map(child => child.name)).toEqual(["Paragraph", "List"])
+
+      // A frame still pending when the editor goes away is cancelled.
+      host.invalidateDocumentTree()
+      expect(frames).toHaveLength(2)
+      editor.remove()
+      expect(cancel).toHaveBeenCalledWith(2)
+    }
+    finally {
+      request.mockRestore()
+      cancel.mockRestore()
+    }
   })
 
   it("rebuilds the live document tree for authored structure and presentation changes, not selection", async () => {
@@ -10371,8 +10589,11 @@ describe("DomEditor.execute()", () => {
     await breadcrumb.updateComplete
     await toolbox.updateComplete
 
-    expect(breadcrumb.tree?.path).toEqual([0])
-    expect(breadcrumb.tree?.children).toHaveLength(1)
+    // The whole outline is only handed over while its popup is open.
+    expect(breadcrumb.tree).toBeNull()
+    expect(breadcrumb.pathItems).toEqual([expect.objectContaining({path: [0], children: [expect.objectContaining({path: [0, 0]})]})])
+    expect((editor as any).documentTree.path).toEqual([0])
+    expect((editor as any).documentTree.children).toHaveLength(1)
     expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item"))
       .map(button => button.textContent?.trim())).toEqual(["Content"])
     expect(toolbox.documentSelected).toBe(true)
@@ -10665,7 +10886,7 @@ describe("DomEditor.execute()", () => {
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
 
-    expect(breadcrumb.tree!.children.map(item => item.children)).toEqual([
+    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.children)).toEqual([
       [], [expect.objectContaining({name: "Paragraph", path: [1, 2]})],
     ])
     expect(breadcrumb.shadowRoot!.querySelector('[aria-label="Show Widget tree"]')).toBeNull()
@@ -10674,10 +10895,14 @@ describe("DomEditor.execute()", () => {
 
     block.type = "text/javascript"
     await publish()
-    expect(breadcrumb.tree!.children[0].children.map(item => item.path)).toEqual([[0, 0]])
+    expect(host.documentTree.children[0].children.map((item: DocumentTreeItem) => item.path)).toEqual([[0, 0]])
+    await breadcrumb.updateComplete
+    expect(breadcrumb.shadowRoot!.querySelector('[aria-label="Show Widget tree"]')).not.toBeNull()
     block.type = "application/json"
     await publish()
-    expect(breadcrumb.tree!.children[0].children).toEqual([])
+    expect(host.documentTree.children[0].children).toEqual([])
+    await breadcrumb.updateComplete
+    expect(breadcrumb.shadowRoot!.querySelector('[aria-label="Show Widget tree"]')).toBeNull()
   })
 
   it("opens the outline from a breadcrumb separator and preserves the full path", async () => {

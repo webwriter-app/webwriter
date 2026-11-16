@@ -384,7 +384,7 @@ export class DomEditor extends LitElement {
     distributionPending: {state: true},
     captureSelection: {attribute: false, state: true},
     selectionGap: {attribute: false, state: true},
-    documentTree: {attribute: false, state: true},
+    outlineTree: {attribute: false, state: true},
     svgText: {attribute: false, state: true},
     canMark: {attribute: false, state: true},
     canRemoveMarks: {attribute: false, state: true},
@@ -564,7 +564,15 @@ export class DomEditor extends LitElement {
   private nodeSelection = false
   private captureSelection = false
   private selectionGap: SelectionGap | null = null
-  private documentTree: DocumentTreeItem | null = null
+  // View caches of the document outline. The replica (or the live DOM) stays
+  // authoritative: invalidateDocumentTree drops every one of them.
+  private documentTreeCache: DocumentTreeItem | null | undefined = undefined
+  private readonly documentPathItemCache = new Map<string, DocumentTreeItem | null>()
+  private breadcrumbItems: {path: SelectionPathItem[] | null, items: DocumentTreeItem[]} = {path: null, items: noPathItems}
+  /** The whole outline, handed to the breadcrumb only while its popup is open. */
+  private outlineTree: DocumentTreeItem | null = null
+  private outlineOpen = false
+  private outlineFrame: number | undefined
   private documentReplica: EditorDocumentReplica | null = null
   private documentReplicaId = ""
   private documentReplicaSequence = 0
@@ -2244,7 +2252,7 @@ export class DomEditor extends LitElement {
         path: [...this.breadcrumbHoverPath],
       }).catch(() => {})
     }
-    this.documentTree = this.buildDocumentTree()
+    this.invalidateDocumentTree()
     const body = this.editorDocument?.body
     const FrameMutationObserver = this.editorOpaque ? undefined : (this.editorWindow as unknown as {
       MutationObserver?: typeof MutationObserver
@@ -2269,9 +2277,7 @@ export class DomEditor extends LitElement {
             && documentTreeAttributeNames.has(mutation.attributeName ?? "")
             && isCurrentTarget(mutation.target)
             && this.isAuthoredMutation(mutation))
-        if(treeChanged) {
-          this.documentTree = this.buildDocumentTree()
-        }
+        if(treeChanged) this.invalidateDocumentTree()
         if(mutations.some(mutation => mutation.type === "childList")) {
           observeLayouts(mutations)
         }
@@ -6407,7 +6413,8 @@ export class DomEditor extends LitElement {
     this.packageLoadPromise = null
     this.savedEditorSelection = null
     this.frameState = undefined
-    this.documentTree = null
+    this.invalidateDocumentTree()
+    this.outlineTree = null
     this.editorInitializedRevision = -1
     this.retainProofreadingDuringReload()
   }
@@ -8070,11 +8077,107 @@ export class DomEditor extends LitElement {
     })
   }
 
-  private buildDocumentTree() {
+  /** The whole outline, built when it is first read after a change. */
+  private get documentTree(): DocumentTreeItem | null {
+    return this.documentTreeCache === undefined ? this.documentTreeCache = this.buildDocumentTree() : this.documentTreeCache
+  }
+
+  /** Drops every outline view. Nothing is rebuilt until it is read again. */
+  private invalidateDocumentTree() {
+    this.documentTreeCache = undefined
+    this.documentPathItemCache.clear()
+    this.breadcrumbItems = {path: null, items: this.breadcrumbItems.items}
+    if(!this.outlineOpen) this.outlineTree = null
+    // An open outline follows the document, but at most once per frame.
+    else this.outlineFrame ??= requestAnimationFrame(() => {
+      this.outlineFrame = undefined
+      if(this.outlineOpen) this.outlineTree = this.documentTree
+    })
+    this.requestUpdate()
+  }
+
+  /** Popup parts are listed under their button, and image-map popups under
+   * their image, away from where they are authored. Only the whole outline
+   * places an entry at or inside one of them. */
+  private pathCrossesPopup(path: number[]) {
+    const linked = (node: ReadableNode | undefined) => node?.nodeType === Node.ELEMENT_NODE
+      && ((node as ReadableElement).hasAttribute("popover") || hasClass(node as ReadableElement, "ww-popup"))
+    let node: ReadableNode | undefined = this.editorBody ?? undefined
+    if(linked(node)) return true
+    for(const index of path) {
+      node = node?.nodeType === Node.ELEMENT_NODE ? (node as ReadableElement).childNodes[index] : undefined
+      if(linked(node)) return true
+    }
+    // A figure is listed as its content.
+    return node?.nodeType === Node.ELEMENT_NODE && (node as ReadableElement).localName === "figure"
+      && Array.from((node as ReadableElement).children).some(linked)
+  }
+
+  /** Outline items for the breadcrumb's entries: their sections and whether
+   * they have children. They are read from the document for those entries
+   * alone and kept until the outline changes, so neither typing nor moving the
+   * selection walks the whole document. */
+  private breadcrumbPathItems() {
+    if(this.breadcrumbItems.path === this.selectionPath) return this.breadcrumbItems.items
+    const paths = this.selectionPath.length ? this.selectionPath.map(item => item.path) : [[]]
+    const missing = paths.filter(path => !this.documentPathItemCache.has(path.join(".")))
+    if(missing.length) {
+      const tree = this.documentTreeCache !== undefined || missing.some(path => this.pathCrossesPopup(path))
+        ? this.documentTree
+        : this.buildDocumentTree(missing)
+      const find = (item: DocumentTreeItem, key: string): DocumentTreeItem | null => {
+        if(item.path.join(".") === key) return item
+        for(const child of item.children) {
+          const match = find(child, key)
+          if(match) return match
+        }
+        return null
+      }
+      for(const path of missing) this.documentPathItemCache.set(path.join("."), tree ? find(tree, path.join(".")) : null)
+    }
+    const items = paths.flatMap(path => this.documentPathItemCache.get(path.join(".")) ?? [])
+    // Keep the previous array while it says the same, so an edit that leaves
+    // the breadcrumb as it was does not update or measure it again.
+    const previous = this.breadcrumbItems.items
+    const same = previous.length === items.length && items.every((item, index) => {
+      const other = previous[index]
+      return item.path.join(".") === other.path.join(".") && (item.children.length > 0) === (other.children.length > 0)
+        && JSON.stringify(item.sections ?? []) === JSON.stringify(other.sections ?? [])
+    })
+    this.breadcrumbItems = {path: this.selectionPath, items: same ? previous : items}
+    return this.breadcrumbItems.items
+  }
+
+  /** Builds the outline of the authored document. With `targets`, only the
+   * items at those paths are complete: the walk follows the ancestors of each
+   * target and reads no other subtree, so the result answers what sections a
+   * target has and whether it has children, nothing else. Callers must build
+   * the whole outline for targets that `pathCrossesPopup`. */
+  private buildDocumentTree(targets?: number[][]) {
     const body = this.documentReplica?.body ?? this.editorDocument?.body
     if(!body) return null
     const root = getDocumentRoot(body)
     const packageItems = packageInsertionItems(this.installedPackages, true)
+    // A figure is listed as its only content, under the figure's own path.
+    targets = targets?.flatMap(target => {
+      const figure = target.reduce<ReadableNode | undefined>((node, index) =>
+        node?.nodeType === Node.ELEMENT_NODE ? (node as ReadableElement).childNodes[index] : undefined, body) as ReadableElement | undefined
+      if(figure?.nodeType !== Node.ELEMENT_NODE || figure.localName !== "figure") return [target]
+      const contents = Array.from(figure.children).filter(child => child.localName !== "figcaption")
+      return contents.length === 1 ? [target, [...target, Array.from(figure.childNodes).indexOf(contents[0])]] : [target]
+    })
+    const leadsToTarget = (path: number[]) => !targets || targets.some(target =>
+      path.length <= target.length && path.every((index, position) => index === target[position]))
+    const isTarget = (path: number[]) => !targets || targets.some(target =>
+      path.length === target.length && path.every((index, position) => index === target[position]))
+    const stepsToTargets = (path: number[]) => [...new Set(targets!.filter(target => target.length > path.length
+      && path.every((index, position) => index === target[position])).map(target => target[path.length]))].sort((a, b) => a - b)
+    /** Neither a section nor a wrapper the outline looks through, by name alone:
+     * at most one item, whatever the element contains. */
+    const outlineLeaf = (element: ReadableElement) => {
+      const name = element.localName
+      return name !== "map" && !isSectionName(name) && canonicalMarkName(name) === null && !element.hasAttribute("popover")
+    }
 
     const sectionItem = (element: ReadableElement, path: number[]): SelectionPathSection => ({
       path: [...path],
@@ -8089,7 +8192,11 @@ export class DomEditor extends LitElement {
       if(added.length) item.sections = [...existing, ...added]
     }
     const building = new Set<ReadableElement>()
+    // Away from every target only the existence of an item counts.
+    const listed = (element: ReadableElement, path: number[], sections: SelectionPathSection[] = []): DocumentTreeItem =>
+      leadsToTarget(path) ? build(element, path, sections) : {path: [...path], name: "", children: []}
     const build = (element: ReadableElement, path: number[], sections: SelectionPathSection[] = []): DocumentTreeItem => {
+      const complete = isTarget(path)
       const item: DocumentTreeItem = {
         path: [...path],
         ...getElementPresentation(element, packageItems),
@@ -8100,14 +8207,18 @@ export class DomEditor extends LitElement {
       building.add(element)
       for(const popup of imageMapPopups(element)) {
         const popupPath = readableNodePath(body, popup)
-        if(popupPath) item.children.push(build(popup, popupPath))
+        if(popupPath) item.children.push(listed(popup, popupPath))
       }
 
       const appendChildren = (container: ReadableElement, containerPath: number[], inherited: SelectionPathSection[],
         destination: DocumentTreeItem[] = item.children, popupItem?: DocumentTreeItem, popupToggle?: ReadableElement) => {
-        Array.from(container.childNodes).forEach((child, index) => {
+        const first = destination.length
+        const nodes = Array.from(container.childNodes)
+        const append = (child: ReadableNode, index: number) => {
           if(child.nodeType !== Node.ELEMENT_NODE) return
           const childElement = child as ReadableElement
+          // Past its first child, a target is only missing its empty sections.
+          if(targets && destination.length > first && outlineLeaf(childElement) && !leadsToTarget([...containerPath, index])) return
           if(isDataBlock(childElement)) return
           const slideRole = slideLayoutRole(childElement)
           if(slideRole === "navigation" || (childElement.localName === "div" && hasClass(childElement, "ww-canvas-starting-view") && !childElement.hasAttribute("is") && childElement.parentElement === body)) return
@@ -8123,25 +8234,26 @@ export class DomEditor extends LitElement {
           }
           if(childElement.localName === "area" && !childElement.hasAttribute("is") && closestElement(childElement.parentElement, node => node.localName === "map")) return
           if(popupToggle && childElement === popupToggle) return
-          if(popupElementRole(childElement) === "content" && popupDisplayToggle(childElement)
+          const popupRole = popupElementRole(childElement)
+          if(popupRole === "content" && popupDisplayToggle(childElement)
             && !popupItem) return
-          if(popupItem && popupToggle && popupElementRole(childElement) === "content"
+          if(popupItem && popupToggle && popupRole === "content"
             && popupDisplayToggle(childElement) === popupToggle) {
-            popupItem.children.push(build(childElement, childPath, inherited))
+            popupItem.children.push(listed(childElement, childPath, inherited))
             return
           }
-          if(popupElementRole(childElement) === "popup") {
+          if(popupRole === "popup") {
             const toggle = popupDisplayToggle(childElement)
             if(toggle) {
               const togglePath = readableNodePath(body, toggle)
               if(!togglePath) return
-              const toggleItem = build(toggle, togglePath, inherited)
+              const toggleItem = listed(toggle, togglePath, inherited)
               destination.push(toggleItem)
               appendChildren(childElement, childPath, inherited, destination, toggleItem, toggle)
               const content = popupContentForToggle(toggle)
               if(content && !containsElement(childElement, content)) {
                 const contentPath = readableNodePath(body, content)
-                if(contentPath) toggleItem.children.push(build(content, contentPath, inherited))
+                if(contentPath) toggleItem.children.push(listed(content, contentPath, inherited))
               }
               return
             }
@@ -8157,11 +8269,11 @@ export class DomEditor extends LitElement {
             }
             return
           }
-          if(slideRole === "viewport" || isMarkElement(childElement) && !popupElementRole(childElement)) {
+          if(slideRole === "viewport" || isMarkElement(childElement) && !popupRole) {
             appendChildren(childElement, childPath, inherited, destination)
             return
           }
-          if(slideRole !== "slide" && !boardLayoutRole(childElement) && !popupElementRole(childElement) && isSectionElement(childElement)) {
+          if(slideRole !== "slide" && !boardLayoutRole(childElement) && !popupRole && isSectionElement(childElement)) {
             const currentSection = sectionItem(childElement, childPath)
             const nextSections = [...inherited, currentSection]
             const childCount = destination.length
@@ -8169,8 +8281,11 @@ export class DomEditor extends LitElement {
             if(destination.length === childCount) addSections(item, [currentSection])
             return
           }
-          destination.push(build(childElement, childPath, inherited))
-        })
+          destination.push(listed(childElement, childPath, inherited))
+        }
+        // Children of an item that is only on the way to a target are not its concern.
+        if(complete) nodes.forEach(append)
+        else for(const index of stepsToTargets(containerPath)) if(nodes[index]) append(nodes[index], index)
       }
       appendChildren(element, path, [])
       building.delete(element)
@@ -8183,8 +8298,16 @@ export class DomEditor extends LitElement {
     return build(root, rootPath)
   }
 
-  private handleBreadcrumbTreeToggle = () => {
-    this.documentTree = this.buildDocumentTree()
+  private handleBreadcrumbTreeToggle = (event: CustomEvent<{open: boolean}>) => {
+    this.outlineOpen = event.detail.open
+    if(!this.outlineOpen) {
+      if(this.documentTreeCache === undefined) this.outlineTree = null
+      return
+    }
+    this.outlineTree = this.documentTreeCache = this.buildDocumentTree()
+    // The breadcrumb renders its popup in the update that the click already
+    // queued, which runs before this host renders again.
+    ;(event.currentTarget as DomEditorBreadcrumb).tree = this.outlineTree
   }
 
   private isEditorMessage(event: MessageEvent) {
@@ -8640,7 +8763,7 @@ export class DomEditor extends LitElement {
         return
       }
       if(paletteChanged) this.syncDocumentPalette()
-      if(treeChanged || !this.documentTree) this.documentTree = this.buildDocumentTree()
+      if(treeChanged) this.invalidateDocumentTree()
       if(contentChanged) {
         this.dismissGuidedTour()
         this.documentChangeSequence++
@@ -9212,6 +9335,8 @@ export class DomEditor extends LitElement {
     this.clearHTMLSourceRanges()
     this.htmlSourceTokens = null
     if(this.htmlSourceScrollFrame) cancelAnimationFrame(this.htmlSourceScrollFrame)
+    if(this.outlineFrame !== undefined) cancelAnimationFrame(this.outlineFrame)
+    this.outlineFrame = undefined
     this.htmlSourceScrollFrame = 0
     this.htmlSourceResizeObserver?.disconnect()
     this.htmlSourceResizeObserver = null
@@ -9287,7 +9412,8 @@ export class DomEditor extends LitElement {
     this.restoreEditorAfterRibbonInput = false
     this.breadcrumbHoverPath = null
     this.documentRootHovered = false
-    this.documentTree = null
+    this.outlineOpen = false
+    this.invalidateDocumentTree()
     this.presenceUsers = []
     this.editorReadyReject?.(new Error("The DOM editor component was disconnected"))
     this.packageLoadPromise = null
@@ -9624,7 +9750,8 @@ export class DomEditor extends LitElement {
             .capture=${this.captureSelection}
             .gap=${this.selectionGap}
             .selectedSectionPath=${this.selectedSectionPath}
-            .tree=${this.documentTree}
+            .tree=${this.outlineTree}
+            .pathItems=${this.breadcrumbVisible ? this.breadcrumbPathItems() : noPathItems}
             ?hidden=${!this.breadcrumbVisible}
             @breadcrumb-tree-toggle=${this.handleBreadcrumbTreeToggle}
             @breadcrumb-item-select=${this.handleBreadcrumbItemSelect}
