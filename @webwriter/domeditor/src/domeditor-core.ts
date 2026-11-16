@@ -553,8 +553,13 @@ export class DOMEditor {
         childList: true, subtree: true, characterData: true, attributes: true,
       })
       if(!initialYDoc && !options.reader) this.#ensureDocumentContent()
-      const beforeSyncFromDOM = options.reader ? undefined : (local: boolean) => {
+      const beforeSyncFromDOM = options.reader ? undefined : (local: boolean, records?: readonly MutationRecord[]) => {
         this.features.widget.flushMutations(local)
+        // The repairs below each query the whole document. Typed text can only
+        // empty or fill a disclosure or popup that contains it; it cannot move
+        // attribution, add frames or change any other structure they read.
+        if(records?.length && records.every(record => record.type === "characterData"
+          && !record.target.parentElement?.closest("details, [popover], .ww-popup"))) return
         this.features.attribution.normalize()
         this.features.list.ensureDetailsBodyContent()
         this.features.dialog.ensurePopupContent()

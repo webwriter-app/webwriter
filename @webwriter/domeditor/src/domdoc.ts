@@ -93,7 +93,7 @@ export type DOMChangePreview = {
 
 export type SharedDOMDocOptions = {
   /** Derives owned DOM metadata before seeding/sync; must be idempotent. */
-  beforeSyncFromDOM?: (local: boolean) => void
+  beforeSyncFromDOM?: (local: boolean, records?: readonly MutationRecord[]) => void
   /** Whether a pristine generated child can be removed from a nested container. */
   canRemoveMinimumContentRepair?: (element: Element, repairs: readonly Element[]) => boolean
   documentPermalinks?: boolean
@@ -226,7 +226,7 @@ export class SharedDOMDoc {
   #historyStateQueued = false
   readonly #documentPermalinks: boolean
   readonly #ensureAuthoredIds: boolean
-  readonly #beforeSyncFromDOM?: (local: boolean) => void
+  readonly #beforeSyncFromDOM?: (local: boolean, records?: readonly MutationRecord[]) => void
   readonly #canRemoveMinimumContentRepair?: (element: Element, repairs: readonly Element[]) => boolean
   readonly #scopeBoundary?: (element: Element) => boolean
   readonly #isWidget: WidgetLookup
@@ -865,7 +865,7 @@ export class SharedDOMDoc {
   /** Reconciles the current DOM immediately; MutationObserver normally calls this. */
   syncFromDOM(origin: unknown = this.#domOrigin, mutations?: MutationRecord[], derivePermalinks = true) {
     if(this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync) return
-    this.#beforeSyncFromDOM?.(origin !== this.#remoteReactionOrigin)
+    this.#beforeSyncFromDOM?.(origin !== this.#remoteReactionOrigin, mutations)
     const pending = this.#isObserving ? this.#observer.takeRecords() : undefined
     let records = mutations ? [...mutations, ...(pending ?? [])] : pending
     if(records) records = records.filter(record => !this.#insideScopeBoundary(record.target))
