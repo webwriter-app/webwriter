@@ -7661,6 +7661,180 @@ describe("unified content transfer", () => {
     expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:1395, clientY:690}), source)).toBe(document.querySelector("p"))
   })
 
+  describe("float drop zones of a long document", () => {
+    type Targets = {byTop?: unknown[]} | null
+    const targets = () => (editor.features.manipulation as unknown as {floatDropTargets: Targets}).floatDropTargets
+    let scrollY: PropertyDescriptor | undefined
+    beforeEach(() => {
+      scrollY = Object.getOwnPropertyDescriptor(window, "scrollY")
+      Object.defineProperty(window, "scrollY", {configurable: true, value: 0})
+    })
+    afterEach(() => {
+      if(scrollY) Object.defineProperty(window, "scrollY", scrollY)
+      else Reflect.deleteProperty(window, "scrollY")
+    })
+    const scrollTo = (y: number) => {
+      Object.defineProperty(window, "scrollY", {configurable: true, value: y})
+      document.dispatchEvent(new Event("scroll"))
+    }
+
+    /** Irregular but valid structure: unequal heights, overlapping boxes,
+     * out-of-order tops, nested lists and tables, a widget and an empty box. */
+    function longDocument() {
+      const blocks: string[] = []
+      for(let index = 0; index < 120; index++) {
+        blocks.push(index % 17 === 5 ? `<ul><li>item ${index}</li><li>item ${index}b</li></ul>`
+          : index % 23 === 7 ? `<table><tbody><tr><td>cell ${index}</td><td>cell ${index}b</td></tr></tbody></table>`
+          : index % 29 === 3 ? `<demo-widget>widget ${index}<!--keep--></demo-widget>`
+          : `<p>paragraph ${index}</p>`)
+      }
+      document.body.innerHTML = blocks.join("") + '<video controls style="width:80px;height:90px"></video>'
+      document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
+      vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 20000))
+      let top = 10
+      for(const [index, element] of Array.from(document.body.querySelectorAll("p, ul, li, table, tbody, tr, td, demo-widget")).entries()) {
+        const height = index % 11 === 4 ? 0 : 20 + index * 7 % 53
+        // Every ninth box overlaps its predecessor and every thirteenth sits
+        // above it, as negative margins or positioned content can.
+        const y = index % 13 === 6 ? top - 120 : index % 9 === 2 ? top - 15 : top
+        vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(340 + index % 3 * 20, y, 720 - index % 3 * 40, height))
+        top += element.localName === "li" || element.localName === "td" || element.localName === "tr" || element.localName === "tbody" ? 0 : height + 12
+      }
+      const source = document.querySelector("video")!
+      vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(340, top, 80, 90))
+      return source
+    }
+
+    /** A paragraph whose box no other box shares or follows closely. */
+    function plainAnchor(minimumTop: number) {
+      const tops = Array.from(document.body.querySelectorAll("*")).map(element => element.getBoundingClientRect().top)
+      return Array.from(document.body.children).find(element => {
+        const box = element.getBoundingClientRect()
+        return element.localName === "p" && box.top > minimumTop && box.height > 0
+          && tops.filter(top => top >= box.top - 100 && top <= box.top + 30).length === 1
+      })!
+    }
+
+    it("selects the same target and preview rectangle as a scan of every zone, before and after scrolling", () => {
+      const source = longDocument()
+      const manipulation = editor.features.manipulation
+      manipulation.prepareFloatDropTargets(source)
+      const prepared = targets()!
+      expect(prepared.byTop).toBeDefined()
+      let seed = 11, compared = 0, found = 0
+      const random = () => (seed = seed * 16807 % 2147483647) / 2147483647
+      for(const scroll of [0, 2400, 5100, 900]) {
+        scrollTo(scroll)
+        for(let index = 0; index < 400; index++) {
+          const event = new MouseEvent("mousemove", {clientX: random() * 1600 - 100, clientY: random() * 1100 - 150})
+          const indexed = manipulation.floatDropTarget(event, source)
+          const indexedHit = (manipulation as unknown as {floatDropHit: unknown}).floatDropHit
+          const byTop = prepared.byTop
+          prepared.byTop = undefined
+          try {
+            expect(manipulation.floatDropTarget(event, source)).toBe(indexed)
+            expect((manipulation as unknown as {floatDropHit: unknown}).floatDropHit).toEqual(indexedHit)
+          }
+          finally { prepared.byTop = byTop }
+          compared++
+          if(indexed) found++
+        }
+      }
+      expect(compared).toBe(1600)
+      expect(found).toBeGreaterThan(400)
+      // Hovering never measured again.
+      expect(targets()).toBe(prepared)
+      // An unusable scroll offset falls back to the scan and still ends.
+      scrollTo(Number.NaN)
+      manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX: 1395, clientY: 300}), source)
+    })
+
+    it("offers anchors that were off-screen at drag start when the drag scrolls to them, and drops there with undo and redo", () => {
+      const source = longDocument()
+      const far = plainAnchor(3000)
+      const box = far.getBoundingClientRect()
+      expect(box.top).toBeGreaterThan(3000)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const before = editor.toHTML(true)
+      const {data} = beginDrag(source)
+      const prepared = targets()
+      vi.spyOn($, "pointFromCoords").mockReturnValue({node: far.firstChild!, offset: 1})
+      const zone = (prepared as unknown as {zones: {container: Element, side: string, rect: DOMRect}[]}).zones
+        .find(zone => zone.container === far && zone.side === "right")!
+      // The pointer stays in the viewport while the document scrolls beneath it.
+      const scroll = zone.rect.top - 300
+      scrollTo(scroll)
+      const point = {clientX: 1395, clientY: 310}
+      document.body.dispatchEvent(transferEvent("dragover", data, point))
+      expect(targets()).toBe(prepared)
+      const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
+      expect(preview.getAttribute("part")).toContain("float-drop-preview-right")
+      // At the zone measured at drag start, moved by the scroll since.
+      expect(parseFloat(preview.style.top)).toBeCloseTo(zone.rect.top - scroll)
+      document.body.dispatchEvent(transferEvent("drop", data, point))
+      expect(source.nextElementSibling).toBe(far)
+      expectClassFloat(source, "right")
+      expect(targets()).toBeNull()
+      editor.doc.syncFromDOM()
+      const floated = editor.toHTML(true)
+      expect(floated).not.toMatch(/◆|float-drop-preview/)
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(before)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(floated)
+    })
+
+    it("releases measurement, observers and listeners when the drag is cancelled or the editor is destroyed", () => {
+      const source = longDocument()
+      const disconnect = vi.spyOn(MutationObserver.prototype, "disconnect")
+      const removed = vi.spyOn(document, "removeEventListener")
+      const {data, surface} = beginDrag(source)
+      expect(targets()).not.toBeNull()
+      document.body.dispatchEvent(transferEvent("dragover", data, {clientX: 1395, clientY: 300}))
+      surface.dispatchEvent(transferEvent("dragend", data))
+      expect(targets()).toBeNull()
+      expect(disconnect).toHaveBeenCalled()
+      expect(removed.mock.calls.some(([type]) => type === "scroll")).toBe(true)
+      expect(Array.from(editor.appendix.querySelectorAll("div")).some(element => element.style.position === "fixed" && element.style.visibility === "hidden")).toBe(false)
+      expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+
+      beginDrag(source)
+      expect(targets()).not.toBeNull()
+      editor.features.manipulation.disable()
+      expect(targets()).toBeNull()
+      expect(document.body.innerHTML).not.toMatch(/◆|float-drop-preview/)
+    })
+
+    it.each(["anchor", "source"] as const)("rebuilds after a remote edit replaces the %s during the drag", async replaced => {
+      const source = longDocument()
+      const anchor = plainAnchor(1500)
+      const box = anchor.getBoundingClientRect()
+      editor.features.manipulation.prepareFloatDropTargets(source)
+      const prepared = targets()
+      const replacement = (replaced === "anchor" ? anchor : source).cloneNode(true) as Element
+      vi.spyOn(replacement, "getBoundingClientRect").mockReturnValue(replaced === "anchor" ? box : source.getBoundingClientRect())
+      ;(replaced === "anchor" ? anchor : source).replaceWith(replacement)
+      const point = new MouseEvent("mousemove", {clientX: 1395, clientY: box.top + 2})
+      // A stale anchor is never offered, even before the rebuild.
+      if(replaced === "anchor") expect(editor.features.manipulation.floatDropTarget(point, source)).not.toBe(anchor)
+      await new Promise(resolve => setTimeout(resolve))
+      await new Promise(resolve => requestAnimationFrame(resolve))
+      await new Promise(resolve => requestAnimationFrame(resolve))
+      expect(targets()).not.toBe(prepared)
+      if(replaced === "anchor") expect(editor.features.manipulation.floatDropTarget(point, source)).toBe(replacement)
+      else {
+        // The detached source is measured as a template; nothing authored changes.
+        const html = document.body.innerHTML
+        editor.features.manipulation.floatDropTarget(point, source)
+        expect(document.body.innerHTML).toBe(html)
+        expect(source.isConnected).toBe(false)
+      }
+      editor.features.manipulation.clearFloatDropTargets()
+      expect(targets()).toBeNull()
+    })
+  })
+
   it("floats the document's sole dragged element in a gutter while keeping self-hover inert", () => {
     document.body.innerHTML = '<video controls style="width:120px;height:60px"></video>'
     document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'

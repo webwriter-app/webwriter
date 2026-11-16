@@ -4022,6 +4022,51 @@ describe("drop, cancellation, and document ownership", () => {
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
+  it("measures float targets of a long document once per move and releases them on cancel, end and concurrent removal", () => {
+    const target = append(document.createElement("img"))
+    target.style.width = "40px"
+    const paragraphs = Array.from({length: 80}, (_, index) => {
+      const paragraph = targetElement()
+      paragraph.textContent = `paragraph ${index}`
+      vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 100 + index * 120, 100, 100))
+      return paragraph
+    })
+    mockRect(target)
+    const targets = () => (editor.features.manipulation as unknown as {floatDropTargets: {byTop?: unknown[]} | null}).floatDropTargets
+    selectNode(target)
+    const authored = document.body.innerHTML
+    const prepare = vi.spyOn(editor.features.manipulation, "prepareFloatDropTargets")
+    feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
+    expect(prepare).toHaveBeenCalledTimes(1)
+    const prepared = targets()
+    expect(prepared?.byTop).toBeDefined()
+    // A paragraph far down the document is reached from the stored zones.
+    const far = paragraphs[70]
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [far])})
+    const top = 100 + 70 * 120
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 390, clientY: top + 10, ctrlKey: true}))
+    const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
+    expect(preview.getAttribute("part")).toContain("float-drop-preview-right")
+    expect(parseFloat(preview.style.top)).toBe(top)
+    expect(targets()).toBe(prepared)
+    expect(prepare).toHaveBeenCalledTimes(1)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
+    expect(targets()).toBeNull()
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(document.body.innerHTML).toBe(authored)
+
+    // A remote edit removes the moving element during the gesture.
+    selectNode(target)
+    feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
+    expect(targets()).not.toBeNull()
+    target.remove()
+    expect(() => feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 390, clientY: 110, ctrlKey: true}))).not.toThrow()
+    feature.handleMoveEnd()
+    expect(targets()).toBeNull()
+    expect(paragraphs.every(paragraph => paragraph.parentElement === document.body)).toBe(true)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
   it("moves the float preview between target halves and removes it on cancellation", () => {
     const target = append(document.createElement("img"))
     const paragraph = targetElement()

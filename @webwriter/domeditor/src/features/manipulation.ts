@@ -48,13 +48,16 @@ import {
 type Granularity = "character" | "word" | "line" | "lineboundary" | "paragraphboundary" | "block"
 type DropPoint = ReturnType<typeof $.pointFromCoords>
 
-type FloatDropZone = {container: Element, parent: Element, side: "left" | "right", center: number, rect: DOMRect, column?: {left: number, right: number}, allowed?: boolean}
-type FloatDropTargets = {source: Element, key: Element | string, zones: FloatDropZone[], scrollX: number, scrollY: number, currentScrollX: number, currentScrollY: number}
+type FloatDropZone = {container: Element, parent: Element, side: "left" | "right", center: number, rect: DOMRect, column?: {left: number, right: number}, allowed?: boolean, order: number}
+type FloatDropTargets = {source: Element, key: Element | string, zones: FloatDropZone[], scrollX: number, scrollY: number, currentScrollX: number, currentScrollY: number,
+  /** The zones ordered by top, and their greatest height; absent when a rectangle is not finite. */
+  byTop?: FloatDropZone[], reach: number}
 
 type FloatPreviewMeasurements = {
   geometry: Map<Element, Partial<Record<"left" | "right", {rect: DOMRect, clears: boolean, physicalSide: "left" | "right", column?: {left: number, right: number}}>>>
   clearance: Map<Element, Map<Element, {left: number, right: number}>>
   sourceFlow?: {bottom: number, height: number} | null
+  sourceFollowing?: {parent: Element, following: Set<Element>}
   /** Set (initially to null) by a caller that measures many parents with one
    * overlay: lengths that do not depend on the parent are resolved once, and
    * one probe is restyled for each parent. Every element inserted into the
@@ -794,18 +797,60 @@ export class ManipulationFeature extends EditorFeature {
     const dx = targets.scrollX - targets.currentScrollX, dy = targets.scrollY - targets.currentScrollY
     // Hover only checks stored rectangles. It never measures a template or
     // changes a measurement element's styles.
-    const hits = targets.zones.filter(zone => zone.container !== source && event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
-      && event.clientY >= zone.rect.top + dy && event.clientY < zone.rect.bottom + dy)
+    const hit = (zone: FloatDropZone) => zone.container !== source && event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
+      && event.clientY >= zone.rect.top + dy && event.clientY < zone.rect.bottom + dy
     const preferred = (zone: FloatDropZone) => preview?.container === zone.container ? preview.side
       : event.clientX < zone.center + dx ? "left" : "right"
-    hits.sort((a, b) => b.rect.top - a.rect.top || Number(b.side === preferred(b)) - Number(a.side === preferred(a)))
     // Empty space in a document gutter still expresses float placement. Use
     // the nearest existing anchor, even below the last preview footprint.
-    const gutters = targets.zones.filter(zone => zone.column && event.clientX >= 0 && event.clientY >= 0
-      && (zone.side === "left" ? event.clientX < zone.column.left + dx : event.clientX >= zone.column.right + dx))
-    gutters.sort((a, b) => Math.abs(a.rect.top + dy - event.clientY) - Math.abs(b.rect.top + dy - event.clientY)
-      || b.rect.top - a.rect.top)
-    for(const zone of [...hits, ...gutters]) {
+    const gutter = (zone: FloatDropZone) => zone.column && event.clientX >= 0 && event.clientY >= 0
+      && (zone.side === "left" ? event.clientX < zone.column.left + dx : event.clientX >= zone.column.right + dx)
+    const distance = (zone: FloatDropZone) => Math.abs(zone.rect.top + dy - event.clientY)
+    // Ties keep the zones' measured order, as a stable sort of all zones would.
+    const byHit = (a: FloatDropZone, b: FloatDropZone) => b.rect.top - a.rect.top
+      || Number(b.side === preferred(b)) - Number(a.side === preferred(a)) || a.order - b.order
+    const byDistance = (a: FloatDropZone, b: FloatDropZone) => distance(a) - distance(b) || b.rect.top - a.rect.top || a.order - b.order
+    const {byTop, reach} = targets
+    let hits: FloatDropZone[], gutters: Iterable<FloatDropZone>
+    if(byTop && Number.isFinite(event.clientY - dy)) {
+      // Zones sorted by top: only those whose top lies within the tallest
+      // zone's height above the pointer can contain it, and gutter anchors are
+      // taken in widening bands around the pointer. Each candidate is tested
+      // and ordered exactly as a scan of every zone would; the 1px margins
+      // absorb rounding between the two coordinate spaces.
+      const y = event.clientY - dy
+      const first = (top: number) => {
+        let low = 0, high = byTop.length
+        while(low < high) {
+          const middle = (low + high) >> 1
+          if(byTop[middle].rect.top < top) low = middle + 1
+          else high = middle
+        }
+        return low
+      }
+      hits = []
+      for(let index = first(y - reach - 1); index < byTop.length && byTop[index].rect.top <= y + 1; index++) {
+        if(hit(byTop[index])) hits.push(byTop[index])
+      }
+      gutters = (function*() {
+        let low = first(y), high = low, previous = -Infinity
+        for(let radius = 256; ; radius *= 2) {
+          while(low > 0 && byTop[low - 1].rect.top >= y - radius - 1) low--
+          while(high < byTop.length && byTop[high].rect.top <= y + radius + 1) high++
+          const complete = low === 0 && high === byTop.length
+          const band = byTop.slice(low, high).filter(zone => gutter(zone) && distance(zone) > previous && (complete || distance(zone) <= radius))
+          yield* band.sort(byDistance)
+          if(complete) return
+          previous = radius
+        }
+      })()
+    }
+    else {
+      hits = targets.zones.filter(hit)
+      gutters = targets.zones.filter(gutter).sort(byDistance)
+    }
+    hits.sort(byHit)
+    for(const zone of (function*() { yield* hits; yield* gutters })()) {
       if(zone.container.parentElement !== zone.parent || !root.contains(zone.container)) continue
       zone.allowed ??= valid(zone.container) ? true : false
       if(!zone.allowed || event.type === "drop" && !valid(zone.container)) continue
@@ -829,41 +874,45 @@ export class ManipulationFeature extends EditorFeature {
     this.clearFloatDropTargets()
     if(this.editor.features.canvas.active || this.editor.features.slides.active || source.namespaceURI === MATH_NAMESPACE) return
     const root = getDocumentRoot(), candidates: Element[] = []
-    const pending = Array.from(root.children).reverse()
+    // The source's subtree is never entered, so only the source itself (or a
+    // source containing the whole root) is a node within it.
+    const pending = source.contains(root) ? [] : Array.from(root.children).reverse()
     while(pending.length) {
       const element = pending.pop()!
-      if(source.contains(element)) continue
+      if(element === source) continue
+      // The walk never enters an atomic element, so no visited element has an
+      // atomic ancestor below the root. For such an element floatContainer(element,
+      // source) is the element itself exactly when it is not a mark; testing that
+      // directly avoids an ancestor walk per element of the document.
       if((!isSectionElement(element) || Array.from(element.childNodes).some(child => child instanceof Text && child.textContent?.trim()))
-        && this.floatContainer(element, source) === element) candidates.push(element)
+        && !isMarkElement(element)) candidates.push(element)
       const atomic = Boolean(isAtomicEditingElement(element, this.editor.schema))
       if(!atomic) for(let index = element.children.length - 1; index >= 0; index--) pending.push(element.children[index])
     }
     // A lone authored element can change its float without a sibling anchor.
     if(!candidates.length && source.parentElement === root && root.children.length === 1) candidates.push(source)
+    // Read every anchor's box before the measurement element enters the
+    // appendix: that insertion invalidates style, and the boxes of authored
+    // content do not depend on a hidden fixed element in the shadow tree.
+    const boxes = candidates.map(container => container.getBoundingClientRect())
     const measurement = document.createElement("div")
     measurement.style.cssText = "position:fixed;visibility:hidden;pointer-events:none"
     this.editor.addAppendix(measurement)
     const measurements: FloatPreviewMeasurements = {geometry: new Map(), clearance: new Map(), probe: null}
     const zones: FloatDropZone[] = []
-    const parentPermissions = new Map<Element, boolean>()
     let scroll = {x: 0, y: 0}
     try {
-      for(const container of candidates) {
-        const bounds = container.getBoundingClientRect()
+      for(const [index, container] of candidates.entries()) {
+        const bounds = boxes[index]
         if(!container.parentElement || !bounds.width || !bounds.height) continue
         const parent = container.parentElement
-        let allowed = source.parentElement === parent ? true : parentPermissions.get(parent)
-        if(allowed === undefined) {
-          allowed = this.editor.schema.canInsert(parent, source, Array.from(parent.childNodes).indexOf(container))
-          // A simple group rule consumes the same nodes at every index; its
-          // insertion permission is shared by all sibling anchors.
-          const rule = this.editor.schema.get(parent).content
-          if(rule && "group" in rule) parentPermissions.set(parent, allowed)
-        }
+        // Schema permission is resolved on first hover (floatDropTarget's
+        // valid()), so only anchors the pointer actually reaches pay for it.
+        const allowed = source.parentElement === parent ? true : undefined
         for(const side of ["left", "right"] as const) {
           const rect = this.floatPreviewRect(container, side, measurement, source, measurements, bounds)
           zones.push({container, parent, side, center: bounds.left + bounds.width / 2, allowed, rect,
-            column: measurements.geometry.get(parent)?.[side]?.column})
+            column: measurements.geometry.get(parent)?.[side]?.column, order: zones.length})
         }
       }
     }
@@ -874,7 +923,13 @@ export class ManipulationFeature extends EditorFeature {
       measurement.remove()
     }
     const scrollX = scroll.x, scrollY = scroll.y
-    this.floatDropTargets = {source, key: source.isConnected ? source : source.outerHTML, zones, scrollX, scrollY, currentScrollX:scrollX, currentScrollY:scrollY}
+    let reach = 0
+    const finite = zones.every(zone => {
+      reach = Math.max(reach, zone.rect.bottom - zone.rect.top)
+      return Number.isFinite(zone.rect.top) && Number.isFinite(zone.rect.bottom)
+    })
+    const byTop = finite ? zones.slice().sort((a, b) => a.rect.top - b.rect.top || a.order - b.order) : undefined
+    this.floatDropTargets = {source, key: source.isConnected ? source : source.outerHTML, zones, scrollX, scrollY, currentScrollX:scrollX, currentScrollY:scrollY, byTop, reach}
     const schedule = () => {
       if(this.floatDropTargetsFrame !== null) return
       this.floatDropTargetsFrame = requestAnimationFrame(() => {
@@ -1172,7 +1227,15 @@ export class ManipulationFeature extends EditorFeature {
     const parent = container.parentElement!
     const number = (value: string) => parseFloat(value) || 0
     let top = rect.top
-    if(source?.parentElement === parent && source.compareDocumentPosition(container) & Node.DOCUMENT_POSITION_FOLLOWING) {
+    // compareDocumentPosition walks the siblings to order two of them, so one
+    // call per anchor costs time quadratic in the parent's children. Collect the
+    // source's following siblings once per measurement instead.
+    if(source?.parentElement === parent && measurements.sourceFollowing?.parent !== parent) {
+      const following = new Set<Element>()
+      for(let sibling = source.nextElementSibling; sibling; sibling = sibling.nextElementSibling) following.add(sibling)
+      measurements.sourceFollowing = {parent, following}
+    }
+    if(source?.parentElement === parent && measurements.sourceFollowing!.following.has(container)) {
       if(measurements.sourceFlow === undefined) {
         const style = getComputedStyle(source)
         measurements.sourceFlow = null
