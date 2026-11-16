@@ -1296,18 +1296,20 @@ export class DOMEditor {
       })
       return
     }
-    const attributes = this.features.mark.getAttributeState()
-    if(attributes.a?.download !== undefined && /^data:/i.test(attributes.a.href ?? "")) delete attributes.a.href
-    const attachment = this.features.mark.getAttachmentState()
-    this.postBridgeEvent(markStateChangeEvent, {
-      ...this.features.mark.getState(),
-      canRemoveMarks: this.features.mark.canRemoveMarks,
-      styles: this.features.mark.getStyleState(),
-      attributes,
-      link: attachment ? undefined : this.features.mark.getLinkState() ?? undefined,
-      attachment: attachment ?? undefined,
-      ruby: this.features.mark.getRubyState(),
-    })
+    this.postBridgeEvent(markStateChangeEvent, this.features.mark.readSelectionOnce(() => {
+      const attributes = this.features.mark.getAttributeState()
+      if(attributes.a?.download !== undefined && /^data:/i.test(attributes.a.href ?? "")) delete attributes.a.href
+      const attachment = this.features.mark.getAttachmentState()
+      return {
+        ...this.features.mark.getState(),
+        canRemoveMarks: this.features.mark.canRemoveMarks,
+        styles: this.features.mark.getStyleState(),
+        attributes,
+        link: attachment ? undefined : this.features.mark.getLinkState() ?? undefined,
+        attachment: attachment ?? undefined,
+        ruby: this.features.mark.getRubyState(),
+      }
+    }))
   }
 
   /** Sends in-document comment availability and active comment state. */

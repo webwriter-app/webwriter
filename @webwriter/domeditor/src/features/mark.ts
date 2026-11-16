@@ -791,6 +791,8 @@ export class MarkFeature extends EditorFeature {
     if(this.isEnabled) return
     super.enable()
     const FrameMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
+    this.blockObserver = new FrameMutationObserver(this.clearBlockCache)
+    this.blockObserver.observe(document.documentElement, {subtree: true, childList: true, attributes: true})
     const observer = new FrameMutationObserver(records => {
       if(!records.some(isAuthoredMutation)) return
       this.queueAutomaticLinks(records)
@@ -819,6 +821,9 @@ export class MarkFeature extends EditorFeature {
     this.editor.doc.doc.off("afterTransaction", this.handleHistoryTransaction)
     this.observer?.disconnect()
     this.observer = null
+    this.blockObserver?.disconnect()
+    this.blockObserver = null
+    this.clearBlockCache()
     this.automaticLinkBlock = null
     this.automaticLinkTypingBlock = null
     this.composing = false
@@ -3096,7 +3101,26 @@ export class MarkFeature extends EditorFeature {
     return changed
   }
 
+  private selectionReads = 0
+  private selectionRead: {value: MarkSelection | null} | null = null
+
+  /** Lets the getters of one state report share a single reading of the
+   * selection. Resolving a range walks its blocks and text, which is
+   * proportional to the selection for each getter otherwise. The DOM and
+   * selection must not change inside `read`. */
+  readSelectionOnce<T>(read: () => T): T {
+    this.selectionReads++
+    try { return read() }
+    finally { if(--this.selectionReads === 0) this.selectionRead = null }
+  }
+
   private getSelection(): MarkSelection | null {
+    if(!this.selectionReads) return this.resolveSelection()
+    this.selectionRead ??= {value: this.resolveSelection()}
+    return this.selectionRead.value
+  }
+
+  private resolveSelection(): MarkSelection | null {
     if(this.widgetMarkContext()) return null
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode || selection.isCollapsed) return null
@@ -3148,14 +3172,27 @@ export class MarkFeature extends EditorFeature {
     }
   }
 
+  /** One selection or mark state asks for the same nodes' blocks many times,
+   * and each answer resolves the schema's content rules. An answer holds until
+   * a node moves or an attribute changes; typed text cannot change it. */
+  private blockCache = new WeakMap<Node, Element | null>()
+  private blockObserver: MutationObserver | null = null
+  private readonly clearBlockCache = () => { this.blockCache = new WeakMap() }
+
   private closestBlock(node: Node) {
+    // Commands ask again before their mutation records are delivered.
+    if(this.blockObserver?.takeRecords().length) this.clearBlockCache()
+    const known = this.blockObserver ? this.blockCache.get(node) : undefined
+    if(known !== undefined) return known
     let current: Node | null = node
     while(current && current !== document.body) {
       if(!(current instanceof Element) && !(current instanceof Text)) return null
       if(this.editor.schema.isBlock(current) && !isSectionElement(current)) break
       current = current.parentElement
     }
-    return current instanceof Element && this.editor.schema.isBlock(current) && !isSectionElement(current)? current: null
+    const block = current instanceof Element && this.editor.schema.isBlock(current) && !isSectionElement(current)? current: null
+    if(this.blockObserver) this.blockCache.set(node, block)
+    return block
   }
 
   private selectedText(range: Range, block: Element) {
