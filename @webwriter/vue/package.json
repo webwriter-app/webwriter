@@ -3,6 +3,11 @@
   "version": "1.1.0",
   "description": "Vue adapter for WebWriter widgets",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webwriter-app/webwriter.git",
+    "directory": "@webwriter/vue"
+  },
   "type": "module",
   "publishConfig": {
     "access": "public"

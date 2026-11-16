@@ -3,6 +3,11 @@
   "version": "1.2.0",
   "description": "DOM-backed runtime for WebWriter widgets",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webwriter-app/webwriter.git",
+    "directory": "@webwriter/widget"
+  },
   "type": "module",
   "sideEffects": false,
   "publishConfig": {
@@ -129,7 +134,8 @@
     "scene",
     "viewport",
     "!**/*.ts",
-    "**/*.d.ts"
+    "**/*.d.ts",
+    "!tests"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",

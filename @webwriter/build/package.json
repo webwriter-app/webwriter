@@ -4,6 +4,11 @@
   "description": "Developer tools for WebWriter packages (build process, documentation, localization)",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webwriter-app/webwriter.git",
+    "directory": "@webwriter/build"
+  },
   "type": "module",
   "dependencies": {
     "@aidenlx/esbuild-plugin-inline-worker": "^1.0.1",

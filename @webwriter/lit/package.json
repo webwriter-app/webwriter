@@ -11,6 +11,11 @@
   "sideEffects": false,
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webwriter-app/webwriter.git",
+    "directory": "@webwriter/lit"
+  },
   "exports": {
     ".": {
       "source": "./index.ts",
