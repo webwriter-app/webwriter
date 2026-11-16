@@ -1,4 +1,4 @@
-import {batchPresentationStates, clearPresentationState, flushPresentationStyles, hasPresentationState, presentationStateElements, setPresentationState, setPresentationStates} from "../presentation-state.js"
+import {batchPresentationStates, clearPresentationState, deferPresentationPaint, flushPresentationStyles, hasPresentationState, presentationStateElements, setPresentationState, setPresentationStates} from "../presentation-state.js"
 import { DocumentListenerMap, EditorFeature } from "."
 import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isCaretAtBoundary, isEmptyParagraph, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, setPart, textOffsetIn, textPointAtOffset, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
@@ -12,6 +12,7 @@ import {inlineMathRoot, mathOutsidePoint, mathRoot} from "../math"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {isTextFieldInteraction} from "../utility"
 import {createAnchorPositioner} from "../utility"
+import {childNodesInRange} from "../utility"
 import type {ElementSelectionType} from "../editor-bridge"
 import type {BoxGeometry} from "./transformation"
 import type {Transaction} from "yjs"
@@ -19,8 +20,8 @@ import type {Transaction} from "yjs"
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
 const selectionPresentationStates = ["gap-before-selected", "gap-after-selected", "element-selected",
-  "element-capture-selected", "text-selected", "empty-selected", "caption-placeholder", "caption-editing",
-  "gap-caret-visible", "touch-caret-visible", "node-selection-active", "atomic-range-selected", "flow-excluded",
+  "element-capture-selected", "text-selected", "empty-selected", "empty-root-selected", "caption-placeholder", "caption-editing",
+  "gap-caret-visible", "gap-caret-host", "touch-caret-visible", "node-selection-active", "node-caret-host", "atomic-range-selected", "atomic-range-active", "flow-excluded",
   "math-boundary-caret", "math-caret-inside-left", "math-caret-inside-right", "math-caret-outside-left", "math-caret-outside-right",
   "popup-boundary-caret", "popup-caret-inside-left", "popup-caret-inside-right", "popup-caret-outside-left", "popup-caret-outside-right"]
 function arrowDirection(key: string) {
@@ -54,6 +55,78 @@ function isCaretAtStartOf(element: Element) {
     offset = index
   }
   return node === element && offset === 0
+}
+
+const nativeCaretAtomicElements = "img, hr, br, input, textarea, select, button, video, audio, iframe, embed, object, canvas, svg, math, table, meter, progress"
+
+/** Whether Chromium can place a caret in or beside this rendered content. */
+function holdsNativeCaret(node: Node) {
+  const element = isElement(node) ? node : node.parentElement
+  if(!element || element.closest("[inert]") || ["hidden", "collapse"].includes(getComputedStyle(element).visibility)) return false
+  if(isElement(node)) return node.getClientRects().length > 0
+  const range = document.createRange()
+  range.selectNodeContents(node)
+  return range.getClientRects().length > 0
+}
+
+function containsNativeCaretPosition(element: Element) {
+  if(element.matches(nativeCaretAtomicElements) || !(element as HTMLElement).isContentEditable) return holdsNativeCaret(element)
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
+  for(let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if((node.nodeType === Node.TEXT_NODE || isElement(node) && node.matches(nativeCaretAtomicElements)) && holdsNativeCaret(node)) return true
+  }
+  return false
+}
+
+/** Adds the elements whose caret color Chromium may use at a boundary: it
+ * paints a caret at the nearest caret position, and takes its color from
+ * the element holding it. Collects siblings outward from the boundary up to
+ * the first that holds a position, plus one more as a margin. Returns false
+ * when the container holds none, so the caret may be painted outside it. */
+function addNativeCaretHosts(container: Node, offset: number, hosts: Set<Element>): boolean {
+  if(!isElement(container)) {
+    const parent = container.parentNode
+    if(container.parentElement && container.nodeType === Node.TEXT_NODE && holdsNativeCaret(container)) {
+      hosts.add(container.parentElement)
+      return true
+    }
+    return parent ? addNativeCaretHosts(parent, Array.from(parent.childNodes).indexOf(container as ChildNode) + (offset > 0 ? 1 : 0), hosts) : false
+  }
+  const nodes = container.childNodes
+  let found = false
+  for(const step of [-1, 1]) {
+    let margin = false
+    for(let index = step < 0 ? offset - 1 : offset; index >= 0 && index < nodes.length; index += step) {
+      const node = nodes[index]
+      if(isElement(node)) {
+        if(getComputedStyle(node).display === "none") continue
+        hosts.add(node)
+        if(margin) break
+        margin = containsNativeCaretPosition(node)
+        found ||= margin
+      }
+      else if(!margin && node.nodeType === Node.TEXT_NODE && holdsNativeCaret(node)) {
+        hosts.add(container)
+        found = true
+        break
+      }
+    }
+  }
+  return found
+}
+
+/** The elements whose caret color decides the native caret Chromium paints
+ * for a selection: around each range boundary, or BODY when the boundaries
+ * do not narrow it down. */
+export function nativeCaretHosts(selection: Selection) {
+  const hosts = new Set<Element>()
+  let found = selection.rangeCount > 0
+  for(let index = 0; found && index < selection.rangeCount; index++) {
+    const range = selection.getRangeAt(index)
+    found = addNativeCaretHosts(range.startContainer, range.startOffset, hosts)
+      && (range.collapsed || addNativeCaretHosts(range.endContainer, range.endOffset, hosts))
+  }
+  return found ? Array.from(hosts) : [document.body]
 }
 
 /** Editing feature that visualizes the current selection. It classifies every
@@ -91,12 +164,13 @@ export class SelectionFeature extends EditorFeature {
   #hoverOwner: Element | null = null
   #floatObserver: MutationObserver | null = null
   #floatCandidates: {root: Element, elements: Element[], expires: number} | null = null
-  readonly #invalidateFloatCandidates = () => { this.#floatCandidates = null }
+  readonly #invalidateFloatCandidates = () => { this.#floatCandidates = null; this.#outOfFlowContent = null }
 
   readonly #handlePresentationChanges = (records: MutationRecord[]) => {
     if(records.some(isAuthoredMutation)) {
       flushPresentationStyles(document)
-      this.#invalidateFloatCandidates()
+      // Text edits cannot change which elements float.
+      if(records.some(record => record.type !== "characterData" && isAuthoredMutation(record))) this.#invalidateFloatCandidates()
       this.#refreshGapCaretInlinePosition()
       // Geometry changes leave native anchor bindings intact. Refresh the
       // rules if a mutation could change anchor names or remove a marker.
@@ -110,16 +184,95 @@ export class SelectionFeature extends EditorFeature {
     }
   }
 
+  #hasRunningAuthoredAnimation() {
+    return Boolean(document.getAnimations?.().some(animation =>
+      animation.playState === "running" && (animation.effect as KeyframeEffect | null)?.target?.getRootNode() === document))
+  }
+
+  /** Selects at least every element that a style rule with one of the given
+   * declarations, or one of the given other sources, can match. Callers test
+   * the matches, so a nested or scoped rule may ignore its context. Null when
+   * a rule cannot be read or widened that way, so every element must be tested. */
+  #styleSourceSelector(declares: (style: CSSStyleDeclaration) => boolean, sources: string[]) {
+    const selectors = [...sources]
+    // Without its parent rule, `&` can be any element and a leading
+    // combinator any relation. Negating `&` or naming the scope root cannot
+    // be widened like that.
+    const widen = (selector: string) => {
+      if(selector.includes(":scope") || selector.includes("&") && selector.includes(":not(")) return null
+      const parts: string[] = []
+      let depth = 0, start = 0
+      for(let index = 0; index <= selector.length; index++) {
+        const character = selector[index]
+        if(character === "(" || character === "[") depth++
+        else if(character === ")" || character === "]") depth--
+        else if(character === undefined || character === "," && depth === 0) {
+          parts.push(selector.slice(start, index).trim().replace(/^[>+~]\s*/, "").replaceAll("&", "*"))
+          start = index + 1
+        }
+      }
+      return parts.every(Boolean) ? parts.join(", ") : null
+    }
+    const visit = (rules: CSSRuleList, relative: boolean): boolean => {
+      for(const rule of Array.from(rules) as (CSSRule & {selectorText?: string, style?: CSSStyleDeclaration, cssRules?: CSSRuleList, styleSheet?: CSSStyleSheet | null})[]) {
+        if(rule.styleSheet && !sheet(rule.styleSheet)) return false
+        const styled = typeof rule.selectorText === "string"
+        if(styled && rule.style && declares(rule.style)) {
+          const selector = relative ? widen(rule.selectorText!) : rule.selectorText!
+          if(!selector) return false
+          selectors.push(selector)
+        }
+        if(rule.cssRules?.length && !visit(rule.cssRules, relative || styled || rule.constructor.name === "CSSScopeRule")) return false
+      }
+      return true
+    }
+    const sheet = (value: CSSStyleSheet) => {
+      try { return visit(value.cssRules, false) }
+      catch { return false }
+    }
+    return [...Array.from(document.styleSheets), ...document.adoptedStyleSheets].every(sheet) ? selectors.join(", ") : null
+  }
+
+  #outOfFlowContent: {root: Element, present: boolean, expires: number} | null = null
+
+  /** Whether arrow keys can meet floated, positioned or popup content in a
+   * flow. Asked on every arrow key, so the answer is kept like the float
+   * candidates: until an authored change, a resize, or a short expiry that
+   * covers CSSOM edits. */
+  #hasOutOfFlowContent(root: Element) {
+    this.#handlePresentationChanges(this.#floatObserver?.takeRecords() ?? [])
+    const now = performance.now()
+    if(!this.#outOfFlowContent || this.#outOfFlowContent.root !== root || this.#outOfFlowContent.expires <= now || this.#hasRunningAuthoredAnimation()) {
+      const floats = (style: CSSStyleDeclaration) => !["", "none"].includes(style.getPropertyValue("float").trim())
+      const selector = this.#styleSourceSelector(style => floats(style) || ["absolute", "fixed"].includes(style.getPropertyValue("position").trim()),
+        ['[style*="float"]', '[style*="position"]', "[align]", "[popover]", "dialog"])
+      let sources: Element[] | null = null
+      if(selector) {
+        try { sources = Array.from(root.querySelectorAll(selector)) }
+        catch { sources = null }
+      }
+      this.#outOfFlowContent = {root, present: isOutOfFlow(root) || (sources ?? Array.from(root.querySelectorAll("*"))).some(isOutOfFlow), expires: now + 250}
+    }
+    return this.#outOfFlowContent.present
+  }
+
   #currentFloatCandidates() {
     this.#handlePresentationChanges(this.#floatObserver?.takeRecords() ?? [])
     const root = getDocumentRoot()
+    const floats = (style: CSSStyleDeclaration) => !["", "none"].includes(style.getPropertyValue("float").trim())
     // CSSOM edits have no mutation event. Periodically rediscover candidates;
     // running authored animations can change float membership every frame.
-    const animating = document.getAnimations?.().some(animation =>
-      animation.playState === "running" && (animation.effect as KeyframeEffect | null)?.target?.getRootNode() === document)
     const now = performance.now()
-    if(!this.#floatCandidates || this.#floatCandidates.root !== root || this.#floatCandidates.expires <= now || animating) {
-      const elements = Array.from(root.querySelectorAll("*")).filter(element =>
+    if(!this.#floatCandidates || this.#floatCandidates.root !== root || this.#floatCandidates.expires <= now || this.#hasRunningAuthoredAnimation()) {
+      // Computing every element's style is proportional to the document.
+      // Test only elements that some float declaration can match.
+      let sources: Element[] | null = null
+      const selector = this.#styleSourceSelector(floats, ['[style*="float"]', "[align]"])
+      if(selector) {
+        try { sources = Array.from(root.querySelectorAll(selector)) }
+        catch { sources = null }
+      }
+      const elements = (sources ?? Array.from(root.querySelectorAll("*"))).filter(element =>
         !atomicEditingContainer(element.parentElement, this.editor.schema)
         && ["left", "right"].includes(getComputedStyle(element).float))
       this.#floatCandidates = {root, elements, expires: now + 250}
@@ -211,9 +364,14 @@ export class SelectionFeature extends EditorFeature {
     if(selection.isCollapsed || !selection.rangeCount) return
     if((this.editor.features.canvas.active || this.editor.features.slides.active) && $.selectedElement) return
     const range = selection.getRangeAt(0)
+    // Only the children between the range's boundaries can intersect it.
+    // Testing each child of the document root takes time proportional to the
+    // document for every selection refresh.
+    const visitChildren = (parent: Element) => {
+      for(const child of childNodesInRange(parent, range)) if(isElement(child)) visit(child)
+    }
     const visit = (element: Element) => {
-      if(!range.intersectsNode(element) || !$.includesNode(element)) return
-      const children = element.children
+      if(!$.includesNode(element)) return
       const isTable = element.localName === "table"
       const isDetails = element.localName === "details"
       const isFormula = element.localName === "math" && mathRoot(element) === element
@@ -241,9 +399,9 @@ export class SelectionFeature extends EditorFeature {
         // Partial ranges can still fully select atomic descendants.
         if(!isTable && !isDetails) return
       }
-      Array.from(children).forEach(visit)
+      visitChildren(element)
     }
-    Array.from(getDocumentRoot().children).forEach(visit)
+    visitChildren(getDocumentRoot())
     this.#positionAtomicOverlays()
   }
 
@@ -856,7 +1014,7 @@ export class SelectionFeature extends EditorFeature {
       this.editor.features.graphic.refresh()
       // Shared DOM changes can clamp a detached selection without firing a
       // native selectionchange event, so refresh the host breadcrumb as well.
-      this.editor.postSelectionPath()
+      this.editor.queueSelectionState({path: true})
     })
   }
 
@@ -965,6 +1123,8 @@ export class SelectionFeature extends EditorFeature {
     window.addEventListener("resize", this.#invalidateFloatCandidates)
     window.addEventListener("resize", this.#refreshGapCaretInlinePosition)
     document.addEventListener("load", this.#invalidateFloatCandidates, true)
+    document.addEventListener("pointerover", this.#trackNativeHover, {capture: true, passive: true})
+    document.addEventListener("pointerout", this.#trackNativeHover, {capture: true, passive: true})
     this.#ensureHoverCaret()
     window.addEventListener("focus", this.#handleWindowFocus)
     window.addEventListener("blur", this.#handleWindowBlur)
@@ -981,6 +1141,9 @@ export class SelectionFeature extends EditorFeature {
     window.removeEventListener("resize", this.#invalidateFloatCandidates)
     window.removeEventListener("resize", this.#refreshGapCaretInlinePosition)
     document.removeEventListener("load", this.#invalidateFloatCandidates, true)
+    document.removeEventListener("pointerover", this.#trackNativeHover, true)
+    document.removeEventListener("pointerout", this.#trackNativeHover, true)
+    this.#nativeBodyHover = null
     this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
     window.removeEventListener("focus", this.#handleWindowFocus)
     window.removeEventListener("blur", this.#handleWindowBlur)
@@ -1027,10 +1190,37 @@ export class SelectionFeature extends EditorFeature {
   }
 
   #pointerHovered = new Set<Element>()
+  #nativeBodyHover: Element | null = null
+
+  /** The hover outline is shown and hidden through parts of the outline
+   * itself. A BODY:has(:hover)::part() rule cannot narrow what it affects, so
+   * every hover change would restyle the whole document. */
+  readonly #trackNativeHover = (event: PointerEvent) => {
+    const target = event.type === "pointerout" ? event.relatedTarget : event.target
+    this.#nativeBodyHover = target instanceof Element && target !== document.body && document.body.contains(target) ? target : null
+    this.#syncHoverParts()
+  }
+
+  #syncHoverParts() {
+    const caret = this.hoverCaret
+    if(!caret) return
+    const native = this.#nativeBodyHover?.isConnected ? this.#nativeBodyHover : null
+    const captured = presentationStateElements(document, "element-capture-selected")
+    const quiet = (element: Element) => element.matches("summary, figcaption") || captured.includes(element)
+    let suppressed = [...this.#pointerHovered, ...presentationStateElements(document, "element-hovered", "style-target-hovered")].some(quiet)
+    for(let element = native; element && element !== document.body && !suppressed; element = element.parentElement) suppressed = quiet(element)
+    setPart(caret, "hover-caret-native", Boolean(native) || this.#pointerHovered.size > 0)
+    setPart(caret, "hover-caret-suppressed", suppressed)
+  }
 
   #updatePointerHover(target: Element | null) {
     const hovered = new Set<Element>()
-    for(let element = target; element && element !== document.body && document.body.contains(element); element = element.parentElement) {
+    // The state stands in for :hover while a pressed pointer keeps native
+    // hover on its starting element. Rewriting its rules restyles every
+    // element they can match, so leave a natively hovered chain to :hover.
+    let nativelyHovered = false
+    try { nativelyHovered = Boolean(target?.matches(":hover")) } catch { nativelyHovered = false }
+    for(let element = nativelyHovered ? null : target; element && element !== document.body && document.body.contains(element); element = element.parentElement) {
       hovered.add(element)
     }
     batchPresentationStates(document, () => {
@@ -1040,6 +1230,7 @@ export class SelectionFeature extends EditorFeature {
       for(const element of hovered) setPresentationState(element, "pointer-hovered")
     })
     this.#pointerHovered = hovered
+    this.#syncHoverParts()
     if(this.#drag) {
       this.#nativeHoverTarget = target
       this.#refreshHoverGeometry()
@@ -1911,6 +2102,7 @@ export class SelectionFeature extends EditorFeature {
   #refreshHoverGeometry = () => {
     if(this.#hoverFrame !== null) cancelAnimationFrame(this.#hoverFrame)
     this.#hoverFrame = null
+    this.#syncHoverParts()
     const explicit = (presentationStateElements(document, "element-hovered", "style-target-hovered")[0] ?? null)
     const freeform = this.editor.features.canvas.active || this.editor.features.slides.active
     const native = this.#nativeHoverTarget
@@ -2282,10 +2474,39 @@ export class SelectionFeature extends EditorFeature {
     return `calc(${fixedClientX(left)}px + max(0px, (${right - left}px - ${maximum}) / 2))`
   }
 
+  /** The elements whose caret color the native caret of the current selection
+   * can take; none without a selection, which paints no caret. */
+  get nativeCaretHosts(): Element[] {
+    const selection = document.getSelection()
+    return selection?.rangeCount ? nativeCaretHosts(selection) : []
+  }
+
+  /** States where the native caret of the current selection is hidden: in
+   * the given elements and wherever Chromium could paint it. A rule for every
+   * element would restyle the whole document on each change of the state. */
+  #markNativeCaretHosts(marker: "gap-caret-host" | "node-caret-host", ...elements: Element[]) {
+    const selection = document.getSelection()
+    const hosts = new Set([...elements, ...selection ? nativeCaretHosts(selection) : [document.body]])
+    batchPresentationStates(document, () => hosts.forEach(host => this.#markSelection(host, marker)))
+  }
+
+  /** A node selection keeps a native range around the node. */
+  #markNodeSelection(...elements: Element[]) {
+    this.#markSelection(document.body, "node-selection-active")
+    this.#markNativeCaretHosts("node-caret-host", ...elements)
+  }
+
   /** Retains marker owners so removal also cleans disconnected content. */
   #markSelection(element: Element, ...markers: string[]) {
     setPresentationStates(element, ...markers)
     this.#selectionMarkers.add(element)
+    // BODY states the presence of an atomic range for its descendants. A
+    // :has() rule with a descendant subject would restyle the whole document
+    // whenever any :has() argument on BODY changes, such as native hover.
+    if(markers.includes("atomic-range-selected") && element !== document.body) {
+      setPresentationState(document.body, "atomic-range-active")
+      this.#selectionMarkers.add(document.body)
+    }
   }
 
   /** Clears the previous presentation, including markers on removed nodes. */
@@ -2296,7 +2517,8 @@ export class SelectionFeature extends EditorFeature {
       : retainedKind === "empty" ? "empty-selected" : "element-selected"
     batchPresentationStates(document, () => this.#selectionMarkers.forEach(element => {
       const removed = selectionPresentationStates.filter(marker => !(
-        element === retainedElement && (marker === retainedMarker || marker === "element-capture-selected" && retainedKind === "capture")
+        element === retainedElement && (marker === retainedMarker || marker === "element-capture-selected" && retainedKind === "capture"
+          || marker === "empty-root-selected" && retainedKind === "empty")
         || element === document.body && retainedElement && (retainedKind === "node" || retainedKind === "capture") && marker === "node-selection-active"
       ))
       clearPresentationState(element, ...removed)
@@ -2533,7 +2755,14 @@ export class SelectionFeature extends EditorFeature {
    * document Selection. This is the invariant boundary used by native
    * selectionchange events and every editor-driven refresh. Passive refreshes
    * preserve the last interaction's scroll target without revealing it again. */
-  processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true, refreshGraphic = true} = {}) {
+  processSelection(inDragSelection=this.isInDragSelection, options: {scrollIntoView?: boolean, refreshGraphic?: boolean} = {}) {
+    // The previous presentation is cleared before the current one is marked.
+    // Caret, cursor and selection paint that both share stays installed, so a
+    // layout read in between does not restyle the document for it twice.
+    deferPresentationPaint(document, () => this.#processSelection(inDragSelection, options))
+  }
+
+  #processSelection(inDragSelection: boolean, {scrollIntoView = true, refreshGraphic = true}: {scrollIntoView?: boolean, refreshGraphic?: boolean}) {
     if(this.#boxDrag || this.#settingBoxSelection || $.isSettingRanges) return
     flushPresentationStyles(document)
     if(!this.editor.allowsSelection("select")) {
@@ -2596,7 +2825,6 @@ export class SelectionFeature extends EditorFeature {
       this.editor.features.transformation.syncGroupSelection(elements)
       this.editor.features.board.refresh()
       this.editor.features.manipulation.refreshNodeDragTarget(null)
-      this.#markSelection(document.body, "node-selection-active")
       for(const element of elements) {
         this.#revealDetails(element.parentNode)
         this.#markSelection(element, "element-selected", "atomic-range-selected")
@@ -2607,6 +2835,7 @@ export class SelectionFeature extends EditorFeature {
         this.editor.addAppendix(overlay)
         this.#atomicOverlays.set(element, overlay)
       }
+      this.#markNodeSelection(...elements)
       this.#positionAtomicOverlays()
       if(refreshGraphic) this.editor.features.graphic.refresh()
       this.editor.features.layout.refresh()
@@ -2751,7 +2980,7 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     if(kind === "capture" && capturedElement) {
-      this.#markSelection(document.body, "node-selection-active")
+      this.#markNodeSelection(capturedElement)
       this.#markSelection(capturedElement, "element-selected", "element-capture-selected")
       this.#showSelectionCaret("capture")
       if(capturedElement.localName === "math" && sel) this.#showAtomicOverlays(sel)
@@ -2760,7 +2989,7 @@ export class SelectionFeature extends EditorFeature {
     if(kind === "section") {
       const section = this.selectedSectionElement
       if(!section) return
-      this.#markSelection(document.body, "node-selection-active")
+      this.#markNodeSelection(section)
       this.#markSelection(section, "element-selected")
       this.#showSelectionCaret("node")
       return
@@ -2793,13 +3022,16 @@ export class SelectionFeature extends EditorFeature {
 
         setPart(gapCaret, `gap-caret-gap-${placement}-selected`)
         this.#markSelection(document.body, "gap-caret-visible")
+        // The collapsed native range still paints a caret at the nearest
+        // caret position.
+        this.#markNativeCaretHosts("gap-caret-host")
       }
 
     }
     else if(kind === "element") {
       const element = sel.anchorNode!.childNodes.item(Math.min(sel.anchorOffset, sel.focusOffset)) as Element
       if(isElement(element)) {
-        this.#markSelection(document.body, "node-selection-active")
+        this.#markNodeSelection(element)
         this.#markSelection(element, "element-selected")
         this.#showSelectionCaret("node")
       }
@@ -2812,6 +3044,12 @@ export class SelectionFeature extends EditorFeature {
       const element = getContainer($.commonAncestor)
       if(!element) return
       this.#markSelection(element, "empty-selected")
+      // Only these roots name the empty-document caret's anchor. A separate
+      // state keeps the positions of other empty blocks out of those rules:
+      // once BODY has matched any positional rule, each insertion beside an
+      // active `p:nth-child()` path restyles every paragraph.
+      if(element === document.body || element.matches('body > [role~="document"]')) this.#markSelection(element, "empty-root-selected")
+      else clearPresentationState(element, "empty-root-selected")
       if(element.matches("li")) this.editor.features.list.refreshSelectionPresentation()
       if(element === getDocumentRoot()) {
         const caret = this.emptyDocumentCaret ?? this.#createEmptyDocumentCaret()
@@ -2965,7 +3203,7 @@ export class SelectionFeature extends EditorFeature {
         ev.preventDefault()
       }
       else if(direction && !ev.defaultPrevented && !ev.altKey && !modifierKeyDown(ev) && !$.isElementSelection
-        && (isOutOfFlow($.flowRoot) || Array.from($.flowRoot.querySelectorAll("*")).some(isOutOfFlow))) {
+        && this.#hasOutOfFlowContent($.flowRoot)) {
         ev.preventDefault()
         const granularity = ev.key === "ArrowUp" || ev.key === "ArrowDown" ? "line" : "character"
         ev.shiftKey ? $.extendBy(granularity, direction) : $.moveBy(granularity, direction)

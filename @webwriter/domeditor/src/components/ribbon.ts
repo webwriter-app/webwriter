@@ -26,7 +26,7 @@ import {persistAppSettings, type AppSettings} from "../app-settings"
 import type {BackendClient} from "../backend-client"
 import {type PresenceUser, type UndoState} from "../editor-bridge"
 import {mediaCaptureOptions, type MediaType} from "../media"
-import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames} from "../marks"
+import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames, type StyleMarkName} from "../marks"
 import {packageKeywordPresentations} from "../package-keywords"
 import type {PackageMember, WebWriterPackage} from "../packages"
 import {packageAction, packageMemberAction, packageToggleAction, packageUpdateAction, packageUpdateKind} from "../packages"
@@ -1582,7 +1582,7 @@ export class AppRibbon extends EditingControls {
 
   async openFontPicker(name: "font-family" | "font-size") {
     await this.updateComplete
-    if(!this.isConnected || !this.canMark || this.previewActive || this.liveSessionActive
+    if(!this.isConnected || this.styleMarkDisabled(name) || this.previewActive || this.liveSessionActive
       || this.historyState.preview || this.pendingAIEdit) return
     let root: ParentNode
     if(this.expanded) {
@@ -2855,22 +2855,22 @@ export class AppRibbon extends EditingControls {
   private collapsedEditingMenuGroups(): RibbonMenuGroup[] {
     const mark = (name: Parameters<typeof this.markOption>[0]): RibbonMenuButton => {
       const option = this.markOption(name)
-      return {label: option.label, icon: option.icon, action: `mark:${name}`, disabled: !this.canMark}
+      return {label: option.label, icon: option.icon, action: `mark:${name}`, disabled: this.markDisabled(name)}
     }
-    const picker = (name: string, label: string, options: typeof fontFamilyOptions) => html`
+    const picker = (name: StyleMarkName, label: string, options: typeof fontFamilyOptions) => html`
       <ribbon-combobox name=${name} label=${label} default-value-label=${label} shortcut=${this.commandShortcut(`font-picker:${name}`)}
         variant=${name.includes("color") ? "color" : ""}
-        .options=${options} .value=${this.markStyles[name as keyof typeof this.markStyles] ?? ""}
-        ?disabled=${!this.canMark}></ribbon-combobox>
+        .options=${options} .value=${this.markStyles[name] ?? ""} .builtInFontsOnly=${!!this.widgetMarks}
+        ?disabled=${this.styleMarkDisabled(name)}></ribbon-combobox>
     `
     const format: RibbonMenuGroup[] = [
       {label: "Font", content: html`
         ${picker("font-family", "Font family", fontFamilyOptions)}
         ${picker("font-size", "Font size", fontSizeOptions)}
       `, buttons: [
-        {label: "Increase font size", action: "increaseFontSize", icon: "IncreaseFontSize", shortcut: this.commandShortcut("increaseFontSize"), disabled: !this.canMark},
-        {label: "Decrease font size", action: "decreaseFontSize", icon: "DecreaseFontSize", shortcut: this.commandShortcut("decreaseFontSize"), disabled: !this.canMark},
-        {label: "Remove formatting", action: "removeMarks", icon: "RemoveMarks", shortcut: this.commandShortcut("removeMarks"), disabled: !this.canMark && !this.canRemoveMarks},
+        {label: "Increase font size", action: "increaseFontSize", icon: "IncreaseFontSize", shortcut: this.commandShortcut("increaseFontSize"), disabled: this.styleMarkDisabled("font-size")},
+        {label: "Decrease font size", action: "decreaseFontSize", icon: "DecreaseFontSize", shortcut: this.commandShortcut("decreaseFontSize"), disabled: this.styleMarkDisabled("font-size")},
+        {label: "Remove formatting", action: "removeMarks", icon: "RemoveMarks", shortcut: this.commandShortcut("removeMarks"), disabled: !!this.widgetMarks || !this.canMark && !this.canRemoveMarks},
       ]},
       {label: "Standard marks", content: html`
         ${picker("color", "Text color", textColorOptions)}
@@ -2880,8 +2880,9 @@ export class AppRibbon extends EditingControls {
         {label: "More marks", icon: "MoreVertical", menuOnly: true, selected: this.moreMarksActive,
           disabled: this.moreMarksDisabled,
           submenuGroups: [{label: "More marks", content: this.renderMoreMarksDropdown(), buttons: []}]},
-        {label: "Link", action: "mark:a", icon: "MarkLink", selected: this.activeLinkKind === "link", disabled: !this.canMark || this.math?.active,
-          submenuGroups: [{label: "Link", content: this.renderLinkDropdown(), buttons: []}]},
+        {label: "Link", action: "mark:a", icon: "MarkLink", selected: this.activeLinkKind === "link",
+          disabled: this.widgetMarks ? this.markDisabled("a") : !this.canMark || this.math?.active,
+          submenuGroups: this.widgetMarks ? undefined : [{label: "Link", content: this.renderLinkDropdown(), buttons: []}]},
       ]},
     ]
     const insert = [...menuGroups.Start.find(group => group.label === "Elements")!.buttons, {label: "Formula", icon: "Formula", submenu: insertMathStructureButtons}].map((button): RibbonMenuButton => {

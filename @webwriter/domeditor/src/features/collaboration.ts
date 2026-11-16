@@ -21,7 +21,13 @@ type CaretLayout = {
 export class CollaborationFeature extends EditorFeature {
   readonly #carets = new Map<number, HTMLElement>()
   #frame: number | null = null
-  readonly #handleAwarenessChange = () => this.renderPresence(true)
+  /** Presence shows other participants. The local selection and edit stamp
+   * change with every keystroke and cannot alter what is rendered or posted. */
+  readonly #handleAwarenessChange = (changes?: {added: number[], updated: number[], removed: number[]}) => {
+    const local = this.editor.doc.awareness.clientID
+    if(changes && [...changes.added, ...changes.updated, ...changes.removed].every(clientId => clientId === local)) return
+    this.renderPresence(true)
+  }
   readonly #handleProviderStatus = () => this.renderPresence(true)
   /** Document edits and scrolling can occur many times per frame. */
   readonly #scheduleRender = () => {

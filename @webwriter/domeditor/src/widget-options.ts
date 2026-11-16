@@ -61,7 +61,7 @@ export function isWidgetOptionsState(value: unknown): value is WidgetOptionsStat
       && widgetOptionTypes.includes(option.type as WidgetOptionType)
       && (option.attribute === null || typeof option.attribute === "string")
       && isOptionValue(option.value)
-      && available(option) && booleans(option, ["readOnly", "excludeSelf", "referenceMissing"]) && strings(option, ["unit", "selector"])
+      && available(option) && booleans(option, ["readOnly", "excludeSelf", "referenceMissing", "inverted"]) && strings(option, ["unit", "selector"])
       && (option.tree === undefined || option.type === "select" && option.multiple === true && option.control === "tree" && isOptionTree(option.tree))
       && (option.control === undefined || compatibleControl(option.type as WidgetOptionType, option.control, option.multiple))
       && (option.steps === undefined || option.type === "number" && Array.isArray(option.steps)

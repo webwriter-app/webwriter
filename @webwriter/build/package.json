@@ -1,9 +1,14 @@
 {
   "name": "@webwriter/build",
-  "version": "1.13.1",
+  "version": "1.14.0",
   "description": "Developer tools for WebWriter packages (build process, documentation, localization)",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webwriter-app/webwriter.git",
+    "directory": "@webwriter/build"
+  },
   "type": "module",
   "dependencies": {
     "@aidenlx/esbuild-plugin-inline-worker": "^1.0.1",
@@ -19,7 +24,11 @@
     "xliff": "^6.2.1"
   },
   "exports": {
-    "./test": "./test.js"
+    "./test": "./test.js",
+    "./tsconfig.json": "./tsconfig.json",
+    "./client": {
+      "types": "./client.d.ts"
+    }
   },
   "bin": "./build.js"
 }

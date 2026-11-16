@@ -692,6 +692,31 @@ describe("isNodeValid()", () => {
       expect(editor.schema.isNodeValid(el("b"), rule)).toBe(true)
       expect(editor.schema.isNodeValid(el("i"), rule)).toBe(false)
     })
+    it("rejects unknown elements, unknown groups and an exhausted rule without consuming it", () => {
+      const unknown = document.createElementNS("urn:example:unknown", "thing")
+      for(const [node, rule] of [
+        [unknown, {group: "flow", min: 1, max: 2}],
+        [el("b"), {group: "no-such-group", min: 1, max: 2}],
+        [el("b"), {group: "phrasing", min: 0, max: 0}],
+      ] as const) {
+        const before = structuredClone(rule)
+        expect(editor.schema.isNodeValid(node, rule)).toBe(false)
+        expect(rule).toEqual(before)
+      }
+    })
+    it("validates a long run of mixed children against one shared rule", () => {
+      const parent = el("section")
+      for(let index = 0; index < 300; index++) {
+        parent.append(el(index % 3 ? "p" : "h2"), text("\n"), comment())
+      }
+      expect(editor.schema.isContentValid(parent)).toBe(true)
+      const rule = {group: "flow", min: 1, max: Infinity}
+      expect(Array.from(parent.childNodes).every(node => editor.schema.isNodeValid(node, rule))).toBe(true)
+      expect(rule.min).toBe(0)
+      // One invalid child anywhere in the run fails the whole parent.
+      parent.children[150].replaceWith(el("li"))
+      expect(editor.schema.isContentValid(parent)).toBe(false)
+    })
     it("matches comment nodes through the '#comment' group entry", () => {
       expect(editor.schema.isNodeValid(comment(), {group: "flow", max: Infinity})).toBe(true)
       expect(editor.schema.isNodeValid(comment(), {group: "phrasing", max: Infinity})).toBe(false)

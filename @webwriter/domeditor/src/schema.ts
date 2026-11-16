@@ -806,11 +806,15 @@ export class Schema {
   /** Whether `node` is valid as the next piece of content under `rule`. Stateful: A successful match decrements the rule's min/max in place, so calling this repeatedly with the same rule object consumes it across a sequence of nodes — which is how isContentValid uses it. Elements with `contenteditable=false` are always valid. Throws for malformed rules. */
   isNodeValid(node: Node, rule=this.getContentRule(node.parentElement!)): boolean {
     if(node.nodeType === Node.PROCESSING_INSTRUCTION_NODE || isWidgetDataContainer(node)) return true
-    if(node instanceof Element && (this.get(node)?.replacement
-      || Object.keys(this.get(node)?.requiredAttributes ?? {}).some(name => !node.hasAttribute(name)))) return false
+    // A parent's content is validated child by child: resolve each child's
+    // type once here instead of once per question asked about it below.
+    const elementKey = node instanceof Element ? this.#getTypeKey(node) : undefined
+    const entry = elementKey === undefined ? undefined : this.#schema[elementKey]
+    if(node instanceof Element && (entry?.replacement
+      || entry?.requiredAttributes && Object.keys(entry.requiredAttributes).some(name => !node.hasAttribute(name)))) return false
     if(node instanceof Element && (node.getAttribute("contenteditable") === "false"
       || this.#repairingContent && (node.localName.includes("-") || node.hasAttribute("is")
-        || this.#getTypeKey(node) === "#unknownelement"))) {
+        || elementKey === "#unknownelement"))) {
       if(rule && "group" in rule) {
         rule.min = Math.max(0, (rule.min ?? 1) - 1)
         rule.max = Math.max(0, (rule.max ?? 1) - 1)
@@ -824,7 +828,7 @@ export class Schema {
     else if("expression" in rule) {
       const current = rule.current ?? rule.expression
       const derivative = expressionDerivative(current, reference => {
-        const key = this.#getTypeKey(node)
+        const key = elementKey ?? this.#getTypeKey(node)
         return reference.reference === "node"
           ? key === reference.name
           : key !== "#unknownelement" && this.getGroupMembers(reference.name).includes(key)
@@ -845,10 +849,13 @@ export class Schema {
     }
     else if("group" in rule) {
       const {max, group, selector} = rule
-      const valid = (max ?? 1) > 0
-        && this.#getTypeKey(node) !== "#unknownelement"
-        && this.getGroupMembers(group).includes(this.#getTypeKey(node))
-        && (!selector || this.testSelectorRule(node, selector))
+      let valid = false
+      if((max ?? 1) > 0) {
+        const key = elementKey ?? this.#getTypeKey(node)
+        valid = key !== "#unknownelement"
+          && Boolean(this.#groups[group]?.includes(key))
+          && (!selector || this.testSelectorRule(node, selector))
+      }
       if(valid) {
         rule.min = Math.max(0, (rule.min ?? 1) - 1)
         rule.max = Math.max(0, (rule.max ?? 1) - 1)

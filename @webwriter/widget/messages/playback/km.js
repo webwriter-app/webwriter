@@ -1,0 +1,12 @@
+var km_default = {
+  play: "ចាក់",
+  pause: "ផ្អាក",
+  step: "ទៅមុខមួយជំហាន",
+  back: "ថយក្រោយមួយជំហាន",
+  reset: "កំណត់ឡើងវិញ",
+  seek: "ទីតាំង",
+  rate: (_rate, shown) => `ល្បឿន៖ ${shown}×`
+};
+export {
+  km_default as default
+};

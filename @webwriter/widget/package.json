@@ -1,28 +1,161 @@
 {
   "name": "@webwriter/widget",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "DOM-backed runtime for WebWriter widgets",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webwriter-app/webwriter.git",
+    "directory": "@webwriter/widget"
+  },
   "type": "module",
+  "sideEffects": false,
   "publishConfig": {
     "access": "public"
   },
   "exports": {
     ".": {
-      "types": "./index.ts",
+      "source": "./index.ts",
+      "types": "./index.d.ts",
       "default": "./index.js"
+    },
+    "./base": {
+      "source": "./base.ts",
+      "types": "./base.d.ts",
+      "default": "./base.js"
+    },
+    "./transaction": {
+      "source": "./transaction.ts",
+      "types": "./transaction.d.ts",
+      "default": "./transaction.js"
+    },
+    "./gesture": {
+      "source": "./gesture.ts",
+      "types": "./gesture.d.ts",
+      "default": "./gesture.js"
+    },
+    "./styles": {
+      "source": "./styles.ts",
+      "types": "./styles.d.ts",
+      "default": "./styles.js"
+    },
+    "./messages": {
+      "source": "./messages.ts",
+      "types": "./messages.d.ts",
+      "default": "./messages.js"
+    },
+    "./messages/shared": {
+      "source": "./messages/shared/index.ts",
+      "types": "./messages/shared/index.d.ts",
+      "default": "./messages/shared/index.js"
+    },
+    "./announce": {
+      "source": "./announce.ts",
+      "types": "./announce.d.ts",
+      "default": "./announce.js"
+    },
+    "./permissions": {
+      "source": "./permissions.ts",
+      "types": "./permissions.d.ts",
+      "default": "./permissions.js"
+    },
+    "./drag": {
+      "source": "./drag.ts",
+      "types": "./drag.d.ts",
+      "default": "./drag.js"
+    },
+    "./viewport": {
+      "source": "./viewport.ts",
+      "types": "./viewport.d.ts",
+      "default": "./viewport.js"
+    },
+    "./help": {
+      "source": "./help.ts",
+      "types": "./help.d.ts",
+      "default": "./help.js"
+    },
+    "./scene": {
+      "source": "./scene/index.ts",
+      "types": "./scene/index.d.ts",
+      "default": "./scene/index.js"
+    },
+    "./scene/pixi": {
+      "source": "./scene/pixi.ts",
+      "types": "./scene/pixi.d.ts",
+      "default": "./scene/pixi.js"
+    },
+    "./settings": {
+      "source": "./settings.ts",
+      "types": "./settings.d.ts",
+      "default": "./settings.js"
+    },
+    "./shortcuts": {
+      "source": "./shortcuts.ts",
+      "types": "./shortcuts.d.ts",
+      "default": "./shortcuts.js"
+    },
+    "./playback": {
+      "source": "./playback.ts",
+      "types": "./playback.d.ts",
+      "default": "./playback.js"
+    },
+    "./visible": {
+      "source": "./visible.ts",
+      "types": "./visible.d.ts",
+      "default": "./visible.js"
+    },
+    "./data": {
+      "source": "./data.ts",
+      "types": "./data.d.ts",
+      "default": "./data.js"
+    },
+    "./localize": {
+      "source": "./localize.ts",
+      "types": "./localize.d.ts",
+      "default": "./localize.js"
+    },
+    "./exercise": {
+      "source": "./exercise.ts",
+      "types": "./exercise.d.ts",
+      "default": "./exercise.js"
+    },
+    "./obfuscate": {
+      "source": "./obfuscate.ts",
+      "types": "./obfuscate.d.ts",
+      "default": "./obfuscate.js"
     }
   },
   "files": [
-    "index.js",
-    "index.ts",
-    "options.ts"
+    "*.js",
+    "*.d.ts",
+    "drag",
+    "help",
+    "messages",
+    "scene",
+    "viewport",
+    "!**/*.ts",
+    "**/*.d.ts",
+    "!tests"
   ],
   "scripts": {
-    "build": "esbuild ./index.ts --bundle --target=es2022 --format=esm --outfile=index.js",
+    "build": "node scripts/build.mjs",
+    "check:messages": "node scripts/messages.mjs check",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test tests/*.test.js",
     "prepack": "npm run build"
   },
+  "peerDependencies": {
+    "pixi.js": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "pixi.js": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "esbuild": "^0.25.4"
+    "@happy-dom/global-registrator": "~20.8.9",
+    "esbuild": "^0.25.4",
+    "pixi.js": "^8.23.0",
+    "typescript": "^7.0.2"
   }
 }

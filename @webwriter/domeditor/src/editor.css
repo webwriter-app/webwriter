@@ -473,8 +473,8 @@ body::part(insertion-preview) {
 /* Chromium paints a text caret at a backward range's paragraph endpoint even
  * when the range already contains an atomic element. Its range overlay is the
  * visible selection in that case. */
-body:has(:state(ww-atomic-range-selected)),
-body:has(:state(ww-atomic-range-selected)) * {
+body:state(ww-atomic-range-active),
+body:state(ww-atomic-range-active) * {
   caret-color: transparent !important;
 }
 
@@ -491,10 +491,12 @@ body:state(ww-element-selected) {
 }
 
 /* A DOM Selection around a node still paints its focus-edge text caret in
- * Chromium. Suppress that background caret everywhere in the editable
- * document while the editor's node-selection overlay is active. */
-body:state(ww-node-selection-active),
-body:state(ww-node-selection-active) * {
+ * Chromium. Suppress that background caret while the editor's node-selection
+ * overlay is active, in the selected nodes and wherever Chromium can paint it,
+ * which the selection feature states. A rule for every element would restyle
+ * the whole document whenever a node selection begins or ends. */
+:state(ww-node-caret-host),
+:state(ww-node-caret-host) * {
   caret-color: transparent !important;
 }
 
@@ -600,7 +602,7 @@ body::part(hover-caret) {
 }
 
 body::part(hover-caret-transformed),
-body:not(.ww-slides):has(> *:is(:hover, :state(ww-pointer-hovered)))::part(hover-caret),
+body:not(.ww-slides):not(.ww-inactive-presentation)::part(hover-caret-native),
 body:has(:state(ww-element-hovered))::part(hover-caret),
 body:state(ww-element-hovered)::part(hover-caret),
 body:has(:state(ww-style-target-hovered))::part(hover-caret),
@@ -652,11 +654,11 @@ body::part(hover-caret-board) {
   display: none !important;
 }
 
-body:has(:state(ww-element-capture-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered), :state(ww-style-target-hovered)))::part(hover-caret) {
-  display: none;
-}
-
-body:has(:is(summary, figcaption):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered), :state(ww-style-target-hovered)))::part(hover-caret) {
+/* A hovered capture selection, summary or caption keeps its own outline.
+ * The selection feature states that on the outline: :hover inside BODY:has()
+ * would restyle the whole document on every hover change. The repeated
+ * negation keeps the specificity of the rules this replaces. */
+body:not(.ww-inactive-presentation):not(.ww-inactive-presentation)::part(hover-caret-suppressed) {
   display: none;
 }
 
@@ -1305,12 +1307,20 @@ body:state(ww-graphic-manipulating) * {
   content: "";
 }
 
-body:state(ww-gap-caret-visible) {
-  caret-color: transparent !important;
-
-  & ::selection {
-    background: transparent !important;
+/* A gap selection is collapsed, so it paints no range highlight, but Chromium
+ * still paints its native caret at the nearest caret position. The selection
+ * feature states the elements whose caret color that caret can take; a rule
+ * for every element would restyle the whole document whenever the gap caret
+ * appears or disappears. As when the color is inherited from BODY, a caret
+ * color authored on such an element stays authoritative. */
+@layer webwriter-theme {
+  :state(ww-gap-caret-host) {
+    caret-color: transparent;
   }
+}
+
+body:state(ww-gap-caret-host) {
+  caret-color: transparent !important;
 }
 
 body:has(:state(ww-transform-target)):has(:is(:state(ww-drop-caret-before), :state(ww-drop-caret-after))) {
@@ -1540,15 +1550,19 @@ summary:has(> br:only-child) > br {
   display: none;
 }
 
-/* The empty details body is a sibling of SUMMARY, not its child. */
-details > summary:first-child + p:last-child:is(:empty, :has(> br:only-child))::after {
+/* The empty details body is a sibling of SUMMARY, not its child. DETAILS
+ * tests for the pair of a summary and one more child: after "summary + p"
+ * the style engine cannot tell which siblings the rule concerns, and restyles
+ * every paragraph beside an element inserted into or removed from the
+ * document. */
+details:has(> summary:first-child):where(:not(:has(> :not(:first-child):not(:last-child)))) > p:last-child:is(:empty, :has(> br:only-child))::after {
   content: "Details";
   color: darkgray;
   pointer-events: none;
   user-select: none;
 }
 
-details > summary:first-child + p:last-child:has(> br:only-child) > br {
+details:has(> summary:first-child):where(:not(:has(> :not(:first-child):not(:last-child)))) > p:last-child:has(> br:only-child) > br {
   display: none;
 }
 
@@ -1592,7 +1606,12 @@ body.ww-board:empty::before {
   display: none;
 }
 
-:state(ww-empty-selected) {
+/* Only the empty-document caret uses this anchor, and it appears only for BODY
+ * or a [role~="document"] child of BODY, which alone carry this state. With
+ * the position of an empty paragraph in an active rule, every insertion into
+ * BODY, such as Enter, would restyle all paragraphs once any positional rule
+ * has matched there before. */
+:state(ww-empty-root-selected) {
   anchor-name: --empty-selected;
 }
 
@@ -1630,11 +1649,11 @@ body:state(ww-element-selected):state(ww-style-target-hovered) {
   anchor-name: --transform-containing-block, --hover-anchor;
 }
 
-:state(ww-empty-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered)):not(table *) {
+:state(ww-empty-root-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered)):not(table *) {
   anchor-name: --empty-selected, --hover-anchor;
 }
 
-:state(ww-empty-selected):state(ww-style-target-hovered):not(table *) {
+:state(ww-empty-root-selected):state(ww-style-target-hovered):not(table *) {
   anchor-name: --empty-selected, --hover-anchor;
 }
 
@@ -1698,15 +1717,13 @@ body:has(> [role~="document"]:state(ww-empty-selected))::part(empty-document-car
   min-height: 1lh;
 }
 
-menu:empty {
-  &:state(ww-empty-selected) {
-    &::before {
-      content: "";
-      display: list-item;
-      color: gray;
-      visibility: visible;
-    }
-  }
+/* Written flat so that the state names its type: a nested &:state() would
+ * carry the position of every empty-selected block, not only of menus. */
+menu:empty:state(ww-empty-selected)::before {
+  content: "";
+  display: list-item;
+  color: gray;
+  visibility: visible;
 }
 
 body:has(:state(ww-transform-target)):has(:is(:state(ww-drop-caret-before), :state(ww-drop-caret-after)))::part(transform-overlay) {
@@ -1782,8 +1799,12 @@ body::part(gap-caret)::after {
     animation: var(--ww-ui-animation, blink 1s step-end 0s infinite);
 }
 
-body:state(ww-drop-selection-active),
-body:state(ww-drop-selection-active) * {
+/* While a drop position is shown, the selection keeps its native caret. The
+ * manipulation feature states the elements where the browser can paint it; a
+ * rule for every element would restyle the whole document when a drag enters
+ * and again when it ends. */
+:state(ww-drop-caret-host),
+:state(ww-drop-caret-host) * {
   caret-color: transparent !important;
 }
 
@@ -2694,7 +2715,11 @@ msqrt > mrow:only-child {
   border-top: var(--ww-radical-clearance) solid transparent;
 }
 
-mroot > :nth-child(2) {
+/* The index is the second of the two children. :nth-child(2) on a subject
+ * without a tag or class would restyle every sibling of an element inserted
+ * into or removed from any parent with a positional rule, and a sibling
+ * combinator before it their subtrees as well. */
+mroot > :last-child:where(:not(:first-child)) {
   border-bottom: 1px solid transparent;
 }
 

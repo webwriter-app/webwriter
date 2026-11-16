@@ -23,6 +23,33 @@ type BreadcrumbEntry = {
   state: "visible" | "entering"
 }
 
+type TreeIndex = {items: Map<string, DocumentTreeItem>, sections: Map<string, SelectionPathSection>}
+
+/** Path lookups per tree instance. Item paths are authored node paths, not
+ * child indices of the outline, so they cannot be followed from the root.
+ * Hosts replace the tree object when the outline changes; an index therefore
+ * never outlives the tree it describes. */
+const treeIndexes = new WeakMap<DocumentTreeItem, TreeIndex>()
+
+function treeIndex(tree: DocumentTreeItem) {
+  let index = treeIndexes.get(tree)
+  if(index) return index
+  const items = new Map<string, DocumentTreeItem>(), sections = new Map<string, SelectionPathSection>()
+  // Depth first, keeping the first match, as a search from the root finds it.
+  const visit = (item: DocumentTreeItem) => {
+    const key = item.path.join(".")
+    if(!items.has(key)) items.set(key, item)
+    for(const section of item.sections ?? []) {
+      const key = section.path.join(".")
+      if(!sections.has(key)) sections.set(key, section)
+    }
+    item.children.forEach(visit)
+  }
+  visit(tree)
+  treeIndexes.set(tree, index = {items, sections})
+  return index
+}
+
 /** A compact, clickable path for the element containing the current selection. */
 export class DomEditorBreadcrumb extends LitElement {
   static properties = {
@@ -33,6 +60,7 @@ export class DomEditorBreadcrumb extends LitElement {
     gap: {attribute: false},
     selectedSectionPath: {attribute: false},
     tree: {attribute: false},
+    pathItems: {attribute: false},
     breadcrumbEntries: {attribute: false, state: true},
     breadcrumbCollapseCount: {attribute: false, state: true},
     treeOpen: {attribute: "tree-open", type: Boolean, reflect: true},
@@ -328,7 +356,12 @@ export class DomEditorBreadcrumb extends LitElement {
   capture = false
   gap: SelectionGap | null = null
   selectedSectionPath: number[] | null = null
+  /** The whole outline, shown by the outline popup. */
   tree: DocumentTreeItem | null = null
+  /** Outline items for the entries of `path`: their sections, and whether they
+   * have children. A host that builds `tree` only while the outline is open
+   * supplies these instead; without them the entries are looked up in `tree`. */
+  pathItems: DocumentTreeItem[] | null = null
   private breadcrumbEntries: BreadcrumbEntry[] = []
   treeOpen = false
   private treeRootPath: number[] = []
@@ -350,7 +383,7 @@ export class DomEditorBreadcrumb extends LitElement {
       ? this.path
       : [{path: [], name: "Document", icon: "Document"}]
     return path.map(item => {
-      const treeSections = this.treeItemAtPath(item.path)?.sections ?? []
+      const treeSections = this.pathTreeItem(item.path)?.sections ?? []
       if(!treeSections.length) return item
       const sections = [...(item.sections ?? [])]
       const paths = new Set(sections.map(section => this.pathKey(section.path)))
@@ -447,19 +480,16 @@ export class DomEditorBreadcrumb extends LitElement {
   }
 
   private treeItemAtPath(path: number[]) {
-    const find = (item: DocumentTreeItem): DocumentTreeItem | null => {
-      if(this.pathsEqual(item.path, path)) return item
-      for(const child of item.children) {
-        const match = find(child)
-        if(match) return match
-      }
-      return null
-    }
-    return this.tree? find(this.tree): null
+    return this.tree ? treeIndex(this.tree).items.get(this.pathKey(path)) ?? null : null
+  }
+
+  private pathTreeItem(path: number[]) {
+    if(!this.pathItems) return this.treeItemAtPath(path)
+    return this.pathItems.find(item => this.pathsEqual(item.path, path)) ?? null
   }
 
   private itemHasChildren(item: SelectionPathItem) {
-    const treeItem = this.treeItemAtPath(item.path)
+    const treeItem = this.pathTreeItem(item.path)
     return Boolean(treeItem && treeItem.children.length > 0)
   }
 
@@ -484,7 +514,7 @@ export class DomEditorBreadcrumb extends LitElement {
   }
 
   protected willUpdate(changedProperties: Map<PropertyKey, unknown>) {
-    if(changedProperties.has("path") || changedProperties.has("tree") || changedProperties.has("treeOpen")) {
+    if(changedProperties.has("path") || changedProperties.has("tree") || changedProperties.has("pathItems") || changedProperties.has("treeOpen")) {
       this.syncBreadcrumbEntries()
     }
   }
@@ -496,6 +526,7 @@ export class DomEditorBreadcrumb extends LitElement {
 
     if(changedProperties.has("path")
       || changedProperties.has("tree")
+      || changedProperties.has("pathItems")
       || changedProperties.has("treeOpen")
       || changedProperties.has("breadcrumbEntries")) {
       this.scheduleResponsiveLayout()
@@ -689,10 +720,7 @@ export class DomEditorBreadcrumb extends LitElement {
     if(value && !/^\d+(,\d+)*$/.test(value)) return null
     const path = value ? value.split(",").map(Number) : []
     if(!section) return {item: this.treeItemAtPath(path)}
-    const findSection = (item: DocumentTreeItem): SelectionPathSection | undefined =>
-      item.sections?.find(candidate => this.pathsEqual(candidate.path, path))
-      ?? item.children.map(findSection).find(Boolean)
-    return {section: this.tree ? findSection(this.tree) : undefined}
+    return {section: this.tree ? treeIndex(this.tree).sections.get(this.pathKey(path)) : undefined}
   }
 
   private handleOutlineSelect = (event: CustomEvent<{label: string}>) => {

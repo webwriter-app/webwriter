@@ -18,9 +18,11 @@ const isStandardFamily = (family: string) => standardFamilies.has(family.toLocal
 
 /** The font picker shares selection, keyboard navigation and popup behavior. */
 export class FontCombobox extends StyleCombobox {
-  static properties = {...StyleCombobox.properties, loading: {state: true}, failed: {state: true}, localError: {state: true}, deviceLoading: {state: true}, devicePermissionGranted: {state: true}, selecting: {state: true}}
+  static properties = {...StyleCombobox.properties, builtInOnly: {type: Boolean, attribute: "built-in-only", reflect: true},
+    loading: {state: true}, failed: {state: true}, localError: {state: true}, deviceLoading: {state: true}, devicePermissionGranted: {state: true}, selecting: {state: true}}
   static styles = [...StyleCombobox.styles, css`
     .listbox {grid-template-columns: var(--popup-join-width, 5.5rem) minmax(0, 1fr); width: min(var(--font-dropdown-width, 18rem), calc(100vw - 1rem)); overflow: hidden; margin-block: -1px; border: 1px solid #a8a8a8; position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;}
+    :host([built-in-only]) .listbox {grid-template-columns: minmax(0, 1fr); width: min(max(10rem, var(--popup-join-width, 0px) + 2px), calc(100vw - 1rem));}
     .option-group {display: flex; flex-direction: column; overflow: auto; max-height: min(22rem, calc(100dvh - 4rem));}
     .option-group + .option-group {contain: size; border-left: 1px solid #d8dee6;}
     .group-label {position: sticky; top: 0; flex: none; margin: 0; padding: .5rem .4rem; background: #fff;}
@@ -50,6 +52,7 @@ export class FontCombobox extends StyleCombobox {
   `, connectedComboboxStyles]
 
   options = standardFontOptions
+  builtInOnly = false
   placeholder = "Default font"
   persistent = false
   private fonts: BunnyFont[] = []
@@ -146,8 +149,8 @@ export class FontCombobox extends StyleCombobox {
 
   protected selectedOption() {
     const family = fontFamilies(this.value)[0]
-    const option = this.options.find(option => fontFamilies(option.value)[0] === family)
-    if(option) return option
+    const option = (this.builtInOnly ? standardFontOptions : this.options).find(option => fontFamilies(option.value)[0] === family)
+    if(option || this.builtInOnly) return option
     const font = this.fonts.find(font => font.familyName.toLocaleLowerCase("en") === family)
     if(font) return {label: font.familyName, value: bunnyFontValue(font)}
     const local = this.imported.find(record => record.name.toLocaleLowerCase("en") === family)?.name
@@ -156,12 +159,13 @@ export class FontCombobox extends StyleCombobox {
   }
 
   protected filteredOptions() {
-    if(!this.query || !this.dropdownReady) return this.options
+    const options = this.builtInOnly ? standardFontOptions : this.options
+    if(!this.query || !this.dropdownReady) return options
     const rank = (option: ComboboxOption) => {
       const label = option.label.toLocaleLowerCase("en")
       return label === this.query ? 0 : label.startsWith(this.query) ? 1 : 2
     }
-    const matches = this.options.filter(option => option.label.toLocaleLowerCase("en").includes(this.query))
+    const matches = options.filter(option => option.label.toLocaleLowerCase("en").includes(this.query))
     const sorted = ["Standard fonts", "Custom fonts"].flatMap(group => matches.filter(option => option.group === group)
       .sort((a, b) => {
         const section = (option: ComboboxOption) => !isLocalOption(option) ? 2 : option.source === "installed" ? 0 : 1
@@ -173,7 +177,7 @@ export class FontCombobox extends StyleCombobox {
       || ++counts[this.searchSection(option)] <= this.searchLimits[this.searchSection(option)])
   }
 
-  private splitSearch() { return Boolean(this.query && this.dropdownReady && this.devicePermissionGranted) }
+  private splitSearch() { return !this.builtInOnly && Boolean(this.query && this.dropdownReady && this.devicePermissionGranted) }
   private searchSection(option: ComboboxOption) { return isLocalOption(option) && option.source === "installed" ? 0 : 1 }
 
   protected renderGroupOptions(group: string, entries: {option: ComboboxOption, index: number}[]): unknown {
@@ -242,6 +246,7 @@ export class FontCombobox extends StyleCombobox {
 
   protected optionGroups(options: readonly ComboboxOption[]) {
     const groups = super.optionGroups(options)
+    if(this.builtInOnly) return new Map([["Standard fonts", groups.get("Standard fonts") ?? []]])
     return new Map(["Standard fonts", "Custom fonts"].map(group => [group, groups.get(group) ?? []]))
   }
 
@@ -356,6 +361,7 @@ export class FontCombobox extends StyleCombobox {
   }
 
   private retainDropdownSize() {
+    if(this.builtInOnly) return
     const popup = this.renderRoot.querySelector<HTMLElement>(".listbox")
     if(!popup || popup.style.height) return
     const box = popup.getBoundingClientRect()
@@ -374,7 +380,8 @@ export class FontCombobox extends StyleCombobox {
   protected commitDraft() {
     const draft = this.renderRoot.querySelector<HTMLInputElement>("input")?.value.trim().toLocaleLowerCase("en") ?? ""
     if(!draft) { this.close(true); return }
-    const option = this.options.find(option => option.label.toLocaleLowerCase("en") === draft || option.value.toLocaleLowerCase("en") === draft)
+    const options = this.builtInOnly ? standardFontOptions : this.options
+    const option = options.find(option => option.label.toLocaleLowerCase("en") === draft || option.value.toLocaleLowerCase("en") === draft)
     if(option) this.select(option)
     else this.close(true)
   }
@@ -445,9 +452,11 @@ export class FontCombobox extends StyleCombobox {
     if(this.open && !wasOpen) {
       const selectInput = !this.hasInput
       if(selectInput) { this.query = ""; this.activeIndex = -1 }
-      void this.loadFonts()
-      void this.loadImportedFonts()
-      void this.checkDevicePermission()
+      if(!this.builtInOnly) {
+        void this.loadFonts()
+        void this.loadImportedFonts()
+        void this.checkDevicePermission()
+      }
       void update.then(() => {
         if(!this.open || !this.isConnected) return
         if(this.hasInput) this.retainDropdownSize()
@@ -465,6 +474,7 @@ export class FontCombobox extends StyleCombobox {
   }
 
   protected updated(changed: Map<string, unknown>) {
+    if(changed.has("builtInOnly") && this.open) this.close()
     if(changed.has("disabled") && this.disabled) { this.selectionRequest++; this.selecting = false }
     super.updated(changed)
     this.connectDropdown()
@@ -479,7 +489,7 @@ export class FontCombobox extends StyleCombobox {
   }
 
   private populateOptions() {
-    if(!this.open || !this.isConnected) return
+    if(!this.open || !this.isConnected || this.builtInOnly) return
     const activeValue = this.activeIndex >= 0 ? this.filteredOptions()[this.activeIndex]?.value : undefined
     const devices = new Map<string, DeviceFont[]>()
     for(const font of this.devices) if(!isStandardFamily(font.family)) devices.set(font.family, [...devices.get(font.family) ?? [], font])

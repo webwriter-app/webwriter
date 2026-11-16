@@ -2,7 +2,8 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {html} from "lit"
 import * as Y from "yjs"
-import {LitElementWw, type WidgetDataContext} from "../../lit/index"
+import {LitElementWw, type OptionDeclaration, type WidgetDataContext} from "../../lit/index"
+import {widgetDeclarations} from "../../lit/widget-options"
 import {WidgetDataBindings, type WidgetDataConnection, type WidgetDataOptions} from "./widget-data"
 
 const cleanups: (() => void)[] = []
@@ -56,6 +57,44 @@ afterEach(() => {
 })
 
 describe("LitElementWw scoped data lifecycle", () => {
+  it("exposes its runtime and accepts state-dependent option and action getters", async () => {
+    const tag = nextTagName()
+    class DeclarativeWidget extends ProbeWidget {
+      static options = {fallback: {type: String}}
+      get options(): Record<string, OptionDeclaration> { return this.hasAttribute("expanded") ? {count: {type: Number}} : {} }
+      get actions() { return {reset: {label: "Reset"}} }
+    }
+    customElements.define(tag, DeclarativeWidget)
+    const widget = document.createElement(tag) as DeclarativeWidget
+    document.body.append(widget)
+    cleanups.push(() => widget.remove())
+    expect(widgetDeclarations(widget, "options")).toEqual({})
+    widget.setAttribute("expanded", "")
+    expect(widgetDeclarations(widget, "options")).toEqual({count: {type: Number}})
+    expect(widgetDeclarations(widget, "actions")).toEqual({reset: {label: "Reset"}})
+    widget.widgetRuntime.setData("text/plain", "written through the runtime")
+    expect(widget.data).toBe("written through the runtime")
+  })
+
+  it("warns once per class about an incompatible declaration in development", async () => {
+    const tag = nextTagName()
+    class ClashingWidget extends ProbeWidget {
+      constructor() {
+        super()
+        Object.defineProperty(this, "actions", {value: ["something else"]})
+      }
+    }
+    customElements.define(tag, ClashingWidget)
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const widgets = [document.createElement(tag), document.createElement(tag)]
+    try {
+      document.body.append(...widgets)
+      await tick()
+      expect(warn.mock.calls.filter(([message]) => String(message).includes(`<${tag}> uses "actions"`))).toHaveLength(1)
+    }
+    finally { widgets.forEach(widget => widget.remove()); warn.mockRestore() }
+  })
+
   it("keeps ordinary data in place, observes direct changes, and rejects executable blocks", async () => {
     const {widget, block} = makeWidget()
     block.removeAttribute("slot")

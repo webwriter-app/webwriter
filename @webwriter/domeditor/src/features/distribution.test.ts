@@ -186,6 +186,102 @@ describe("DistributionFeature", () => {
     expect(feature().getState(document.documentElement)?.local).toEqual(makeConfig())
   })
 
+  it("follows private regions through unrelated edits, moves, removals and invalid policies", async () => {
+    const policy = (config: DistributionConfig = {...makeConfig(), view: false}) =>
+      document.createProcessingInstruction(distributionTarget, encodeDistributionConfig(config))
+    document.body.innerHTML = "<p>Public</p><p>Also public</p>"
+    await settle()
+    expect(privateMarkers()).toHaveLength(0)
+
+    // A region arrives as content that already carries its policy.
+    const region = document.createElement("section")
+    region.innerHTML = "<p>Private</p>"
+    region.append(policy())
+    document.body.firstElementChild!.after(region)
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    expect(hasAnchorTarget(region)).toBe(true)
+
+    // Ordinary editing around and inside the region leaves its marker alone.
+    const marker = privateMarkers()[0]
+    document.body.append(document.createElement("p"), document.createElement("hr"))
+    region.firstElementChild!.after(document.createElement("p"))
+    document.body.lastElementChild!.remove()
+    await settle()
+    expect(Array.from(privateMarkers())).toEqual([marker])
+    expect(hasAnchorTarget(region)).toBe(true)
+
+    // A nested private element only shows once its ancestor stops being private.
+    const nested = document.createElement("div")
+    nested.innerHTML = "<p>Nested</p>"
+    nested.firstElementChild!.append(policy())
+    region.prepend(nested)
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    const wrapper = document.createElement("div")
+    region.before(wrapper)
+    wrapper.append(nested)
+    await settle()
+    expect(privateMarkers()).toHaveLength(2)
+    expect(hasAnchorTarget(nested.firstElementChild!)).toBe(true)
+
+    // Removing a wrapper removes the region it holds.
+    wrapper.remove()
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    expect(hasAnchorTarget(region)).toBe(true)
+
+    // A raw-text element keeps its policy in its last text node.
+    const field = document.createElement("textarea")
+    field.append(`Notes<?${distributionTarget} ${encodeDistributionConfig({...makeConfig(), view: false})}?>`)
+    const holder = document.createElement("div")
+    holder.append(field)
+    document.body.append(holder)
+    await settle()
+    expect(privateMarkers()).toHaveLength(2)
+    field.append(document.createElement("span"))
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+
+    // An invalid policy anywhere hides all markers until it is gone again.
+    const invalid = document.createElement("p")
+    invalid.append(policy(), policy())
+    const invalidHolder = document.createElement("div")
+    invalidHolder.append(invalid)
+    document.body.append(invalidHolder)
+    await settle()
+    expect(privateMarkers()).toHaveLength(0)
+    document.body.append(document.createElement("p"))
+    await settle()
+    expect(privateMarkers()).toHaveLength(0)
+    invalidHolder.remove()
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    expect(hasAnchorTarget(region)).toBe(true)
+
+    region.remove()
+    await settle()
+    expect(privateMarkers()).toHaveLength(0)
+    expect(editor.toHTML(false, false)).not.toContain("distribution-private-marker")
+  })
+
+  it("keeps a region's marker when its policy is replaced by an equal one", async () => {
+    document.body.innerHTML = "<section><p>Private</p></section><p>Public</p>"
+    const region = document.querySelector("section")!
+    expect(setConfig(region, {...makeConfig(), view: false})).toBe(true)
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    // A direct child added to the owner leaves the same policy in place.
+    region.prepend(document.createElement("p"))
+    await settle()
+    expect(privateMarkers()).toHaveLength(1)
+    // The policy becomes public: the owner still has one, but a different one.
+    const instruction = Array.from(region.childNodes).find(node => node.nodeType === 7) as ProcessingInstruction
+    instruction.replaceWith(document.createProcessingInstruction(distributionTarget, encodeDistributionConfig(makeConfig())))
+    await settle()
+    expect(privateMarkers()).toHaveLength(0)
+  })
+
   it("marks only the outermost private regions and follows direct DOM policy changes", async () => {
     document.body.innerHTML = '<section id="outer"><p id="inner">Private note</p></section><p>Public note</p>'
     const outer = document.getElementById("outer")!

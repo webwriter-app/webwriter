@@ -65,6 +65,7 @@ refreshOptions() {
 | `unit` | `string` | No unit label. The label applies to the display only. |
 | `steps` | `number[]` | No list of values. Use this field for a number range with unequal intervals. |
 | `multiline` | `boolean` | `false`. Permits string input on multiple lines. |
+| `inverted` | `boolean` | `false`. For a boolean backed by a negative attribute such as `no-show-chart`, the option is true when the attribute is absent. |
 | `min`, `max`, `step` | `number` | No numeric input limits. |
 | `pattern` | `string` | No input pattern. |
 | `minlength`, `maxlength` | `number` | No text length limits. |
@@ -142,7 +143,7 @@ Before a write, the authoring tool checks `hidden`, `disabled`, and `readOnly`. 
 
 The authoring tool reads `optionschange` from the widget host. Dispatch the event there when the authoring tool must read the declarations again.
 
-The authoring tool writes an empty attribute for a true boolean. A false boolean removes the attribute. Objects, arrays, and multiple selections use JSON. The authoring tool converts other values to strings. `null` and an empty string remove the attribute. An option with `attribute: false` has temporary instance state.
+The authoring tool writes an empty attribute for a true boolean and removes it for a false boolean. An option declared with `{type: Boolean, attribute: "no-show-chart", inverted: true}` reverses those writes. Objects, arrays, and multiple selections use JSON. The authoring tool converts other values to strings. `null` and an empty string remove the attribute. With `attribute: false`, the authoring tool sets the widget property directly.
 
 The authoring tool reads the current property value to display an option. Make the property reflect the attribute or supply a getter. The authoring tool rejects `style`, `class`, `is`, authoring-only attributes, event handlers, and unsafe URLs as option attributes.
 

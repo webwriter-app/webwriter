@@ -1,6 +1,6 @@
 import {remapPastedAuthoredIds} from "../authored-identities"
 import {hasDistributionInstructions, isDistributionPI} from "../distribution-dom"
-import {clearPresentationState, hasPresentationState, setPresentationState} from "../presentation-state.js"
+import {batchPresentationStates, clearPresentationState, hasPresentationState, setPresentationState} from "../presentation-state.js"
 import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
 import {documentThemeProperties, documentTypographyCSS, documentTypographyProperties, originalTypographyCSS} from "../document-theme-options"
 import {themeAccentProperties} from "../css-color"
@@ -15,7 +15,7 @@ import { DocumentListenerMap, EditorFeature } from "."
 import { $, caretRect, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
 import {isMarkElement} from "../marks"
 import {isEmptyParagraph, isParagraphContent, isPointAtBoundary} from "../utility"
-import {createAnchorPositioner, cssZoomFactor, removeEditorMarker} from "../utility"
+import {childNodesInRange, createAnchorPositioner, cssZoomFactor, removeEditorMarker} from "../utility"
 import {
   isBlockFormatTag,
   type BlockFormatTag,
@@ -48,13 +48,25 @@ import {
 type Granularity = "character" | "word" | "line" | "lineboundary" | "paragraphboundary" | "block"
 type DropPoint = ReturnType<typeof $.pointFromCoords>
 
-type FloatDropZone = {container: Element, parent: Element, side: "left" | "right", center: number, rect: DOMRect, column?: {left: number, right: number}, allowed?: boolean}
-type FloatDropTargets = {source: Element, key: Element | string, zones: FloatDropZone[], scrollX: number, scrollY: number, currentScrollX: number, currentScrollY: number}
+type FloatDropZone = {container: Element, parent: Element, side: "left" | "right", center: number, rect: DOMRect, column?: {left: number, right: number}, allowed?: boolean, order: number}
+type FloatDropTargets = {source: Element, key: Element | string, zones: FloatDropZone[], scrollX: number, scrollY: number, currentScrollX: number, currentScrollY: number,
+  /** The zones ordered by top, and their greatest height; absent when a rectangle is not finite. */
+  byTop?: FloatDropZone[], reach: number}
 
 type FloatPreviewMeasurements = {
   geometry: Map<Element, Partial<Record<"left" | "right", {rect: DOMRect, clears: boolean, physicalSide: "left" | "right", column?: {left: number, right: number}}>>>
   clearance: Map<Element, Map<Element, {left: number, right: number}>>
   sourceFlow?: {bottom: number, height: number} | null
+  sourceFollowing?: {parent: Element, following: Set<Element>}
+  /** Set (initially to null) by a caller that measures many parents with one
+   * overlay: lengths that do not depend on the parent are resolved once, and
+   * one probe is restyled for each parent. Every element inserted into the
+   * appendix makes the style engine repeat BODY's :has() tests over the whole
+   * document, so a probe per parent costs time proportional to both. */
+  probe?: HTMLElement | null
+  lengths?: Map<string, number>
+  widths?: Map<string, number>
+  floats?: {elements: HTMLElement[], sides: FloatSide[]}
 }
 
 type ValidatedStyleEntry = {
@@ -248,7 +260,11 @@ export class ManipulationFeature extends EditorFeature {
     const element = this.nodeDrag?.element
     return element && getDocumentRoot().contains(element) ? element : null
   }
+  /** Whether a native block drag has started and not yet been dropped or ended. */
+  get hasNodeDrag() { return this.nodeDrag !== null }
   private dropRangeCaret: HTMLElement | null = null
+  private dropCaretHosts: Element[] = []
+  private dropCaretSelection: readonly [Node | null, number, Node | null, number] | null = null
   private floatDropPreviewOwner: "transfer" | "transformation" | "insertion" | null = null
   private floatDropPreview: {container: Element, side: "left" | "right", rect: DOMRect} | null = null
   private floatDropHit: {container: Element, side: "left" | "right", rect: DOMRect} | null = null
@@ -592,6 +608,7 @@ export class ManipulationFeature extends EditorFeature {
       this.clearFloatDropPreview("transfer")
     }
     if(!hasPresentationState(document.body, "drop-selection-active")) setPresentationState(document.body, "drop-selection-active")
+    this.markDropCaretHosts()
     event.dataTransfer!.dropEffect = this.nodeDrag && !event.ctrlKey && !event.altKey ? "move" : "copy"
   }
 
@@ -628,7 +645,30 @@ export class ManipulationFeature extends EditorFeature {
     Object.assign(this.dropRangeCaret.style, {left, top: `${top}px`, height: `${gap ? 0 : rect.height}px`})
   }
 
+  /** While a drop position is shown, the selection keeps its place and its
+   * native caret. Hide that caret where the browser can paint it: a rule for
+   * every element would restyle the whole document when a drag enters and
+   * again when it ends. The selection is compared on each dragover because
+   * another editing source can move it during the drag. */
+  private markDropCaretHosts() {
+    const selection = document.getSelection()
+    const current = [selection?.anchorNode ?? null, selection?.anchorOffset ?? 0, selection?.focusNode ?? null, selection?.focusOffset ?? 0] as const
+    if(this.dropCaretSelection?.every((value, index) => value === current[index])) return
+    this.dropCaretSelection = current
+    const hosts = this.editor.features.selection.nativeCaretHosts
+    batchPresentationStates(document, () => {
+      for(const host of this.dropCaretHosts) if(!hosts.includes(host)) clearPresentationState(host, "drop-caret-host")
+      for(const host of hosts) setPresentationState(host, "drop-caret-host")
+    })
+    this.dropCaretHosts = hosts
+  }
+
   private clearDropSelection() {
+    batchPresentationStates(document, () => {
+      for(const host of this.dropCaretHosts) clearPresentationState(host, "drop-caret-host")
+    })
+    this.dropCaretHosts = []
+    this.dropCaretSelection = null
     clearPresentationState(document.body, "drop-selection-active")
     this.dropRangeCaret?.remove()
     this.dropRangeCaret = null
@@ -783,18 +823,60 @@ export class ManipulationFeature extends EditorFeature {
     const dx = targets.scrollX - targets.currentScrollX, dy = targets.scrollY - targets.currentScrollY
     // Hover only checks stored rectangles. It never measures a template or
     // changes a measurement element's styles.
-    const hits = targets.zones.filter(zone => zone.container !== source && event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
-      && event.clientY >= zone.rect.top + dy && event.clientY < zone.rect.bottom + dy)
+    const hit = (zone: FloatDropZone) => zone.container !== source && event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
+      && event.clientY >= zone.rect.top + dy && event.clientY < zone.rect.bottom + dy
     const preferred = (zone: FloatDropZone) => preview?.container === zone.container ? preview.side
       : event.clientX < zone.center + dx ? "left" : "right"
-    hits.sort((a, b) => b.rect.top - a.rect.top || Number(b.side === preferred(b)) - Number(a.side === preferred(a)))
     // Empty space in a document gutter still expresses float placement. Use
     // the nearest existing anchor, even below the last preview footprint.
-    const gutters = targets.zones.filter(zone => zone.column && event.clientX >= 0 && event.clientY >= 0
-      && (zone.side === "left" ? event.clientX < zone.column.left + dx : event.clientX >= zone.column.right + dx))
-    gutters.sort((a, b) => Math.abs(a.rect.top + dy - event.clientY) - Math.abs(b.rect.top + dy - event.clientY)
-      || b.rect.top - a.rect.top)
-    for(const zone of [...hits, ...gutters]) {
+    const gutter = (zone: FloatDropZone) => zone.column && event.clientX >= 0 && event.clientY >= 0
+      && (zone.side === "left" ? event.clientX < zone.column.left + dx : event.clientX >= zone.column.right + dx)
+    const distance = (zone: FloatDropZone) => Math.abs(zone.rect.top + dy - event.clientY)
+    // Ties keep the zones' measured order, as a stable sort of all zones would.
+    const byHit = (a: FloatDropZone, b: FloatDropZone) => b.rect.top - a.rect.top
+      || Number(b.side === preferred(b)) - Number(a.side === preferred(a)) || a.order - b.order
+    const byDistance = (a: FloatDropZone, b: FloatDropZone) => distance(a) - distance(b) || b.rect.top - a.rect.top || a.order - b.order
+    const {byTop, reach} = targets
+    let hits: FloatDropZone[], gutters: Iterable<FloatDropZone>
+    if(byTop && Number.isFinite(event.clientY - dy)) {
+      // Zones sorted by top: only those whose top lies within the tallest
+      // zone's height above the pointer can contain it, and gutter anchors are
+      // taken in widening bands around the pointer. Each candidate is tested
+      // and ordered exactly as a scan of every zone would; the 1px margins
+      // absorb rounding between the two coordinate spaces.
+      const y = event.clientY - dy
+      const first = (top: number) => {
+        let low = 0, high = byTop.length
+        while(low < high) {
+          const middle = (low + high) >> 1
+          if(byTop[middle].rect.top < top) low = middle + 1
+          else high = middle
+        }
+        return low
+      }
+      hits = []
+      for(let index = first(y - reach - 1); index < byTop.length && byTop[index].rect.top <= y + 1; index++) {
+        if(hit(byTop[index])) hits.push(byTop[index])
+      }
+      gutters = (function*() {
+        let low = first(y), high = low, previous = -Infinity
+        for(let radius = 256; ; radius *= 2) {
+          while(low > 0 && byTop[low - 1].rect.top >= y - radius - 1) low--
+          while(high < byTop.length && byTop[high].rect.top <= y + radius + 1) high++
+          const complete = low === 0 && high === byTop.length
+          const band = byTop.slice(low, high).filter(zone => gutter(zone) && distance(zone) > previous && (complete || distance(zone) <= radius))
+          yield* band.sort(byDistance)
+          if(complete) return
+          previous = radius
+        }
+      })()
+    }
+    else {
+      hits = targets.zones.filter(hit)
+      gutters = targets.zones.filter(gutter).sort(byDistance)
+    }
+    hits.sort(byHit)
+    for(const zone of (function*() { yield* hits; yield* gutters })()) {
       if(zone.container.parentElement !== zone.parent || !root.contains(zone.container)) continue
       zone.allowed ??= valid(zone.container) ? true : false
       if(!zone.allowed || event.type === "drop" && !valid(zone.container)) continue
@@ -818,46 +900,62 @@ export class ManipulationFeature extends EditorFeature {
     this.clearFloatDropTargets()
     if(this.editor.features.canvas.active || this.editor.features.slides.active || source.namespaceURI === MATH_NAMESPACE) return
     const root = getDocumentRoot(), candidates: Element[] = []
-    const pending = Array.from(root.children).reverse()
+    // The source's subtree is never entered, so only the source itself (or a
+    // source containing the whole root) is a node within it.
+    const pending = source.contains(root) ? [] : Array.from(root.children).reverse()
     while(pending.length) {
       const element = pending.pop()!
-      if(source.contains(element)) continue
+      if(element === source) continue
+      // The walk never enters an atomic element, so no visited element has an
+      // atomic ancestor below the root. For such an element floatContainer(element,
+      // source) is the element itself exactly when it is not a mark; testing that
+      // directly avoids an ancestor walk per element of the document.
       if((!isSectionElement(element) || Array.from(element.childNodes).some(child => child instanceof Text && child.textContent?.trim()))
-        && this.floatContainer(element, source) === element) candidates.push(element)
+        && !isMarkElement(element)) candidates.push(element)
       const atomic = Boolean(isAtomicEditingElement(element, this.editor.schema))
       if(!atomic) for(let index = element.children.length - 1; index >= 0; index--) pending.push(element.children[index])
     }
     // A lone authored element can change its float without a sibling anchor.
     if(!candidates.length && source.parentElement === root && root.children.length === 1) candidates.push(source)
+    // Read every anchor's box before the measurement element enters the
+    // appendix: that insertion invalidates style, and the boxes of authored
+    // content do not depend on a hidden fixed element in the shadow tree.
+    const boxes = candidates.map(container => container.getBoundingClientRect())
     const measurement = document.createElement("div")
     measurement.style.cssText = "position:fixed;visibility:hidden;pointer-events:none"
     this.editor.addAppendix(measurement)
-    const measurements: FloatPreviewMeasurements = {geometry: new Map(), clearance: new Map()}
+    const measurements: FloatPreviewMeasurements = {geometry: new Map(), clearance: new Map(), probe: null}
     const zones: FloatDropZone[] = []
-    const parentPermissions = new Map<Element, boolean>()
+    let scroll = {x: 0, y: 0}
     try {
-      for(const container of candidates) {
-        const bounds = container.getBoundingClientRect()
+      for(const [index, container] of candidates.entries()) {
+        const bounds = boxes[index]
         if(!container.parentElement || !bounds.width || !bounds.height) continue
         const parent = container.parentElement
-        let allowed = source.parentElement === parent ? true : parentPermissions.get(parent)
-        if(allowed === undefined) {
-          allowed = this.editor.schema.canInsert(parent, source, Array.from(parent.childNodes).indexOf(container))
-          // A simple group rule consumes the same nodes at every index; its
-          // insertion permission is shared by all sibling anchors.
-          const rule = this.editor.schema.get(parent).content
-          if(rule && "group" in rule) parentPermissions.set(parent, allowed)
-        }
+        // Schema permission is resolved on first hover (floatDropTarget's
+        // valid()), so only anchors the pointer actually reaches pay for it.
+        const allowed = source.parentElement === parent ? true : undefined
         for(const side of ["left", "right"] as const) {
           const rect = this.floatPreviewRect(container, side, measurement, source, measurements, bounds)
           zones.push({container, parent, side, center: bounds.left + bounds.width / 2, allowed, rect,
-            column: measurements.geometry.get(parent)?.[side]?.column})
+            column: measurements.geometry.get(parent)?.[side]?.column, order: zones.length})
         }
       }
     }
-    finally { measurement.remove() }
-    const scrollX = window.scrollX, scrollY = window.scrollY
-    this.floatDropTargets = {source, key: source.isConnected ? source : source.outerHTML, zones, scrollX, scrollY, currentScrollX:scrollX, currentScrollY:scrollY}
+    finally {
+      // Removing the measurement element invalidates layout: read the scroll
+      // offsets, which the measurements cannot change, before that.
+      scroll = {x: window.scrollX, y: window.scrollY}
+      measurement.remove()
+    }
+    const scrollX = scroll.x, scrollY = scroll.y
+    let reach = 0
+    const finite = zones.every(zone => {
+      reach = Math.max(reach, zone.rect.bottom - zone.rect.top)
+      return Number.isFinite(zone.rect.top) && Number.isFinite(zone.rect.bottom)
+    })
+    const byTop = finite ? zones.slice().sort((a, b) => a.rect.top - b.rect.top || a.order - b.order) : undefined
+    this.floatDropTargets = {source, key: source.isConnected ? source : source.outerHTML, zones, scrollX, scrollY, currentScrollX:scrollX, currentScrollY:scrollY, byTop, reach}
     const schedule = () => {
       if(this.floatDropTargetsFrame !== null) return
       this.floatDropTargetsFrame = requestAnimationFrame(() => {
@@ -971,21 +1069,29 @@ export class ManipulationFeature extends EditorFeature {
       if(sourceMaximum && sourceMaximum !== "none") values.add(sourceMaximum)
     }
     // Independent CSS lengths can all be resolved in the same layout pass.
-    const probes = Array.from(values, value => {
+    // The probes are fixed, so none of these lengths depends on the parent.
+    const shared = measurements.probe !== undefined
+    const lengths = shared && measurements.lengths || new Map<string, number>()
+    if(shared) measurements.lengths = lengths
+    const probes = Array.from(values).filter(value => !lengths.has(value)).map(value => {
       const probe = document.createElement("div")
       probe.style.cssText = probeStyle
       probe.style.width = value
       return {value, probe}
     })
-    overlay.append(...probes.map(({probe}) => probe))
-    const lengths = new Map<string, number>()
-    try {
-      for(const {value, probe} of probes) lengths.set(value, probe.getBoundingClientRect().width || number(getComputedStyle(probe).width))
+    if(probes.length) {
+      overlay.append(...probes.map(({probe}) => probe))
+      try {
+        for(const {value, probe} of probes) lengths.set(value, probe.getBoundingClientRect().width || number(getComputedStyle(probe).width))
+      }
+      finally { probes.forEach(({probe}) => probe.remove()) }
     }
-    finally { probes.forEach(({probe}) => probe.remove()) }
     const length = (value: string, fallback: number) => lengths.get(value) || fallback
-    const probe = overlay.appendChild(document.createElement("div"))
-    probe.style.cssText = probeStyle
+    // A disconnected insertion template is measured in the probe's own shadow tree.
+    const reuse = shared && (!source || source.isConnected)
+    const probe = reuse && measurements.probe?.parentNode === overlay ? measurements.probe : overlay.appendChild(document.createElement("div"))
+    if(reuse) measurements.probe = probe
+    if(!reuse || probe.style.cssText === "") probe.style.cssText = probeStyle
     try {
       const themed = Boolean(bodyStyle.getPropertyValue("--ww-float-width"))
       const lanes = themed && viewportWidth >= 720
@@ -997,9 +1103,16 @@ export class ManipulationFeature extends EditorFeature {
       let defaultLaneWidth = length(defaultWidth, 320)
       const sourceWidth = hasSourceSize
         ? Math.min(length(sourceSize, source?.getBoundingClientRect().width || 0), sourceMaximum && sourceMaximum !== "none" ? length(sourceMaximum, Infinity) : Infinity) : 0
-      const otherFloats = Array.from(document.body.querySelectorAll<HTMLElement>('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
-        .filter(element => element !== source)
-      const sides = otherFloats.map(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList))
+      // One pass over many parents measures only in the appendix, so the
+      // document's floats stay the same: find them once, not once per parent.
+      let floats = shared ? measurements.floats : undefined
+      if(!floats) {
+        const elements = Array.from(document.body.querySelectorAll<HTMLElement>('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
+          .filter(element => element !== source)
+        floats = {elements, sides: elements.map(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList))}
+        if(shared) measurements.floats = floats
+      }
+      const otherFloats = floats.elements, sides = floats.sides
       let hasLeft = lanes && (side === "left" || sides.includes("far-left"))
       let hasRight = lanes && (side === "right" || sides.includes("far-right"))
       if(hasLeft && hasRight && viewportWidth >= 1400) {
@@ -1070,12 +1183,21 @@ export class ManipulationFeature extends EditorFeature {
       const preferred = inline?.getPropertyValue("--ww-float-size") || `min(100%, var(--ww-float-width, 256px), ${authoredWidth && authoredWidth !== "auto" ? authoredWidth : "var(--ww-float-width, 256px)"})`
       const maximum = inline?.getPropertyValue("max-inline-size") || inline?.maxWidth || "none"
       const fallbackWidth = Math.min(available, number(inline?.width ?? "") || source?.getBoundingClientRect().width || laneWidth)
-      overlay.style.width = `${available}px`
-      probe.style.position = "static"
-      if(themed) probe.style.setProperty("--ww-float-width", `${laneWidth}px`)
-      probe.style.width = preferred
-      probe.style.maxWidth = maximum
-      let width = probe.getBoundingClientRect().width || Math.min(number(getComputedStyle(probe).width) || fallbackWidth, number(maximum) || Infinity)
+      // Parents of equal width resolve the same size. Writing the probe's
+      // style again would make the style engine repeat the theme's
+      // BODY:has([style*=float]) tests over the whole document for each one.
+      const widthKey = `${available}|${themed ? laneWidth : ""}|${preferred}|${maximum}|${fallbackWidth}`
+      let width = reuse ? measurements.widths?.get(widthKey) : undefined
+      if(width === undefined) {
+        overlay.style.width = `${available}px`
+        probe.style.cssText = probeStyle
+        probe.style.position = "static"
+        if(themed) probe.style.setProperty("--ww-float-width", `${laneWidth}px`)
+        probe.style.width = preferred
+        probe.style.maxWidth = maximum
+        width = probe.getBoundingClientRect().width || Math.min(number(getComputedStyle(probe).width) || fallbackWidth, number(maximum) || Infinity)
+        if(reuse) (measurements.widths ??= new Map()).set(widthKey, width)
+      }
       if(lanes) width = Math.min(width, laneWidth)
       let height = 0
       if(source?.isConnected) {
@@ -1124,14 +1246,22 @@ export class ManipulationFeature extends EditorFeature {
       }
       return result
     }
-    finally { probe.remove() }
+    finally { if(!reuse) probe.remove() }
   }
 
   private floatPreviewTop(container: Element, rect: DOMRect, side: "left" | "right", source: Element | undefined, clears: boolean, measurements: FloatPreviewMeasurements) {
     const parent = container.parentElement!
     const number = (value: string) => parseFloat(value) || 0
     let top = rect.top
-    if(source?.parentElement === parent && source.compareDocumentPosition(container) & Node.DOCUMENT_POSITION_FOLLOWING) {
+    // compareDocumentPosition walks the siblings to order two of them, so one
+    // call per anchor costs time quadratic in the parent's children. Collect the
+    // source's following siblings once per measurement instead.
+    if(source?.parentElement === parent && measurements.sourceFollowing?.parent !== parent) {
+      const following = new Set<Element>()
+      for(let sibling = source.nextElementSibling; sibling; sibling = sibling.nextElementSibling) following.add(sibling)
+      measurements.sourceFollowing = {parent, following}
+    }
+    if(source?.parentElement === parent && measurements.sourceFollowing!.following.has(container)) {
       if(measurements.sourceFlow === undefined) {
         const style = getComputedStyle(source)
         measurements.sourceFlow = null
@@ -2112,7 +2242,14 @@ export class ManipulationFeature extends EditorFeature {
     }
     finally {
       this.endNodeDrag(!dropped, !floated)
-      if(floated) this.editor.features.selection.queueSelectionRefresh()
+      if(floated) {
+        // BODY's column width tokens follow the new float. Written with the
+        // drop, they are synchronized together with it. Left to the queued
+        // refresh, they are a second shared change, which asks for a second
+        // refresh of the same selection.
+        this.editor.features.layout.refresh()
+        this.editor.features.selection.queueSelectionRefresh()
+      }
       else this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.processSelection())
     }
   }
@@ -2492,13 +2629,18 @@ export class ManipulationFeature extends EditorFeature {
     if(!container || container === root && !range.intersectsNode(root)) return []
     if(!isSectionElement(container) && container !== root && container !== document.body) return [container]
 
-    const targets = Array.from(container.childNodes).flatMap(node => {
+    // The children the range reaches lie between its boundaries; the host
+    // asks this for every selection path, so do not test all of a long parent.
+    let reached: ChildNode[] = []
+    try { reached = childNodesInRange(container, range) }
+    catch { /* A range outside this tree reaches none of its children. */ }
+    const targets = reached.flatMap(node => {
       if(!(node instanceof Element)) return []
       const flatten = (element: Element): Element[] => !$.includesNode(element) ? [] : isMarkElement(element) || isSectionElement(element)
         ? Array.from(element.children).flatMap(flatten)
         : [element]
       try {
-        return range.intersectsNode(node) ? flatten(node) : []
+        return flatten(node)
       }
       catch {
         return []
@@ -3116,16 +3258,19 @@ export class ManipulationFeature extends EditorFeature {
           addContainer(range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement)
           continue
         }
-        const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
-          acceptNode: node => {
-            const element = node as Element
-            if(!this.rangeOverlapsContent(range, element)) return NodeFilter.FILTER_REJECT
-            const atomic = atomicEditingContainer(element, this.editor.schema)
-            if(atomic && atomic !== element) return NodeFilter.FILTER_REJECT
-            return NodeFilter.FILTER_ACCEPT
-          },
-        })
-        while(walker.nextNode()) addContainer(walker.currentNode as Element)
+        // Descend from the root through the elements whose content the
+        // range overlaps. Those lie between its boundaries; the root's other
+        // children need no test.
+        const visit = (parent: Node) => {
+          for(const node of childNodesInRange(parent, range)) {
+            if(!isElement(node) || !this.rangeOverlapsContent(range, node)) continue
+            const atomic = atomicEditingContainer(node, this.editor.schema)
+            if(atomic && atomic !== node) continue
+            addContainer(node)
+            visit(node)
+          }
+        }
+        visit(root)
       }
     }
     // Associated popup content remains outside the void IMG in the authored DOM.

@@ -399,6 +399,29 @@ describe("graphic editing", () => {
     expect(document.body.querySelectorAll("svg")).toHaveLength(1)
   })
 
+  it("hit-tests beneath the appendix during a drag only while the document has an SVG graphic", () => {
+    document.body.innerHTML = "<p>text</p>"
+    const hitTest = vi.spyOn(editor, "hitTestBeneathAppendix")
+    const dragover = editor.features.graphic.captureListeners.dragover as (event: DragEvent) => void
+    const data = new DataTransfer()
+    data.setData("text/plain", "Dropped text")
+    const outside = imageDragEvent("dragover", {bubbles: true, cancelable: true, dataTransfer: data, clientX: 500, clientY: 350})
+    Object.defineProperty(outside, "target", {value: document.body})
+    dragover(outside)
+    expect(hitTest).not.toHaveBeenCalled()
+    expect(outside.defaultPrevented).toBe(false)
+
+    const graphic = document.body.appendChild(document.createElementNS(SVG_NAMESPACE, "svg"))
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(graphic)
+    const over = imageDragEvent("dragover", {bubbles: true, cancelable: true, dataTransfer: data, clientX: 500, clientY: 350})
+    Object.defineProperty(over, "target", {value: document.body})
+    dragover(over)
+    expect(hitTest).toHaveBeenCalledTimes(1)
+    expect(over.defaultPrevented).toBe(true)
+    expect(data.dropEffect).toBe("copy")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
   it.each(["removed", "disabled", "locked", "moved into widget"])("ignores text paste and drop when the graphic is %s", state => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!

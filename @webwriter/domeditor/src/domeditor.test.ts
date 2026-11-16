@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {hasPresentationState, resolvePresentationSelector} from "./presentation-state.js"
+import {clearPresentationState, hasPresentationState, resolvePresentationSelector, setPresentationState} from "./presentation-state.js"
 import { afterAll, beforeAll, describe, it, expect, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
@@ -362,9 +362,20 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(selection-caret-node\),[\s\S]*?body::part\(selection-caret-capture\)\s*\{[\s\S]*?left:\s*anchor\(left\);[\s\S]*?width:\s*anchor-size\(width\);[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).toMatch(/body::part\(selection-caret-capture\)\s*\{[\s\S]*?outline:\s*2px solid var\(--sl-color-primary-400\);/)
     expect(editorStyleString).toMatch(/body\s+\*:not\(\s*:where\(/)
-    expect(editorStyleString).toContain("body:has(:state(ww-element-capture-selected):is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered), :state(ww-style-target-hovered)))::part(hover-caret) {\n  display: none;")
+    // Hover inside BODY:has() would restyle the whole document on every hover
+    // change; the selection feature states it on the outline's parts.
+    expect(editorStyleString).toMatch(/::part\(hover-caret-suppressed\) \{\n  display: none;/)
+    expect(editorStyleString).toContain("::part(hover-caret-native),")
+    expect(editorStyleString).not.toMatch(/body[^{]*:has\([^{]*:hover[^{]*::part\(/)
     expect(editorStyleString).toMatch(/:state\(ww-element-selected\)\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
-    expect(editorStyleString).toMatch(/body:state\(ww-node-selection-active\),\s*body:state\(ww-node-selection-active\)\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
+    // Native caret suppression names the elements around the selection, not
+    // every element: a state on BODY above `*` or `::selection` restyles the
+    // whole document whenever it changes.
+    expect(editorStyleString).toMatch(/\n:state\(ww-node-caret-host\),\s*:state\(ww-node-caret-host\)\s+\*\s*\{\s*caret-color:\s*transparent\s*!important;\s*\}/)
+    expect(editorStyleString).toMatch(/@layer webwriter-theme \{\s*:state\(ww-gap-caret-host\)\s*\{\s*caret-color:\s*transparent;\s*\}\s*\}\s*body:state\(ww-gap-caret-host\)\s*\{\s*caret-color:\s*transparent\s*!important;\s*\}/)
+    expect(editorStyleString).toMatch(/\n:state\(ww-drop-caret-host\),\s*:state\(ww-drop-caret-host\)\s+\*\s*\{\s*caret-color:\s*transparent\s*!important;\s*\}/)
+    expect(editorStyleString).not.toMatch(/body:state\(ww-(?:gap-caret-visible|node-selection-active|drop-selection-active)\)(?:\s+\*)?\s*[,{][^}]*caret-color/)
+    expect(editorStyleString).not.toMatch(/ww-gap-caret-visible[^{]*\{[^}]*::selection/)
     expect(editorStyleString).toMatch(/body:state\(ww-node-selection-active\)\s+:state\(ww-element-capture-selected\),\s*body:state\(ww-node-selection-active\)\s+math:state\(ww-element-capture-selected\)\s+\*\s*\{[\s\S]*?caret-color:\s*auto\s*!important;/)
     expect(editorStyleString).toMatch(/body:state\(ww-table-cell-selection\),\s*body:state\(ww-table-cell-selection\)\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body:state\(ww-table-cell-selection\)::selection,\s*body:state\(ww-table-cell-selection\)\s+\*::selection\s*\{[\s\S]*?background:\s*transparent;/)
@@ -397,7 +408,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body table:is\(:hover, :state\(ww-pointer-hovered\)\)\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
     expect(editorStyleString).toMatch(/:state\(ww-element-selected\):is\(:hover, :state\(ww-pointer-hovered\), :state\(ww-element-hovered\)\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
     expect(editorStyleString).toMatch(/:state\(ww-element-selected\):state\(ww-style-target-hovered\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
-    expect(editorStyleString).toMatch(/:state\(ww-empty-selected\):is\(:hover, :state\(ww-pointer-hovered\), :state\(ww-element-hovered\)\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--empty-selected, --hover-anchor;/)
+    expect(editorStyleString).toMatch(/:state\(ww-empty-root-selected\):is\(:hover, :state\(ww-pointer-hovered\), :state\(ww-element-hovered\)\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--empty-selected, --hover-anchor;/)
     expect(editorStyleString).toContain("anchor-name: --ww-popup-bubble, --hover-anchor;")
     expect(editorStyleString).toContain("anchor-name: --ww-popup-bubble, --selection-anchor;")
     expect(editorStyleString).toContain("anchor-name: --ww-popup-bubble, --selection-anchor, --hover-anchor;")
@@ -411,11 +422,16 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toContain("body::part(hover-caret)")
     expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\)::before\s*\{[\s\S]*?content:\s*"Summary";/)
     expect(editorStyleString).toMatch(/summary,\s*figcaption\s*\{\s*cursor:\s*text;/)
-    expect(editorStyleString).toMatch(/body:has\(:is\(summary, figcaption\):is\(:hover, :state\(ww-pointer-hovered\), :state\(ww-element-hovered\), :state\(ww-style-target-hovered\)\)\)::part\(hover-caret\)\s*\{\s*display:\s*none;/)
+    // The selection feature marks a hovered summary or caption on the outline itself.
+    expect(editorStyleString).toMatch(/::part\(hover-caret-suppressed\)\s*\{\s*display:\s*none;/)
     expect(editorStyleString).toMatch(/summary::after\s*\{\s*cursor:\s*pointer;\s*\}/)
     expect(editorStyleString).not.toMatch(/summary:is\([^{}]*\)::after\s*\{[^}]*content:/)
-    expect(editorStyleString).toMatch(/details > summary:first-child \+ p:last-child:is\(:empty, :has\(> br:only-child\)\)::after\s*\{\s*content:\s*"Details";/)
-    expect(editorStyleString).toMatch(/details > summary:first-child \+ p:last-child:has\(> br:only-child\) > br\s*\{\s*display:\s*none;/)
+    // DETAILS tests for the pair: a sibling combinator between the subject and
+    // an unkeyed SUMMARY restyles every paragraph beside each inserted block.
+    const pair = "details:has(> summary:first-child):where(:not(:has(> :not(:first-child):not(:last-child)))) > p:last-child"
+    expect(editorStyleString).toContain(`${pair}:is(:empty, :has(> br:only-child))::after {\n  content: "Details";`)
+    expect(editorStyleString).toContain(`${pair}:has(> br:only-child) > br {\n  display: none;`)
+    expect(editorStyleString).not.toMatch(/summary:first-child \+ p\b/)
     expect(editorStyleString).toContain("body::part(virtual-list-caret)")
     expect(editorStyleString).not.toMatch(/^(?:html|body)(?::state\(ww-template-active\))?\s*\{[^}]*overflow(?:-x)?:\s*hidden;/m)
     expect(editorStyleString).not.toMatch(/body:state\(ww-template-active\)\s*\{/)
@@ -440,6 +456,40 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).not.toContain("audio:state(ww-media-empty)::-webkit-media-controls-enclosure")
     expect(editorStyleString).not.toMatch(/:is\([^)]*audio[^)]*\):state\(ww-media-empty\)\s*\{/)
     expect(editorStyleString).not.toMatch(/body:has\(:state\(ww-media-empty\):is\(:state\(ww-gap-before-selected\), :state\(ww-gap-after-selected\)\)\)::part\(gap-caret\)\s*\{[\s\S]*?display:\s*none;/)
+  })
+
+  it("names the empty-selection anchor only on the roots whose empty-document caret uses it", () => {
+    // The caret is shown only for BODY or a [role~="document"] child of BODY.
+    // Once BODY has matched any positional rule, each insertion into it while
+    // a rule holds an empty paragraph's position restyles every paragraph, so
+    // no rule may carry the position of an ordinary empty block.
+    const css = editorStyleString.replace(/\/\*[\s\S]*?\*\//g, "")
+    const rules = Array.from(css.matchAll(/([^{}]+)\{([^{}]*)\}/g), ([, selector, body]) => [selector.trim(), body] as const)
+    const anchorRules = rules.filter(([, body]) => /anchor-name:[^;]*--empty-selected/.test(body)).map(([selector]) => selector)
+    const hover = ":is(:hover, :state(ww-pointer-hovered), :state(ww-element-hovered))"
+    expect(anchorRules).toEqual([
+      ":state(ww-empty-root-selected)",
+      `:state(ww-empty-root-selected)${hover}:not(table *)`,
+      ":state(ww-empty-root-selected):state(ww-style-target-hovered):not(table *)",
+      `body:state(ww-empty-selected)${hover}`,
+      "body:state(ww-empty-selected):state(ww-style-target-hovered)",
+    ])
+    // BODY:has(…) tests are decided by presentation-state.js, not by CSS.
+    const stateRules = rules.map(([selector]) => selector).filter(selector => /:state\(ww-empty-(root-)?selected\)/.test(selector) && !/^body:has\(/.test(selector))
+    expect(stateRules.length).toBeGreaterThan(anchorRules.length)
+    document.body.innerHTML = "<p>one</p><p></p><p>two</p>"
+    const paragraph = document.body.children[1]
+    try {
+      setPresentationState(paragraph, "empty-selected")
+      for(const selector of stateRules) expect(resolvePresentationSelector(document, selector)).not.toContain("p:nth-child(2)")
+      setPresentationState(document.body, "empty-root-selected")
+      expect(resolvePresentationSelector(document, anchorRules[0])).toBe(":where(body):not(.ww-inactive-presentation)")
+    }
+    finally {
+      clearPresentationState(paragraph, "empty-selected")
+      clearPresentationState(document.body, "empty-root-selected")
+      document.body.replaceChildren()
+    }
   })
 
   it("restores the default paragraph after a direct DOM change empties the body", async () => {
@@ -997,6 +1047,52 @@ describe("breadcrumb positioning", () => {
       expect(output.querySelector(".ww-popup-content[popover] > p")?.textContent).toBe("Body")
       expect(output.querySelector(".ww-popup-content")?.parentElement).toBe(output.body)
       expect(document.querySelector(".ww-popup > [popover] > p")?.textContent).toBe("Body")
+    }
+    finally { editor.destroy(); document.body.replaceChildren() }
+  })
+  it("publishes selection state once for all reactions to one change and skips an unchanged repeat", async () => {
+    document.body.innerHTML = "<p>one</p><p>two</p>"
+    const editor = new DOMEditor()
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    const posted = () => postMessage.mock.calls.map(([message]) => message.type as string)
+      .filter(type => [selectionChangeEvent, "dom-editor-mark-state-change", "dom-editor-comment-state-change"].includes(type))
+    try {
+      const [first, second] = document.querySelectorAll("p")
+      $.move(first.firstChild!, 1)
+      await Promise.resolve()
+      await Promise.resolve()
+      postMessage.mockClear()
+
+      // The mark, selection and comment features and the selection listener
+      // each react to the same edit.
+      $.move(second.firstChild!, 2)
+      editor.queueSelectionState({mark: true, path: true})
+      editor.queueSelectionState({path: true})
+      editor.queueSelectionState({comment: true, path: true})
+      editor.queueSelectionState({mark: true, comment: true, path: true})
+      expect(posted()).toEqual([])
+      await Promise.resolve()
+      const types = posted()
+      expect(types.filter(type => type === selectionChangeEvent)).toHaveLength(1)
+      expect(types.filter(type => type === "dom-editor-mark-state-change").length).toBeLessThanOrEqual(1)
+      expect(types.filter(type => type === "dom-editor-comment-state-change").length).toBeLessThanOrEqual(1)
+      // The selection path remains the final update of a change.
+      expect(types.at(-1)).toBe(selectionChangeEvent)
+
+      postMessage.mockClear()
+      editor.queueSelectionState({mark: true, comment: true, path: true})
+      await Promise.resolve()
+      expect(posted()).toEqual([])
+
+      // A command's own post always reaches the host.
+      editor.postSelectionPath()
+      expect(posted()).toEqual([selectionChangeEvent])
+
+      postMessage.mockClear()
+      editor.queueSelectionState({path: true})
+      editor.destroy()
+      await Promise.resolve()
+      expect(posted()).toEqual([])
     }
     finally { editor.destroy(); document.body.replaceChildren() }
   })

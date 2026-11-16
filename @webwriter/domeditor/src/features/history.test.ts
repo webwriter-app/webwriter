@@ -8,8 +8,27 @@ import {SharedDOMDoc, sharedDOMBody} from "../domdoc"
 import {executeFailureEvent, type VersionHistoryState} from "../editor-bridge"
 import {defaultGroupingRules} from "../widget-grouping.js"
 import {readWidgetGrouping, writeWidgetGrouping} from "../widget-grouping-dom"
+import {checkpointCoalescingWindow, maxAutomaticCheckpoints} from "./history"
 
 let editor: DOMEditor
+let clock: {mockRestore(): void} | undefined
+
+function setClock(now: number) {
+  clock = vi.spyOn(Date, "now").mockReturnValue(now)
+}
+
+/** One author's automatic checkpoints coalesce within a window. Tests that
+ * need separate entries move the clock past it. */
+function startNewCheckpointWindow() {
+  setClock(Date.now() + checkpointCoalescingWindow)
+}
+
+/** A pending automatic checkpoint is recorded once its window has ended and
+ * the debounce elapsed. Requires fake timers. */
+function elapseCheckpointWindow() {
+  startNewCheckpointWindow()
+  vi.advanceTimersByTime(700)
+}
 
 async function mutationsDelivered() {
   await new Promise<void>(resolve => queueMicrotask(resolve))
@@ -25,6 +44,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  clock?.mockRestore()
+  clock = undefined
   editor.destroy()
   document.head.replaceChildren()
   document.body.replaceChildren()
@@ -156,6 +177,7 @@ describe("collaborative version history", () => {
     document.body.innerHTML = `<p><a download="notes.bin" href="${oldURL}">Notes</a></p>`
     const history = editor.features.history.actions
     const checkpoint = history.getVersionHistory({type: "getVersionHistory"}).currentCheckpointId!
+    startNewCheckpointWindow()
     document.querySelector("a")!.setAttribute("href", editor.createMediaURL(new Blob(["updated attachment"])))
     const current = history.getVersionHistory({type: "getVersionHistory"}).currentCheckpointId
     const snapshot = await editor.features.state.actions.snapshotState({type: "snapshotState"})
@@ -181,9 +203,11 @@ describe("collaborative version history", () => {
     let history = editor.features.history.actions
     const state = () => history.getVersionHistory({type: "getVersionHistory"})
     const first = state().currentCheckpointId!
+    startNewCheckpointWindow()
     document.querySelector("a")!.textContent = "Updated notes"
     const textEdit = state()
     expect(textEdit.checkpoints[0].changes).toEqual({added: 0, removed: 0, modified: 1})
+    startNewCheckpointWindow()
     document.querySelector("a")!.setAttribute("href", replacement)
     expect(state().checkpoints[0].changes).toEqual({added: 0, removed: 0, modified: 1})
 
@@ -343,6 +367,7 @@ describe("collaborative version history", () => {
     document.querySelector("p")!.textContent = "First change"
     await mutationsDelivered()
     const first = history.actions.getVersionHistory({type: "getVersionHistory"}).checkpoints[0].id
+    startNewCheckpointWindow()
     document.body.append(document.createElement("custom-widget"))
     await mutationsDelivered()
     const snapshot = await history.actions.prepareVersionSave({type: "prepareVersionSave"})
@@ -534,6 +559,7 @@ describe("collaborative version history", () => {
     document.querySelector("p")!.textContent = "Later"
     await mutationsDelivered()
     history.actions.getVersionHistory({type: "getVersionHistory"})
+    startNewCheckpointWindow()
     history.actions.undo({type: "undo"})
     expect(history.state().currentCheckpointId).toBe(initialId)
     const state = history.actions.getVersionHistory({type: "getVersionHistory"})
@@ -549,6 +575,7 @@ describe("collaborative version history", () => {
     writeWidgetGrouping(document.querySelector("data-widget")!, defaultGroupingRules("before"))
     await mutationsDelivered()
     const checkpointId = history.actions.getVersionHistory({type: "getVersionHistory"}).checkpoints[0].id
+    startNewCheckpointWindow()
     writeWidgetGrouping(document.querySelector("data-widget")!, defaultGroupingRules("after"))
     await mutationsDelivered()
     history.actions.getVersionHistory({type: "getVersionHistory"})
@@ -594,7 +621,11 @@ describe("collaborative version history", () => {
     try {
       document.querySelector("p")!.textContent = "Checkpointed"
       await mutationsDelivered()
-      vi.advanceTimersByTime(700)
+      // The first edit of a run only reports that no entry is current any more.
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(serialize).not.toHaveBeenCalled()
+      publish.mockClear()
+      elapseCheckpointWindow()
 
       expect(serialize).toHaveBeenCalledTimes(1)
       expect(parse).toHaveBeenCalledTimes(2)
@@ -620,7 +651,8 @@ describe("collaborative version history", () => {
     try {
       document.querySelector("p")!.textContent = "Checkpoint source"
       await mutationsDelivered()
-      vi.advanceTimersByTime(700)
+      publish.mockClear()
+      elapseCheckpointWindow()
 
       expect(serialize).toHaveBeenCalledTimes(2)
       expect(publish).toHaveBeenCalledTimes(1)
@@ -644,6 +676,7 @@ describe("collaborative version history", () => {
     vi.spyOn(editor, "toHTML").mockImplementation(() => `<p>${foreignTemplate.textContent}</p>`)
     const history = editor.features.history
     const before = history.actions.getVersionHistory({type: "getVersionHistory"})
+    startNewCheckpointWindow()
     foreignTemplate.textContent = "After"
     await mutationsDelivered()
     const after = history.actions.getVersionHistory({type: "getVersionHistory"})
@@ -677,7 +710,8 @@ describe("collaborative version history", () => {
     try {
       document.querySelector("p")!.textContent = "Captured edit"
       await mutationsDelivered()
-      vi.advanceTimersByTime(700)
+      publish.mockClear()
+      elapseCheckpointWindow()
       expect(parse).not.toHaveBeenCalled()
       expect(publish).not.toHaveBeenCalled()
       document.querySelector("p")!.textContent = "Latest edit"
@@ -703,7 +737,8 @@ describe("collaborative version history", () => {
     try {
       document.querySelector("p")!.textContent = "Background edit"
       await mutationsDelivered()
-      vi.advanceTimersByTime(700)
+      publish.mockClear()
+      elapseCheckpointWindow()
       await vi.runAllTimersAsync()
       expect(publish).toHaveBeenCalledTimes(1)
       expect(publish.mock.calls[0][0].checkpoints).toHaveLength(initial.checkpoints.length + 1)
@@ -711,10 +746,11 @@ describe("collaborative version history", () => {
       expect(isEqualNode.mock.contexts.some(node => node instanceof Element && node.localName === "aside")).toBe(false)
       document.querySelector("p")!.textContent = "Disabled edit"
       await mutationsDelivered()
-      vi.advanceTimersByTime(700)
+      publish.mockClear()
+      elapseCheckpointWindow()
       history.disable()
       await vi.runAllTimersAsync()
-      expect(publish).toHaveBeenCalledTimes(1)
+      expect(publish).not.toHaveBeenCalled()
     }
     finally { vi.useRealTimers() }
   }, 30_000)
@@ -731,7 +767,7 @@ describe("collaborative version history", () => {
     try {
       document.querySelector("p")!.textContent = "Changed"
       await mutationsDelivered()
-      vi.advanceTimersByTime(700)
+      elapseCheckpointWindow()
 
       expect(isEqualNode.mock.calls.some(([other]) => other instanceof Element && other.localName === "article")).toBe(true)
       expect(history.state().checkpoints[0].changes).toEqual({added: 0, removed: 0, modified: 1})
@@ -985,5 +1021,483 @@ describe("collaborative version history", () => {
     const state = editor.features.history.actions.getVersionHistory({type: "getVersionHistory"})
     expect(state.checkpoints).toHaveLength(2)
     expect(assets).not.toHaveBeenCalled()
+  })
+})
+
+describe("automatic checkpoint retention", () => {
+  const stored = () => editor.doc.doc.getArray<any>("version-history").toArray()
+  const storedIds = () => stored().map(checkpoint => checkpoint.id as string)
+  const storedHTML = (checkpoint: any): string => typeof checkpoint.source === "string" ? checkpoint.source : checkpoint.source.html
+  const flush = () => editor.features.history.actions.getVersionHistory({type: "getVersionHistory"})
+  const largeBody = `<p>Hello</p><aside>${`<p>${"Unchanged prose and context. ".repeat(120)}</p>`.repeat(40)}</aside>`
+
+  /** Edits the first paragraph and lets the checkpoint debounce elapse. */
+  async function pause(text: string) {
+    document.querySelector("p")!.textContent = text
+    await mutationsDelivered()
+    vi.advanceTimersByTime(700)
+  }
+
+  function remoteReplica() {
+    const remote = new Y.Doc()
+    Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc), "initial-sync")
+    const checkpoints = remote.getArray<any>("version-history")
+    return {
+      remote,
+      checkpoints,
+      remove: (id: string) => checkpoints.delete(checkpoints.toArray().findIndex(checkpoint => checkpoint.id === id)),
+      send: () => Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(editor.doc.doc)), "remote-client"),
+    }
+  }
+
+  it("replaces one author's automatic checkpoint at state boundaries in a window and appends after it", () => {
+    const history = editor.features.history
+    const edit = (text: string) => {
+      document.querySelector("p")!.textContent = text
+      return flush()
+    }
+    const start = Date.now()
+    setClock(start)
+    edit("First boundary")
+    expect(stored()).toHaveLength(2)
+    const first = stored()[1].id
+    setClock(start + 60_000)
+    edit("Second boundary")
+    setClock(start + checkpointCoalescingWindow - 1)
+    edit("Third boundary")
+
+    const coalesced = stored()
+    expect(coalesced).toHaveLength(2)
+    expect(coalesced[1].id).not.toBe(first)
+    expect(storedHTML(coalesced[1])).toContain("Third boundary")
+    expect(JSON.stringify(coalesced)).not.toContain("Second boundary")
+    // Changes are counted from the checkpoint before the replaced one.
+    expect(coalesced[1]).toMatchObject({
+      startedAt: start, timestamp: start + checkpointCoalescingWindow - 1, changes: {added: 0, removed: 0, modified: 1},
+    })
+    const state = history.state()
+    expect(state.currentCheckpointId).toBe(coalesced[1].id)
+    expect(state.checkpoints[0]).not.toHaveProperty("startedAt")
+    expect(state.versions[0]).toMatchObject({isUnsaved: true, isCurrent: true, checkpointIds: [coalesced[1].id, coalesced[0].id]})
+
+    // The window starts with the first checkpoint of the run, so a long
+    // session without longer breaks still gets one entry per window.
+    setClock(start + checkpointCoalescingWindow)
+    edit("Fourth boundary")
+    expect(storedIds()).toEqual([coalesced[0].id, coalesced[1].id, history.state().currentCheckpointId])
+    expect(stored()[2]).not.toHaveProperty("startedAt")
+    expect(storedHTML(stored()[2])).toContain("Fourth boundary")
+  })
+
+  it("keeps the encoded shared state bounded across state boundaries in a window", async () => {
+    document.body.innerHTML = `<p>Hello</p><aside>${`<p>${"Unchanged prose and context. ".repeat(12)}</p>`.repeat(60)}</aside>`
+    await mutationsDelivered()
+    flush()
+    expect(editor.doc.doc.gc).toBe(true)
+    const checkpoints = stored().length
+    const snapshot = storedHTML(stored().at(-1)).length
+    const size = Y.encodeStateAsUpdate(editor.doc.doc).byteLength
+    expect(size).toBeGreaterThan(snapshot)
+    for(let index = 1; index <= 12; index++) {
+      document.querySelector("p")!.textContent = `Boundary ${index}`
+      flush()
+    }
+    expect(stored()).toHaveLength(checkpoints)
+    expect(storedHTML(stored().at(-1))).toContain("Boundary 12")
+    // Twelve appended snapshots would add twelve times the document.
+    expect(Y.encodeStateAsUpdate(editor.doc.doc).byteLength).toBeLessThan(size + snapshot / 4)
+  })
+
+  it("prunes the oldest automatic checkpoints beyond the cap but keeps referenced, labelled, and current ones", async () => {
+    const history = editor.features.history
+    const edit = (text: string) => {
+      startNewCheckpointWindow()
+      document.querySelector("p")!.textContent = text
+      return flush().checkpoints[0].id
+    }
+    const created = storedIds()[0]
+    const saved = edit("Saved")
+    const snapshot = await history.actions.prepareVersionSave({type: "prepareVersionSave"})
+    expect(snapshot.checkpointId).toBe(saved)
+    history.actions.recordVersionSave({type: "recordVersionSave", checkpointId: saved})
+    const commented = edit("Commented")
+    history.actions.addVersionComment({type: "addVersionComment", checkpointId: commented, text: "Keep this one"})
+    const restoredFrom = edit("Restored from")
+    const automatic = [edit("Edit 0")]
+    const restored = history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: restoredFrom}).checkpoints[0].id
+    const kept = [created, saved, commented, restoredFrom, restored]
+    while(automatic.length < maxAutomaticCheckpoints) automatic.push(edit(`Edit ${automatic.length}`))
+    expect([...storedIds()].sort()).toEqual([...kept, ...automatic].sort())
+
+    const overflow = edit("Overflow")
+    expect([...storedIds()].sort()).toEqual([...kept, ...automatic.slice(1), overflow].sort())
+
+    // The document returns to an old automatic checkpoint, which is then the
+    // current one. The next oldest is pruned in its place.
+    document.querySelector("p")!.textContent = "Edit 1"
+    await mutationsDelivered()
+    expect(history.state().currentCheckpointId).toBe(automatic[1])
+    startNewCheckpointWindow()
+    const latest = flush().checkpoints[0].id
+    expect([...storedIds()].sort()).toEqual([...kept, automatic[1], ...automatic.slice(3), overflow, latest].sort())
+    expect(flush().versions.at(-1)!.checkpointIds).toEqual([saved, created])
+  })
+
+  it("previews and restores a coalesced checkpoint, and undoes and redoes the restore", () => {
+    const history = editor.features.history
+    document.querySelector("p")!.textContent = "Draft one"
+    flush()
+    document.querySelector("p")!.textContent = "Draft two"
+    const coalesced = flush().checkpoints[0].id
+    expect(stored()).toHaveLength(2)
+    startNewCheckpointWindow()
+    document.querySelector("p")!.textContent = "Later"
+    expect(flush().checkpoints).toHaveLength(3)
+
+    const preview = history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: coalesced})
+    expect(preview.preview).toMatchObject({checkpointId: coalesced, isCurrent: false})
+    expect(document.body.textContent).toBe("Draft two")
+    history.actions.clearVersionPreview({type: "clearVersionPreview"})
+    expect(document.body.textContent).toBe("Later")
+
+    const restored = history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: coalesced})
+    expect(document.body.textContent).toBe("Draft two")
+    expect(restored.checkpoints[0].label).toMatch(/^Restored Edited by /)
+    expect(restored.currentCheckpointId).toBe(restored.checkpoints[0].id)
+    history.actions.undo({type: "undo"})
+    expect(document.body.textContent).toBe("Later")
+    history.actions.redo({type: "redo"})
+    expect(document.body.textContent).toBe("Draft two")
+    expect(storedIds()).toContain(coalesced)
+  })
+
+  it("recovers when a collaborator removes the local current checkpoint", () => {
+    const history = editor.features.history
+    document.querySelector("p")!.textContent = "Local"
+    const current = flush().currentCheckpointId!
+    expect(storedIds().at(-1)).toBe(current)
+    const publish = vi.spyOn(editor, "postHistoryState")
+    const {remote, remove, send} = remoteReplica()
+    try {
+      remove(current)
+      send()
+      const state = publish.mock.lastCall![0]
+      expect(state.checkpoints.map(checkpoint => checkpoint.id)).toEqual([storedIds()[0]])
+      expect(state.currentCheckpointId).toBe(storedIds()[0])
+      expect(state.versions[0]).toMatchObject({isUnsaved: true, isCurrent: true})
+      expect(history.state().currentCheckpointId).toBe(storedIds()[0])
+
+      document.querySelector("p")!.textContent = "Local again"
+      const next = flush()
+      expect(next.checkpoints).toHaveLength(2)
+      expect(next.currentCheckpointId).toBe(next.checkpoints[0].id)
+    }
+    finally { remote.destroy() }
+  })
+
+  it("converges when two replicas replace the same checkpoint concurrently", () => {
+    const history = editor.features.history
+    document.querySelector("p")!.textContent = "Shared"
+    const shared = flush().currentCheckpointId!
+    const {remote, checkpoints, remove, send} = remoteReplica()
+    try {
+      const previous = checkpoints.toArray().at(-1)
+      remote.transact(() => {
+        remove(shared)
+        checkpoints.push([{...previous, id: "remote-replacement", source: previous.source.replace("Shared", "Remote")}])
+      })
+      document.querySelector("p")!.textContent = "Local"
+      const local = flush().currentCheckpointId!
+      expect(storedIds()).toEqual([storedIds()[0], local])
+      const localUpdate = Y.encodeStateAsUpdate(editor.doc.doc, Y.encodeStateVector(remote))
+      send()
+      Y.applyUpdate(remote, localUpdate)
+
+      expect(storedIds()).toEqual(checkpoints.toArray().map(checkpoint => checkpoint.id))
+      expect([...storedIds()].sort()).toEqual([storedIds()[0], local, "remote-replacement"].sort())
+      expect(storedIds()).not.toContain(shared)
+      expect(history.state().currentCheckpointId).toBe(local)
+    }
+    finally { remote.destroy() }
+  })
+
+  it("keeps a previewed checkpoint restorable after a collaborator removes it", async () => {
+    const history = editor.features.history
+    document.querySelector("p")!.textContent = "Previewed"
+    const previewed = flush().currentCheckpointId!
+    startNewCheckpointWindow()
+    document.querySelector("p")!.textContent = "Current"
+    flush()
+    const {remote, remove, send} = remoteReplica()
+    try {
+      history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: previewed})
+      remove(previewed)
+      send()
+      expect(storedIds()).not.toContain(previewed)
+      expect(history.state().preview).toMatchObject({checkpointId: previewed, isCurrent: false})
+      expect(document.body.textContent).toBe("Previewed")
+      document.querySelector("p")!.textContent = "Blocked"
+      await vi.waitFor(() => expect(document.body.textContent).toBe("Previewed"))
+
+      const restored = history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: previewed})
+      expect(document.body.textContent).toBe("Previewed")
+      expect(restored.preview).toBeNull()
+      expect(restored.checkpoints[0].label).toMatch(/^Restored Edited by /)
+      expect(() => history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: previewed}))
+        .toThrow("no longer available")
+    }
+    finally { remote.destroy() }
+  })
+
+  it("records a prepared save after a collaborator removes its checkpoint", async () => {
+    const history = editor.features.history
+    document.querySelector("p")!.textContent = "Saved text"
+    const snapshot = await history.actions.prepareVersionSave({type: "prepareVersionSave"})
+    const {remote, remove, send} = remoteReplica()
+    try {
+      remove(snapshot.checkpointId)
+      send()
+      expect(storedIds()).not.toContain(snapshot.checkpointId)
+      const saved = history.actions.recordVersionSave({type: "recordVersionSave", checkpointId: snapshot.checkpointId})
+      expect(saved.versions).toHaveLength(1)
+      expect(saved.versions[0]).toMatchObject({label: "Saved version", isUnsaved: false, isCurrent: true, checkpointIds: [storedIds()[0]]})
+      expect(editor.doc.doc.getArray<any>("version-history-saves").toArray()[0]).not.toHaveProperty("startedAt")
+      expect(() => history.actions.recordVersionSave({type: "recordVersionSave", checkpointId: snapshot.checkpointId}))
+        .toThrow("no longer available")
+    }
+    finally { remote.destroy() }
+  })
+
+  it("serializes a large document once for a due checkpoint while it stays unchanged during background work", async () => {
+    document.body.innerHTML = largeBody
+    await mutationsDelivered()
+    flush()
+    vi.useFakeTimers({toFake: ["setTimeout", "clearTimeout"]})
+    const serialize = vi.spyOn(editor, "toHTML")
+    try {
+      document.querySelector("p")!.textContent = "Background edit"
+      await mutationsDelivered()
+      const publish = vi.spyOn(editor, "postHistoryState")
+      elapseCheckpointWindow()
+      expect(publish).not.toHaveBeenCalled()
+      await vi.runAllTimersAsync()
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(serialize).toHaveBeenCalledTimes(1)
+      expect(storedHTML(stored().at(-1))).toContain("Background edit")
+      expect(publish.mock.calls[0][0].checkpoints[0].changes).toEqual({added: 0, removed: 0, modified: 1})
+    }
+    finally { vi.useRealTimers() }
+  })
+
+  it("serializes again instead of publishing a stale snapshot after a DOM edit without a collaboration notification", async () => {
+    document.body.innerHTML = largeBody
+    await mutationsDelivered()
+    flush()
+    vi.useFakeTimers({toFake: ["setTimeout", "clearTimeout"]})
+    const serialize = vi.spyOn(editor, "toHTML")
+    try {
+      document.querySelector("p")!.textContent = "Captured edit"
+      await mutationsDelivered()
+      elapseCheckpointWindow()
+      const checkpoints = stored().length
+      editor.doc.stopObserve()
+      document.querySelector("p")!.textContent = "Unobserved edit"
+      await vi.runAllTimersAsync()
+      // The capture, its failed verification, and the repeated capture.
+      expect(serialize).toHaveBeenCalledTimes(3)
+      expect(stored()).toHaveLength(checkpoints + 1)
+      expect(stored().some(checkpoint => storedHTML(checkpoint).includes("Captured edit"))).toBe(false)
+      expect(storedHTML(stored().at(-1))).toContain("Unobserved edit")
+    }
+    finally {
+      editor.doc.startObserve()
+      vi.useRealTimers()
+    }
+  })
+
+  describe("deferred recording", () => {
+    const historyUpdates: unknown[] = []
+    const countHistoryUpdate = (_update: Uint8Array, origin: any) => {
+      if(origin?.source === "domeditor-version-history") historyUpdates.push(origin)
+    }
+
+    beforeEach(() => {
+      flush()
+      historyUpdates.length = 0
+      editor.doc.doc.on("update", countHistoryUpdate)
+      vi.useFakeTimers({toFake: ["setTimeout", "clearTimeout", "Date"]})
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+      editor.doc.doc.off("update", countHistoryUpdate)
+    })
+
+    it("records nothing during pauses in a window and one checkpoint with the latest source at its end", async () => {
+      const serialize = vi.spyOn(editor, "toHTML")
+      const publish = vi.spyOn(editor, "postHistoryState")
+      const start = Date.now()
+      await pause("Pause 1")
+      const size = Y.encodeStateAsUpdate(editor.doc.doc).byteLength
+      for(let index = 2; index <= 5; index++) {
+        vi.advanceTimersByTime(60_000 - 700)
+        await pause(`Pause ${index}`)
+      }
+      expect(Date.now()).toBe(start + 4 * 60_000 + 700)
+      expect(stored()).toHaveLength(1)
+      expect(serialize).not.toHaveBeenCalled()
+      expect(historyUpdates).toHaveLength(0)
+      // Only the typed text reached the shared document.
+      expect(Y.encodeStateAsUpdate(editor.doc.doc).byteLength - size).toBeLessThan(200)
+      // The host learned once, without a serialization, that no entry is current.
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(publish.mock.calls[0][0].currentCheckpointId).toBeNull()
+      expect(publish.mock.calls[0][0].versions.map(version => version.isCurrent))
+        .toEqual(publish.mock.calls[0][0].versions.map(version => version.isUnsaved))
+
+      vi.advanceTimersByTime(start + checkpointCoalescingWindow - 1 - Date.now())
+      expect(stored()).toHaveLength(1)
+      vi.advanceTimersByTime(1)
+      expect(stored()).toHaveLength(2)
+      expect(storedHTML(stored()[1])).toContain("Pause 5")
+      expect(stored()[1]).toMatchObject({
+        timestamp: start + checkpointCoalescingWindow, changes: {added: 0, removed: 0, modified: 1},
+      })
+      expect(serialize).toHaveBeenCalledTimes(1)
+      expect(historyUpdates).toHaveLength(1)
+      expect(publish).toHaveBeenCalledTimes(2)
+      expect(publish.mock.lastCall![0].currentCheckpointId).toBe(stored()[1].id)
+      expect(publish.mock.lastCall![0].versions[0]).toMatchObject({isUnsaved: true, isCurrent: true})
+
+      // The next run is recorded as a further entry at the end of its own window.
+      await pause("Pause 6")
+      await pause("Pause 7")
+      expect(stored()).toHaveLength(2)
+      expect(serialize).toHaveBeenCalledTimes(1)
+      vi.advanceTimersByTime(checkpointCoalescingWindow)
+      expect(storedIds().slice(0, 2)).toEqual(publish.mock.calls[1][0].checkpoints.map(checkpoint => checkpoint.id).reverse())
+      expect(stored()).toHaveLength(3)
+      expect(storedHTML(stored()[2])).toContain("Pause 7")
+      expect(serialize).toHaveBeenCalledTimes(2)
+      expect(historyUpdates).toHaveLength(2)
+    })
+
+    it("waits for the debounce when the window ends during typing", async () => {
+      document.querySelector("p")!.textContent = "Early"
+      await mutationsDelivered()
+      vi.advanceTimersByTime(checkpointCoalescingWindow - 100)
+      document.querySelector("p")!.textContent = "Late"
+      await mutationsDelivered()
+      vi.advanceTimersByTime(699)
+      expect(stored()).toHaveLength(1)
+      vi.advanceTimersByTime(1)
+      expect(stored()).toHaveLength(2)
+      expect(storedHTML(stored()[1])).toContain("Late")
+    })
+
+    it("reports the current entry again when a run ends where it started", async () => {
+      const publish = vi.spyOn(editor, "postHistoryState")
+      await pause("Changed")
+      await pause("Hello")
+      expect(publish.mock.lastCall![0].currentCheckpointId).toBeNull()
+      vi.advanceTimersByTime(checkpointCoalescingWindow)
+      expect(stored()).toHaveLength(1)
+      expect(historyUpdates).toHaveLength(0)
+      expect(publish).toHaveBeenCalledTimes(2)
+      expect(publish.mock.lastCall![0].currentCheckpointId).toBe(storedIds()[0])
+    })
+
+    it("records immediately at every state boundary and when the page is hidden", async () => {
+      const history = editor.features.history
+      const created = storedIds()[0]
+      const edit = async (text: string) => {
+        document.querySelector("p")!.textContent = text
+        await mutationsDelivered()
+        expect(JSON.stringify(stored())).not.toContain(text)
+      }
+      const newest = () => storedHTML(stored().at(-1))
+
+      await edit("History read")
+      flush()
+      expect(newest()).toContain("History read")
+
+      await edit("Save prepared")
+      const snapshot = await history.actions.prepareVersionSave({type: "prepareVersionSave"})
+      expect(newest()).toContain("Save prepared")
+      expect(stored().at(-1).id).toBe(snapshot.checkpointId)
+
+      await edit("Commented")
+      history.actions.addVersionComment({type: "addVersionComment", checkpointId: created, text: "Before the comment"})
+      expect(newest()).toContain("Commented")
+
+      await edit("Previewed")
+      history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: created})
+      expect(newest()).toContain("Previewed")
+      history.actions.clearVersionPreview({type: "clearVersionPreview"})
+
+      await edit("Restored over")
+      history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: created})
+      expect(storedHTML(stored().at(-2))).toContain("Restored over")
+      expect(stored().at(-1).label).toBe("Restored Document created")
+
+      await edit("Tab hidden")
+      document.dispatchEvent(new Event("visibilitychange"))
+      expect(JSON.stringify(stored())).not.toContain("Tab hidden")
+      Object.defineProperty(document, "visibilityState", {configurable: true, get: () => "hidden"})
+      try { document.dispatchEvent(new Event("visibilitychange")) }
+      finally { delete (document as any).visibilityState }
+      expect(newest()).toContain("Tab hidden")
+
+      await edit("Page closed")
+      window.dispatchEvent(new Event("pagehide"))
+      expect(newest()).toContain("Page closed")
+
+      // Nothing is left to record afterwards.
+      const checkpoints = stored().length
+      const serialize = vi.spyOn(editor, "toHTML")
+      vi.advanceTimersByTime(2 * checkpointCoalescingWindow)
+      expect(stored()).toHaveLength(checkpoints)
+      expect(serialize).not.toHaveBeenCalled()
+    })
+
+    it("clears the pending checkpoint when the feature is disabled", async () => {
+      const history = editor.features.history
+      const serialize = vi.spyOn(editor, "toHTML")
+      await pause("Abandoned")
+      const timers = vi.getTimerCount()
+      history.disable()
+      expect(vi.getTimerCount()).toBe(timers - 1)
+      window.dispatchEvent(new Event("pagehide"))
+      vi.advanceTimersByTime(2 * checkpointCoalescingWindow)
+      expect(stored()).toHaveLength(1)
+      expect(serialize).not.toHaveBeenCalled()
+    })
+
+    it("keeps a collaborator's checkpoint that arrives while a local run is pending", async () => {
+      await pause("Local run")
+      const {remote, checkpoints, send} = remoteReplica()
+      try {
+        checkpoints.push([{
+          id: "remote-checkpoint", timestamp: Date.now(), label: "Edited by Grace Hopper",
+          user: {clientId: remote.clientID, name: "Grace Hopper", initials: "GH", color: "#2563eb"},
+          changes: {added: 0, removed: 0, modified: 1}, source: stored()[0].source.replace("Hello", "Remote"),
+        }])
+        send()
+        expect(storedIds()).toEqual([storedIds()[0], "remote-checkpoint"])
+        vi.advanceTimersByTime(checkpointCoalescingWindow)
+        expect(stored()).toHaveLength(3)
+        expect(storedIds()[1]).toBe("remote-checkpoint")
+        expect(storedHTML(stored()[2])).toContain("Local run")
+        expect(stored()[2].user.clientId).toBe(editor.doc.awareness.clientID)
+
+        // A state boundary replaces only this author's own entry.
+        document.querySelector("p")!.textContent = "Local again"
+        flush()
+        expect(stored()).toHaveLength(3)
+        expect(storedIds()[1]).toBe("remote-checkpoint")
+        expect(storedHTML(stored()[2])).toContain("Local again")
+      }
+      finally { remote.destroy() }
+    })
   })
 })

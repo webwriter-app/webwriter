@@ -160,9 +160,13 @@
     /* Default elements fill their column; authored sizes still take precedence.
      * Leave minimum sizes to the element, including widgets' shadow :host rules.
      * Inline widgets retain their own display; these sizes do not blockify them. */
+    /* BODY publishes the side its flow keeps free of floats. A descendant
+     * subject after BODY's :has() would restyle the whole document whenever a
+     * descendant changes, because nothing narrows which children it matches. */
     :is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover], .◆hotspot-popup[popover]) {
       inline-size: 100%;
-      margin-inline: auto;
+      margin-left: var(--ww-flow-margin-left, auto);
+      margin-right: var(--ww-flow-margin-right, auto);
     }
 
     :where(:is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover], .◆hotspot-popup[popover])) {
@@ -203,8 +207,12 @@
       margin-left: calc(0px - min(var(--ww-left-lane), max(0px, calc(var(--ww-full-width-size, var(--ww-wide-available)) - 100%)))) !important;
       margin-right: calc(0px - min(var(--ww-right-lane), max(0px, calc(var(--ww-full-width-size, var(--ww-wide-available)) - 100%)))) !important;
 
-      /* When a caption wraps one block, it still fills the wide placement. */
-      &:where(figure:not([is]):has(> figcaption)) > :nth-child(1 of :not(figcaption)):nth-last-child(1 of :not(figcaption)) {
+      /* When a caption wraps one block, it still fills the wide placement.
+       * The figure tests for a single block: a positional pseudo-class on a
+       * subject without a tag or class makes every insertion and removal in
+       * the document restyle all sibling subtrees. :is(*, …) only keeps the
+       * specificity of the former :nth-child(1 of …):nth-last-child(1 of …). */
+      &:where(figure:not([is]):has(> figcaption):not(:has(> :not(figcaption) ~ :not(figcaption)))) > :not(figcaption):not(figcaption):is(*, .ww-full-width):is(*, .ww-full-width) {
         box-sizing: border-box;
         inline-size: 100% !important;
         max-inline-size: none !important;
@@ -273,13 +281,17 @@
         --ww-left-column-width: min(var(--ww-left-column-ideal), calc(var(--ww-side-budget) - min(var(--ww-right-column-ideal), var(--ww-side-budget) / 2)));
         --ww-right-column-width: min(var(--ww-right-column-ideal), calc(var(--ww-side-budget) - min(var(--ww-left-column-ideal), var(--ww-side-budget) / 2)));
       }
+      /* BODY states where a left float goes when both sides share the right
+       * lane. A rule for the floats after BODY's :has() would make the style
+       * engine test it for every change under BODY, also in an editor's shadow
+       * tree, and restyle the whole document each time. */
       :is(.ww-float-left, [style*="float: left"], [style*="float:left"]) {
-        --ww-float-width: var(--ww-left-column-width);
-        float: left !important;
-        clear: left;
+        --ww-float-width: var(--ww-left-float-width, var(--ww-left-column-width));
+        float: var(--ww-left-float, left) !important;
+        clear: var(--ww-left-float, left);
         inline-size: min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width)) !important;
-        margin-left: calc(0px - var(--ww-left-lane)) !important;
-        margin-right: calc(var(--ww-left-lane) - min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width))) !important;
+        margin-left: calc((1 - var(--ww-left-float-shared, 0)) * (0px - var(--ww-left-lane)) + var(--ww-left-float-shared, 0) * (var(--ww-right-lane) - min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width)))) !important;
+        margin-right: calc((1 - var(--ww-left-float-shared, 0)) * (var(--ww-left-lane) - min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width))) + var(--ww-left-float-shared, 0) * (0px - var(--ww-right-lane))) !important;
       }
       :is(.ww-float-right, [style*="float: right"], [style*="float:right"]) {
         --ww-float-width: var(--ww-right-column-width);
@@ -310,15 +322,13 @@
       --ww-right-lane: calc(var(--ww-right-column-width) + var(--ww-float-gap));
       --ww-alignment-left: 0px;
       --ww-alignment-right: max(0px, calc(100% - var(--ww-prose-max, 45rem)));
-
-      :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
-        --ww-float-width: var(--ww-right-column-width);
-        float: right !important;
-        clear: right;
-        margin-right: calc(0px - var(--ww-right-lane)) !important;
-        margin-left: calc(var(--ww-right-lane) - min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width))) !important;
-      }
-      :is(&, & > main, & > article, & > section) > :not(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+      /* A left float is placed like a right float. */
+      --ww-left-float: right;
+      --ww-left-float-shared: 1;
+      --ww-left-float-width: var(--ww-right-column-width);
+      --ww-flow-margin-left: 0;
+      --ww-flow-margin-right: auto;
+      :is(&, & > main, & > article, & > section) > :is(.ww-popup-content[popover], .◆hotspot-popup[popover]) {
         margin-left: 0;
         margin-right: auto;
       }
@@ -350,7 +360,9 @@
       &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])):not(:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"]))) {
         --ww-alignment-left: max(0px, calc(100% - var(--ww-prose-max, 45rem)));
         --ww-alignment-right: 0px;
-        :is(&, & > main, & > article, & > section) > :not(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+        --ww-flow-margin-left: auto;
+        --ww-flow-margin-right: 0;
+        :is(&, & > main, & > article, & > section) > :is(.ww-popup-content[popover], .◆hotspot-popup[popover]) {
           margin-left: auto;
           margin-right: 0;
         }
@@ -358,7 +370,9 @@
       &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])):not(:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"]))) {
         --ww-alignment-left: 0px;
         --ww-alignment-right: max(0px, calc(100% - var(--ww-prose-max, 45rem)));
-        :is(&, & > main, & > article, & > section) > :not(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+        --ww-flow-margin-left: 0;
+        --ww-flow-margin-right: auto;
+        :is(&, & > main, & > article, & > section) > :is(.ww-popup-content[popover], .◆hotspot-popup[popover]) {
           margin-left: 0;
           margin-right: auto;
         }

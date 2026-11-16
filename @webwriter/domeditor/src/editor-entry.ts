@@ -44,6 +44,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   }
   let motionSheet: CSSStyleSheet | null = null
   let shortcuts = settings.shortcuts ?? {}
+  editor.features.mark.resolveWidgetShortcut = event => commandForShortcutEvent(shortcuts, event)?.action
   const post = (message: object) => {
     editor.doc.flushDOMChanges()
     window.parent.postMessage({...message, documentReplicaId: settings.documentReplicaId, bridgeNonce: nonce}, origin)
@@ -160,6 +161,10 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
         bookmark = null
         window.focus()
         editor.features.graphic.focusTextInput()
+        return
+      }
+      if(editor.features.mark.focusWidgetText()) {
+        bookmark = null
         return
       }
       if(!data.restoreSelection) saveSelection()

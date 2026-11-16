@@ -1,0 +1,15 @@
+var dv_default = {
+  check: "ޗެކް",
+  reset: "ރީސެޓް",
+  showSolution: "ޖަވާބު ދައްކާ",
+  hideSolution: "ޖަވާބު ފޮރުވާ",
+  required: "މި ސުވާލަށް ޖަވާބު ދެއްވާ.",
+  summary: (correct, total) => correct === total ? "ހުރިހާ ޖަވާބެއް ރަނގަޅު." : `${total} ގެ ތެރެއިން ${correct} ރަނގަޅު.`,
+  feedbackOption: "ފީޑްބެކް",
+  feedbackOnCheck: "ކިޔުންތެރިޔާ ޗެކް ކުރާއިރު",
+  feedbackOnSubmit: "ހުށަހެޅުމަށްފަހު",
+  requiredOption: "ލާޒިމް"
+};
+export {
+  dv_default as default
+};

@@ -1,0 +1,12 @@
+var dv_default = {
+  play: "ޕްލޭ",
+  pause: "ހުއްޓުވާ",
+  step: "އެއް ފިޔަވަޅު ކުރިއަށް",
+  back: "އެއް ފިޔަވަޅު ފަހަތަށް",
+  reset: "ރީސެޓް",
+  seek: "ތަން",
+  rate: (_rate, shown) => `ސްޕީޑް: ${shown}×`
+};
+export {
+  dv_default as default
+};

@@ -87,6 +87,7 @@ export type WidgetOptionState = Availability & {
   /** Reflected attribute, or null when the option is a property only. */
   attribute: string | null
   value: WidgetOptionValue
+  inverted?: boolean
   multiline?: boolean
   min?: number
   max?: number
@@ -231,6 +232,7 @@ export function widgetOptionState(name: string, declaration: unknown, value: unk
     label: text(decl.label, locale) ?? titleCase(name),
     attribute: widgetOptionAttribute(name, decl),
     value: widgetOptionValue(value),
+    ...(type === "boolean" && decl.attribute !== false && decl.inverted === true ? {inverted: true} : {}),
     description: text(decl.description, locale),
     placeholder: text(decl.placeholder, locale),
     multiline: decl.multiline === true || undefined,
@@ -276,8 +278,8 @@ export function widgetActionState(name: string, declaration: unknown, locale: st
 
 /** The attribute value Lit's default converters read back as `value`, or
  * null to remove the attribute. */
-export function widgetOptionAttributeValue(type: WidgetOptionType, value: WidgetOptionValue, multiple = false) {
-  if(type === "boolean") return value === true ? "" : null
+export function widgetOptionAttributeValue(type: WidgetOptionType, value: WidgetOptionValue, multiple = false, inverted = false) {
+  if(type === "boolean") return value === !inverted ? "" : null
   if(value === null || value === "") return null
   if(type === "object" || type === "array" || type === "select" && multiple) return JSON.stringify(value)
   return String(value)
@@ -324,6 +326,7 @@ export function readWidgetOption(widget: Element, name: string, raw: unknown, lo
   try { value = (widget as unknown as UnknownRecord)[name] }
   catch { /* A failing widget getter leaves the field empty. */ }
   const option = widgetOptionState(name, declaration, value, locale)
+  if(option.inverted && option.attribute !== null) return {...option, value: !widget.hasAttribute(option.attribute)}
   if(value !== undefined || option.attribute === null) return option
   const attribute = widget.getAttribute(option.attribute)
   const parsed = option.type === "boolean" ? attribute !== null

@@ -56,6 +56,33 @@ const primaryButtons = (drawer: RibbonDrawer) => Array.from(
 )
 
 describe("mark ribbon controls", () => {
+  it("only enables declared widget marks and offers built-in fonts and plain links", async () => {
+    const {ribbon, drawer} = await mountRibbon()
+    ribbon.canMark = true
+    ribbon.widgetMarks = ["b", "a", "font-family"]
+    ribbon.allowedMarks = ["b", "a"]
+    ribbon.marks = ["b"]
+    await ribbon.updateComplete
+    const bold = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:b"]')!
+    const italic = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:i"]')!
+    const link = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!
+    expect(bold.active).toBe(true)
+    expect(bold.disabled).toBe(false)
+    expect(italic.disabled).toBe(true)
+    const color = drawer.querySelector<RibbonCombobox>('ribbon-combobox[name="color"]')!
+    expect(color.disabled).toBe(true)
+    await link.updateComplete
+    expect(link.disabled).toBe(false)
+    expect(link.shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
+
+    await ribbon.openFontPicker("font-family")
+    const font = drawer.querySelector('ribbon-combobox[name="font-family"]')!.shadowRoot!.querySelector("font-combobox")!
+    await font.updateComplete
+    expect(font.shadowRoot!.querySelector('.option-group[aria-label="Standard fonts"]')).not.toBeNull()
+    expect(font.shadowRoot!.querySelector('.option-group[aria-label="Custom fonts"]')).toBeNull()
+    expect(fonts.bunnyFonts).not.toHaveBeenCalled()
+  })
+
   it("lets Escape close the keyboard-opened font picker before the AI chat", async () => {
     const {ribbon, drawer} = await mountRibbon()
     ribbon.canMark = true
