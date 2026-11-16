@@ -936,7 +936,7 @@ export class SelectionFeature extends EditorFeature {
       this.editor.features.graphic.refresh()
       // Shared DOM changes can clamp a detached selection without firing a
       // native selectionchange event, so refresh the host breadcrumb as well.
-      this.editor.postSelectionPath()
+      this.editor.queueSelectionState({path: true})
     })
   }
 

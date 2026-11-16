@@ -887,9 +887,42 @@ export class DOMEditor {
     if(!selection?.anchorNode) return
 
     this.doc.updateLocalSelection(selection)
-    this.postMarkState()
-    this.postCommentState()
-    this.postSelectionPath()
+    this.queueSelectionState({mark: true, comment: true, path: true})
+  }
+
+  readonly #queuedSelectionState = {mark: false, comment: false, path: false}
+  #selectionStateQueued = false
+  readonly #lastReactivePosts = new Map<string, string>()
+  #reactivePosting = false
+
+  /** Publishes selection-derived state once after everything that reacted to
+   * an edit or selection change has run. One keystroke reaches the mark,
+   * selection and comment features and the selection listener separately;
+   * each used to compute and post the same state itself. Commands that must
+   * answer the host synchronously keep calling the post methods directly. */
+  queueSelectionState(parts: {mark?: boolean, comment?: boolean, path?: boolean}) {
+    const queued = this.#queuedSelectionState
+    queued.mark ||= Boolean(parts.mark)
+    queued.comment ||= Boolean(parts.comment)
+    queued.path ||= Boolean(parts.path)
+    if(this.#selectionStateQueued) return
+    this.#selectionStateQueued = true
+    queueMicrotask(() => {
+      this.#selectionStateQueued = false
+      const {mark, comment, path} = queued
+      queued.mark = queued.comment = queued.path = false
+      if(this.#destroyed) return
+      // Mark state precedes the selection path, the established final bridge
+      // update for a change. A reaction that repeats what the host was last
+      // sent is not posted again.
+      this.#reactivePosting = true
+      try {
+        if(mark) this.postMarkState()
+        if(comment) this.postCommentState()
+        if(path) this.postSelectionPath()
+      }
+      finally { this.#reactivePosting = false }
+    })
   }
 
   private handleMessage = (ev: MessageEvent) => {
@@ -1002,6 +1035,14 @@ export class DOMEditor {
   }
 
   private postBridgeEvent<T extends object>(type: string, detail: T) {
+    if(type === selectionChangeEvent || type === markStateChangeEvent || type === commentStateChangeEvent) {
+      let serialized: string | undefined
+      try { serialized = JSON.stringify(detail) }
+      catch { serialized = undefined }
+      if(serialized !== undefined && this.#reactivePosting && this.#lastReactivePosts.get(type) === serialized) return
+      if(serialized === undefined) this.#lastReactivePosts.delete(type)
+      else this.#lastReactivePosts.set(type, serialized)
+    }
     const event = new CustomEvent(type, {detail})
     window.dispatchEvent(event)
     this.postHostMessage({type: event.type, detail: event.detail})

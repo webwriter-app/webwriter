@@ -1021,10 +1021,9 @@ export class CommentFeature extends EditorFeature {
       this.stateRefreshQueued = false
       if(this.isEnabled) {
         this.renderCommentUI()
-        this.editor.postCommentState()
-        // Keep selection-path state last after DOM mutations because comment
+        // Selection-path state stays last after DOM mutations because comment
         // nodes participate in authored child-node paths.
-        this.editor.postSelectionPath()
+        this.editor.queueSelectionState({comment: true, path: true})
       }
     })
   }

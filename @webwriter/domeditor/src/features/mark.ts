@@ -3291,10 +3291,8 @@ export class MarkFeature extends EditorFeature {
           this.automaticLinkBlock = null
           this.applyAutomaticLinks(block)
         }
-        this.editor.postMarkState()
-        // Keep the established selection-path event as the final bridge
-        // update for a DOM mutation while still refreshing mark state.
-        this.editor.postSelectionPath()
+        // The selection path stays the final bridge update for a DOM mutation.
+        this.editor.queueSelectionState({mark: true, path: true})
       }
     })
   }

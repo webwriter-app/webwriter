@@ -1005,6 +1005,52 @@ describe("breadcrumb positioning", () => {
     }
     finally { editor.destroy(); document.body.replaceChildren() }
   })
+  it("publishes selection state once for all reactions to one change and skips an unchanged repeat", async () => {
+    document.body.innerHTML = "<p>one</p><p>two</p>"
+    const editor = new DOMEditor()
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    const posted = () => postMessage.mock.calls.map(([message]) => message.type as string)
+      .filter(type => [selectionChangeEvent, "dom-editor-mark-state-change", "dom-editor-comment-state-change"].includes(type))
+    try {
+      const [first, second] = document.querySelectorAll("p")
+      $.move(first.firstChild!, 1)
+      await Promise.resolve()
+      await Promise.resolve()
+      postMessage.mockClear()
+
+      // The mark, selection and comment features and the selection listener
+      // each react to the same edit.
+      $.move(second.firstChild!, 2)
+      editor.queueSelectionState({mark: true, path: true})
+      editor.queueSelectionState({path: true})
+      editor.queueSelectionState({comment: true, path: true})
+      editor.queueSelectionState({mark: true, comment: true, path: true})
+      expect(posted()).toEqual([])
+      await Promise.resolve()
+      const types = posted()
+      expect(types.filter(type => type === selectionChangeEvent)).toHaveLength(1)
+      expect(types.filter(type => type === "dom-editor-mark-state-change").length).toBeLessThanOrEqual(1)
+      expect(types.filter(type => type === "dom-editor-comment-state-change").length).toBeLessThanOrEqual(1)
+      // The selection path remains the final update of a change.
+      expect(types.at(-1)).toBe(selectionChangeEvent)
+
+      postMessage.mockClear()
+      editor.queueSelectionState({mark: true, comment: true, path: true})
+      await Promise.resolve()
+      expect(posted()).toEqual([])
+
+      // A command's own post always reaches the host.
+      editor.postSelectionPath()
+      expect(posted()).toEqual([selectionChangeEvent])
+
+      postMessage.mockClear()
+      editor.queueSelectionState({path: true})
+      editor.destroy()
+      await Promise.resolve()
+      expect(posted()).toEqual([])
+    }
+    finally { editor.destroy(); document.body.replaceChildren() }
+  })
   it("posts DOM-derived type projections for an explicit spatial selection", () => {
     document.body.innerHTML = '<p title="shared" style="color: red; width: 10px">one</p><p title="shared" style="color: red; width: 20px">two</p><img alt="diagram"><p title="outside">outside</p>'
     const editor = new DOMEditor()

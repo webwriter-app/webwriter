@@ -418,7 +418,7 @@ describe("inline popup selection", () => {
     expect($.focus).toBe(content)
   })
 
-  it("selects words and the first paragraph on repeated clicks inside popup content", () => {
+  it("selects words and the first paragraph on repeated clicks inside popup content", async () => {
     const {content, text} = mount()
     $.move(text, 8)
     expect($.anchor).toBe(text)
@@ -426,12 +426,16 @@ describe("inline popup selection", () => {
     const double = new MouseEvent("dblclick", {button: 0, detail: 2, bubbles: true, cancelable: true})
     text.parentElement!.dispatchEvent(double)
     expect(document.getSelection()!.toString()).toBe("text")
+    // Selection state, and the popup visibility it refreshes, is published
+    // once in a microtask after a selection change.
+    await Promise.resolve()
     expect(hasPresentationState(content, "popup-visible")).toBe(true)
 
     $.move(text, 3)
     const triple = new MouseEvent("click", {button: 0, detail: 3, bubbles: true, cancelable: true})
     text.parentElement!.dispatchEvent(triple)
     expect(document.getSelection()!.toString()).toBe("Popup text")
+    await Promise.resolve()
     expect(hasPresentationState(content, "popup-visible")).toBe(true)
   })
 
@@ -460,13 +464,14 @@ describe("inline popup selection", () => {
     }
   })
 
-  it("keeps repeated text selection inside a table cell popup", () => {
+  it("keeps repeated text selection inside a table cell popup", async () => {
     document.body.innerHTML = '<table><tbody><tr><td><p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><p>Bubble words</p></div></td><td><p>Other</p></td></tr></tbody></table>'
     const content = document.querySelector(".ww-popup-content")!
     const text = content.querySelector("p")!.firstChild!
     $.move(text, 9)
     content.querySelector("p")!.dispatchEvent(new MouseEvent("dblclick", {button: 0, detail: 2, bubbles: true}))
     expect(document.getSelection()!.toString()).toBe("words")
+    await Promise.resolve()
     expect(hasPresentationState(content, "popup-visible")).toBe(true)
     $.move(text, 2)
     content.querySelector("p")!.dispatchEvent(new MouseEvent("click", {button: 0, detail: 3, bubbles: true}))
@@ -783,7 +788,7 @@ describe("legacy widget options", () => {
 })
 
 describe("selection preservation across authored DOM shapes", () => {
-  it.each(["caret", "element", "gap"])("releases graphic capture when the native selection changes to %s", next => {
+  it.each(["caret", "element", "gap"])("releases graphic capture when the native selection changes to %s", async next => {
     const graphic = document.createElementNS("http://www.w3.org/2000/svg", "svg")
     graphic.setAttribute("viewBox", "0 0 100 100")
     const paragraph = document.createElement("p")
@@ -796,6 +801,7 @@ describe("selection preservation across authored DOM shapes", () => {
     else document.getSelection()!.setPosition(document.body, 1)
     const post = vi.spyOn(editor, "postHostMessage")
     document.dispatchEvent(new Event("selectionchange"))
+    await Promise.resolve()
     const update = post.mock.calls.at(-1)![0] as {type: string, detail: Record<string, unknown>}
     expect(update.type).toBe(selectionChangeEvent)
     expect(update.detail).not.toHaveProperty("graphic")
