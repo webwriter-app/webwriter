@@ -38,38 +38,54 @@ function updatePresentationObserver(data) {
   }
 }
 
+/** An ID selector, if it selects only this element in its tree. */
+function uniqueIdSelector(element, scope) {
+  if(!element.id || element.id.includes("\0")) return null
+  const escape = element.ownerDocument.defaultView?.CSS?.escape
+  const id = escape ? escape(element.id) : Array.from(element.id, char => `\\${char.codePointAt(0).toString(16)} `).join("")
+  const selector = `#${id}`
+  const matches = scope.querySelectorAll(selector)
+  return matches.length === 1 && matches[0] === element ? selector : null
+}
+
+/** One step of a positional path. The style engine restyles only the edge
+ * child when a first or last child changes, but every sibling a rule with
+ * :nth-child() could match, and whole sibling subtrees when that rule tests
+ * the position of an ancestor. */
+function positionSelector(element) {
+  const name = /^[a-z][\w-]*$/i.test(element.localName) ? element.localName : ""
+  if(!element.previousElementSibling) return `${name}:first-child`
+  if(!element.nextElementSibling) return `${name}:last-child`
+  let index = 1
+  for(let sibling = element.previousElementSibling; sibling; sibling = sibling.previousElementSibling) index++
+  return `${name}:nth-child(${index})`
+}
+
 /** A selector for the current position of a light-DOM element. */
 export function presentationElementSelector(element, preferId = false, scope = element.ownerDocument) {
   const doc = element.ownerDocument
   if(element.getRootNode() !== scope) return null
   if(scope === doc && element === doc.documentElement) return ":root"
   if(scope === doc && element === doc.body) return "body"
-  if(preferId && element.id && !element.id.includes("\0")) {
-    const escape = doc.defaultView?.CSS?.escape
-    const id = escape ? escape(element.id) : Array.from(element.id, char => `\\${char.codePointAt(0).toString(16)} `).join("")
-    const selector = `#${id}`
-    const matches = scope.querySelectorAll(selector)
-    if(matches.length === 1 && matches[0] === element) return selector
-  }
+  const id = preferId && uniqueIdSelector(element, scope)
+  if(id) return id
   if(scope !== doc) {
     const path = []
-    for(let node = element; node; node = node.parentElement) {
-      let index = 1
-      for(let sibling = node.previousElementSibling; sibling; sibling = sibling.previousElementSibling) index++
-      path.push(`${/^[a-z][\w-]*$/i.test(node.localName) ? node.localName : ""}:nth-child(${index})`)
-    }
+    for(let node = element; node; node = node.parentElement) path.push(positionSelector(node))
     return [":host", ...path.reverse()].join(" > ")
   }
   const path = []
-  let node = element
+  let node = element, root = null
   while(node && node !== doc.body && node !== doc.documentElement) {
-    let index = 1
-    for(let sibling = node.previousElementSibling; sibling; sibling = sibling.previousElementSibling) index++
-    path.push(`${/^[a-z][\w-]*$/i.test(node.localName) ? node.localName : ""}:nth-child(${index})`)
+    // Below an authored ID the path needs no position among the blocks of
+    // the document, and the ID rejects other elements before any is tested.
+    root = preferId && node !== element && uniqueIdSelector(node, scope)
+    if(root) break
+    path.push(positionSelector(node))
     node = node.parentElement
   }
   if(!node) return null
-  return [node === doc.body ? ":root > body" : ":root", ...path.reverse()].join(" > ")
+  return [root || (node === doc.body ? ":root > body" : ":root"), ...path.reverse()].join(" > ")
 }
 
 /** Match one state at the same specificity as a single class. */

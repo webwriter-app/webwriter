@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
-import {clearPresentationState, hasPresentationState, presentationStateElements, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
+import {clearPresentationState, hasPresentationState, presentationElementSelector, presentationStateElements, resolvePresentationSelector, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
 
 afterEach(() => document.body.replaceChildren())
 
@@ -14,7 +14,7 @@ describe("presentation state", () => {
     const selector = () => (sheet.cssRules[0] as CSSStyleRule).selectorText
     try {
       setPresentationState(target, "element-selected")
-      expect(selector()).toContain(":nth-child(1)")
+      expect(selector()).toContain("p:first-child")
       target.before(document.createElement("p"))
       await new Promise(resolve => setTimeout(resolve, 0))
       expect(selector()).toContain(":nth-child(2)")
@@ -60,7 +60,7 @@ describe("presentation state", () => {
       answer = true
       setPresentationState(direct, "element-hovered")
       expect(asked).toHaveLength(1)
-      expect(asked[0]).toMatch(/^:has\(> p:where\(.*p:nth-child\(2\)\):not\(\.ww-inactive-presentation\):last-child\)$/)
+      expect(asked[0]).toMatch(/^:has\(> p:where\(.*body > p:last-child\):not\(\.ww-inactive-presentation\):last-child\)$/)
       // True, with the specificity of the test it replaces.
       expect(selector(0)).toBe("body:not(.plain):not(:is(p.ww-inactive-presentation:not(*):last-child):not(*))::part(caret)")
       expect(selector(0)).not.toContain(":has(")
@@ -96,6 +96,27 @@ describe("presentation state", () => {
       release()
       engine.mockRestore()
     }
+  })
+
+  it("states a position only where an edge child or an authored ID cannot identify the element", () => {
+    document.body.innerHTML = '<main><p>one</p><figure id="figure"><img><span></span><figcaption>two</figcaption></figure><p>three</p></main>'
+    const [first, figure, last] = Array.from(document.querySelector("main")!.children)
+    expect(presentationElementSelector(first, true)).toBe(":root > body > main:first-child > p:first-child")
+    expect(presentationElementSelector(last, true)).toBe(":root > body > main:first-child > p:last-child")
+    expect(presentationElementSelector(figure, true)).toBe("#figure")
+    expect(presentationElementSelector(figure)).toBe(":root > body > main:first-child > figure:nth-child(2)")
+    // Below the ID no rule tests the position of a block among its siblings.
+    expect(presentationElementSelector(figure.children[0], true)).toBe("#figure > img:first-child")
+    expect(presentationElementSelector(figure.children[1], true)).toBe("#figure > span:nth-child(2)")
+    expect(presentationElementSelector(figure.children[2], true)).toBe("#figure > figcaption:last-child")
+    for(const element of [first, last, figure, ...Array.from(figure.children)]) {
+      expect(document.querySelectorAll(presentationElementSelector(element, true)!)).toHaveLength(1)
+      expect(document.querySelector(presentationElementSelector(element, true)!)).toBe(element)
+    }
+    // An ambiguous ID identifies nothing.
+    last.id = "figure"
+    expect(presentationElementSelector(figure.children[0], true)).toBe(":root > body > main:first-child > figure:nth-child(2) > img:first-child")
+    expect(document.body.innerHTML).toBe('<main><p>one</p><figure id="figure"><img><span></span><figcaption>two</figcaption></figure><p id="figure">three</p></main>')
   })
 
   it("uses an authored ID for dialog presentation and revalidates changes to it", async () => {
