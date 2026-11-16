@@ -1,6 +1,6 @@
 import {createComponent, DestroyRef, inject, InjectionToken, Injector, signal} from "@angular/core"
 import {createApplication} from "@angular/platform-browser"
-import {withWidgetRuntime} from "@webwriter/widget"
+import {hasComputedDeclarations, resolveDeclarations, withWidgetRuntime} from "@webwriter/widget"
 
 const widgetHost = new InjectionToken("WebWriter widget host")
 let defaultApplication
@@ -16,7 +16,13 @@ export function injectWidget() {
   return state.asReadonly()
 }
 
-/** Create a widget class that mounts an Angular component in its shadow root. */
+/**
+ * Create a widget class that mounts an Angular component in its shadow root.
+ *
+ * A text of the class's static `options`, `actions`, `permissions` or `optionGroups`
+ * may be a function of the widget, for a text from the widget's own catalog. The
+ * editor reads plain maps, so the instance answers with the functions asked.
+ */
 export async function createAngularWidget(Component, {application, styles} = {}) {
   if(!application) {
     defaultApplication ??= createApplication().catch(error => {
@@ -32,6 +38,18 @@ export async function createAngularWidget(Component, {application, styles} = {})
 
     constructor() {
       super()
+      // A member the class defines itself is left alone, and a later write replaces the accessor.
+      // `declareOnHost()` of a module replaces it with an answer that includes the module's own entries.
+      const declared = this.constructor
+      for(const kind of ["options", "actions", "permissions", "optionGroups"]) {
+        if(kind in this || !hasComputedDeclarations(declared[kind])) continue
+        const get = Object.assign(() => resolveDeclarations(this, declared[kind]), {declared: true})
+        Object.defineProperty(this, kind, {
+          configurable: true,
+          get,
+          set: value => Object.defineProperty(this, kind, {value, writable: true, configurable: true, enumerable: true}),
+        })
+      }
       const shadow = this.attachShadow({mode: "open"})
       if(styles) {
         const style = this.ownerDocument.createElement("style")

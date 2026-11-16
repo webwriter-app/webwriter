@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/angular",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Angular adapter for WebWriter widgets",
   "license": "MIT",
   "type": "module",
@@ -11,14 +11,86 @@
     ".": {
       "types": "./index.d.ts",
       "default": "./index.js"
+    },
+    "./base": {
+      "types": "./base.d.ts",
+      "default": "./base.js"
+    },
+    "./permissions": {
+      "types": "./permissions.d.ts",
+      "default": "./permissions.js"
+    },
+    "./drag": {
+      "types": "./drag.d.ts",
+      "default": "./drag.js"
+    },
+    "./viewport": {
+      "types": "./viewport.d.ts",
+      "default": "./viewport.js"
+    },
+    "./help": {
+      "types": "./help.d.ts",
+      "default": "./help.js"
+    },
+    "./scene": {
+      "types": "./scene.d.ts",
+      "default": "./scene.js"
+    },
+    "./settings": {
+      "types": "./settings.d.ts",
+      "default": "./settings.js"
+    },
+    "./shortcuts": {
+      "types": "./shortcuts.d.ts",
+      "default": "./shortcuts.js"
+    },
+    "./playback": {
+      "types": "./playback.d.ts",
+      "default": "./playback.js"
+    },
+    "./data": {
+      "types": "./data.d.ts",
+      "default": "./data.js"
+    },
+    "./localize": {
+      "types": "./localize.d.ts",
+      "default": "./localize.js"
+    },
+    "./exercise": {
+      "types": "./exercise.d.ts",
+      "default": "./exercise.js"
     }
   },
   "files": [
     "index.js",
-    "index.d.ts"
+    "index.d.ts",
+    "base.js",
+    "base.d.ts",
+    "permissions.js",
+    "permissions.d.ts",
+    "drag.js",
+    "drag.d.ts",
+    "viewport.js",
+    "viewport.d.ts",
+    "help.js",
+    "help.d.ts",
+    "scene.js",
+    "scene.d.ts",
+    "settings.js",
+    "settings.d.ts",
+    "shortcuts.js",
+    "shortcuts.d.ts",
+    "playback.js",
+    "playback.d.ts",
+    "data.js",
+    "data.d.ts",
+    "localize.js",
+    "localize.d.ts",
+    "exercise.js",
+    "exercise.d.ts"
   ],
   "dependencies": {
-    "@webwriter/widget": "^1.0.0"
+    "@webwriter/widget": "^1.2.0"
   },
   "peerDependencies": {
     "@angular/core": "^22.2.0",
