@@ -55,6 +55,14 @@ type FloatPreviewMeasurements = {
   geometry: Map<Element, Partial<Record<"left" | "right", {rect: DOMRect, clears: boolean, physicalSide: "left" | "right", column?: {left: number, right: number}}>>>
   clearance: Map<Element, Map<Element, {left: number, right: number}>>
   sourceFlow?: {bottom: number, height: number} | null
+  /** Set (initially to null) by a caller that measures many parents with one
+   * overlay: lengths that do not depend on the parent are resolved once, and
+   * one probe is restyled for each parent. Every element inserted into the
+   * appendix makes the style engine repeat BODY's :has() tests over the whole
+   * document, so a probe per parent costs time proportional to both. */
+  probe?: HTMLElement | null
+  lengths?: Map<string, number>
+  widths?: Map<string, number>
 }
 
 type ValidatedStyleEntry = {
@@ -832,7 +840,7 @@ export class ManipulationFeature extends EditorFeature {
     const measurement = document.createElement("div")
     measurement.style.cssText = "position:fixed;visibility:hidden;pointer-events:none"
     this.editor.addAppendix(measurement)
-    const measurements: FloatPreviewMeasurements = {geometry: new Map(), clearance: new Map()}
+    const measurements: FloatPreviewMeasurements = {geometry: new Map(), clearance: new Map(), probe: null}
     const zones: FloatDropZone[] = []
     const parentPermissions = new Map<Element, boolean>()
     try {
@@ -971,21 +979,29 @@ export class ManipulationFeature extends EditorFeature {
       if(sourceMaximum && sourceMaximum !== "none") values.add(sourceMaximum)
     }
     // Independent CSS lengths can all be resolved in the same layout pass.
-    const probes = Array.from(values, value => {
+    // The probes are fixed, so none of these lengths depends on the parent.
+    const shared = measurements.probe !== undefined
+    const lengths = shared && measurements.lengths || new Map<string, number>()
+    if(shared) measurements.lengths = lengths
+    const probes = Array.from(values).filter(value => !lengths.has(value)).map(value => {
       const probe = document.createElement("div")
       probe.style.cssText = probeStyle
       probe.style.width = value
       return {value, probe}
     })
-    overlay.append(...probes.map(({probe}) => probe))
-    const lengths = new Map<string, number>()
-    try {
-      for(const {value, probe} of probes) lengths.set(value, probe.getBoundingClientRect().width || number(getComputedStyle(probe).width))
+    if(probes.length) {
+      overlay.append(...probes.map(({probe}) => probe))
+      try {
+        for(const {value, probe} of probes) lengths.set(value, probe.getBoundingClientRect().width || number(getComputedStyle(probe).width))
+      }
+      finally { probes.forEach(({probe}) => probe.remove()) }
     }
-    finally { probes.forEach(({probe}) => probe.remove()) }
     const length = (value: string, fallback: number) => lengths.get(value) || fallback
-    const probe = overlay.appendChild(document.createElement("div"))
-    probe.style.cssText = probeStyle
+    // A disconnected insertion template is measured in the probe's own shadow tree.
+    const reuse = shared && (!source || source.isConnected)
+    const probe = reuse && measurements.probe?.parentNode === overlay ? measurements.probe : overlay.appendChild(document.createElement("div"))
+    if(reuse) measurements.probe = probe
+    if(!reuse || probe.style.cssText === "") probe.style.cssText = probeStyle
     try {
       const themed = Boolean(bodyStyle.getPropertyValue("--ww-float-width"))
       const lanes = themed && viewportWidth >= 720
@@ -1070,12 +1086,21 @@ export class ManipulationFeature extends EditorFeature {
       const preferred = inline?.getPropertyValue("--ww-float-size") || `min(100%, var(--ww-float-width, 256px), ${authoredWidth && authoredWidth !== "auto" ? authoredWidth : "var(--ww-float-width, 256px)"})`
       const maximum = inline?.getPropertyValue("max-inline-size") || inline?.maxWidth || "none"
       const fallbackWidth = Math.min(available, number(inline?.width ?? "") || source?.getBoundingClientRect().width || laneWidth)
-      overlay.style.width = `${available}px`
-      probe.style.position = "static"
-      if(themed) probe.style.setProperty("--ww-float-width", `${laneWidth}px`)
-      probe.style.width = preferred
-      probe.style.maxWidth = maximum
-      let width = probe.getBoundingClientRect().width || Math.min(number(getComputedStyle(probe).width) || fallbackWidth, number(maximum) || Infinity)
+      // Parents of equal width resolve the same size. Writing the probe's
+      // style again would make the style engine repeat the theme's
+      // BODY:has([style*=float]) tests over the whole document for each one.
+      const widthKey = `${available}|${themed ? laneWidth : ""}|${preferred}|${maximum}|${fallbackWidth}`
+      let width = reuse ? measurements.widths?.get(widthKey) : undefined
+      if(width === undefined) {
+        overlay.style.width = `${available}px`
+        probe.style.cssText = probeStyle
+        probe.style.position = "static"
+        if(themed) probe.style.setProperty("--ww-float-width", `${laneWidth}px`)
+        probe.style.width = preferred
+        probe.style.maxWidth = maximum
+        width = probe.getBoundingClientRect().width || Math.min(number(getComputedStyle(probe).width) || fallbackWidth, number(maximum) || Infinity)
+        if(reuse) (measurements.widths ??= new Map()).set(widthKey, width)
+      }
       if(lanes) width = Math.min(width, laneWidth)
       let height = 0
       if(source?.isConnected) {
@@ -1124,7 +1149,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       return result
     }
-    finally { probe.remove() }
+    finally { if(!reuse) probe.remove() }
   }
 
   private floatPreviewTop(container: Element, rect: DOMRect, side: "left" | "right", source: Element | undefined, clears: boolean, measurements: FloatPreviewMeasurements) {
