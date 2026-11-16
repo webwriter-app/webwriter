@@ -166,7 +166,11 @@ describe("document themes", () => {
       expect(theme.source).toContain("--ww-right-lane: calc(var(--ww-right-column-width) + var(--ww-float-gap));")
       expect(theme.source).toContain(":has(:is(.ww-float-left, .ww-float-right,")
       expect(theme.source).toContain("inline-size: var(--ww-float-size, var(--ww-float-width)) !important;")
-      expect(theme.source).toContain(":is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover], .◆hotspot-popup[popover]) {\n      inline-size: 100%;\n      margin-inline: auto;")
+      expect(theme.source).toContain(":is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover], .◆hotspot-popup[popover]) {\n      inline-size: 100%;\n      margin-left: var(--ww-flow-margin-left, auto);\n      margin-right: var(--ww-flow-margin-right, auto);")
+      // A descendant subject after BODY:has() restyles the whole document on
+      // every structural change; BODY publishes the alignment instead.
+      expect(theme.source).not.toMatch(/:has\([^{]*\{[^{}]*:is\(&, & > main, & > article, & > section\) > :not\(\.ww-float-left/)
+      expect(theme.source).toContain("--ww-flow-margin-left: auto;\n        --ww-flow-margin-right: 0;")
       expect(theme.source).toContain(":where(:is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover], .◆hotspot-popup[popover]))")
       expect(theme.source).toContain("max-inline-size: max(var(--ww-float-width), var(--ww-float-size, 0px));")
       expect(theme.source).toContain("clear: left;")
