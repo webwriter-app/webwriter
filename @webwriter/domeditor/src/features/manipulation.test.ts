@@ -7415,6 +7415,37 @@ describe("unified content transfer", () => {
     }
   })
 
+  it("finds the document's other floats once while measuring many parents", () => {
+    document.body.innerHTML = '<aside class="ww-float-right" style="width:120px">note</aside><table><tbody>' + Array.from({length: 8}, (_, row) =>
+      `<tr><td><p>cell ${row}a</p></td><td><p>cell ${row}b</p></td></tr>`).join("") + '</tbody></table><video controls style="width:40px;height:120px"></video>'
+    const source = document.querySelector("video")!
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 600, 900))
+    vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 800, 40, 120))
+    for(const [index, cell] of Array.from(document.querySelectorAll("td")).entries()) {
+      vi.spyOn(cell, "getBoundingClientRect").mockReturnValue(new DOMRect(100 + index % 2 * 200, Math.floor(index / 2) * 40, 200, 40))
+      vi.spyOn(cell.firstElementChild!, "getBoundingClientRect").mockReturnValue(new DOMRect(100 + index % 2 * 200, Math.floor(index / 2) * 40, 200, 30))
+    }
+    const floatQueries = () => query.mock.calls.filter(([selector]) => String(selector).includes(".ww-float-left")).length
+    const query = vi.spyOn(document.body, "querySelectorAll")
+    editor.features.manipulation.prepareFloatDropTargets(source)
+    expect(floatQueries()).toBe(1)
+    const paragraph = document.querySelector("td > p")!, rect = paragraph.getBoundingClientRect()
+    const event = new MouseEvent("mousemove", {clientX: rect.right - 4, clientY: rect.top + 10})
+    expect(editor.features.manipulation.floatDropTarget(event, source)).toBe(paragraph)
+    expect(floatQueries()).toBe(1)
+
+    // A float that appears later belongs to the next measurement, which the
+    // drag schedules for every authored change.
+    document.querySelector("aside")!.classList.replace("ww-float-right", "ww-float-left")
+    editor.features.manipulation.prepareFloatDropTargets(source)
+    expect(floatQueries()).toBe(2)
+    // A single preview outside such a pass still reads the current floats.
+    editor.features.manipulation.clearFloatDropTargets()
+    editor.features.manipulation.showFloatDropPreview(paragraph, "left", "transfer", source)
+    expect(floatQueries()).toBe(3)
+    expect(document.body.querySelector("#◆float-drop-preview")).toBeNull()
+  })
+
   it("previews every successive paragraph in both drag directions without remeasurement", () => {
     document.body.innerHTML = '<p>first</p><p>second</p><p>third</p><video controls style="width:40px;height:120px"></video>'
     const source = document.querySelector("video")!, paragraphs = Array.from(document.querySelectorAll("p"))

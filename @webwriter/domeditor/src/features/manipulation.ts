@@ -63,6 +63,7 @@ type FloatPreviewMeasurements = {
   probe?: HTMLElement | null
   lengths?: Map<string, number>
   widths?: Map<string, number>
+  floats?: {elements: HTMLElement[], sides: FloatSide[]}
 }
 
 type ValidatedStyleEntry = {
@@ -843,6 +844,7 @@ export class ManipulationFeature extends EditorFeature {
     const measurements: FloatPreviewMeasurements = {geometry: new Map(), clearance: new Map(), probe: null}
     const zones: FloatDropZone[] = []
     const parentPermissions = new Map<Element, boolean>()
+    let scroll = {x: 0, y: 0}
     try {
       for(const container of candidates) {
         const bounds = container.getBoundingClientRect()
@@ -863,8 +865,13 @@ export class ManipulationFeature extends EditorFeature {
         }
       }
     }
-    finally { measurement.remove() }
-    const scrollX = window.scrollX, scrollY = window.scrollY
+    finally {
+      // Removing the measurement element invalidates layout: read the scroll
+      // offsets, which the measurements cannot change, before that.
+      scroll = {x: window.scrollX, y: window.scrollY}
+      measurement.remove()
+    }
+    const scrollX = scroll.x, scrollY = scroll.y
     this.floatDropTargets = {source, key: source.isConnected ? source : source.outerHTML, zones, scrollX, scrollY, currentScrollX:scrollX, currentScrollY:scrollY}
     const schedule = () => {
       if(this.floatDropTargetsFrame !== null) return
@@ -1013,9 +1020,16 @@ export class ManipulationFeature extends EditorFeature {
       let defaultLaneWidth = length(defaultWidth, 320)
       const sourceWidth = hasSourceSize
         ? Math.min(length(sourceSize, source?.getBoundingClientRect().width || 0), sourceMaximum && sourceMaximum !== "none" ? length(sourceMaximum, Infinity) : Infinity) : 0
-      const otherFloats = Array.from(document.body.querySelectorAll<HTMLElement>('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
-        .filter(element => element !== source)
-      const sides = otherFloats.map(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList))
+      // One pass over many parents measures only in the appendix, so the
+      // document's floats stay the same: find them once, not once per parent.
+      let floats = shared ? measurements.floats : undefined
+      if(!floats) {
+        const elements = Array.from(document.body.querySelectorAll<HTMLElement>('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
+          .filter(element => element !== source)
+        floats = {elements, sides: elements.map(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList))}
+        if(shared) measurements.floats = floats
+      }
+      const otherFloats = floats.elements, sides = floats.sides
       let hasLeft = lanes && (side === "left" || sides.includes("far-left"))
       let hasRight = lanes && (side === "right" || sides.includes("far-right"))
       if(hasLeft && hasRight && viewportWidth >= 1400) {
