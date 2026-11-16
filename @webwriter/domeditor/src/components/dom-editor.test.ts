@@ -7891,6 +7891,44 @@ describe("DomEditor.execute()", () => {
     expect(users.getAttribute("slot")).toBe("icon")
   })
 
+  it("does not render again for a mark or presence state that repeats, and still reports it", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const host = editor as any
+    const send = (type: string, detail: unknown) => window.dispatchEvent(new MessageEvent("message", {data: {type, detail}, source: editorWindow}))
+    const marks = (text: string) => ({
+      canMark: true, marks: ["b", "ruby"], allowedMarks: ["b", "i", "ruby"], styles: {color: "red"}, attributes: {a: {href: "https://example.com/"}},
+      link: {active: true, identity: "link", href: "https://example.com/", attributes: {}, text, targets: []},
+      attachment: {identity: "file", media: [{id: "media", label: "Media"}]},
+      ruby: {active: true, canCreate: false, base: "base", annotations: [{index: 1, text: "rt", hasMarkup: false}], fallbacks: []},
+    })
+    const users = (name: string) => ({users: [{clientId: 1, name, initials: "AL", color: "#e11d48"}], connectionStatus: "connected"})
+    const state = () => [host.marks, host.allowedMarks, host.markStyles, host.markAttributes, host.linkSelection, host.attachmentSelection, host.ruby, host.presenceUsers]
+    const reported = vi.fn()
+    editor.addEventListener(markStateChangeEvent, reported)
+    send(markStateChangeEvent, marks("Link"))
+    send(presenceChangeEvent, users("Ada Lovelace"))
+    while(host.isUpdatePending) await editor.updateComplete
+    const before = state()
+    expect(before).toEqual([["b", "ruby"], ["b", "i", "ruby"], {color: "red"}, {a: {href: "https://example.com/"}},
+      expect.objectContaining({text: "Link"}), expect.objectContaining({identity: "file"}), expect.objectContaining({base: "base"}),
+      [expect.objectContaining({name: "Ada Lovelace"})]])
+
+    send(markStateChangeEvent, marks("Link"))
+    send(presenceChangeEvent, users("Ada Lovelace"))
+    state().forEach((value, index) => expect(value).toBe(before[index]))
+    expect(host.isUpdatePending).toBe(false)
+    expect(reported).toHaveBeenCalledTimes(2)
+
+    send(markStateChangeEvent, {...marks("Changed"), styles: {color: "blue"}})
+    send(presenceChangeEvent, users("Ada King"))
+    expect(host.isUpdatePending).toBe(true)
+    expect(host.marks).toBe(before[0])
+    expect(host.markStyles).toEqual({color: "blue"})
+    expect(host.linkSelection.text).toBe("Changed")
+    expect(host.attachmentSelection).toBe(before[5])
+    expect(host.presenceUsers).toEqual([expect.objectContaining({name: "Ada King"})])
+  })
+
   it("keeps at most two collaboration avatars when four peers are connected", async () => {
     const {editor, editorWindow} = await mountEditor()
 

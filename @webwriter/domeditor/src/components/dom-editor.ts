@@ -302,6 +302,10 @@ const noPathItems: DocumentTreeItem[] = []
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value)
 
+/** Keeps the current value when a bridge message repeats it, so that a state
+ * of plain data which did not change does not render the shell again. */
+const unlessSame = <T>(current: T, next: T): T => JSON.stringify(current) === JSON.stringify(next) ? current : next
+
 const localPackageExportTypes = new Set(webWriterPackageExportTypes.map(({value}) => value))
 
 const isAbortError = (error: unknown) => error instanceof DOMException
@@ -8743,7 +8747,7 @@ export class DomEditor extends LitElement {
       this.canRemoveMarks = event.data.detail.canRemoveMarks === true
       // SVG label text remains inside a captured graphic. Keep its controls
       // mounted while mark and selection messages arrive independently.
-      this.widgetMarks = event.data.detail.widgetMarks ?? null
+      this.widgetMarks = unlessSame(this.widgetMarks, event.data.detail.widgetMarks ?? null)
       if(this.canMark && !this.svgText && !this.widgetMarks) {
         this.nodeSelection = false
         this.captureSelection = false
@@ -8752,22 +8756,22 @@ export class DomEditor extends LitElement {
         this.graphicSelection = null
         this.elementAttributes = null
       }
-      this.marks = [...event.data.detail.marks]
+      this.marks = unlessSame(this.marks, [...event.data.detail.marks])
       this.popupActive = event.data.detail.popupActive === true
-      this.allowedMarks = event.data.detail.allowedMarks ? [...event.data.detail.allowedMarks] : null
-      this.markStyles = {...(event.data.detail.styles ?? {})}
-      this.markAttributes = Object.fromEntries(
+      this.allowedMarks = unlessSame(this.allowedMarks, event.data.detail.allowedMarks ? [...event.data.detail.allowedMarks] : null)
+      this.markStyles = unlessSame(this.markStyles, {...(event.data.detail.styles ?? {})})
+      this.markAttributes = unlessSame<MarkAttributeValues>(this.markAttributes, Object.fromEntries(
         Object.entries(event.data.detail.attributes ?? {}).map(([mark, attributes]) => [mark, {...attributes}]),
-      )
-      this.linkSelection = event.data.detail.link ?? null
+      ))
+      this.linkSelection = unlessSame(this.linkSelection, event.data.detail.link ?? null)
       if(this.attachmentSelection?.identity !== event.data.detail.attachment?.identity) this.linkKeyboardError = ""
-      this.attachmentSelection = event.data.detail.attachment ?? null
+      this.attachmentSelection = unlessSame(this.attachmentSelection, event.data.detail.attachment ?? null)
       if(!this.linkSelection && !this.attachmentSelection) this.linkKeyboardError = ""
-      this.ruby = event.data.detail.ruby ? {
+      this.ruby = unlessSame(this.ruby, event.data.detail.ruby ? {
         ...event.data.detail.ruby,
         annotations: event.data.detail.ruby.annotations.map(component => ({...component})),
         fallbacks: event.data.detail.ruby.fallbacks.map(component => ({...component})),
-      } : {...emptyRubyState}
+      } : {...emptyRubyState})
       this.dispatchEvent(new CustomEvent(markStateChangeEvent, {
         detail: {
           svgText: this.svgText,
@@ -8956,7 +8960,7 @@ export class DomEditor extends LitElement {
     }
     if(isPresenceChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
-      this.presenceUsers = event.data.detail.users.map(user => ({...user}))
+      this.presenceUsers = unlessSame(this.presenceUsers, event.data.detail.users.map(user => ({...user})))
       this.collaborationStatus = event.data.detail.connectionStatus ?? (this.presenceUsers.length ? "connected" : "disconnected")
       return
     }
