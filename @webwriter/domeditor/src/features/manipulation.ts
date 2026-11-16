@@ -15,7 +15,7 @@ import { DocumentListenerMap, EditorFeature } from "."
 import { $, caretRect, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
 import {isMarkElement} from "../marks"
 import {isEmptyParagraph, isParagraphContent, isPointAtBoundary} from "../utility"
-import {createAnchorPositioner, cssZoomFactor, removeEditorMarker} from "../utility"
+import {childNodesInRange, createAnchorPositioner, cssZoomFactor, removeEditorMarker} from "../utility"
 import {
   isBlockFormatTag,
   type BlockFormatTag,
@@ -2517,13 +2517,18 @@ export class ManipulationFeature extends EditorFeature {
     if(!container || container === root && !range.intersectsNode(root)) return []
     if(!isSectionElement(container) && container !== root && container !== document.body) return [container]
 
-    const targets = Array.from(container.childNodes).flatMap(node => {
+    // The children the range reaches lie between its boundaries; the host
+    // asks this for every selection path, so do not test all of a long parent.
+    let reached: ChildNode[] = []
+    try { reached = childNodesInRange(container, range) }
+    catch { /* A range outside this tree reaches none of its children. */ }
+    const targets = reached.flatMap(node => {
       if(!(node instanceof Element)) return []
       const flatten = (element: Element): Element[] => !$.includesNode(element) ? [] : isMarkElement(element) || isSectionElement(element)
         ? Array.from(element.children).flatMap(flatten)
         : [element]
       try {
-        return range.intersectsNode(node) ? flatten(node) : []
+        return flatten(node)
       }
       catch {
         return []
@@ -3141,16 +3146,19 @@ export class ManipulationFeature extends EditorFeature {
           addContainer(range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement)
           continue
         }
-        const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
-          acceptNode: node => {
-            const element = node as Element
-            if(!this.rangeOverlapsContent(range, element)) return NodeFilter.FILTER_REJECT
-            const atomic = atomicEditingContainer(element, this.editor.schema)
-            if(atomic && atomic !== element) return NodeFilter.FILTER_REJECT
-            return NodeFilter.FILTER_ACCEPT
-          },
-        })
-        while(walker.nextNode()) addContainer(walker.currentNode as Element)
+        // Descend from the root through the elements whose content the
+        // range overlaps. Those lie between its boundaries; the root's other
+        // children need no test.
+        const visit = (parent: Node) => {
+          for(const node of childNodesInRange(parent, range)) {
+            if(!isElement(node) || !this.rangeOverlapsContent(range, node)) continue
+            const atomic = atomicEditingContainer(node, this.editor.schema)
+            if(atomic && atomic !== node) continue
+            addContainer(node)
+            visit(node)
+          }
+        }
+        visit(root)
       }
     }
     // Associated popup content remains outside the void IMG in the authored DOM.

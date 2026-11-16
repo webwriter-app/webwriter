@@ -3348,6 +3348,50 @@ describe("sections", () => {
     expect($.anchorOffset).toBe(2)
   })
 
+  it("wraps the blocks of a range in a long parent, found from the range's boundaries", () => {
+    const blocks = (from: number, to: number) => Array.from({length: to - from}, (_, index) => `<p class="far">Block ${from + index}</p>`).join("")
+    // Bare text, a comment and a transparent wrapper with a widget lie in the range.
+    document.body.innerHTML = `${blocks(0, 30)}<p id="first">first</p>bare<!--keep--><div><h2>nested</h2><custom-card>card</custom-card></div><p id="last">last</p>${blocks(30, 60)}`
+    const first = document.querySelector("#first")!, last = document.querySelector("#last")!
+    const kept = [first.nextSibling!.nextSibling!, document.querySelector("div")!, document.querySelector("custom-card")!]
+    // The inner blocks of the transparent DIV have another parent than the
+    // paragraphs, so this range has no common list of targets to wrap.
+    $.selectRange(first.firstChild!, 2, last.firstChild!, 2)
+    expect(editor.features.manipulation.canSectionSelection()).toBe(false)
+    expect(editor.features.manipulation.actions.toggleSection({type: "toggleSection"})).toBe(false)
+    for(const backwards of [false, true]) {
+      if(backwards) $.selectRange(document.body, 32, first.firstChild!, 2)
+      else $.selectRange(first.firstChild!, 2, document.body, 32)
+      expect(editor.features.manipulation.canSectionSelection()).toBe(true)
+    }
+    expect(editor.features.manipulation.actions.toggleSection({type: "toggleSection"})).toBe(true)
+    const section = document.querySelector("section")!
+    expect(section.outerHTML).toBe('<section><p id="first">first</p></section>')
+    expect(section.previousElementSibling).toHaveClass("far")
+    expect(section.nextSibling?.textContent).toBe("bare")
+    expect(document.querySelectorAll(".far")).toHaveLength(60)
+    expect(kept.every(node => node.isConnected)).toBe(true)
+    expect(Array.from(kept[1].childNodes, node => node.nodeName)).toEqual(["H2", "CUSTOM-CARD"])
+  })
+
+  it("resolves the content of a selected figure among many siblings as section targets", () => {
+    const blocks = Array.from({length: 30}, (_, index) => `<p class="far">Block ${index}</p>`).join("")
+    document.body.innerHTML = `${blocks}<figure><img alt="x"><figcaption>Caption</figcaption></figure>${blocks}`
+    const figure = document.querySelector("figure")!
+    const far = new Set<Node>(document.querySelectorAll(".far"))
+    $.selectElement(figure)
+    const intersectsNode = vi.spyOn(Range.prototype, "intersectsNode")
+    try {
+      expect(editor.features.manipulation.canSectionSelection()).toBe(true)
+      expect(intersectsNode.mock.calls.some(([node]) => far.has(node))).toBe(false)
+    }
+    finally { intersectsNode.mockRestore() }
+    $.move(figure.previousElementSibling!.firstChild!, 0)
+    expect(editor.features.manipulation.canSectionSelection()).toBe(true)
+    document.getSelection()!.removeAllRanges()
+    expect(editor.features.manipulation.canSectionSelection()).toBe(false)
+  })
+
   it("changes the active section type without rebuilding its contents or attributes", () => {
     document.body.innerHTML = '<section class="authored"><p>hello</p></section>'
     const text = document.querySelector("p")!.firstChild!
@@ -5763,6 +5807,34 @@ describe("setStyle()", () => {
     expect(children.every(child => (child as HTMLElement).style.padding === "4px")).toBe(true)
     expect(document.documentElement.style.padding).toBe("")
     expect(children[1].querySelector("p")!.getAttribute("style")).toBeNull()
+  })
+
+  it("addresses the elements a range overlaps among many blocks, in document order", () => {
+    const far = (from: number) => Array.from({length: 30}, (_, index) => `<p class="far">far ${from + index}</p>`).join("")
+    // The range starts inside a nested list item, passes bare text, a comment,
+    // a widget (atomic: its light DOM is not addressed), an empty element and a
+    // table, and ends at the start of a paragraph, whose content it does not reach.
+    document.body.innerHTML = `${far(0)}<ul id="list"><li id="skipped">zero</li><li id="item"><b id="bold">one</b> two</li></ul>bare<!--keep-->`
+      + '<demo-widget id="widget"><span id="inner">inner</span></demo-widget><div id="empty"></div>'
+      + `<table id="table"><tbody id="body"><tr id="row"><td id="cell">cell</td></tr></tbody></table><p id="untouched">untouched</p>${far(30)}`
+    const outside = new Set<Node>(document.querySelectorAll(".far"))
+    const bold = document.querySelector("#bold")!, untouched = document.querySelector("#untouched")!
+    const ids = () => editor.features.manipulation.selectedEditingElements().map(element => element.id)
+    const intersectsNode = vi.spyOn(Range.prototype, "intersectsNode")
+    try {
+      $.selectRange(bold.firstChild!, 1, untouched, 0)
+      expect(ids()).toEqual(["list", "item", "bold", "widget", "empty", "table", "body", "row", "cell"])
+      $.selectRange(untouched, 0, bold.firstChild!, 1)
+      expect(ids()).toEqual(["list", "item", "bold", "widget", "empty", "table", "body", "row", "cell"])
+      expect(intersectsNode.mock.calls.some(([node]) => outside.has(node))).toBe(false)
+    }
+    finally { intersectsNode.mockRestore() }
+    // A caret and a selected element keep their own resolution.
+    $.move(bold.firstChild!, 1)
+    expect(ids()).toEqual(["list", "item", "bold"])
+    $.selectElement(document.querySelector("#widget")!)
+    expect(ids()).toEqual(["widget"])
+    expect(editor.features.manipulation.getSelectedElementTypes().map(group => group.element.localName)).toEqual(["demo-widget"])
   })
 
   it.each(["img", "demo-widget"])("keeps styling available for a capture-selected %s with a native top-level gap", tag => {
