@@ -8,7 +8,7 @@ import {documentThemeProperties} from "../document-theme-options"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {webcrypto} from "node:crypto"
 import {nothing} from "lit"
-import {DomEditor} from "./dom-editor"
+import {documentRecoveryMaxStalenessMs, documentRecoveryPollMs, documentRecoveryQuietMs, DomEditor} from "./dom-editor"
 import {excludedMarkNames} from "../marks"
 import {AppRibbon} from "./ribbon"
 import {elementDragType, ribbonInsertionDragType} from "./insertion-menu"
@@ -4252,6 +4252,114 @@ describe("DomEditor file actions", () => {
     expect(remove).toHaveBeenCalledExactlyOnceWith(id)
     expect(write).toHaveBeenCalledOnce()
     expect(host.documentRecoveryCheckpoint).toBeNull()
+  })
+
+  it("captures recovery after a pause in editing, at the latest after the staleness limit, and at once when hidden", async () => {
+    const poll = documentRecoveryPollMs, quiet = documentRecoveryQuietMs, limit = documentRecoveryMaxStalenessMs
+    // The scenario below pauses twice within one limit and types with gaps of whole polls.
+    expect(quiet % poll).toBe(0)
+    expect(limit % poll).toBe(0)
+    expect(2 * quiet).toBeLessThanOrEqual(limit)
+    expect(quiet).toBeGreaterThan(2 * poll)
+    vi.useFakeTimers({toFake: ["setInterval", "clearInterval", "Date"]})
+    const visibility = vi.spyOn(document, "visibilityState", "get")
+    try {
+      const timers = vi.spyOn(globalThis, "setInterval")
+      const polled: number[] = []
+      const {editor, iframe} = await mountEditor(editor => {
+        const host = editor as any, run = host.pollDocumentRecovery
+        host.pollDocumentRecovery = () => { polled.push(Date.now()); run() }
+      })
+      const host = editor as any
+      expect(timers).toHaveBeenCalledWith(host.pollDocumentRecovery, poll)
+      const html = "<html><body><p>Draft</p></body></html>"
+      const write = vi.spyOn(documentRecoveryStorage, "writeDocumentRecovery").mockImplementation(async record => ({record, replacedIds: []}))
+      let hold = false, release = () => {}
+      const execute = vi.spyOn(editor, "execute").mockImplementation(async command =>
+        command.type === "captureDocumentRecovery" && hold ? new Promise<string>(resolve => { release = () => resolve(html) }) : html)
+      const captures = () => execute.mock.calls.filter(([command]) => command.type === "captureDocumentRecovery").length
+      await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
+      const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+      const body = iframe.contentDocument!.body
+      let edits = 0
+      const edit = async () => {
+        const revision = host.documentChangeSequence
+        body.innerHTML = `<p>Draft ${++edits}</p>`
+        await settle()
+        expect(host.documentChangeSequence).toBeGreaterThan(revision)
+        expect(host.fileDirty).toBe(true)
+      }
+      // Keeps editing for a duration, never pausing for the quiet period.
+      const typeFor = async (duration: number) => {
+        for(let left = duration; left > 0; left -= quiet - poll) {
+          await edit()
+          await vi.advanceTimersByTimeAsync(Math.min(quiet - poll, left))
+        }
+      }
+      // Start on a poll, so that every later poll falls on a whole step.
+      await vi.advanceTimersByTimeAsync(poll)
+      await vi.advanceTimersByTimeAsync(poll - (Date.now() - polled.at(-1)!))
+      expect(Date.now()).toBe(polled.at(-1))
+
+      // Each edit postpones the capture until the author has paused.
+      await typeFor(2 * (quiet - poll))
+      expect(captures()).toBe(0)
+      await vi.advanceTimersByTimeAsync(poll)
+      expect(captures()).toBe(1)
+      expect(host.documentRecoveryUnchanged).toBe(true)
+      await vi.advanceTimersByTimeAsync(limit + quiet)
+      expect(captures()).toBe(1)
+
+      // Uninterrupted editing is captured once it is the limit behind.
+      await typeFor(limit - poll)
+      expect(captures()).toBe(1)
+      write.mockRejectedValueOnce(new Error("Quota"))
+      await typeFor(poll)
+      expect(captures()).toBe(2)
+      expect(host.documentRecoveryError).toContain("Quota")
+
+      // A failed capture saved nothing: it is retried after its delay, not a limit later.
+      const retryDelay = host.documentRecoveryRetryAt - Date.now()
+      expect(retryDelay).toBeGreaterThan(poll)
+      expect(retryDelay).toBeLessThan(limit)
+      await typeFor(retryDelay - poll)
+      expect(captures()).toBe(2)
+      hold = true
+      await typeFor(poll)
+      expect(captures()).toBe(3)
+
+      // Edits made while a capture runs count from its start, not from the first edit of the run.
+      hold = false
+      await edit()
+      release()
+      await settle()
+      expect(host.documentRecoveryWrite).toBeUndefined()
+      expect(host.documentRecoveryError).toBe("")
+      expect(host.documentRecoveryUnchanged).toBe(false)
+      await typeFor(limit - poll)
+      expect(captures()).toBe(3)
+      await typeFor(poll)
+      expect(captures()).toBe(4)
+
+      // A page being hidden may never run again: capture without waiting.
+      await edit()
+      document.dispatchEvent(new Event("visibilitychange"))
+      expect(captures()).toBe(4)
+      visibility.mockReturnValue("hidden")
+      document.dispatchEvent(new Event("visibilitychange"))
+      expect(captures()).toBe(5)
+
+      // The poll ends with the editor.
+      await settle()
+      await edit()
+      editor.remove()
+      await vi.advanceTimersByTimeAsync(limit + quiet)
+      expect(captures()).toBe(5)
+    }
+    finally {
+      visibility.mockRestore()
+      vi.useRealTimers()
+    }
   })
 
   it("keeps a draft if navigation is cancelled and retires it after the page leaves", async () => {

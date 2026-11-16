@@ -284,6 +284,19 @@ type StorageLocation = "local" | "development-server"
 const localPackageResourcePath = LOCAL_PACKAGE_ROUTE_PREFIX
 const packageLoadTimeoutMs = 10_000
 const executeTimeoutMs = 15_000
+// Every recovery capture serializes the whole document inside the editor
+// frame, which blocks typing there. A capture therefore waits until the author
+// has stopped for the quiet period, long enough that pauses within a paragraph
+// do not trigger one, and interrupts uninterrupted editing only once per
+// staleness limit. The price is what a crash can lose: everything edited since
+// the last capture. That is never more than the staleness limit plus one poll
+// and the capture itself, about a minute, and after the author stops it is
+// whatever they did in that run until the quiet period has passed. Hiding the
+// page captures at once.
+export const documentRecoveryPollMs = 1_000
+export const documentRecoveryQuietMs = 15_000
+export const documentRecoveryMaxStalenessMs = 60_000
+const noPathItems: DocumentTreeItem[] = []
 
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -816,6 +829,9 @@ export class DomEditor extends LitElement {
   private documentRecoveryBusy = false
   private documentRecoveryError = ""
   private documentRecoveryUnchanged = true
+  /** When the document last changed, and since when it has changes that no capture has started to save. */
+  private documentRecoveryChangedAt = 0
+  private documentRecoveryStaleSince = 0
   private documentRecoveryTimer: ReturnType<typeof setInterval> | undefined
   private documentRecoveryWrite: Promise<void> | undefined
   private savedRecoveryCleanup: AbortController | undefined
@@ -3952,12 +3968,24 @@ export class DomEditor extends LitElement {
   }
 
   private markDocumentRecoveryChanged() {
+    this.documentRecoveryChangedAt = Date.now()
+    if(this.documentRecoveryUnchanged) this.documentRecoveryStaleSince = this.documentRecoveryChangedAt
     this.documentRecoveryUnchanged = false
     this.savedRecoveryCleanup?.abort()
   }
 
   private readonly flushDocumentRecoveryWhenHidden = () => {
     if(document.visibilityState === "hidden") void this.checkpointDocument()
+  }
+
+  /** Captures once the author pauses, or when a run of edits has gone unsaved for too long. */
+  private readonly pollDocumentRecovery = () => {
+    if(this.documentRecoveryUnchanged) return
+    const now = Date.now()
+    const quiet = now - this.documentRecoveryChangedAt, stale = now - this.documentRecoveryStaleSince
+    // A negative age means the clock was set back: capture instead of waiting on it.
+    if(quiet >= 0 && quiet < documentRecoveryQuietMs && stale >= 0 && stale < documentRecoveryMaxStalenessMs) return
+    void this.checkpointDocument()
   }
 
   private readonly checkpointDocument = () => {
@@ -4016,6 +4044,9 @@ export class DomEditor extends LitElement {
       }
       if(current()) {
         this.documentRecoveryUnchanged = revision === this.documentChangeSequence
+        // Whatever this capture missed changed after it started. A capture
+        // that fails leaves the limit running, so it is retried, not put off.
+        if(!this.documentRecoveryUnchanged) this.documentRecoveryStaleSince = updatedAt
         this.documentRecoveryError = ""
       }
     })().catch(error => {
@@ -9087,7 +9118,7 @@ export class DomEditor extends LitElement {
     super.connectedCallback()
     if(!this.liveSessionIdFromURL()) {
       if(globalThis.indexedDB) void this.refreshDocumentRecoveries()
-      this.documentRecoveryTimer = setInterval(this.checkpointDocument, 1000)
+      this.documentRecoveryTimer = setInterval(this.pollDocumentRecovery, documentRecoveryPollMs)
       document.addEventListener("visibilitychange", this.flushDocumentRecoveryWhenHidden)
     }
     void this.refreshRecoveredLiveReplays()
