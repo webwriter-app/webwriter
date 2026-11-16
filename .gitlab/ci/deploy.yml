@@ -1,0 +1,89 @@
+# Deploy-Pipeline von WebWriter (Child-Pipeline von deploy:staging, nur auf dev).
+# Kopie von edumix-cluster ci/templates/deploy.gitlab-ci.yml (Version 1); Image-Job am Ende.
+# Kubernetes-Manifeste und erlaubte Images: edumix-cluster apps/webwriter.
+stages: [build, gitops]
+
+default:
+  interruptible: true
+  tags:
+    - node4-ci
+
+variables:
+  BUILDAH_IMAGE: quay.io/buildah/stable:v1.43.5
+
+# Ein Job je Image (extends: .edumix:image).
+.edumix:image:
+  stage: build
+  image: $BUILDAH_IMAGE
+  variables:
+    IMAGE_NAME: ""
+    IMAGE_CONTEXT: .
+    IMAGE_DOCKERFILE: Dockerfile
+    IMAGE_BUILD_ARGS: ""
+    BUILDAH_ISOLATION: chroot
+    STORAGE_DRIVER: vfs
+  script:
+    - |
+      set -eu
+      image="$CI_REGISTRY_IMAGE${IMAGE_NAME:+/$IMAGE_NAME}"
+      args=""
+      for a in $IMAGE_BUILD_ARGS; do args="$args --build-arg $a"; done
+      # shellcheck disable=SC2086
+      buildah build --pull --layers=false \
+        --label "org.opencontainers.image.source=$CI_PROJECT_URL" \
+        --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" \
+        -f "$IMAGE_CONTEXT/$IMAGE_DOCKERFILE" -t "$image:$CI_COMMIT_SHA" $args "$IMAGE_CONTEXT"
+      printf '%s' "$CI_REGISTRY_PASSWORD" | buildah login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+      buildah push --digestfile digest "$image:$CI_COMMIT_SHA"
+      mkdir -p .edumix/images
+      # Unveränderliche Referenz; der Tag dient nur der Lesbarkeit in der Registry.
+      printf '%s@%s\n' "$image" "$(cat digest)" > ".edumix/images/$CI_JOB_ID.ref"
+      cat ".edumix/images/$CI_JOB_ID.ref"
+  artifacts:
+    paths: [.edumix/images/]
+    expire_in: 1 week
+
+# Sammelt die Digests aller Image-Jobs für den Trigger.
+gitops:collect:
+  stage: gitops
+  image: alpine:3.22
+  script:
+    - |
+      set -eu
+      refs=$(cat .edumix/images/*.ref | sort -u | tr '\n' ' ')
+      printf 'GITOPS_IMAGES=%s\n' "$refs" > gitops.env
+      cat gitops.env
+  artifacts:
+    reports:
+      dotenv: gitops.env
+
+# Übergibt die Digests an edumix-cluster und wartet auf dessen gitops:update-Job.
+gitops:staging:
+  stage: gitops
+  needs: [gitops:collect]
+  inherit:
+    variables: false
+  variables:
+    GITOPS_APP: $GITOPS_APP
+    GITOPS_IMAGES: $GITOPS_IMAGES
+    GITOPS_SOURCE: $CI_PROJECT_PATH@$CI_COMMIT_SHA
+  trigger:
+    project: edumix/infrastructure/edumix-cluster
+    branch: dev
+    strategy: depend
+  resource_group: edumix-gitops-$GITOPS_APP
+
+# ---------------------------------------------------------------------------
+# Origins werden derzeit beim Build eingebrannt (Dockerfile ARG); als Projektvariablen in
+# GitLab setzen. Solange das so ist, ist das Image Staging-spezifisch und darf nicht nach
+# Production freigegeben werden (edumix-cluster docs/APPS.md): Origins zur Laufzeit lesen.
+# ---------------------------------------------------------------------------
+image:webwriter:
+  extends: .edumix:image
+  variables:
+    IMAGE_NAME: ""
+    IMAGE_CONTEXT: .
+    # Standardwerte; gleichnamige Projektvariablen in GitLab haben Vorrang.
+    WEBWRITER_APP_ORIGIN: https://webwriter.dev.edumix.eu
+    WEBWRITER_EDITOR_ORIGIN: ""
+    IMAGE_BUILD_ARGS: VITE_APP_ORIGIN=$WEBWRITER_APP_ORIGIN VITE_EDITOR_ORIGIN=$WEBWRITER_EDITOR_ORIGIN
