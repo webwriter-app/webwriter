@@ -2,6 +2,52 @@ import type {LocalizedText} from "./options"
 
 export type * from "./options"
 
+/**
+ * A text of an editor declaration as a widget writes it: fixed, a map by
+ * language, or a function that is asked with the widget, for a text from the
+ * widget's own catalog. Type the parameter by what is read:
+ * `(widget: {msg: MsgFn}) => widget.msg("Reset")`.
+ */
+export type DeclaredText = LocalizedText | ((widget: never) => LocalizedText | undefined)
+type DeclaredTextKey = "label" | "description" | "placeholder" | "confirm" | "disabledReason"
+type DeclaredChoice = {value?: string; label?: DeclaredText; description?: DeclaredText; children?: DeclaredChoice[]}
+/** An option, action, option group or permission as a widget declares it: every text may be a function of the widget. */
+export type Declared<T> = T extends unknown
+  ? {[K in keyof T]: K extends DeclaredTextKey ? DeclaredText | Extract<T[K], undefined> : K extends "options" ? DeclaredChoice[] | Extract<T[K], undefined> : T[K]}
+  : never
+
+const DECLARED_TEXTS = ["label", "description", "placeholder", "confirm", "disabledReason"] as const
+const DECLARED_LISTS = ["options", "children"] as const
+type Entry = Record<string, unknown>
+
+function isComputed(entry: unknown): boolean {
+  if(!entry || typeof entry !== "object") return false
+  const fields = entry as Entry
+  return DECLARED_TEXTS.some(key => typeof fields[key] === "function") || DECLARED_LISTS.some(key => Array.isArray(fields[key]) && (fields[key] as unknown[]).some(isComputed))
+}
+
+function resolveEntry(widget: Element, entry: unknown): unknown {
+  if(!isComputed(entry)) return entry
+  const resolved = {...(entry as Entry)}
+  for(const key of DECLARED_TEXTS) if(typeof resolved[key] === "function") resolved[key] = (resolved[key] as (widget: Element) => unknown)(widget)
+  for(const key of DECLARED_LISTS) if(Array.isArray(resolved[key])) resolved[key] = (resolved[key] as unknown[]).map(choice => resolveEntry(widget, choice))
+  return resolved
+}
+
+/** Whether a declaration map has a text that is a function, which the editor cannot read. */
+export function hasComputedDeclarations(declarations: unknown): boolean {
+  return !!declarations && typeof declarations === "object" && Object.values(declarations).some(isComputed)
+}
+
+/**
+ * The declarations as the editor reads them: every text that is a function is
+ * replaced by its answer for the widget. A map without such a text is returned as it is.
+ */
+export function resolveDeclarations<T>(widget: Element, declarations: Record<string, Declared<T>> | undefined): Record<string, T> | undefined {
+  if(!hasComputedDeclarations(declarations)) return declarations as Record<string, T> | undefined
+  return Object.fromEntries(Object.entries(declarations!).map(([name, entry]) => [name, resolveEntry(widget, entry) as T]))
+}
+
 const offlineAssets = new WeakMap<Element, Readonly<Record<string, string>>>()
 
 /** Resolve a declared asset to its embedded URL in Offline HTML. */
@@ -67,8 +113,15 @@ const contextFollowers = new WeakMap<Document, ContextFollowers>()
 const dataEvents = ["datapending", "datachange", "dataerror", "datarelease"] as const
 export const widgetRuntimeAttributes: readonly string[] = ["contenteditable", "lang", "shared", "id", "standalone"]
 
+/** The language of an element as HTML defines it: a shadow tree takes the language of its host. */
 export function widgetLanguage(host: HTMLElement) {
-  return host.closest("[lang]")?.getAttribute("lang") ?? ""
+  for(let node: Element | null = host; node;) {
+    const source = node.closest("[lang]")
+    if(source) return source.getAttribute("lang") ?? ""
+    const root = node.getRootNode()
+    node = root instanceof ShadowRoot ? root.host : null
+  }
+  return ""
 }
 
 /** Observes an authored custom element. Snapshots are read-only views of its DOM. */

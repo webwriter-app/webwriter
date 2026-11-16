@@ -1,4 +1,25 @@
 // index.ts
+var DECLARED_TEXTS = ["label", "description", "placeholder", "confirm", "disabledReason"];
+var DECLARED_LISTS = ["options", "children"];
+function isComputed(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  const fields = entry;
+  return DECLARED_TEXTS.some((key) => typeof fields[key] === "function") || DECLARED_LISTS.some((key) => Array.isArray(fields[key]) && fields[key].some(isComputed));
+}
+function resolveEntry(widget, entry) {
+  if (!isComputed(entry)) return entry;
+  const resolved = { ...entry };
+  for (const key of DECLARED_TEXTS) if (typeof resolved[key] === "function") resolved[key] = resolved[key](widget);
+  for (const key of DECLARED_LISTS) if (Array.isArray(resolved[key])) resolved[key] = resolved[key].map((choice) => resolveEntry(widget, choice));
+  return resolved;
+}
+function hasComputedDeclarations(declarations) {
+  return !!declarations && typeof declarations === "object" && Object.values(declarations).some(isComputed);
+}
+function resolveDeclarations(widget, declarations) {
+  if (!hasComputedDeclarations(declarations)) return declarations;
+  return Object.fromEntries(Object.entries(declarations).map(([name, entry]) => [name, resolveEntry(widget, entry)]));
+}
 var offlineAssets = /* @__PURE__ */ new WeakMap();
 function assetURL(url, owner = document) {
   const href = new URL(url).href;
@@ -41,7 +62,13 @@ var contextFollowers = /* @__PURE__ */ new WeakMap();
 var dataEvents = ["datapending", "datachange", "dataerror", "datarelease"];
 var widgetRuntimeAttributes = ["contenteditable", "lang", "shared", "id", "standalone"];
 function widgetLanguage(host) {
-  return host.closest("[lang]")?.getAttribute("lang") ?? "";
+  for (let node = host; node; ) {
+    const source = node.closest("[lang]");
+    if (source) return source.getAttribute("lang") ?? "";
+    const root = node.getRootNode();
+    node = root instanceof ShadowRoot ? root.host : null;
+  }
+  return "";
 }
 var WidgetRuntime = class {
   constructor(host, callbacks = {}) {
@@ -318,7 +345,9 @@ function withWidgetRuntime(Base) {
 export {
   WidgetRuntime,
   assetURL,
+  hasComputedDeclarations,
   isDataBlockType,
+  resolveDeclarations,
   widgetLanguage,
   widgetRuntimeAttributes,
   withWidgetRuntime

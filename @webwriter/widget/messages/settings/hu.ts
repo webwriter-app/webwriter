@@ -1,0 +1,7 @@
+import type {Catalog} from "../../messages.js"
+import type {SettingsMessages} from "./index.js"
+
+export default {
+  invalid: "Ez az érték itt nem engedélyezett.",
+  invalidDuration: "Adjon meg időtartamot, például 1:30 vagy 90.",
+} satisfies Catalog<SettingsMessages>

@@ -1,0 +1,15 @@
+var pa_default = {
+  check: "ਜਾਂਚੋ",
+  reset: "ਰੀਸੈੱਟ ਕਰੋ",
+  showSolution: "ਹੱਲ ਵੇਖੋ",
+  hideSolution: "ਹੱਲ ਲੁਕਾਓ",
+  required: "ਕਿਰਪਾ ਕਰਕੇ ਇਸ ਸਵਾਲ ਦਾ ਜਵਾਬ ਦਿਓ।",
+  summary: (correct, total) => correct === total ? "ਸਭ ਸਹੀ ਹੈ।" : `${total} ਵਿੱਚੋਂ ${correct} ਸਹੀ।`,
+  feedbackOption: "ਫੀਡਬੈਕ",
+  feedbackOnCheck: "ਪਾਠਕ ਦੇ ਜਾਂਚਣ 'ਤੇ",
+  feedbackOnSubmit: "ਜਮ੍ਹਾਂ ਕਰਨ ਤੋਂ ਬਾਅਦ",
+  requiredOption: "ਲਾਜ਼ਮੀ"
+};
+export {
+  pa_default as default
+};

@@ -1,10 +1,10 @@
 import {LitElement, adoptStyles, type PropertyDeclaration} from "lit"
 import {SignalWatcher} from "@lit-labs/signals"
 import type * as WidgetOptions from "@webwriter/widget"
-import {WidgetRuntime, widgetLanguage, widgetRuntimeAttributes, type WidgetDataContext,
-  type LocalizedText, type ActionDeclaration, type OptionGroupDeclaration, type PermissionDeclaration} from "@webwriter/widget"
+import {WidgetRuntime, hasComputedDeclarations, resolveDeclarations, widgetLanguage, widgetRuntimeAttributes, type WidgetDataContext,
+  type Declared, type LocalizedText, type ActionDeclaration, type OptionGroupDeclaration, type PermissionDeclaration} from "@webwriter/widget"
 
-export {isDataBlockType, type WidgetDataContext, type WidgetDataMode, type LocalizedText,
+export {isDataBlockType, resolveDeclarations, type Declared, type DeclaredText, type WidgetDataContext, type WidgetDataMode, type LocalizedText,
   type OptionAvailability, type OptionGroupDeclaration, type PermissionDeclaration, type SelectOptionChoice, type ActionDeclaration} from "@webwriter/widget"
 
 export * from "@lit-labs/signals"
@@ -56,6 +56,9 @@ const registries = new WeakMap<typeof LitElementWw, CustomElementRegistry>()
 export interface LitElementWw {
   get options(): Record<string, OptionDeclaration> | undefined
   get actions(): Record<string, ActionDeclaration> | undefined
+  /** Per-instance editor declarations, including empty maps, override static maps. */
+  get permissions(): Record<string, PermissionDeclaration> | undefined
+  get optionGroups(): Record<string, OptionGroupDeclaration> | undefined
 }
 
 const warnedDeclarations = new WeakMap<Function, Set<string>>()
@@ -96,17 +99,33 @@ function warnForDeclarationClashes(widget: LitElementWw) {
 /** Optional WebWriter conveniences for Lit widgets. The authored DOM remains
  * authoritative; only registry, readiness, and notification state are retained. */
 export class LitElementWw extends SignalWatcher(LitElement) {
-  static scopedElements: Record<string, CustomElementConstructor> = {}
-  static readonly options: Record<string, OptionDeclaration> = {}
-  static readonly actions: Record<string, ActionDeclaration> = {}
-  declare static readonly permissions?: Record<string, PermissionDeclaration>
-  static readonly optionGroups: Record<string, OptionGroupDeclaration> = {}
+  // Wider than CustomElementConstructor: component libraries type properties such as
+  // `autocorrect` differently from the DOM library, and their classes have to fit here.
+  static scopedElements: Record<string, new (...parameters: any[]) => Element> = {}
+  // A text of a static declaration may be a function of the widget, for a text from the widget's own catalog.
+  static readonly options: Record<string, Declared<OptionDeclaration>> = {}
+  static readonly actions: Record<string, Declared<ActionDeclaration>> = {}
+  declare static readonly permissions?: Record<string, Declared<PermissionDeclaration>>
+  static readonly optionGroups: Record<string, Declared<OptionGroupDeclaration>> = {}
   static readonly dataType: string | undefined = undefined
 
-  /** Per-instance editor declarations, including empty maps, override static maps. */
-  declare readonly permissions?: Record<string, PermissionDeclaration>
-  declare readonly optionGroups?: Record<string, OptionGroupDeclaration>
   protected localize?: {getLocale: () => string, setLocale: (locale: string) => Promise<void>}
+
+  constructor() {
+    super()
+    // The editor reads plain maps. A static declaration with a text that is a function is therefore
+    // answered on the instance, with the functions asked. A member a subclass defines itself is left alone,
+    // and a later write replaces the accessor, so that an instance field works under both field semantics.
+    const declared = this.constructor as unknown as Record<string, Record<string, Declared<object>> | undefined>
+    for(const kind of ["options", "actions", "permissions", "optionGroups"] as const) {
+      if(kind in this || !hasComputedDeclarations(declared[kind])) continue
+      Object.defineProperty(this, kind, {
+        configurable: true,
+        get: () => resolveDeclarations(this, declared[kind]),
+        set: (value: unknown) => Object.defineProperty(this, kind, {value, writable: true, configurable: true, enumerable: true}),
+      })
+    }
+  }
 
   /** One native registry per concrete widget class, shared by its instances. */
   get registry() {
@@ -114,7 +133,7 @@ export class LitElementWw extends SignalWatcher(LitElement) {
     let registry = registries.get(constructor)
     if(!registry) {
       registry = new CustomElementRegistry()
-      for(const [name, element] of Object.entries(constructor.scopedElements)) registry.define(name, element)
+      for(const [name, element] of Object.entries(constructor.scopedElements)) registry.define(name, element as CustomElementConstructor)
       registries.set(constructor, registry)
     }
     return registry

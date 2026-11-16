@@ -1,30 +1,118 @@
 {
   "name": "@webwriter/lit",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Base classes for widget components with lit (WebWriter)",
   "publishConfig": {
     "access": "public"
   },
   "module": "index.js",
-  "types": "index.ts",
+  "types": "index.d.ts",
   "browser": "index.js",
+  "sideEffects": false,
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
+  "exports": {
+    ".": {
+      "source": "./index.ts",
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./widget-options": {
+      "source": "./widget-options.ts",
+      "types": "./widget-options.d.ts",
+      "default": "./widget-options.js"
+    },
+    "./base": {
+      "source": "./base.ts",
+      "types": "./base.d.ts",
+      "default": "./base.js"
+    },
+    "./permissions": {
+      "source": "./permissions.ts",
+      "types": "./permissions.d.ts",
+      "default": "./permissions.js"
+    },
+    "./drag": {
+      "source": "./drag.ts",
+      "types": "./drag.d.ts",
+      "default": "./drag.js"
+    },
+    "./viewport": {
+      "source": "./viewport.ts",
+      "types": "./viewport.d.ts",
+      "default": "./viewport.js"
+    },
+    "./help": {
+      "source": "./help.ts",
+      "types": "./help.d.ts",
+      "default": "./help.js"
+    },
+    "./scene": {
+      "source": "./scene.ts",
+      "types": "./scene.d.ts",
+      "default": "./scene.js"
+    },
+    "./settings": {
+      "source": "./settings.ts",
+      "types": "./settings.d.ts",
+      "default": "./settings.js"
+    },
+    "./shortcuts": {
+      "source": "./shortcuts.ts",
+      "types": "./shortcuts.d.ts",
+      "default": "./shortcuts.js"
+    },
+    "./playback": {
+      "source": "./playback.ts",
+      "types": "./playback.d.ts",
+      "default": "./playback.js"
+    },
+    "./data": {
+      "source": "./data.ts",
+      "types": "./data.d.ts",
+      "default": "./data.js"
+    },
+    "./localize": {
+      "source": "./localize.ts",
+      "types": "./localize.d.ts",
+      "default": "./localize.js"
+    },
+    "./exercise": {
+      "source": "./exercise.ts",
+      "types": "./exercise.d.ts",
+      "default": "./exercise.js"
+    }
+  },
+  "files": [
+    "*.js",
+    "!*.test.js",
+    "*.d.ts"
+  ],
   "scripts": {
-    "prepublishOnly": "esbuild ./index.ts --bundle --target=es2022 --format=esm --outfile=index.js --external:lit --external:@lit-labs/signals --external:@webwriter/widget",
-    "test": "node --test index.test.js"
+    "build": "node scripts/build.mjs",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test *.test.js"
   },
   "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60",
   "peerDependencies": {
+    "@lit/localize": "^0.12.0",
     "lit": "^3.3.0"
   },
+  "peerDependenciesMeta": {
+    "@lit/localize": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@happy-dom/global-registrator": "~20.8.9",
+    "@lit/localize": "^0.12.2",
     "esbuild": "^0.25.4",
-    "@happy-dom/global-registrator": "~20.8.9"
+    "typescript": "^7.0.2"
   },
   "type": "module",
   "dependencies": {
     "@lit-labs/signals": "0.3.0",
-    "@webwriter/widget": "^1.1.0"
+    "@webwriter/widget": "^1.2.0"
   }
 }

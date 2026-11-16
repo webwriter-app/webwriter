@@ -1,0 +1,15 @@
+import type {Catalog} from "../../messages.js"
+import type {ExerciseMessages} from "./index.js"
+
+export default {
+  check: "যাচাই করুন",
+  reset: "রিসেট করুন",
+  showSolution: "সমাধান দেখান",
+  hideSolution: "সমাধান লুকান",
+  required: "অনুগ্রহ করে এই প্রশ্নের উত্তর দিন।",
+  summary: (correct, total) => (correct === total ? "সবকিছু সঠিক।" : `${total}টির মধ্যে ${correct}টি সঠিক।`),
+  feedbackOption: "প্রতিক্রিয়া",
+  feedbackOnCheck: "পাঠক যাচাই করলে",
+  feedbackOnSubmit: "জমা দেওয়ার পরে",
+  requiredOption: "আবশ্যিক",
+} satisfies Catalog<ExerciseMessages>

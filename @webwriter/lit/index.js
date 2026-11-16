@@ -3,11 +3,14 @@ import { LitElement as LitElement2, adoptStyles } from "lit";
 import { SignalWatcher } from "@lit-labs/signals";
 import {
   WidgetRuntime,
+  hasComputedDeclarations,
+  resolveDeclarations,
   widgetLanguage,
   widgetRuntimeAttributes
 } from "@webwriter/widget";
 import {
-  isDataBlockType
+  isDataBlockType,
+  resolveDeclarations as resolveDeclarations2
 } from "@webwriter/widget";
 export * from "@lit-labs/signals";
 
@@ -1345,12 +1348,27 @@ function warnForDeclarationClashes(widget) {
   }
 }
 var LitElementWw = class extends SignalWatcher(LitElement2) {
+  // Wider than CustomElementConstructor: component libraries type properties such as
+  // `autocorrect` differently from the DOM library, and their classes have to fit here.
   static scopedElements = {};
+  // A text of a static declaration may be a function of the widget, for a text from the widget's own catalog.
   static options = {};
   static actions = {};
   static optionGroups = {};
   static dataType = void 0;
   localize;
+  constructor() {
+    super();
+    const declared = this.constructor;
+    for (const kind of ["options", "actions", "permissions", "optionGroups"]) {
+      if (kind in this || !hasComputedDeclarations(declared[kind])) continue;
+      Object.defineProperty(this, kind, {
+        configurable: true,
+        get: () => resolveDeclarations(this, declared[kind]),
+        set: (value) => Object.defineProperty(this, kind, { value, writable: true, configurable: true, enumerable: true })
+      });
+    }
+  }
   /** One native registry per concrete widget class, shared by its instances. */
   get registry() {
     const constructor = this.constructor;
@@ -1479,6 +1497,7 @@ export {
   readWidgetOption,
   renderWidgetOptionField,
   renderWidgetOptions,
+  resolveDeclarations2 as resolveDeclarations,
   validWidgetOptionValue,
   widgetActionRows,
   widgetActionState,
