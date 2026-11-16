@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/build",
-  "version": "1.13.1",
+  "version": "1.14.0",
   "description": "Developer tools for WebWriter packages (build process, documentation, localization)",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
@@ -19,7 +19,11 @@
     "xliff": "^6.2.1"
   },
   "exports": {
-    "./test": "./test.js"
+    "./test": "./test.js",
+    "./tsconfig.json": "./tsconfig.json",
+    "./client": {
+      "types": "./client.d.ts"
+    }
   },
   "bin": "./build.js"
 }

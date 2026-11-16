@@ -6,10 +6,8 @@ import { promises as fs } from "fs"
 import { join } from "path"
 import { tmpdir } from 'os'
 
-const selfPkg = {
-  name: "@webwriter/build",
-  version: "1.9.1"
-}
+// Name and version of this package, for the signature line of a generated README.
+const selfPkg = JSON.parse(await fs.readFile(new URL("./package.json", import.meta.url), "utf8"))
 
 const exec = promisify(execSync)
 
@@ -193,7 +191,8 @@ do {
   catch(err) {
     break
   }
-  if(readme && !readme.split("\n").at(-1).startsWith(`*Generated with ${selfPkg.name}@`)) {
+  // The signature is the last line with text; a trailing newline does not hide it.
+  if(readme && !readme.trimEnd().split("\n").at(-1).startsWith(`*Generated with ${selfPkg.name}@`)) {
     if(readmePath === "README.md") {
       console.warn(`Existing ${readmePath} not signed by ${selfPkg.name}, using API.md instead.`)
       readmePath = "API.md"
