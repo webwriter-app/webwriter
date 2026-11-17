@@ -195,17 +195,17 @@ export class DomEditorToolbox extends EditingControls {
     .layout-action-controls button[aria-pressed="true"] {background: #e2edf8; border-color: #c5ccd5; color: #375d84}
     .layout-action-controls button:focus-visible {outline: 2px solid #3977c7; outline-offset: 1px}
     .layout-action-row {display: flex; flex-wrap: wrap; gap: .25rem}
-    .float-action-controls {padding: .4rem 0; gap: .125rem}
+    .float-action-controls {grid-template-columns: minmax(0, 1fr); container-type: inline-size; padding: .4rem 0; gap: .125rem}
     .float-placement-label {font-size: .65rem; color: var(--sl-color-neutral-600, #666)}
     .float-placement-label > .field-label {justify-content: flex-start}
     .float-placement-label .field-label .field-clear {margin-left: 0; min-height: 0}
-    .caption-label-row {display: flex; align-items: center; justify-content: space-between; gap: .35rem; margin-top: .4rem}
+    .caption-label-row {display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .35rem; margin-top: .4rem}
     :is(.caption-top, .float-pin, .float-full-width) {display: inline-flex; align-items: center; gap: .2rem; font: inherit; color: inherit; white-space: nowrap}
     :is(.caption-top, .float-pin, .float-full-width) input {width: .7rem; height: .7rem; margin: 0}
     .attribution-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center; margin-top: .4rem}
     .attribution-field > button {min-width: 0; min-height: 1.7rem; background: #f7f7f7; border-color: #c5ccd5; font: .68rem/1.2 system-ui, sans-serif}
     .float-button-group {display: flex; width: 100%; gap: 0}
-    .float-button-group button {position: relative; display: grid; place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-width: var(--editor-control-border-width, .5px); border-radius: 0}
+    .float-button-group button {position: relative; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-width: var(--editor-control-border-width, .5px); border-radius: 0}
     .float-button-group float-info {position: absolute; top: -3px; right: -2px; z-index: 2}
     .float-button-group .float-move {flex: 0 0 auto; padding: .35rem .2rem}
     .float-button-group .float-move:disabled {opacity: .4; cursor: default}
@@ -213,10 +213,16 @@ export class DomEditorToolbox extends EditingControls {
     .float-button-group button:first-child {border-radius: .2rem 0 0 .2rem}
     .float-button-group button:last-child {border-radius: 0 .2rem .2rem 0}
     .float-button-group button[aria-pressed="true"], .float-button-group button:focus-visible {position: relative; z-index: 1}
-    .float-button-group svg {display: block; width: 1.25rem; height: 1.25rem}
+    .float-button-group svg {display: block; width: 1.25rem; max-width: 100%; height: 1.25rem}
     .float-button-group .float-move svg {width: .875rem; height: .875rem}
     .float-button-group:is([aria-label="Placement"], .placement-action-group) button {min-height: 1.55rem; padding: .15rem .2rem}
     .float-button-group[aria-label="Placement"] .float-move {padding-inline: .1rem}
+    @container (width < 11rem) {
+      .float-button-group[aria-label="Placement"]:not(.placement-action-group) button {
+        flex: 1 1 0;
+        padding-inline: 0;
+      }
+    }
     :is(.placement-action-group, .caption-button-group) button:disabled {opacity: .4; cursor: default}
     .float-button-group.placement-action-group button:hover:not(:disabled) {background: #edf3f9}
     .float-button-group.placement-action-group button:active:not(:disabled) {background: #e2edf8; color: #375d84}

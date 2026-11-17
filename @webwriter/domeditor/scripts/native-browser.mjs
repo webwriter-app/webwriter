@@ -123,6 +123,7 @@ const expectedChecks = [
   "Board controls and transform frames follow CSS anchors through layout changes",
   "Element controls follow native CSS anchors through scrolling and DOM changes",
   "Ribbon menus and combobox popups follow anchors through viewport changes",
+  "Edit Style placement controls fit a narrow toolbox",
   "tiny images open media inputs in a speech bubble",
   "document resizing and graphic fitting preserve normal flow",
   "text containers resize horizontally and fit their content",

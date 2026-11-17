@@ -1842,6 +1842,29 @@ await check("custom filters persist and toggle after native CSS serialization", 
   }
 })
 
+await check("Edit Style placement controls fit a narrow toolbox", async () => {
+  const {DomEditorToolbox} = await import("../src/components/toolbox")
+  const toolbox = new DomEditorToolbox()
+  toolbox.activeTool = "Edit"
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {
+    localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", canMoveUp: true, canMoveDown: true,
+  }}
+  toolbox.style.width = "150px"
+  fixture.append(toolbox)
+  try {
+    await toolbox.updateComplete
+    await layoutFrame()
+    const controls = toolbox.shadowRoot!.querySelector<HTMLElement>(".float-action-controls")!
+    const bounds = controls.getBoundingClientRect()
+    for(const element of controls.querySelectorAll<HTMLElement>("button, label")) {
+      const rect = element.getBoundingClientRect()
+      assert(rect.width > 0 && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1,
+        `${element.getAttribute("aria-label") ?? element.textContent?.trim()} overflowed the Style controls`)
+    }
+  }
+  finally { toolbox.remove() }
+})
+
 await check("marker image uploads preview before applying", async () => {
   const {DomEditorToolbox} = await import("../src/components/toolbox")
   const toolbox = new DomEditorToolbox()
