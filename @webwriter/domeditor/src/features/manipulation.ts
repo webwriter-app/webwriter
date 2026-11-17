@@ -4561,6 +4561,25 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private replaceStructuredSelectionWithText(text: string) {
+    const range = $.range
+    const start = isElement(range.startContainer) ? range.startContainer : range.startContainer.parentElement
+    const heading = start?.closest(":is(h1, h2, h3, h4, h5, h6):not([is])")
+    if(heading && isPointAtBoundary(heading, range.startContainer, range.startOffset, "start")) {
+      // A native triple-click can include the line break after a heading and
+      // end at the start of the next block without selecting any of its content.
+      const next = heading.nextElementSibling
+      const endsAtHeadingGap = range.endContainer === heading.parentNode
+        && range.endContainer.childNodes[range.endOffset - 1] === heading
+      if(endsAtHeadingGap || next && this.editor.schema.isBlock(next)
+        && isPointAtBoundary(next, range.endContainer, range.endOffset, "start")) {
+        const tail = range.cloneRange()
+        tail.setStartAfter(heading)
+        if(!tail.toString().trim()) {
+          $.selectRange(range.startContainer, range.startOffset, heading, heading.childNodes.length)
+          return this.insertAtSelection(document.createTextNode(text))
+        }
+      }
+    }
     return this.withNormalization(() => {
       $.delete()
       this.ensureTextBlock()
