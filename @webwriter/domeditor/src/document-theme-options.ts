@@ -15,7 +15,10 @@ export const documentThemeOptions = [
   {name: "--ww-block-spacing", label: "Block spacing", property: "width", placeholder: "Default"},
 ] as const
 
-export const documentThemeProperties = ["background-color", ...documentThemeOptions.map(option => option.name), ...themeAccentProperties]
+/** Color tokens that every bundled theme defines (see document-themes.ts). The menu has no controls for them, but a saved theme keeps them. */
+export const documentThemeTokens = ["--ww-surface", "--ww-border-color", "--ww-focus-color", "--ww-success", "--ww-danger", "--ww-warning"] as const
+
+export const documentThemeProperties = ["background-color", ...documentThemeOptions.map(option => option.name), ...themeAccentProperties, ...documentThemeTokens]
 export const documentThemeStorageKey = "webwriter-document-themes"
 export const documentTypographyProperties: readonly string[] = documentThemeOptions.slice(0, 4).map(option => option.name)
 

@@ -114,8 +114,12 @@ export declare function widgetActionState(name: string, declaration: unknown, lo
  * null to remove the attribute. */
 export declare function widgetOptionAttributeValue(type: WidgetOptionType, value: WidgetOptionValue, multiple?: boolean, inverted?: boolean): string | null;
 export declare function localizedText(value: LocalizedText | undefined, locale: string): string | undefined;
-/** An instance map, including an empty map, takes precedence over its class map. */
-export declare function widgetDeclarations(widget: Element, kind: "options" | "actions" | "permissions" | "optionGroups" | "convertFrom" | "convertTo"): UnknownRecord;
+/**
+ * An instance map, including an empty map, takes precedence over its class map.
+ * A text or a `hidden`, `disabled` or `readOnly` flag that is a function is asked
+ * with the widget, for a widget that does not resolve its declarations itself.
+ */
+export declare function widgetDeclarations(widget: Element, kind: "options" | "actions" | "permissions" | "optionGroups" | "convertFrom" | "convertTo"): Record<string, unknown>;
 export declare function widgetOptionDeclaration(widget: Element, name: string, declaration: unknown): unknown;
 export declare function readWidgetOption(widget: Element, name: string, raw: unknown, locale: string): {
     hidden?: boolean;

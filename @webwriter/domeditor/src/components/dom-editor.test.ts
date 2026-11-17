@@ -4922,6 +4922,35 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect(download).toHaveBeenCalledWith(output, "quiz.txt"))
   })
 
+  it.each([
+    ["a message", new Error("Die Datei ist leer."), "Die Datei ist leer."],
+    ["no message", new Error(""), "The file could not be imported into the selected widget."],
+    ["a declined import", false, "The file could not be imported into the selected widget."],
+  ])("shows the author why a widget file import failed (%s)", async (_name, outcome, message) => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.widgetConversion = {sourceId: "element-1", targets: [], imports: [".quiz"]}
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.spyOn(editor, "execute").mockImplementation(async () => { if(outcome instanceof Error) throw outcome; return outcome })
+    host.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {detail: {label: "widget-import:element-1:.quiz"}}))
+    const picker = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(picker, "files", {value: [new File(["x"], "quiz.quiz")]})
+    picker.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(host.fileError).toBe(message))
+  })
+
+  it("shows the widget's message when an element conversion fails", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.widgetConversion = {sourceId: "element-1", targets: [{tag: "ww-demo"}]}
+    const execute = vi.spyOn(editor, "execute").mockRejectedValue(new Error("Die Liste ist leer."))
+    host.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {detail: {label: "widget-conversion:element-1:ww-demo"}}))
+    await vi.waitFor(() => expect(host.fileError).toBe("Die Liste ist leer."))
+    execute.mockRejectedValue(new Error(""))
+    host.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {detail: {label: "widget-conversion:element-1:ww-demo"}}))
+    await vi.waitFor(() => expect(host.fileError).toBe("The selected element could not be converted."))
+  })
+
   it("prompts for the first local download name and reuses it on Save", async () => {
     const {editor} = await mountEditor()
     const host = editor as any

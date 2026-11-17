@@ -4,6 +4,7 @@ export { SceneBase, type ActivateDetail, type BackgroundDetail, type ConnectDeta
 export { SceneCore, type SceneOptions, type ScenePermissions, type SceneSnapshot } from "./core.js";
 export { SceneGroup, SceneImage, SceneItem, SceneNode, ScenePath, SceneShape, SceneSprites, SceneText, type Picture, type SpriteItem, type Waypoint } from "./elements.js";
 export type { LabelSide, Marker, MarkerKind, Outline, OutlineKind, Point, Rect, Route } from "./geometry.js";
+export type { ImageOptions, SnapshotOptions } from "./snapshot.js";
 export { sceneMessages, type SceneMessages } from "../messages/scene/index.js";
 export { webglAvailable } from "./webgl.js";
 export { Scene };

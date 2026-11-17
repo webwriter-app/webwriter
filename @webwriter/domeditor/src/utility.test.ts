@@ -2068,6 +2068,12 @@ describe("authoredClassValue()", () => {
     expect(authoredClassValue(null)).toBe("")
   })
 
+  it("omits the runtime print class that the editor adds to widgets", () => {
+    expect(authoredClassValue("ww-beforeprint own")).toBe("own")
+    expect(authoredClassValue("own ww-beforeprint-extra")).toBe("own ww-beforeprint-extra")
+    expect(authoredClassValue("ww-beforeprint")).toBe("")
+  })
+
   it("canonicalizes authored class order only when requested", () => {
     expect(authoredClassValue("second ◆selected first", true)).toBe("first second")
     expect(authoredClassValue("first second", true)).toBe("first second")

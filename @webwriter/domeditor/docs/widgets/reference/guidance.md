@@ -30,7 +30,7 @@ npx -y @webwriter/guidance list
 | `search <query>` | Up to five ranked results with `id` and `description` fields. Use one topic or API name per query. |
 | `retrieve <id[,id...]>` | Full Markdown for the named pages. The CLI prints a temporary file path for large results. |
 | `list` | All searchable page IDs and descriptions. |
-| `badges [package.json]` | Widget badge keywords and their guide IDs. Pass a manifest path to look up its declared badges. |
+| `badges [package.json]` | Widget badge keywords and their guide IDs. `widget-reactive` is described as publishing signals, accepting effects, or both. Pass a manifest path to look up its declared badges and the ISCED level and field names. The command reports each unknown or malformed `widget-…` keyword and each invalid ISCED code on standard error and exits with status 1. |
 
 The npm package bundles a snapshot of the widget guides, tutorials, and reference pages. Once the package is installed, document lookup works offline. From the WebWriter repository root, use `node @webwriter/guidance/cli.mjs` with the same commands to query the current checkout.
 

@@ -791,7 +791,7 @@ export class WidgetGallery extends LitElement {
     }
     keywords.sort(onlineOnlyLast)
     return keywords.length ? html`<ul class="keyword-list ${placement}-keywords" role="list" aria-label=${t("Package tags")}>
-      ${keywords.map(keyword => html`<li class="keyword-badge ${placement}-keyword" data-kind=${keyword.kind}>
+      ${keywords.map(keyword => html`<li class="keyword-badge ${placement}-keyword" data-kind=${keyword.kind} title=${keyword.description ?? nothing}>
         ${this.keywordIcon(keyword.icon)}
         <span>${keyword.label}</span>
         ${keyword.additionalLanguages?.length ? html`<span title=${keyword.additionalLanguages.join(", ")}>+${keyword.additionalLanguages.length}</span>` : nothing}

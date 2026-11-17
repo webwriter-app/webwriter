@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import {exec as execSync} from "child_process"
+import {execFile as execFileSync} from "child_process"
+import {createRequire} from "module"
 import {promisify} from "util"
 import { promises as fs } from "fs"
 import { join } from "path"
@@ -9,7 +10,7 @@ import { tmpdir } from 'os'
 // Name and version of this package, for the signature line of a generated README.
 const selfPkg = JSON.parse(await fs.readFile(new URL("./package.json", import.meta.url), "utf8"))
 
-const exec = promisify(execSync)
+const execFile = promisify(execFileSync)
 
 function tableEscape(str) {
   return str?.replaceAll("|", "\\|")?.replaceAll("\n", "<br>")
@@ -20,34 +21,78 @@ export async function document() {
   await generateReadme()
 }
 
+/**
+ * The source file of each widget export, from the `source` condition or, for a browser-ready
+ * export, from the file itself. A wildcard key (`./widgets/ww-x.*`) has one source file.
+ */
+export function widgetSources(pkgExports) {
+  return Object.entries(pkgExports)
+    .filter(([key]) => key.startsWith("./widgets/") && !key.endsWith(".css"))
+    .map(([, target]) => typeof target === "string" ? target : target?.source ?? (typeof target?.default === "string" ? target.default : undefined))
+    .filter(path => typeof path === "string" && !path.includes("*") && /\.[cm]?[jt]sx?$/.test(path))
+    .map(path => path.replace(/^\.\//, ""))
+    .filter((path, index, all) => all.indexOf(path) === index)
+}
+
+/** Files that the analyzer never reads: declarations, tests, build output, dependencies and generated catalogs. */
+const analyzerExclude = ["**/*.d.ts", "**/*.test.*", "**/node_modules/**", "**/dist/**", "**/localization/**", "**/generated/**", "**/tests/**"]
+
+/**
+ * The globs for the analyzer: the folder that holds each widget source, or the file itself at the
+ * package root. The analyzer reads only the sources and what they import from the same folder,
+ * never `dist/` chunks or generated translation catalogs.
+ */
+export function analyzerGlobs(sources) {
+  return [...new Set(sources.map(path => path.includes("/") ? `${path.split("/")[0]}/**/*.{js,ts,tsx}` : path))]
+}
+
+/** A plugin of the manifest analyzer: from the installed package, or else downloaded once. Undefined when neither works. */
+async function pluginScript(tempPath) {
+  try {
+    const url = import.meta.resolve("@wc-toolkit/cem-inheritance")
+    return `import {cemInheritancePlugin} from ${JSON.stringify(url)}\nexport default {plugins: [cemInheritancePlugin()]}\n`
+  }
+  catch {}
+  try {
+    // Not installed: fetch the bundled plugins as before. This needs a network connection.
+    const download = async url => {
+      const response = await fetch(url)
+      if(!response.ok) throw new Error(`${response.status} for ${url}`)
+      return response.text()
+    }
+    const jsdoctags = await download("https://cdn.jsdelivr.net/npm/@wc-toolkit/jsdoc-tags@1.1.0")
+    const inheritance = (await download("https://cdn.jsdelivr.net/npm/@wc-toolkit/cem-inheritance@1.2.2")).replace(`@wc-toolkit/jsdoc-tags`, `./jsdoctags.js`)
+    await fs.writeFile(join(tempPath, "jsdoctags.js"), jsdoctags)
+    await fs.writeFile(join(tempPath, "inheritance.js"), inheritance)
+    return `import {cemInheritancePlugin} from "./inheritance.js"\nexport default {plugins: [cemInheritancePlugin()]}\n`
+  }
+  catch(error) {
+    console.warn(`Could not load the inheritance plugin (${error.message}). Continuing without it: members of base classes are not copied into the manifest. Add @wc-toolkit/cem-inheritance to the dependencies of @webwriter/build to avoid the download.`)
+  }
+}
+
 async function generateManifest() {
   console.log("Generating custom elements manifest")
   const pkg = JSON.parse(await fs.readFile("package.json", "utf8"))
-  const pkgExports = pkg?.exports ?? {}
-  const widgetPaths = Object.keys(pkgExports).filter(k => k.startsWith("./widgets/")).map(k => pkgExports[k]?.source).filter(p => p)
-  const widgetPathsBare = widgetPaths.map(p => p.startsWith("./")? p.slice(2): p)
-  // const globsPart = widgetPaths.length? `--globs ${widgetPaths.map(p => `"${p}"`).join(" ")}`: ""
+  const sources = widgetSources(pkg?.exports ?? {})
   const tempPath = await fs.mkdtemp(join(tmpdir(), "wwbuild-"))
-  let jsdoctagsScript = (await (await fetch("https://cdn.jsdelivr.net/npm/@wc-toolkit/jsdoc-tags@1.1.0")).text());
-  await fs.writeFile(join(tempPath, "jsdoctags.js"), jsdoctagsScript)
-  let inheritanceScript = (await (await fetch("https://cdn.jsdelivr.net/npm/@wc-toolkit/cem-inheritance@1.2.2")).text());
-  inheritanceScript = inheritanceScript.replace(`@wc-toolkit/jsdoc-tags`, `./jsdoctags.js`)
-  await fs.writeFile(join(tempPath, "inheritance.js"), inheritanceScript)
-  const configScript = `
-    import {cemInheritancePlugin} from "./inheritance.js"
-    export default {plugins: [cemInheritancePlugin()]}
-  `
-  const configPath = join(tempPath, "custom-elements-manifest.config.mjs")
-  await fs.writeFile(configPath, configScript)
-  const {stdout, stderr} = await exec(`npx @custom-elements-manifest/analyzer analyze --litelement --config "${configPath}"`)
-  stderr? console.error(stderr): console.log(stdout)
   try {
-    const cem = JSON.parse(await fs.readFile("custom-elements.json", "utf8"))
-    cem.modules = cem.modules.filter(mod => widgetPathsBare.includes(mod.path))
-    await fs.writeFile("custom-elements.json", JSON.stringify(cem, undefined, 2))
+    const configPath = join(tempPath, "custom-elements-manifest.config.mjs")
+    await fs.writeFile(configPath, await pluginScript(tempPath) ?? "export default {}\n")
+    // The analyzer is a dependency of this package, so it runs from there and needs no download.
+    const analyzer = createRequire(import.meta.url).resolve("@custom-elements-manifest/analyzer/cem.js")
+    const globs = sources.length ? analyzerGlobs(sources) : ["**/*.{js,ts,tsx}"]
+    const {stdout, stderr} = await execFile(process.execPath, [analyzer, "analyze", "--litelement", "--config", configPath, "--globs", ...globs, "--exclude", ...analyzerExclude], {maxBuffer: 64 * 1024 * 1024})
+    stderr? console.error(stderr): console.log(stdout)
   }
-  catch(err) {
-    console.error(err)
+  finally {
+    await fs.rm(tempPath, {recursive: true, force: true})
+  }
+  if(sources.length) {
+    // Keep only the widget modules; a failure here must not leave an unfiltered manifest.
+    const cem = JSON.parse(await fs.readFile("custom-elements.json", "utf8"))
+    cem.modules = cem.modules.filter(mod => sources.includes(mod.path))
+    await fs.writeFile("custom-elements.json", JSON.stringify(cem, undefined, 2))
   }
   console.log("Updating package.json")
   pkg.customElements = "custom-elements.json"

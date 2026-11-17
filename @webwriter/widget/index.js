@@ -1,15 +1,52 @@
+// shapes.ts
+var isNumber = (value) => typeof value === "number" && Number.isFinite(value);
+var isString = (value) => typeof value === "string";
+var isBoolean = (value) => typeof value === "boolean";
+var isSeries = (value) => Array.isArray(value) && value.every(isNumber);
+var isTable = (value) => {
+  if (!value || typeof value !== "object") return false;
+  const { columns, rows } = value;
+  return Array.isArray(columns) && columns.every(isString) && Array.isArray(rows) && rows.every((row) => Array.isArray(row) && row.every((cell) => cell === null || isString(cell) || isNumber(cell)));
+};
+var guards = { number: isNumber, string: isString, boolean: isBoolean, series: isSeries, table: isTable };
+function hasShape(shape, value) {
+  return Object.hasOwn(guards, shape) && guards[shape](value);
+}
+function effectAccepts(effect, shape) {
+  const { accepts } = effect;
+  if (!Array.isArray(accepts) || !accepts.length) return true;
+  return typeof shape === "string" && accepts.includes(shape);
+}
+
 // index.ts
 var DECLARED_TEXTS = ["label", "description", "placeholder", "confirm", "disabledReason"];
+var DECLARED_FLAGS = ["hidden", "disabled", "readOnly"];
+var FLAG_ON_ERROR = { hidden: false, disabled: true, readOnly: true };
 var DECLARED_LISTS = ["options", "children"];
 function isComputed(entry) {
   if (!entry || typeof entry !== "object") return false;
   const fields = entry;
-  return DECLARED_TEXTS.some((key) => typeof fields[key] === "function") || DECLARED_LISTS.some((key) => Array.isArray(fields[key]) && fields[key].some(isComputed));
+  return DECLARED_TEXTS.some((key) => typeof fields[key] === "function") || DECLARED_FLAGS.some((key) => typeof fields[key] === "function") || DECLARED_LISTS.some((key) => Array.isArray(fields[key]) && fields[key].some(isComputed));
 }
 function resolveEntry(widget, entry) {
   if (!isComputed(entry)) return entry;
   const resolved = { ...entry };
-  for (const key of DECLARED_TEXTS) if (typeof resolved[key] === "function") resolved[key] = resolved[key](widget);
+  for (const key of DECLARED_TEXTS) if (typeof resolved[key] === "function") {
+    try {
+      resolved[key] = resolved[key](widget);
+    } catch {
+      resolved[key] = void 0;
+    }
+  }
+  for (const key of DECLARED_FLAGS) if (typeof resolved[key] === "function") {
+    let answer;
+    try {
+      answer = resolved[key](widget);
+    } catch {
+      answer = FLAG_ON_ERROR[key];
+    }
+    resolved[key] = answer === void 0 ? void 0 : !!answer;
+  }
   for (const key of DECLARED_LISTS) if (Array.isArray(resolved[key])) resolved[key] = resolved[key].map((choice) => resolveEntry(widget, choice));
   return resolved;
 }
@@ -345,8 +382,15 @@ function withWidgetRuntime(Base) {
 export {
   WidgetRuntime,
   assetURL,
+  effectAccepts,
   hasComputedDeclarations,
+  hasShape,
+  isBoolean,
   isDataBlockType,
+  isNumber,
+  isSeries,
+  isString,
+  isTable,
   resolveDeclarations,
   widgetLanguage,
   widgetRuntimeAttributes,

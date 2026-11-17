@@ -52,6 +52,11 @@
       "types": "./help.d.ts",
       "default": "./help.js"
     },
+    "./print": {
+      "source": "./print.ts",
+      "types": "./print.d.ts",
+      "default": "./print.js"
+    },
     "./scene": {
       "source": "./scene.ts",
       "types": "./scene.d.ts",

@@ -37,6 +37,10 @@
       "types": "./help.d.ts",
       "default": "./help.js"
     },
+    "./print": {
+      "types": "./print.d.ts",
+      "default": "./print.js"
+    },
     "./scene": {
       "types": "./scene.d.ts",
       "default": "./scene.js"
@@ -79,6 +83,8 @@
     "viewport.d.ts",
     "help.js",
     "help.d.ts",
+    "print.js",
+    "print.d.ts",
     "scene.js",
     "scene.d.ts",
     "settings.js",

@@ -1,5 +1,6 @@
 import type { LocalizedText } from "./options";
 export type * from "./options";
+export * from "./shapes";
 /**
  * A text of an editor declaration as a widget writes it: fixed, a map by
  * language, or a function that is asked with the widget, for a text from the
@@ -7,6 +8,12 @@ export type * from "./options";
  * `(widget: {msg: MsgFn}) => widget.msg("Reset")`.
  */
 export type DeclaredText = LocalizedText | ((widget: never) => LocalizedText | undefined);
+/**
+ * A yes/no field of an editor declaration as a widget writes it: fixed, or a
+ * function that is asked with the widget, for `hidden`, `disabled` and `readOnly`.
+ */
+export type DeclaredFlag = boolean | ((widget: never) => boolean | undefined);
+type DeclaredFlagKey = "hidden" | "disabled" | "readOnly";
 type DeclaredTextKey = "label" | "description" | "placeholder" | "confirm" | "disabledReason";
 type DeclaredChoice = {
     value?: string;
@@ -16,13 +23,14 @@ type DeclaredChoice = {
 };
 /** An option, action, option group or permission as a widget declares it: every text may be a function of the widget. */
 export type Declared<T> = T extends unknown ? {
-    [K in keyof T]: K extends DeclaredTextKey ? DeclaredText | Extract<T[K], undefined> : K extends "options" ? DeclaredChoice[] | Extract<T[K], undefined> : T[K];
+    [K in keyof T]: K extends DeclaredTextKey ? DeclaredText | Extract<T[K], undefined> : K extends DeclaredFlagKey ? DeclaredFlag | Extract<T[K], undefined> : K extends "options" ? DeclaredChoice[] | Extract<T[K], undefined> : T[K];
 } : never;
-/** Whether a declaration map has a text that is a function, which the editor cannot read. */
+/** Whether a declaration map has a text or a `hidden`, `disabled` or `readOnly` flag that is a function, which the editor cannot read. */
 export declare function hasComputedDeclarations(declarations: unknown): boolean;
 /**
- * The declarations as the editor reads them: every text that is a function is
- * replaced by its answer for the widget. A map without such a text is returned as it is.
+ * The declarations as the editor reads them: every text and every `hidden`,
+ * `disabled` and `readOnly` flag that is a function is replaced by its answer
+ * for the widget. A flag function that throws counts as `disabled` or `readOnly`, never as `hidden`. A map without such a text is returned as it is.
  */
 export declare function resolveDeclarations<T>(widget: Element, declarations: Record<string, Declared<T>> | undefined): Record<string, T> | undefined;
 /** Resolve a declared asset to its embedded URL in Offline HTML. */

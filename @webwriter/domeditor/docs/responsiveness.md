@@ -130,7 +130,7 @@ A widget inside a structural container can use the same opt-in. Structural conta
 :host { --ww-widget-max: none; }
 ```
 
-The theme expresses the widget maximum through `--ww-widget-max`, which defaults to the prose measure. Setting it to `none` removes that upper bound, so content can still remain smaller and respond to its allocation. A host's own styles should use `max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem))` to participate in the same sizing contract. Use logical properties consistently; `width` and `max-width` are the horizontal equivalents when physical properties are required.
+The theme expresses the widget maximum through `--ww-widget-max`, which defaults to the prose measure. The editor's widget sizing rule is part of the document and wins over a `max-inline-size` in the widget's `:host` rule, so `--ww-widget-max` is the way for a widget to ask for another maximum; see [Maximum width](widgets/guides/responsiveness.md#maximum-width) in the widget guides. Setting it to `none` removes that upper bound, so content can still remain smaller and respond to its allocation. A host's own styles should use `max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem))` to participate in the same sizing contract. Use logical properties consistently; `width` and `max-width` are the horizontal equivalents when physical properties are required.
 
 ## Resize during transformations
 

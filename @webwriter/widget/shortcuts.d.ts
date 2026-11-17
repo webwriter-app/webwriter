@@ -9,10 +9,21 @@ export { shortcutsMessages, type ShortcutsMessages } from "./messages/shortcuts/
  * the fields of that declaration that decide whether a key may run the action.
  */
 export type ShortcutAction = Readonly<Pick<ActionDeclaration, "disabled" | "hidden" | "confirm" | "input">> & {
-    /** A key such as `"Delete"`, `"Space"` or `"Mod+D"`, or a list. `Mod` is ⌘ on Apple devices and Ctrl elsewhere. */
-    readonly shortcut?: string | readonly string[];
+    /**
+     * A key such as `"Delete"`, `"Space"` or `"Mod+D"`, or a list. `Mod` is ⌘ on Apple devices and Ctrl elsewhere.
+     * A key that also works while the reader types in a text field is written `{key: "Mod+Enter", inText: true}`.
+     */
+    readonly shortcut?: ShortcutKey | readonly ShortcutKey[];
     /** The permission that allows the key for a reader. `"edit"` keeps it to authors. */
     readonly can?: string;
+};
+/**
+ * One key of an action: the key, or an object that opts the key in to run from text entry.
+ * Without `inText` a key typed in a field, a text role or an editable region is the field's.
+ */
+export type ShortcutKey = string | {
+    readonly key: string;
+    readonly inText?: boolean;
 };
 /** Options of `ShortcutsCore`. */
 export type ShortcutsOptions = CoreOptions & {

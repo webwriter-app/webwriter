@@ -1,6 +1,6 @@
-import { SceneCore, type Point, type PortEnd, type Rect, type SceneItem, type ScenePath, type SceneOptions, type TextFont, type TextSize } from "@webwriter/widget/scene";
+import { SceneCore, type ImageOptions, type Point, type PortEnd, type Rect, type SceneItem, type ScenePath, type SceneOptions, type SnapshotOptions, type TextFont, type TextSize } from "@webwriter/widget/scene";
 import { CoreController, type BindingOptions, type CoreHost } from "./base.js";
-export type { ActivateDetail, BackgroundDetail, ConnectDetail, ConnectingDetail, ContextDetail, DisconnectDetail, HitDetail, HitKind, MoveDetail, MovingDetail, PointerPoint, PortEnd, ReconnectDetail, ResizeDetail, ResizingDetail, SceneErrorDetail, ScenePermissions, SelectDetail, TextFont, TextSize, UndoHost, } from "@webwriter/widget/scene";
+export type { ActivateDetail, BackgroundDetail, ConnectDetail, ConnectingDetail, ContextDetail, DisconnectDetail, HitDetail, HitKind, MoveDetail, MovingDetail, PointerPoint, PortEnd, ReconnectDetail, ResizeDetail, ResizingDetail, SceneErrorDetail, ScenePermissions, SelectDetail, ImageOptions, SnapshotOptions, TextFont, TextSize, UndoHost, } from "@webwriter/widget/scene";
 /**
  * Lit binding of Scene. The scene is written in the template with the elements
  * from `sceneElements`; this controller refreshes it after every render and
@@ -35,6 +35,12 @@ export declare class SceneController extends CoreController<SceneCore> {
     };
     /** The paths that end at a port (`node:port`) or at a whole node (`node`): how many wires a port has. */
     wiresAt(reference: string): ScenePath[];
+    /** The first scene as a standalone SVG document (a string), the same for every renderer; null for an empty scene. Texts keep their font, `ww-node` content is a `<foreignObject>`. */
+    toSVG(options?: SnapshotOptions): string | null;
+    /** The first scene as a picture: PNG by default, `scale` pixels per scene pixel (2 by default), `type` a MIME type such as `image/jpeg`. Rejects for an empty scene. */
+    toImage(options?: ImageOptions): Promise<Blob>;
+    /** True while the document is printed (`beforeprint` to `afterprint`, the `print` media query, or the editor's `ww-beforeprint` class on the widget). A scene prints at print resolution by itself; this is for a widget that adapts further. */
+    get printing(): boolean;
     /** Reads every computed style again, for a change of style that no observer sees, such as a new style rule. */
     restyle(): void;
     /** Measures every port again, for ports that moved without any change of the document. */

@@ -1,8 +1,9 @@
 import { LitElement, type PropertyDeclaration } from "lit";
 import type * as WidgetOptions from "@webwriter/widget";
-import { WidgetRuntime, type WidgetDataContext, type Declared, type LocalizedText, type ActionDeclaration, type OptionGroupDeclaration, type PermissionDeclaration } from "@webwriter/widget";
-export { isDataBlockType, resolveDeclarations, type Declared, type DeclaredText, type WidgetDataContext, type WidgetDataMode, type LocalizedText, type OptionAvailability, type OptionGroupDeclaration, type PermissionDeclaration, type SelectOptionChoice, type ActionDeclaration } from "@webwriter/widget";
+import { WidgetRuntime, type WidgetDataContext, type Declared, type LocalizedText, type ActionDeclaration, type OptionGroupDeclaration, type PermissionDeclaration, type ConvertFromDeclarations, type ConvertToDeclarations } from "@webwriter/widget";
+export { isDataBlockType, resolveDeclarations, type Declared, type DeclaredFlag, type DeclaredText, type WidgetDataContext, type WidgetDataMode, type LocalizedText, type OptionAvailability, type OptionGroupDeclaration, type PermissionDeclaration, type SelectOptionChoice, type ActionDeclaration, type ConvertFromDeclarations, type ConvertToDeclarations, type FileExtensionKey, type MediaTypeKey, type FileFormatKey, type ElementImportHandler, type FileImportHandler, type FileImportResult, type ElementExportHandler, type FileExportHandler } from "@webwriter/widget";
 export * from "@lit-labs/signals";
+export { isNumber, isString, isBoolean, isSeries, isTable, hasShape, effectAccepts, type Table, type Series, type SignalShape, type SignalShapes, type SignalValue, type SignalDeclaration, type EffectDeclaration, type ReadableSignal } from "@webwriter/widget";
 export { WidgetDrawer, type WidgetStorageDestination } from "./widget-drawer";
 export { renderWidgetOptionField, renderWidgetOptions } from "./widget-option-controls";
 export { widgetOptionControlStyles } from "./widget-option-controls.styles";
@@ -47,7 +48,15 @@ export interface LitElementWw {
     get actions(): Record<string, ActionDeclaration> | undefined;
     /** Per-instance editor declarations, including empty maps, override static maps. */
     get permissions(): Record<string, PermissionDeclaration> | undefined;
+    /** The signals this widget publishes by name. Publish read-only `computed` signals and keep each instance stable. */
+    get signals(): Record<string, WidgetOptions.ReadableSignal<any>> | undefined;
+    /** Per-instance effect declarations override the static map. */
+    get effects(): Record<string, WidgetOptions.EffectDeclaration> | undefined;
     get optionGroups(): Record<string, OptionGroupDeclaration> | undefined;
+    /** Per-instance conversions into the widget. They take precedence over the static map. */
+    get convertFrom(): ConvertFromDeclarations<this> | undefined;
+    /** Per-instance conversions out of the widget. They take precedence over the static map. */
+    get convertTo(): ConvertToDeclarations<this> | undefined;
 }
 declare const LitElementWw_base: typeof LitElement & (new (...args: any[]) => import("@lit-labs/signals").SignalWatcherApi);
 /** Optional WebWriter conveniences for Lit widgets. The authored DOM remains
@@ -58,7 +67,15 @@ export declare class LitElementWw extends LitElementWw_base {
     static readonly options: Record<string, Declared<OptionDeclaration>>;
     static readonly actions: Record<string, Declared<ActionDeclaration>>;
     static readonly permissions?: Record<string, Declared<PermissionDeclaration>>;
+    /** What the widget says about each published signal, by name: its value shape, label and description. */
+    static readonly signals?: Record<string, WidgetOptions.SignalDeclaration>;
+    /** The effect attributes the widget can receive, each with the shapes it accepts. */
+    static readonly effects?: Record<string, WidgetOptions.EffectDeclaration>;
     static readonly optionGroups: Record<string, Declared<OptionGroupDeclaration>>;
+    /** What the widget accepts: a file extension or media type for a file, any other key is an HTML tag. */
+    static readonly convertFrom?: ConvertFromDeclarations;
+    /** What the widget produces: a file extension or media type for a file, any other key is an HTML tag. */
+    static readonly convertTo?: ConvertToDeclarations;
     static readonly dataType: string | undefined;
     protected localize?: {
         getLocale: () => string;

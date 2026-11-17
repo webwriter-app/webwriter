@@ -50,6 +50,26 @@ refreshOptions() {
 }
 ```
 
+## Function values
+
+A static declaration stays the same for every widget of the class. To make an option or action depend on the state of one widget, give `hidden`, `disabled`, `readOnly`, or `disabledReason` as a function. The authoring tool calls it with the widget as the only argument and uses the answer as if it were written in the declaration. The function returns a boolean, or for `disabledReason` a `LocalizedText`. Texts such as `label` accept functions in the same way. The libraries `@webwriter/lit`, `@webwriter/react`, `@webwriter/vue`, `@webwriter/svelte` and `@webwriter/angular` answer them on the instance. For a plain custom element the authoring tool calls the functions itself.
+
+```js
+static actions = {
+  deleteSnapshots: {
+    label: {_: "Delete all snapshots"},
+    intent: "danger",
+    hidden: widget => widget.snapshots.length === 0,
+    disabled: widget => widget.running,
+    disabledReason: {_: "Stop the simulation first."},
+  },
+}
+```
+
+The authoring tool reads the functions when it opens the drawer and before it runs an action or writes an option. It does not watch what the function reads. When the answer changes, dispatch the bubbling `optionschange` event from the widget host, as for a getter. The authoring tool then reads the declarations again and updates the drawer.
+
+A function that throws counts as `disabled: true` or `readOnly: true`, and as `hidden: false`. The control stays visible but refuses the change. Hidden and disabled state controls the interface only; use participant [permissions](#element-permissions) for editing rights.
+
 ## Option declaration
 
 | Field | Type | Default / meaning |
@@ -59,8 +79,8 @@ refreshOptions() {
 | `label` | `LocalizedText` | Option name in title case. |
 | `description`, `placeholder` | `LocalizedText` | No description or placeholder. |
 | `group` | `string` | No group. Matches an ID in `optionGroups`. Options and actions can use the same group. |
-| `hidden`, `disabled`, `readOnly` | `boolean` | `false`. These fields control visibility and access to the control. |
-| `disabledReason` | `LocalizedText` | No explanation shown for a disabled option. |
+| `hidden`, `disabled`, `readOnly` | `boolean` or [function of the widget](#function-values) | `false`. These fields control visibility and access to the control. |
+| `disabledReason` | `LocalizedText` or [function of the widget](#function-values) | No explanation shown for a disabled option. |
 | `control` | `"checkbox"`, `"switch"`, `"select"`, `"radio"`, `"segmented"`, `"input"`, `"range"`, `"duration"`, or `"tree"` | The default depends on the option type. This field selects the control and keeps the value type the same. `radio` and `segmented` show one choice. See [Specialized options](#specialized-options) for `duration` and `tree`. |
 | `unit` | `string` | No unit label. The label applies to the display only. |
 | `steps` | `number[]` | No list of values. Use this field for a number range with unequal intervals. |
@@ -185,11 +205,11 @@ class QuizWidget extends LitElementWw {
 
 A selected permission adds an empty attribute to the widget. Clearing the permission removes the attribute. The default attribute name comes from the matching Lit property. If there is no Lit declaration, the authoring tool uses the lowercase property name. If the declaration specifies `attribute`, use the same attribute in the widget. Each permission requires an attribute.
 
-A permission can have a `label` and `description` as `LocalizedText`. It can also have `hidden`, `disabled`, `disabledReason`, and `readOnly`. The widget reads the boolean to select which interactions to show. Manage document editing rights and network access separately.
+A permission can have a `label` and `description` as `LocalizedText`. It can also have `hidden`, `disabled`, `disabledReason`, and `readOnly`, which may be [functions of the widget](#function-values). The widget reads the boolean to select which interactions to show. Manage document editing rights and network access separately.
 
 ## Action declaration
 
-Actions support `label` and `description` as `LocalizedText`. The default label is the method name in title case. The `group` field assigns the action to an option group. The `hidden` and `disabled` fields control availability. The `disabledReason` field supplies the tooltip for a disabled action. Set `icon` to a supported ribbon icon name.
+Actions support `label` and `description` as `LocalizedText`. The default label is the method name in title case. The `group` field assigns the action to an option group. The `hidden` and `disabled` fields control availability and may be [functions of the widget](#function-values). The `disabledReason` field supplies the tooltip for a disabled action. Set `icon` to a supported ribbon icon name.
 
 `intent` is `"default"` or `"danger"`. `confirm` supplies a `LocalizedText` prompt before the action runs. The optional `input` declaration opens a file chooser.
 

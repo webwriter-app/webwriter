@@ -1,7 +1,7 @@
 import {clearEditorMarkerClasses, copyEditorArtifactState, editorWidgetLookup, isEditorOwnedAttribute, setEditorWidgetLookup} from "./editor-artifacts"
 import {isDistributionPI} from "./distribution-dom"
 export {createAnchorPositioner, type AnchorPositioner} from "./anchor-positioning.js"
-export {authoredClassValue, clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, isEditorOwnedAttribute, removeEditorMarker} from "./editor-artifacts"
+export {authoredClassValue, clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, isEditorOwnedAttribute, isEditorOwnedClass, removeEditorMarker} from "./editor-artifacts"
 import type { Schema } from "./schema"
 import {isMarkElement} from "./marks"
 import {mediaElementSelector} from "./media"

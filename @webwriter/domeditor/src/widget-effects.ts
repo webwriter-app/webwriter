@@ -1,9 +1,17 @@
 import {HashType, TokenType, tokenize} from "@csstools/css-tokenizer"
 
 export type WidgetSignal = {get(): unknown}
+/** What a published signal says about itself. `shape` names its value, for example `"table"`. */
+export type WidgetSignalDeclaration = {
+  shape?: string
+  label?: string | Record<string, string>
+  description?: string | Record<string, string>
+}
 export type WidgetEffectDeclaration = {
   label?: string | Record<string, string>
   description?: string | Record<string, string>
+  /** The shapes of signals this effect can read. Without it, every signal is accepted. */
+  accepts?: readonly string[]
   connect(this: Element, source: WidgetSignal, lifetime: AbortSignal): void
 }
 
@@ -26,6 +34,31 @@ export function widgetEffectDeclarations(widget: WidgetHost, registry?: CustomEl
   }
   catch { return new Map<string, WidgetEffectDeclaration>() }
 }
+
+/** The static `signals` map of the widget's class: one optional declaration for each published signal name. */
+export function widgetSignalDeclarations(widget: WidgetHost, registry?: CustomElementRegistry) {
+  try {
+    const constructor = registry?.get(widget.localName) ?? widget.constructor
+    const declarations = (constructor as {signals?: unknown}).signals
+    if(!declarations || typeof declarations !== "object") return new Map<string, WidgetSignalDeclaration>()
+    return new Map(Object.entries(declarations).flatMap(([name, declaration]) => {
+      return declaration && typeof declaration === "object" ? [[name, declaration as WidgetSignalDeclaration]] : []
+    }))
+  }
+  catch { return new Map<string, WidgetSignalDeclaration>() }
+}
+
+/** Whether an effect reads a signal of this declared shape. An effect without `accepts` reads every signal.
+ * An effect that lists shapes reads only signals that declare one of them. */
+export function effectAccepts(effect: Pick<WidgetEffectDeclaration, "accepts">, shape: string | undefined) {
+  const accepts = effect.accepts
+  if(!Array.isArray(accepts) || !accepts.length) return true
+  return typeof shape === "string" && accepts.includes(shape)
+}
+
+const plainText = (text: unknown) => typeof text === "string" ? text
+  : text && typeof text === "object" ? (text as Record<string, unknown>).en as string ?? Object.values(text).find(value => typeof value === "string") as string | undefined
+  : undefined
 
 export function widgetSignals(widget: WidgetHost) {
   try {
@@ -83,11 +116,11 @@ function effectGraph(root: HTMLElement, supports: (element: Element) => boolean,
     const id = element.getAttribute("id")!
     counts.set(id, (counts.get(id) ?? 0) + 1)
   }
-  const sources = new Map<string, {element: Element, signals: Map<string, WidgetSignal>}>()
+  const sources = new Map<string, {element: Element, signals: Map<string, WidgetSignal>, declarations: Map<string, WidgetSignalDeclaration>}>()
   for(const host of hosts) {
     onHost?.(host)
     const id = host.getAttribute("id")
-    if(id && counts.get(id) === 1) sources.set(id, {element: host, signals: widgetSignals(host)})
+    if(id && counts.get(id) === 1) sources.set(id, {element: host, signals: widgetSignals(host), declarations: widgetSignalDeclarations(host)})
   }
   const links: EffectLink[] = []
   const statuses = new Map<Element, Map<string, EffectStatus>>()
@@ -106,6 +139,9 @@ function effectGraph(root: HTMLElement, supports: (element: Element) => boolean,
       const signal = source && reference && source.signals.get(reference.name)
       if(!reference) mark(subscriber, attribute, {message: "Use a selector like #sensor[celsius]."})
       else if(!source || !signal) mark(subscriber, attribute, {message: `Signal unavailable: ${value}`})
+      else if(!effectAccepts(effect, source.declarations.get(reference.name)?.shape)) {
+        mark(subscriber, attribute, {message: `Signal shape not accepted: ${value}. Expected ${effect.accepts!.join(", ")}.`})
+      }
       else links.push({source: source.element, signal, subscriber, attribute, connect: effect.connect})
     }
   }
@@ -168,11 +204,15 @@ function widgetEffectGraph(root: HTMLElement, supports: (element: Element) => bo
 export function inspectWidgetEffects(root: HTMLElement, widget: Element, supports: (element: Element) => boolean) {
   const {hosts, sources, statuses} = widgetEffectGraph(root, supports)
   if(!hosts.includes(widget)) return
-  const choices = [...sources].flatMap(([id, {element, signals}]) => {
+  /** The sources an effect can select: all, or those whose declared shape the effect accepts. */
+  const choices = (effect?: Pick<WidgetEffectDeclaration, "accepts">) => [...sources].flatMap(([id, {element, signals, declarations}]) => {
     const label = element.getAttribute("aria-label") || element.getAttribute("title") || element.localName
-    return [...signals.keys()].map(name => {
+    return [...signals.keys()].flatMap(name => {
+      const declaration = declarations.get(name)
+      if(effect && !effectAccepts(effect, declaration?.shape)) return []
       const value = widgetEffectReference(id, name)
-      return {value, label: `${label} ${value}`}
+      const signalLabel = plainText(declaration?.label)
+      return [{value, label: signalLabel ? `${label} ${signalLabel} ${value}` : `${label} ${value}`}]
     })
   })
   return {choices, statuses: statuses.get(widget)}

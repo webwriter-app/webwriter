@@ -2,12 +2,17 @@ import {LitElement, adoptStyles, type PropertyDeclaration} from "lit"
 import {SignalWatcher} from "@lit-labs/signals"
 import type * as WidgetOptions from "@webwriter/widget"
 import {WidgetRuntime, hasComputedDeclarations, resolveDeclarations, widgetLanguage, widgetRuntimeAttributes, type WidgetDataContext,
-  type Declared, type LocalizedText, type ActionDeclaration, type OptionGroupDeclaration, type PermissionDeclaration} from "@webwriter/widget"
+  type Declared, type LocalizedText, type ActionDeclaration, type OptionGroupDeclaration, type PermissionDeclaration,
+  type ConvertFromDeclarations, type ConvertToDeclarations} from "@webwriter/widget"
 
-export {isDataBlockType, resolveDeclarations, type Declared, type DeclaredText, type WidgetDataContext, type WidgetDataMode, type LocalizedText,
-  type OptionAvailability, type OptionGroupDeclaration, type PermissionDeclaration, type SelectOptionChoice, type ActionDeclaration} from "@webwriter/widget"
+export {isDataBlockType, resolveDeclarations, type Declared, type DeclaredFlag, type DeclaredText, type WidgetDataContext, type WidgetDataMode, type LocalizedText,
+  type OptionAvailability, type OptionGroupDeclaration, type PermissionDeclaration, type SelectOptionChoice, type ActionDeclaration,
+  type ConvertFromDeclarations, type ConvertToDeclarations, type FileExtensionKey, type MediaTypeKey, type FileFormatKey,
+  type ElementImportHandler, type FileImportHandler, type FileImportResult, type ElementExportHandler, type FileExportHandler} from "@webwriter/widget"
 
 export * from "@lit-labs/signals"
+export {isNumber, isString, isBoolean, isSeries, isTable, hasShape, effectAccepts, type Table, type Series, type SignalShape, type SignalShapes,
+  type SignalValue, type SignalDeclaration, type EffectDeclaration, type ReadableSignal} from "@webwriter/widget"
 
 export {WidgetDrawer, type WidgetStorageDestination} from "./widget-drawer"
 export {renderWidgetOptionField, renderWidgetOptions} from "./widget-option-controls"
@@ -58,7 +63,15 @@ export interface LitElementWw {
   get actions(): Record<string, ActionDeclaration> | undefined
   /** Per-instance editor declarations, including empty maps, override static maps. */
   get permissions(): Record<string, PermissionDeclaration> | undefined
+  /** The signals this widget publishes by name. Publish read-only `computed` signals and keep each instance stable. */
+  get signals(): Record<string, WidgetOptions.ReadableSignal<any>> | undefined
+  /** Per-instance effect declarations override the static map. */
+  get effects(): Record<string, WidgetOptions.EffectDeclaration> | undefined
   get optionGroups(): Record<string, OptionGroupDeclaration> | undefined
+  /** Per-instance conversions into the widget. They take precedence over the static map. */
+  get convertFrom(): ConvertFromDeclarations<this> | undefined
+  /** Per-instance conversions out of the widget. They take precedence over the static map. */
+  get convertTo(): ConvertToDeclarations<this> | undefined
 }
 
 const warnedDeclarations = new WeakMap<Function, Set<string>>()
@@ -106,7 +119,15 @@ export class LitElementWw extends SignalWatcher(LitElement) {
   static readonly options: Record<string, Declared<OptionDeclaration>> = {}
   static readonly actions: Record<string, Declared<ActionDeclaration>> = {}
   declare static readonly permissions?: Record<string, Declared<PermissionDeclaration>>
+  /** What the widget says about each published signal, by name: its value shape, label and description. */
+  declare static readonly signals?: Record<string, WidgetOptions.SignalDeclaration>
+  /** The effect attributes the widget can receive, each with the shapes it accepts. */
+  declare static readonly effects?: Record<string, WidgetOptions.EffectDeclaration>
   static readonly optionGroups: Record<string, Declared<OptionGroupDeclaration>> = {}
+  /** What the widget accepts: a file extension or media type for a file, any other key is an HTML tag. */
+  declare static readonly convertFrom?: ConvertFromDeclarations
+  /** What the widget produces: a file extension or media type for a file, any other key is an HTML tag. */
+  declare static readonly convertTo?: ConvertToDeclarations
   static readonly dataType: string | undefined = undefined
 
   protected localize?: {getLocale: () => string, setLocale: (locale: string) => Promise<void>}

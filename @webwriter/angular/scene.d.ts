@@ -1,5 +1,5 @@
 import type {Signal} from "@angular/core"
-import type {Point, PortEnd, Rect, SceneCore, SceneItem, SceneOptions, ScenePath, TextFont, TextSize} from "@webwriter/widget/scene"
+import type {ImageOptions, Point, PortEnd, Rect, SceneCore, SceneItem, SceneOptions, ScenePath, SnapshotOptions, TextFont, TextSize} from "@webwriter/widget/scene"
 import type {BindingOptions, ModuleRef} from "./base.js"
 
 export type {
@@ -21,6 +21,8 @@ export type {
   SceneErrorDetail,
   ScenePermissions,
   SelectDetail,
+  ImageOptions,
+  SnapshotOptions,
   TextFont,
   TextSize,
   UndoHost,
@@ -49,6 +51,12 @@ export type SceneBinding = {
   endsOf(path: ScenePath): {from: PortEnd | null; to: PortEnd | null}
   /** The paths that end at a port (`node:port`) or at a whole node (`node`): how many wires a port has. */
   wiresAt(reference: string): ScenePath[]
+  /** The first scene as a standalone SVG document (a string), the same for every renderer; null for an empty scene. */
+  toSVG(options?: SnapshotOptions): string | null
+  /** The first scene as a picture: PNG by default, `scale` pixels per scene pixel (2 by default). Rejects for an empty scene. */
+  toImage(options?: ImageOptions): Promise<Blob>
+  /** True while the document is printed. */
+  readonly printing: boolean
   /** Reads every computed style again, for a change of style that no observer sees, such as a new style rule. */
   restyle(): void
   /** Measures every port again, for ports that moved without any change of the document. */

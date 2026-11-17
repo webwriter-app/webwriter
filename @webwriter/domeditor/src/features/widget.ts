@@ -7,6 +7,7 @@ import {emptyDistributionConfig, type DistributionConfig} from "../distribution.
 import {EditorFeature} from "."
 import {elementAttributeTargetId, isEditorOnlyElementAttribute, isUnsafeElementAttributeName, isUnsafeElementAttributeValue} from "../element-attributes"
 import {isWidgetDataContainer} from "../active-content"
+import {watchPrinting} from "../print-class.js"
 import {getDocumentRoot} from "../document-template"
 import {boardLayoutRole, slideLayoutRole} from "../document-layout"
 import {captionedFigureContent} from "../figure-layout.js"
@@ -45,6 +46,20 @@ const globalAttributeProperties = new Set(["lang", "dir", "title", "hidden", "id
 
 /** Time limit for asynchronous widget actions and file conversion preparation. */
 const widgetOperationTimeout = 10_000
+const conversionFailureMessage = "The selected element could not be converted."
+
+/**
+ * A conversion handler reports a bad input by throwing or rejecting. The author
+ * sees the message the widget chose, so it keeps its own text. A failure without
+ * a message (an empty Error, a thrown undefined) gets a generic one instead.
+ */
+function widgetFailure(error: unknown, fallback: string): Error {
+  const message = error instanceof Error ? error.message
+    : typeof error === "string" ? error
+    : typeof (error as {message?: unknown} | null)?.message === "string" ? (error as {message: string}).message : ""
+  if(error instanceof Error && message.trim()) return error
+  return new Error(message.trim() || fallback, {cause: error})
+}
 
 /** The runtime contract between the editor and installed widgets. */
 export class WidgetFeature extends EditorFeature {
@@ -63,6 +78,7 @@ export class WidgetFeature extends EditorFeature {
   #legacyOptions?: {widget: Element, panel: HTMLElement, popover: string | null}
   readonly #transactions = new Map<Element, () => void>()
   readonly #propertyUpdates = new Set<() => void>()
+  #stopPrinting?: () => void
 
   // Explicit host notifications cross the ordinary widget-interaction boundary.
   captureListeners = {
@@ -544,6 +560,9 @@ export class WidgetFeature extends EditorFeature {
       finally { end() }
       return true
     }
+    catch(error) {
+      throw widgetFailure(error, importing ? "The file could not be imported into the selected widget." : "The selected widget could not export this file.")
+    }
     finally {
       if(cancel) signal.removeEventListener("abort", cancel)
       clearTimeout(timer)
@@ -560,7 +579,9 @@ export class WidgetFeature extends EditorFeature {
     let detached: Element | DocumentFragment
     if(widget) {
       const method = widgetConversionMethod(element, widgetDeclarations(element, "convertTo")[target])
-      const output: unknown = method?.call(element)
+      let output: unknown
+      try { output = method?.call(element) }
+      catch(error) { throw widgetFailure(error, conversionFailureMessage) }
       if(!(output instanceof Element || output instanceof DocumentFragment) || output instanceof ShadowRoot
         || output.isConnected || output.parentNode) return false
       detached = output
@@ -572,7 +593,9 @@ export class WidgetFeature extends EditorFeature {
       const copy = clearEditorArtifacts(cloneInert(element, true), [], this.isWidget)
       const fragment = copy.ownerDocument!.createDocumentFragment()
       fragment.append(copy)
-      const result = method.call(replacement, fragment)
+      let result: unknown
+      try { result = method.call(replacement, fragment) }
+      catch(error) { throw widgetFailure(error, conversionFailureMessage) }
       if((result !== undefined && result !== true) || replacement.isConnected || replacement.parentNode) return false
       detached = replacement
     }
@@ -651,9 +674,12 @@ export class WidgetFeature extends EditorFeature {
         const problem = previous && validateWidgetEffect(document.body, widget, attribute, previous, this.isWidget)
         if(previous && !problem) this.#rejectedEffects.get(widget)?.delete(attribute)
         const description = problem || status?.message
+        // A saved link that the shape filter hides stays selectable, so the select shows it with its problem.
+        const available = choices(effect)
+        const listed = value && !available.some(choice => choice.value === value) ? [...available, {value, label: value}] : available
         options.push({
           ...widgetOptionState(attribute, {...effect, type: "select", control: "select", placeholder: "Disconnected"}, value, locale),
-          name: `${effectOptionPrefix}${attribute}`, attribute, choices,
+          name: `${effectOptionPrefix}${attribute}`, attribute, choices: listed,
           ...(description ? {description} : {}),
         })
       }
@@ -995,6 +1021,9 @@ export class WidgetFeature extends EditorFeature {
     this.#observer = new Observer(this.#handleMutations)
     this.#observer.observe(document.body, {childList: true, subtree: true, attributeOldValue: true, attributeFilter: ["contenteditable"]})
     this.refresh()
+    const view = document.defaultView
+    // Print preview and printing mark widgets with the runtime `ww-beforeprint` class.
+    if(view) this.#stopPrinting = watchPrinting(view, document.body, element => this.isWidget(element))
     this.#effects = mountWidgetEffects(document.body, {
       supports: this.isWidget,
       onChange: () => { if(this.#observingEffects) this.#queueOptionsRefresh() },
@@ -1009,6 +1038,8 @@ export class WidgetFeature extends EditorFeature {
     this.#closeLegacyOptions()
     this.#observer?.disconnect()
     this.#observer = null
+    this.#stopPrinting?.()
+    this.#stopPrinting = undefined
     this.#observingReferences = false
     this.#observingEffects = false
     this.#effects?.destroy()

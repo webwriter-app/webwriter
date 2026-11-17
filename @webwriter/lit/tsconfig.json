@@ -16,6 +16,7 @@
     "drag.ts",
     "viewport.ts",
     "help.ts",
+    "print.ts",
     "scene.ts",
     "settings.ts",
     "shortcuts.ts",

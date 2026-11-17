@@ -9,6 +9,7 @@ import {fileURLToPath, pathToFileURL} from 'node:url'
 import {JSDOM} from 'jsdom'
 import xliff2js from 'xliff/xliff2js'
 import {xliffFromUnits} from './localize.js'
+import {analyzerGlobs, widgetSources} from './document.js'
 
 const run = promisify(execFile)
 const buildScript = fileURLToPath(new URL('./build.js', import.meta.url))
@@ -144,6 +145,63 @@ test('shared dependency rewriting preserves import-shaped strings and parses rea
     assert.equal(module.template, samples[0])
     assert.equal(module.value, 42)
     assert.equal(module.exported, 42)
+  }
+  finally {await rm(directory, {recursive: true, force: true})}
+})
+
+
+test('fixture files of plain text formats import as strings, and inline: reads any file as text', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'webwriter-build-text-'))
+  try {
+    await mkdir(join(directory, 'src'))
+    await writeFile(join(directory, 'package.json'), JSON.stringify({name: 'text-fixture', type: 'module',
+      exports: {'./widgets/demo.*': {source: './src/demo.js', default: './dist/demo.*'}}}))
+    const fixtures = {'a.puml': '@startuml\nA -> B\n@enduml\n', 'b.mmd': 'graph TD\n  A-->B\n', 'c.gift': '::Q:: 1+1 {=2}\n', 'd.vtt': 'WEBVTT\n',
+      'e.fasta': '>seq\nACGT\n', 'f.txt': 'plain\n', 'g.dat': 'any file\n'}
+    for(const [name, text] of Object.entries(fixtures)) await writeFile(join(directory, 'src', name), text)
+    await writeFile(join(directory, 'src/demo.js'), [
+      ...Object.keys(fixtures).map((name, index) => name.endsWith('.dat') ? `import f${index} from "inline:./${name}";` : `import f${index} from "./${name}";`),
+      `export const all = [${Object.keys(fixtures).map((_, index) => `f${index}`).join(', ')}];`,
+    ].join('\n'))
+    await run(process.execPath, [buildScript], {cwd: directory})
+    const module = await import(pathToFileURL(join(directory, 'dist/demo.js')).href)
+    assert.deepEqual(module.all, Object.values(fixtures))
+  }
+  finally {await rm(directory, {recursive: true, force: true})}
+})
+
+test('the documentation analyzer reads only the folders of the widget sources', () => {
+  const sources = widgetSources({
+    './widgets/ww-a.*': {source: './src/widgets/ww-a.ts', default: './dist/widgets/ww-a.*'},
+    './widgets/ww-b.js': './widgets/ww-b.js',
+    './widgets/ww-b.css': './widgets/ww-b.css',
+    './widgets/ww-c.*': {source: './ww-c.ts', default: './dist/ww-c.*'},
+    './widgets/ww-d.*': './widgets/ww-d.*',
+    './tests/t.*': {source: './src/tests/t.ts', default: './dist/tests/t.*'},
+    './snippets/s.html': './snippets/s.html',
+  })
+  assert.deepEqual(sources, ['src/widgets/ww-a.ts', 'widgets/ww-b.js', 'ww-c.ts'])
+  assert.deepEqual(analyzerGlobs(sources), ['src/**/*.{js,ts,tsx}', 'widgets/**/*.{js,ts,tsx}', 'ww-c.ts'])
+})
+
+test('document works without a network connection and keeps dist and catalogs out of the manifest', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'webwriter-build-document-'))
+  try {
+    await mkdir(join(directory, 'src/widgets'), {recursive: true})
+    await mkdir(join(directory, 'dist/chunks'), {recursive: true})
+    await mkdir(join(directory, 'localization/generated'), {recursive: true})
+    await writeFile(join(directory, 'package.json'), JSON.stringify({name: '@fixture/doc', version: '1.0.0', type: 'module', license: 'MIT',
+      exports: {'./widgets/ww-doc.*': {source: './src/widgets/ww-doc.js', default: './dist/widgets/ww-doc.*'}}}))
+    await writeFile(join(directory, 'src/widgets/ww-doc.js'), '/** A documented widget. */\nexport class WwDoc extends HTMLElement {\n  /** The title. */\n  title = ""\n}\ncustomElements.define("ww-doc", WwDoc)\n')
+    await writeFile(join(directory, 'dist/chunks/chunk.js'), 'export class Chunk extends HTMLElement {}\ncustomElements.define("ww-chunk", Chunk)\n')
+    await writeFile(join(directory, 'localization/generated/de.js'), 'export const templates = {}\n')
+    const offline = fileURLToPath(new URL('./document.js', import.meta.url))
+    // Every request fails, as without a network.
+    const script = `globalThis.fetch = async () => { throw new TypeError("fetch failed") }; const {document} = await import(${JSON.stringify(pathToFileURL(offline).href)}); await document()`
+    await run(process.execPath, ['--input-type=module', '-e', script], {cwd: directory})
+    const manifest = JSON.parse(await readFile(join(directory, 'custom-elements.json'), 'utf8'))
+    assert.deepEqual(manifest.modules.map(module => module.path), ['src/widgets/ww-doc.js'])
+    assert.match(await readFile(join(directory, 'README.md'), 'utf8'), /A documented widget\./)
   }
   finally {await rm(directory, {recursive: true, force: true})}
 })

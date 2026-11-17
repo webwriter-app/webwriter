@@ -1,9 +1,11 @@
+// @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
 import {
   formatWidgetDuration,
   isWidgetOptionsState,
   parseWidgetDuration,
   widgetActionState,
+  widgetDeclarations,
   widgetOptionGroupState,
   widgetOptionState,
 } from "./widget-options"
@@ -315,5 +317,29 @@ describe("widget options bridge validation", () => {
       ...baseState(), options: [{...baseState().options[0], type: "select", multiple: true,
         control: "tree", tree: Array.from({length: 1001}, (_, index) => ({value: String(index), label: `Item ${index}`}))}],
     })).toBe(false)
+  })
+})
+
+describe("function values in declarations", () => {
+  it("resolves hidden, disabled, readOnly and disabledReason with the widget when the widget does not", () => {
+    class Plain extends HTMLElement {
+      static actions = {
+        clear: {hidden: (widget: Plain) => !widget.hasAttribute("items"), disabled: () => true, disabledReason: () => "Nothing to clear", label: "Clear"},
+        keep: {hidden: false},
+      }
+      static options = {size: {type: Number, readOnly: (widget: Plain) => widget.hasAttribute("locked"), disabled: () => { throw new Error("broken") }}}
+    }
+    customElements.define("x-plain-flags", Plain)
+    const widget = new Plain()
+    const [clear, keep] = Object.values(widgetDeclarations(widget, "actions")) as Record<string, unknown>[]
+    expect(clear).toMatchObject({hidden: true, disabled: true, disabledReason: "Nothing to clear"})
+    expect(keep).toEqual({hidden: false})
+    widget.setAttribute("items", "")
+    widget.setAttribute("locked", "")
+    expect(widgetActionState("clear", widgetDeclarations(widget, "actions").clear, "en")).toEqual({name: "clear", label: "Clear", disabled: true, disabledReason: "Nothing to clear"})
+    // A flag that throws refuses the control instead of failing the whole panel.
+    expect(widgetOptionState("size", widgetDeclarations(widget, "options").size, 1, "en")).toMatchObject({disabled: true, readOnly: true})
+    // Plain maps are returned untouched.
+    expect(widgetDeclarations(widget, "optionGroups")).toEqual({})
   })
 })

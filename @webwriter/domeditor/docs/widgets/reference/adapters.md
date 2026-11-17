@@ -50,6 +50,7 @@ A [module](#module-declarations) is a class with the suffix `Core`. Import each 
 | [Drag](#drag) | `@webwriter/widget/drag` | `DragCore` |
 | [Viewport](#viewport) | `@webwriter/widget/viewport` | `ViewportCore` |
 | [Help](#help) | `@webwriter/widget/help` | `HelpCore` |
+| [Print note](#print-note) | `@webwriter/widget/print` | `PrintNoteCore`, `documentAddress` |
 | [Scene](#scene) | `@webwriter/widget/scene` | `SceneCore`, `sceneElements` |
 | [Playback](#playback) | `@webwriter/widget/playback` | `PlaybackCore` |
 | [Data block](#data-block-jsondata) | `@webwriter/widget/data` | `JsonDataCore` |
@@ -57,7 +58,7 @@ A [module](#module-declarations) is a class with the suffix `Core`. Import each 
 | [Exercise](#exercise) | `@webwriter/widget/exercise` | `ExerciseCore` |
 | [Helpers](#helpers-transaction-and-whilevisible) | `@webwriter/widget/transaction`, `@webwriter/widget/visible` | `transaction`, `whileVisible` |
 
-A core that depends on another takes it as an option. Pass the `ViewportCore` as `viewport` to `DragCore` for a target in world coordinates, and to `SceneCore` for a scene that is the window of a canvas viewport. The text of `static options`, `static actions`, `static optionGroups`, and `static permissions` may be a function of the widget. A plain element answers such texts in its own getter with `resolveDeclarations(this, map)` from `@webwriter/widget`.
+A core that depends on another takes it as an option. Pass the `ViewportCore` as `viewport` to `DragCore` for a target in world coordinates, and to `SceneCore` for a scene that is the window of a canvas viewport. The text of `static options`, `static actions`, `static optionGroups`, and `static permissions`, and their `hidden`, `disabled`, and `readOnly` fields, may be a function of the widget. A plain element answers such texts in its own getter with `resolveDeclarations(this, map)` from `@webwriter/widget`.
 
 The examples show the three most used modules. Permissions hides a control and gates an interaction.
 
@@ -237,6 +238,7 @@ Each [module](#module-declarations) has a hook on its own path, such as `@webwri
 | [Drag](#drag) | `@webwriter/react/drag` | `useDrag(host, options?)` |
 | [Viewport](#viewport) | `@webwriter/react/viewport` | `useViewport(host, options?)` |
 | [Help](#help) | `@webwriter/react/help` | `useHelp(host, options?)` |
+| [Print note](#print-note) | `@webwriter/react/print` | `usePrintNote(host, options?)` |
 | [Scene](#scene) | `@webwriter/react/scene` | `useScene(host, options?)`, `sceneElements` |
 | [Playback](#playback) | `@webwriter/react/playback` | `usePlayback(host, options?)` |
 | [Data block](#data-block-jsondata) | `@webwriter/react/data` | `useJsonData(host, options)` |
@@ -396,9 +398,9 @@ customElements.define("ww-chip-board", WwChipBoard)
 
 ### Scene
 
-`useScene(host, options?)` returns `marquee`, `ready`, `extent()`, `measureText(text, source?)`, `toScene(clientX, clientY)`, `toClient(x, y)`, `itemAt(point, options?)`, `itemsAt(point, options?)`, `endsOf(path)`, `wiresAt(reference)`, `restyle()`, and `remeasure()`. The options are those of [Scene](#scene): `can`, `viewport`, `undoHost`, and `messages`. `rendered` defaults to a promise that settles after the next commit of React. The event and detail types are exported from `@webwriter/react/scene`.
+`useScene(host, options?)` returns `marquee`, `ready`, `extent()`, `measureText(text, source?)`, `toScene(clientX, clientY)`, `toClient(x, y)`, `itemAt(point, options?)`, `itemsAt(point, options?)`, `endsOf(path)`, `wiresAt(reference)`, `toSVG(options?)`, `toImage(options?)`, `printing`, `restyle()`, and `remeasure()`. The options are those of [Scene](#scene): `can`, `viewport`, `undoHost`, and `messages`. `rendered` defaults to a promise that settles after the next commit of React. The event and detail types are exported from `@webwriter/react/scene`.
 
-Register the elements once with `sceneElements` from `@webwriter/react/scene`, and write the scene in the JSX. `ready` is a getter: read `scene.ready` where the promise is needed, because `const {ready} = useScene(...)` reads it once at that render. Every event of the scene has its detail type in `useEvent`.
+Register the elements once with `sceneElements` from `@webwriter/react/scene`, and write the scene in the JSX. `ready` and `printing` are getters: read `scene.ready` where the promise is needed, because `const {ready} = useScene(...)` reads it once at that render. Every event of the scene has its detail type in `useEvent`.
 
 The example draws two blocks and a wire. A click on a port starts a wire, an end of a wire can be taken to another port or dropped to remove it, and a port named `reserved` refuses wires.
 
@@ -453,7 +455,7 @@ customElements.define("ww-signal-board", WwSignalBoard)
 
 ### Texts that are functions of the widget
 
-The class from `createReactWidget()` answers `options`, `actions`, `permissions`, and `optionGroups` on the instance when a text of its static map is a function of the widget, such as `label: widget => widget.msg("Reset")`. A member that the class defines itself is left alone, and a later write replaces the answer. `useSettings` adds the entries of the settings to `options` while the component is mounted and takes them away when it unmounts. A `label`, `description`, or `placeholder` of a setting may be a function as well. See [Settings](#settings).
+The class from `createReactWidget()` answers `options`, `actions`, `permissions`, and `optionGroups` on the instance when a text or a `hidden`, `disabled`, or `readOnly` field of its static map is a function of the widget, such as `label: widget => widget.msg("Reset")` or `hidden: widget => widget.items.length === 0`. A member that the class defines itself is left alone, and a later write replaces the answer. `useSettings` adds the entries of the settings to `options` while the component is mounted and takes them away when it unmounts. A `label`, `description`, or `placeholder` of a setting may be a function as well. See [Settings](#settings).
 
 ### A widget inside a widget
 
@@ -518,6 +520,7 @@ Each [module](#module-declarations) has a composable on its own path, such as `@
 | [Drag](#drag) | `@webwriter/vue/drag` | `useDrag(options?)` |
 | [Viewport](#viewport) | `@webwriter/vue/viewport` | `useViewport(options?)` |
 | [Help](#help) | `@webwriter/vue/help` | `useHelp(options?)` |
+| [Print note](#print-note) | `@webwriter/vue/print` | `usePrintNote(options?)` |
 | [Scene](#scene) | `@webwriter/vue/scene` | `useScene(options?)`, `defineSceneElements()` |
 | [Playback](#playback) | `@webwriter/vue/playback` | `usePlayback(options?)` |
 | [Data block](#data-block-jsondata) | `@webwriter/vue/data` | `useJsonData(options)` |
@@ -660,7 +663,7 @@ function drop(event: CustomEvent<DragCommitDetail>) {
 
 ### Scene
 
-`useScene(options?)` returns `core`, `marquee`, `ready`, `extent()`, `measureText(text, source?)`, `toScene(clientX, clientY)`, `toClient(x, y)`, `itemAt(point, options?)`, `itemsAt(point, options?)`, `endsOf(path)`, `wiresAt(reference)`, `restyle()`, and `remeasure()`. The options are those of [Scene](#scene): `can`, `viewport`, `undoHost`, `rendered`, and `messages`. The event and detail types are exported from `@webwriter/vue/scene`.
+`useScene(options?)` returns `core`, `marquee`, `ready`, `extent()`, `measureText(text, source?)`, `toScene(clientX, clientY)`, `toClient(x, y)`, `itemAt(point, options?)`, `itemsAt(point, options?)`, `endsOf(path)`, `wiresAt(reference)`, `toSVG(options?)`, `toImage(options?)`, `printing`, `restyle()`, and `remeasure()`. The options are those of [Scene](#scene): `can`, `viewport`, `undoHost`, `rendered`, and `messages`. The event and detail types are exported from `@webwriter/vue/scene`.
 
 Call `defineSceneElements()` once, and tell the template compiler that tags that start with `ww-` are custom elements, with its `isCustomElement` option. Listen with `@ww-move`, `@ww-connect`, and the like. The example draws two blocks and a wire. A click on a port starts a wire, an end of a wire can be taken to another port or dropped to remove it, and a port named `reserved` refuses wires.
 
@@ -798,6 +801,7 @@ Each [module](#module-declarations) has an inject function on its own path, such
 | [Drag](#drag) | `@webwriter/angular/drag` | `injectDrag(options?)` |
 | [Viewport](#viewport) | `@webwriter/angular/viewport` | `injectViewport(options?)` |
 | [Help](#help) | `@webwriter/angular/help` | `injectHelp(options?)` |
+| [Print note](#print-note) | `@webwriter/angular/print` | `injectPrintNote(options?)` |
 | [Scene](#scene) | `@webwriter/angular/scene` | `injectScene(options?)` |
 | [Playback](#playback) | `@webwriter/angular/playback` | `injectPlayback(options?)` |
 | [Data block](#data-block-jsondata) | `@webwriter/angular/data` | `injectJsonData(options)` |
@@ -984,7 +988,7 @@ customElements.define("ww-chip-board", class WwChipBoard extends ChipBoardElemen
 
 ### Scene
 
-`injectScene(options?)` returns `core`, `snapshot`, `marquee` as a signal, `ready`, `extent()`, `measureText(text, source?)`, `toScene(clientX, clientY)`, `toClient(x, y)`, `itemAt(point, options?)`, `itemsAt(point, options?)`, `endsOf(path)`, `wiresAt(reference)`, `restyle()`, and `remeasure()`. The options are those of [Scene](#scene): `can`, `viewport`, `undoHost`, `rendered`, and `messages`. The event and detail types are exported from `@webwriter/angular/scene`.
+`injectScene(options?)` returns `core`, `snapshot`, `marquee` as a signal, `ready`, `extent()`, `measureText(text, source?)`, `toScene(clientX, clientY)`, `toClient(x, y)`, `itemAt(point, options?)`, `itemsAt(point, options?)`, `endsOf(path)`, `wiresAt(reference)`, `toSVG(options?)`, `toImage(options?)`, `printing`, `restyle()`, and `remeasure()`. The options are those of [Scene](#scene): `can`, `viewport`, `undoHost`, `rendered`, and `messages`. The event and detail types are exported from `@webwriter/angular/scene`.
 
 Register the elements once with `sceneElements` from `@webwriter/widget/scene`, and list `CUSTOM_ELEMENTS_SCHEMA` in the component's `schemas`. Listen with `(ww-move)="move($event)"` and the like. Write bound values with `[attr.x]`, which sets an attribute. The example draws two blocks and a wire. A click on a port starts a wire, an end of a wire can be taken to another port or dropped to remove it, and a port named `reserved` refuses wires.
 
@@ -1116,6 +1120,7 @@ Each [module](#module-declarations) has a store on its own path, such as `@webwr
 | [Drag](#drag) | `@webwriter/svelte/drag` | `dragStore(host, options?)` |
 | [Viewport](#viewport) | `@webwriter/svelte/viewport` | `viewportStore(host, options?)` |
 | [Help](#help) | `@webwriter/svelte/help` | `helpStore(host, options?)` |
+| [Print note](#print-note) | `@webwriter/svelte/print` | `printNoteStore(host, options?)` |
 | [Scene](#scene) | `@webwriter/svelte/scene` | `sceneStore(host, options?)` |
 | [Playback](#playback) | `@webwriter/svelte/playback` | `playbackStore(host, options?)` |
 | [Data block](#data-block-jsondata) | `@webwriter/svelte/data` | `jsonDataStore(host, options)` |
@@ -1281,7 +1286,7 @@ Pass `viewport.core` as the `viewport` option of `dragStore` and `sceneStore`. T
 
 ### Scene
 
-`sceneStore(host, options?)` has `$scene.marquee`, `core`, `ready`, and the methods `extent()`, `measureText(text, source?)`, `toScene(clientX, clientY)`, `toClient(x, y)`, `itemAt(point, options?)`, `itemsAt(point, options?)`, `endsOf(path)`, `wiresAt(reference)`, `restyle()`, and `remeasure()`. The options are those of [Scene](#scene): `can`, `viewport`, `undoHost`, `rendered`, and `messages`. The event and detail types are exported from `@webwriter/svelte/scene`. `ready` is a getter of the store.
+`sceneStore(host, options?)` has `$scene.marquee`, `core`, `ready`, and the methods `extent()`, `measureText(text, source?)`, `toScene(clientX, clientY)`, `toClient(x, y)`, `itemAt(point, options?)`, `itemsAt(point, options?)`, `endsOf(path)`, `wiresAt(reference)`, `toSVG(options?)`, `toImage(options?)`, `printing`, `restyle()`, and `remeasure()`. The options are those of [Scene](#scene): `can`, `viewport`, `undoHost`, `rendered`, and `messages`. The event and detail types are exported from `@webwriter/svelte/scene`. `ready` and `printing` are getters of the store.
 
 A Svelte shadow root has no scoped registry of its own, so register the elements once on the page with `sceneElements` from `@webwriter/widget/scene`. Listen with `onww-move={handler}` and the like. The example draws two blocks and a wire. A click on a port starts a wire, an end of a wire can be taken to another port or dropped to remove it, and a port named `reserved` refuses wires.
 
@@ -1394,6 +1399,10 @@ Use `host.widgetRuntime.setData(type, text, attrs?)` to write to the data block 
 
 Put `static options`, `static optionGroups`, `static actions`, and their handler methods on the custom element. WebWriter uses these declarations in the Widget drawer. The runtime and adapters export the corresponding TypeScript declaration types. [Options and actions](options-actions.md)
 
+Declare conversions in `static convertFrom` and `static convertTo`. A key that starts with a dot or holds a slash names a file format; every other key is the lowercase tag of an HTML element. Type the maps with `ConvertFromDeclarations` and `ConvertToDeclarations` from `@webwriter/widget`, which every library re-exports, as in `static convertFrom = {ul: "loadList", ".json": "importJson"} satisfies ConvertFromDeclarations`. [Conversions](../guides/conversions.md)
+
+A custom element publishes signals in its `signals` object and receives them through `static effects`, and `static signals` declares the value shape of each published signal. Every library re-exports the shape types and guards of `@webwriter/widget`, such as `isTable`. A widget without Lit imports `signal`, `computed` and `watchSignal` from `@webwriter/widget/signals`. [Make data reactive](../guides/reactivity.md)
+
 ## Module declarations
 
 A module supplies one common widget behavior. A widget bundles only the modules that it imports. Mark elements in the shadow root with `data-ww-*` attributes and listen for the module's `ww-*` events. The module handles pointer, touch, and keyboard input. It also handles announcements and cleanup. The sections below name each module's core and declarations. [`@webwriter/lit`](lit.md#modules) describes every module in full, with its options, events, and rules. The rules hold for every library.
@@ -1500,7 +1509,7 @@ Declare `shortcut` and `can` on an action. Mark a button with `data-ww-shortcut=
 
 A method that returns `false` had nothing to do, such as Escape with nothing to cancel. It declines the key: the key goes to the next action that declares it, and to the page when none takes it. Any other result, also `undefined` and a promise, takes the key. In the bindings the method is the handler that the widget supplies for the action: a handler of `useShortcuts()` or `useActions()` in React, a function that `defineExpose()` gives in Vue, a function of `injectActions()` in Angular, and a method of the class in `customElement.extend` in Svelte.
 
-`data-ww-shortcuts="off"` on an element leaves every key inside it alone, for a part with its own keymap. `data-ww-shortcuts="on"` on a component with a closed shadow root says that it holds no text entry. A key is handled only when it comes from inside the widget, so give the widget something focusable, such as a stage with `tabindex="0"`. When an action declares a key, the core warns once in development if the template holds nothing that can take the focus. The check runs after the first `refresh()` that follows a render that put something other than styles into the shadow root, so a widget that renders its stage later is not reported for the renders before it. A core that is never refreshed is checked one frame after `connect()`.
+Keys typed in a text field, a text role, or an editable region belong to it. A key that must run there, such as Ctrl+Enter to run code, is declared as an object in `shortcut`: `{key: "Mod+Enter", inText: true}`, alone or in the list. Use it for a key that types nothing, a combination with Ctrl, ⌘, or Alt, Escape, or a function key. See [Keys in text fields](lit.md#keys-in-text-fields). `data-ww-shortcuts="off"` on an element leaves every key inside it alone, for a part with its own keymap. `data-ww-shortcuts="on"` on a component with a closed shadow root says that it holds no text entry. A key is handled only when it comes from inside the widget, so give the widget something focusable, such as a stage with `tabindex="0"`. When an action declares a key, the core warns once in development if the template holds nothing that can take the focus. The check runs after the first `refresh()` that follows a render that put something other than styles into the shadow root, so a widget that renders its stage later is not reported for the renders before it. A core that is never refreshed is checked one frame after `connect()`.
 
 ```js
 import {ShortcutsCore} from "@webwriter/widget/shortcuts"
@@ -1561,7 +1570,7 @@ Mark items with `data-ww-drag="kind"` and targets with `data-ww-drop="kind"`. Th
 |---|---|---|
 | `data-ww-drag="kind"` | An item, or a `<slot>` | An item of this kind. On a `<slot>` the assigned authored elements are the items. |
 | `data-ww-key` | An item | Its identity. The events report it as `key`. |
-| `data-ww-drag-handle` | A part of an item | Only this part starts the drag. |
+| `data-ww-drag-handle` | A part of an item | Only this part starts the drag, and only this part gets `touch-action: none`, so the rest of the item scrolls by touch. |
 | `data-ww-drag-via="pointer keyboard click"` | An item or its `<slot>` | The ways the item is picked up. Without it all three work. An item that leaves out `keyboard` needs another way to be moved without a pointer. |
 | `data-ww-drag-effect="move\|copy\|link"` | An item or its `<slot>` | `copy` leaves the item where it is. `link` draws a connector from the item to the pointer. The default is `move`. |
 | `data-ww-drag-axis="x\|y"` | An item | The item moves along this axis only. |
@@ -1821,7 +1830,9 @@ Scene draws nodes, shapes, paths, text, and images, and reports what the reader 
 
 Write `<ww-scene>` with `<ww-node>`, `<ww-shape>`, `<ww-path>`, `<ww-text>`, `<ww-image>`, `<ww-group>`, and `<ww-sprites>` in the shadow root. Register the elements from `sceneElements`. For WebGL rendering, register `PixiScene` from `@webwriter/widget/scene/pixi` as `ww-scene`. Only this import bundles `pixi.js`. Use `webglAvailable()` from `@webwriter/widget/scene` to select the renderer. See [Scene](lit.md#scene).
 
-The core has `marquee` in its snapshot and the methods `extent()`, `measureText(text, source?)`, `toScene(clientX, clientY)`, `toClient(x, y)`, `itemAt(point, {client}?)`, `itemsAt(point, {client}?)`, `endsOf(path)`, `wiresAt(reference)`, `restyle()`, and `remeasure()`, and the getter `ready`. The methods that name a scene answer for the widget's first `ww-scene`. The options are `can`, `viewport`, `rendered`, `messages`, and `undoHost`. `@webwriter/widget/scene` also exports the event types `SelectDetail`, `MoveDetail`, `MovingDetail`, `ResizeDetail`, `ResizingDetail`, `ConnectDetail`, `ConnectingDetail`, `ReconnectDetail`, `DisconnectDetail`, `ActivateDetail`, `ContextDetail`, `BackgroundDetail`, `HitDetail`, and `SceneErrorDetail`, and the types `PointerPoint`, `PortEnd`, `TextFont`, `TextSize`, `UndoHost`, `SceneItem`, `ScenePath`, `Point`, and `Rect`.
+The core has `marquee` in its snapshot and the methods `extent()`, `measureText(text, source?)`, `toScene(clientX, clientY)`, `toClient(x, y)`, `itemAt(point, {client}?)`, `itemsAt(point, {client}?)`, `endsOf(path)`, `wiresAt(reference)`, `toSVG(options?)`, `toImage(options?)`, `printing`, `restyle()`, and `remeasure()`, and the getter `ready`. The methods that name a scene answer for the widget's first `ww-scene`. The options are `can`, `viewport`, `rendered`, `messages`, and `undoHost`. `@webwriter/widget/scene` also exports the event types `SelectDetail`, `MoveDetail`, `MovingDetail`, `ResizeDetail`, `ResizingDetail`, `ConnectDetail`, `ConnectingDetail`, `ReconnectDetail`, `DisconnectDetail`, `ActivateDetail`, `ContextDetail`, `BackgroundDetail`, `HitDetail`, and `SceneErrorDetail`, and the types `PointerPoint`, `PortEnd`, `SnapshotOptions`, `ImageOptions`, `TextFont`, `TextSize`, `UndoHost`, `SceneItem`, `ScenePath`, `Point`, and `Rect`.
+
+`toSVG(options?)` returns the first scene as a standalone SVG document, or `null` for an empty scene. `toImage(options?)` returns a `Promise<Blob>`, PNG by default. Both work with every renderer, and `printing` is true while the document is printed. A scene prints correctly without code of the widget, also `PixiScene`. See [Picture and print](lit.md#picture-and-print).
 
 `can` is a function `(action, item, port?)` or a map from an action to a permission name, such as `{move: "allowMoving"}`. The actions are `select`, `move`, `resize`, and `connect`. For a connection that starts or ends at a port, a function also gets the port element, so that it can refuse one port and not the whole node. `viewport` takes the `ViewportCore` of a [Viewport](#viewport) for a scene that is the window of a canvas viewport. `undoHost` is the element on which a commit opens its undo step. The editor takes a step only from an event that starts on the widget itself, so a core in a component inside the widget passes `"outermost"` (the host at the top of the shadow roots above the scene), the widget, or a function that returns it. Without it the step starts on the host of the scene's shadow root.
 
@@ -1937,7 +1948,8 @@ customElements.define("ww-boxes", WwBoxes)
 - The scene writes no position or size to its elements. A preview is a Web Animation that ends with the interaction. A `selectable` or `movable` node without a `tabindex` gets `tabindex="0"`.
 - Drawn elements and `ww-scene` have custom states for CSS: `:state(hover)` on a drawn item, `:state(failed)` on an image that did not load, `:state(rewiring)` on a path whose end is held, and `:state(wiring)` and `:state(marquee)` on the scene. `ww-scene::part(link)` is the pending wire, `ww-scene::part(resize)` the handles of a rect or image, and `ww-node::part(handle)` the handles of a node.
 - A scene inside a scrolling `data-ww-viewport` is zoomed from outside. Pass `viewport` only for the canvas form.
-- Call `restyle()` after a style change that no observer sees, and `remeasure()` when ports moved without a change of the document.
+- Call `restyle()` after a style change that no observer sees, and `remeasure()` when ports moved without a change of the document. A change of document theme is not one of them: the scene restyles itself after `ww-themechange`, a change of `prefers-color-scheme`, and a change of class, style, or `data-theme` on the widget or the page.
+- Mark a control inside a node with `data-ww-control` and the scene keeps its size on the screen while the view is zoomed out. The scene writes `--ww-scene-zoom` and `--ww-scene-counter` on its layer for this. See [Theme and zoom](lit.md#theme-and-zoom).
 - A scene element has a property for each of its attributes `route`, `bend`, `loop`, `waypoints`, `rewire`, `outline`, `scale`, `side`, and `at`. Setting the property writes the attribute, and `null` removes it, so a framework that assigns a prop as a property, as React and Vue do, passes them like any other prop.
 
 #### Paths, markers, and labels
@@ -2316,6 +2328,35 @@ customElements.define("ww-schedule", WwSchedule)
 `itemAt(point)` returns the topmost item at a point, or null for the background. `itemsAt(point)` returns all items there, the topmost first. The point is in scene coordinates, or in client coordinates with `{client: true}`. `toScene(clientX, clientY)` and `toClient(x, y)` convert between the two through the view.
 
 The answer comes from geometry and works for any point, also where no pointer is. A node counts inside its outline, a path in its hit band and on its markers and labels, and a shape, a text, or an image anywhere inside it, filled or not. A group counts only in its frame. Nodes are above everything that is drawn, and drawn items count from the last in the template to the first. An item with `pointer-events: none` is left out.
+
+### Print note
+
+The print note is a short text that is shown on paper only, for a widget without a print view: it tells the reader to open the document online and shows the address of the document where it is known. `PrintNoteCore` is in `@webwriter/widget/print`; the bindings are `PrintNote`, `usePrintNote`, `usePrintNote`, `printNoteStore`, and `injectPrintNote`. See [Print note](lit.md#print-note).
+
+The core has `text` and `address` in its snapshot. It adds `<p data-ww-print-note>` at the end of the shadow root, or fills the one that the template has, and removes it when the widget disconnects. The options are `address`, `messages`, and `root`. `documentAddress()` is exported with the core.
+
+```js
+import {PrintNoteCore} from "@webwriter/widget/print"
+
+class WwSimulation extends HTMLElement {
+  #note = new PrintNoteCore(this)
+
+  constructor() {
+    super()
+    this.attachShadow({mode: "open"}).innerHTML = `<slot></slot><p data-ww-print-note></p>`
+  }
+
+  connectedCallback() {
+    this.#note.connect()
+  }
+
+  disconnectedCallback() {
+    this.#note.disconnect()
+  }
+}
+
+customElements.define("ww-simulation", WwSimulation)
+```
 
 ### Playback
 

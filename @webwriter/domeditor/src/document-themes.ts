@@ -4,6 +4,9 @@ import {digest} from "lib0/hash/sha256"
 import type {WidgetSchemaDefinition} from "./schema"
 import {legacyDocumentThemeFingerprints} from "./legacy-document-theme-fingerprints"
 
+/** Sent on the document after the document theme changed: another bundled theme, a stylesheet or a theme property of the page. Widgets that read computed styles at draw time listen to it. */
+export const themeChangeEvent = "ww-themechange"
+
 export type DocumentThemeName = keyof typeof legacyDocumentThemeFingerprints
 
 const sharedThemeCSS = sharedCSS + documentTypographyCSS
@@ -31,12 +34,25 @@ const attachmentCSS = previousAttachmentCSS.replaceAll("a[href][download]", "a[h
 @layer webwriter-theme-options {
   :where(a[data-ww-attachment]) { color: var(--ww-link-color, revert-layer); }
 }`
+/** The color tokens that every bundled theme defines. Light and dark values follow `color-scheme`: a theme that sets
+ * `color-scheme: dark` on the root gets the dark ones. A theme or an author overrides a token on the root. */
+const tokenCSS = `
+@layer webwriter-theme-options {
+  :root {
+    --ww-surface: Canvas;
+    --ww-border-color: color-mix(in srgb, currentColor 60%, transparent);
+    --ww-focus-color: light-dark(#0b5cad, #8ab4f8);
+    --ww-success: light-dark(#1b7a3d, #7bd88f);
+    --ww-danger: light-dark(#b3261e, #f2918a);
+    --ww-warning: light-dark(#8a5a00, #f0c05a);
+  }
+}`
 export const documentThemes = (Object.keys(themeSources) as DocumentThemeName[]).map(value => {
   const {source, disclosure} = themeSources[value]
   return {
     value,
     label: value[0].toUpperCase() + value.slice(1),
-    source: source + (disclosure ? disclosureCSS : "") + sharedThemeCSS + attachmentCSS,
+    source: source + (disclosure ? disclosureCSS : "") + sharedThemeCSS + attachmentCSS + tokenCSS,
   }
 })
 
@@ -62,8 +78,9 @@ export function upgradeBundledDocumentThemes(root: Pick<Document, "head">) {
     const source = style.textContent
     if(!theme || !source || source === theme.source) continue
     const fingerprint = toHexString(digest(themeEncoder.encode(source.replace(/\r\n?/g, "\n"))).subarray(0, 16))
-    const beforeAttachments = theme.source.slice(0, -attachmentCSS.length)
-    if(source === beforeAttachments || source === beforeAttachments + previousAttachmentCSS
+    const beforeTokens = theme.source.slice(0, -tokenCSS.length)
+    const beforeAttachments = beforeTokens.slice(0, -attachmentCSS.length)
+    if(source === beforeAttachments || source === beforeAttachments + previousAttachmentCSS || source === beforeTokens
       || fingerprint === themeSources[theme.value].originalFingerprint
       || legacyDocumentThemeFingerprints[theme.value].includes(fingerprint)) style.textContent = theme.source
     // The table picture migration replaces only the generated rule, keeping

@@ -4,15 +4,24 @@ import { SignalWatcher } from "@lit-labs/signals";
 import {
   WidgetRuntime,
   hasComputedDeclarations,
-  resolveDeclarations,
+  resolveDeclarations as resolveDeclarations2,
   widgetLanguage,
   widgetRuntimeAttributes
 } from "@webwriter/widget";
 import {
   isDataBlockType,
-  resolveDeclarations as resolveDeclarations2
+  resolveDeclarations as resolveDeclarations3
 } from "@webwriter/widget";
 export * from "@lit-labs/signals";
+import {
+  isNumber,
+  isString,
+  isBoolean,
+  isSeries,
+  isTable,
+  hasShape,
+  effectAccepts
+} from "@webwriter/widget";
 
 // widget-drawer.ts
 import { LitElement, css as css2, html as html2, nothing as nothing2 } from "lit";
@@ -23,6 +32,7 @@ import { html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 
 // widget-options.ts
+import { resolveDeclarations } from "@webwriter/widget";
 var widgetOptionTypes = [
   "boolean",
   "string",
@@ -217,9 +227,9 @@ function widgetDeclarations(widget, kind) {
   const read = (name) => {
     try {
       const own = widget[name];
-      if (isRecord(own)) return own;
-      const inherited = widget.constructor[name];
-      return isRecord(inherited) ? inherited : {};
+      const map = isRecord(own) ? own : widget.constructor[name];
+      if (!isRecord(map)) return {};
+      return name === "convertFrom" || name === "convertTo" ? map : resolveDeclarations(widget, map) ?? {};
     } catch {
       return {};
     }
@@ -1096,8 +1106,10 @@ var WidgetDrawer = class extends LitElement {
     this.sync();
     return true;
   }
+  /** The widget's own message, or a generic one for a failure without a message. */
   message(error) {
-    return error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    return message.trim() ? message : "The action could not be completed.";
   }
   confirm(text2) {
     return this.ownerDocument.defaultView?.confirm?.(text2) === true;
@@ -1225,7 +1237,11 @@ var WidgetDrawer = class extends LitElement {
       }
       const snapshot = file ? widget.outerHTML : null;
       const result = await (file ? method.call(widget, file) : method.call(widget));
-      if (!this.active(widget) || lookup() !== method || result === null || result === false) return;
+      if (!this.active(widget) || lookup() !== method) return;
+      if (result === null || result === false) {
+        if (file) throw new Error("The file could not be imported into the selected widget.");
+        return;
+      }
       if (snapshot !== null && snapshot !== widget.outerHTML) throw new Error("The widget changed before the file could be imported.");
       if (file) {
         if (typeof result !== "function") throw new TypeError("A file importer must return a function that applies the imported content.");
@@ -1364,7 +1380,7 @@ var LitElementWw = class extends SignalWatcher(LitElement2) {
       if (kind in this || !hasComputedDeclarations(declared[kind])) continue;
       Object.defineProperty(this, kind, {
         configurable: true,
-        get: () => resolveDeclarations(this, declared[kind]),
+        get: () => resolveDeclarations2(this, declared[kind]),
         set: (value) => Object.defineProperty(this, kind, { value, writable: true, configurable: true, enumerable: true })
       });
     }
@@ -1487,9 +1503,16 @@ export {
   WidgetDrawer,
   WidgetResultConflict,
   compatibleControl,
+  effectAccepts,
   formatWidgetDuration,
+  hasShape,
+  isBoolean,
   isDataBlockType,
+  isNumber,
   isRecord,
+  isSeries,
+  isString,
+  isTable,
   isWidgetFileFormat,
   localizedText,
   matchesWidgetFileFormat,
@@ -1497,7 +1520,7 @@ export {
   readWidgetOption,
   renderWidgetOptionField,
   renderWidgetOptions,
-  resolveDeclarations2 as resolveDeclarations,
+  resolveDeclarations3 as resolveDeclarations,
   validWidgetOptionValue,
   widgetActionRows,
   widgetActionState,

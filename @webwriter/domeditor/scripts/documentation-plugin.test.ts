@@ -703,7 +703,7 @@ it("renders guide keyword badges from the shared package keyword data", async ()
   expect(body).toContain('href="/src/package-keywords.css"')
   const badges = body.match(/<ul class="details-keywords guide-keywords"[\s\S]*?<\/ul>/)?.[0]
   expect(badges).toContain('data-kind="conversion" href="/docs/widgets/reference/keywords.md?library=vue#values-in-keyword-forms"')
-  expect(badges).toContain('title="widget-convertible-to-[media/type | &lt;element-name&gt;]"')
+  expect(badges).toContain('title="widget-convertible-to-[media/type | .extension | &lt;element-name&gt;]"')
   expect(badges).toContain("icon-tabler-file-export")
   expect(badges).toContain("icon-tabler-file-import")
   expect(body).toContain('</nav><ul class="details-keywords guide-keywords"')

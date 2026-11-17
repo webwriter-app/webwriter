@@ -64,6 +64,19 @@ class SceneCore extends ModuleCore {
   wiresAt(reference) {
     return this.scenes[0]?.wiresAt(reference) ?? [];
   }
+  /** The widget's first scene as a standalone SVG document, or null for an empty scene. See `toSVG` of the scene. */
+  toSVG(options) {
+    return this.scenes[0]?.toSVG(options) ?? null;
+  }
+  /** The widget's first scene as a picture, PNG by default. See `toImage` of the scene. */
+  toImage(options) {
+    const scene = this.scenes[0];
+    return scene ? scene.toImage(options) : Promise.reject(new Error("The widget has no scene."));
+  }
+  /** True while the document is printed, for the widget's first scene. See `printing` of the scene. */
+  get printing() {
+    return this.scenes[0]?.printing ?? false;
+  }
   /** Reads every computed style again, for a change of style that no observer sees, such as a new style rule. */
   restyle() {
     for (const scene of this.scenes) scene.restyle();

@@ -1,6 +1,6 @@
 import { ShortcutsCore, type ShortcutsOptions } from "@webwriter/widget/shortcuts";
 import { CoreController, type BindingOptions, type CoreHost } from "./base.js";
-export type { ShortcutAction, ShortcutsMessages, ShortcutsSnapshot } from "@webwriter/widget/shortcuts";
+export type { ShortcutAction, ShortcutKey, ShortcutsMessages, ShortcutsSnapshot } from "@webwriter/widget/shortcuts";
 /**
  * Lit binding of Shortcuts. The keys are declared on `static actions`; the
  * undo step of an action stays open until the host has rendered. A button

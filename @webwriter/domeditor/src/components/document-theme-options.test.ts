@@ -2,7 +2,7 @@
 import {afterEach, expect, it, vi} from "vitest"
 import {DocumentThemeOptions} from "./document-theme-options"
 import {DocumentThemePresets} from "./document-theme-presets"
-import {defaultDocumentThemes, documentThemeStorageKey, loadDocumentThemes} from "../document-theme-options"
+import {defaultDocumentThemes, documentThemeStorageKey, documentThemeTokens, loadDocumentThemes} from "../document-theme-options"
 import {themeAccentProperties} from "../css-color"
 
 afterEach(() => { document.body.replaceChildren(); localStorage.removeItem(documentThemeStorageKey); vi.restoreAllMocks() })
@@ -41,7 +41,8 @@ it("saves, applies and deletes named document overrides", async () => {
   expect(changes.mock.calls[0][0].detail.styles).toEqual({"background-color": {value: "red", priority: ""},
     "--ww-font-family": {value: "serif", priority: ""}, "--ww-font-size": null, "--ww-text-color": {value: "#334455", priority: ""},
     "--ww-link-color": {value: "blue", priority: ""}, "--ww-prose-max": {value: "60rem", priority: "important"}, "--ww-page-max": null, "--ww-page-gutter": null, "--ww-block-spacing": null,
-    ...Object.fromEntries(themeAccentProperties.map((name, index) => [name, index === 0 ? {value: "#123456", priority: ""} : null]))})
+    ...Object.fromEntries(themeAccentProperties.map((name, index) => [name, index === 0 ? {value: "#123456", priority: ""} : null])),
+    ...Object.fromEntries(documentThemeTokens.map(name => [name, null]))})
   await control.updateComplete
   control.shadowRoot!.querySelector<HTMLButtonElement>('.trigger')!.click()
   await control.updateComplete

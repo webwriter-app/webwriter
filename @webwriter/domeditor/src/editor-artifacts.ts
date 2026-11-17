@@ -1,3 +1,5 @@
+import {printingClass} from "./print-class.js"
+
 export type WidgetLookup = (element: Element) => boolean
 
 const widgetLookups = new WeakMap<Document, WidgetLookup>()
@@ -164,10 +166,16 @@ export function isAuthoredContentEditableMutation(mutation: MutationRecord, isWi
   return mutation.oldValue !== current
 }
 
+/** Class names that the editor owns: legacy `◆` markers and the runtime
+ * print class on widgets. They never enter saved HTML, collaboration or history. */
+export function isEditorOwnedClass(name: string) {
+  return name.startsWith("◆") || name === printingClass
+}
+
 /** Returns authored class names, omitting transient editor markers.
  * Set `canonical` when comparing class values independent of authored order. */
 export function authoredClassValue(value: string | null, canonical = false) {
-  const names = (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆"))
+  const names = (value ?? "").split(/\s+/).filter(name => name && !isEditorOwnedClass(name))
   if(canonical) names.sort()
   return names.join(" ")
 }
@@ -207,7 +215,7 @@ export function clearEditorOwnedAttributes(root: Node, isWidget = editorWidgetLo
 function clearElementEditorMarkers(element: Element, isWidget?: WidgetLookup) {
   if(isHTMLDetailsElement(element)) restoreAuthoredDetailsState(element)
   if(isEditorOwnedAttribute(element, "contenteditable", isWidget)) element.removeAttributeNS(null, "contenteditable")
-  const markers = Array.from(element.classList).filter(name => name.startsWith("◆"))
+  const markers = Array.from(element.classList).filter(isEditorOwnedClass)
   if(markers.length) element.classList.remove(...markers)
   if(!element.classList.length) element.removeAttribute("class")
 }

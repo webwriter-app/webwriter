@@ -22,6 +22,8 @@ export function useScene(host, options) {
     itemsAt: (point, options) => core.itemsAt(point, options),
     endsOf: (path) => core.endsOf(path),
     wiresAt: (reference) => core.wiresAt(reference),
+    toSVG: options => core.toSVG(options),
+    toImage: options => core.toImage(options),
     restyle: () => core.restyle(),
     remeasure: () => core.remeasure(),
   }), [core])
@@ -30,6 +32,10 @@ export function useScene(host, options) {
     // Read when the property is: the promise is the scene's own, and `await scene.ready` waits for the first layout.
     get ready() {
       return core.ready
+    },
+    // Read when the property is.
+    get printing() {
+      return core.printing
     },
     ...methods,
   }
