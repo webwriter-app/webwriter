@@ -2861,6 +2861,7 @@ export class AppRibbon extends EditingControls {
       <ribbon-combobox name=${name} label=${label} default-value-label=${label} shortcut=${this.commandShortcut(`font-picker:${name}`)}
         variant=${name.includes("color") ? "color" : ""}
         .options=${options} .value=${this.markStyles[name] ?? ""} .builtInFontsOnly=${!!this.widgetMarks}
+        .mathFontsOnly=${name === "font-family" && !!this.math?.active}
         ?disabled=${this.styleMarkDisabled(name)}></ribbon-combobox>
     `
     const format: RibbonMenuGroup[] = [

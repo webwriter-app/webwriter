@@ -8,6 +8,7 @@ import {connectedComboboxStyles} from "./dropdown-content.styles"
 import {readFontFiles, saveFontFile, type FontFileHandle, type StoredFontFile} from "../local-font-storage"
 import {cssFontString, embedFontFiles, type DeviceFont, type EmbeddedFont, type FontAccessWindow} from "../local-fonts"
 import {ribbonIcon} from "../ribbon-icons"
+import {embeddedMathFont, mathFontOptions} from "../math-fonts"
 
 type LocalFontOption = ComboboxOption & {source: "installed" | "imported", devices?: DeviceFont[], record?: StoredFontFile}
 const isLocalOption = (option: ComboboxOption): option is LocalFontOption => "source" in option
@@ -19,10 +20,11 @@ const isStandardFamily = (family: string) => standardFamilies.has(family.toLocal
 /** The font picker shares selection, keyboard navigation and popup behavior. */
 export class FontCombobox extends StyleCombobox {
   static properties = {...StyleCombobox.properties, builtInOnly: {type: Boolean, attribute: "built-in-only", reflect: true},
+    mathOnly: {type: Boolean, attribute: "math-only", reflect: true},
     loading: {state: true}, failed: {state: true}, localError: {state: true}, deviceLoading: {state: true}, devicePermissionGranted: {state: true}, selecting: {state: true}}
   static styles = [...StyleCombobox.styles, css`
     .listbox {grid-template-columns: var(--popup-join-width, 5.5rem) minmax(0, 1fr); width: min(var(--font-dropdown-width, 18rem), calc(100vw - 1rem)); overflow: hidden; margin-block: -1px; border: 1px solid #a8a8a8; position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;}
-    :host([built-in-only]) .listbox {grid-template-columns: minmax(0, 1fr); width: min(max(10rem, var(--popup-join-width, 0px) + 2px), calc(100vw - 1rem));}
+    :host(:is([built-in-only], [math-only])) .listbox {grid-template-columns: minmax(0, 1fr); width: min(max(10rem, var(--popup-join-width, 0px) + 2px), calc(100vw - 1rem));}
     .option-group {display: flex; flex-direction: column; overflow: auto; max-height: min(22rem, calc(100dvh - 4rem));}
     .option-group + .option-group {contain: size; border-left: 1px solid #d8dee6;}
     .group-label {position: sticky; top: 0; flex: none; margin: 0; padding: .5rem .4rem; background: #fff;}
@@ -53,6 +55,7 @@ export class FontCombobox extends StyleCombobox {
 
   options = standardFontOptions
   builtInOnly = false
+  mathOnly = false
   placeholder = "Default font"
   persistent = false
   private fonts: BunnyFont[] = []
@@ -149,6 +152,7 @@ export class FontCombobox extends StyleCombobox {
 
   protected selectedOption() {
     const family = fontFamilies(this.value)[0]
+    if(this.mathOnly) return mathFontOptions.find(option => fontFamilies(option.value)[0] === family)
     const option = (this.builtInOnly ? standardFontOptions : this.options).find(option => fontFamilies(option.value)[0] === family)
     if(option || this.builtInOnly) return option
     const font = this.fonts.find(font => font.familyName.toLocaleLowerCase("en") === family)
@@ -159,6 +163,7 @@ export class FontCombobox extends StyleCombobox {
   }
 
   protected filteredOptions() {
+    if(this.mathOnly) return mathFontOptions.filter(option => option.label.toLowerCase().includes(this.query))
     const options = this.builtInOnly ? standardFontOptions : this.options
     if(!this.query || !this.dropdownReady) return options
     const rank = (option: ComboboxOption) => {
@@ -177,7 +182,7 @@ export class FontCombobox extends StyleCombobox {
       || ++counts[this.searchSection(option)] <= this.searchLimits[this.searchSection(option)])
   }
 
-  private splitSearch() { return !this.builtInOnly && Boolean(this.query && this.dropdownReady && this.devicePermissionGranted) }
+  private splitSearch() { return !this.builtInOnly && !this.mathOnly && Boolean(this.query && this.dropdownReady && this.devicePermissionGranted) }
   private searchSection(option: ComboboxOption) { return isLocalOption(option) && option.source === "installed" ? 0 : 1 }
 
   protected renderGroupOptions(group: string, entries: {option: ComboboxOption, index: number}[]): unknown {
@@ -246,6 +251,7 @@ export class FontCombobox extends StyleCombobox {
 
   protected optionGroups(options: readonly ComboboxOption[]) {
     const groups = super.optionGroups(options)
+    if(this.mathOnly) return groups
     if(this.builtInOnly) return new Map([["Standard fonts", groups.get("Standard fonts") ?? []]])
     return new Map(["Standard fonts", "Custom fonts"].map(group => [group, groups.get(group) ?? []]))
   }
@@ -258,6 +264,7 @@ export class FontCombobox extends StyleCombobox {
   }
 
   protected renderBeforeOptions(group: string) {
+    if(this.mathOnly && this.localError) return html`<span class="option-name local-error" role="status">${this.localError}</span>`
     if(group !== "Custom fonts") return nothing
     return html`
       ${this.localError ? html`<span class="option-name local-error" role="status">${this.localError}</span>` : nothing}
@@ -268,6 +275,17 @@ export class FontCombobox extends StyleCombobox {
   }
 
   protected select(option: ComboboxOption, event?: Event) {
+    if(this.mathOnly && option.value) {
+      const request = ++this.selectionRequest
+      this.localError = ""
+      const url = option.label === "Libertinus Math"
+        ? new URL("../assets/math-fonts/LibertinusMath-Regular.woff2", import.meta.url)
+        : new URL("../assets/math-fonts/NotoSansMath-Regular.woff2", import.meta.url)
+      void embeddedMathFont(option, url).then(font => {
+        if(request === this.selectionRequest && this.isConnected && this.mathOnly && !this.disabled) this.emitEmbedded(font)
+      }).catch(error => { if(request === this.selectionRequest && this.mathOnly) this.showLocalError(error) })
+      return
+    }
     if(isLocalOption(option)) { void this.applyLocalFont(option); return }
     this.selectionRequest++
     this.selecting = false
@@ -361,7 +379,7 @@ export class FontCombobox extends StyleCombobox {
   }
 
   private retainDropdownSize() {
-    if(this.builtInOnly) return
+    if(this.builtInOnly || this.mathOnly) return
     const popup = this.renderRoot.querySelector<HTMLElement>(".listbox")
     if(!popup || popup.style.height) return
     const box = popup.getBoundingClientRect()
@@ -380,7 +398,7 @@ export class FontCombobox extends StyleCombobox {
   protected commitDraft() {
     const draft = this.renderRoot.querySelector<HTMLInputElement>("input")?.value.trim().toLocaleLowerCase("en") ?? ""
     if(!draft) { this.close(true); return }
-    const options = this.builtInOnly ? standardFontOptions : this.options
+    const options = this.mathOnly ? mathFontOptions : this.builtInOnly ? standardFontOptions : this.options
     const option = options.find(option => option.label.toLocaleLowerCase("en") === draft || option.value.toLocaleLowerCase("en") === draft)
     if(option) this.select(option)
     else this.close(true)
@@ -452,7 +470,7 @@ export class FontCombobox extends StyleCombobox {
     if(this.open && !wasOpen) {
       const selectInput = !this.hasInput
       if(selectInput) { this.query = ""; this.activeIndex = -1 }
-      if(!this.builtInOnly) {
+      if(!this.builtInOnly && !this.mathOnly) {
         void this.loadFonts()
         void this.loadImportedFonts()
         void this.checkDevicePermission()
@@ -473,8 +491,14 @@ export class FontCombobox extends StyleCombobox {
     return update
   }
 
+  protected willUpdate(changed: Map<string, unknown>) {
+    super.willUpdate(changed)
+    if(changed.has("mathOnly")) this.placeholder = this.mathOnly ? "Default math" : "Default font"
+  }
+
   protected updated(changed: Map<string, unknown>) {
-    if(changed.has("builtInOnly") && this.open) this.close()
+    if((changed.has("builtInOnly") || changed.has("mathOnly")) && this.open) this.close()
+    if(changed.has("mathOnly")) this.selectionRequest++
     if(changed.has("disabled") && this.disabled) { this.selectionRequest++; this.selecting = false }
     super.updated(changed)
     this.connectDropdown()
@@ -489,7 +513,7 @@ export class FontCombobox extends StyleCombobox {
   }
 
   private populateOptions() {
-    if(!this.open || !this.isConnected || this.builtInOnly) return
+    if(!this.open || !this.isConnected || this.builtInOnly || this.mathOnly) return
     const activeValue = this.activeIndex >= 0 ? this.filteredOptions()[this.activeIndex]?.value : undefined
     const devices = new Map<string, DeviceFont[]>()
     for(const font of this.devices) if(!isStandardFamily(font.family)) devices.set(font.family, [...devices.get(font.family) ?? [], font])

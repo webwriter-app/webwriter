@@ -41,6 +41,8 @@ Use a structure tool with a selection to wrap whole sibling expressions. Standar
 
 Closing a typed bracket pair groups its contents in a MathML row. Both brackets stretch to that group's content, and a following superscript or subscript applies to the whole group. The closing bracket's end and the group's end share one caret stop. Deleting brackets re-pairs surviving delimiters locally, preserving attributed wrappers and argument boundaries. Outside text arguments, Space separates words even when there is no pending word.
 
+In the font picker, **Default math** uses the browser's math font. Selecting Libertinus Math or Noto Sans Math applies the font to the current formula and embeds it in the document for other readers.
+
 ## Scope
 
 Editing supports token text, row-like containers, fractions, radicals, scripts, limits, and matrix cells. It works with unwrapped arguments and existing rows. Commands preserve comments, authored attributes, and unrelated nesting. Unsupported subtrees are opaque, and widget internals belong to their widget. Selections that partially cross argument boundaries, or malformed fixed-arity structures, are left unchanged by editing commands.

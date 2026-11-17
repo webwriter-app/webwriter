@@ -627,6 +627,7 @@ export abstract class EditingControls extends LitElement {
           default-value-label="Font"
           .options=${fontFamilyOptions}
           .builtInFontsOnly=${!!this.widgetMarks}
+          .mathFontsOnly=${!!this.math?.active}
           .value=${this.markStyles["font-family"] ?? ""}
           ?disabled=${this.styleMarkDisabled("font-family")}
         ></ribbon-combobox>

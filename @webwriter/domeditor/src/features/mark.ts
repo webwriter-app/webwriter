@@ -37,6 +37,7 @@ import {attachmentWarningBytes, isLinkEdit, isLinkKind, linkKindFromAttributes, 
 import {attachmentConfirmationEvent} from "../editor-bridge"
 import {fontStylesheetFamily, fontFamilies, fontWithFallback, syncFontResources} from "../fonts"
 import {mergeEmbeddedFonts} from "../local-fonts"
+import {mathFontOptions} from "../math-fonts"
 import {parseWidgetMarks} from "../schema"
 import ianaTLDList from "../iana-tlds.txt?raw"
 
@@ -2205,6 +2206,8 @@ export class MarkFeature extends EditorFeature {
       const normalized = this.normalizeStyleValue(property, value)
       return (!value.trim() || !!normalized) && this.sendWidgetMark(widget, property, normalized || null)
     }
+    if(property === "font-family" && this.editor.features.math.activeMath
+      && !mathFontOptions.some(option => option.value === value)) return false
     const normalizedValue = property === "font-family" ? fontWithFallback(value) : value
     const changed = this.applyStyleMark(property, normalizedValue)
     if(property === "font-family") {

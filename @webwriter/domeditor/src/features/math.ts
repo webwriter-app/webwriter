@@ -142,6 +142,12 @@ export class MathFeature extends EditorFeature {
     const styles = Object.fromEntries(formulaStyleNames.flatMap(property =>
       values.length && values[0][property] && values.every(value => value[property] === values[0][property])
         ? [[property, values[0][property]]] : []))
+    const math = this.activeMath
+    if(math) {
+      const family = this.inlineStyle(math).getPropertyValue("font-family")
+      if(family) styles["font-family"] = family
+      else delete styles["font-family"]
+    }
     const marks = (Object.keys(formulaMarks) as (keyof typeof formulaMarks)[]).filter(mark => {
       const [property, value] = formulaMarks[mark]
       return values.length > 0 && values.every(styles => {
@@ -155,6 +161,13 @@ export class MathFeature extends EditorFeature {
 
   setFormatting(property: string, value: string) {
     if(!formulaStyleNames.includes(property)) return false
+    const math = this.activeMath
+    if(property === "font-family" && math) {
+      if(this.inlineStyle(math).getPropertyValue(property) === value) return false
+      this.writeFormatting(math, {[property]: value})
+      this.editor.postMarkState()
+      return true
+    }
     const targets = this.formatTargets()
     if(!targets.length) return false
     const selection = document.getSelection()!

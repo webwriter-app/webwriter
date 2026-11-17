@@ -5,6 +5,7 @@ import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import {$, isOnApple} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathStructureOptions, mathToolGroups} from "../math"
+import {mathFontOptions} from "../math-fonts"
 import {hasAnchorTarget} from "../anchor-positioning.test-utils"
 import {isMarkStateChangeMessage, markStateChangeEvent, isSelectionChangeMessage, selectionChangeEvent, mathKeyboardTabEvent, type SelectionChangeDetail} from "../editor-bridge"
 import * as Y from "yjs"
@@ -144,6 +145,22 @@ describe("formula shortcut modifiers", () => {
 })
 
 describe("DOM MathML editing", () => {
+  it("sets and clears the entire equation's math font while preserving its other authored styles", () => {
+    const math = load('<mi style="font-family: serif;">x</mi><mo>+</mo><mi>y</mi>')
+    math.setAttribute("style", "color: red;")
+    $.move(math.lastElementChild!.firstChild!, 1)
+    const mark = editor.features.mark
+    const customFont = mathFontOptions[1].value
+    expect(mark.setStyleMark("font-family", "Arial, sans-serif")).toBe(false)
+    expect(mark.setStyleMark("font-family", customFont)).toBe(true)
+    expect(mark.getStyleState()["font-family"]).toBe(customFont)
+    expect(math.getAttribute("style")).toContain(customFont)
+    expect(mark.setStyleMark("font-family", "")).toBe(true)
+    expect(mark.getStyleState()["font-family"]).toBeUndefined()
+    expect(math.getAttribute("style")).toBe("color: red;")
+    expect(math.firstElementChild!.getAttribute("style")).toBe("font-family: serif;")
+  })
+
   it.each(["inline", "block"])("paints a whole %s formula once and restores partial text selection", display => {
     const math = load("<mrow><mi>abc</mi><mfrac><mi>x</mi><mi>y</mi></mfrac></mrow>")
     math.setAttribute("display", display)
