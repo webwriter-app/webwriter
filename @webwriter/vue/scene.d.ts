@@ -1,4 +1,4 @@
-import type {Point, PortEnd, Rect, SceneCore, SceneItem, ScenePath, SceneOptions, TextFont, TextSize} from "@webwriter/widget/scene"
+import type {ImageOptions, Point, PortEnd, Rect, SceneCore, SceneItem, ScenePath, SceneOptions, SnapshotOptions, TextFont, TextSize} from "@webwriter/widget/scene"
 import type {BindingOptions} from "./base.js"
 
 export type {
@@ -20,6 +20,8 @@ export type {
   SceneErrorDetail,
   ScenePermissions,
   SelectDetail,
+  ImageOptions,
+  SnapshotOptions,
   TextFont,
   TextSize,
   UndoHost,
@@ -54,6 +56,10 @@ export type UseScene = {
   endsOf(path: ScenePath): {from: PortEnd | null; to: PortEnd | null}
   /** The paths that end at a port (`node:port`) or at a whole node (`node`): how many wires a port has. */
   wiresAt(reference: string): ScenePath[]
+  toSVG(options?: SnapshotOptions): string | null
+  toImage(options?: ImageOptions): Promise<Blob>
+  /** True while the document is printed. Read when the property is. */
+  readonly printing: boolean
   restyle(): void
   remeasure(): void
 }

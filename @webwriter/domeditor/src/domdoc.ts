@@ -4,6 +4,7 @@ import {Awareness} from "y-protocols/awareness"
 import {messageYjsUpdate} from "y-protocols/sync"
 import {messageSync, WebsocketProvider} from "y-websocket"
 import {$, cloneWithoutEditorMarkers, createInertScript, isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
+import {printingClass} from "./print-class.js"
 import {documentLayoutMode} from "./document-layout"
 import {affectsAuthoredElementIds, ensureAuthoredElementIds} from "./authored-identities"
 import {updateDocumentPermalinks} from "./document-permalinks"
@@ -1698,7 +1699,7 @@ export class SharedDOMDoc {
   }
 
   #isIgnoredClass(name: string) {
-    return this.ignoreClasses.some(ignored => name.startsWith(ignored))
+    return name === printingClass || this.ignoreClasses.some(ignored => name.startsWith(ignored))
   }
 
   #filteredClassValue(value: string) {

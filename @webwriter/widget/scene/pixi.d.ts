@@ -28,6 +28,12 @@ export declare class PixiScene extends SceneBase {
     protected unmount(): void;
     /** True while the scene has given its WebGL context back, or has none yet. */
     get contextLost(): boolean;
+    /**
+     * A WebGL canvas prints blank or as it was last shown, at the resolution of the screen. While the document
+     * is printed the scene draws once more at 300 ppi (as far as the browser's canvas limits allow) and shows
+     * that picture in the canvas's place. A scene that is off screen shows its last picture.
+     */
+    protected printed(on: boolean): void;
     /** Draws now. False if there is no context to draw with. Runs by itself in the frame after a change. */
     render(): boolean;
     protected painted(): void;

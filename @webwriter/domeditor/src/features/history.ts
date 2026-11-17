@@ -9,7 +9,7 @@ import {
   type VersionHistoryUser,
   type UndoState,
 } from "../editor-bridge"
-import {authoredClassValue, isAppendixInteraction, isEditorOwnedAttribute, isFormControlInteraction, isOnApple, isWidgetShadowInteraction, modifierKeyDown} from "../utility"
+import {authoredClassValue, isAppendixInteraction, isEditorOwnedAttribute, isEditorOwnedClass, isFormControlInteraction, isOnApple, isWidgetShadowInteraction, modifierKeyDown} from "../utility"
 import {userInitials} from "../user-identity"
 import {hydrateWidgetGroupings} from "../widget-grouping-dom"
 import {safeCssColor} from "../css-color"
@@ -773,7 +773,7 @@ export class HistoryFeature extends EditorFeature {
   }
 
   #replaceAttributes(target: Element, source: Element) {
-    const internalClasses = Array.from(target.classList).filter(name => name.startsWith("◆"))
+    const internalClasses = Array.from(target.classList).filter(isEditorOwnedClass)
     for(const attribute of Array.from(target.attributes)) {
       if(this.editor.ignoreAttrs.some(name => name.toLowerCase() === attribute.name.toLowerCase())
         || isEditorOwnedAttribute(target, attribute.name)) continue
@@ -867,7 +867,7 @@ export class HistoryFeature extends EditorFeature {
             const name = record.attributeName!
             if(this.editor.ignoreAttrs.includes(name) || isAuthoredContentEditableMutation(record, this.editor.features.widget.isWidget) === false) continue
             if(name === "class") {
-              const markers = Array.from(target.classList).filter(value => value.startsWith("◆"))
+              const markers = Array.from(target.classList).filter(isEditorOwnedClass)
               const authored = authoredClassValue(record.oldValue).split(" ").filter(Boolean)
               const value = [...authored, ...markers].join(" ")
               if(value) target.setAttribute("class", value)

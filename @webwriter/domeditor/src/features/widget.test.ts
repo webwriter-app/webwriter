@@ -516,6 +516,52 @@ describe("WidgetFeature", () => {
 
 })
 
+describe("printing class", () => {
+  const settle = () => new Promise(resolve => setTimeout(resolve))
+
+  it("marks widgets between beforeprint and afterprint without authoring the class", async () => {
+    document.body.innerHTML = '<demo-widget class="keep"></demo-widget><p>Text</p>'
+    editor.features.widget.refresh()
+    const widget = document.querySelector("demo-widget")!
+    editor.doc.syncFromDOM()
+    const before = sharedHTML()
+    window.dispatchEvent(new Event("beforeprint"))
+    expect(widget.classList.contains("ww-beforeprint")).toBe(true)
+    expect(document.querySelector("p")!.hasAttribute("class")).toBe(false)
+    await settle()
+    expect(sharedHTML()).toBe(before)
+    expect(editor.toHTML(true)).not.toContain("ww-beforeprint")
+    expect(editor.toHTML(true)).toContain('class="keep"')
+    window.dispatchEvent(new Event("afterprint"))
+    expect(widget.getAttribute("class")).toBe("keep")
+  })
+
+  it("marks widgets added while printing, keeps the class through remote updates and removes an empty class attribute", async () => {
+    document.body.innerHTML = '<demo-widget></demo-widget>'
+    editor.features.widget.refresh()
+    window.dispatchEvent(new Event("beforeprint"))
+    const added = document.createElement("demo-widget")
+    document.body.append(added)
+    await settle()
+    expect(added.classList.contains("ww-beforeprint")).toBe(true)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    await settle()
+    expect(sharedHTML()).not.toContain("ww-beforeprint")
+    window.dispatchEvent(new Event("afterprint"))
+    for(const widget of document.querySelectorAll("demo-widget")) expect(widget.hasAttribute("class")).toBe(false)
+  })
+
+  it("stops listening when the feature is disabled", () => {
+    document.body.innerHTML = '<demo-widget></demo-widget>'
+    editor.features.widget.refresh()
+    editor.features.widget.disable()
+    window.dispatchEvent(new Event("beforeprint"))
+    expect(document.querySelector("demo-widget")!.hasAttribute("class")).toBe(false)
+    editor.features.widget.enable()
+  })
+})
+
 describe("widget editing config", () => {
   it("lets listed shadow events reach editor features", () => {
     document.body.innerHTML = "<demo-note><p>Text</p></demo-note><demo-widget></demo-widget>"
@@ -561,6 +607,23 @@ describe("widget editing config", () => {
 })
 
 describe("widget options", () => {
+  it("keeps a saved effect link whose signal shape the effect does not accept in the choices", () => {
+    customElements.define("demo-shape-source", class extends HTMLElement {
+      static signals = {total: {shape: "number"}, rows: {shape: "table"}}
+      signals = {total: {get: () => 1}, rows: {get: () => ({columns: [], rows: []})}}
+    })
+    customElements.define("demo-shape-receiver", class extends HTMLElement {
+      static effects = {"data-from": {label: {_: "Data"}, accepts: ["table"], connect() {}}}
+    })
+    editor.schema.extendWidgets([{tagName: "demo-shape-source"}, {tagName: "demo-shape-receiver"}])
+    document.body.innerHTML = '<demo-shape-source id="s"></demo-shape-source><demo-shape-receiver id="r" data-from="#s[total]"></demo-shape-receiver>'
+    const option = editor.features.widget.getOptionsState([document.getElementById("r")!])!.options.find(option => option.name === "effect:data-from")!
+    const values = option.choices!.map(choice => choice.value)
+    expect(values).toContain("#s[rows]")
+    expect(values).toContain("#s[total]")
+    expect(option.value).toBe("#s[total]")
+  })
+
   it("authors declared effect attributes through the options panel and rejects circular edits", () => {
     customElements.define("demo-effect-options", class extends HTMLElement {
       static effects = {
@@ -956,6 +1019,58 @@ describe("widget element conversions", () => {
     await expect(pending).rejects.toThrow("The widget changed")
     expect(apply).not.toHaveBeenCalled()
     expect(widget.textContent).toBe("Concurrent edit")
+  })
+
+  it.each([
+    ["an empty Error", () => { throw new Error("") }, "The file could not be imported into the selected widget."],
+    ["a thrown undefined", () => Promise.reject(undefined), "The file could not be imported into the selected widget."],
+    ["a thrown string", () => Promise.reject("Not a quiz file."), "Not a quiz file."],
+    ["a localized message", () => Promise.reject(new Error("Die Datei ist leer.")), "Die Datei ist leer."],
+  ])("reports a failed import with the widget's message or a generic one (%s)", async (_name, handler, message) => {
+    const {widget, state} = selectFileWidget()
+    const original = editor.toHTML(true)
+    Object.defineProperty(widget, "convertFrom", {value: {".quiz": handler}})
+    await expect(editor.getActionHandler("importWidgetFile")({
+      type: "importWidgetFile", sourceId: state.sourceId, format: ".quiz", file: new File(["x"], "lesson.quiz"),
+    })).rejects.toThrow(new RegExp(`^${message.replace(/\./g, "\\.")}$`))
+    expect(editor.toHTML(true)).toBe(original)
+  })
+
+  it("declines an import or export quietly when the handler returns null or false", async () => {
+    const {widget, state} = selectFileWidget()
+    const original = editor.toHTML(true)
+    Object.defineProperty(widget, "convertFrom", {value: {".quiz": () => null}})
+    Object.defineProperty(widget, "convertTo", {value: {".quiz": () => false}})
+    await expect(editor.getActionHandler("importWidgetFile")({
+      type: "importWidgetFile", sourceId: state.sourceId, format: ".quiz", file: new File(["x"], "lesson.quiz"),
+    })).resolves.toBe(false)
+    await expect(editor.getActionHandler("exportWidgetFile")({type: "exportWidgetFile", sourceId: state.sourceId, format: ".quiz"}))
+      .resolves.toBe(false)
+    expect(editor.toHTML(true)).toBe(original)
+  })
+
+  it("gives a failed export or element conversion without a message a generic text", async () => {
+    const {widget, state} = selectFileWidget()
+    Object.defineProperty(widget, "convertTo", {value: {".quiz": () => { throw new Error() }, ul: () => { throw new Error("  ") }}})
+    await expect(editor.getActionHandler("exportWidgetFile")({type: "exportWidgetFile", sourceId: state.sourceId, format: ".quiz"}))
+      .rejects.toThrow("The selected widget could not export this file.")
+    expect(() => run(state.sourceId, "ul")).toThrow("The selected element could not be converted.")
+  })
+
+  it("reads a key that is a tag as an element conversion and a key that is a format as a file conversion", () => {
+    document.body.innerHTML = '<demo-conversion id="quiz"><li>Original</li></demo-conversion>'
+    const widget = document.querySelector<ConversionWidget>("demo-conversion")!
+    const handler = () => null
+    Object.defineProperty(widget, "convertFrom", {value: {ul: handler, ".json": handler, "application/json": handler, JSON: handler, "x-y": handler}})
+    Object.defineProperty(widget, "convertTo", {value: {details: handler, ".txt": handler, "text/plain": handler, TXT: handler, txt: handler}})
+    feature.refresh()
+    editor.doc.syncFromDOM()
+    editor.features.selection.captureElement(widget)
+    const state = feature.getConversionState()!
+    // A tag key never lists a file format, and a format key never lists a tag. Unknown tags list neither.
+    expect(state.targets.map(target => target.tag)).toEqual(["details"])
+    expect(state.imports).toEqual([".json", "application/json"])
+    expect(state.exports).toEqual([".txt", "text/plain"])
   })
 
   it("exports a matching File without creating an undo step", async () => {

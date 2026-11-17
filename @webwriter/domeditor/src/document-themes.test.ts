@@ -49,7 +49,8 @@ describe("document themes", () => {
   it("upgrades the stock paragraph padding while preserving customized Base styles", () => {
     const theme = bundledThemes[0]
     expect(theme.source).toContain("padding-inline-end:1.9375px")
-    const previous = theme.source.replace(";padding-inline-end:1.9375px", "")
+    // The stylesheet as it was before the padding rule and the color tokens.
+    const previous = theme.source.slice(0, theme.source.indexOf("\n@layer webwriter-theme-options {\n  :root {\n    --ww-surface")).replace(";padding-inline-end:1.9375px", "")
     const root = document.implementation.createHTMLDocument()
     const stock = root.createElement("style"), customized = root.createElement("style")
     stock.setAttribute("data-ww-theme", "base")
@@ -141,6 +142,34 @@ describe("document themes", () => {
       expect(theme.source).not.toMatch(/prefers-color-scheme|data-theme=(?:light|dark)|holiday-css-dark|--dark-/)
       expect(theme.source).not.toMatch(/color-scheme:\s*(?:dark|light\s+dark)/)
       expect(editingDocumentThemeSource(theme)).toBe(theme.source.replaceAll(".◆hotspot-popup", ":state(ww-hotspot-popup)"))
+    }
+  })
+
+  it("defines the surface, border, focus and status color tokens in every bundled theme", () => {
+    for(const theme of bundledThemes) {
+      for(const token of ["--ww-surface", "--ww-border-color", "--ww-focus-color", "--ww-success", "--ww-danger", "--ww-warning"]) {
+        expect(theme.source).toContain(`${token}:`)
+      }
+      // Dark values come with `color-scheme: dark`; the bundled themes themselves stay light.
+      expect(theme.source).toContain("light-dark(")
+    }
+  })
+
+  it("upgrades a stock stylesheet from before the color tokens and keeps customized ones", () => {
+    for(const theme of bundledThemes) {
+      const previous = theme.source.slice(0, theme.source.indexOf("\n@layer webwriter-theme-options {\n  :root {\n    --ww-surface"))
+      expect(previous.length).toBeGreaterThan(1000)
+      expect(previous).not.toContain("--ww-surface")
+      const root = document.implementation.createHTMLDocument()
+      const stock = root.createElement("style"), customized = root.createElement("style")
+      stock.setAttribute("data-ww-theme", theme.value)
+      customized.setAttribute("data-ww-theme", theme.value)
+      stock.textContent = previous
+      customized.textContent = previous + "\nbody {margin: 0}"
+      root.head.append(stock, customized)
+      upgradeBundledDocumentThemes(root)
+      expect(stock.textContent).toBe(theme.source)
+      expect(customized.textContent).toBe(previous + "\nbody {margin: 0}")
     }
   })
 

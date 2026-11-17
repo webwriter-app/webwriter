@@ -29,8 +29,13 @@ describe("package keyword presentation", () => {
     for(const [keyword, badge] of Object.entries(widgetKeywords.badges)) {
       if("pattern" in badge) continue
       const {kind, label, icon} = badge
-      expect(packageKeywordPresentations([keyword], "en"), keyword).toEqual([{kind, label, icon}])
+      const description = "description" in badge ? badge.description : undefined
+      expect(packageKeywordPresentations([keyword], "en"), keyword).toEqual([{kind, label, icon, ...(description ? {description} : {})}])
     }
+  })
+
+  it("passes a badge description on as the tooltip text", () => {
+    expect(packageKeywordPresentations(["widget-reactive"], "en")[0].description).toMatch(/Publishes signals/)
   })
 
   it("labels conversion formats and migration versions without losing their values", () => {
@@ -47,6 +52,20 @@ describe("package keyword presentation", () => {
       {kind: "custom", label: "widget-migrates-from-1.2.3-01"},
       {kind: "custom", label: "widget-convertible-from-"},
       {kind: "custom", label: "widget-convertible-to-<b>"},
+    ])
+  })
+
+  it("accepts a file extension in the conversion forms, as the conversion maps do", () => {
+    expect(packageKeywordPresentations([
+      "widget-convertible-to-.jff", "widget-convertible-from-.PUML", "widget-convertible-from-.tar.gz",
+      "widget-convertible-to-.", "widget-convertible-to-..jff", "widget-convertible-to-.j ff",
+    ], "en")).toEqual([
+      {kind: "conversion", label: "Converts to .jff", icon: "KeywordConvertTo"},
+      {kind: "conversion", label: "Converts from .puml", icon: "KeywordConvertFrom"},
+      {kind: "conversion", label: "Converts from .tar.gz", icon: "KeywordConvertFrom"},
+      {kind: "custom", label: "widget-convertible-to-."},
+      {kind: "custom", label: "widget-convertible-to-..jff"},
+      {kind: "custom", label: "widget-convertible-to-.j ff"},
     ])
   })
 

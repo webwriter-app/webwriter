@@ -346,3 +346,70 @@ it("receives caption numbering through collaboration without adding caption text
   }
   finally { peer.destroy() }
 })
+
+describe("document theme change event", () => {
+  const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+  const listen = () => {
+    const events: CustomEvent[] = []
+    const handler = (event: Event) => events.push(event as CustomEvent)
+    document.addEventListener("ww-themechange", handler)
+    return {events, stop: () => document.removeEventListener("ww-themechange", handler)}
+  }
+
+  it("tells widgets once after theme properties change on the root or the body", async () => {
+    const heard = listen()
+    try {
+      await settle()
+      heard.events.length = 0
+      document.documentElement.style.setProperty("--ww-text-color", "#123456")
+      document.body.style.setProperty("--ww-theme-accent-1", "#654321")
+      document.body.setAttribute("data-theme", "night")
+      await settle()
+      expect(heard.events).toHaveLength(1)
+      expect(heard.events[0].bubbles).toBe(true)
+      expect(heard.events[0].detail.theme).toBe("base")
+    }
+    finally {
+      heard.stop()
+      document.documentElement.removeAttribute("style")
+      document.body.removeAttribute("style")
+      document.body.removeAttribute("data-theme")
+    }
+  })
+
+  it("tells widgets when a stylesheet of the head changes, and not for other head edits", async () => {
+    const heard = listen()
+    try {
+      await settle()
+      heard.events.length = 0
+      editor.features.head.actions.setDocumentHeadField({type: "setDocumentHeadField", field: "title", value: "Lesson"})
+      document.documentElement.setAttribute("lang", "fr")
+      await settle()
+      expect(heard.events).toHaveLength(0)
+      const style = document.createElement("style")
+      style.textContent = ":root {--ww-surface: #fff}"
+      document.head.append(style)
+      await settle()
+      expect(heard.events).toHaveLength(1)
+      style.textContent = ":root {--ww-surface: #000}"
+      await settle()
+      expect(heard.events).toHaveLength(2)
+    }
+    finally { heard.stop() }
+  })
+
+  it("sends nothing while the feature is disabled", async () => {
+    const heard = listen()
+    try {
+      editor.features.head.disable()
+      document.documentElement.style.setProperty("--ww-text-color", "#123456")
+      await settle()
+      expect(heard.events).toHaveLength(0)
+    }
+    finally {
+      heard.stop()
+      document.documentElement.removeAttribute("style")
+      editor.features.head.enable()
+    }
+  })
+})

@@ -52,4 +52,4 @@ Exports with the same tag form one widget. Include each referenced file in the p
 
 Manifest `keywords` give a widget feature badges. These badges show features, requirements, and categories. The [widget keyword reference](keywords.md) lists all badges and their syntax.
 
-Educational classification keywords use `isced2011-<0–9>` for education levels and `iscedf2013-<code>` for educational fields.
+Educational classification keywords use `isced2011-<level>` for education levels and `iscedf2013-<code>` for educational fields. The codes come from the UNESCO classifications ISCED 2011 and ISCED-F 2013. The authoring tool shows the level and the broad field as badges. The [keyword reference](keywords.md#isced-code-lists) lists the codes. `npx -y @webwriter/guidance badges ./package.json` reports a code that is not in the lists. See [Check the keywords](keywords.md#check-the-keywords).

@@ -1,6 +1,7 @@
 import { SceneGroup, SceneItem, SceneNode, ScenePath, type SceneLike, type SpriteItem } from "./elements.js";
 import { type Marker, type Outline, type Point, type Rect, type Transform } from "./geometry.js";
 import { type Port, type Ports } from "./ports.js";
+import { type ImageOptions, type SnapshotOptions } from "./snapshot.js";
 /** The computed style of a scene element, as far as a renderer uses it. */
 export type Style = {
     /** Changes whenever any value below changes. */
@@ -329,6 +330,29 @@ export declare abstract class SceneMirror extends HTMLElement implements SceneLi
      * something ended up.
      */
     drawingOf(item: SceneItem): Drawing | null;
+    /** The computed style the scene last read for an item, as the renderer uses it. Null for an item that is not drawn, or not there. */
+    styleOf(item: SceneItem): Style | null;
+    /**
+     * The scene as a standalone SVG document (a string), from what the scene
+     * draws now: the same for every renderer. The picture is the box around everything
+     * in the scene (`extent()`) with some padding, in scene pixels, with no view applied.
+     * Texts keep their font, so nothing is estimated. The HTML of a `ww-node` is written
+     * as a `<foreignObject>` with its computed styles inline (`{nodes: false}` leaves it out). A grid
+     * (`background`) is not part of it; the tint of a sprite is not applied. Null for an empty scene.
+     */
+    toSVG(options?: SnapshotOptions): string | null;
+    /**
+     * The scene as a picture: PNG by default, `scale` pixels per scene pixel (2 by default),
+     * `type` a MIME type such as `image/jpeg` (with `quality`). The page's web fonts are
+     * embedded, because a rasterised SVG cannot load them itself. Rejects for an empty scene.
+     */
+    toImage(options?: ImageOptions): Promise<Blob>;
+    /**
+     * True while the document is printed: between `beforeprint` and `afterprint`, while
+     * the `print` media query matches (a headless print fires no `beforeprint`), and while
+     * the widget around the scene has the editor's class `ww-beforeprint`.
+     */
+    get printing(): boolean;
     /** The outline of an item in scene coordinates: a path's line, or the corners of a box. Empty for what is not rendered. */
     protected outline(item: SceneItem): Point[];
     /** The shapes that belong to an item besides its outline, in scene coordinates: the markers and the labels of a path. */
@@ -375,6 +399,8 @@ export declare abstract class SceneMirror extends HTMLElement implements SceneLi
     protected groupOf(item: SceneItem): SceneGroup | null;
     /** Runs once per connect, with the signal that aborts on disconnect. */
     protected connected(_signal: AbortSignal): void;
+    /** Printing started (`true`) or ended (`false`), see `printing`. A renderer whose drawing does not print by itself prepares it here. */
+    protected printed(_on: boolean): void;
     /** Runs when the widget rendered, before the flush. */
     protected refreshed(): void;
     /** The ports of these nodes may have changed. Runs after the drawing was written. */

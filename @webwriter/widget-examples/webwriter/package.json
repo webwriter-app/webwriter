@@ -1,0 +1,364 @@
+{
+  "name": "@webwriter/module-examples",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The example widgets of the declarative widget modules (Drag, Viewport, Help, Scene, Settings, Shortcuts, Playback, Permissions, Data block, Localization, Exercise), packaged for trying them in WebWriter. Built from ../examples with `npm run build:webwriter`.",
+  "keywords": [
+    "webwriter-widget",
+    "widget-lang-en",
+    "widget-lang-de"
+  ],
+  "license": "MIT",
+  "exports": {
+    "./widgets/ww-sort-list.js": {
+      "source": "./src/ww-sort-list.ts",
+      "default": "./dist/ww-sort-list.js"
+    },
+    "./widgets/ww-vanilla-sort.js": {
+      "source": "./src/ww-vanilla-sort.ts",
+      "default": "./dist/ww-vanilla-sort.js"
+    },
+    "./widgets/ww-sort-item.js": {
+      "source": "./src/ww-sort-item.ts",
+      "default": "./dist/ww-sort-item.js"
+    },
+    "./widgets/ww-palette.js": {
+      "source": "./src/ww-palette.ts",
+      "default": "./dist/ww-palette.js"
+    },
+    "./widgets/ww-pairing.js": {
+      "source": "./src/ww-pairing.ts",
+      "default": "./dist/ww-pairing.js"
+    },
+    "./widgets/ww-diagram-view.js": {
+      "source": "./src/ww-diagram-view.ts",
+      "default": "./dist/ww-diagram-view.js"
+    },
+    "./widgets/ww-library-view.js": {
+      "source": "./src/ww-library-view.ts",
+      "default": "./dist/ww-library-view.js"
+    },
+    "./widgets/ww-circuit.js": {
+      "source": "./src/ww-circuit.ts",
+      "default": "./dist/ww-circuit.js"
+    },
+    "./widgets/ww-swarm.js": {
+      "source": "./src/ww-swarm.ts",
+      "default": "./dist/ww-swarm.js"
+    },
+    "./widgets/ww-epidemic.js": {
+      "source": "./src/ww-epidemic.ts",
+      "default": "./dist/ww-epidemic.js"
+    },
+    "./widgets/ww-stepper.js": {
+      "source": "./src/ww-stepper.ts",
+      "default": "./dist/ww-stepper.js"
+    },
+    "./widgets/ww-media-stepper.js": {
+      "source": "./src/ww-media-stepper.ts",
+      "default": "./dist/ww-media-stepper.js"
+    },
+    "./widgets/ww-settings-plain.js": {
+      "source": "./src/ww-settings-plain.ts",
+      "default": "./dist/ww-settings-plain.js"
+    },
+    "./widgets/ww-order-exercise.js": {
+      "source": "./src/ww-order-exercise.ts",
+      "default": "./dist/ww-order-exercise.js"
+    },
+    "./widgets/ww-choice-exercise.js": {
+      "source": "./src/ww-choice-exercise.ts",
+      "default": "./dist/ww-choice-exercise.js"
+    },
+    "./widgets/ww-plain-poll.js": {
+      "source": "./src/ww-plain-poll.ts",
+      "default": "./dist/ww-plain-poll.js"
+    },
+    "./snippets/sort-list.html": "./snippets/sort-list.html",
+    "./snippets/vanilla-sort.html": "./snippets/vanilla-sort.html",
+    "./snippets/palette.html": "./snippets/palette.html",
+    "./snippets/pairing.html": "./snippets/pairing.html",
+    "./snippets/diagram-view.html": "./snippets/diagram-view.html",
+    "./snippets/library-view.html": "./snippets/library-view.html",
+    "./snippets/circuit.html": "./snippets/circuit.html",
+    "./snippets/swarm.html": "./snippets/swarm.html",
+    "./snippets/epidemic.html": "./snippets/epidemic.html",
+    "./snippets/stepper.html": "./snippets/stepper.html",
+    "./snippets/media-stepper.html": "./snippets/media-stepper.html",
+    "./snippets/settings-plain.html": "./snippets/settings-plain.html",
+    "./snippets/order-exercise.html": "./snippets/order-exercise.html",
+    "./snippets/choice-exercise.html": "./snippets/choice-exercise.html",
+    "./snippets/plain-poll.html": "./snippets/plain-poll.html"
+  },
+  "editingConfig": {
+    ".": {
+      "label": {
+        "_": "Module examples",
+        "de": "Modul-Beispiele"
+      },
+      "description": {
+        "_": "Example widgets of the declarative widget modules.",
+        "de": "Beispiel-Widgets der deklarativen Widget-Module."
+      }
+    },
+    "./widgets/ww-sort-list": {
+      "label": {
+        "_": "Sort list (Lit)",
+        "de": "Sortierliste (Lit)"
+      },
+      "description": {
+        "_": "Drag: authored items that an author or a learner reorders.",
+        "de": "Drag: verfasste Einträge, die sich umsortieren lassen."
+      },
+      "content": "ww-sort-item+"
+    },
+    "./widgets/ww-vanilla-sort": {
+      "label": {
+        "_": "Sort list (no framework)",
+        "de": "Sortierliste (ohne Framework)"
+      },
+      "description": {
+        "_": "The sort list as a plain custom element on the cores.",
+        "de": "Die Sortierliste als einfaches Custom Element auf den Kernen."
+      },
+      "content": "ww-sort-item+"
+    },
+    "./widgets/ww-sort-item": {
+      "label": {
+        "_": "Sort item",
+        "de": "Sortiereintrag"
+      },
+      "uninsertable": true,
+      "group": "sortitem",
+      "content": "phrasing*"
+    },
+    "./widgets/ww-palette": {
+      "label": {
+        "_": "Palette",
+        "de": "Palette"
+      },
+      "description": {
+        "_": "Drag: copy from a palette, free positions on a grid, delete on a trash.",
+        "de": "Drag: Kopieren aus einer Palette, freie Positionen im Raster, Löschen im Papierkorb."
+      }
+    },
+    "./widgets/ww-pairing": {
+      "label": {
+        "_": "Pairing",
+        "de": "Zuordnung"
+      },
+      "description": {
+        "_": "Drag: links between terms and definitions.",
+        "de": "Drag: Verbindungen zwischen Begriffen und Definitionen."
+      }
+    },
+    "./widgets/ww-diagram-view": {
+      "label": {
+        "_": "Diagram view",
+        "de": "Diagrammansicht"
+      },
+      "description": {
+        "_": "Viewport (scroll form) and Help: a zoomable diagram with a help overlay.",
+        "de": "Viewport (Scroll-Form) und Help: ein zoombares Diagramm mit Hilfe-Overlay."
+      }
+    },
+    "./widgets/ww-library-view": {
+      "label": {
+        "_": "Library view",
+        "de": "Bibliotheksansicht"
+      },
+      "description": {
+        "_": "Viewport with an adapter: a library that owns its own viewport.",
+        "de": "Viewport mit Adapter: eine Bibliothek mit eigenem Viewport."
+      }
+    },
+    "./widgets/ww-circuit": {
+      "label": {
+        "_": "Circuit",
+        "de": "Schaltung"
+      },
+      "description": {
+        "_": "Scene (SVG renderer): select, move, resize and connect.",
+        "de": "Scene (SVG-Renderer): Auswählen, Verschieben, Größe ändern und Verbinden."
+      }
+    },
+    "./widgets/ww-swarm": {
+      "label": {
+        "_": "Swarm",
+        "de": "Schwarm"
+      },
+      "description": {
+        "_": "Scene (PixiJS renderer): a sprite batch with HTML nodes above it.",
+        "de": "Scene (PixiJS-Renderer): ein Sprite-Stapel mit HTML-Knoten darüber."
+      }
+    },
+    "./widgets/ww-epidemic": {
+      "label": {
+        "_": "Epidemic",
+        "de": "Epidemie"
+      },
+      "description": {
+        "_": "Settings, Shortcuts, Playback and Permissions on a small simulation.",
+        "de": "Settings, Shortcuts, Playback und Permissions an einer kleinen Simulation."
+      }
+    },
+    "./widgets/ww-stepper": {
+      "label": {
+        "_": "Stepper",
+        "de": "Schrittfolge"
+      },
+      "description": {
+        "_": "Playback (discrete run) and Shortcuts: every paragraph is one step.",
+        "de": "Playback (diskreter Ablauf) und Shortcuts: jeder Absatz ist ein Schritt."
+      },
+      "content": "p+"
+    },
+    "./widgets/ww-media-stepper": {
+      "label": {
+        "_": "Media stepper",
+        "de": "Medien-Schrittfolge"
+      },
+      "description": {
+        "_": "Playback in front of a media element.",
+        "de": "Playback vor einem Medienelement."
+      }
+    },
+    "./widgets/ww-settings-plain": {
+      "label": {
+        "_": "Countdown card (Settings, no framework)",
+        "de": "Countdown-Karte (Settings, ohne Framework)"
+      },
+      "description": {
+        "_": "Settings on a plain custom element: every type a setting can hold.",
+        "de": "Settings an einem einfachen Custom Element: jeder Typ, den eine Einstellung haben kann."
+      }
+    },
+    "./widgets/ww-order-exercise": {
+      "label": {
+        "_": "Order exercise",
+        "de": "Reihenfolge-Aufgabe"
+      },
+      "description": {
+        "_": "Exercise, Data block, Localization and Drag: put the entries in order.",
+        "de": "Exercise, Datenblock, Lokalisierung und Drag: Einträge in die richtige Reihenfolge bringen."
+      },
+      "uninsertable": true,
+      "sharedData": true
+    },
+    "./widgets/ww-choice-exercise": {
+      "label": {
+        "_": "Choice exercise",
+        "de": "Auswahl-Aufgabe"
+      },
+      "description": {
+        "_": "Exercise and Data block: a single- or multiple-choice question.",
+        "de": "Exercise und Datenblock: eine Frage mit einer oder mehreren Antworten."
+      },
+      "uninsertable": true,
+      "sharedData": true
+    },
+    "./widgets/ww-plain-poll": {
+      "label": {
+        "_": "Poll (no framework)",
+        "de": "Umfrage (ohne Framework)"
+      },
+      "description": {
+        "_": "Data block on a plain custom element: a vote kept per participant.",
+        "de": "Datenblock an einem einfachen Custom Element: eine Stimme pro Person."
+      },
+      "uninsertable": true,
+      "sharedData": true
+    },
+    "./snippets/sort-list": {
+      "label": {
+        "_": "Sort list: fruit",
+        "de": "Sortierliste: Obst"
+      }
+    },
+    "./snippets/vanilla-sort": {
+      "label": {
+        "_": "Sort list (no framework): fruit",
+        "de": "Sortierliste (ohne Framework): Obst"
+      }
+    },
+    "./snippets/palette": {
+      "label": {
+        "_": "Palette with two shapes",
+        "de": "Palette mit zwei Formen"
+      }
+    },
+    "./snippets/pairing": {
+      "label": {
+        "_": "Pairing: biology terms",
+        "de": "Zuordnung: Biologie-Begriffe"
+      }
+    },
+    "./snippets/diagram-view": {
+      "label": {
+        "_": "Diagram view, learners may pan and zoom",
+        "de": "Diagrammansicht, Lernende dürfen verschieben und zoomen"
+      }
+    },
+    "./snippets/library-view": {
+      "label": {
+        "_": "Library view: map",
+        "de": "Bibliotheksansicht: Karte"
+      }
+    },
+    "./snippets/circuit": {
+      "label": {
+        "_": "Circuit: AND and NOT",
+        "de": "Schaltung: AND und NOT"
+      }
+    },
+    "./snippets/swarm": {
+      "label": {
+        "_": "Swarm, running and zoomable",
+        "de": "Schwarm, laufend und zoombar"
+      }
+    },
+    "./snippets/epidemic": {
+      "label": {
+        "_": "Epidemic, learners may change infectivity",
+        "de": "Epidemie, Lernende dürfen die Ansteckung ändern"
+      }
+    },
+    "./snippets/stepper": {
+      "label": {
+        "_": "Stepper: five steps",
+        "de": "Schrittfolge: fünf Schritte"
+      }
+    },
+    "./snippets/media-stepper": {
+      "label": {
+        "_": "Media stepper: three seconds of silence",
+        "de": "Medien-Schrittfolge: drei Sekunden Stille"
+      }
+    },
+    "./snippets/settings-plain": {
+      "label": {
+        "_": "Countdown card: reading time",
+        "de": "Countdown-Karte: Lesezeit"
+      }
+    },
+    "./snippets/order-exercise": {
+      "label": {
+        "_": "Order exercise: making tea",
+        "de": "Reihenfolge-Aufgabe: Tee kochen"
+      }
+    },
+    "./snippets/choice-exercise": {
+      "label": {
+        "_": "Choice exercise: planets",
+        "de": "Auswahl-Aufgabe: Planeten"
+      }
+    },
+    "./snippets/plain-poll": {
+      "label": {
+        "_": "Poll: drinks",
+        "de": "Umfrage: Getränke"
+      }
+    }
+  }
+}

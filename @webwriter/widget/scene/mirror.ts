@@ -62,7 +62,9 @@ import {
   type Rect,
   type Transform,
 } from "./geometry.js"
+import {adoptControls, THEME_CHANGE} from "./controls.js"
 import {measurePorts, type Port, type Ports} from "./ports.js"
+import {sceneToImage, sceneToSVG, type ImageOptions, type SnapshotOptions, type SnapshotSource} from "./snapshot.js"
 
 /** The computed style of a scene element, as far as a renderer uses it. */
 export type Style = {
@@ -354,6 +356,7 @@ export abstract class SceneMirror extends HTMLElement implements SceneLike {
   #measured: SceneNode[] = []
   #structure = false
   #restyle = false
+  #printing = false
   #reorder = false
   #queued = false
   #scope: AbortController | null = null
@@ -369,7 +372,7 @@ export abstract class SceneMirror extends HTMLElement implements SceneLike {
     super()
     const root = this.attachShadow({mode: "open"})
     const view = new CSSStyleSheet()
-    view.replaceSync("[part=layer] { translate: 0px 0px; scale: 1; }")
+    view.replaceSync("[part=layer] { translate: 0px 0px; scale: 1; --ww-scene-zoom: 1; --ww-scene-counter: 1; }")
     this.#viewRule = (view.cssRules[0] as CSSStyleRule).style
     root.adoptedStyleSheets = [sceneSheet, slottedSheet, view]
     root.innerHTML = `<div part="surface" tabindex="-1"><div part="layer"><svg part="proxies"></svg><slot></slot><svg part="overlay"><path part="link"/><rect part="marquee"/><g part="handles"/></svg></div></div><span part="probe" hidden></span>`
@@ -428,6 +431,8 @@ export abstract class SceneMirror extends HTMLElement implements SceneLike {
       this.unmount()
     })
     this.connected(signal)
+    this.#watchPrinting(signal)
+    this.#watchTheme(signal)
     this.#follow()
     this.#backdrop()
     this.restructure()
@@ -1283,6 +1288,9 @@ export abstract class SceneMirror extends HTMLElement implements SceneLike {
     this.#regrid()
     this.#viewRule.setProperty("translate", `${view.x}px ${view.y}px`)
     this.#viewRule.setProperty("scale", String(view.k))
+    // For the controls of the nodes: they are drawn 1 / zoom times larger when the view is zoomed out.
+    this.#viewRule.setProperty("--ww-scene-zoom", String(view.k))
+    this.#viewRule.setProperty("--ww-scene-counter", String(view.k > 0 ? 1 / view.k : 1))
     this.viewed(view)
     this.zoomed()
   }
@@ -1401,6 +1409,106 @@ export abstract class SceneMirror extends HTMLElement implements SceneLike {
   drawingOf(item: SceneItem): Drawing | null {
     this.#current()
     return this.#records.get(item)?.drawing ?? null
+  }
+
+  /** The computed style the scene last read for an item, as the renderer uses it. Null for an item that is not drawn, or not there. */
+  styleOf(item: SceneItem): Style | null {
+    this.#current()
+    return this.#records.get(item)?.style ?? null
+  }
+
+  /**
+   * The editor sends `ww-themechange` on the document when the document theme changes, which no observer of the
+   * page sees. The scene reads its styles again then, and measures its ports: the font may have changed.
+   * The controls of the nodes keep their size on the screen (`data-ww-control`).
+   */
+  #watchTheme(signal: AbortSignal) {
+    this.ownerDocument.addEventListener(
+      THEME_CHANGE,
+      () => {
+        this.restyle()
+        this.remeasure()
+      },
+      {signal},
+    )
+    signal.addEventListener("abort", adoptControls(this.getRootNode()), {once: true})
+  }
+
+  // ── Picture and print ─────────────────────────────────────────────────
+
+  get #snapshot(): SnapshotSource {
+    return {root: this, extent: () => this.extent(), drawingOf: item => this.drawingOf(item), styleOf: item => this.styleOf(item), measureText: (text, source) => this.measureText(text, source)}
+  }
+
+  /**
+   * The scene as a standalone SVG document (a string), from what the scene
+   * draws now: the same for every renderer. The picture is the box around everything
+   * in the scene (`extent()`) with some padding, in scene pixels, with no view applied.
+   * Texts keep their font, so nothing is estimated. The HTML of a `ww-node` is written
+   * as a `<foreignObject>` with its computed styles inline (`{nodes: false}` leaves it out). A grid
+   * (`background`) is not part of it; the tint of a sprite is not applied. Null for an empty scene.
+   */
+  toSVG(options?: SnapshotOptions): string | null {
+    return sceneToSVG(this.#snapshot, options)?.svg ?? null
+  }
+
+  /**
+   * The scene as a picture: PNG by default, `scale` pixels per scene pixel (2 by default),
+   * `type` a MIME type such as `image/jpeg` (with `quality`). The page's web fonts are
+   * embedded, because a rasterised SVG cannot load them itself. Rejects for an empty scene.
+   */
+  toImage(options?: ImageOptions): Promise<Blob> {
+    return sceneToImage(this.#snapshot, options)
+  }
+
+  /**
+   * True while the document is printed: between `beforeprint` and `afterprint`, while
+   * the `print` media query matches (a headless print fires no `beforeprint`), and while
+   * the widget around the scene has the editor's class `ww-beforeprint`.
+   */
+  get printing(): boolean {
+    return this.#printing
+  }
+
+  #watchPrinting(signal: AbortSignal) {
+    const media = matchMedia("print")
+    const ancestors: Element[] = []
+    for(let node: Element | null = this; node; ) {
+      const parent: Element | null = node.parentElement ?? ((node.getRootNode() as ShadowRoot).host ?? null)
+      if(parent) ancestors.push(parent)
+      node = parent
+    }
+    let flagged = false
+    const update = () => {
+      const now = flagged || media.matches || ancestors.some(element => element.classList.contains("ww-beforeprint"))
+      if(now === this.#printing) return
+      this.#printing = now
+      this.printed(now)
+    }
+    const before = () => ((flagged = true), update())
+    const after = () => ((flagged = false), update())
+    window.addEventListener("beforeprint", before, {signal})
+    window.addEventListener("afterprint", after, {signal})
+    media.addEventListener(
+      "change",
+      () => {
+        // Styles can differ on paper, and the layout of the page is another one.
+        this.restyle()
+        this.remeasure()
+        update()
+      },
+      {signal},
+    )
+    const classes = new MutationObserver(update)
+    for(const element of ancestors) classes.observe(element, {attributes: true, attributeFilter: ["class"]})
+    signal.addEventListener("abort", () => {
+      classes.disconnect()
+      if(this.#printing) {
+        this.#printing = false
+        this.printed(false)
+      }
+    })
+    update()
   }
 
   /** The outline of an item in scene coordinates: a path's line, or the corners of a box. Empty for what is not rendered. */
@@ -1604,6 +1712,8 @@ export abstract class SceneMirror extends HTMLElement implements SceneLike {
 
   /** Runs once per connect, with the signal that aborts on disconnect. */
   protected connected(_signal: AbortSignal): void {}
+  /** Printing started (`true`) or ended (`false`), see `printing`. A renderer whose drawing does not print by itself prepares it here. */
+  protected printed(_on: boolean): void {}
   /** Runs when the widget rendered, before the flush. */
   protected refreshed(): void {}
   /** The ports of these nodes may have changed. Runs after the drawing was written. */

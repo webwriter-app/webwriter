@@ -4,6 +4,7 @@ import {can as allowed} from "../permissions.js"
 import type {PortEnd, SceneAction, SceneBase, SceneView, TextFont, TextSize, UndoHost} from "./base.js"
 import type {SceneItem, ScenePath} from "./elements.js"
 import type {Point, Rect} from "./geometry.js"
+import type {ImageOptions, SnapshotOptions} from "./snapshot.js"
 import type {SceneMessages} from "../messages/scene/index.js"
 
 /** A permission per action, by the name it has in the widget's `static permissions`. An action without a name is allowed. */
@@ -128,6 +129,22 @@ export class SceneCore extends ModuleCore<SceneSnapshot> {
   /** The paths in the widget's first scene that end at exactly this reference: at a port (`node:port`), or at a node as a whole (`node`), which does not count the wires at its ports. */
   wiresAt(reference: string): ScenePath[] {
     return this.scenes[0]?.wiresAt(reference) ?? []
+  }
+
+  /** The widget's first scene as a standalone SVG document, or null for an empty scene. See `toSVG` of the scene. */
+  toSVG(options?: SnapshotOptions): string | null {
+    return this.scenes[0]?.toSVG(options) ?? null
+  }
+
+  /** The widget's first scene as a picture, PNG by default. See `toImage` of the scene. */
+  toImage(options?: ImageOptions): Promise<Blob> {
+    const scene = this.scenes[0]
+    return scene ? scene.toImage(options) : Promise.reject(new Error("The widget has no scene."))
+  }
+
+  /** True while the document is printed, for the widget's first scene. See `printing` of the scene. */
+  get printing(): boolean {
+    return this.scenes[0]?.printing ?? false
   }
 
   /** Reads every computed style again, for a change of style that no observer sees, such as a new style rule. */

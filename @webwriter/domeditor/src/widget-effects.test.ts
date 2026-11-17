@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {Signal} from "signal-polyfill"
 import {afterEach, expect, it, vi} from "vitest"
-import {mountWidgetEffects, parseWidgetEffectReference, validateWidgetEffect, widgetEffectReference, type WidgetSignal} from "./widget-effects"
+import {effectAccepts, inspectWidgetEffects, isWidgetHost, mountWidgetEffects, parseWidgetEffectReference, validateWidgetEffect, widgetEffectReference, widgetSignalDeclarations, type WidgetSignal} from "./widget-effects"
 
 const settle = () => new Promise(resolve => setTimeout(resolve))
 
@@ -171,4 +171,62 @@ it("re-reads the links only for content that can change them", async () => {
   const holder = document.createElement("div")
   document.querySelector("reactive-source")!.replaceWith(holder)
   await vi.waitFor(() => expect(sum.left.get()).toBeNull())
+})
+
+class TableSource extends HTMLElement {
+  static signals = {history: {shape: "table", label: "History"}, level: {shape: "number"}}
+  signals = {history: new Signal.Computed(() => ({columns: ["a"], rows: [[1]]})), level: new Signal.Computed(() => 1), loose: new Signal.Computed(() => 0)}
+}
+customElements.define("table-source", TableSource)
+
+class TableReader extends HTMLElement {
+  static effects = {"data-from": {accepts: ["table"], connect(this: TableReader, source: WidgetSignal, lifetime: AbortSignal) {
+    this.sources.push(source)
+    lifetime.addEventListener("abort", () => this.sources.pop(), {once: true})
+  }}}
+  sources: WidgetSignal[] = []
+}
+customElements.define("table-reader", TableReader)
+
+it("lists and connects only sources whose declared shape an effect accepts", async () => {
+  document.body.innerHTML = `
+    <table-source id="t"></table-source>
+    <table-reader id="r" data-from="#t[history]"></table-reader>
+    <reactive-display id="d"></reactive-display>`
+  const reader = document.getElementById("r") as TableReader
+  runtime = mountWidgetEffects(document.body)
+  await settle()
+  expect(reader.sources).toHaveLength(1)
+  const effect = (TableReader as unknown as {effects: Record<string, {accepts: string[]}>}).effects["data-from"]
+  const state = inspectWidgetEffects(document.body, reader, isWidgetHost)!
+  expect(state.choices(effect).map(choice => choice.value)).toEqual(["#t[history]"])
+  expect(state.choices(effect)[0].label).toContain("History")
+  // An effect that does not restrict shapes sees every signal, declared or not.
+  expect(state.choices().map(choice => choice.value)).toEqual(["#t[history]", "#t[level]", "#t[loose]"])
+})
+
+it("leaves a link to an undeclared or differently shaped signal unconnected and says why", async () => {
+  document.body.innerHTML = `
+    <table-source id="t"></table-source>
+    <table-reader id="r" data-from="#t[level]"></table-reader>
+    <table-reader id="u" data-from="#t[loose]"></table-reader>`
+  const [reader, undeclared] = [document.getElementById("r") as TableReader, document.getElementById("u") as TableReader]
+  runtime = mountWidgetEffects(document.body)
+  await settle()
+  expect(reader.sources).toHaveLength(0)
+  expect(undeclared.sources).toHaveLength(0)
+  expect(inspectWidgetEffects(document.body, reader, isWidgetHost)!.statuses?.get("data-from")?.message).toContain("Signal shape not accepted")
+  expect(validateWidgetEffect(document.body, reader, "data-from", "#t[level]", isWidgetHost)).toContain("Expected table")
+  expect(validateWidgetEffect(document.body, reader, "data-from", "#t[history]", isWidgetHost)).toBeUndefined()
+})
+
+it("reads shape declarations from the static signals map and ignores malformed ones", () => {
+  const declared = widgetSignalDeclarations(document.createElement("table-source") as TableSource)
+  expect(declared.get("history")?.shape).toBe("table")
+  class Bad extends HTMLElement { static signals = {a: null, b: 3, c: {shape: "number"}} }
+  customElements.define("bad-signals", Bad)
+  expect([...widgetSignalDeclarations(document.createElement("bad-signals") as Bad).keys()]).toEqual(["c"])
+  expect(effectAccepts({}, undefined)).toBe(true)
+  expect(effectAccepts({accepts: []}, undefined)).toBe(true)
+  expect(effectAccepts({accepts: ["table"]}, undefined)).toBe(false)
 })

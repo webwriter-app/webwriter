@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Order exercise (Exercise helper, data block, localization)</title>
+<style>
+  body { font-family: system-ui; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 0.8rem; background: #f3f3f3; padding: 0.5rem; }
+</style>
+<p>
+  <label><input type="checkbox" id="edit"> Edit mode</label>
+  <label><input type="checkbox" id="submitted"> Submitted</label>
+  <label><input type="checkbox" id="late"> Feedback after submitting</label>
+  <label><input type="checkbox" id="allow"> Learners may reveal the solution</label>
+  <label><input type="checkbox" id="shuffle"> Shuffle for each reader</label>
+</p>
+<form>
+  <main>
+    <section lang="en">
+      <h2>English</h2>
+      <ww-order-exercise name="tea" required solution="AR2YAS+KbjIdRIGDqEDKVwuy">
+        <data value="b">Boil the water</data>
+        <data value="a">Add the tea</data>
+        <data value="c">Cool it down</data>
+        <script type="application/json" slot="data">{}</script>
+      </ww-order-exercise>
+    </section>
+    <section lang="de">
+      <h2>Deutsch</h2>
+      <ww-order-exercise name="tee" solution="AR2YAS+KbjIdRIGDqEDKVwuy">
+        <data value="b">Wasser kochen</data>
+        <data value="a">Tee hineingeben</data>
+        <data value="c">Abkühlen lassen</data>
+        <script type="application/json" slot="data">{}</script>
+      </ww-order-exercise>
+    </section>
+  </main>
+  <p><button type="reset">Reset form</button></p>
+</form>
+<p><output id="valid"></output></p>
+<p><small>
+  Drag an item, or focus it and use Space, the arrow keys and Enter. In edit mode the same drag records the solution.
+  Below: the document source of the first widget and the form's values.
+</small></p>
+<pre id="source"></pre>
+<script type="module">
+  import "../../dist/order-exercise/index.js";
+  const widgets = [...document.querySelectorAll("ww-order-exercise")];
+  const toggle = (id, apply) => document.getElementById(id).addEventListener("change", (e) => widgets.forEach((w) => apply(w, e.target.checked)));
+  toggle("edit", (w, on) => w.toggleAttribute("contenteditable", on));
+  toggle("submitted", (w, on) => w.toggleAttribute("submitted", on));
+  toggle("late", (w, on) => (on ? w.setAttribute("feedback", "submit") : w.removeAttribute("feedback")));
+  toggle("allow", (w, on) => w.toggleAttribute("allow-solution", on));
+  toggle("shuffle", (w, on) => w.toggleAttribute("shuffle", on));
+  const form = document.querySelector("form");
+  const show = () => {
+    document.getElementById("source").textContent = `${widgets[0].outerHTML}\n\n${JSON.stringify(Object.fromEntries(new FormData(form)))}`;
+    document.getElementById("valid").textContent = form.checkValidity() ? "The form is valid." : "The form is not valid: a response is missing.";
+    document.getElementById("submitted").checked = widgets.some((w) => w.hasAttribute("submitted"));
+  };
+  new MutationObserver(show).observe(form, { subtree: true, childList: true, attributes: true, characterData: true });
+  customElements.whenDefined("ww-order-exercise").then(() => requestAnimationFrame(show));
+</script>

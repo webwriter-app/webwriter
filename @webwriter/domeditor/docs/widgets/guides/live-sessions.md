@@ -184,7 +184,3 @@ Start a live session from **Preview**. Join the session as several participants.
 Change the participant filter. Make sure that the chart shows the new selection. Select a time in replay. Check that replay shows the responses for that time. Test missing responses, remote data changes, undo, and redo. Shared data supply one response for each shared scope.
 
 Keep aggregate rendering read-only. Test a custom renderer in a narrow container. Disconnect its observers and remove its listeners when the renderer disconnects.
-
-## Participant permissions and controls
-
-## Response checks during replay

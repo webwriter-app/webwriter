@@ -12,6 +12,7 @@ import {
   defaultDocumentTheme,
   documentTheme,
   editingDocumentThemeSource,
+  themeChangeEvent,
 } from "../document-themes"
 import {adoptStylesheet, authoredClassValue, createStylesheet} from "../utility"
 import {elementAttributeEditability, isUnsafeElementAttributeValue, setElementAttributeValue} from "../element-attributes"
@@ -111,6 +112,30 @@ export class HeadFeature extends EditorFeature {
   private enumerationCSS = ""
   private activeThemeStylesheet: CSSStyleSheet | null = null
   private untrackThemeStyles?: () => void
+  private themeChangeQueued = false
+  /** Tell the widgets, once per batch of changes, that the theme they read may differ. */
+  private notifyThemeChange() {
+    if(this.themeChangeQueued) return
+    this.themeChangeQueued = true
+    queueMicrotask(() => {
+      this.themeChangeQueued = false
+      if(!this.isEnabled) return
+      document.dispatchEvent(new CustomEvent(themeChangeEvent, {
+        bubbles: true,
+        detail: {theme: this.firstTheme()?.getAttribute("data-ww-theme") ?? defaultDocumentTheme.value},
+      }))
+    })
+  }
+  private themeObserver: MutationObserver | null = null
+  private readonly handleThemeMutations = (mutations: MutationRecord[]) => {
+    const styleElement = (node: Node) => node instanceof Element && node.matches("style, link[rel~='stylesheet']")
+    const changesStyles = (mutation: MutationRecord) => {
+      if(mutation.type === "attributes") return true
+      const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement
+      return Boolean(target?.closest("style")) || [...mutation.addedNodes, ...mutation.removedNodes].some(styleElement)
+    }
+    if(mutations.some(changesStyles)) this.notifyThemeChange()
+  }
   private readonly handleMutations = (mutations: MutationRecord[]) => {
     const head = document.head
     const relevant = mutations.some(mutation => (
@@ -194,6 +219,18 @@ export class HeadFeature extends EditorFeature {
     catch {
       observer.disconnect()
     }
+    // A theme is a stylesheet in the head, or properties on the root and the body.
+    const themeObserver = new FrameMutationObserver(this.handleThemeMutations)
+    try {
+      themeObserver.observe(document.head, {characterData: true, childList: true, subtree: true})
+      for(const root of [document.documentElement, document.body]) {
+        if(root) themeObserver.observe(root, {attributes: true, attributeFilter: ["style", "class", "data-theme"]})
+      }
+      this.themeObserver = themeObserver
+    }
+    catch {
+      themeObserver.disconnect()
+    }
     this.postState()
   }
 
@@ -201,6 +238,8 @@ export class HeadFeature extends EditorFeature {
     if(!this.isEnabled) return
     this.observer?.disconnect()
     this.observer = null
+    this.themeObserver?.disconnect()
+    this.themeObserver = null
     this.elementsById.clear()
     if(this.enumerationStylesheet) {
       document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.enumerationStylesheet)
@@ -224,6 +263,8 @@ export class HeadFeature extends EditorFeature {
     const name = this.firstTheme()?.getAttribute("data-ww-theme") ?? defaultDocumentTheme.value
     const stylesheet = editingThemeStylesheet(name)
     if(stylesheet === this.activeThemeStylesheet) return
+    // The first sheet is no change: nothing has been drawn from another theme yet.
+    if(this.activeThemeStylesheet) this.notifyThemeChange()
     if(this.activeThemeStylesheet) {
       document.adoptedStyleSheets = document.adoptedStyleSheets
         .filter(current => current !== this.activeThemeStylesheet)

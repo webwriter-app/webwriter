@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>circuit checks without typed attr()</title>
+<!-- Runs the same checks as test.html in a browser that reports no support for typed attr(), so that
+     nodes and groups are placed by the fallback: node test/run.mjs examples/circuit/fallback.html -->
+<script>
+  const supports = CSS.supports.bind(CSS);
+  CSS.supports = (...args) => !args.join(" ").includes("attr(") && supports(...args);
+  // Typed attr() still parses in this browser, so make sure that it is not what places the nodes.
+  const replaceSync = CSSStyleSheet.prototype.replaceSync;
+  CSSStyleSheet.prototype.replaceSync = function (text) { return replaceSync.call(this, text.replace(/[\w-]+: attr\([^;]*;/g, "")); };
+</script>
+<script type="module" src="../../dist/circuit/test.js"></script>

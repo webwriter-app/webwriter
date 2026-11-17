@@ -2,7 +2,7 @@ import type {Signal} from "@angular/core"
 import type {ShortcutsCore, ShortcutsOptions} from "@webwriter/widget/shortcuts"
 import type {BindingOptions, ModuleRef} from "./base.js"
 
-export type {ShortcutAction, ShortcutsMessages, ShortcutsSnapshot} from "@webwriter/widget/shortcuts"
+export type {ShortcutAction, ShortcutKey, ShortcutsMessages, ShortcutsSnapshot} from "@webwriter/widget/shortcuts"
 
 export type ShortcutsBinding = {
   readonly core: ShortcutsCore

@@ -200,6 +200,38 @@ describe("standalone widget drawer", () => {
   })
 })
 
+describe("standalone widget drawer import errors", () => {
+  it.each([
+    ["the widget's message", new Error("Die Datei ist leer."), "Die Datei ist leer."],
+    ["a generic text without a message", new Error(""), "The action could not be completed."],
+  ])("shows %s when an import fails", async (_name, error, message) => {
+    const target = await widget("")
+    target.importResult.mockRejectedValue(error)
+    const drawer = await mount(target)
+    await vi.waitFor(() => expect(target.dataReady).toBe(true))
+    const input = drawer.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+    vi.spyOn(input, "click").mockImplementation(() => {})
+    button(drawer, "Import .json").click()
+    Object.defineProperty(input, "files", {value: [new File(["{}"], "test.json", {type: "application/json"})]})
+    input.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(drawer.shadowRoot!.querySelector('[role="alert"]')?.textContent).toBe(message))
+  })
+
+  it("shows the generic import text when the widget declines a file", async () => {
+    const target = await widget("")
+    target.importResult.mockResolvedValue(null as never)
+    const drawer = await mount(target)
+    await vi.waitFor(() => expect(target.dataReady).toBe(true))
+    const input = drawer.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+    vi.spyOn(input, "click").mockImplementation(() => {})
+    button(drawer, "Import .json").click()
+    Object.defineProperty(input, "files", {value: [new File(["{}"], "test.json", {type: "application/json"})]})
+    input.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(drawer.shadowRoot!.querySelector('[role="alert"]')?.textContent)
+      .toBe("The file could not be imported into the selected widget."))
+  })
+})
+
 describe("HTTP result storage", () => {
   it("uses conditional creation and update with the returned revision", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>()

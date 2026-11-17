@@ -1,7 +1,7 @@
 import type {DistributionNode} from "./distribution-validation.js"
 import {validateDistributionChange} from "./distribution-validation.js"
 import {localDistributionInstruction, readDistributionConfigs} from "./distribution-dom"
-import {editorWidgetLookup, isEditorOnlyNode, isEditorOwnedAttribute, registerFrameArtifacts} from "./editor-artifacts"
+import {editorWidgetLookup, isEditorOnlyNode, isEditorOwnedAttribute, isEditorOwnedClass, registerFrameArtifacts} from "./editor-artifacts"
 
 /** Stable, artifact-free validation projection; never stored as an editor model. */
 export function distributionSnapshot(node: Node, isWidget = editorWidgetLookup(node)): DistributionNode | null {
@@ -17,7 +17,7 @@ export function distributionSnapshot(node: Node, isWidget = editorWidgetLookup(n
   const attrs: Record<string, string> = {}
   for(const attribute of Array.from(element.attributes).sort((a, b) => a.name.localeCompare(b.name))) {
     if(attribute.namespaceURI === null && isEditorOwnedAttribute(element, attribute.name, isWidget)) continue
-    const value = attribute.name === "class" ? attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ") : attribute.value
+    const value = attribute.name === "class" ? attribute.value.split(/\s+/).filter(name => name && !isEditorOwnedClass(name)).join(" ") : attribute.value
     if(attribute.name !== "class" || value) attrs[attribute.name] = value
   }
   const container = element.localName === "template" && "content" in element ? (element as HTMLTemplateElement).content : element

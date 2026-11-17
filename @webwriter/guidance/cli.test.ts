@@ -79,11 +79,12 @@ it("resolves manifest badges without losing format, language, or version values"
     const manifest = join(directory, "package.json")
     writeFileSync(manifest, JSON.stringify({keywords: [
       "widget-online-use", "widget-convertible-to-image/svg+xml", "widget-lang-en-US",
-      "widget-migrates-from-1.2.0-RC.1", "widget-lang-fr-CA", "widget-lang-", "widget-lang-en-US",
-      "widget-online", "custom-keyword",
+      "widget-migrates-from-1.2.0-RC.1", "widget-lang-fr-CA", "widget-lang-en-US",
+      "widget-online", "custom-keyword", "widget-convertible-from-.puml",
     ]}))
     const result = run("badges", manifest)
     expect(result.status).toBe(0)
+    expect(result.stderr).toBe("")
     expect(JSON.parse(result.stdout).map(({keyword, guides}) => [keyword, guides])).toEqual([
       ["widget-online-use", ["guides/libraries"]],
       ["widget-convertible-to-image/svg+xml", ["guides/conversions"]],
@@ -91,9 +92,51 @@ it("resolves manifest badges without losing format, language, or version values"
       ["widget-migrates-from-1.2.0-RC.1", ["guides/migrations"]],
       ["widget-lang-fr-CA", ["guides/localization"]],
       ["widget-online", ["guides/libraries"]],
+      ["widget-convertible-from-.puml", ["guides/conversions"]],
     ])
   }
   finally {
     rmSync(directory, {recursive: true})
+  }
+})
+
+it("reports unknown and malformed keywords and invalid ISCED codes, and keeps the valid badges", () => {
+  const directory = mkdtempSync(join(tmpdir(), "widget manifest "))
+  try {
+    const manifest = join(directory, "package.json")
+    writeFileSync(manifest, JSON.stringify({keywords: [
+      "widget-reactive", "widget-reactiv", "widget-lang-", "widget-lang-en-US", "widget-convertible-to-", "widget-convertible-to-.jff",
+      "widget-convertible-to-image/", "widget-migrates-from-1.2", "isced2011-6", "isced2011-654", "isced2011-x",
+      "iscedf2013-0613", "iscedf2013-0699", "iscedf2013-6", "ISCEDF2013-06", "quiz",
+    ]}))
+    const result = run("badges", manifest)
+    expect(result.status).toBe(1)
+    expect(JSON.parse(result.stdout).map(({keyword, label}) => [keyword, label])).toEqual([
+      ["widget-reactive", "Reactive"],
+      ["widget-lang-en-US", "Content languages"],
+      ["widget-convertible-to-.jff", "Converts to"],
+      ["isced2011-6", "Bachelor's or equivalent level"],
+      ["isced2011-654", "Bachelor's or equivalent level"],
+      ["iscedf2013-0613", "Software and applications development and analysis"],
+      ["ISCEDF2013-06", "Information and Communication Technologies"],
+    ])
+    const problems = result.stderr.trim().split("\n")
+    expect(problems.map(line => line.match(/^"([^"]+)"/)?.[1])).toEqual([
+      "widget-reactiv", "widget-lang-", "widget-convertible-to-", "widget-convertible-to-image/", "widget-migrates-from-1.2",
+      "isced2011-x", "iscedf2013-0699", "iscedf2013-6",
+    ])
+    expect(problems[1]).toContain("BCP 47")
+    expect(problems[6]).toContain("code list")
+  }
+  finally {
+    rmSync(directory, {recursive: true})
+  }
+})
+
+it("lists every ISCED code of the keyword data in the keyword reference", () => {
+  const {isced} = JSON.parse(readFileSync(new URL("../domeditor/src/widget-keywords.json", import.meta.url), "utf8"))
+  const page = readFileSync(new URL("reference/keywords.md", docs), "utf8")
+  for(const [code, name] of [...Object.entries<string>(isced.levels), ...Object.entries<string>(isced.fields)]) {
+    expect(page, code).toMatch(new RegExp(`\\| \`${code}\` \\| [*]*${name.replace(/[()]/g, "\\$&")}[*]* \\|`))
   }
 })

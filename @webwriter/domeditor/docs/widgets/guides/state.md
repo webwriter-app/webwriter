@@ -202,7 +202,3 @@ resetTempo() { this.tempo = 120 }
 Change **Tempo** in the preview and look for the new attribute in the HTML pane. Select **Next beat** to change the temporary beat count. Select **Reset tempo** to restore 120 BPM. In an authoring tool, the Widget drawer can use the same option and action declarations.
 
 See the [options and actions reference](../reference/options-actions.md).
-
-## State in memory and in the document
-
-## Default values for settings

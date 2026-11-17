@@ -13,7 +13,7 @@ const usage = `Usage: ${skill} <command>
   search <query>          Find WebWriter widget docs
   list                    List documentation IDs and descriptions
   retrieve <id[,id...]>   Read the full Markdown for one or more pages
-  badges [package.json]   List badges and guide IDs, optionally for one manifest
+  badges [package.json]   List badges and guide IDs. With a manifest, resolve its keywords and report invalid ones
   install [options]       Install the skill using the Vercel Skills CLI
   uninstall [options]     Remove the skill using the Vercel Skills CLI`
 const stopWords = new Set("a an and are as at be by can do for from how i in is it of on or the to use what which with you".split(" "))
@@ -71,10 +71,52 @@ function printEntries(guides) {
   console.log(JSON.stringify(guides.map(({id, description}) => ({id, description})), null, 2))
 }
 
+const elementName = /^[a-z][a-z0-9_.-]*$/
+const mediaType = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$/
+const fileExtension = /^\.[a-z0-9][a-z0-9_-]*(?:\.[a-z0-9][a-z0-9_-]*)*$/
+const semver = /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){2}(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
+const conversionKey = value => [elementName, mediaType, fileExtension].some(pattern => pattern.test(value.toLowerCase()))
+const validValue = {
+  "widget-convertible-to-": conversionKey,
+  "widget-convertible-from-": conversionKey,
+  "widget-migrates-from-": value => {
+    const version = semver.exec(value)
+    return !!version && !version[1]?.split(".").some(part => /^0\d+$/.test(part))
+  },
+  "widget-lang-": value => {
+    try { return /^[a-z]{2,8}(?:-[a-z0-9]{1,8})*$/i.test(value) && Intl.getCanonicalLocales(value).length === 1 }
+    catch { return false }
+  },
+}
+const valueHint = {
+  "widget-convertible-to-": "a media type such as image/png, an extension such as .jff, or an HTML element name",
+  "widget-convertible-from-": "a media type such as image/png, an extension such as .jff, or an HTML element name",
+  "widget-migrates-from-": "a SemVer version such as 1.2.0",
+  "widget-lang-": "a BCP 47 language tag such as en-US",
+}
+
+/** The problem with a keyword of a manifest, or undefined when it is valid or free-form. */
+function keywordProblem(keyword, catalog, {isced}) {
+  const normalized = keyword.toLowerCase()
+  const level = /^isced2011-(.*)$/.exec(normalized)
+  if(level) return /^[0-9][0-9]{0,2}$/.test(level[1]) ? undefined
+    : `"${keyword}" is not an ISCED 2011 level. Use isced2011-<0–9>, optionally followed by up to two digits of the category.`
+  const field = /^iscedf2013-(.*)$/.exec(normalized)
+  if(field) {
+    if(!/^\d{2,4}$/.test(field[1])) return `"${keyword}" is not an ISCED-F 2013 code. Use two digits for a broad field, three for a narrow field, or four for a detailed field.`
+    return Object.hasOwn(isced.fields, field[1]) ? undefined : `"${keyword}" is not in the ISCED-F 2013 code list.`
+  }
+  const entry = catalog.find(entry => entry.pattern ? normalized.startsWith(entry.keyword) : normalized === entry.keyword)
+  if(!entry) return /^(?:widget-|webwriter-)/.test(normalized) ? `"${keyword}" is not a WebWriter widget keyword.` : undefined
+  if(!entry.pattern) return undefined
+  const value = keyword.slice(entry.keyword.length)
+  return value && validValue[entry.keyword]?.(value) ? undefined : `"${keyword}" needs a value: ${valueHint[entry.keyword]}.`
+}
+
 function printBadges(manifestPath) {
-  const {badges, guides} = loadWidgetKeywords()
-  const catalog = Object.entries(badges).map(([keyword, {label, pattern}]) => ({
-    keyword, label, pattern,
+  const {badges, guides, isced} = loadWidgetKeywords()
+  const catalog = Object.entries(badges).map(([keyword, {label, pattern, description}]) => ({
+    keyword, label, pattern, ...(description ? {description} : {}),
     guides: Object.entries(guides).filter(([, keywords]) => keywords.includes(keyword)).map(([id]) => `guides/${id}`),
   }))
   if(manifestPath === undefined) {
@@ -86,14 +128,27 @@ function printBadges(manifestPath) {
   if(!Array.isArray(keywords) || keywords.some(keyword => typeof keyword !== "string")) {
     throw new Error("Expected package.json keywords to be an array of strings.")
   }
-  const declared = [...new Set(keywords)].flatMap(keyword => {
+  const declared = [], problems = []
+  for(const keyword of new Set(keywords)) {
+    const problem = keywordProblem(keyword, catalog, {isced})
+    if(problem) {
+      problems.push(problem)
+      continue
+    }
     const normalized = keyword.toLowerCase()
-    const badge = catalog.find(entry => entry.pattern
-      ? normalized.startsWith(entry.keyword) && normalized.length > entry.keyword.length
-      : normalized === entry.keyword)
-    return badge ? [{...badge, keyword}] : []
-  })
+    const code = /^isced(?:2011-(\d)|f2013-(\d+))/.exec(normalized)
+    if(code) {
+      const name = code[1] === undefined ? isced.fields[code[2]] : isced.levels[code[1]]
+      declared.push({keyword, label: name, guides: ["reference/keywords"]})
+      continue
+    }
+    const badge = catalog.find(entry => entry.pattern ? normalized.startsWith(entry.keyword) : normalized === entry.keyword)
+    if(badge) declared.push({...badge, keyword})
+  }
   console.log(JSON.stringify(declared, null, 2))
+  // The resolved badges stay on standard output; the problems go to standard error and fail the command.
+  for(const problem of problems) console.error(problem)
+  if(problems.length) process.exitCode = 1
 }
 
 function retrieve(catalog, ids) {

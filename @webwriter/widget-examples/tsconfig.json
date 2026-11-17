@@ -1,0 +1,49 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable",
+      "DOM.AsyncIterable"
+    ],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "useDefineForClassFields": true,
+    "verbatimModuleSyntax": true,
+    "types": [],
+    "paths": {
+      "@webwriter/widget": [
+        "../widget/index.ts"
+      ],
+      "@webwriter/widget/*": [
+        "../widget/*"
+      ],
+      "@webwriter/lit": [
+        "../lit/index.ts"
+      ],
+      "@webwriter/lit/*": [
+        "../lit/*"
+      ],
+      "lit": [
+        "./node_modules/lit/index.d.ts"
+      ],
+      "lit/*": [
+        "./node_modules/lit/*"
+      ],
+      "@lit/*": [
+        "./node_modules/@lit/*"
+      ]
+    }
+  },
+  "include": [
+    "examples",
+    "test/harness.ts"
+  ],
+  "exclude": [
+    "examples/binding-*"
+  ]
+}

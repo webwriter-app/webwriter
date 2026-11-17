@@ -70,10 +70,6 @@ Do these checks for each widget.
 
 Export test modules as `./tests/<name>.js` or `./tests/<name>.*`. Run the modules from **Tests** in the **Developer console**. Each module runs in a separate frame with a time limit of 60 seconds.
 
-To test a unit converter, change the saved target unit. Check that the widget calculates the new output. Use undo. Check that the widget restores the previous output. The [Ghost Disco test module](../examples/ghost-disco-tests.js) has a test without a test-runner dependency. For [Mocha](https://mochajs.org/getting-started/), `getMochaConfig()` from `@webwriter/build/test` supplies the reporting hooks.
+To test a unit converter, change the saved target unit. Check that the widget calculates the new output. Use undo. Check that the widget restores the previous output. The [Ghost Disco test module](../examples/ghost-disco-tests.js) has a test without a test-runner dependency. For [Mocha](https://mochajs.org/getting-started/), `getMochaConfig()` from `@webwriter/build/test` supplies the reporting hooks. To test a widget that receives a signal, `connectEffect()` from the same module connects the effect to a source you create, as the authoring tool does. See [Make data reactive](reactivity.md#test-a-receiver).
 
 The [test reporting reference](../reference/build-test.md#test-reporting) gives details for other test runners.
-
-## Widget test cases
-
-## Checks after saving and opening

@@ -24,6 +24,11 @@ export function injectScene(options = {}) {
     itemsAt: (point, options) => core.itemsAt(point, options),
     endsOf: path => core.endsOf(path),
     wiresAt: reference => core.wiresAt(reference),
+    toSVG: options => core.toSVG(options),
+    toImage: options => core.toImage(options),
+    get printing() {
+      return core.printing
+    },
     restyle: () => core.restyle(),
     remeasure: () => core.remeasure(),
   }

@@ -196,7 +196,3 @@ The offline export includes the selections for each widget instance and insertab
 6. Make sure that the selected variant starts and restores the saved state and settings.
 7. Compare the file size with a document that includes all variants.
 8. If an import fails with `OfflineImportError`, show a message that explains which variants are available offline.
-
-## Dependency requirements in the manifest
-
-## Files and styles in the published package

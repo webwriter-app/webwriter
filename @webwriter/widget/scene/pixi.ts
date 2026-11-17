@@ -8,6 +8,11 @@ import type {Frame, PathLabel} from "./mirror.js"
 
 type Paint = {color: number; alpha: number}
 
+/** The resolution of a printed scene, in pixels per inch, and the most pixels its picture may have on a side and in all. */
+const PRINT_PPI = 300
+const PRINT_SIDE = 8192
+const PRINT_AREA = 50_000_000
+
 const paints = new Map<string, Paint | null>()
 let probe: CanvasRenderingContext2D | null = null
 
@@ -137,6 +142,10 @@ export class PixiScene extends SceneBase {
   /** The children of each group, as they were arranged, so that a box that appears later can be put in its place. */
   #arranged = new Map<SceneGroup | null, SceneItem[]>()
   #homes = new Map<SceneItem, SceneGroup | null>()
+  /** The picture that stands in for the WebGL canvas on paper, while the document is printed. */
+  #sheet: HTMLCanvasElement | null = null
+  /** The last picture of a scene that gave its context back (it is off screen): all that can be printed of it. */
+  #frozen: HTMLCanvasElement | null = null
 
   protected mount(surface: HTMLElement) {
     const {signal} = (this.#scope = new AbortController())
@@ -183,6 +192,8 @@ export class PixiScene extends SceneBase {
     this.#renderer = renderer
     if(!this.#visible) this.#release(true)
     this.#paint()
+    // The page loaded under the print media: there was no renderer yet when printing started.
+    if(this.printing) this.printed(true)
   }
 
   protected unmount() {
@@ -195,6 +206,9 @@ export class PixiScene extends SceneBase {
     this.#textures.clear()
     this.#canvas?.remove()
     this.#canvas = null
+    this.#sheet?.remove()
+    this.#sheet = null
+    this.#frozen = null
     this.#hover = null
     this.setState("failed", false)
   }
@@ -217,8 +231,71 @@ export class PixiScene extends SceneBase {
     const extension = renderer?.context.extensions.loseContext
     if(!renderer || !extension) return
     // Pixi rebuilds its GPU resources when the context comes back, and the scene then draws again.
-    if(lose && !renderer.gl.isContextLost()) extension.loseContext()
-    else if(!lose && renderer.gl.isContextLost()) extension.restoreContext()
+    if(lose && !renderer.gl.isContextLost()) {
+      // A scene that prints while it is off screen has only this picture to print.
+      this.#frozen = this.#capture()
+      extension.loseContext()
+    } else if(!lose && renderer.gl.isContextLost()) {
+      this.#frozen = null
+      extension.restoreContext()
+    }
+  }
+
+  // ── Print ─────────────────────────────────────────────────────────────
+
+  /**
+   * A WebGL canvas prints blank or as it was last shown, at the resolution of the screen. While the document
+   * is printed the scene draws once more at 300 ppi (as far as the browser's canvas limits allow) and shows
+   * that picture in the canvas's place. A scene that is off screen shows its last picture.
+   */
+  protected override printed(on: boolean) {
+    this.#sheet?.remove()
+    this.#sheet = null
+    if(this.#canvas) this.#canvas.style.visibility = ""
+    if(!on || !this.#canvas) return
+    const picture = this.#capture(PRINT_PPI / 96) ?? this.#frozen
+    if(!picture) return
+    const sheet = (this.#sheet = document.createElement("canvas"))
+    sheet.width = picture.width
+    sheet.height = picture.height
+    sheet.getContext("2d")!.drawImage(picture, 0, 0)
+    sheet.part.add("print")
+    sheet.style.objectFit = "contain"
+    this.#canvas.style.visibility = "hidden"
+    this.#canvas.before(sheet)
+  }
+
+  /** Draws the stage now and copies it to a 2D canvas, at `resolution` pixels per CSS pixel if it is given. Null if there is no context to draw with. */
+  #capture(resolution?: number): HTMLCanvasElement | null {
+    const renderer = this.#renderer
+    const canvas = this.#canvas
+    const [width, height] = [this.clientWidth, this.clientHeight]
+    if(!renderer || !canvas || !width || !height || renderer.gl.isContextLost()) return null
+    const scale = resolution === undefined ? undefined : Math.min(resolution, PRINT_SIDE / width, PRINT_SIDE / height, Math.sqrt(PRINT_AREA / (width * height)))
+    if(scale !== undefined) {
+      renderer.resize(width, height, scale)
+      this.#retext(scale * Math.max(1, this.#zoom))
+    }
+    renderer.render(this.#stage)
+    const copy = Object.assign(document.createElement("canvas"), {width: canvas.width, height: canvas.height})
+    copy.getContext("2d")!.drawImage(canvas, 0, 0)
+    if(scale !== undefined) {
+      renderer.resize(width, height, devicePixelRatio)
+      this.#retext(this.#resolution)
+      this.#paint()
+    }
+    return copy
+  }
+
+  /** Makes the texts, which are pictures of their glyphs, again at a resolution. */
+  #retext(resolution: number) {
+    const walk = (container: Container) => {
+      for(const child of container.children) {
+        if(child instanceof Text) child.resolution = resolution
+        else if(child instanceof Container) walk(child)
+      }
+    }
+    walk(this.#stage)
   }
 
   #paint() {
@@ -237,6 +314,8 @@ export class PixiScene extends SceneBase {
 
   protected painted() {
     this.#paint()
+    // A change while the document is printed (styles for paper, a late layout) goes into the picture too.
+    if(this.printing) this.printed(true)
   }
 
   protected resized(width: number, height: number) {

@@ -1635,7 +1635,7 @@ export class RibbonButton extends LitElement {
           ${this.details.keywords?.length ? html`
             <div class="details-keywords">
               ${this.details.keywords.map(keyword => html`
-                <span class="details-keyword" data-kind=${keyword.kind}>
+                <span class="details-keyword" data-kind=${keyword.kind} title=${keyword.description ?? nothing}>
                   ${keyword.icon ? html`<span class="details-keyword-icon" aria-hidden="true">${ribbonIcon(keyword.icon)}</span>` : ""}
                   ${keyword.label ? html`<span>${keyword.label}</span>` : nothing}
                   ${keyword.additionalLanguages?.length ? html`

@@ -19,6 +19,7 @@ Import `LitElementWw` from `@webwriter/lit`. Call `super` when you override a [l
 | `registry` | The widget class's native `CustomElementRegistry`. |
 | `static properties` | Lit [reactive property](https://lit.dev/docs/components/properties/) declarations. Declare option metadata separately. |
 | `static options` / `static actions` | Default widget drawer declarations. Use instance getters `get options()` and `get actions()` for declarations that depend on widget state. |
+| `static signals` / `static effects`, `signals` / `effects` | Declare what the widget publishes and receives. `static signals` maps a signal name to its `shape`, `label` and `description`. `static effects` maps an effect attribute to `connect`, `label`, `description` and `accepts`. The instance `signals` object holds the read-only signals. See [Signals](#signals). |
 | `widgetRuntime` | The widget's public `WidgetRuntime` instance, shared with its language and data hooks. |
 | `localize` | Optional `{getLocale, setLocale}` connection from [`@lit/localize`](https://lit.dev/docs/localization/overview/). |
 | `static dataType` | Default MIME type for an inert data block. The initial value is undefined. |
@@ -50,6 +51,37 @@ If an option has no `attribute`, the authoring tool uses the attribute name from
 
 Replace legacy `option` and `action` decorators with `static options` and `static actions`. Use `static optionGroups` for group declarations. The authoring tool records the DOM changes from an action as one undo step. The drawer ignores `placeholder` in a Lit action declaration. [Options and actions](options-actions.md) describes the interface.
 
+## Conversions in Lit
+
+`LitElementWw` types `static convertFrom` and `static convertTo`, and the instance members `convertFrom` and `convertTo`. An instance member has priority over the static map. A key that starts with a dot, such as `.json`, or holds a slash, such as `image/png`, declares a file format. Every other key is the lowercase tag of an HTML element, such as `ul`. Import and export handlers take the widget as `this` and are given by method name or as functions.
+
+```ts
+import {LitElementWw, type ConvertFromDeclarations, type ConvertToDeclarations} from "@webwriter/lit"
+
+class WwPackingList extends LitElementWw {
+  static convertFrom = {
+    ul: "loadList",
+    ".json": "importJson",
+  } satisfies ConvertFromDeclarations<WwPackingList>
+
+  static convertTo = {
+    ul: "toList",
+    "text/plain": "exportText",
+  } satisfies ConvertToDeclarations<WwPackingList>
+
+  loadList(fragment: DocumentFragment) { this.replaceChildren(fragment) }
+  async importJson(file: File) {
+    if(file.size > 1024 * 1024) throw new Error("The file is larger than 1 MiB.") // Localize the text with msg()
+    const items: string[] = JSON.parse(await file.text())
+    return () => this.replaceChildren(...items.map(text => Object.assign(document.createElement("li"), {textContent: text})))
+  }
+  toList() { return this.querySelector(":scope > ul")?.cloneNode(true) as Element | null }
+  exportText() { return new File([this.textContent ?? ""], "list.txt", {type: "text/plain"}) }
+}
+```
+
+`satisfies` checks each handler against the kind of its key. A file key rejects a handler that returns an element, and a handler of a tag key must not return a `File`. Without `satisfies`, a plain `static convertFrom = {...}` is checked against the base class when the class is declared. Annotate the parameters of handlers that you write inline, such as `(file: File) => ...`. The types are `ConvertFromDeclarations`, `ConvertToDeclarations`, `ElementImportHandler`, `FileImportHandler`, `FileImportResult`, `ElementExportHandler`, `FileExportHandler`, `FileExtensionKey`, `MediaTypeKey`, and `FileFormatKey`. The [conversion guide](../guides/conversions.md) explains the keys and how an import reports a bad file. The [runtime reference](runtime.md#conversions) lists the return values.
+
 ## Modules
 
 A module supplies one common widget behavior. Import each module from its own path. A widget bundles only the modules that it imports.
@@ -64,7 +96,8 @@ Most modules are Lit [reactive controllers](https://lit.dev/docs/composition/con
 | [Drag](#drag) | `@webwriter/lit/drag` | `Drag` | Reorder, move, copy, or link items by pointer, keyboard, or click. |
 | [Viewport](#viewport) | `@webwriter/lit/viewport` | `Viewport` | Zoom and pan a window onto larger content. |
 | [Help](#help) | `@webwriter/lit/help` | `Help` | Label the controls of the widget in an overlay. |
-| [Scene](#scene) | `@webwriter/lit/scene`, `@webwriter/widget/scene` | `SceneController`, `sceneElements` | Select, move, resize, and connect the elements of a drawing. |
+| [Scene](#scene) | `@webwriter/lit/scene`, `@webwriter/widget/scene` | `SceneController`, `sceneElements` | Select, move, resize, and connect the elements of a drawing. Export it as SVG or an image. Print it. |
+| [Print note](#print-note) | `@webwriter/lit/print` | `PrintNote`, `documentAddress` | Tell the reader on paper to open the document online. |
 | [Playback](#playback) | `@webwriter/lit/playback` | `Playback` | Run steps, a simulation, or media with play, pause, and seek controls. |
 | [Data block](#data-block-jsondata) | `@webwriter/lit/data` | `jsonData` | Read and write a JSON [data block](data.md). |
 | [Localization](#localization-localizer-widgetmsg) | `@webwriter/lit/localize` | `localizer`, `widgetMsg` | Show the widget's own text in the document language. |
@@ -263,7 +296,7 @@ Import `Shortcuts` from `@webwriter/lit/shortcuts`. The keys are declared on [`s
 
 | Declaration | Meaning |
 |---|---|
-| `shortcut` | On an action. A key such as `"Delete"`, `"Space"`, or `"Mod+D"`, or a list of keys. `Mod` is ⌘ on Apple devices and Ctrl elsewhere. Names are those of `KeyboardEvent.key`. `Space` and `Plus` stand for the characters. |
+| `shortcut` | On an action. A key such as `"Delete"`, `"Space"`, or `"Mod+D"`, or a list of keys. `Mod` is ⌘ on Apple devices and Ctrl elsewhere. Names are those of `KeyboardEvent.key`. `Space` and `Plus` stand for the characters. A key that also runs while the reader types in a text field is written as an object, `{key: "Mod+Enter", inText: true}`. See [Keys in text fields](#keys-in-text-fields). |
 | `can` | On an action. The permission that allows the key for a reader. `"edit"` keeps the key to authors. Without it the key works for readers too. |
 | `data-ww-shortcut="action"` | On a button in the shadow template. The module sets its `aria-keyshortcuts`. |
 | `data-ww-shortcuts="off"` | On an element. Every key inside is left alone, for a part with its own keymap. |
@@ -326,10 +359,27 @@ customElements.define("ww-item-list", WwItemList)
 - A key that belongs to something else is left alone: text entry, an element with a text role, an editable region of the widget, a caret in the authored children, and a key that the focused control uses itself, such as Space on a button or an arrow on a slider. The module ignores keys during text composition.
 - Letters ignore case and modifiers must match exactly. A shortcut on a letter or digit also matches the key at its position on a Latin keyboard, when the key produces a letter of another script or when the combination has Alt and the key produces no Latin letter or digit.
 - The editor keeps `Mod+Z`, `Mod+Shift+Z`, `Mod+Y`, and `Mod+S`. The module ignores them and warns in development.
+- Keys in text fields: see [Keys in text fields](#keys-in-text-fields).
 - An action with `disabled: true`, `confirm`, or `input` has no key. A `hidden` action keeps its key, so a navigation key needs no drawer button.
 - A method that returns `false` had nothing to do, such as Escape with nothing to cancel. The key goes to the next action that declares it, and to the page when none takes it. Any other result, also `undefined` and a promise, takes the key.
 - The method runs as one undo step. The step ends after the next render, or after the returned promise settles and the widget has rendered. A second press of the key does not start the action again while its promise is pending.
 - An action whose permission is not granted does nothing.
+
+#### Keys in text fields
+
+Keys typed in a text field are the field's: in a `<textarea>`, an `<input>` that takes text, an element with the role `textbox`, `searchbox`, `combobox`, or `spinbutton`, and an editable region. A shortcut does not run there. That is right for most keys and leaves a code editor without a Run key. Opt a key in with `inText: true` in the object form of `shortcut`. The list can mix strings and objects.
+
+```ts
+static actions = {
+  run: {label: {_: "Run"}, shortcut: [{key: "Mod+Enter", inText: true}, "R"]},
+  stop: {label: {_: "Stop"}, shortcut: {key: "Escape", inText: true}},
+}
+```
+
+- `Mod+Enter` runs `run` while the caret is in the code editor. The plain `R` runs it only outside text entry, so typing an R in the editor types an R.
+- Use `inText` for a key that types nothing: a combination with Ctrl, ⌘, or Alt, Escape, or a function key. In development the module warns once for a key that types, such as a letter, Space, Enter, or an arrow without a modifier, and runs it anyway.
+- `inText` changes only the text-entry rule. A key still does not run inside an element with `data-ww-shortcuts="off"`, during text composition, or when it is Mod+Z, Mod+Shift+Z, Mod+Y, or Mod+S. A control that uses the key itself, such as Space on a button, keeps it.
+- `keysOf()` and `labelsOf()` list the keys of an object entry like any other.
 
 ### Drag
 
@@ -341,7 +391,7 @@ Import `Drag` from `@webwriter/lit/drag`. The module also exports the types `Dra
 |---|---|---|
 | `data-ww-drag="kind"` | An item, or a `<slot>` | An item of this kind. On a `<slot>` the assigned authored elements are the items. |
 | `data-ww-key` | An item | Its identity. The events report it as `key`. |
-| `data-ww-drag-handle` | A part of an item | Only this part starts the drag. On a `<slot data-ww-drag>` it says that the assigned elements carry their own handle. |
+| `data-ww-drag-handle` | A part of an item | Only this part starts the drag, and only this part gets `touch-action: none`. The rest of the item scrolls by touch. On a `<slot data-ww-drag>` it says that the assigned elements carry their own handle. Make the handle at least 44 × 44 CSS px on a touch screen. |
 | `data-ww-drag-via="pointer keyboard click"` | An item or its `<slot>` | The ways the item is picked up. Without it all three work. |
 | `data-ww-drag-effect="move\|copy\|link"` | An item or its `<slot>` | `copy` leaves the item where it is. `link` draws a connector from the item to the pointer. The default is `move`. |
 | `data-ww-drag-axis="x\|y"` | An item | The item moves along this axis only. |
@@ -449,7 +499,7 @@ customElements.define("ww-rank-list", WwRankList)
 - For an authored child that moves, the module puts it before the item at `detail.before`, with `moveBefore()` where the browser has it so that a child widget keeps its state, and writes the target slot's name to the child's `slot` attribute. It writes nothing else to authored elements. A drop on the item's own place is no commit.
 - The module adds `tabindex="0"` to a shadow-rendered item that the keyboard can pick up and that has no `tabindex`. It never adds one to an authored child. A child that the keyboard should pick up needs its own `tabindex` or a focusable handle.
 - Animations of the move are skipped for a reader who prefers reduced motion.
-- The module sets `touch-action: none` only on what starts a drag, and only while `can` holds. Other touches still scroll.
+- The module sets `touch-action: none` only on what starts a drag, and only while `can` holds. Other touches still scroll. An item with a `data-ww-drag-handle` starts only at the handle, so only the handle gets `touch-action: none`. An item without one is a drag from anywhere, and the whole item gets it: a strip of draggable thumbnails that must scroll by touch needs a handle on each thumbnail. See [Pointer and touch input](../guides/focus.md#pointer-and-touch-input).
 - The module announces pick-up, target, drop, and cancellation in a live region, in the widget's language. `data-ww-label` supplies the names.
 - Style hooks on shadow elements are `data-ww-dragging` (rendered items), `data-ww-drop-candidate`, `data-ww-drop-over`, `[data-ww-drop-marker]` with `part="ww-drop-marker"`, and `[data-ww-drag-connector]` with `part="ww-drag-connector"`.
 
@@ -783,7 +833,7 @@ Scene draws a description of nodes, shapes, paths, text, and images, and reports
 
 Import `SceneController` from `@webwriter/lit/scene`, and `sceneElements` and the event types from `@webwriter/widget/scene`. Register the elements in the widget's scoped registry with `static scopedElements = {...sceneElements}`. For WebGL rendering, register `PixiScene` from `@webwriter/widget/scene/pixi` as `ww-scene`. Only this import bundles `pixi.js`. Use `webglAvailable()` from `@webwriter/widget/scene` to select the renderer.
 
-The controller has `marquee`, `extent()`, `measureText(text, source?)`, `ready`, `toScene(clientX, clientY)`, `toClient(x, y)`, `itemAt(point, {client}?)`, `itemsAt(point, {client}?)`, `endsOf(path)`, `wiresAt(reference)`, `restyle()`, and `remeasure()`. `extent()` and `measureText()` answer for the widget's first `ww-scene`. The options are `can`, `viewport`, `rendered`, `messages`, and `undoHost`.
+The controller has `marquee`, `extent()`, `measureText(text, source?)`, `ready`, `toScene(clientX, clientY)`, `toClient(x, y)`, `itemAt(point, {client}?)`, `itemsAt(point, {client}?)`, `endsOf(path)`, `wiresAt(reference)`, `toSVG(options?)`, `toImage(options?)`, `printing`, `restyle()`, and `remeasure()`. `extent()`, `measureText()`, `toSVG()`, and `toImage()` answer for the widget's first `ww-scene`. The options are `can`, `viewport`, `rendered`, `messages`, and `undoHost`.
 
 `can` is a function `(action, item, port?)` or a map from an action to a permission name, such as `{move: "allowMoving"}`. The actions are `select`, `move`, `resize`, and `connect`. For a connection that starts or ends at a port, a function also gets the port element, so that it can refuse one port and not the whole node. `viewport` takes the `core` of a [Viewport](#viewport) for a scene that is the window of a canvas viewport. `undoHost` is the element on which a commit opens its undo step. The editor takes a step only from an event that starts on the widget itself, so a controller in a component inside the widget passes `"outermost"` (the host at the top of the shadow roots above the scene), the widget, or a function that returns it. Without it the step starts on the host of the scene's shadow root.
 
@@ -898,7 +948,26 @@ customElements.define("ww-boxes", WwBoxes)
 - The scene writes no position or size to its elements. A preview is a Web Animation that ends with the interaction. A `selectable` or `movable` node without a `tabindex` gets `tabindex="0"`. A port that starts a wire gets `tabindex`, `role="button"`, and an `aria-label` where the template sets none, while the reader may connect, and loses them again.
 - Drawn elements and `ww-scene` have custom states for CSS: `:state(hover)` on a drawn item, `:state(failed)` on an image that did not load, `:state(rewiring)` on a path whose end is held, and `:state(wiring)` and `:state(marquee)` on the scene. `ww-scene::part(link)` is the pending wire, `ww-scene::part(resize)` the handles of a rect or image, and `ww-node::part(handle)` the handles of a node.
 - A scene inside a scrolling `data-ww-viewport` is zoomed from outside. Pass `viewport` only for the canvas form.
-- Call `restyle()` after a style change that no observer sees, and `remeasure()` when ports moved without a change of the document.
+- Call `restyle()` after a style change that no observer sees, and `remeasure()` when ports moved without a change of the document. A change of theme is no such change: see [Theme and zoom](#theme-and-zoom).
+
+#### Theme and zoom
+
+**The theme.** A scene reads computed styles when it draws, and the browser reports no change of a computed style. The scene reads its styles again, and measures its ports, after these changes: a class, a style, or `data-theme` on the widget, on the page's root or body, or on an element between them; a change of `prefers-color-scheme`; and the event `ww-themechange`, which the editor sends on the document after the document theme changed (another bundled theme, a stylesheet of the head, or theme properties on the root or the body). A widget needs no `restyle()` for a theme. Style a scene with the [theme tokens](../guides/theming.md#document-theme-properties-and-fallback-values), such as `stroke: var(--ww-border-color)`, and it follows the theme. An exported page has no editor and sends no event.
+
+**Controls that keep their size.** A node is scaled with the view, so a button in it is half the size at half the zoom. Mark a control with `data-ww-control` and the scene draws it larger by the inverse of the zoom while the view is zoomed out, so that it keeps the size it has at 100 %. Design the control for the [target sizes](../guides/focus.md#target-sizes), 24 px at least and 44 px for a primary control on a touch screen.
+
+```ts
+html`<ww-node data-ww-key=${id} x=${x} y=${y} selectable movable>
+  ${label}
+  <button type="button" data-ww-control aria-label="Remove ${label}" @click=${() => this.remove(id)}>×</button>
+</ww-node>`
+```
+
+- The scene writes two custom properties on its layer, which every node inherits: `--ww-scene-zoom` (the zoom of the view) and `--ww-scene-counter` (1 divided by it). A rule of the scene, with no specificity, gives `[data-ww-control]` a `scale` of `--ww-scene-counter` where that is greater than 1, up to `--ww-control-limit` (6 by default), and `transform-origin: var(--ww-control-origin, center)`. A rule of the widget on the same element wins, so the widget can write its own `scale` from the two properties.
+- A control is larger than its box in the layout, so it can cover its neighbors at a small zoom. Put it at a corner of the node, set `--ww-control-origin` to that corner (for example `top right`), and keep the label out of the way.
+- Zooming in scales the control with the node, as everything else. A group's own `scale` is not part of it. The counter applies to the view that the scene itself applies, the canvas form with the `viewport` option. A scene in a scrolling `data-ww-viewport` is zoomed from outside, and its controls scale with the world.
+- The scene adopts this rule as a constructed stylesheet into the shadow root, or the document, that holds the scene, and takes it away when the last scene there is gone. It writes nothing into the DOM.
+- The resize handles that the scene draws on a selected rect or image are 8 px at every zoom.
 
 #### Paths, markers, and labels
 
@@ -1362,6 +1431,66 @@ customElements.define("ww-schedule", WwSchedule)
 
 The answer comes from geometry and works for any point, also where no pointer is. A node counts inside its outline, a path in its hit band and on its markers and labels, and a shape, a text, or an image anywhere inside it, filled or not. A group counts only in its frame. Nodes are above everything that is drawn, and drawn items count from the last in the template to the first. An item with `pointer-events: none` is left out.
 
+#### Picture and print
+
+**A picture of the scene.** `toSVG(options?)` returns the scene as a standalone SVG document, a string, or `null` for an empty scene. `toImage(options?)` returns a `Promise<Blob>` of the scene as a picture. It is PNG by default. It rejects for an empty scene. Use them to export a diagram, to put it in a report, or to give a printout a picture. Both work with the default renderer and with `PixiScene`: the picture is made from the drawings that the renderer draws and not from its output, so the two renderers give the same markup for the same model. Nothing in the picture is estimated: a text is written with its font, and the scene measures it in that font.
+
+| Option | Applies to | Meaning |
+|---|---|---|
+| `padding` | both | Space around everything in the scene, in scene pixels. 8 by default. The picture covers `extent()` plus the padding, with no view applied. |
+| `nodes` | both | `false` leaves out the HTML content of `ww-node` elements. By default each node is a `<foreignObject>` with its computed styles written inline. |
+| `background` | both | A color for a rectangle below everything. Without it the picture is transparent. |
+| `scale` | `toImage` | Pixels per scene pixel. 2 by default. A picture that would be larger than a browser can make, 16 384 pixels on a side or about 120 million in all, is made smaller. |
+| `type` | `toImage` | A MIME type that `canvas.toBlob` supports: `image/png` (default), `image/jpeg`, or `image/webp`. A type without transparency is painted on white. |
+| `quality` | `toImage` | 0 to 1, for `image/jpeg` and `image/webp`. |
+| `fonts` | `toImage` | `false` does not embed the page's web fonts. A rasterized SVG cannot load fonts by itself, so `toImage` embeds the `@font-face` files that the picture uses. A font that cannot be fetched is replaced by the fallback. |
+
+```ts
+const svg = this.#scene.toSVG()                     // string | null
+const png = await this.#scene.toImage({scale: 3})   // Blob
+const link = Object.assign(document.createElement("a"), {href: URL.createObjectURL(png), download: "diagram.png"})
+link.click()
+URL.revokeObjectURL(link.href)
+```
+
+- The picture contains drawn items, texts, paths with their markers and labels, images, framed groups, and nodes. A `background` grid is left out, and so is the tint of a sprite. Selection outlines, handles, and the pending wire are never in it.
+- An image from another origin that a script cannot read keeps its address in the SVG, and an SVG that is turned into a picture cannot load it. Give such an image a CORS header, or leave `nodes` out of a rasterized picture that holds one.
+- A browser may refuse a picture whose SVG holds a node with a cross-origin resource. `toImage` then rejects with a message.
+
+**Printing.** A scene prints correctly with no code of the widget. It watches four signals: `beforeprint` and `afterprint` on the window, the `print` media query, and the class `ww-beforeprint` on the widget and the elements around it. Printing to PDF without a window sends no `beforeprint`, so the media query matters there. `scene.printing`, also on the controller, is true while any of them says so.
+
+- The default renderer is SVG and HTML, which print as vectors and text. It reads its styles again when the `print` media query changes, so a style that is written for `@media print` applies.
+- `PixiScene` draws on a WebGL canvas, which prints blank or stale at 96 pixels per inch. While the document is printed it draws the scene again at 300 pixels per inch, within the limits of the browser (8 192 pixels on a side), copies the result to a 2D canvas, and shows that in place of the WebGL canvas. The canvas has `part="print"`. The WebGL canvas is hidden meanwhile and comes back at screen resolution when printing ends. The picture keeps its proportions in the box that the page gives the scene.
+- A `PixiScene` that is off screen has given its WebGL context back to the page, so it prints the last picture it showed, at the resolution of the screen.
+- A widget needs `printing` only to adapt something else, such as the nodes. Style the paper with `@media print` as in [Support printing](../guides/printing.md).
+
+### Print note
+
+The print note is a short text that appears on paper only, for a widget that has no print view of its own: the interactive content is not shown on paper, so the note tells the reader to open the document online, with the address of the document where it is known. The text is in the widget's language, in every language that the library ships.
+
+Import `PrintNote` from `@webwriter/lit/print`. Create it in a private field. It has no required option.
+
+```ts
+import {LitElementWw} from "@webwriter/lit"
+import {PrintNote} from "@webwriter/lit/print"
+
+class WwSimulation extends LitElementWw {
+  #note = new PrintNote(this)
+  // render() has no print view.
+}
+```
+
+- The note is a `<p data-ww-print-note>` in the shadow root. The module adds one at the end of the shadow root. If the template has an element with `data-ww-print-note`, the module fills that one, so the widget decides where the note goes. Fill the template element only through the module: it replaces the content.
+- The note is hidden on screen. It is shown for `@media print` and while the host has the class `ww-beforeprint`. The widget can restyle it through `[data-ww-print-note]` and `[data-ww-print-address]`, the line with the address.
+- The address is the `<link rel="canonical">` of the page, else the address of the page itself if it is a public `http` or `https` address (not `localhost`, `127.x.x.x`, `*.localhost`, or `*.test`), without its fragment. A document in the editor or from a file has no address, so the note has only the text. `documentAddress()` is exported for a widget that wants the same logic.
+- `text` and `address` of the controller are reactive.
+- The options are `address` (a string, a function that returns one, or `null` for no address), `messages` to replace the text, and `root`.
+
+| Option | Meaning |
+|---|---|
+| `address` | The address to show. A function is asked on every render. `null` shows none. Default: `documentAddress()`. |
+| `messages` | Replaces the text of the module: `{note: "…"}`. |
+
 ### Playback
 
 Playback holds the run state of a widget that plays over time and gives it the interface of a media element. Use it for a slideshow, a simulation, or a video or audio element.
@@ -1578,6 +1707,8 @@ customElements.define("ww-greeting", WwGreeting)
 
 The text of `static options`, `static actions`, `static optionGroups`, and `static permissions` may be a function of the widget, such as `label: (widget) => widget.msg("Reset")`. This also holds for `description`, `placeholder`, `confirm`, `disabledReason`, and the `label` and `description` of a choice. The editor reads plain maps, so the base class answers these declarations on the instance with the functions asked. A member that the subclass defines itself, such as `get options()`, is left alone. Type the parameter by what the function reads, as in `(widget: {msg: MsgFn})`.
 
+`hidden`, `disabled`, and `readOnly` (where the declaration has it: options and permissions) may be functions of the widget in the same way. A function returns a boolean, and the editor reads the answer when it shows or runs the option or action. Use this to hide an action that has nothing to act on, such as `hidden: (widget) => widget.snapshots.length === 0`. A function that throws counts as `disabled` and `readOnly` but never as `hidden`. After a change of the state that the function reads, dispatch a bubbling `optionschange` event from the widget so that the editor reads the declarations again. See [Options and actions](options-actions.md#function-values).
+
 - Keep `msg` typed as `MsgFn`. The extraction of `@lit/localize-tools` finds a message by the type of the function that is called. [Localize a widget](../guides/localization.md) describes the catalog files.
 - Accept any language tag in `setLocale()`. It matches the tag to one of `sourceLocale` and `targetLocales`. It never rejects.
 - The first paint is in the source language. The widget renders again when its catalog is in. A widget that must not show the source language first awaits `this.localize.loaded` in `scheduleUpdate()` before its first update.
@@ -1776,6 +1907,10 @@ The `@webwriter/lit` package re-exports [Lit Signals](https://lit.dev/docs/data/
 When you build widgets separately, use compatible dependency versions. Use `@webwriter/build --shared-dependencies` so the widgets use one polyfill instance. With a different bundler, keep `@webwriter/lit`, Lit Signals, and the polyfill external.
 
 The [runtime signal interface](runtime.md#signals) describes effect declarations and connection syntax. The example clears its source when the connection aborts.
+
+`@webwriter/lit` also re-exports the [value shapes](runtime.md#value-shapes): the types `SignalShape`, `SignalShapes`, `SignalValue`, `SignalDeclaration`, `EffectDeclaration`, `ReadableSignal`, `Table` and `Series`, and the guards `isNumber`, `isString`, `isBoolean`, `isSeries`, `isTable`, `hasShape` and `effectAccepts`. `LitElementWw` types `static signals`, `static effects` and the instance members `signals` and `effects` with them. A widget declares `static signals = {history: {shape: "series", label: "Loss history"}}` and `static effects = {"series-from": {accepts: ["series"], connect}}`. The editor lists only matching sources for an effect with `accepts`.
+
+A widget that does not use Lit imports `signal`, `computed` and `watchSignal` from `@webwriter/widget/signals`. They use the implementation of `@webwriter/lit`, so both kinds of widget in one document share it. The [Make data reactive guide](../guides/reactivity.md#publish-without-lit) shows an example.
 
 `LitElementWw` tracks the signals that `render()` reads with `.get()`. A change to one of these signals starts an update. The display uses these updates to format the converter's Fahrenheit output. To update one binding, pass the signal to the `html` template.
 

@@ -5120,7 +5120,13 @@ export class DomEditor extends LitElement {
         this.triggerFileDownload(file, file.name)
       }
     }
-    catch(error) { if(this.isConnected && revision === this.frameRevision) this.reportFileError(error) }
+    catch(error) {
+      if(!this.isConnected || revision !== this.frameRevision) return
+      // The widget's message is shown as it is. A failure without one gets a generic text.
+      const message = error instanceof Error ? error.message : String(error ?? "")
+      this.reportFileError(message.trim() ? error : new Error(direction === "import"
+        ? "The file could not be imported into the selected widget." : "The selected widget could not export this file.", {cause: error}))
+    }
     finally { if(this.isConnected && revision === this.frameRevision) this.focusEditor() }
   }
 
@@ -5151,7 +5157,8 @@ export class DomEditor extends LitElement {
       if(this.widgetConversion?.sourceId !== sourceId || !this.widgetConversion.targets.some(item => item.tag === target)) return
       void this.execute({type: "convertWidgetElement", sourceId, target})
         .then(result => { if(result !== true) this.fileError = "The selected element could not be converted." })
-        .catch(error => { this.fileError = `Could not convert the selected element: ${error instanceof Error ? error.message : String(error)}` })
+        // The widget words and localizes its own message.
+        .catch(error => { this.fileError = (error instanceof Error ? error.message : String(error)).trim() || "The selected element could not be converted." })
         .finally(() => this.focusEditor())
       return
     }

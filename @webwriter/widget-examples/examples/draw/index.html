@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Draw (Scene: paths between nodes, markers, labels, shapes, text, grid, frames)</title>
+<style>body { font-family: system-ui; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }</style>
+<p>
+  <label><input type="radio" name="renderer" value="svg" checked> SVG</label>
+  <label><input type="radio" name="renderer" value="pixi"> Pixi</label>
+  <label><input type="radio" name="grid" value="dots" checked> dots</label>
+  <label><input type="radio" name="grid" value="lines"> lines</label>
+</p>
+<div id="stage"></div>
+<p><small>
+  Drag a node: the edges between whole nodes follow it and end on its outline (rectangle, rounded rectangle, circle, ellipse).
+  The pair A and B are one edge each way, apart by their bend. C has a loop. The framed group follows its members and moves them.
+</small></p>
+<script type="module">
+  import "../../dist/draw/index.js";
+  const stage = document.getElementById("stage");
+  // ?renderer=pixi&grid=lines
+  const query = new URLSearchParams(location.search);
+  for (const name of ["renderer", "grid"]) {
+    const input = document.querySelector(`[name=${name}][value=${query.get(name)}]`);
+    if (input) input.checked = true;
+  }
+  const show = () => {
+    const renderer = document.querySelector("[name=renderer]:checked").value;
+    const widget = document.createElement(`ww-draw-${renderer}`);
+    widget.grid = document.querySelector("[name=grid]:checked").value;
+    stage.replaceChildren(widget);
+  };
+  for (const input of document.querySelectorAll("input")) input.addEventListener("change", show);
+  show();
+</script>

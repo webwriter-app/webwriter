@@ -1,7 +1,7 @@
 import type {ShortcutsOptions} from "@webwriter/widget/shortcuts"
 import type {BindingOptions} from "./base.js"
 
-export type {ShortcutAction, ShortcutsMessages, ShortcutsSnapshot} from "@webwriter/widget/shortcuts"
+export type {ShortcutAction, ShortcutKey, ShortcutsMessages, ShortcutsSnapshot} from "@webwriter/widget/shortcuts"
 
 /**
  * React binding of Shortcuts. The keys are declared on the class's

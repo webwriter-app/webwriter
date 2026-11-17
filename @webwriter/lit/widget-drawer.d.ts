@@ -50,6 +50,7 @@ export declare class WidgetDrawer extends LitElement {
     private chooseStorage;
     private applyStorage;
     private switchStorage;
+    /** The widget's own message, or a generic one for a failure without a message. */
     private message;
     private confirm;
     private locale;

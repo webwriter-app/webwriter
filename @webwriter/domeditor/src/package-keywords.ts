@@ -1,3 +1,4 @@
+import {isWidgetFileFormat} from "@webwriter/lit/widget-options"
 import widgetKeywords from "./widget-keywords.json"
 
 export type PackageKeywordPresentation = {
@@ -5,16 +6,17 @@ export type PackageKeywordPresentation = {
     | "content" | "conversion" | "display" | "state" | "participation" | "dependency" | "development" | "discovery" | "widget"
   label: string
   icon?: string
+  /** A longer explanation, shown as the badge's tooltip. */
+  description?: string
   additionalLanguages?: string[]
 }
 
 type Badge = {label: string, icon: string}
-const widgetBadges = widgetKeywords.badges as Record<string, Badge & {kind: PackageKeywordPresentation["kind"]}>
+const widgetBadges = widgetKeywords.badges as Record<string, Badge & {kind: PackageKeywordPresentation["kind"], description?: string}>
 const onlineKeywords = ["widget-online", "widget-online-edit", "widget-online-use"]
 const migrationPrefix = "widget-migrates-from-"
 const conversionPrefixes = ["widget-convertible-to-", "widget-convertible-from-"]
 const elementName = /^[a-z][a-z0-9_.-]*$/
-const mediaType = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$/
 const semver = /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){2}(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 
 function widgetBadge(keyword: string, normalized: string): PackageKeywordPresentation | undefined {
@@ -23,7 +25,8 @@ function widgetBadge(keyword: string, normalized: string): PackageKeywordPresent
   if(prefix) {
     key = prefix
     value = normalized.slice(prefix.length)
-    if(!elementName.test(value) && !mediaType.test(value)) return
+    // An HTML tag name, a media type, or an extension with a leading dot, as in the keys of the conversion maps.
+    if(!elementName.test(value) && !isWidgetFileFormat(value)) return
   }
   else if(normalized.startsWith(migrationPrefix)) {
     key = migrationPrefix
@@ -32,8 +35,8 @@ function widgetBadge(keyword: string, normalized: string): PackageKeywordPresent
     if(!version || version[1]?.split(".").some(part => /^0\d+$/.test(part))) return
   }
   if(!Object.hasOwn(widgetBadges, key)) return
-  const {kind, label, icon} = widgetBadges[key]
-  return {kind, label: value ? `${label} ${value}` : label, icon}
+  const {kind, label, icon, description} = widgetBadges[key]
+  return {kind, label: value ? `${label} ${value}` : label, icon, ...(description ? {description} : {})}
 }
 
 const educationLevels: Record<string, Badge> = {

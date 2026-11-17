@@ -160,6 +160,67 @@ declare module '*.txt' {
   const content: string;
   export default content;
 }
+declare module '*.tsv' {
+  const content: string;
+  export default content;
+}
+declare module '*.md' {
+  const content: string;
+  export default content;
+}
+declare module '*.puml' {
+  const content: string;
+  export default content;
+}
+declare module '*.plantuml' {
+  const content: string;
+  export default content;
+}
+declare module '*.mmd' {
+  const content: string;
+  export default content;
+}
+declare module '*.mermaid' {
+  const content: string;
+  export default content;
+}
+declare module '*.gift' {
+  const content: string;
+  export default content;
+}
+declare module '*.vtt' {
+  const content: string;
+  export default content;
+}
+declare module '*.srt' {
+  const content: string;
+  export default content;
+}
+declare module '*.fasta' {
+  const content: string;
+  export default content;
+}
+declare module '*.fa' {
+  const content: string;
+  export default content;
+}
+declare module '*.jff' {
+  const content: string;
+  export default content;
+}
+declare module '*.dot' {
+  const content: string;
+  export default content;
+}
+declare module '*.gv' {
+  const content: string;
+  export default content;
+}
+// Any file, read as text, with the `inline:` prefix.
+declare module 'inline:*' {
+  const content: string;
+  export default content;
+}
 declare module '*.csv' {
   const content: string;
   export default content;

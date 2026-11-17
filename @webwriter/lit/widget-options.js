@@ -1,3 +1,4 @@
+import { resolveDeclarations } from "@webwriter/widget";
 const widgetOptionTypes = [
   "boolean",
   "string",
@@ -192,9 +193,9 @@ function widgetDeclarations(widget, kind) {
   const read = (name) => {
     try {
       const own = widget[name];
-      if (isRecord(own)) return own;
-      const inherited = widget.constructor[name];
-      return isRecord(inherited) ? inherited : {};
+      const map = isRecord(own) ? own : widget.constructor[name];
+      if (!isRecord(map)) return {};
+      return name === "convertFrom" || name === "convertTo" ? map : resolveDeclarations(widget, map) ?? {};
     } catch {
       return {};
     }

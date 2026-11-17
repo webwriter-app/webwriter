@@ -28,7 +28,8 @@
     "@webwriter/react",
     "@webwriter/vue",
     "@webwriter/svelte",
-    "@webwriter/angular"
+    "@webwriter/angular",
+    "@webwriter/widget-examples"
   ],
   "private": true
 }

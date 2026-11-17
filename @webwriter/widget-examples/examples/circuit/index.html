@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Circuit (Scene, SVG renderer)</title>
+<style>body { font-family: system-ui; max-width: 680px; margin: 2rem auto; padding: 0 1rem; }</style>
+<p>
+  <label><input type="checkbox" id="edit" checked> Edit mode</label>
+  <label><input type="checkbox" id="allow"> Learners may change the circuit</label>
+  <label><input type="checkbox" id="dark"> Other wire colours (custom properties)</label>
+</p>
+<ww-circuit contenteditable></ww-circuit>
+<p><small>
+  Click selects, Shift or Ctrl click adds, Shift and a drag on the background draws a marquee; a plain drag there pans, and
+  Ctrl and the wheel zooms. Drag a gate to move the selection, drag from an output port to an input port to connect, drag the
+  handles of the selected note to resize it, drag the legend. By keyboard: Tab to an item, Space selects, the arrow keys move the
+  selection (Shift for larger steps; Enter commits, Escape takes it back). Tab to an output port, Enter picks a wire up, the arrow
+  keys choose the input, Enter connects. By touch: tap selects, a long press adds, a long press on the background and a drag
+  draws the marquee.
+</small></p>
+<script type="module">
+  import "../../dist/circuit/index.js";
+  const widget = document.querySelector("ww-circuit");
+  document.getElementById("edit").addEventListener("change", (e) => widget.toggleAttribute("contenteditable", e.target.checked));
+  document.getElementById("allow").addEventListener("change", (e) => widget.toggleAttribute("allow-editing", e.target.checked));
+  document.getElementById("dark").addEventListener("change", (e) => widget.classList.toggle("dark", e.target.checked));
+</script>

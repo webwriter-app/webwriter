@@ -13,11 +13,20 @@ export {shortcutsMessages, type ShortcutsMessages} from "./messages/shortcuts/in
  * the fields of that declaration that decide whether a key may run the action.
  */
 export type ShortcutAction = Readonly<Pick<ActionDeclaration, "disabled" | "hidden" | "confirm" | "input">> & {
-  /** A key such as `"Delete"`, `"Space"` or `"Mod+D"`, or a list. `Mod` is ⌘ on Apple devices and Ctrl elsewhere. */
-  readonly shortcut?: string | readonly string[]
+  /**
+   * A key such as `"Delete"`, `"Space"` or `"Mod+D"`, or a list. `Mod` is ⌘ on Apple devices and Ctrl elsewhere.
+   * A key that also works while the reader types in a text field is written `{key: "Mod+Enter", inText: true}`.
+   */
+  readonly shortcut?: ShortcutKey | readonly ShortcutKey[]
   /** The permission that allows the key for a reader. `"edit"` keeps it to authors. */
   readonly can?: string
 }
+
+/**
+ * One key of an action: the key, or an object that opts the key in to run from text entry.
+ * Without `inText` a key typed in a field, a text role or an editable region is the field's.
+ */
+export type ShortcutKey = string | {readonly key: string; readonly inText?: boolean}
 
 /** Options of `ShortcutsCore`. */
 export type ShortcutsOptions = CoreOptions & {
@@ -36,6 +45,16 @@ export type ShortcutsSnapshot = {
 }
 
 type Declared = {actions?: Record<string, ShortcutAction>}
+
+type Entry = {key: string; inText: boolean}
+
+/** The keys of a declaration as `{key, inText}` entries. */
+function entriesOf(shortcut: ShortcutAction["shortcut"]): Entry[] {
+  if(shortcut === undefined) return []
+  return ([shortcut].flat() as ShortcutKey[]).map(entry =>
+    typeof entry === "string" ? {key: entry, inText: false} : {key: entry.key, inText: entry.inText === true},
+  )
+}
 
 /** True on macOS, iOS and iPadOS, where `Mod` is ⌘. */
 export function isApple(): boolean {
@@ -110,6 +129,13 @@ export function isReservedShortcut(shortcut: string): boolean {
   const {ctrl, meta, alt, shift, mod, key} = parse(shortcut)
   if(alt || !(mod || ctrl || meta)) return false
   return RESERVED.some(reserved => reserved.key.toLowerCase() === key.toLowerCase() && reserved.shift === shift)
+}
+
+/** True if a key without Ctrl, ⌘ or Alt types something: a character, Space, Enter, Backspace, Delete, Tab or an arrow. Such a key is no good for `inText`. */
+function typesText(shortcut: string): boolean {
+  const {ctrl, meta, alt, mod, key} = parse(shortcut)
+  if(ctrl || meta || alt || mod) return false
+  return key.length === 1 || /^(Enter|Backspace|Delete|Tab|Arrow\w+|Home|End|Page\w+)$/i.test(key)
 }
 
 const APPLE_SYMBOLS: Readonly<Record<string, string>> = {enter: "↩", escape: "⎋", tab: "⇥", backspace: "⌫", delete: "⌦", home: "↖", end: "↘", pageup: "⇞", pagedown: "⇟"}
@@ -259,11 +285,14 @@ export class ShortcutsCore extends ModuleCore<ShortcutsSnapshot> {
    * takes a file. Keys the editor reserves are left out.
    */
   keysOf(action: string): string[] {
+    return this.#entries(action).map(entry => entry.key)
+  }
+
+  /** The keys of an action with their `inText` flag. */
+  #entries(action: string): Entry[] {
     const declared = this.actions[action]
     if(!declared || declared.disabled === true || declared.confirm || declared.input) return []
-    const {shortcut} = declared
-    const keys = shortcut === undefined ? [] : typeof shortcut === "string" ? [shortcut] : [...shortcut]
-    return keys.filter(key => !isReservedShortcut(key))
+    return entriesOf(declared.shortcut).filter(entry => !isReservedShortcut(entry.key))
   }
 
   /** The keys of an action as a person reads them on this platform and in the widget's language, for a tooltip or a menu. */
@@ -344,14 +373,20 @@ export class ShortcutsCore extends ModuleCore<ShortcutsSnapshot> {
   /** A reserved key is never delivered, whatever is declared. Say so once. */
   #lint() {
     for(const [name, action] of Object.entries(this.actions)) {
-      const {shortcut} = action
-      for(const key of shortcut === undefined ? [] : typeof shortcut === "string" ? [shortcut] : shortcut) {
-        if(!isReservedShortcut(key)) continue
-        warnOnce(
-          this.host.constructor,
-          `shortcut-reserved:${key}`,
-          `<${this.host.localName}>: the shortcut "${key}" of the action "${name}" is reserved for undo, redo and save in the editor and is ignored.`,
-        )
+      for(const {key, inText} of entriesOf(action.shortcut)) {
+        if(isReservedShortcut(key)) {
+          warnOnce(
+            this.host.constructor,
+            `shortcut-reserved:${key}`,
+            `<${this.host.localName}>: the shortcut "${key}" of the action "${name}" is reserved for undo, redo and save in the editor and is ignored.`,
+          )
+        } else if(inText && typesText(key)) {
+          warnOnce(
+            this.host.constructor,
+            `shortcut-in-text:${key}`,
+            `<${this.host.localName}>: the shortcut "${key}" of the action "${name}" runs in text fields but types text there. Use a combination with Ctrl, ⌘ or Alt (such as "Mod+Enter"), or Escape or a function key.`,
+          )
+        }
       }
     }
   }
@@ -395,12 +430,15 @@ export class ShortcutsCore extends ModuleCore<ShortcutsSnapshot> {
     if(event.defaultPrevented || event.isComposing || event.key === "Process") return
     const path = event.composedPath()
     const target = path[0]
-    if(target instanceof Element && this.#elsewhere(target, path, event)) return
+    const where = target instanceof Element ? this.#elsewhere(target, path, event) : null
+    if(where === "other") return
+    // In text entry only a key that opted in runs.
+    const textOnly = where === "text"
     const host = this.host as HTMLElement & Record<string, unknown>
     // The character decides before the position, so a layout that has the letter wins over one that has it elsewhere.
     for(const by of ["key", "code"] as const) {
       for(const name of Object.keys(this.actions)) {
-        if(!this.keysOf(name).some(shortcut => match(parse(shortcut), event, this.#apple) === by)) continue
+        if(!this.#entries(name).some(entry => (!textOnly || entry.inText) && match(parse(entry.key), event, this.#apple) === by)) continue
         const action = this.actions[name]
         const method = host[name]
         if(typeof method !== "function" || (action.can && !can(this.host, action.can))) continue
@@ -439,16 +477,19 @@ export class ShortcutsCore extends ModuleCore<ShortcutsSnapshot> {
     this.notify()
   }
 
-  /** True while the key belongs to something else: text entry, a control that uses the key itself, or a region with its own keys. */
-  #elsewhere(target: Element, path: EventTarget[], event: KeyboardEvent): boolean {
+  /**
+   * Where the key belongs when it is not the widget's: `"text"` for text entry, where only a key with `inText` runs,
+   * `"other"` for a control that uses the key itself or a region with its own keys, null if it is the widget's.
+   */
+  #elsewhere(target: Element, path: EventTarget[], event: KeyboardEvent): "text" | "other" | null {
     const end = path.indexOf(this.host)
     // From the target up to the widget, through shadow roots and slots. Empty for a key from the page while fullscreen.
     const inside = path.slice(0, Math.max(end, 0)).filter((node): node is Element => node instanceof Element)
     const marked = inside.find(element => element.hasAttribute("data-ww-shortcuts"))?.getAttribute("data-ww-shortcuts")
-    if(marked === "off") return true
-    if(this.#typing(target, inside)) return true
-    if(marked !== "on" && isOpaque(target, this.host)) return true
-    return usedByControl(target, event, this.host)
+    if(marked === "off") return "other"
+    if(this.#typing(target, inside)) return "text"
+    if(marked !== "on" && isOpaque(target, this.host)) return "other"
+    return usedByControl(target, event, this.host) ? "other" : null
   }
 
   /** True while the key belongs to text entry: a field, or authored text that the author is editing. */

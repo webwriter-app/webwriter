@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Plain poll (data-block helper without a framework)</title>
+<style>
+  body { font-family: system-ui; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+  ww-plain-poll { display: block; margin: 1rem 0; }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 0.8rem; background: #f3f3f3; padding: 0.5rem; }
+</style>
+<h1>Plain poll</h1>
+<p>A plain custom element on <code>withWidgetRuntime()</code>. The vote is kept in the data block through the core of the data-block helper.</p>
+<ww-plain-poll>
+  <data value="tea">Tea</data>
+  <data value="coffee">Coffee</data>
+  <data value="water">Water</data>
+</ww-plain-poll>
+<p><small>Below: the document source of the widget. The first vote creates the block, with <code>slot="data"</code>.</small></p>
+<pre id="source"></pre>
+<script type="module">
+  import "../../dist/data-plain/index.js";
+  const widget = document.querySelector("ww-plain-poll");
+  const show = () => (document.getElementById("source").textContent = widget.outerHTML);
+  new MutationObserver(show).observe(widget, { subtree: true, childList: true, attributes: true, characterData: true });
+  show();
+</script>

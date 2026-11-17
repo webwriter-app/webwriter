@@ -323,6 +323,10 @@ const wasmPlugin = {
 
 
 
+// Plain text formats that a widget or a test imports as a string, such as a fixture file. Other files import as text with
+// the `inline:` prefix, as in `import fixture from "inline:./fixture.dat"`. The types are in client.d.ts.
+const textFormats = [".txt", ".tsv", ".md", ".puml", ".plantuml", ".mmd", ".mermaid", ".gift", ".vtt", ".srt", ".fasta", ".fa", ".jff", ".dot", ".gv"]
+
 async function main() {
   const args = process.argv.slice(2)
   if(args.includes("--help") || args.includes("-h")) {
@@ -404,6 +408,7 @@ Standalone previews are always fully bundled.`)
       ".html": "text",
       ".xml": "text",
       ".csv": "text",
+      ...Object.fromEntries(textFormats.map(extension => [extension, "text"])),
       ".apng": "dataurl",
       ".jpg": "dataurl",
       ".jpeg": "dataurl",

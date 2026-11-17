@@ -1,4 +1,5 @@
 import type {LocalizedText} from "./index"
+import {resolveDeclarations} from "@webwriter/widget"
 
 /** JSON-compatible option value, as shown and edited by the options panel. */
 export type WidgetOptionValue = string | number | boolean | null | WidgetOptionValue[] | {[key: string]: WidgetOptionValue}
@@ -295,14 +296,18 @@ export function localizedText(value: LocalizedText | undefined, locale: string) 
   return exactKey && value[exactKey] || languageKey && value[languageKey] || value._
 }
 
-/** An instance map, including an empty map, takes precedence over its class map. */
+/**
+ * An instance map, including an empty map, takes precedence over its class map.
+ * A text or a `hidden`, `disabled` or `readOnly` flag that is a function is asked
+ * with the widget, for a widget that does not resolve its declarations itself.
+ */
 export function widgetDeclarations(widget: Element, kind: "options" | "actions" | "permissions" | "optionGroups" | "convertFrom" | "convertTo") {
   const read = (name: string) => {
     try {
       const own = (widget as unknown as UnknownRecord)[name]
-      if(isRecord(own)) return own
-      const inherited = (widget.constructor as unknown as UnknownRecord)[name]
-      return isRecord(inherited) ? inherited : {}
+      const map = isRecord(own) ? own : (widget.constructor as unknown as UnknownRecord)[name]
+      if(!isRecord(map)) return {}
+      return name === "convertFrom" || name === "convertTo" ? map : resolveDeclarations(widget, map as never) ?? {}
     }
     catch { return {} }
   }

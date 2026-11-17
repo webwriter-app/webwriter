@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+<file target-language="de" source-language="en" original="lit-localize-inputs" datatype="plaintext">
+<body>
+<trans-unit id="s4158d5fc29a1f991">
+  <source>Correct</source>
+  <target>Richtig</target>
+</trans-unit>
+<trans-unit id="s670aaa17382d2876">
+  <source>Wrong</source>
+  <target>Falsch</target>
+</trans-unit>
+<trans-unit id="s42cbd8dca939a9c7">
+  <source>Check</source>
+  <target>Prüfen</target>
+</trans-unit>
+<trans-unit id="s255857544a9d5ec0">
+  <source>Reset</source>
+  <target>Zurücksetzen</target>
+</trans-unit>
+<trans-unit id="s2eaa0db3969a9fa6">
+  <source>Put the items in order.</source>
+  <target>Bringe die Einträge in die richtige Reihenfolge.</target>
+</trans-unit>
+<trans-unit id="se679941d40cd3033">
+  <source>Drag the items into the correct order.</source>
+  <target>Ziehe die Einträge in die richtige Reihenfolge.</target>
+</trans-unit>
+<trans-unit id="sad79a8bad77b9bd0">
+  <source>Hide solution</source>
+  <target>Lösung verbergen</target>
+</trans-unit>
+<trans-unit id="sd8449a15908d7fd3">
+  <source>Show solution</source>
+  <target>Lösung anzeigen</target>
+</trans-unit>
+<trans-unit id="s1a3784cc6902381f">
+  <source>All items are in the right place.</source>
+  <target>Alle Einträge stehen am richtigen Platz.</target>
+</trans-unit>
+<trans-unit id="h1e6419afe82d3392">
+  <source><x id="0" equiv-text="&lt;b&gt;${result.correct}&lt;/b&gt;"/> of <x id="1" equiv-text="${result.total}"/> items are in the right place.</source>
+  <target>Von <x id="1" equiv-text="${result.total}"/> Einträgen stehen <x id="0" equiv-text="&lt;b&gt;${result.correct}&lt;/b&gt;"/> am richtigen Platz.</target>
+</trans-unit>
+<trans-unit id="sa07a18eef0f67eec">
+  <source>Solution:</source>
+  <target>Lösung:</target>
+</trans-unit>
+</body>
+</file>
+</xliff>

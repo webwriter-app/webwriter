@@ -1,5 +1,6 @@
 import {applyPreviewWidgetSnapshot, LivePreview, previewElementPath, previewWidgetElements} from "./live-preview"
 import type {LiveSessionWidgetState} from "./live-session"
+import {watchPrinting} from "./print-class.js"
 import {openFrameLinksInNewTabs} from "./frame-links"
 import {registerFrameArtifacts, widgetLookupForTags} from "./editor-artifacts"
 import {observePrivateDistributionRegions} from "./distribution-presentation"
@@ -16,7 +17,9 @@ const hostOrigin = bridge?.getAttribute("data-host-origin")
 if(nonce && hostOrigin && window.parent !== window) {
   registerFrameArtifacts(document)
   hydrateDistributionInstructions(document)
-  const preview = new LivePreview(widgetLookupForTags((bridge?.getAttribute("data-widget-tags") ?? "").split(" ")))
+  const isWidget = widgetLookupForTags((bridge?.getAttribute("data-widget-tags") ?? "").split(" "))
+  const preview = new LivePreview(isWidget)
+  watchPrinting(window, document.body, isWidget)
   let stopPrivateMarkers: (() => void) | undefined
   const clearPrivateMarkers = () => {
     stopPrivateMarkers?.()

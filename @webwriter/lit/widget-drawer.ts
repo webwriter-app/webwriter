@@ -264,7 +264,11 @@ export class WidgetDrawer extends LitElement {
     return true
   }
 
-  private message(error: unknown) { return error instanceof Error ? error.message : String(error) }
+  /** The widget's own message, or a generic one for a failure without a message. */
+  private message(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error ?? "")
+    return message.trim() ? message : "The action could not be completed."
+  }
 
   private confirm(text: string) { return this.ownerDocument.defaultView?.confirm?.(text) === true }
 
@@ -399,7 +403,12 @@ export class WidgetDrawer extends LitElement {
       }
       const snapshot = file ? widget.outerHTML : null
       const result: unknown = await (file ? method.call(widget, file) : method.call(widget))
-      if(!this.active(widget) || lookup() !== method || result === null || result === false) return
+      if(!this.active(widget) || lookup() !== method) return
+      // A declined import reads as a failure without a message, as in the editor; a declined export stays quiet.
+      if(result === null || result === false) {
+        if(file) throw new Error("The file could not be imported into the selected widget.")
+        return
+      }
       if(snapshot !== null && snapshot !== widget.outerHTML) throw new Error("The widget changed before the file could be imported.")
       if(file) {
         if(typeof result !== "function") throw new TypeError("A file importer must return a function that applies the imported content.")

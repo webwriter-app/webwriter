@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/widget",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "DOM-backed runtime for WebWriter widgets",
   "license": "MIT",
   "repository": {
@@ -54,6 +54,11 @@
       "types": "./announce.d.ts",
       "default": "./announce.js"
     },
+    "./signals": {
+      "source": "./signals.ts",
+      "types": "./signals.d.ts",
+      "default": "./signals.js"
+    },
     "./permissions": {
       "source": "./permissions.ts",
       "types": "./permissions.d.ts",
@@ -73,6 +78,11 @@
       "source": "./help.ts",
       "types": "./help.d.ts",
       "default": "./help.js"
+    },
+    "./print": {
+      "source": "./print.ts",
+      "types": "./print.d.ts",
+      "default": "./print.js"
     },
     "./scene": {
       "source": "./scene/index.ts",
@@ -157,5 +167,8 @@
     "esbuild": "^0.25.4",
     "pixi.js": "^8.23.0",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "signal-polyfill": "^0.2.2"
   }
 }

@@ -1,4 +1,4 @@
-import type {Point, PortEnd, Rect, SceneItem, ScenePath, SceneOptions, TextFont, TextSize} from "@webwriter/widget/scene"
+import type {ImageOptions, Point, PortEnd, Rect, SceneItem, ScenePath, SceneOptions, SnapshotOptions, TextFont, TextSize} from "@webwriter/widget/scene"
 import type {BindingOptions} from "./base.js"
 
 export {sceneElements} from "@webwriter/widget/scene"
@@ -21,6 +21,8 @@ export type {
   SceneErrorDetail,
   ScenePermissions,
   SelectDetail,
+  ImageOptions,
+  SnapshotOptions,
   TextFont,
   TextSize,
   UndoHost,
@@ -51,6 +53,12 @@ export function useScene(host: HTMLElement, options?: BindingOptions<SceneOption
   endsOf(path: ScenePath): {from: PortEnd | null; to: PortEnd | null}
   /** The paths that end at a port (`node:port`) or at a whole node (`node`): how many wires a port has. */
   wiresAt(reference: string): ScenePath[]
+  /** The first scene as a standalone SVG document (a string), the same for every renderer; null for an empty scene. */
+  toSVG(options?: SnapshotOptions): string | null
+  /** The first scene as a picture: PNG by default, `scale` pixels per scene pixel (2 by default). Rejects for an empty scene. */
+  toImage(options?: ImageOptions): Promise<Blob>
+  /** True while the document is printed. Read when the property is. */
+  readonly printing: boolean
   /** Reads every computed style again. */
   restyle(): void
   /** Measures every port again. */

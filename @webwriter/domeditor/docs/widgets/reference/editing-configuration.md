@@ -25,8 +25,8 @@ A key identifies an export with or without its extension. The key `.` supplies p
 | `marks` | `string` | `"_"` | Permitted formatting marks. Use names separated by spaces, `""` for none, or `"_"` for all. |
 | `propagateEvents` | `string[]` | `[]` | Types of shadow DOM events that the authoring tool can handle, for example `["keydown"]`. |
 | `sharedData` | `boolean` | `false` | Enables [scoped data](data.md) in a direct `script[slot="data"]` child. |
-| `importFormats` | `string[]` | `[]` | File format keys that the widget's `convertFrom` handlers support. |
-| `exportFormats` | `string[]` | `[]` | File format keys that the widget's `convertTo` handlers support. |
+| `importFormats` | `string[]` | `[]` | File format keys that the widget's `convertFrom` handlers support. Extensions and media types only, never HTML tag names. |
+| `exportFormats` | `string[]` | `[]` | File format keys that the widget's `convertTo` handlers support. Extensions and media types only, never HTML tag names. |
 
 `LocalizedText` is a string or a locale map such as `{"en": "Answer", "de": "Antwort", "_": "Answer"}`. The authoring tool tries the exact locale first. It then tries the language. It uses `_` as the default.
 
@@ -35,6 +35,8 @@ Marks use element names such as `b`, `i`, `a`, and `span` for text styles. The c
 ## Advertise file formats
 
 Declare `importFormats` and `exportFormats` in the widget's export entry. Package tools can read these fields before they load the widget. Use a file extension such as `.js` or `.h5p`, or a [media type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/MIME_types) such as `text/javascript`. Use the same keys in the matching [runtime conversion map](runtime.md#conversions). An extension can identify the format when a file has no media type.
+
+These lists contain file formats only. A key of a conversion map that is a lowercase HTML tag name, such as `ul`, is an HTML conversion. The runtime map declares it, and these lists do not. A tag name or a wildcard such as `image/*` in a list is invalid, and the Develop drawer reports it.
 
 ```json
 {

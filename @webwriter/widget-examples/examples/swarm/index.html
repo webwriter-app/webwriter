@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Swarm (Scene, Pixi renderer)</title>
+<style>body { font-family: system-ui; max-width: 680px; margin: 2rem auto; padding: 0 1rem; }</style>
+<p><label>Habitat colour <input type="color" id="colour" value="#e8f3ea"></label></p>
+<ww-swarm count="2000" running zoomable fit="content"></ww-swarm>
+<p style="height: 120vh"><small>
+  Ctrl and the wheel zooms, the wheel or a drag on the habitat pans, and the buttons do the same. Click a nest to select it, drag it
+  or use the arrow keys to move it; Shift and a drag draws a marquee. Scroll the widget out of view: it gives its WebGL context
+  back and takes it again when it returns.
+</small></p>
+<script type="module">
+  import "../../dist/swarm/index.js";
+  const widget = document.querySelector("ww-swarm");
+  document.getElementById("colour").addEventListener("input", (e) => widget.style.setProperty("--habitat", e.target.value));
+</script>

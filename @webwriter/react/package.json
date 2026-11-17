@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/react",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "React adapter for WebWriter widgets",
   "license": "MIT",
   "repository": {
@@ -36,6 +36,10 @@
     "./help": {
       "types": "./help.d.ts",
       "default": "./help.js"
+    },
+    "./print": {
+      "types": "./print.d.ts",
+      "default": "./print.js"
     },
     "./scene": {
       "types": "./scene.d.ts",
@@ -80,6 +84,8 @@
     "viewport.d.ts",
     "help.js",
     "help.d.ts",
+    "print.js",
+    "print.d.ts",
     "scene.js",
     "scene.d.ts",
     "settings.js",
@@ -96,7 +102,7 @@
     "exercise.d.ts"
   ],
   "dependencies": {
-    "@webwriter/widget": "^1.2.0"
+    "@webwriter/widget": "^1.3.0"
   },
   "peerDependencies": {
     "react": "^19.0.0",
