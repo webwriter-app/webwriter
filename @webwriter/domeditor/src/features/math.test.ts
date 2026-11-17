@@ -2422,6 +2422,34 @@ describe("formula input keyboard and autocomplete", () => {
     expect(math.textContent).toBe("([x)")
   })
 
+  it("groups a fraction when the opening bracket is inserted at Home after the closing bracket", async () => {
+    const math = await ready()
+    type("1/2")
+    key("ArrowRight")
+    type(")")
+    const fraction = math.querySelector("mfrac")!
+    const close = math.querySelector("mo")!
+    key("Home")
+    type("(")
+    const group = fraction.parentElement!
+    expect(group.firstElementChild?.textContent).toBe("(")
+    expect(group.lastElementChild).toBe(close)
+    expect($.focus).toBe(group.firstElementChild?.firstChild)
+    key("End")
+    type("^2")
+    expect(math.querySelector("msup")?.firstElementChild?.firstElementChild).toBe(group)
+  })
+
+  it("keeps an existing pair's closing bracket when typing another opener inside", async () => {
+    const math = await ready("<mrow><mrow><mo>(</mo><mi>x</mi><mo>)</mo></mrow></mrow>")
+    const group = math.querySelector("mrow > mrow")!
+    const close = group.lastElementChild!
+    $.move(group, 1)
+    type("(")
+    expect(group.querySelector("mrow")).toBeNull()
+    expect(group.lastElementChild).toBe(close)
+  })
+
   it.each(["{}", "()", "[]", "⟨⟩", "⌊⌋", "⌈⌉"])("moves inside %s with the first Left and back out with one Right (#407)", async pair => {
     const math = await ready()
     type(pair)

@@ -23,7 +23,8 @@ const plainToken = (node: Node): node is Element => isToken(node) && Array.from(
 const before = (node: Node): Point => [node.parentNode!, indexOf(node)]
 const after = (node: Node): Point => [node.parentNode!, indexOf(node) + 1]
 const fencePairs: Record<string, string> = {")": "(", "]": "[", "}": "{", "⟩": "⟨", "⌋": "⌊", "⌉": "⌈"}
-const fenceText = (node: Node | null) => node && plainToken(node) && node.localName === "mo" ? node.textContent ?? "" : ""
+const closingFences = Object.fromEntries(Object.entries(fencePairs).map(([close, open]) => [open, close]))
+const fenceText = (node: Node | null) => node && plainToken(node) && node.localName === "mo" && node.textContent?.length === 1 ? node.textContent : ""
 const fencedRow = (node: Node): boolean => isMath(node) && node.localName === "mrow"
   && Boolean(fenceText(node.firstChild)) && fencePairs[fenceText(node.lastChild)] === fenceText(node.firstChild)
 /** The closing token's end and its completed group's end are one boundary. */
@@ -833,6 +834,15 @@ export class MathFeature extends EditorFeature {
     const styles = this.pendingStyles()
     if(!text || !this.removeRange(range)) return false
     const node = range.startContainer
+    if(closingFences[text[0]] && isRow(node) && node.localName === "math" && range.startOffset === 0) {
+      const row = node.firstChild
+      // Home addresses the formula boundary. Continue in its anonymous
+      // outer row so an existing closing bracket is reachable as a sibling.
+      if(row instanceof Element && row === node.lastChild && isRow(row) && row.localName === "mrow" && !fencedRow(row)
+        && Array.from(row.attributes).every(attribute => attribute.name === "class" && !authoredClassValue(attribute.value))) {
+        range.setStart(row, 0)
+      }
+    }
     const type = mathTokenType(text)
     if(!styles && node instanceof Text && node.parentElement && plainToken(node.parentElement)
       && (node.parentElement.localName === "mtext" || type === "mn" && node.parentElement.localName === type)) {
@@ -851,33 +861,48 @@ export class MathFeature extends EditorFeature {
     // Moving the selection can flush pending mutations to Yjs. Group the
     // fences before moving the caret so the edit publishes in one step.
     if(!this.insertNodes(range, tokens, false)) return false
-    let group: Element | undefined
-    for(const token of tokens) group = this.groupTypedFence(token)
+    const paired = new Set<Node>()
+    for(const token of tokens) {
+      if(paired.has(token)) continue
+      const group = this.groupTypedFence(token)
+      if(group) {
+        paired.add(group.firstChild!)
+        paired.add(group.lastChild!)
+      }
+    }
     if(this.spelling) this.input?.recordInput(tokens)
     const last = tokens.at(-1)!
-    if(group) $.move(...after(group))
-    else $.move(last.firstChild!, last.textContent!.length)
+    $.move(...fencePoint([last.firstChild!, last.textContent!.length]))
     if(styles) this.typingPoint = [$.focus!, $.focusOffset]
     return true
   }
 
   /** A completed fence pair owns a row so native stretching uses only its
    * contents, and a following script takes the whole group as its base. */
-  private groupTypedFence(close: Element, affected?: Set<Node>) {
-    if(!fencePairs[fenceText(close)] || !close.parentElement || !isRow(close.parentElement)) return
-    const stack = [fencePairs[close.textContent!]]
-    let touches = !affected || affected.has(close)
-    for(let sibling = close.previousSibling; sibling; sibling = sibling.previousSibling) {
+  private groupTypedFence(token: Element, affected?: Set<Node>) {
+    const text = fenceText(token)
+    const forward = Boolean(closingFences[text])
+    const pairs = forward ? closingFences : fencePairs
+    const opposite = forward ? fencePairs : closingFences
+    const parent = token.parentElement
+    if(!pairs[text] || !parent || !isRow(parent)) return
+    const existingEdge = token !== parent.firstChild && token !== parent.lastChild && fencedRow(parent)
+      ? forward ? parent.lastChild : parent.firstChild : null
+    const next = (node: Node) => forward ? node.nextSibling : node.previousSibling
+    const stack = [pairs[text]]
+    let touches = !affected || affected.has(token)
+    for(let sibling = next(token); sibling && sibling !== existingEdge; sibling = next(sibling)) {
       touches ||= Boolean(affected?.has(sibling))
-      if(!(sibling instanceof Element) || !plainToken(sibling) || sibling.localName !== "mo") continue
-      const text = sibling.textContent!
-      if(fencePairs[text]) stack.push(fencePairs[text])
-      else if(Object.values(fencePairs).includes(text)) {
+      const text = fenceText(sibling)
+      if(pairs[text]) stack.push(pairs[text])
+      else if(opposite[text]) {
         if(text !== stack.pop()) return
         if(stack.length) continue
         if(!touches) return
+        const open = forward ? token : sibling
+        const close = forward ? sibling : token
         const row = mathElement("mrow")
-        sibling.before(row)
+        parent.insertBefore(row, open)
         while(row.nextSibling) {
           const next = row.nextSibling
           row.append(next)
@@ -927,6 +952,7 @@ export class MathFeature extends EditorFeature {
       row.replaceWith(...nodes)
     }
     for(const [parent, affected] of parents) for(const close of Array.from(parent.children)) {
+      if(!fencePairs[fenceText(close)]) continue
       // A surviving outer pair already has its own row.
       if(rows.includes(parent) && fencedRow(parent) && close === parent.lastChild) continue
       this.groupTypedFence(close, affected)
