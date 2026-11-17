@@ -389,8 +389,31 @@ export class MathFeature extends EditorFeature {
       }
       if(!this.activeMath) return
       const deadPower = this.atDeadPowerPoint()
-      // Word/line deletion and alternate Cut bindings belong to the browser.
-      // Keep generic document commands from replacing their native semantics.
+      const wordDeletion = event.inputType.startsWith("deleteWord")
+      const wordTarget = wordDeletion ? event.getTargetRanges?.()[0] : undefined
+      if(wordDeletion && (wordTarget || event.isTrusted)) {
+        // Use the browser's word boundary, but keep its HTML editing engine
+        // from replacing an emptied MathML token with an HTML <br>.
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        const math = this.activeMath
+        if(!wordTarget || !math?.contains(wordTarget.startContainer) || !math.contains(wordTarget.endContainer)) return
+        const range = document.createRange()
+        range.setStart(wordTarget.startContainer, wordTarget.startOffset)
+        range.setEnd(wordTarget.endContainer, wordTarget.endOffset)
+        if(range.collapsed) return
+        const token = range.startContainer.parentElement
+        if(range.startContainer instanceof Text && range.startContainer === range.endContainer
+          && range.startOffset === 0 && range.endOffset === range.startContainer.length
+          && token && token.childNodes.length === 1 && plainToken(token) && token.parentElement && isRow(token.parentElement)) {
+          range.selectNode(token)
+        }
+        const editRange = this.editRange(range)
+        if(editRange && this.delete(editRange, event.inputType === "deleteWordBackward")) this.changed()
+        return
+      }
+      // Keep the generic document listeners from claiming native line
+      // deletion and alternate Cut bindings.
       if(/^delete(?:Word|SoftLine|HardLine|EntireSoftLine)/.test(event.inputType) || event.inputType === "deleteByCut") {
         event.stopImmediatePropagation()
         return
@@ -670,14 +693,14 @@ export class MathFeature extends EditorFeature {
     return result
   }
 
-  private editRange() {
+  private editRange(target?: Range) {
     const math = this.activeMath
     const selection = document.getSelection()
     if(!math || !selection?.rangeCount) return null
-    if(this.selectedMath === math) {
+    if(!target && this.selectedMath === math) {
       $.move(math, math.childNodes.length)
     }
-    let range = selection.getRangeAt(0).cloneRange()
+    let range = target ?? selection.getRangeAt(0).cloneRange()
     if(!math.contains(range.startContainer) || !math.contains(range.endContainer)) return null
     // Foreign and unfamiliar subtrees remain atomic. Never reinterpret them.
     for(const endpoint of [range.startContainer, range.endContainer]) {

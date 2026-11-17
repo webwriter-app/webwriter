@@ -135,6 +135,23 @@ describe("formula shortcut modifiers", () => {
     }
   })
 
+  it("deletes the browser's requested word range without letting it insert HTML into MathML", () => {
+    const math = load("<mrow><mi>a</mi><mi>b</mi><mi>c</mi></mrow>")
+    const token = math.querySelector("mi:last-child")!
+    const text = token.firstChild!
+    $.move(text, 1)
+    const event = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "deleteWordBackward"})
+    Object.defineProperty(event, "getTargetRanges", {value: () => [
+      {startContainer: text, startOffset: 0, endContainer: text, endOffset: 1, collapsed: false},
+    ]})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(token.isConnected).toBe(false)
+    key("d")
+    expect(math.textContent).toBe("abd")
+    expect(math.querySelector("br")).toBeNull()
+  })
+
   it("allows AltGraph text even when Ctrl and Alt are reported", () => {
     const math = load("")
     const event = new KeyboardEvent("keydown", {key: "a", ctrlKey: true, altKey: true, bubbles: true, cancelable: true})
