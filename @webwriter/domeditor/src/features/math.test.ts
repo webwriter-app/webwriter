@@ -1648,6 +1648,35 @@ describe("DOM MathML editing", () => {
     }
   })
 
+  it("moves from the start of a denominator to the end of the numerator", () => {
+    const math = load("<mfrac><mrow><mi>x</mi><mi>y</mi></mrow><mrow><!--keep--><mi>d</mi></mrow></mfrac>")
+    const text = math.querySelector("mi:last-child")!.firstChild!
+    $.move(math.querySelector("mfrac > :last-child mi")!.firstChild!, 0)
+    key("Backspace")
+    expect($.focus).toBe(text)
+    expect($.focusOffset).toBe(1)
+    expect(math.textContent).toBe("xyd")
+  })
+
+  it.each([
+    "<mfrac><mrow></mrow><mi>d</mi></mfrac>",
+    "<msqrt><mrow><!--keep--><mi>x</mi></mrow></msqrt>",
+    "<mroot><mi>x</mi><mn>3</mn></mroot>",
+  ])("selects a structure at its first argument before allowing deletion", content => {
+    const math = load(content)
+    const structure = math.firstElementChild!
+    const text = structure.querySelector("mi")?.firstChild
+    $.move(content.startsWith("<mfrac") ? structure.firstChild! : text!, 0)
+    key("Backspace")
+    const selected = document.getSelection()!.getRangeAt(0)
+    expect(selected.startContainer).toBe(math)
+    expect(selected.endContainer).toBe(math)
+    expect([selected.startOffset, selected.endOffset]).toEqual([0, 1])
+    expect(structure.isConnected).toBe(true)
+    key("Backspace")
+    expect(structure.isConnected).toBe(false)
+  })
+
   it("replaces a deleted fixed argument with an empty row", () => {
     const math = load('<mfrac><mi>x</mi><mn>2</mn></mfrac>')
     $.selectElement(math.querySelector("mi")!)

@@ -1048,6 +1048,7 @@ export class MathFeature extends EditorFeature {
         return true
       }
     }
+    if(backward && this.backspaceStructureStart(node, offset)) return true
     // Other empty arguments retain their fixed-arity parent.
     if(isRow(node) && !node.childNodes.length) return this.move(backward ? "left" : "right", false)
     const point = this.insertionPoint(range)
@@ -1080,6 +1081,32 @@ export class MathFeature extends EditorFeature {
       }
       else $.selectElement(candidate)
       return true
+    }
+    return false
+  }
+
+  private backspaceStructureStart(node: Node, offset: number) {
+    if(offset !== 0) return false
+    for(let child = node; child.parentElement; child = child.parentElement) {
+      const parent = child.parentElement
+      if(!isMath(parent) || parent.localName === "math") return false
+      if(child instanceof Element && ["mfrac", "mroot"].includes(parent.localName)
+        && parent.children.length === mathArity[parent.localName]) {
+        const previous = child.previousElementSibling
+        if(previous) $.move(...this.stops(previous).at(-1)!)
+        else $.selectElement(parent)
+        return true
+      }
+      let previous = child.previousSibling
+      while(previous?.nodeType === Node.COMMENT_NODE || isRow(parent) && previous instanceof Text && !previous.data.trim()) {
+        previous = previous.previousSibling
+      }
+      if(previous) return false
+      if(parent.localName === "msqrt") {
+        $.selectElement(parent)
+        return true
+      }
+      if(!plainToken(parent) && !isRow(parent)) return false
     }
     return false
   }

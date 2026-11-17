@@ -30,7 +30,7 @@ Empty and filled formulas have 2px of padding inside their background. Text care
 | Shift + arrow, Shift + click, drag | Extend the selection |
 | Tab / Shift + Tab | Accept a completion / move between arguments |
 | Home / End | Move to the start or end of the formula |
-| Backspace / Delete | Delete text; select an adjacent structure before deleting it |
+| Backspace / Delete | Delete text or select an adjacent structure before deleting it. At the start of a fraction or root argument, Backspace moves to the previous argument or selects the structure. |
 | Modified Backspace / Delete | Preserve native word/line deletion and alternate Cut shortcuts |
 | Ctrl/Cmd + A | Select formula contents |
 | Enter / Escape | Accept / dismiss a completion, or finish editing when the popup is closed |
