@@ -142,6 +142,7 @@ export class MathKeyboard extends LitElement {
 
     .key.action { background: #e5e9ef; }
     .key.action:hover { background: #dce2ea; }
+    .key.number-set { font-family: math, serif; }
 
     .hint {
       position: absolute;
@@ -287,7 +288,8 @@ export class MathKeyboard extends LitElement {
       ? html`<span class="hint" aria-hidden="true">${key.shift.label}</span>`
       : nothing
 
-    return html`<button type="button" class="key ${isShift ? "action" : ""}"
+    const numberSet = /^[ℕℤℚℝℂ]$/.test(displayed.label)
+    return html`<button type="button" class="key ${isShift ? "action" : ""} ${numberSet ? "number-set" : ""}"
       style=${`grid-column: span ${span}`}
       aria-label=${title} title=${title}
       aria-pressed=${isShift ? String(this.shifted) : nothing}

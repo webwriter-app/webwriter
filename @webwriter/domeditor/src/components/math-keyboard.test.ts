@@ -58,6 +58,15 @@ describe("formula keyboard", () => {
     expect(getComputedStyle(keyboard).backgroundColor).toBe("#f2f4f7")
   })
 
+  it("renders all five number-set keys in the same math font", async () => {
+    const keyboard = await mountKeyboard()
+    keyboard.cycleLayout()
+    await keyboard.updateComplete
+    const keys = [...keyboard.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.number-set")]
+    expect(keys.map(key => key.textContent?.trim())).toEqual([..."ℕℤℚℝℂ"])
+    keys.forEach(key => expect(getComputedStyle(key).fontFamily).toBe("math, serif"))
+  })
+
   it.each(["pointerup", "lostpointercapture"])("recognizes a fast mouse stroke finished by %s", async ending => {
     recognition.recognize.mockResolvedValue('<math xmlns="http://www.w3.org/1998/Math/MathML"><mi>x</mi></math>')
     const keyboard = await mountKeyboard()
