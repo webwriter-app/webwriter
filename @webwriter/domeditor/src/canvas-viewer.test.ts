@@ -63,7 +63,10 @@ describe("standalone canvas reader", () => {
     const snapshot = vi.fn(async (_element, options) => {
       const clone = document.createElement("div")
       clone.innerHTML = `<${tag} onclick="throw 1"><input autofocus value="Keep"></${tag}>`
-      await options.plugins[0].beforeRender({clone, classCSS: "div { color: red }"})
+      _element.style.fontFamily = "monospace"
+      const capture = {clone, classCSS: "div { color: red }"}
+      try { await options.plugins[0].beforeRender(capture) }
+      finally { expect(capture.clone.style.fontFamily).toBe("monospace") }
       expect(clone.querySelector(`${tag}[onclick]`)).not.toBeNull()
       return {meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60}, toPng: fallback}
     })
