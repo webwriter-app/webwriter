@@ -1,5 +1,5 @@
 import type {DOMEditor} from "../src/domeditor"
-import {documentThemes} from "../src/document-themes"
+import {defaultDocumentTheme, documentThemes} from "../src/document-themes"
 
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
 const layout = async () => {
@@ -68,6 +68,16 @@ export async function checkMediaCentering(nativeRootEditor: DOMEditor) {
       }
       finally { saved.remove() }
     }
+    theme.setAttribute("data-ww-theme", defaultDocumentTheme.value)
+    theme.textContent = defaultDocumentTheme.source
+    doc.body.innerHTML = '<p class="ww-float-left" style="--ww-float-size:200px">This text floats!</p><picture><img src="/tests/fixtures/image-map.svg" width="720" height="530"></picture>'
+    const picture = doc.querySelector("picture")!, image = doc.querySelector("img")!
+    await image.decode()
+    view.editor!.features.selection.captureElement(picture)
+    await layout()
+    const cropFrame = view.editor!.features.transformation.overlay.getBoundingClientRect(), imageRect = image.getBoundingClientRect()
+    assert(Math.abs(cropFrame.top - imageRect.top) < 2 && Math.abs(cropFrame.bottom - imageRect.bottom) < 2,
+      "a fixed-width paragraph float left blank space in the picture's selection frame")
   }
   finally {
     viewCleanup(frame)

@@ -185,8 +185,15 @@ body > :last-child:not(:where(:state(ww-gap-after-selected))) {
   user-select: none;
 }
 
-:is(picture:where(:not(html:state(ww-canvas-active) *, :is(td, th) *)), audio, video) {
+:is(audio, video) {
   display: block;
+  width: 100%;
+}
+
+/* Keep an external float from pushing only the picture's inline image down
+ * while the block used for its selection frame stays beside the float. */
+picture:where(:not(html:state(ww-canvas-active) *, :is(td, th) *)) {
+  display: flow-root;
   width: 100%;
 }
 
