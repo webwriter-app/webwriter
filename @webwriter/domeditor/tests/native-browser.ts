@@ -364,6 +364,74 @@ await check("bundled document themes always render light colors", async () => {
   finally { frame.remove() }
 })
 
+await check("paragraph line breaks stay stable after highlighting and commenting", async () => {
+  const text = "congue est lacinia eget. Fusce vitae augue ipsum. Vivamus vitae blandit velit. Nullam euismod enim"
+  const frame = document.createElement("iframe")
+  const saved = document.createElement("iframe")
+  frame.style.cssText = saved.style.cssText = "width:1000px;height:400px"
+  frame.srcdoc = `<!doctype html><style data-ww-theme="base">${defaultDocumentTheme.source}</style>
+    <p>${text}</p><p>${text}</p><p>${text}</p>
+    <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script>`
+  const editorLoaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+  document.body.append(frame)
+  const lineStarts = (paragraph: HTMLParagraphElement) => {
+    const doc = paragraph.ownerDocument
+    const range = doc.createRange(), texts = doc.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT)
+    const starts: number[] = []
+    let previousTop: number | undefined
+    let offset = 0
+    for(let node = texts.nextNode() as Text | null; node; node = texts.nextNode() as Text | null) {
+      for(let index = 0; index < node.length; index++, offset++) {
+        if(/\s/.test(node.data[index])) continue
+        range.setStart(node, index)
+        range.setEnd(node, index + 1)
+        const top = range.getBoundingClientRect().top
+        if(top !== previousTop) {
+          starts.push(offset)
+          previousTop = top
+        }
+      }
+    }
+    return starts.join(",")
+  }
+  const compareParagraphs = (doc: Document) => {
+    const [plain, highlighted, commented] = doc.querySelectorAll("p")
+    const expected = lineStarts(plain)
+    assert([highlighted, commented].every(p => p.textContent === text && lineStarts(p) === expected),
+      `line breaks changed after adding a highlight or comment: ${[plain, highlighted, commented].map(lineStarts).join(" / ")}`)
+    return expected
+  }
+  try {
+    await editorLoaded
+    const view = frame.contentWindow!, doc = frame.contentDocument!
+    assert(view.editor && !view.editorError, `annotation fixture did not initialize: ${view.editorError ?? ""}`)
+    const editor = view.editor!, [, highlighted, commented] = doc.querySelectorAll("p")
+    const selectWord = (paragraph: HTMLParagraphElement) => {
+      const start = text.indexOf("Nullam")
+      const node = paragraph.firstChild!
+      doc.getSelection()!.setBaseAndExtent(node, start, node, start + "Nullam".length)
+    }
+    selectWord(highlighted)
+    assert(editor.features.mark.setStyleMark("background-color", "#ff0"), "background color was not applied")
+    selectWord(commented)
+    assert(editor.features.comment.addComment("Test comment"), "comment was not added")
+    const wide = compareParagraphs(doc)
+    frame.style.width = "560px"
+    assert(compareParagraphs(doc) !== wide, "narrow paragraphs did not wrap")
+
+    const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once: true}))
+    saved.srcdoc = editor.toHTML(false, false)
+    document.body.append(saved)
+    await loaded
+    const savedDoc = saved.contentDocument!
+    assert(compareParagraphs(savedDoc) === wide, "saved paragraphs wrapped differently")
+    assert(savedDoc.querySelector("p span[style]")?.textContent === "Nullam", "background color was lost on export")
+    assert(savedDoc.querySelectorAll("p")[2].innerHTML.includes("<!--webwriter:comment:start:")
+      && savedDoc.querySelectorAll("p")[2].innerHTML.includes("<!--webwriter:comment:end:"), "comment anchors were lost on export")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove(); saved.remove() }
+})
+
 await check("standalone live learners exchange private peer activity and feedback", async () => {
   const {LiveSession} = await import("../src/live-session")
   const {createLiveHostIdentity} = await import("../src/live-peer")
@@ -1840,6 +1908,29 @@ await check("custom filters persist and toggle after native CSS serialization", 
     if(previous === null) localStorage.removeItem(filterPresetsStorageKey)
     else localStorage.setItem(filterPresetsStorageKey, previous)
   }
+})
+
+await check("Edit Style placement controls fit a narrow toolbox", async () => {
+  const {DomEditorToolbox} = await import("../src/components/toolbox")
+  const toolbox = new DomEditorToolbox()
+  toolbox.activeTool = "Edit"
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {
+    localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", canMoveUp: true, canMoveDown: true,
+  }}
+  toolbox.style.width = "150px"
+  fixture.append(toolbox)
+  try {
+    await toolbox.updateComplete
+    await layoutFrame()
+    const controls = toolbox.shadowRoot!.querySelector<HTMLElement>(".float-action-controls")!
+    const bounds = controls.getBoundingClientRect()
+    for(const element of controls.querySelectorAll<HTMLElement>("button, label")) {
+      const rect = element.getBoundingClientRect()
+      assert(rect.width > 0 && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1,
+        `${element.getAttribute("aria-label") ?? element.textContent?.trim()} overflowed the Style controls`)
+    }
+  }
+  finally { toolbox.remove() }
 })
 
 await check("marker image uploads preview before applying", async () => {

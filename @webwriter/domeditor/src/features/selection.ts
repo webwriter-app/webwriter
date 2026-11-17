@@ -146,7 +146,8 @@ export class SelectionFeature extends EditorFeature {
   #touchSelection = false
   #selectedSection: Element | null = null
   #atomicExtension: {range: Range, backwards: boolean} | null = null
-  #drag: {anchor: Range, focus: Range, lastFocus: Range, scope: Element | null, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number, pointerType: string} | null = null
+  #drag: {anchor: Range, focus: Range, lastFocus: Range, scope: Element | null, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number, pointerType: string,
+    unit?: {kind: "word" | "paragraph", range: Range}} | null = null
   #lastPopupPointerClick: {content: Element, x: number, y: number, time: number, count: number} | null = null
   #settingBoxSelection = false
   #boxDrag: {root: HTMLElement, x: number, y: number, pointerId?: number, pointerType: string, overlay: HTMLElement, elements: Element[], previews: Map<Element, HTMLElement>} | null = null
@@ -1289,7 +1290,7 @@ export class SelectionFeature extends EditorFeature {
     }
     if(this.#drag?.pointerId !== undefined && this.#drag.pointerId !== event.pointerId) return
     const drag = this.#drag
-    if(event.type === "pointerup" && drag && !drag.nativeClick && !drag.moved) {
+    if(event.type === "pointerup" && drag && !drag.nativeClick && !drag.moved && !drag.unit) {
       // Chromium can replace a prevented gap click below SUMMARY while
       // resolving native focus. Keep the position chosen by hit testing;
       // live Ranges track intervening DOM edits without retaining stale offsets.
@@ -1389,8 +1390,40 @@ export class SelectionFeature extends EditorFeature {
     if(!point || !root.contains(point.node)) return
     drag.lastFocus.setStart(point.node, point.offset)
     drag.lastFocus.collapse(true)
-    document.getSelection()?.setBaseAndExtent(drag.anchor.startContainer, drag.anchor.startOffset, point.node, point.offset)
+    if(drag.unit) {
+      const origin = drag.unit.range
+      const unit = this.#positionedTextUnit(root, point.node, point.offset, drag.unit.kind)
+      if(!unit || !root.contains(origin.startContainer) || !root.contains(origin.endContainer)) return
+      const before = origin.comparePoint(point.node, point.offset) < 0
+      document.getSelection()?.setBaseAndExtent(
+        before ? origin.endContainer : origin.startContainer, before ? origin.endOffset : origin.startOffset,
+        before ? unit.startContainer : unit.endContainer, before ? unit.startOffset : unit.endOffset,
+      )
+    }
+    else document.getSelection()?.setBaseAndExtent(drag.anchor.startContainer, drag.anchor.startOffset, point.node, point.offset)
     this.processSelection(true)
+  }
+
+  #positionedTextUnit(scope: Element, node: Node, offset: number, kind: "word" | "paragraph") {
+    const block = getContainer(node)
+    if(!block || !scope.contains(block) || editingFlowRoot(block) !== scope) return
+    const range = document.createRange()
+    if(kind === "paragraph") {
+      const first = textPointAtOffset(block, 0, undefined, "forward")
+      const last = textPointAtOffset(block, block.textContent?.length ?? 0)
+      range.setStart(...first)
+      range.setEnd(...last)
+    }
+    else {
+      const position = textOffsetIn(block, node, offset)
+      if(position === null) return
+      const segments = new Intl.Segmenter(undefined, {granularity: "word"}).segment(block.textContent ?? "")
+      const unit = segments.containing(position) ?? segments.containing(position - 1)
+      if(!unit) return
+      range.setStart(...textPointAtOffset(block, unit.index, undefined, "forward"))
+      range.setEnd(...textPointAtOffset(block, unit.index + unit.segment.length))
+    }
+    return range
   }
 
   /** Canvas and slide backgrounds select whole items rather than nearby text. */
@@ -1470,7 +1503,7 @@ export class SelectionFeature extends EditorFeature {
 
   /** Native caret hit testing snaps blank space to nearby text. Require an
    * actual character box before allowing repeated word/paragraph selection. */
-  #hitsText(event: MouseEvent) {
+  #textHit(event: MouseEvent) {
     const range = document.createRange()
     const hits = (text: Text, offset: number) => {
       if(offset < 0 || offset >= text.length || !getDocumentRoot().contains(text)) return false
@@ -1481,21 +1514,28 @@ export class SelectionFeature extends EditorFeature {
         && event.clientY >= rect.top && event.clientY <= rect.bottom)
     }
     const point = document.caretPositionFromPoint?.(event.clientX, event.clientY)
-    if(point?.offsetNode instanceof Text && [point.offset - 1, point.offset].some(offset => hits(point.offsetNode as Text, offset))) return true
+    if(point?.offsetNode instanceof Text) {
+      const node = point.offsetNode
+      const offset = [point.offset - 1, point.offset].find(offset => hits(node, offset))
+      if(offset !== undefined) return {node, offset}
+    }
     const nativeRange = document.caretRangeFromPoint?.(event.clientX, event.clientY)
-    if(nativeRange?.startContainer instanceof Text && [nativeRange.startOffset - 1, nativeRange.startOffset]
-      .some(offset => hits(nativeRange.startContainer as Text, offset))) return true
+    if(nativeRange?.startContainer instanceof Text) {
+      const node = nativeRange.startContainer
+      const offset = [nativeRange.startOffset - 1, nativeRange.startOffset].find(offset => hits(node, offset))
+      if(offset !== undefined) return {node, offset}
+    }
     const target = event.target instanceof Element ? event.target : event.target instanceof Node ? event.target.parentElement : null
-    if(!target || !getDocumentRoot().contains(target)) return false
+    if(!target || !getDocumentRoot().contains(target)) return null
     const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT)
     for(let text = walker.nextNode(); text; text = walker.nextNode()) {
       if(!(text instanceof Text)) continue
       range.selectNodeContents(text)
       if(!Array.from(range.getClientRects()).some(rect => event.clientX >= rect.left && event.clientX <= rect.right
         && event.clientY >= rect.top && event.clientY <= rect.bottom)) continue
-      for(let offset = 0; offset < text.length; offset++) if(hits(text, offset)) return true
+      for(let offset = 0; offset < text.length; offset++) if(hits(text, offset)) return {node: text, offset}
     }
-    return false
+    return null
   }
 
   /** Pointer capture keeps bubble drags scoped, so repeated clicks cannot
@@ -1717,7 +1757,26 @@ export class SelectionFeature extends EditorFeature {
       // MOUSEDOWN carries the click count (POINTERDOWN does not). Release
       // editor capture before the native default starts word/paragraph
       // selection, so subsequent moves retain the browser's granularity.
-      if((drag.nativeClick || drag.scope && popupElementRole(drag.scope) === "content") && event.detail >= 2 && this.#hitsText(event)) {
+      const hit = event.detail >= 2 && (drag.nativeClick || drag.scope && popupElementRole(drag.scope) === "content")
+        ? this.#textHit(event) : null
+      if(hit) {
+        // Native paragraph selection can end inside the next canvas item.
+        // Clamping that range resets the browser to character granularity.
+        // Extend the scoped drag in whole units instead.
+        if(drag.scope && this.editor.features.canvas.active && !event.shiftKey && popupElementRole(drag.scope) !== "content") {
+          const kind = event.detail === 2 ? "word" : "paragraph"
+          const range = this.#positionedTextUnit(drag.scope, hit.node, hit.offset, kind)
+          if(range) {
+            event.preventDefault()
+            drag.nativeClick = false
+            drag.unit = {kind, range}
+            drag.lastFocus.setStart(range.endContainer, range.endOffset)
+            drag.lastFocus.collapse(true)
+            document.getSelection()?.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+            this.processSelection(true, {scrollIntoView: false})
+            return
+          }
+        }
         this.#endDrag()
         return
       }
@@ -3168,7 +3227,7 @@ export class SelectionFeature extends EditorFeature {
     "input": event => this.#scheduleSelectionReveal(event),
     "mousedown": ev => {
       if(this.captureSelectedElement && ev.target instanceof Node && this.captureSelectedElement.contains(ev.target)) return
-      if(ev.detail >= 2 && !this.#hitsText(ev)) ev.preventDefault()
+      if(ev.detail >= 2 && !this.#textHit(ev)) ev.preventDefault()
     },
     "keydown": ev => {
       const direction = arrowDirection(ev.key)

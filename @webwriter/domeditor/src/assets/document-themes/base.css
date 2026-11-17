@@ -475,6 +475,8 @@ h6 {
 p {
   margin-bottom: 0;
   padding: 2px;
+  /* Leave room for Chromium's subpixel rounding when highlights or comments split a text run. */
+  padding-inline-end: 1.9375px;
 }
 
 /* Trailing margins space normal-flow blocks without pushing text down

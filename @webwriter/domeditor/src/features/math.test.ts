@@ -4,7 +4,9 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import {$, isOnApple} from "../utility"
-import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathStructureOptions, mathToolGroups} from "../math"
+import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathStructureOptions, mathToolGroups} from "../math"
+import {exactMathCompletion} from "../math-input"
+import {mathFontOptions} from "../math-fonts"
 import {hasAnchorTarget} from "../anchor-positioning.test-utils"
 import {isMarkStateChangeMessage, markStateChangeEvent, isSelectionChangeMessage, selectionChangeEvent, mathKeyboardTabEvent, type SelectionChangeDetail} from "../editor-bridge"
 import * as Y from "yjs"
@@ -133,6 +135,23 @@ describe("formula shortcut modifiers", () => {
     }
   })
 
+  it("deletes the browser's requested word range without letting it insert HTML into MathML", () => {
+    const math = load("<mrow><mi>a</mi><mi>b</mi><mi>c</mi></mrow>")
+    const token = math.querySelector("mi:last-child")!
+    const text = token.firstChild!
+    $.move(text, 1)
+    const event = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "deleteWordBackward"})
+    Object.defineProperty(event, "getTargetRanges", {value: () => [
+      {startContainer: text, startOffset: 0, endContainer: text, endOffset: 1, collapsed: false},
+    ]})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(token.isConnected).toBe(false)
+    key("d")
+    expect(math.textContent).toBe("abd")
+    expect(math.querySelector("br")).toBeNull()
+  })
+
   it("allows AltGraph text even when Ctrl and Alt are reported", () => {
     const math = load("")
     const event = new KeyboardEvent("keydown", {key: "a", ctrlKey: true, altKey: true, bubbles: true, cancelable: true})
@@ -144,6 +163,42 @@ describe("formula shortcut modifiers", () => {
 })
 
 describe("DOM MathML editing", () => {
+  it("marks selected stretched operators and complete radicals while leaving their DOM unchanged", () => {
+    const math = load("<mo>(</mo><msqrt><mrow><mi>x</mi></mrow></msqrt><mi>y</mi>")
+    const operator = math.querySelector("mo")!, radical = math.querySelector("msqrt")!
+    vi.spyOn(operator, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 10, 40))
+    const textBounds = vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 5, 20))
+    const selection = document.getSelection()!
+    const authored = clean()
+    selection.setBaseAndExtent(math, 0, math, 2)
+    editor.features.math.refresh()
+    expect(hasPresentationState(operator, "math-glyph-selected")).toBe(true)
+    expect(hasPresentationState(radical, "math-glyph-selected")).toBe(true)
+    expect(clean()).toBe(authored)
+    const radicand = radical.querySelector("mi")!.firstChild!
+    selection.setBaseAndExtent(radicand, 0, radicand, 1)
+    editor.features.math.refresh()
+    expect(hasPresentationState(radical, "math-glyph-selected")).toBe(false)
+    expect(hasPresentationState(operator, "math-glyph-selected")).toBe(false)
+    textBounds.mockRestore()
+  })
+
+  it("sets and clears the entire equation's math font while preserving its other authored styles", () => {
+    const math = load('<mi style="font-family: serif;">x</mi><mo>+</mo><mi>y</mi>')
+    math.setAttribute("style", "color: red;")
+    $.move(math.lastElementChild!.firstChild!, 1)
+    const mark = editor.features.mark
+    const customFont = mathFontOptions[1].value
+    expect(mark.setStyleMark("font-family", "Arial, sans-serif")).toBe(false)
+    expect(mark.setStyleMark("font-family", customFont)).toBe(true)
+    expect(mark.getStyleState()["font-family"]).toBe(customFont)
+    expect(math.getAttribute("style")).toContain(customFont)
+    expect(mark.setStyleMark("font-family", "")).toBe(true)
+    expect(mark.getStyleState()["font-family"]).toBeUndefined()
+    expect(math.getAttribute("style")).toBe("color: red;")
+    expect(math.firstElementChild!.getAttribute("style")).toBe("font-family: serif;")
+  })
+
   it.each(["inline", "block"])("paints a whole %s formula once and restores partial text selection", display => {
     const math = load("<mrow><mi>abc</mi><mfrac><mi>x</mi><mi>y</mi></mfrac></mrow>")
     math.setAttribute("display", display)
@@ -1648,6 +1703,35 @@ describe("DOM MathML editing", () => {
     }
   })
 
+  it("moves from the start of a denominator to the end of the numerator", () => {
+    const math = load("<mfrac><mrow><mi>x</mi><mi>y</mi></mrow><mrow><!--keep--><mi>d</mi></mrow></mfrac>")
+    const text = math.querySelector("mi:last-child")!.firstChild!
+    $.move(math.querySelector("mfrac > :last-child mi")!.firstChild!, 0)
+    key("Backspace")
+    expect($.focus).toBe(text)
+    expect($.focusOffset).toBe(1)
+    expect(math.textContent).toBe("xyd")
+  })
+
+  it.each([
+    "<mfrac><mrow></mrow><mi>d</mi></mfrac>",
+    "<msqrt><mrow><!--keep--><mi>x</mi></mrow></msqrt>",
+    "<mroot><mi>x</mi><mn>3</mn></mroot>",
+  ])("selects a structure at its first argument before allowing deletion", content => {
+    const math = load(content)
+    const structure = math.firstElementChild!
+    const text = structure.querySelector("mi")?.firstChild
+    $.move(content.startsWith("<mfrac") ? structure.firstChild! : text!, 0)
+    key("Backspace")
+    const selected = document.getSelection()!.getRangeAt(0)
+    expect(selected.startContainer).toBe(math)
+    expect(selected.endContainer).toBe(math)
+    expect([selected.startOffset, selected.endOffset]).toEqual([0, 1])
+    expect(structure.isConnected).toBe(true)
+    key("Backspace")
+    expect(structure.isConnected).toBe(false)
+  })
+
   it("replaces a deleted fixed argument with an empty row", () => {
     const math = load('<mfrac><mi>x</mi><mn>2</mn></mfrac>')
     $.selectElement(math.querySelector("mi")!)
@@ -2338,6 +2422,34 @@ describe("formula input keyboard and autocomplete", () => {
     expect(math.textContent).toBe("([x)")
   })
 
+  it("groups a fraction when the opening bracket is inserted at Home after the closing bracket", async () => {
+    const math = await ready()
+    type("1/2")
+    key("ArrowRight")
+    type(")")
+    const fraction = math.querySelector("mfrac")!
+    const close = math.querySelector("mo")!
+    key("Home")
+    type("(")
+    const group = fraction.parentElement!
+    expect(group.firstElementChild?.textContent).toBe("(")
+    expect(group.lastElementChild).toBe(close)
+    expect($.focus).toBe(group.firstElementChild?.firstChild)
+    key("End")
+    type("^2")
+    expect(math.querySelector("msup")?.firstElementChild?.firstElementChild).toBe(group)
+  })
+
+  it("keeps an existing pair's closing bracket when typing another opener inside", async () => {
+    const math = await ready("<mrow><mrow><mo>(</mo><mi>x</mi><mo>)</mo></mrow></mrow>")
+    const group = math.querySelector("mrow > mrow")!
+    const close = group.lastElementChild!
+    $.move(group, 1)
+    type("(")
+    expect(group.querySelector("mrow")).toBeNull()
+    expect(group.lastElementChild).toBe(close)
+  })
+
   it.each(["{}", "()", "[]", "⟨⟩", "⌊⌋", "⌈⌉"])("moves inside %s with the first Left and back out with one Right (#407)", async pair => {
     const math = await ready()
     type(pair)
@@ -2672,6 +2784,21 @@ describe("formula input keyboard and autocomplete", () => {
     expect(math.contains($.focus)).toBe(true)
     expect(menu()?.hidden).toBe(true)
     expect(clean()).not.toMatch(/math-completion|listbox|◆/)
+  })
+
+  it("offers all 24 uppercase Greek names in completions and backslash aliases", async () => {
+    const names = "Alpha Beta Gamma Delta Epsilon Zeta Eta Theta Iota Kappa Lambda Mu Nu Xi Omicron Pi Rho Sigma Tau Upsilon Phi Chi Psi Omega".split(" ")
+    const glyphs = [..."ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ"]
+    for(const [index, name] of names.entries()) {
+      const command = `text:${glyphs[index]}`
+      expect(exactMathCompletion(name)?.command).toBe(command)
+      expect(mathCommandAliases[name]).toBe(command)
+    }
+    const math = await ready()
+    type("Alpha ")
+    type("\\Rho")
+    key("Enter")
+    expect(math.textContent).toBe("ΑΡ")
   })
 
   it("confirms a single-letter word with Space before starting the next word", async () => {

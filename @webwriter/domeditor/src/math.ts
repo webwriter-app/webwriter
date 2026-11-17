@@ -1,3 +1,5 @@
+import {mathGreekLetters} from "./math-input"
+
 /** Formula tools describe commands, never a second document representation. */
 export const MATH_NAMESPACE = "http://www.w3.org/1998/Math/MathML"
 
@@ -77,7 +79,7 @@ export const mathCommandAliases: Record<string, string> = {
   sum: "structure:sum", prod: "structure:prod", int: "structure:int", bigcup: "structure:bigcup", bigcap: "structure:bigcap",
   abs: "structure:abs", matrix: "structure:matrix",
   ...Object.fromEntries(["sin", "cos", "tan", "ln", "log"].map(name => [name, `function:${name}`])),
-  ...Object.fromEntries(Object.entries({alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ϵ", varepsilon: "ε", zeta: "ζ", eta: "η", theta: "θ", vartheta: "ϑ", iota: "ι", kappa: "κ", lambda: "λ", mu: "μ", nu: "ν", xi: "ξ", pi: "π", rho: "ρ", varrho: "ϱ", sigma: "σ", varsigma: "ς", tau: "τ", upsilon: "υ", phi: "ϕ", varphi: "φ", chi: "χ", psi: "ψ", omega: "ω", Gamma: "Γ", Delta: "Δ", Theta: "Θ", Lambda: "Λ", Xi: "Ξ", Pi: "Π", Sigma: "Σ", Phi: "Φ", Psi: "Ψ", Omega: "Ω", NN: "ℕ", ZZ: "ℤ", QQ: "ℚ", RR: "ℝ", CC: "ℂ", e: "ℯ", i: "ⅈ", infinity: "∞", times: "×", le: "≤", ge: "≥", ne: "≠"}).map(([name, value]) => [name, `text:${value}`])),
+  ...Object.fromEntries(Object.entries({...mathGreekLetters, NN: "ℕ", ZZ: "ℤ", QQ: "ℚ", RR: "ℝ", CC: "ℂ", e: "ℯ", i: "ⅈ", infinity: "∞", times: "×", le: "≤", ge: "≥", ne: "≠"}).map(([name, value]) => [name, `text:${value}`])),
 }
 
 export const mathTokenNames = new Set(["mi", "mn", "mo", "mtext", "ms"])

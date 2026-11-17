@@ -876,6 +876,71 @@ describe("semantic list editing", () => {
     expect($.anchorOffset).toBe(0)
   })
 
+  it("outdents a newly nested empty item on the first Backspace", async () => {
+    document.body.innerHTML = "<ul><li>A</li></ul>"
+    $.move(document.querySelector("li")!.firstChild!, 1)
+    keydown("Enter")
+    keydown("Tab")
+    const empty = document.querySelector("ul ul li")!
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+
+    keydown("Backspace")
+
+    expect(cleanHTML()).toBe("<ul><li>A</li><li></li></ul>")
+    expect($.anchor).toBe(empty)
+    expect($.anchorOffset).toBe(0)
+    expect(editor.features.list.isVirtualSelection).toBe(false)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe("<ul><li>A<ul><li></li></ul></li></ul>")
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe("<ul><li>A</li><li></li></ul>")
+  })
+
+  it("outdents the final empty item of a mixed-type nested list without removing its neighbors", () => {
+    document.body.innerHTML = '<ol><li>A<div><ul class="authored"><li>B</li><!--keep--><li><p><!--empty--><span><br></span></p></li></ul></div></li><li>C</li></ol>'
+    const inner = document.querySelector("ul")!
+    const empty = inner.lastElementChild!
+    const span = empty.querySelector("span")!
+    $.move(span)
+
+    keydown("Backspace")
+
+    expect(cleanHTML()).toBe('<ol><li>A<div><ul class="authored"><li>B</li><!--keep--></ul></div></li><li><p><!--empty--><span><br></span></p></li><li>C</li></ol>')
+    expect($.anchor).toBe(span)
+    expect(document.querySelector("ul")).toBe(inner)
+    expect(editor.features.list.isVirtualSelection).toBe(false)
+  })
+
+  it("retains comments and whitespace when removing an emptied sublist", () => {
+    document.body.innerHTML = "<ul><li>A<ul>\n<!--before--><li></li><!--after-->\n</ul></li></ul>"
+    const nested = document.querySelector("ul ul")!
+    const item = nested.querySelector("li")!
+    const trivia = Array.from(nested.childNodes).filter(node => node !== item)
+    $.move(item)
+
+    keydown("Backspace")
+
+    expect(cleanHTML()).toBe("<ul><li>A\n<!--before--><!--after-->\n</li><li></li></ul>")
+    expect(Array.from(document.querySelector("li")!.childNodes).slice(1)).toEqual(trivia)
+    expect($.anchor).toBe(item)
+    expect(editor.features.list.isVirtualSelection).toBe(false)
+  })
+
+  it("keeps an item that contains a widget at its current list level", () => {
+    document.body.innerHTML = '<ul><li>A<ul><li><test-widget></test-widget></li></ul></li></ul>'
+    const empty = document.querySelector("ul ul li")!
+    $.move(empty)
+
+    keydown("Backspace")
+
+    expect(cleanHTML()).toBe('<ul><li>A<ul><li><test-widget></test-widget></li></ul></li></ul>')
+  })
+
   it("splits a top-level list when an empty item exits between real items", () => {
     document.body.innerHTML = "<ul><li>A</li><li>B</li></ul>"
     $.move(document.querySelector("li")!.firstChild!, 1)
@@ -890,45 +955,47 @@ describe("semantic list editing", () => {
     expect($.anchorOffset).toBe(0)
   })
 
-  it.each(["Backspace", "Delete"] as const)("splits a list into adjacent lists when %s removes its empty middle item", key => {
+  it.each(["Backspace", "Delete"] as const)("keeps one list when %s removes its empty middle item", key => {
     document.body.innerHTML = '<ul class="authored"><li>A</li><!--before--><li><br></li><!--after--><li><my-widget></my-widget>B</li></ul>'
+    const list = document.querySelector("ul")!
     const [first, empty, last] = document.querySelectorAll("li")
     $.move(empty)
 
     keydown(key)
 
-    expect(cleanHTML()).toBe('<ul class="authored"><li>A</li><!--before--></ul><ul class="authored"><!--after--><li><my-widget></my-widget>B</li></ul>')
-    expect(document.querySelectorAll("ul")[0].firstElementChild).toBe(first)
-    expect(document.querySelectorAll("ul")[1].lastElementChild).toBe(last)
+    expect(cleanHTML()).toBe('<ul class="authored"><li>A</li><!--before--><!--after--><li><my-widget></my-widget>B</li></ul>')
+    expect(document.querySelector("ul")).toBe(list)
+    expect(list.firstElementChild).toBe(first)
+    expect(list.lastElementChild).toBe(last)
     expect($.anchor).toBe(key === "Backspace" ? first : last)
   })
 
-  it.each(["backward", "forward"] as const)("splits a list when deleting an adjacent empty item %s", direction => {
+  it.each(["backward", "forward"] as const)("keeps one list when deleting an adjacent empty item %s", direction => {
     document.body.innerHTML = '<ul><li>A</li><li></li><li>B</li></ul>'
     const items = document.querySelectorAll("li")
     $.move(direction === "backward" ? items[2].firstChild! : items[0].firstChild!, direction === "backward" ? 0 : 1)
 
     editor.features.manipulation.delete(direction)
 
-    expect(cleanHTML()).toBe('<ul><li>A</li></ul><ul><li>B</li></ul>')
+    expect(cleanHTML()).toBe('<ul><li>A</li><li>B</li></ul>')
   })
 
-  it.each(["backward", "forward"] as const)("splits a list when deleting a middle item from its %s gap", direction => {
+  it.each(["backward", "forward"] as const)("keeps one list when deleting a middle item from its %s gap", direction => {
     document.body.innerHTML = '<ul><li>A</li><li></li><li>B</li></ul>'
     const empty = document.querySelectorAll("li")[1]
     $.selectGap(empty, direction === "backward" ? "after" : "before")
     editor.features.manipulation.delete(direction)
-    expect(cleanHTML()).toBe('<ul><li>A</li></ul><ul><li>B</li></ul>')
+    expect(cleanHTML()).toBe('<ul><li>A</li><li>B</li></ul>')
   })
 
-  it("splits a list when deleting a selected empty middle item", () => {
+  it("keeps one list when deleting a selected empty middle item", () => {
     document.body.innerHTML = '<ul><li>A</li><li></li><li>B</li></ul>'
     $.selectElement(document.querySelectorAll("li")[1])
     editor.features.manipulation.delete("backward")
-    expect(cleanHTML()).toBe('<ul><li>A</li></ul><ul><li>B</li></ul>')
+    expect(cleanHTML()).toBe('<ul><li>A</li><li>B</li></ul>')
   })
 
-  it("preserves ordered numbering and supports undo and redo when deleting a middle item", async () => {
+  it("preserves the authored starting number and supports undo and redo when deleting a middle item", async () => {
     document.body.innerHTML = '<ol id="steps" start="4"><li>A</li><li></li><li>B</li></ol>'
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
@@ -936,35 +1003,35 @@ describe("semantic list editing", () => {
     keydown("Backspace")
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
-    expect(cleanHTML()).toBe('<ol id="steps" start="4"><li>A</li></ol><ol start="6"><li>B</li></ol>')
+    expect(cleanHTML()).toBe('<ol id="steps" start="4"><li>A</li><li>B</li></ol>')
     expect(editor.doc.body.toString()).not.toContain("◆")
     editor.doc.undo()
     await Promise.resolve()
     expect(cleanHTML()).toBe('<ol id="steps" start="4"><li>A</li><li></li><li>B</li></ol>')
     editor.doc.redo()
     await Promise.resolve()
-    expect(cleanHTML()).toBe('<ol id="steps" start="4"><li>A</li></ol><ol start="6"><li>B</li></ol>')
+    expect(cleanHTML()).toBe('<ol id="steps" start="4"><li>A</li><li>B</li></ol>')
   })
 
-  it("splits a nested list without changing its owning item", () => {
+  it("keeps a nested list and its owning item when deleting an empty middle item", () => {
     document.body.innerHTML = '<ul><li>Owner<ul><li>A</li><li></li><li>B</li></ul></li></ul>'
     $.move(document.querySelectorAll("ul ul li")[1])
     keydown("Backspace")
-    expect(cleanHTML()).toBe('<ul><li>Owner<ul><li>A</li></ul><ul><li>B</li></ul></li></ul>')
+    expect(cleanHTML()).toBe('<ul><li>Owner<ul><li>A</li><li>B</li></ul></li></ul>')
   })
 
-  it("preserves the implicit numbering of a reversed ordered list on both sides", () => {
-    document.body.innerHTML = '<ol reversed><li>A</li><li></li><li>B</li></ol>'
+  it("keeps reversed numbering implicit and preserves explicit item values", () => {
+    document.body.innerHTML = '<ol reversed><li>A</li><li></li><li value="8">B</li></ol>'
     $.move(document.querySelectorAll("li")[1])
     keydown("Backspace")
-    expect(cleanHTML()).toBe('<ol reversed="" start="3"><li>A</li></ol><ol reversed="" start="1"><li>B</li></ol>')
+    expect(cleanHTML()).toBe('<ol reversed=""><li>A</li><li value="8">B</li></ol>')
   })
 
-  it("splits a description list around a removed empty description", () => {
+  it("keeps one description list after deleting an empty description", () => {
     document.body.innerHTML = '<dl><dt>A</dt><dd></dd><dt>B</dt><dd>Meaning</dd></dl>'
     $.move(document.querySelector("dd")!)
     keydown("Delete")
-    expect(cleanHTML()).toBe('<dl><dt>A</dt></dl><dl><dt>B</dt><dd>Meaning</dd></dl>')
+    expect(cleanHTML()).toBe('<dl><dt>A</dt><dt>B</dt><dd>Meaning</dd></dl>')
   })
 
   it("preserves ordered numbering and does not duplicate an id when exiting mid-list", () => {

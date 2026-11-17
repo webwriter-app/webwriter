@@ -1,6 +1,6 @@
 import type {DOMEditor} from "../src/domeditor"
 
-/** #300: converted paragraphs must remain editable through repeated Backspace. */
+/** Converted lists and empty middle or nested items stay editable through Backspace. */
 export async function checkListDeletion() {
   const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
   const frame = document.createElement("iframe")
@@ -12,12 +12,12 @@ export async function checkListDeletion() {
     for(let attempt = 0; !view.editor && !view.editorError && attempt < 400; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
     assert(view.editor, `list deletion fixture did not initialize: ${view.editorError ?? "timed out"}`)
     const editor = view.editor!, doc = frame.contentDocument!, selection = doc.getSelection()!
-    const backspace = async () => {
-      const event = new view.KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true})
+    const key = async (key: string) => {
+      const event = new view.KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
       doc.dispatchEvent(event)
-      assert(event.defaultPrevented, "Backspace was not handled")
+      assert(event.defaultPrevented, `${key} was not handled`)
       await new Promise<void>(resolve => view.requestAnimationFrame(() => resolve()))
-      assert(selection.anchorNode?.isConnected, "Backspace lost its live editing point")
+      assert(selection.anchorNode?.isConnected, `${key} lost its live editing point`)
     }
     for(const type of ["ul", "ol"] as const) {
       doc.body.innerHTML = "<p>One</p><p>Two</p><p>Three</p>"
@@ -34,7 +34,7 @@ export async function checkListDeletion() {
           // Selection.modify can first traverse the element boundary at the
           // preceding item's end before extending over its last character.
           for(let attempt = 0; list.children[index].textContent!.length === length && attempt < 3; attempt++) {
-            await backspace()
+            await key("Backspace")
             assert(list.children[index].contains(selection.anchorNode), `${type}: text deletion escaped its item`)
           }
           assert(list.children[index].textContent!.length === length - 1,
@@ -43,14 +43,36 @@ export async function checkListDeletion() {
         const emptyItem = list.children[index]
         assert(emptyItem.childNodes.length === 0 && selection.anchorNode === emptyItem,
           `${type}: removing empty item content escaped the live item; caret=${selection.anchorNode?.nodeName}:${selection.anchorOffset}`)
-        await backspace()
+        await key("Backspace")
         assert(!emptyItem.isConnected && list.children.length === index, `${type}: Backspace did not remove the empty bullet`)
         if(index) assert(selection.anchorNode === list.children[index - 1], `${type}: Backspace did not return to the preceding item`)
       }
-      await backspace()
+      await key("Backspace")
       assert(!list.isConnected, `${type}: Backspace did not exit the empty list`)
       assert(!editor.toHTML(true).includes("◆"), "list deletion leaked editor markers")
     }
+
+    doc.body.innerHTML = "<ul><li>A</li><li>B</li><li>C</li></ul>"
+    const list = doc.querySelector("ul")!
+    const [first, middle, last] = Array.from(list.children)
+    selection.collapse(middle.firstChild!, 1)
+    await key("Backspace")
+    assert(selection.anchorNode === middle && middle.childNodes.length === 0, "Backspace left the middle item while deleting its text")
+    await key("Backspace")
+    assert(doc.body.firstElementChild === list && list.children.length === 2 && list.lastElementChild === last,
+      "Deleting an empty middle item split the original list")
+    assert(selection.anchorNode === first, "Backspace did not return to the preceding item")
+
+    doc.body.innerHTML = "<ul><li>A</li></ul>"
+    selection.collapse(doc.querySelector("li")!.firstChild!, 1)
+    await key("Enter")
+    await key("Tab")
+    const nested = doc.querySelector("ul ul li")!
+    assert(nested && selection.anchorNode === nested, "Tab did not create the empty sub-item")
+    await key("Backspace")
+    assert(!doc.querySelector("ul ul") && doc.querySelector("ul")!.lastElementChild === nested
+      && selection.anchorNode === nested && !editor.features.list.isVirtualSelection,
+    "Backspace did not immediately outdent the live sub-item")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 }

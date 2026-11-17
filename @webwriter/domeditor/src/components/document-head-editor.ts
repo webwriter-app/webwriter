@@ -6,8 +6,6 @@ import {
   WEBWRITER_GENERATOR,
   emptyDocumentHeadState,
   type DocumentHeadAction,
-  type DocumentHeadElementKind,
-  type DocumentHeadElementState,
   type DocumentHeadField,
   type DocumentHeadState,
 } from "../document-head"
@@ -16,25 +14,6 @@ import {documentLicenseOptions} from "./license-options"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {documentLanguageName, orderedLanguageOptions} from "../language-suggestions"
 import {documentThemes} from "../document-themes"
-
-const commonElementPresets = new Set([
-  "title",
-  "description",
-  "keywords",
-  "author",
-  "license",
-  "generator",
-  "caption-enumeration",
-])
-
-const primaryAttributesByPreset: Record<string, ReadonlySet<string>> = {
-  description: new Set(["name", "content"]),
-  keywords: new Set(["name", "content"]),
-  author: new Set(["name", "content"]),
-  license: new Set(["rel", "href"]),
-  generator: new Set(["name", "content"]),
-  theme: new Set(["data-ww-theme"]),
-}
 
 let themePickerInstanceCount = 0
 
@@ -310,7 +289,7 @@ class DocumentThemePicker extends LitElement {
   }
 }
 
-/** Compact common metadata fields and the expanded, lossless head-element form. */
+/** Common metadata fields and detailed document options. */
 
 export class DocumentHeadEditor extends LitElement {
   static properties = {
@@ -318,7 +297,6 @@ export class DocumentHeadEditor extends LitElement {
     state: {attribute: false},
     expanded: {type: Boolean, reflect: true},
     compact: {type: Boolean, reflect: true},
-    attributeEditorId: {type: String, attribute: false},
     captionKind: {state: true},
   }
 
@@ -418,7 +396,6 @@ export class DocumentHeadEditor extends LitElement {
     .field-actions {
       display: flex;
       flex: 0 0 auto;
-      gap: 0.05rem;
     }
 
     .field-action {
@@ -436,8 +413,7 @@ export class DocumentHeadEditor extends LitElement {
       cursor: pointer;
     }
 
-    .field-action:hover,
-    .field-action[data-active] {
+    .field-action:hover {
       color: #174f87;
       background: #dcecff;
     }
@@ -498,208 +474,6 @@ export class DocumentHeadEditor extends LitElement {
       cursor: default;
     }
 
-    .add-toolbar {
-      display: grid;
-      flex: 0 0 auto;
-      grid-template-columns: repeat(4, minmax(0, 1fr)) 4.25rem;
-      min-height: 1.75rem;
-      border: 1px solid #c8d2df;
-      border-radius: 0.3rem;
-      overflow: hidden;
-    }
-
-    .add-toolbar button,
-    .add-toolbar select {
-      box-sizing: border-box;
-      min-width: 0;
-      height: 1.75rem;
-      padding: 0 0.4rem;
-      border: 0;
-      border-right: 1px solid #d8dee6;
-      color: #3f4651;
-      background: transparent;
-      font-size: 0.62rem;
-      cursor: pointer;
-    }
-
-    .add-toolbar select {
-      width: 100%;
-      padding-right: 1.35rem;
-      border-right: 0;
-      appearance: none;
-    }
-
-    .more-select {
-      position: relative;
-      min-width: 0;
-    }
-
-    .more-chevron {
-      position: absolute;
-      top: 50%;
-      right: 0.7rem;
-      width: 0.3rem;
-      height: 0.3rem;
-      border-right: 1.25px solid #526b86;
-      border-bottom: 1.25px solid #526b86;
-      pointer-events: none;
-      transform: translateY(-70%) rotate(45deg);
-    }
-
-    .add-toolbar button:hover,
-    .add-toolbar select:hover {
-      background: #eef4fb;
-    }
-
-    .entries {
-      display: flex;
-      flex: 1 1 auto;
-      flex-direction: column;
-      gap: 0.4rem;
-      min-height: 0;
-      padding-right: 0.15rem;
-      overflow: auto;
-      scrollbar-width: thin;
-    }
-
-    .empty {
-      display: grid;
-      flex: 1 1 auto;
-      place-items: center;
-      min-height: 5rem;
-      color: #667085;
-      font-size: 0.68rem;
-    }
-
-    .entry {
-      flex: 0 0 auto;
-      padding: 0.35rem 0;
-      border-bottom: 1px solid #d8dee6;
-    }
-
-    .entry-header {
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-      min-width: 0;
-      margin-bottom: 0.3rem;
-    }
-
-    .entry-title {
-      flex: 1 1 auto;
-      min-width: 0;
-      overflow: hidden;
-      font-size: 0.68rem;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .tag {
-      margin-left: 0.25rem;
-      color: #667085;
-      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-      font-size: 0.6rem;
-      font-weight: 400;
-    }
-
-    .entry-action,
-    .attribute-remove {
-      display: grid;
-      flex: 0 0 1.4rem;
-      place-items: center;
-      width: 1.4rem;
-      height: 1.4rem;
-      padding: 0;
-      border: 0;
-      border-radius: 0.25rem;
-      color: #526b86;
-      background: transparent;
-      cursor: pointer;
-    }
-
-    .entry-action:hover,
-    .attribute-remove:hover {
-      color: #174f87;
-      background: #eef4fb;
-    }
-
-    .entry-action:disabled {
-      color: #b8c0ca;
-      background: transparent;
-      cursor: default;
-    }
-
-    .attributes {
-      display: grid;
-      gap: 0.2rem;
-    }
-
-    .attribute-row,
-    .attribute-add {
-      display: grid;
-      grid-template-columns: minmax(5rem, 0.8fr) minmax(7rem, 1.5fr) 1.4rem;
-      gap: 0.25rem;
-      min-width: 0;
-    }
-
-    .attribute-add {
-      margin-top: 0.05rem;
-    }
-
-    .advanced-input,
-    .content {
-      box-sizing: border-box;
-      width: 100%;
-      min-width: 0;
-      border: 1px solid #c8d2df;
-      border-radius: 0.25rem;
-      color: #2f3742;
-      background: transparent;
-      font-size: 0.62rem;
-    }
-
-    .advanced-input {
-      height: 1.45rem;
-      padding: 0 0.3rem;
-    }
-
-    .advanced-input:focus,
-    .content:focus {
-      border-color: #3977c7;
-      outline: 1px solid #3977c7;
-    }
-
-    .attribute-add button {
-      display: grid;
-      place-items: center;
-      width: 1.4rem;
-      height: 1.4rem;
-      padding: 0;
-      border: 1px solid #c8d2df;
-      border-radius: 0.25rem;
-      color: #526b86;
-      background: transparent;
-      cursor: pointer;
-    }
-
-    .entry.common-attributes {
-      border-bottom-color: #9fbbd8;
-    }
-
-    .content-field {
-      display: grid;
-      gap: 0.1rem;
-      margin-top: 0.3rem;
-    }
-
-    .content {
-      min-height: 3.25rem;
-      padding: 0.3rem;
-      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-      line-height: 0.85rem;
-      resize: vertical;
-    }
-
     :host([compact]) {height: auto; font: .68rem/1.2 system-ui, sans-serif;}
     :host([compact]) .common-grid {grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: .4rem; height: auto; padding: 0;}
     :host([compact]) .common-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); align-items: center; gap: .35rem;}
@@ -723,7 +497,6 @@ export class DocumentHeadEditor extends LitElement {
   compact = false
   state: DocumentHeadState = emptyDocumentHeadState()
   expanded = false
-  attributeEditorId = ""
   private captionKind: "figure" | "table" = "figure"
 
   private dispatchAction(action: DocumentHeadAction) {
@@ -748,38 +521,11 @@ export class DocumentHeadEditor extends LitElement {
     this.setField(field, value)
   }
 
-  private entryForPreset(preset: string) {
-    return this.state.elements.find(element => element.preset === preset)
-  }
-
-  private requestAttributeEditor(entry: DocumentHeadElementState) {
-    const id = this.attributeEditorId === entry.id ? "" : entry.id
-    this.dispatchEvent(new CustomEvent<{id: string}>("document-head-element-options-request", {
-      detail: {id},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  private fieldActions(
-    label: string,
-    value: string,
-    preset?: string,
-    field?: DocumentHeadField,
-    alwaysVisible = false,
-  ) {
+  private removeFieldButton(label: string, field: DocumentHeadField, value: string, alwaysVisible = false) {
     if((!this.expanded && !alwaysVisible) || !value) return nothing
-    const entry = preset ? this.entryForPreset(preset) : undefined
+    const entry = field === "language" ? undefined : this.state.elements.find(element => element.preset === field)
     return html`
       <span class="field-actions">
-        ${entry ? html`<button
-          class="field-action"
-          type="button"
-          aria-label=${`Edit extra ${label.toLocaleLowerCase()} attributes`}
-          title="Extra attributes"
-          ?data-active=${this.attributeEditorId === entry.id}
-          @click=${() => this.requestAttributeEditor(entry)}
-        >…</button>` : nothing}
         <button
           class="field-action"
           type="button"
@@ -787,7 +533,7 @@ export class DocumentHeadEditor extends LitElement {
           title=${`Remove ${label.toLocaleLowerCase()}`}
           @click=${() => entry
             ? this.dispatchAction({type: "removeDocumentHeadElement", id: entry.id})
-            : field && this.setField(field, "")}
+            : this.setField(field, "")}
         >×</button>
       </span>
     `
@@ -796,8 +542,8 @@ export class DocumentHeadEditor extends LitElement {
   private renderCommon() {
     return html`
       <div class="common-grid" aria-label="Common document metadata">
-        ${this.commonTextField("Title", "title", this.state.title, "title")}
-        ${this.commonTextField("Author", "author", this.state.author, "author")}
+        ${this.commonTextField("Title", "title", this.state.title)}
+        ${this.commonTextField("Author", "author", this.state.author)}
         <label class="common-field">
           <span class="field-label">License</span>
           <span class="field-control">
@@ -809,12 +555,12 @@ export class DocumentHeadEditor extends LitElement {
               .searchOptions=${documentLicenseOptions.searchOptions}
               @combobox-change=${(event: Event) => this.handleComboboxChange("license", event)}
             ></document-head-combobox>
-            ${this.fieldActions("License", this.state.license, "license", "license")}
+            ${this.removeFieldButton("License", "license", this.state.license)}
           </span>
         </label>
         <label class="common-field">
           <span class="language-label"><span class="field-label">Language</span>
-            ${this.fieldActions("Language", this.state.language, undefined, "language")}</span>
+            ${this.removeFieldButton("Language", "language", this.state.language)}</span>
           <span class="field-control">
             <document-head-combobox
               language-picker
@@ -912,7 +658,7 @@ export class DocumentHeadEditor extends LitElement {
     </section>`
   }
 
-  private commonTextField(label: string, field: DocumentHeadField, value: string, preset: string) {
+  private commonTextField(label: string, field: DocumentHeadField, value: string) {
     return html`
       <label class="common-field">
         <span class="field-label">${label}</span>
@@ -925,179 +671,18 @@ export class DocumentHeadEditor extends LitElement {
             .value=${value}
             @change=${this.handleCommonChange}
           />
-          ${this.fieldActions(label, value, preset, field)}
+          ${this.removeFieldButton(label, field, value)}
         </span>
       </label>
     `
   }
 
-  private add(kind: DocumentHeadElementKind) {
-    this.dispatchAction({type: "addDocumentHeadElement", kind})
-  }
-
-  private handleMoreAdd(event: Event) {
-    const select = event.currentTarget as HTMLSelectElement
-    if(select.value) this.add(select.value as DocumentHeadElementKind)
-    select.value = ""
-  }
-
-  private updateAttribute(entry: DocumentHeadElementState, previousName: string, row: HTMLElement) {
-    const [name, value] = Array.from(row.querySelectorAll<HTMLInputElement>("input"), input => input.value)
-    if(!name.trim()) return
-    this.dispatchAction({
-      type: "setDocumentHeadElementAttribute",
-      id: entry.id,
-      name,
-      value,
-      previousName,
-    })
-  }
-
-  private addAttribute(event: SubmitEvent, entry: DocumentHeadElementState) {
-    event.preventDefault()
-    const form = event.currentTarget as HTMLFormElement
-    const data = new FormData(form)
-    const name = String(data.get("name") ?? "").trim()
-    const value = String(data.get("value") ?? "")
-    if(!name) return
-    this.dispatchAction({type: "setDocumentHeadElementAttribute", id: entry.id, name, value})
-    form.reset()
-  }
-
-  private renderAttributes(
-    entry: DocumentHeadElementState,
-    attributes = entry.attributes,
-  ) {
-    return html`
-      <div class="attributes" aria-label=${`${entry.label} attributes`}>
-        ${attributes.map(attribute => html`
-          <div class="attribute-row">
-            <input
-              class="advanced-input"
-              aria-label="Attribute name"
-              data-ribbon-input-persistent
-              .value=${attribute.name}
-              @change=${(event: Event) => this.updateAttribute(entry, attribute.name, (event.currentTarget as HTMLElement).parentElement!)}
-            />
-            <input
-              class="advanced-input"
-              aria-label=${`${attribute.name} value`}
-              data-ribbon-input-persistent
-              .value=${attribute.value}
-              @change=${(event: Event) => this.updateAttribute(entry, attribute.name, (event.currentTarget as HTMLElement).parentElement!)}
-            />
-            <button
-              class="attribute-remove"
-              type="button"
-              aria-label=${`Remove ${attribute.name} attribute`}
-              title="Remove attribute"
-              @click=${() => this.dispatchAction({type: "removeDocumentHeadElementAttribute", id: entry.id, name: attribute.name})}
-            >×</button>
-          </div>
-        `)}
-        <form class="attribute-add" @submit=${(event: SubmitEvent) => this.addAttribute(event, entry)}>
-          <input class="advanced-input" name="name" aria-label="New attribute name" placeholder="Attribute" data-ribbon-input-persistent />
-          <input class="advanced-input" name="value" aria-label="New attribute value" placeholder="Value" data-ribbon-input-persistent />
-          <button type="submit" aria-label=${`Add attribute to ${entry.label}`} title="Add attribute">＋</button>
-        </form>
-      </div>
-    `
-  }
-
-  private renderEntry(entry: DocumentHeadElementState) {
-    return html`
-      <article class="entry" data-head-id=${entry.id}>
-        <header class="entry-header">
-          <strong class="entry-title">${entry.label}<code class="tag">&lt;${entry.tagName}&gt;</code></strong>
-          <button
-            class="entry-action"
-            type="button"
-            aria-label=${`Move ${entry.label} up`}
-            title="Move up"
-            ?disabled=${!entry.canMoveUp}
-            @click=${() => this.dispatchAction({type: "moveDocumentHeadElement", id: entry.id, direction: "up"})}
-          >↑</button>
-          <button
-            class="entry-action"
-            type="button"
-            aria-label=${`Move ${entry.label} down`}
-            title="Move down"
-            ?disabled=${!entry.canMoveDown}
-            @click=${() => this.dispatchAction({type: "moveDocumentHeadElement", id: entry.id, direction: "down"})}
-          >↓</button>
-          <button
-            class="entry-action"
-            type="button"
-            aria-label=${`Remove ${entry.label}`}
-            title="Remove"
-            @click=${() => this.dispatchAction({type: "removeDocumentHeadElement", id: entry.id})}
-          >×</button>
-        </header>
-        ${this.renderAttributes(entry)}
-        ${entry.content === undefined ? nothing : html`
-          <label class="content-field">
-            <span class="field-label">${entry.contentLabel ?? "Content"}</span>
-            <textarea
-              class="content"
-              aria-label=${`${entry.label} content`}
-              data-ribbon-input-persistent
-              spellcheck="false"
-              .value=${entry.content}
-              @change=${(event: Event) => this.dispatchAction({
-                type: "setDocumentHeadElementContent",
-                id: entry.id,
-                value: (event.currentTarget as HTMLTextAreaElement).value,
-              })}
-            ></textarea>
-          </label>
-        `}
-      </article>
-    `
-  }
-
-  private renderCommonAttributeEditor(entry: DocumentHeadElementState) {
-    const primary = primaryAttributesByPreset[entry.preset ?? ""] ?? new Set<string>()
-    const extraAttributes = entry.attributes.filter(attribute => !primary.has(attribute.name.toLowerCase()))
-    return html`
-      <article class="entry common-attributes" data-head-id=${entry.id}>
-        <header class="entry-header">
-          <strong class="entry-title">${entry.label} attributes<code class="tag">&lt;${entry.tagName}&gt;</code></strong>
-          <button
-            class="entry-action"
-            type="button"
-            aria-label=${`Close ${entry.label} attributes`}
-            title="Close attributes"
-            @click=${() => this.dispatchEvent(new CustomEvent<{id: string}>("document-head-element-options-request", {
-              detail: {id: ""},
-              bubbles: true,
-              composed: true,
-            }))}
-          >×</button>
-        </header>
-        ${this.renderAttributes(entry, extraAttributes)}
-      </article>
-    `
-  }
-
   private renderAdvanced() {
-    const presets = new Set(this.state.elements.map(element => element.preset))
-    const representedIds = new Set(Array.from(commonElementPresets).flatMap(preset => {
-      const element = this.entryForPreset(preset)
-      return element ? [element.id] : []
-    }))
-    const entries = this.state.elements.filter(element => !representedIds.has(element.id)
-      && element.tagName !== "script" && element.tagName !== "style"
-      && !(element.tagName === "link" && element.attributes.some(attribute => attribute.name.toLowerCase() === "rel"
-        && attribute.value.toLowerCase().split(/\s+/).includes("stylesheet")))
-      && (!this.compact || element.preset !== "theme" && element.preset !== "generator"))
-    const attributeEntry = this.state.elements.find(element =>
-      element.id === this.attributeEditorId && representedIds.has(element.id),
-    )
     return html`
-      <section class="advanced" aria-label="Advanced document head editor">
+      <section class="advanced" aria-label="Document options">
         <div class="advanced-metadata" aria-label="Advanced metadata options">
-          ${this.advancedTextField("Description", "description", this.state.description, "description")}
-          ${this.advancedTextField("Keywords", "keywords", this.state.keywords, "keywords")}
+          ${this.advancedTextField("Description", "description", this.state.description)}
+          ${this.advancedTextField("Keywords", "keywords", this.state.keywords)}
           ${this.compact ? nothing : html`<span class="common-field generator-entry">
             <span class="field-label">Generator</span>
             <span class="generator-control" role="textbox" aria-label="Generator" aria-readonly="true">
@@ -1106,36 +691,14 @@ export class DocumentHeadEditor extends LitElement {
           </span>`}
         </div>
         ${this.renderCaptionEnumeration()}
-        ${this.compact ? nothing : html`<div class="add-toolbar" aria-label="Add head element">
-          <button type="button" @click=${() => this.add("meta")}>＋ Meta</button>
-          <span class="more-select">
-            <select aria-label="Add another head element" data-ribbon-input-persistent @change=${this.handleMoreAdd}>
-              <option value="">More…</option>
-              <option value="link">Link (&lt;link&gt;)</option>
-              <option value="base" ?disabled=${presets.has("base")}>Base URL (&lt;base&gt;)</option>
-              <option value="pragma">Pragma (&lt;meta http-equiv&gt;)</option>
-              <option value="charset" ?disabled=${presets.has("charset")}>Encoding (&lt;meta charset&gt;)</option>
-              <option value="noscript">NoScript (&lt;noscript&gt;)</option>
-              <option value="title" ?disabled=${presets.has("title")}>Title (&lt;title&gt;)</option>
-              <option value="template">Template (&lt;template&gt;)</option>
-            </select>
-            <span class="more-chevron" aria-hidden="true"></span>
-          </span>
-        </div>`}
-        <div class="entries">
-          ${attributeEntry ? this.renderCommonAttributeEditor(attributeEntry) : nothing}
-          ${entries.length
-            ? entries.map(entry => this.renderEntry(entry))
-            : attributeEntry || this.compact ? nothing : html`<div class="empty">No additional head elements.</div>`}
-        </div>
       </section>
     `
   }
 
-  private advancedTextField(label: string, field: "description" | "keywords", value: string, preset: string) {
+  private advancedTextField(label: string, field: "description" | "keywords", value: string) {
     if(field === "description") return html`<label class="common-field description-field">
       <span class="description-label"><span class="field-label">${label}</span>
-        ${this.fieldActions(label, value, preset, field, true)}</span>
+        ${this.removeFieldButton(label, field, value, true)}</span>
       <textarea class="common-control" name=${field} aria-label=${label} rows="3" data-ribbon-input-persistent
         .value=${value} @change=${this.handleCommonChange}></textarea>
     </label>`
@@ -1151,7 +714,7 @@ export class DocumentHeadEditor extends LitElement {
             .value=${value}
             @change=${this.handleCommonChange}
           />
-          ${this.fieldActions(label, value, preset, field, true)}
+          ${this.removeFieldButton(label, field, value, true)}
         </span>
       </label>
     `

@@ -46,6 +46,24 @@ describe("document themes", () => {
     expect(bundledThemes[0].source).toContain("Pico CSS ✨ v2.1.1")
   })
 
+  it("upgrades the stock paragraph padding while preserving customized Base styles", () => {
+    const theme = bundledThemes[0]
+    expect(theme.source).toContain("padding-inline-end:1.9375px")
+    const previous = theme.source.replace(";padding-inline-end:1.9375px", "")
+    const root = document.implementation.createHTMLDocument()
+    const stock = root.createElement("style"), customized = root.createElement("style")
+    stock.setAttribute("data-ww-theme", "base")
+    customized.setAttribute("data-ww-theme", "base")
+    stock.textContent = previous
+    customized.textContent = previous + "\np {padding: 1rem}"
+    root.head.append(stock, customized)
+
+    upgradeBundledDocumentThemes(root)
+
+    expect(stock.textContent).toBe(theme.source)
+    expect(customized.textContent).toBe(previous + "\np {padding: 1rem}")
+  })
+
   it("bounds installed widget hosts in document layouts while retaining sizing overrides", () => {
     const source = documentWidgetStyleSource([
       {tagName: "demo-card"}, {tagName: "demo-card"},
@@ -75,7 +93,12 @@ describe("document themes", () => {
 
 `
     for(const theme of bundledThemes) {
+      // Rebuild the historical stylesheet, including the paragraph and popup rules of that version.
       const original = originalThemes[theme.value].source
+        .replace(/  \/\* Leave room for Chromium[^\n]+\n  padding-inline-end: 1\.9375px;\n/, "")
+        .replace("    /* Center the rotated corner where the popup's inside border edge begins. */\n", "")
+        .replace("top: calc(anchor(top) - 0.35rem + 0.5px)", "top: calc(anchor(top) - 0.4rem)")
+        .replace("top: calc(anchor(bottom) - 0.35rem - 1.5px)", "top: calc(anchor(bottom) - 0.4rem)")
       const start = original.indexOf("  :where(figure:not([is])) {")
       const end = original.indexOf("  details:not([is]) { background-color: inherit; }", start)
       const previous = original.slice(0, start) + previousFigureRules + original.slice(end)

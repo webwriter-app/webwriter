@@ -2601,6 +2601,42 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(Array.from(document.body.childNodes).every(node => node instanceof Element)).toBe(true)
   })
 
+  it.each([false, true])("replaces a heading selected up to the next block boundary (backward: %s)", backwards => {
+    document.body.innerHTML = '<section><h2 id="title">Old <em>heading</em></h2><!--keep-->\n<p><strong>Following</strong></p></section>'
+    const heading = document.querySelector("h2")!
+    const start = heading.firstChild!
+    const end = document.querySelector("strong")!.firstChild!
+    if(backwards) $.selectRange(end, 0, start, 0)
+    else $.selectRange(start, 0, end, 0)
+    const event = new InputEvent("beforeinput", {
+      bubbles: true, cancelable: true, inputType: "insertText", data: "New heading",
+    })
+
+    document.body.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(document.querySelector("h2")).toBe(heading)
+    expect(heading.textContent).toBe("New heading")
+    expect(heading.nextSibling?.nodeValue).toBe("keep")
+    expect(heading.nextElementSibling?.outerHTML).toBe("<p><strong>Following</strong></p>")
+    expect(heading.contains($.anchor)).toBe(true)
+    expect($.isEmpty).toBe(true)
+  })
+
+  it("keeps structured replacement when a heading selection includes following text", () => {
+    document.body.innerHTML = "<h2>Old heading</h2><p>Following text</p>"
+    $.selectRange(document.querySelector("h2")!.firstChild!, 0, document.querySelector("p")!.firstChild!, 10)
+    const event = new InputEvent("beforeinput", {
+      bubbles: true, cancelable: true, inputType: "insertText", data: "New text",
+    })
+
+    document.body.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(document.querySelector("h2")?.textContent).toBe("")
+    expect(document.body.textContent).toBe("New texttext")
+  })
+
   it("inserts HTML through its action handler", () => {
     editor.features.manipulation.actions.insert({type: "insert", html: "<p></p>"})
     expect(Array.from(document.body.children, element => element.localName)).toEqual(["p"])

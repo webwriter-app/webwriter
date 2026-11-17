@@ -11212,6 +11212,33 @@ describe("DomEditor.execute()", () => {
     expect(breadcrumb.gap).toEqual({parentPath: [], offset: 0})
   })
 
+  it.each(["canvas", "slides"] as const)("keeps marks enabled for %s node selections", async mode => {
+    const {editor, editorWindow} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    const path = [{path: [], name: "Document"}, {path: [0], name: "Paragraph"}]
+    const post = async (type: string, detail: object) => {
+      window.dispatchEvent(new MessageEvent("message", {data: {type, detail}, source: editorWindow}))
+      await editor.updateComplete
+      await ribbon.updateComplete
+      await breadcrumb.updateComplete
+    }
+    const layout = {mode, canConvert: true, zoom: 1}
+    await post(markStateChangeEvent, {canMark: true, spatialSelection: "[[0]]", marks: ["b"]})
+    await post(selectionChangeEvent, {path, nodeSelected: true, spatialSelection: "[[0]]", documentLayout: layout})
+    expect(ribbon.canMark).toBe(true)
+    expect(ribbon.marks).toEqual(["b"])
+    expect(breadcrumb.nodeSelected).toBe(true)
+    const bold = ribbon.shadowRoot!.querySelector("ribbon-button[action='mark:b']")!
+    expect(bold.hasAttribute("disabled")).toBe(false)
+
+    await post(selectionChangeEvent, {path: [path[0], {path: [1], name: "Image"}],
+      capture: true, spatialSelection: "[[1]]", documentLayout: layout})
+    expect(ribbon.canMark).toBe(false)
+    expect(bold.hasAttribute("disabled")).toBe(true)
+    expect(breadcrumb.nodeSelected).toBe(true)
+  })
+
   it("starts and ends an element hover from a breadcrumb item", async () => {
     const {editor, iframe} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

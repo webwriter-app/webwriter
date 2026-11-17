@@ -30,8 +30,8 @@ Empty and filled formulas have 2px of padding inside their background. Text care
 | Shift + arrow, Shift + click, drag | Extend the selection |
 | Tab / Shift + Tab | Accept a completion / move between arguments |
 | Home / End | Move to the start or end of the formula |
-| Backspace / Delete | Delete text; select an adjacent structure before deleting it |
-| Modified Backspace / Delete | Preserve native word/line deletion and alternate Cut shortcuts |
+| Backspace / Delete | Delete text or select an adjacent structure before deleting it. At the start of a fraction or root argument, Backspace moves to the previous argument or selects the structure. |
+| Modified Backspace / Delete | Use the browser's word boundaries for word deletion and keep native line deletion and alternate Cut shortcuts |
 | Ctrl/Cmd + A | Select formula contents |
 | Enter / Escape | Accept / dismiss a completion, or finish editing when the popup is closed |
 | `\sqrt`, `\frac`, `\sin`, `\alpha`, etc., then Space | Insert a named structure, function, or symbol |
@@ -39,7 +39,9 @@ Empty and filled formulas have 2px of padding inside their background. Text care
 
 Use a structure tool with a selection to wrap whole sibling expressions. Standard clipboard shortcuts copy selected expressions as MathML and plain text; paste accepts MathML formulas or plain text. Edits use the editor's normal collaboration and undo/redo mechanisms.
 
-Closing a typed bracket pair groups its contents in a MathML row. Both brackets stretch to that group's content, and a following superscript or subscript applies to the whole group. The closing bracket's end and the group's end share one caret stop. Deleting brackets re-pairs surviving delimiters locally, preserving attributed wrappers and argument boundaries. Outside text arguments, Space separates words even when there is no pending word.
+Completing a typed bracket pair in either order groups its contents in a MathML row. Both brackets stretch to that group's content, and a following superscript or subscript applies to the whole group. The closing bracket's end and the group's end share one caret stop. Deleting brackets re-pairs surviving delimiters locally, preserving attributed wrappers and argument boundaries. Outside text arguments, Space separates words even when there is no pending word.
+
+In the font picker, **Default math** uses the browser's math font. Selecting Libertinus Math or Noto Sans Math applies the font to the current formula and embeds it in the document for other readers.
 
 ## Scope
 

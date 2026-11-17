@@ -533,6 +533,8 @@ export type SelectionChangeDetail = {
   inserted?: boolean
   /** True when the current selection is an element/node selection. */
   nodeSelected?: boolean
+  /** The selected element paths in a canvas or slide, serialized for matching mark state. */
+  spatialSelection?: string
   /** True when the selected widget has captured interaction in its shadow tree. */
   capture?: boolean
   gap?: SelectionGap
@@ -571,7 +573,9 @@ export type MarkStateChangeDetail = {
   attachment?: AttachmentSelectionState
   popupActive?: boolean
   svgText?: boolean
-  /** True while the live DOM selection is a markable text range or caret. */
+  /** The spatial element selection that owns this formatting state. */
+  spatialSelection?: string
+  /** True while the live DOM selection contains editable text or an editable caret. */
   canMark: boolean
   /** Canonical marks found in the range or effective for the caret. */
   marks: MarkName[]
@@ -1003,6 +1007,7 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
   const detail = value.detail
   return Array.isArray(detail.path) && detail.path.every(isSelectionPathItem)
     && [detail.nodeSelected, detail.capture, detail.inserted, detail.canSection].every(isOptionalBoolean)
+    && isOptional(detail.spatialSelection, isString)
     && (detail.distribution === undefined || detail.distribution === null || isDistributionSelection(detail.distribution))
     && (detail.distributionGeneral === undefined || detail.distributionGeneral === null || isDistributionSelection(detail.distributionGeneral))
     && isOptionalFeature(detail.section, isSectionSelection)
@@ -1051,6 +1056,7 @@ export function isMarkStateChangeMessage(value: unknown): value is MarkStateChan
     && Array.isArray(message.detail.marks)
     && message.detail.marks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark)
   if(!validBase || message.detail!.svgText !== undefined && typeof message.detail!.svgText !== "boolean"
+    || !isOptional(message.detail!.spatialSelection, isString)
     || message.detail!.popupActive !== undefined && typeof message.detail!.popupActive !== "boolean"
     || message.detail!.canRemoveMarks !== undefined && typeof message.detail!.canRemoveMarks !== "boolean") return false
   const allowedMarks = message.detail!.allowedMarks

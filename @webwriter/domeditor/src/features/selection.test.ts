@@ -6604,6 +6604,37 @@ describe("selection invariants", () => {
     expect(extend).not.toHaveBeenCalled()
   })
 
+  it.each([2, 3])("extends canvas click %s by whole words or paragraphs in both directions", detail => {
+    document.body.classList.add("ww-canvas")
+    document.body.innerHTML = '<p style="position:absolute"><b>al</b>fa <i>bra</i>vo charlie</p><p style="position:absolute">elsewhere</p>'
+    const paragraph = document.querySelector("p")!
+    const middle = paragraph.querySelector("i")!.firstChild!
+    const first = paragraph.querySelector("b")!.firstChild!
+    const last = paragraph.lastChild!
+    const rect = new DOMRect(0, 20, 200, 20)
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(rect)
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([rect] as unknown as DOMRectList)
+    const point = vi.spyOn(document, "caretPositionFromPoint")
+      .mockReturnValue({offsetNode: middle, offset: 1, getClientRect: () => rect})
+    const hit = vi.spyOn($, "pointFromCoords")
+    hit.mockReturnValue({node: middle, offset: 1})
+    paragraph.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 7,
+      pointerType: "mouse", clientX: 20, clientY: 25}))
+    expect(pointer(paragraph, "mousedown", 20, 25, {detail}).defaultPrevented).toBe(true)
+    const selection = document.getSelection()!
+    expect(selection.toString()).toBe(detail === 2 ? "bravo" : "alfa bravo charlie")
+    for(const [node, offset, expected] of [[first, 1, "alfa bravo"], [last, 6, "bravo charlie"]] as const) {
+      point.mockReturnValue({offsetNode: node, offset, getClientRect: () => rect})
+      hit.mockReturnValue({node, offset})
+      paragraph.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, pointerId: 7,
+        pointerType: "mouse", buttons: 1, clientX: 100, clientY: 28}))
+      expect(selection.toString()).toBe(detail === 2 ? expected : "alfa bravo charlie")
+    }
+    paragraph.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 7}))
+    expect(selection.toString()).toBe(detail === 2 ? "bravo charlie" : "alfa bravo charlie")
+    expect(paragraph.innerHTML).toBe("<b>al</b>fa <i>bra</i>vo charlie")
+  })
+
   it.each([2, 3])("leaves click %s drags native in both directions and preserves them on release", async detail => {
     document.body.innerHTML = '<section><!--keep--><p>one <b>two</b> three</p><p>four five</p></section>'
     const paragraph = document.querySelector("p")!, text = paragraph.querySelector("b")!.firstChild!

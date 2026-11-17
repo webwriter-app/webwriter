@@ -44,6 +44,28 @@ async function mount(value = "") {
 }
 
 describe("font option previews", () => {
+  it("offers only bundled formula fonts and emits their embedded stylesheet", async () => {
+    const combo = new FontCombobox()
+    combo.mathOnly = true
+    const changed = vi.fn()
+    combo.addEventListener("font-change", changed)
+    document.body.append(combo)
+    await settle(combo)
+    const input = combo.shadowRoot!.querySelector<HTMLInputElement>('input[role="combobox"]')!
+    expect(input.placeholder).toBe("Default math")
+    input.click()
+    await settle(combo)
+    expect(fetcher).not.toHaveBeenCalled()
+    expect([...combo.shadowRoot!.querySelectorAll('[role="option"]')].map(option => option.getAttribute("title")))
+      .toEqual(["Default math", "Libertinus Math", "Noto Sans Math"])
+    combo.shadowRoot!.querySelector<HTMLButtonElement>('[title="Libertinus Math"]')!.click()
+    await settle(combo)
+    expect(changed.mock.calls[0]?.[0].detail).toMatchObject({
+      value: '"Libertinus Math", math',
+      fontStylesheet: expect.stringMatching(/^data:text\/css;base64,/),
+    })
+  })
+
   it("renders standard and installed options in their own fonts without reading local files", async () => {
     const blob = vi.fn()
     const combo = new FontCombobox()

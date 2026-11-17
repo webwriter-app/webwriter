@@ -84,7 +84,8 @@
     content: "";
     position: fixed;
     position-anchor: --ww-popup-bubble;
-    top: calc(anchor(top) - 0.4rem);
+    /* Center the rotated corner where the popup's inside border edge begins. */
+    top: calc(anchor(top) - 0.35rem + 0.5px);
     left: calc(anchor(left) + 1.25rem);
     width: 0.7rem;
     height: 0.7rem;
@@ -103,7 +104,7 @@
   @container anchored(fallback: flip-block), anchored(fallback: flip-block flip-inline),
     anchored(fallback: --ww-popup-fit-up-right), anchored(fallback: --ww-popup-fit-up-left) {
     :is(.ww-popup > [popover], .ww-popup-content[popover], .◆hotspot-popup[popover])::before {
-      top: calc(anchor(bottom) - 0.4rem);
+      top: calc(anchor(bottom) - 0.35rem - 1.5px);
       transform: rotate(225deg);
     }
   }

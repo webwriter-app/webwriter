@@ -465,8 +465,10 @@ class CanvasMinimap {
               cancelIfStale()
               // SnapDOM flattens the slot into a fragment. Recreate its
               // containing block in the detached capture for absolute items.
+              // Children with the slot's font inherit it in the live tree.
               const wrapper = document.createElement("div")
-              Object.assign(wrapper.style, {position: "relative", width: slot.style.width, height: slot.style.height})
+              Object.assign(wrapper.style, {position: "relative", width: slot.style.width, height: slot.style.height,
+                fontFamily: getComputedStyle(slot).fontFamily})
               wrapper.append(context.clone)
               context.clone = wrapper
               thumbnail = await this.rasterize(context, bounds, cancelIfStale)

@@ -52,6 +52,15 @@ export const legacyDocumentThemeFingerprints = {
     "9ae3c67ccfefdf8a29bf615ba2c15b9a",
     "e767517e9acbfbb2e013c9cc199790a4",
     "c3cb935e6e4f6e396f1a615e547da6a8",
+    // Before the paragraph text-run rounding adjustment, including the popup corner update.
+    "b435fbe20be5316fa5a3b6abe1818699",
+    "0fea449ce32c8f8ba71f5549542a10a8",
+    "2f3dd3016deeb85c2d82d4981afd0c2a",
+    "daa69df374c0ce28bd580e328cfceb17",
+    "1130e0b1f5e15dd69b22a300e392795d",
+    "99268cd41c12cac648ab8648ffd3392b",
+    "e719967745e9e060e8444979ee1e58e0",
+    "3666be5ec81bc828b88aa5d4b8f3aa47",
   ],
   water: [
     "cc67997fc403e58f477b44ad01b5f68b",

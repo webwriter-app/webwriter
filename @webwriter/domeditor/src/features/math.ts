@@ -23,7 +23,8 @@ const plainToken = (node: Node): node is Element => isToken(node) && Array.from(
 const before = (node: Node): Point => [node.parentNode!, indexOf(node)]
 const after = (node: Node): Point => [node.parentNode!, indexOf(node) + 1]
 const fencePairs: Record<string, string> = {")": "(", "]": "[", "}": "{", "⟩": "⟨", "⌋": "⌊", "⌉": "⌈"}
-const fenceText = (node: Node | null) => node && plainToken(node) && node.localName === "mo" ? node.textContent ?? "" : ""
+const closingFences = Object.fromEntries(Object.entries(fencePairs).map(([close, open]) => [open, close]))
+const fenceText = (node: Node | null) => node && plainToken(node) && node.localName === "mo" && node.textContent?.length === 1 ? node.textContent : ""
 const fencedRow = (node: Node): boolean => isMath(node) && node.localName === "mrow"
   && Boolean(fenceText(node.firstChild)) && fencePairs[fenceText(node.lastChild)] === fenceText(node.firstChild)
 /** The closing token's end and its completed group's end are one boundary. */
@@ -142,6 +143,12 @@ export class MathFeature extends EditorFeature {
     const styles = Object.fromEntries(formulaStyleNames.flatMap(property =>
       values.length && values[0][property] && values.every(value => value[property] === values[0][property])
         ? [[property, values[0][property]]] : []))
+    const math = this.activeMath
+    if(math) {
+      const family = this.inlineStyle(math).getPropertyValue("font-family")
+      if(family) styles["font-family"] = family
+      else delete styles["font-family"]
+    }
     const marks = (Object.keys(formulaMarks) as (keyof typeof formulaMarks)[]).filter(mark => {
       const [property, value] = formulaMarks[mark]
       return values.length > 0 && values.every(styles => {
@@ -155,6 +162,13 @@ export class MathFeature extends EditorFeature {
 
   setFormatting(property: string, value: string) {
     if(!formulaStyleNames.includes(property)) return false
+    const math = this.activeMath
+    if(property === "font-family" && math) {
+      if(this.inlineStyle(math).getPropertyValue(property) === value) return false
+      this.writeFormatting(math, {[property]: value})
+      this.editor.postMarkState()
+      return true
+    }
     const targets = this.formatTargets()
     if(!targets.length) return false
     const selection = document.getSelection()!
@@ -376,8 +390,31 @@ export class MathFeature extends EditorFeature {
       }
       if(!this.activeMath) return
       const deadPower = this.atDeadPowerPoint()
-      // Word/line deletion and alternate Cut bindings belong to the browser.
-      // Keep generic document commands from replacing their native semantics.
+      const wordDeletion = event.inputType.startsWith("deleteWord")
+      const wordTarget = wordDeletion ? event.getTargetRanges?.()[0] : undefined
+      if(wordDeletion && (wordTarget || event.isTrusted)) {
+        // Use the browser's word boundary, but keep its HTML editing engine
+        // from replacing an emptied MathML token with an HTML <br>.
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        const math = this.activeMath
+        if(!wordTarget || !math?.contains(wordTarget.startContainer) || !math.contains(wordTarget.endContainer)) return
+        const range = document.createRange()
+        range.setStart(wordTarget.startContainer, wordTarget.startOffset)
+        range.setEnd(wordTarget.endContainer, wordTarget.endOffset)
+        if(range.collapsed) return
+        const token = range.startContainer.parentElement
+        if(range.startContainer instanceof Text && range.startContainer === range.endContainer
+          && range.startOffset === 0 && range.endOffset === range.startContainer.length
+          && token && token.childNodes.length === 1 && plainToken(token) && token.parentElement && isRow(token.parentElement)) {
+          range.selectNode(token)
+        }
+        const editRange = this.editRange(range)
+        if(editRange && this.delete(editRange, event.inputType === "deleteWordBackward")) this.changed()
+        return
+      }
+      // Keep the generic document listeners from claiming native line
+      // deletion and alternate Cut bindings.
       if(/^delete(?:Word|SoftLine|HardLine|EntireSoftLine)/.test(event.inputType) || event.inputType === "deleteByCut") {
         event.stopImmediatePropagation()
         return
@@ -657,14 +694,14 @@ export class MathFeature extends EditorFeature {
     return result
   }
 
-  private editRange() {
+  private editRange(target?: Range) {
     const math = this.activeMath
     const selection = document.getSelection()
     if(!math || !selection?.rangeCount) return null
-    if(this.selectedMath === math) {
+    if(!target && this.selectedMath === math) {
       $.move(math, math.childNodes.length)
     }
-    let range = selection.getRangeAt(0).cloneRange()
+    let range = target ?? selection.getRangeAt(0).cloneRange()
     if(!math.contains(range.startContainer) || !math.contains(range.endContainer)) return null
     // Foreign and unfamiliar subtrees remain atomic. Never reinterpret them.
     for(const endpoint of [range.startContainer, range.endContainer]) {
@@ -797,6 +834,15 @@ export class MathFeature extends EditorFeature {
     const styles = this.pendingStyles()
     if(!text || !this.removeRange(range)) return false
     const node = range.startContainer
+    if(closingFences[text[0]] && isRow(node) && node.localName === "math" && range.startOffset === 0) {
+      const row = node.firstChild
+      // Home addresses the formula boundary. Continue in its anonymous
+      // outer row so an existing closing bracket is reachable as a sibling.
+      if(row instanceof Element && row === node.lastChild && isRow(row) && row.localName === "mrow" && !fencedRow(row)
+        && Array.from(row.attributes).every(attribute => attribute.name === "class" && !authoredClassValue(attribute.value))) {
+        range.setStart(row, 0)
+      }
+    }
     const type = mathTokenType(text)
     if(!styles && node instanceof Text && node.parentElement && plainToken(node.parentElement)
       && (node.parentElement.localName === "mtext" || type === "mn" && node.parentElement.localName === type)) {
@@ -815,33 +861,48 @@ export class MathFeature extends EditorFeature {
     // Moving the selection can flush pending mutations to Yjs. Group the
     // fences before moving the caret so the edit publishes in one step.
     if(!this.insertNodes(range, tokens, false)) return false
-    let group: Element | undefined
-    for(const token of tokens) group = this.groupTypedFence(token)
+    const paired = new Set<Node>()
+    for(const token of tokens) {
+      if(paired.has(token)) continue
+      const group = this.groupTypedFence(token)
+      if(group) {
+        paired.add(group.firstChild!)
+        paired.add(group.lastChild!)
+      }
+    }
     if(this.spelling) this.input?.recordInput(tokens)
     const last = tokens.at(-1)!
-    if(group) $.move(...after(group))
-    else $.move(last.firstChild!, last.textContent!.length)
+    $.move(...fencePoint([last.firstChild!, last.textContent!.length]))
     if(styles) this.typingPoint = [$.focus!, $.focusOffset]
     return true
   }
 
   /** A completed fence pair owns a row so native stretching uses only its
    * contents, and a following script takes the whole group as its base. */
-  private groupTypedFence(close: Element, affected?: Set<Node>) {
-    if(!fencePairs[fenceText(close)] || !close.parentElement || !isRow(close.parentElement)) return
-    const stack = [fencePairs[close.textContent!]]
-    let touches = !affected || affected.has(close)
-    for(let sibling = close.previousSibling; sibling; sibling = sibling.previousSibling) {
+  private groupTypedFence(token: Element, affected?: Set<Node>) {
+    const text = fenceText(token)
+    const forward = Boolean(closingFences[text])
+    const pairs = forward ? closingFences : fencePairs
+    const opposite = forward ? fencePairs : closingFences
+    const parent = token.parentElement
+    if(!pairs[text] || !parent || !isRow(parent)) return
+    const existingEdge = token !== parent.firstChild && token !== parent.lastChild && fencedRow(parent)
+      ? forward ? parent.lastChild : parent.firstChild : null
+    const next = (node: Node) => forward ? node.nextSibling : node.previousSibling
+    const stack = [pairs[text]]
+    let touches = !affected || affected.has(token)
+    for(let sibling = next(token); sibling && sibling !== existingEdge; sibling = next(sibling)) {
       touches ||= Boolean(affected?.has(sibling))
-      if(!(sibling instanceof Element) || !plainToken(sibling) || sibling.localName !== "mo") continue
-      const text = sibling.textContent!
-      if(fencePairs[text]) stack.push(fencePairs[text])
-      else if(Object.values(fencePairs).includes(text)) {
+      const text = fenceText(sibling)
+      if(pairs[text]) stack.push(pairs[text])
+      else if(opposite[text]) {
         if(text !== stack.pop()) return
         if(stack.length) continue
         if(!touches) return
+        const open = forward ? token : sibling
+        const close = forward ? sibling : token
         const row = mathElement("mrow")
-        sibling.before(row)
+        parent.insertBefore(row, open)
         while(row.nextSibling) {
           const next = row.nextSibling
           row.append(next)
@@ -891,6 +952,7 @@ export class MathFeature extends EditorFeature {
       row.replaceWith(...nodes)
     }
     for(const [parent, affected] of parents) for(const close of Array.from(parent.children)) {
+      if(!fencePairs[fenceText(close)]) continue
       // A surviving outer pair already has its own row.
       if(rows.includes(parent) && fencedRow(parent) && close === parent.lastChild) continue
       this.groupTypedFence(close, affected)
@@ -1048,6 +1110,7 @@ export class MathFeature extends EditorFeature {
         return true
       }
     }
+    if(backward && this.backspaceStructureStart(node, offset)) return true
     // Other empty arguments retain their fixed-arity parent.
     if(isRow(node) && !node.childNodes.length) return this.move(backward ? "left" : "right", false)
     const point = this.insertionPoint(range)
@@ -1080,6 +1143,32 @@ export class MathFeature extends EditorFeature {
       }
       else $.selectElement(candidate)
       return true
+    }
+    return false
+  }
+
+  private backspaceStructureStart(node: Node, offset: number) {
+    if(offset !== 0) return false
+    for(let child = node; child.parentElement; child = child.parentElement) {
+      const parent = child.parentElement
+      if(!isMath(parent) || parent.localName === "math") return false
+      if(child instanceof Element && ["mfrac", "mroot"].includes(parent.localName)
+        && parent.children.length === mathArity[parent.localName]) {
+        const previous = child.previousElementSibling
+        if(previous) $.move(...this.stops(previous).at(-1)!)
+        else $.selectElement(parent)
+        return true
+      }
+      let previous = child.previousSibling
+      while(previous?.nodeType === Node.COMMENT_NODE || isRow(parent) && previous instanceof Text && !previous.data.trim()) {
+        previous = previous.previousSibling
+      }
+      if(previous) return false
+      if(parent.localName === "msqrt") {
+        $.selectElement(parent)
+        return true
+      }
+      if(!plainToken(parent) && !isRow(parent)) return false
     }
     return false
   }
@@ -1520,6 +1609,7 @@ export class MathFeature extends EditorFeature {
       clearPresentationState(element, "math-slot")
       clearPresentationState(element, "math-editing")
       clearPresentationState(element, "math-structural-caret")
+      clearPresentationState(element, "math-glyph-selected")
     })
     this.marked.clear()
     this.overlay?.remove()
@@ -1663,6 +1753,36 @@ export class MathFeature extends EditorFeature {
     return element.matches("math mrow:has(> mo:first-child):has(> mo:last-child) > mrow:empty, math mrow:has(> mo:first-child):has(> mo:last-child) > mfrac > mrow:empty")
   }
 
+  private markSelectedGlyphs(root: Element, range: Range, markers: Map<Element, string>) {
+    if(hasPresentationState(root, "atomic-range-selected")) return
+    const selection = this.siblingRange(range) ?? range
+    if(selection.startContainer === selection.endContainer && selection.endOffset === selection.startOffset + 1) {
+      const node = selection.startContainer.childNodes[selection.startOffset]
+      if(node && isMath(node) && node.localName === "mfrac") markers.set(node, "math-glyph-selected")
+    }
+    for(const element of root.querySelectorAll("mo, msqrt, mroot")) {
+      if(!isMath(element) || mathRoot(element) !== root) continue
+      const contents = document.createRange()
+      if(element.localName === "mo") {
+        if(!plainToken(element) || !(element.firstChild instanceof Text) || element.childNodes.length !== 1) continue
+        contents.selectNodeContents(element.firstChild)
+      }
+      else contents.selectNode(element)
+      if(selection.compareBoundaryPoints(Range.START_TO_START, contents) > 0
+        || selection.compareBoundaryPoints(Range.END_TO_END, contents) < 0) continue
+      let ancestor = element.parentElement
+      while(ancestor && !markers.has(ancestor)) ancestor = ancestor.parentElement
+      if(ancestor && markers.get(ancestor) === "math-glyph-selected") continue
+      // A stretchy operator has a MathML box but can lack native selection
+      // paint because its stretched shape is drawn outside the text fragment.
+      if(element.localName === "mo") {
+        const length = element.firstChild!.textContent?.length ?? 0
+        if(!length || element.getBoundingClientRect().height <= contents.getBoundingClientRect().height + 1) continue
+      }
+      markers.set(element, "math-glyph-selected")
+    }
+  }
+
   private refreshPlaceholders() {
     const roots = new Set(Array.from(document.body.querySelectorAll('math[display="block"]'))
       .filter(root => mathRoot(root) === root && emptyMath(root)))
@@ -1760,11 +1880,15 @@ export class MathFeature extends EditorFeature {
     this.stops(root).forEach(([node]) => {
       if(node !== root && isRow(node) && !node.childNodes.length) markers.set(node, "math-slot")
     })
+    if(selection?.rangeCount && !selection.isCollapsed && !this.selectedMath) {
+      this.markSelectedGlyphs(root, selection.getRangeAt(0), markers)
+    }
     this.marked.forEach(element => {
       if(!markers.has(element)) {
         clearPresentationState(element, "math-slot")
         clearPresentationState(element, "math-editing")
         clearPresentationState(element, "math-structural-caret")
+        clearPresentationState(element, "math-glyph-selected")
       }
     })
     batchPresentationStates(document, () => markers.forEach((marker, element) => setPresentationState(element, marker)))

@@ -10,6 +10,7 @@ const editor = new DOMEditor()
 const feature = editor.features.mark
 
 beforeEach(() => {
+  document.body.classList.remove("ww-canvas", "ww-slides")
   document.body.innerHTML = ""
   document.getSelection()?.removeAllRanges()
   document.dispatchEvent(new Event("selectionchange"))
@@ -26,6 +27,114 @@ function selectText(node: Text, start = 0, end = node.length) {
 }
 
 const cleanHTML = () => editor.toHTML(true)
+
+describe.each(["canvas", "slides"])("marks on %s element selections", mode => {
+  function content(html: string) {
+    const first = setContent(mode === "canvas" ? html
+      : `<div class="ww-slides-viewport"><section class="ww-slide">${html}</section></div>`)
+    document.body.classList.add(`ww-${mode}`)
+    return mode === "canvas" ? first.parentElement! : first.querySelector("section")!
+  }
+
+  it("wraps a whole text container and preserves its inline markup and selection", () => {
+    const root = content('<p>Some <em>text</em><!--note-->.</p>')
+    const paragraph = root.firstElementChild!
+    const emphasis = paragraph.querySelector("em")
+    $.selectElement(paragraph, false)
+
+    expect(feature.getState()).toMatchObject({canMark: true, spatialSelection: expect.any(String), marks: []})
+    expect(feature.actions.toggleMark({type: "toggleMark", mark: "b"})).toBe(true)
+    expect(paragraph.innerHTML).toBe("<b>Some <em>text</em><!--note-->.</b>")
+    expect(paragraph.querySelector("em")).toBe(emphasis)
+    expect($.selectedElements).toEqual([paragraph])
+    expect(feature.getState().marks).toEqual(["b"])
+    expect(feature.toggleMark("b")).toBe(true)
+    expect(paragraph.innerHTML).toBe("Some <em>text</em><!--note-->.")
+    expect($.selectedElements).toEqual([paragraph])
+  })
+
+  it("formats disjoint selections and skips atomic and noneditable subtrees", () => {
+    const root = content('<div><p><b>First</b></p><p>Before <demo-atomic>Private</demo-atomic> after</p>'
+      + '<p contenteditable="false">Protected</p></div><p>Gap</p><ul><li>Last <i>item</i></li></ul>')
+    const [first, gap, last] = [...root.children]
+    const widget = first.querySelector("demo-atomic")
+    $.selectElements([first, last])
+
+    expect(feature.getState()).toMatchObject({canMark: true, marks: []})
+    expect(feature.toggleMark("b")).toBe(true)
+    expect(first.innerHTML).toBe('<p><b>First</b></p><p><b>Before </b><demo-atomic>Private</demo-atomic><b> after</b></p>'
+      + '<p contenteditable="false">Protected</p>')
+    expect(first.querySelector("demo-atomic")).toBe(widget)
+    expect(last.innerHTML).toBe("<li><b>Last <i>item</i></b></li>")
+    expect(gap.innerHTML).toBe("Gap")
+    expect($.selectedElements).toEqual([first, last])
+    expect(feature.setStyleMark("color", "red")).toBe(true)
+    expect(feature.getStyleState()).toEqual({color: "red"})
+    expect(last.querySelector("li")!.firstElementChild!.getAttribute("style")).toContain("color: red")
+    expect(feature.toggleMark("b")).toBe(true)
+    expect(root.querySelector("b")).toBeNull()
+    expect(feature.getStyleState()).toEqual({color: "red"})
+    expect(feature.setStyleMark("color", "")).toBe(true)
+    expect(last.innerHTML).toBe("<li>Last <i>item</i></li>")
+    expect($.selectedElements).toEqual([first, last])
+  })
+
+  it("keeps text-range and caret formatting behavior within a text box", () => {
+    const paragraph = content("<p>Sample</p>").firstElementChild!
+    selectText(paragraph.firstChild as Text, 1, 4)
+    expect(feature.getState().spatialSelection).toBeUndefined()
+    expect(feature.toggleMark("i")).toBe(true)
+    expect(paragraph.innerHTML).toBe("S<i>amp</i>le")
+    $.move(paragraph.lastChild!, 1)
+    expect(feature.toggleMark("b")).toBe(true)
+    expect(feature.getState().marks).toEqual(["b"])
+    expect(paragraph.innerHTML).toBe("S<i>amp</i>le")
+    $.selectRange(paragraph, 1, paragraph, 2)
+    expect(feature.getState()).toMatchObject({canMark: true, marks: ["i"]})
+    expect(feature.getState().spatialSelection).toBeUndefined()
+  })
+
+  it("undoes and redoes formatting across selected elements as one edit", () => {
+    const root = content('<p>One</p><p>Gap</p><p>Two</p>')
+    const [first, , last] = [...root.children]
+    editor.doc.syncFromDOM()
+    $.selectElements([first, last])
+    editor.doc.updateLocalSelection()
+    const original = cleanHTML()
+    expect(feature.toggleMark("u")).toBe(true)
+    const marked = cleanHTML()
+    expect(marked).toContain("<p><u>One</u></p><p>Gap</p><p><u>Two</u></p>")
+    editor.doc.undo()
+    expect(cleanHTML()).toBe(original)
+    editor.doc.redo()
+    expect(cleanHTML()).toBe(marked)
+  })
+
+  it("edits the destination of links around the selected text containers", () => {
+    const root = content("<p>One</p><p>Two</p>")
+    $.selectElements(root.children)
+    expect(feature.selectLinkKind("link", true)).toBe(true)
+    const state = feature.getLinkState()!
+    expect(state).toMatchObject({active: true, kind: "link", text: "One\nTwo"})
+    expect(feature.editLink({identity: state.identity, href: "https://example.com/", attributes: {}, kind: "link"})).toBe(true)
+    expect([...root.querySelectorAll("a")].map(link => link.href)).toEqual(["https://example.com/", "https://example.com/"])
+    expect(feature.selectLinkKind("link", true)).toBe(true)
+    expect(root.innerHTML).toBe("<p>One</p><p>Two</p>")
+  })
+
+  it("wraps each text container in a ruby base and keeps annotations separate", () => {
+    const root = content("<p>One <i>word</i></p><p>Two</p>")
+    $.selectElements(root.children)
+    expect(feature.createRuby("annotation", true)).toBe(true)
+    expect([...root.querySelectorAll("ruby")].map(ruby => ruby.innerHTML)).toEqual([
+      "One <i>word</i><rp>(</rp><rt>annotation</rt><rp>)</rp>",
+      "Two<rp>(</rp><rt>annotation</rt><rp>)</rp>",
+    ])
+    expect(feature.getState().marks).toEqual(["ruby"])
+    expect(feature.toggleMark("ruby")).toBe(true)
+    expect(root.innerHTML).toBe("<p>One <i>word</i></p><p>Two</p>")
+  })
+})
 
 class MarkedWidget extends HTMLElement {
   static marks = "b i a color font-family popup ruby"

@@ -364,16 +364,6 @@ export class ListFeature extends EditorFeature {
     }
   }
 
-  /** Preserve the two sides of a list when deletion removes a middle item. */
-  hasItemsAround(item: Element) {
-    const list = item.parentElement
-    if(!item.matches(listItemSelector) || !list?.matches(listSelector) || !list.isConnected
-      || !list.parentNode || atomicEditingContainer(item, this.editor.schema)) return false
-    const items = this.directItems(list)
-    const index = items.indexOf(item as HTMLElement)
-    return index > 0 && index < items.length - 1
-  }
-
   isEmptyItem(item: Element) {
     return !item.textContent?.replace(/\u200B/g, "").trim()
       && Array.from(item.querySelectorAll("*")).every(element => element.matches("br")
@@ -381,24 +371,35 @@ export class ListFeature extends EditorFeature {
           && (this.editor.schema.isPhrasing(element) || this.editor.features.manipulation.isTextBlock(element)))
   }
 
-  splitAroundRemovedItem(item: Element) {
-    if(!this.hasItemsAround(item)) return
-    const list = item.parentElement!
-    const nodes = Array.from(list.childNodes)
-    const index = nodes.indexOf(item)
-    const isItem = (node: Node) => isElement(node) && node.matches(listItemSelector)
-    const following = nodes.slice(index + 1)
-    const before = nodes.slice(0, index).reverse().find(isItem)
-    const after = following.find(isItem)
-    if(!before || !after) return
-    const continuation = this.editor.features.manipulation.cloneSplitContinuation(list)
-    this.prepareSplitContinuation(list, continuation, following)
-    if(list instanceof HTMLOListElement && list.reversed && !list.hasAttribute("start")) {
-      list.setAttribute("start", String(this.directItems(list).filter(item => item.matches("li")).length))
+  /** Remove an empty middle item in place, or lift an empty final sub-item
+   * when Backspace is pressed from inside it. */
+  deleteEmptyItem(target: Element, direction?: "backward" | "forward", fromCaret = false) {
+    const outdent = fromCaret && direction === "backward"
+    const item = outdent ? target.closest(listItemSelector) : target
+    if(!(item instanceof HTMLElement)) return false
+    const list = item.parentElement
+    if(!item.matches(listItemSelector) || !list?.matches(listSelector)
+      || !document.body.contains(list) || atomicEditingContainer(item, this.editor.schema)
+      || (target !== item && atomicEditingContainer(target, this.editor.schema))
+      || !this.isEmptyItem(item)) return false
+    const items = this.directItems(list)
+    const index = items.indexOf(item)
+    const before = items[index - 1], after = items[index + 1]
+    if(target === item && before && after) {
+      item.remove()
+      direction === "forward" ? $.move(after) : $.move(before, -1)
+      return true
     }
-    continuation.append(...following)
-    list.after(continuation)
-    return {before, after}
+    if(outdent && !after) {
+      const owner = list.parentElement?.closest(listItemSelector)
+      const outer = owner?.parentElement
+      if(outer?.matches(listSelector) && (outer.matches("dl") ? item.matches("dt, dd") : item.matches("li"))) {
+        this.outdentItem(item, true)
+        this.syncVirtualMarker()
+        return true
+      }
+    }
+    return false
   }
 
   private readonly syncVirtualMarker = () => {
@@ -972,14 +973,15 @@ export class ListFeature extends EditorFeature {
     return left.isEqualNode(right)
   }
 
-  private outdentItems(items: HTMLElement[]) {
+  private outdentItems(items: HTMLElement[], removeEmptyList = false) {
     const list = items[0].parentElement!
     const owner = list.parentElement?.closest(listItemSelector)
     const outer = owner?.parentElement
     if(!owner?.matches(listItemSelector) || !outer?.matches(listSelector)) return false
     const last = items.at(-1)!
+    const isTrivia = (node: ChildNode) => node.nodeType === Node.COMMENT_NODE || isText(node) && !node.data.trim()
     const following = Array.from(list.childNodes).slice(Array.from(list.childNodes).indexOf(last) + 1)
-    if(following.length) {
+    if(following.length && (!removeEmptyList || following.some(node => !isTrivia(node)))) {
       const continuation = this.editor.features.manipulation.cloneSplitContinuation(list)
       this.prepareSplitContinuation(list, continuation, following)
       continuation.append(...following)
@@ -991,19 +993,21 @@ export class ListFeature extends EditorFeature {
       const trailing: ChildNode[] = []
       for(let node = list.nextSibling; node; node = node.nextSibling) {
         if(isElement(node) && node.matches(listSelector) && !atomicEditingContainer(node, this.editor.schema)
-          || node.nodeType === Node.COMMENT_NODE || isText(node) && !node.data.trim()) trailing.push(node)
+          || isTrivia(node)) trailing.push(node)
         else break
       }
       if(trailing.some(node => isElement(node) && node.matches(listSelector))) last.append(...trailing)
     }
     owner.after(...items)
-    if(!list.childNodes.length) list.remove()
+    if(!list.childNodes.length || removeEmptyList && Array.from(list.childNodes).every(isTrivia)) {
+      list.replaceWith(...Array.from(list.childNodes))
+    }
     return true
   }
 
-  private outdentItem(item: HTMLElement) {
+  private outdentItem(item: HTMLElement, removeEmptyList = false) {
     const restore = this.captureItemSelection([item])
-    if(this.outdentItems([item])) restore()
+    if(this.outdentItems([item], removeEmptyList)) restore()
   }
 
   /** Reparenting invalidates parent-offset ranges in native selections. Keep

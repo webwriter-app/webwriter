@@ -185,8 +185,15 @@ body > :last-child:not(:where(:state(ww-gap-after-selected))) {
   user-select: none;
 }
 
-:is(picture:where(:not(html:state(ww-canvas-active) *, :is(td, th) *)), audio, video) {
+:is(audio, video) {
   display: block;
+  width: 100%;
+}
+
+/* Keep an external float from pushing only the picture's inline image down
+ * while the block used for its selection frame stays beside the float. */
+picture:where(:not(html:state(ww-canvas-active) *, :is(td, th) *)) {
+  display: flow-root;
   width: 100%;
 }
 
@@ -264,8 +271,16 @@ body::part(graphic-image-placeholder) {
   overflow: hidden;
 }
 
-body::part(graphic-image-placeholder)[hidden] {
+body::part(graphic-image-placeholder-hidden) {
   display: none;
+}
+
+body::part(media-placeholder-backdrop) {
+  position: fixed;
+  z-index: 2147483645;
+  transform-origin: center;
+  pointer-events: none;
+  background: rgba(31, 41, 55, 0.5);
 }
 
 picture:state(ww-media-empty) > img:not([src]):not([srcset]) {
@@ -2758,6 +2773,16 @@ math[display="block"] {
   color: var(--sl-color-primary-400);
 }
 
+/* Native selection does not paint the layout-generated glyphs. */
+math :state(ww-math-glyph-selected) {
+  background-color: var(--editor-selection-background);
+}
+
+math :state(ww-math-glyph-selected)::selection,
+math :state(ww-math-glyph-selected) *::selection {
+  background-color: transparent;
+}
+
 /* Native carets can resolve both sides of MATH to the same token edge.
  * The shared text caret distinguishes its inner and outer DOM positions. */
 :is(:state(ww-math-caret-inside-left), :state(ww-math-caret-inside-right), :state(ww-math-caret-outside-left), :state(ww-math-caret-outside-right)) {
@@ -2852,14 +2877,6 @@ body::part(math-placeholder-icon) {
   width: 1em;
   height: 1em;
 }
-
-/* Large operators can pull a lower script into their italic overhang. Keep
- * the empty hit target clear of the operator until it contains actual text. */
-math msubsup:has(> mo:first-child) > :state(ww-math-slot):nth-child(2) {
-  padding-inline-start: 1em;
-  min-width: 1.7em;
-}
-
 
 svg text, svg text * {
   pointer-events: auto;
