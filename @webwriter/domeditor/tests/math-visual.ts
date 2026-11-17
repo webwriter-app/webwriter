@@ -141,6 +141,9 @@ export async function auditMathVisuals(editor: DOMEditor, fixture: HTMLElement, 
             })
           })
           const guideRects = guides.map(guide => guide.getBoundingClientRect())
+          const integral = template.name === "Integral" && position.label === "empty argument 1"
+            ? math.querySelector("msubsup > mo:first-child") : null
+          const integralBefore = integral?.getBoundingClientRect()
           if(!editor.features.math.execute("text:x")) throw new Error(`${template.name}: insertion failed at ${position.label}`)
           const selection = document.getSelection()!
           const text = selection.focusNode!
@@ -159,6 +162,14 @@ export async function auditMathVisuals(editor: DOMEditor, fixture: HTMLElement, 
           characterStart.collapse(true)
           const expectedCaret = characterStart.getBoundingClientRect()
           const containerAfter = container.getBoundingClientRect()
+          if(integral && integralBefore) {
+            const guide = guideRects[reserved.indexOf(node as Element)]
+            const baseAfter = integral.getBoundingClientRect()
+            const start = direction === "rtl" ? "right" : "left"
+            if(!guide || Math.abs(guide[start] - integralBefore[start] - (containerAfter[start] - baseAfter[start])) > tolerance) {
+              errors.push("empty integral lower limit is offset from the filled limit")
+            }
+          }
           // Align the before/after formulas by their unchanged trailing token.
           // MathML can re-center a block formula and grow its ascent on typing.
           const emptyArgument = position.label.startsWith("empty argument")

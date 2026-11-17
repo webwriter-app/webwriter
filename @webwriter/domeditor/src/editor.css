@@ -2860,14 +2860,6 @@ body::part(math-placeholder-icon) {
   height: 1em;
 }
 
-/* Large operators can pull a lower script into their italic overhang. Keep
- * the empty hit target clear of the operator until it contains actual text. */
-math msubsup:has(> mo:first-child) > :state(ww-math-slot):nth-child(2) {
-  padding-inline-start: 1em;
-  min-width: 1.7em;
-}
-
-
 svg text, svg text * {
   pointer-events: auto;
   cursor: text;
