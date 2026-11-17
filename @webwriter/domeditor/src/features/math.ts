@@ -1560,6 +1560,7 @@ export class MathFeature extends EditorFeature {
       clearPresentationState(element, "math-slot")
       clearPresentationState(element, "math-editing")
       clearPresentationState(element, "math-structural-caret")
+      clearPresentationState(element, "math-glyph-selected")
     })
     this.marked.clear()
     this.overlay?.remove()
@@ -1703,6 +1704,36 @@ export class MathFeature extends EditorFeature {
     return element.matches("math mrow:has(> mo:first-child):has(> mo:last-child) > mrow:empty, math mrow:has(> mo:first-child):has(> mo:last-child) > mfrac > mrow:empty")
   }
 
+  private markSelectedGlyphs(root: Element, range: Range, markers: Map<Element, string>) {
+    if(hasPresentationState(root, "atomic-range-selected")) return
+    const selection = this.siblingRange(range) ?? range
+    if(selection.startContainer === selection.endContainer && selection.endOffset === selection.startOffset + 1) {
+      const node = selection.startContainer.childNodes[selection.startOffset]
+      if(node && isMath(node) && node.localName === "mfrac") markers.set(node, "math-glyph-selected")
+    }
+    for(const element of root.querySelectorAll("mo, msqrt, mroot")) {
+      if(!isMath(element) || mathRoot(element) !== root) continue
+      const contents = document.createRange()
+      if(element.localName === "mo") {
+        if(!plainToken(element) || !(element.firstChild instanceof Text) || element.childNodes.length !== 1) continue
+        contents.selectNodeContents(element.firstChild)
+      }
+      else contents.selectNode(element)
+      if(selection.compareBoundaryPoints(Range.START_TO_START, contents) > 0
+        || selection.compareBoundaryPoints(Range.END_TO_END, contents) < 0) continue
+      let ancestor = element.parentElement
+      while(ancestor && !markers.has(ancestor)) ancestor = ancestor.parentElement
+      if(ancestor && markers.get(ancestor) === "math-glyph-selected") continue
+      // A stretchy operator has a MathML box but can lack native selection
+      // paint because its stretched shape is drawn outside the text fragment.
+      if(element.localName === "mo") {
+        const length = element.firstChild!.textContent?.length ?? 0
+        if(!length || element.getBoundingClientRect().height <= contents.getBoundingClientRect().height + 1) continue
+      }
+      markers.set(element, "math-glyph-selected")
+    }
+  }
+
   private refreshPlaceholders() {
     const roots = new Set(Array.from(document.body.querySelectorAll('math[display="block"]'))
       .filter(root => mathRoot(root) === root && emptyMath(root)))
@@ -1800,11 +1831,15 @@ export class MathFeature extends EditorFeature {
     this.stops(root).forEach(([node]) => {
       if(node !== root && isRow(node) && !node.childNodes.length) markers.set(node, "math-slot")
     })
+    if(selection?.rangeCount && !selection.isCollapsed && !this.selectedMath) {
+      this.markSelectedGlyphs(root, selection.getRangeAt(0), markers)
+    }
     this.marked.forEach(element => {
       if(!markers.has(element)) {
         clearPresentationState(element, "math-slot")
         clearPresentationState(element, "math-editing")
         clearPresentationState(element, "math-structural-caret")
+        clearPresentationState(element, "math-glyph-selected")
       }
     })
     batchPresentationStates(document, () => markers.forEach((marker, element) => setPresentationState(element, marker)))

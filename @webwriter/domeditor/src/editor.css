@@ -2765,6 +2765,16 @@ math[display="block"] {
   color: var(--sl-color-primary-400);
 }
 
+/* Native selection does not paint the layout-generated glyphs. */
+math :state(ww-math-glyph-selected) {
+  background-color: var(--editor-selection-background);
+}
+
+math :state(ww-math-glyph-selected)::selection,
+math :state(ww-math-glyph-selected) *::selection {
+  background-color: transparent;
+}
+
 /* Native carets can resolve both sides of MATH to the same token edge.
  * The shared text caret distinguishes its inner and outer DOM positions. */
 :is(:state(ww-math-caret-inside-left), :state(ww-math-caret-inside-right), :state(ww-math-caret-outside-left), :state(ww-math-caret-outside-right)) {

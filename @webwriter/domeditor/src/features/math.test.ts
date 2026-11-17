@@ -146,6 +146,26 @@ describe("formula shortcut modifiers", () => {
 })
 
 describe("DOM MathML editing", () => {
+  it("marks selected stretched operators and complete radicals while leaving their DOM unchanged", () => {
+    const math = load("<mo>(</mo><msqrt><mrow><mi>x</mi></mrow></msqrt><mi>y</mi>")
+    const operator = math.querySelector("mo")!, radical = math.querySelector("msqrt")!
+    vi.spyOn(operator, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 10, 40))
+    const textBounds = vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 5, 20))
+    const selection = document.getSelection()!
+    const authored = clean()
+    selection.setBaseAndExtent(math, 0, math, 2)
+    editor.features.math.refresh()
+    expect(hasPresentationState(operator, "math-glyph-selected")).toBe(true)
+    expect(hasPresentationState(radical, "math-glyph-selected")).toBe(true)
+    expect(clean()).toBe(authored)
+    const radicand = radical.querySelector("mi")!.firstChild!
+    selection.setBaseAndExtent(radicand, 0, radicand, 1)
+    editor.features.math.refresh()
+    expect(hasPresentationState(radical, "math-glyph-selected")).toBe(false)
+    expect(hasPresentationState(operator, "math-glyph-selected")).toBe(false)
+    textBounds.mockRestore()
+  })
+
   it("sets and clears the entire equation's math font while preserving its other authored styles", () => {
     const math = load('<mi style="font-family: serif;">x</mi><mo>+</mo><mi>y</mi>')
     math.setAttribute("style", "color: red;")
