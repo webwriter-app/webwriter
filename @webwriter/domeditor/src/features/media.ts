@@ -16,7 +16,7 @@ import photo from "@tabler/icons/outline/photo.svg?raw"
 import linkIcon from "@tabler/icons/outline/link.svg?raw"
 import messageCircle from "@tabler/icons/outline/message-circle.svg?raw"
 import worldWww from "@tabler/icons/outline/world-www.svg?raw"
-import {$, fixedClientX, authoredClassValue, atomicEditingContainer, adoptStylesheet, cloneInert, cloneWithoutEditorMarkers, createAnchorPositioner, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker, isWidgetShadowInteraction} from "../utility"
+import {$, fixedClientX, authoredClassValue, atomicEditingContainer, adoptStylesheet, cloneInert, cloneWithoutEditorMarkers, createAnchorPositioner, createStylesheet, getInertDocument, isAtomicEditingElement, isElement, nodeAtPath, pathFromNode, removeEditorMarker, isWidgetShadowInteraction, setPart} from "../utility"
 import {
   isEmptyMedia,
   isMediaCaptureMode,
@@ -125,7 +125,6 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     overflow: clip;
     padding: .25rem;
     color: #f3f4f6;
-    background: rgba(31, 41, 55, 0.5);
     font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     pointer-events: none;
     user-select: none;
@@ -243,6 +242,10 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     .file-options .label { display: none; }
     .file-options button { width: clamp(calc(1.125rem + .375rem + 1px), 18cqw, var(--control-height)); padding: 0; }
   }
+  @container (max-height: 5.25rem) and (max-width: 12rem) {
+    .file-options button { width: calc(1.125rem + .375rem + 1px); }
+    .url { padding-inline-start: .4rem; }
+  }
   :host([data-compact]) .expand { display: grid; }
   :host([data-compact]) .content { display: none; }
   :host([data-compact][data-popup-open]) .content {
@@ -286,7 +289,37 @@ const mediaPlaceholderStylesheet = createStylesheet(`
   :host([data-compact]) .or { display: none; }
 `)
 
+type MediaBox = {width: number, height: number, matrix: DOMMatrixReadOnly}
+const minimumPickerWidth = 120
+const minimumPickerHeight = 28
+
+function uprightPickerBounds(rect: DOMRect, box: MediaBox) {
+  const inverse = box.matrix.inverse()
+  const xPerWidth = Math.abs(inverse.a), xPerHeight = Math.abs(inverse.c)
+  const yPerWidth = Math.abs(inverse.b), yPerHeight = Math.abs(inverse.d)
+  // Project the upright rectangle into the media's local axes to see how
+  // much room its corners need inside the rotated border box.
+  const scale = Math.min(1,
+    box.width / (xPerWidth * rect.width + xPerHeight * rect.height),
+    box.height / (yPerWidth * rect.width + yPerHeight * rect.height))
+  if(!Number.isFinite(scale) || scale <= 0) return rect
+  let width = rect.width * scale, height = rect.height * scale
+  if(width < minimumPickerWidth && rect.width >= minimumPickerWidth && height > minimumPickerHeight) {
+    // A shallower row can make room for the controls on a diagonal.
+    const rowHeight = Math.min(height, 40)
+    const rowWidth = Math.min(rect.width,
+      xPerWidth ? (box.width - xPerHeight * rowHeight) / xPerWidth : Infinity,
+      yPerWidth ? (box.height - yPerHeight * rowHeight) / yPerWidth : Infinity)
+    if(rowWidth >= minimumPickerWidth) {
+      width = rowWidth
+      height = rowHeight
+    }
+  }
+  return new DOMRect(rect.left + (rect.width - width) / 2, rect.top + (rect.height - height) / 2, width, height)
+}
+
 class MediaPlaceholder {
+  readonly backdrop = document.createElement("div")
   readonly element = document.createElement("div")
   readonly root: ShadowRoot
   target: Element | null = null
@@ -302,7 +335,10 @@ class MediaPlaceholder {
     return this.element.isConnected && this.interactionActive
   }
 
-  constructor(private readonly getSchema: () => Schema) {
+  constructor(private readonly getSchema: () => Schema, private readonly mediaBox: (target: Element, rect: DOMRect) => MediaBox | undefined) {
+    this.backdrop.setAttribute("part", "media-placeholder-backdrop")
+    this.backdrop.setAttribute("aria-hidden", "true")
+    this.backdrop.hidden = true
     this.element.classList.add("◆", "◆editor-only", "◆media-placeholder")
     this.element.contentEditable = "false"
     this.element.setAttribute("part", "media-placeholder")
@@ -462,6 +498,7 @@ class MediaPlaceholder {
     this.onCapture = null
     this.onFocus = null
     this.onInteractionChange = null
+    this.backdrop.remove()
     this.element.remove()
   }
 
@@ -526,14 +563,36 @@ class MediaPlaceholder {
       : ".html,.htm,text/html"
     url.placeholder = `Enter ${noun} URL`
     url.setAttribute("aria-label", `${noun[0].toUpperCase()}${noun.slice(1)} URL`)
-    const rect = target.getBoundingClientRect()
-    const left = Math.max(0, rect.left)
-    const top = Math.max(0, rect.top)
+    const measured = target.getBoundingClientRect()
+    const box = this.mediaBox(target, measured)
+    const matrix = box?.matrix
+    const rotated = matrix?.is2D && (Math.abs(matrix.b) > 1e-6 || Math.abs(matrix.c) > 1e-6 || matrix.a < 0 || matrix.d < 0)
+    const rotatedBox = rotated ? box : undefined
+    const backdropWidth = rotatedBox?.width ?? measured.width
+    const backdropHeight = rotatedBox?.height ?? measured.height
+    Object.assign(this.backdrop.style, {
+      left: `${fixedClientX(measured.left + (measured.width - backdropWidth) / 2)}px`,
+      top: `${measured.top + (measured.height - backdropHeight) / 2}px`,
+      width: `${backdropWidth}px`,
+      height: `${backdropHeight}px`,
+      transform: rotated && matrix ? `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, 0, 0)` : "",
+    })
+    this.backdrop.hidden = measured.width <= 0 || measured.height <= 0
+    const rect = rotatedBox ? uprightPickerBounds(measured, rotatedBox) : measured
+    let left = Math.max(0, rect.left)
+    let top = Math.max(0, rect.top)
     const right = Math.min(window.innerWidth, rect.right)
     const bottom = Math.min(window.innerHeight, rect.bottom)
-    const width = Math.max(0, right - left)
-    const height = Math.max(0, bottom - top)
-    const compact = width > 0 && height > 0 && (width < 120 || height < 28)
+    let width = Math.max(0, right - left)
+    let height = Math.max(0, bottom - top)
+    const compact = width > 0 && height > 0 && (width < minimumPickerWidth || height < minimumPickerHeight)
+    if(rotated && compact) {
+      const buttonWidth = Math.min(width, 36), buttonHeight = Math.min(height, 36)
+      left += (width - buttonWidth) / 2
+      top += (height - buttonHeight) / 2
+      width = buttonWidth
+      height = buttonHeight
+    }
     if(!compact) this.closePopup()
     this.element.toggleAttribute("data-compact", compact)
     const content = this.root.querySelector<HTMLElement>(".content")!
@@ -555,12 +614,14 @@ class MediaPlaceholder {
     this.element.removeAttribute("aria-hidden")
     if(this.element.hasAttribute("data-popup-open")) this.positionPopup()
     this.updateUrlHint()
+    return Boolean(rotated && compact)
   }
 
   hide() {
     this.root.querySelector<MediaSourceInfo>("media-source-info")?.hide?.()
     this.closePopup()
     this.target = null
+    this.backdrop.hidden = true
     this.element.removeAttribute("data-open")
     this.element.setAttribute("aria-hidden", "true")
   }
@@ -1317,7 +1378,17 @@ export class MediaFeature extends EditorFeature {
 
   get placeholder() {
     if(!this.mediaPlaceholder) {
-      this.mediaPlaceholder = new MediaPlaceholder(() => this.editor.schema)
+      this.mediaPlaceholder = new MediaPlaceholder(() => this.editor.schema, (target, rect) => {
+        if(target instanceof HTMLElement) {
+          return this.editor.features.transformation.boxGeometry(target, false, undefined, rect)
+        }
+        if(target instanceof SVGGraphicsElement) {
+          const box = target.getBBox?.(), screen = target.getScreenCTM?.()
+          // SVG can expose a legacy SVGMatrix with no is2D property.
+          if(box && screen) return {width: box.width, height: box.height,
+            matrix: new DOMMatrix([screen.a, screen.b, screen.c, screen.d, 0, 0])}
+        }
+      })
       this.mediaPlaceholder.onSource = (target, source, fileName) => {
         const url = typeof source === "string" ? source : this.editor.createMediaURL(source)
         if(fileName) this.rememberSource(target, url, fileName, "file")
@@ -1330,6 +1401,7 @@ export class MediaFeature extends EditorFeature {
         this.editor.postSelectionPath()
       }
       this.mediaPlaceholder.onInteractionChange = this.scheduleRefresh
+      this.editor.addAppendix(this.mediaPlaceholder.backdrop)
       this.editor.addAppendix(this.mediaPlaceholder.element)
     }
     return this.mediaPlaceholder
@@ -1514,16 +1586,17 @@ export class MediaFeature extends EditorFeature {
 
   private positionGraphicImagePlaceholder(image: SVGGraphicsElement, placeholder: HTMLDivElement) {
     const rect = image.getBoundingClientRect()
-    if(rect.width > 0 && rect.height > 0 && (rect.width < 64 || rect.height < 28)) {
+    const style = getComputedStyle(image)
+    placeholder.hidden = this.mediaPlaceholder?.target === image || rect.width <= 0 || rect.height <= 0
+      || style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse"
+    setPart(placeholder, "graphic-image-placeholder-hidden", placeholder.hidden)
+    if(placeholder.hidden) return
+    if(rect.width < 64 || rect.height < 28) {
       placeholder.innerHTML = photo
       const icon = placeholder.querySelector<SVGSVGElement>("svg")!
       icon.style.cssText = "width:18px;height:18px;max-width:100%;max-height:100%;min-width:0;min-height:0"
     }
     else placeholder.textContent = "Add an image"
-    const style = getComputedStyle(image)
-    placeholder.hidden = rect.width <= 0 || rect.height <= 0
-      || style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse"
-    if(placeholder.hidden) return
     Object.assign(placeholder.style, {
       left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`,
       width: `${rect.width}px`, height: `${rect.height}px`, transform: "none",
@@ -2821,9 +2894,9 @@ export class MediaFeature extends EditorFeature {
 
   refreshPlaceholder() {
     if(!this.isEnabled) return null
-    this.syncGraphicImagePlaceholders()
     if(this.editor.features.selection.isInDragSelection) {
       this.mediaPlaceholder?.hide()
+      this.syncGraphicImagePlaceholders()
       return null
     }
     // A control pointerdown can clear the authored Selection before focusin.
@@ -2836,13 +2909,14 @@ export class MediaFeature extends EditorFeature {
       ?? (!document.getSelection()?.rangeCount ? retained : null)
     if(!this.mediaCapture && selected?.isConnected && isEmptyMedia(selected)) {
       const changed = this.placeholder.target !== selected
-      this.placeholder.showFor(selected)
-      if(changed && (selected === shape || this.editor.features.selection.captureSelectedElement === selected)) {
+      const rotatedCompact = this.placeholder.showFor(selected)
+      if(changed && !rotatedCompact && (selected === shape || this.editor.features.selection.captureSelectedElement === selected)) {
         if(this.pointerDown && this.placeholder.element.hasAttribute("data-compact")) this.pendingUrlFocus = selected
         else this.placeholder.focusUrl()
       }
     }
     else this.placeholder.hide()
+    this.syncGraphicImagePlaceholders()
 
     return selected
   }

@@ -271,8 +271,16 @@ body::part(graphic-image-placeholder) {
   overflow: hidden;
 }
 
-body::part(graphic-image-placeholder)[hidden] {
+body::part(graphic-image-placeholder-hidden) {
   display: none;
+}
+
+body::part(media-placeholder-backdrop) {
+  position: fixed;
+  z-index: 2147483645;
+  transform-origin: center;
+  pointer-events: none;
+  background: rgba(31, 41, 55, 0.5);
 }
 
 picture:state(ww-media-empty) > img:not([src]):not([srcset]) {

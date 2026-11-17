@@ -1143,6 +1143,69 @@ describe("media editing", () => {
     expect(editor.toHTML(true)).not.toMatch(/popover|media-inputs|Add image/)
   })
 
+  it("sizes upright media pickers to the available space after a quarter turn", () => {
+    document.body.innerHTML = '<picture><img></picture><img><audio></audio><video></video><iframe></iframe><embed><object></object>'
+    const targets = Array.from(document.body.children)
+    const box = editor.features.transformation.boxGeometry(targets[0] as HTMLElement)
+    const matrix = new DOMMatrix([0, 1, -1, 0, 0, 0])
+    const geometry = vi.spyOn(editor.features.transformation, "boxGeometry")
+    const placeholder = editor.features.media.placeholder
+    for(const target of targets) {
+      const rect = vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 40, 200, 300))
+      geometry.mockReturnValue({...box, matrix, width: 300, height: 200})
+      placeholder.showFor(target)
+      expect(placeholder.element).not.toHaveAttribute("data-compact")
+      expect(placeholder.element.style.transform).toBe("")
+      expect(placeholder.element.style.width).toBe("200px")
+      expect(placeholder.element.style.height).toBe("300px")
+      expect(placeholder.backdrop.hidden).toBe(false)
+      expect(placeholder.backdrop.style.transform).toBe("matrix(0, 1, -1, 0, 0, 0)")
+      expect(placeholder.backdrop.style.width).toBe("300px")
+      expect(placeholder.backdrop.style.height).toBe("200px")
+
+      rect.mockReturnValue(new DOMRect(40, 40, 80, 300))
+      geometry.mockReturnValue({...box, matrix, width: 300, height: 80})
+      placeholder.showFor(target)
+      expect(placeholder.element).toHaveAttribute("data-compact")
+      expect(placeholder.element.style.transform).toBe("")
+      expect(placeholder.element.style.width).toBe("36px")
+      expect(placeholder.element.style.height).toBe("36px")
+      expect(placeholder.element.style.left).toBe("62px")
+      expect(placeholder.element).not.toHaveAttribute("data-popup-open")
+      expect(placeholder.backdrop.style.height).toBe("80px")
+    }
+    expect(placeholder.backdrop.getRootNode()).toBe(editor.appendix)
+    expect(editor.toHTML(true)).not.toContain("media-placeholder-backdrop")
+    placeholder.hide()
+    expect(placeholder.backdrop.hidden).toBe(true)
+  })
+
+  it("fits a horizontal row inside a diagonally rotated video", () => {
+    document.body.innerHTML = '<video controls></video>'
+    const video = document.querySelector("video")!
+    const box = editor.features.transformation.boxGeometry(video)
+    const matrix = new DOMMatrix().rotate(45)
+    const projectedSize = (300 + 160) / Math.sqrt(2)
+    const bounds = new DOMRect(40, 40, projectedSize, projectedSize)
+    vi.spyOn(video, "getBoundingClientRect").mockReturnValue(bounds)
+    vi.spyOn(editor.features.transformation, "boxGeometry").mockReturnValue({...box, matrix, width: 300, height: 160})
+    const placeholder = editor.features.media.placeholder
+
+    placeholder.showFor(video)
+
+    expect(placeholder.element).not.toHaveAttribute("data-compact")
+    const {left, top, width, height, transform} = placeholder.element.style
+    expect(transform).toBe("")
+    const inverse = matrix.inverse()
+    for(const x of [parseFloat(left), parseFloat(left) + parseFloat(width)]) {
+      for(const y of [parseFloat(top), parseFloat(top) + parseFloat(height)]) {
+        const corner = inverse.transformPoint({x: x - bounds.left - bounds.width / 2, y: y - bounds.top - bounds.height / 2})
+        expect(Math.abs(corner.x)).toBeLessThanOrEqual(150.01)
+        expect(Math.abs(corner.y)).toBeLessThanOrEqual(80.01)
+      }
+    }
+  })
+
   it("fits a passive SVG image placeholder icon into a 32px image", async () => {
     document.body.innerHTML = '<svg><image width="32" height="32"></image></svg>'
     const image = document.querySelector("svg image")!
