@@ -371,20 +371,35 @@ export class ListFeature extends EditorFeature {
           && (this.editor.schema.isPhrasing(element) || this.editor.features.manipulation.isTextBlock(element)))
   }
 
-  /** Remove an empty middle item without splitting its list. */
-  deleteEmptyItem(item: Element, direction?: "backward" | "forward") {
+  /** Remove an empty middle item in place, or lift an empty final sub-item
+   * when Backspace is pressed from inside it. */
+  deleteEmptyItem(target: Element, direction?: "backward" | "forward", fromCaret = false) {
+    const outdent = fromCaret && direction === "backward"
+    const item = outdent ? target.closest(listItemSelector) : target
     if(!(item instanceof HTMLElement)) return false
     const list = item.parentElement
     if(!item.matches(listItemSelector) || !list?.matches(listSelector)
       || !document.body.contains(list) || atomicEditingContainer(item, this.editor.schema)
+      || (target !== item && atomicEditingContainer(target, this.editor.schema))
       || !this.isEmptyItem(item)) return false
     const items = this.directItems(list)
     const index = items.indexOf(item)
     const before = items[index - 1], after = items[index + 1]
-    if(!before || !after) return false
-    item.remove()
-    direction === "forward" ? $.move(after) : $.move(before, -1)
-    return true
+    if(target === item && before && after) {
+      item.remove()
+      direction === "forward" ? $.move(after) : $.move(before, -1)
+      return true
+    }
+    if(outdent && !after) {
+      const owner = list.parentElement?.closest(listItemSelector)
+      const outer = owner?.parentElement
+      if(outer?.matches(listSelector) && (outer.matches("dl") ? item.matches("dt, dd") : item.matches("li"))) {
+        this.outdentItem(item, true)
+        this.syncVirtualMarker()
+        return true
+      }
+    }
+    return false
   }
 
   private readonly syncVirtualMarker = () => {
@@ -958,14 +973,15 @@ export class ListFeature extends EditorFeature {
     return left.isEqualNode(right)
   }
 
-  private outdentItems(items: HTMLElement[]) {
+  private outdentItems(items: HTMLElement[], removeEmptyList = false) {
     const list = items[0].parentElement!
     const owner = list.parentElement?.closest(listItemSelector)
     const outer = owner?.parentElement
     if(!owner?.matches(listItemSelector) || !outer?.matches(listSelector)) return false
     const last = items.at(-1)!
+    const isTrivia = (node: ChildNode) => node.nodeType === Node.COMMENT_NODE || isText(node) && !node.data.trim()
     const following = Array.from(list.childNodes).slice(Array.from(list.childNodes).indexOf(last) + 1)
-    if(following.length) {
+    if(following.length && (!removeEmptyList || following.some(node => !isTrivia(node)))) {
       const continuation = this.editor.features.manipulation.cloneSplitContinuation(list)
       this.prepareSplitContinuation(list, continuation, following)
       continuation.append(...following)
@@ -977,19 +993,21 @@ export class ListFeature extends EditorFeature {
       const trailing: ChildNode[] = []
       for(let node = list.nextSibling; node; node = node.nextSibling) {
         if(isElement(node) && node.matches(listSelector) && !atomicEditingContainer(node, this.editor.schema)
-          || node.nodeType === Node.COMMENT_NODE || isText(node) && !node.data.trim()) trailing.push(node)
+          || isTrivia(node)) trailing.push(node)
         else break
       }
       if(trailing.some(node => isElement(node) && node.matches(listSelector))) last.append(...trailing)
     }
     owner.after(...items)
-    if(!list.childNodes.length) list.remove()
+    if(!list.childNodes.length || removeEmptyList && Array.from(list.childNodes).every(isTrivia)) {
+      list.replaceWith(...Array.from(list.childNodes))
+    }
     return true
   }
 
-  private outdentItem(item: HTMLElement) {
+  private outdentItem(item: HTMLElement, removeEmptyList = false) {
     const restore = this.captureItemSelection([item])
-    if(this.outdentItems([item])) restore()
+    if(this.outdentItems([item], removeEmptyList)) restore()
   }
 
   /** Reparenting invalidates parent-offset ranges in native selections. Keep

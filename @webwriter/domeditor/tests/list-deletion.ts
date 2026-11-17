@@ -1,6 +1,6 @@
 import type {DOMEditor} from "../src/domeditor"
 
-/** Converted lists and empty middle items stay editable through Backspace. */
+/** Converted lists and empty middle or nested items stay editable through Backspace. */
 export async function checkListDeletion() {
   const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
   const frame = document.createElement("iframe")
@@ -62,6 +62,17 @@ export async function checkListDeletion() {
     assert(doc.body.firstElementChild === list && list.children.length === 2 && list.lastElementChild === last,
       "Deleting an empty middle item split the original list")
     assert(selection.anchorNode === first, "Backspace did not return to the preceding item")
+
+    doc.body.innerHTML = "<ul><li>A</li></ul>"
+    selection.collapse(doc.querySelector("li")!.firstChild!, 1)
+    await key("Enter")
+    await key("Tab")
+    const nested = doc.querySelector("ul ul li")!
+    assert(nested && selection.anchorNode === nested, "Tab did not create the empty sub-item")
+    await key("Backspace")
+    assert(!doc.querySelector("ul ul") && doc.querySelector("ul")!.lastElementChild === nested
+      && selection.anchorNode === nested && !editor.features.list.isVirtualSelection,
+    "Backspace did not immediately outdent the live sub-item")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 }

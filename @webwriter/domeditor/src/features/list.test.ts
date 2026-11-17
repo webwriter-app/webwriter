@@ -876,6 +876,71 @@ describe("semantic list editing", () => {
     expect($.anchorOffset).toBe(0)
   })
 
+  it("outdents a newly nested empty item on the first Backspace", async () => {
+    document.body.innerHTML = "<ul><li>A</li></ul>"
+    $.move(document.querySelector("li")!.firstChild!, 1)
+    keydown("Enter")
+    keydown("Tab")
+    const empty = document.querySelector("ul ul li")!
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+
+    keydown("Backspace")
+
+    expect(cleanHTML()).toBe("<ul><li>A</li><li></li></ul>")
+    expect($.anchor).toBe(empty)
+    expect($.anchorOffset).toBe(0)
+    expect(editor.features.list.isVirtualSelection).toBe(false)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe("<ul><li>A<ul><li></li></ul></li></ul>")
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe("<ul><li>A</li><li></li></ul>")
+  })
+
+  it("outdents the final empty item of a mixed-type nested list without removing its neighbors", () => {
+    document.body.innerHTML = '<ol><li>A<div><ul class="authored"><li>B</li><!--keep--><li><p><!--empty--><span><br></span></p></li></ul></div></li><li>C</li></ol>'
+    const inner = document.querySelector("ul")!
+    const empty = inner.lastElementChild!
+    const span = empty.querySelector("span")!
+    $.move(span)
+
+    keydown("Backspace")
+
+    expect(cleanHTML()).toBe('<ol><li>A<div><ul class="authored"><li>B</li><!--keep--></ul></div></li><li><p><!--empty--><span><br></span></p></li><li>C</li></ol>')
+    expect($.anchor).toBe(span)
+    expect(document.querySelector("ul")).toBe(inner)
+    expect(editor.features.list.isVirtualSelection).toBe(false)
+  })
+
+  it("retains comments and whitespace when removing an emptied sublist", () => {
+    document.body.innerHTML = "<ul><li>A<ul>\n<!--before--><li></li><!--after-->\n</ul></li></ul>"
+    const nested = document.querySelector("ul ul")!
+    const item = nested.querySelector("li")!
+    const trivia = Array.from(nested.childNodes).filter(node => node !== item)
+    $.move(item)
+
+    keydown("Backspace")
+
+    expect(cleanHTML()).toBe("<ul><li>A\n<!--before--><!--after-->\n</li><li></li></ul>")
+    expect(Array.from(document.querySelector("li")!.childNodes).slice(1)).toEqual(trivia)
+    expect($.anchor).toBe(item)
+    expect(editor.features.list.isVirtualSelection).toBe(false)
+  })
+
+  it("keeps an item that contains a widget at its current list level", () => {
+    document.body.innerHTML = '<ul><li>A<ul><li><test-widget></test-widget></li></ul></li></ul>'
+    const empty = document.querySelector("ul ul li")!
+    $.move(empty)
+
+    keydown("Backspace")
+
+    expect(cleanHTML()).toBe('<ul><li>A<ul><li><test-widget></test-widget></li></ul></li></ul>')
+  })
+
   it("splits a top-level list when an empty item exits between real items", () => {
     document.body.innerHTML = "<ul><li>A</li><li>B</li></ul>"
     $.move(document.querySelector("li")!.firstChild!, 1)

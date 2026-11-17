@@ -5114,7 +5114,7 @@ export class ManipulationFeature extends EditorFeature {
       const caret = $.isEmpty ? $.anchorContainer : null
       const caretItem = isElement(caret) ? caret.matches("br") ? caret.parentElement : caret : null
       const removedItem = selected ?? caretItem
-      if(removedItem && this.editor.features.list.deleteEmptyItem(removedItem, direction)) return
+      if(removedItem && this.editor.features.list.deleteEmptyItem(removedItem, direction, !selected)) return
       if(summary && !summary.textContent && summary.contains($.range.endContainer)) {
         $.delete()
         $.move(summary)
@@ -5141,6 +5141,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       const commonContainer = getContainer($.commonAncestor)
       if(!commonContainer.textContent && commonContainer !== document.body
+        && (!commonContainer.matches("li, dt, dd") || this.editor.features.list.isEmptyItem(commonContainer))
         && !isContentfulWidget(commonContainer, this.editor.schema)
         && !commonContainer.matches("details, details > summary")
         && !isDocumentRoot(commonContainer) && !boardLayoutRole(commonContainer) && !isOutOfFlow(commonContainer) && commonContainer.nodeName !== "HTML") {
