@@ -26,7 +26,7 @@ import {
   type StyleMarkValues,
   type WidgetMarkName,
 } from "../marks"
-import {$, authoredClassValue, cloneRangeContents, nodesInRange, cloneWithoutEditorMarkers, focusedWidgetHost, isContentfulWidget, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, isParagraphContent, textOffsetIn, textPointAtOffset, uiMotionDisabled, widgetHostForShadowInteraction} from "../utility"
+import {$, authoredClassValue, cloneRangeContents, nodesInRange, cloneWithoutEditorMarkers, focusedWidgetHost, isContentfulWidget, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, isParagraphContent, pathFromNode, textOffsetIn, textPointAtOffset, uiMotionDisabled, widgetHostForShadowInteraction} from "../utility"
 import {clearPresentationState, setPresentationState} from "../presentation-state.js"
 import {SVG_NAMESPACE} from "../graphic"
 import {isAuthoredMutation} from "../editor-artifacts"
@@ -39,6 +39,7 @@ import {fontStylesheetFamily, fontFamilies, fontWithFallback, syncFontResources}
 import {mergeEmbeddedFonts} from "../local-fonts"
 import {mathFontOptions} from "../math-fonts"
 import {parseWidgetMarks} from "../schema"
+import {slideLayoutRole} from "../document-layout"
 import ianaTLDList from "../iana-tlds.txt?raw"
 
 // Refresh this offline snapshot from https://data.iana.org/TLD/tlds-alpha-by-domain.txt.
@@ -50,9 +51,10 @@ const automaticLinkPattern = new RegExp(
   String.raw`(?<![\p{L}\p{N}_@./:-])(?:https?:\/\/[^\s<>"'\x60]+|(?<email>(?<![a-z0-9!#$%&'*+/=?^_\x60{|}~.-])(?=[^@\s]{1,64}@)${automaticLinkEmailLocal}@${automaticLinkDomain})|${automaticLinkDomain}(?::\d{1,5})?(?!\d|:\d)(?:[/?#][^\s<>"'\x60]*)?)`, "giu")
 
 export type MarkState = {
-  /** Whether the current selection is a markable text range or caret. */
+  /** Whether the current selection contains editable text or an editable caret. */
   canMark: boolean
   svgText?: boolean
+  spatialSelection?: string
   /** Marks found in the range, or effective for the next input at a caret. */
   marks: MarkName[]
   popupActive?: boolean
@@ -83,6 +85,8 @@ type MarkCaret = {
   range: Range
   block: Element
 }
+
+type SpatialMarkRun = {container: Element, nodes: ChildNode[], text: Text[]}
 
 type StoredSelection = {
   anchorNode: Node
@@ -884,6 +888,7 @@ export class MarkFeature extends EditorFeature {
         allowedMarks, widgetMarks: widget.names}
     }
     const state = this.getUnrestrictedState()
+    if(state.spatialSelection) return state
     if(this.storedPopup || this.linkPopupToggle()) state.popupActive = true
     const allowed = this.svgContext() || this.editor.features.math.activeMath
       ? undefined
@@ -902,6 +907,15 @@ export class MarkFeature extends EditorFeature {
       return {canMark, marks}
     }
     this.clearStoredMarksIfSelectionChanged()
+    const spatial = this.spatialMarkRuns()
+    if(spatial) {
+      const marks = spatial.flatMap(run => run.text.map(node => this.marksAt(node, run.container, false)))
+      const active = markNames.filter(mark => marks.length > 0 && marks.every(current => current.has(mark)))
+      const restrictions = spatial.map(run => this.allowedMarksAt(run.container))
+      const allowedMarks = markNames.filter(mark => restrictions.some(allowed => !allowed || allowed.includes(mark)))
+      return {canMark: allowedMarks.length > 0, spatialSelection: this.spatialSelectionKey, marks: active,
+        ...(allowedMarks.length === markNames.length || !marks.length ? {} : {allowedMarks})}
+    }
     const caret = this.getCaret()
     if(caret) {
       const marks = this.storedMarks ?? this.marksAt(caret.range.startContainer, caret.block)
@@ -931,6 +945,14 @@ export class MarkFeature extends EditorFeature {
       return Object.fromEntries(styleMarkNames.flatMap(property => styles[property] ? [[property, styles[property]]] : []))
     }
     this.clearStoredMarksIfSelectionChanged()
+    const spatial = this.spatialMarkRuns()
+    if(spatial) {
+      const styles = spatial.flatMap(run => run.text.map(node => this.stylesAt(node, run.container, false)))
+      return Object.fromEntries(styleMarkNames.flatMap(property => {
+        const value = styles[0]?.[property]
+        return value && styles.every(current => current[property] === value) ? [[property, value]] : []
+      }))
+    }
     const caret = this.getCaret()
     if(caret) return {...(this.storedStyles ?? this.stylesAt(caret.range.startContainer, caret.block))}
 
@@ -957,13 +979,14 @@ export class MarkFeature extends EditorFeature {
       return this.cloneAttributeValues(stored ?? attributes)
     }
 
-    const context = this.getSelection()
-    if(!context) return {}
+    const spatial = this.spatialMarkRuns()
+    const context = spatial ? null : this.getSelection()
+    if(!context && !spatial) return {}
     const result: MarkAttributeValues = {}
     for(const mark of markNames) {
       const options = markAttributeOptionsFor(mark)
       if(!options.length) continue
-      const elements = this.markElementsForSelection(context, mark)
+      const elements = spatial ? this.spatialMarkElements(spatial, mark) : this.markElementsForSelection(context!, mark)
       if(!elements.length) continue
       result[mark] = Object.fromEntries(options.filter(option => !["download", "data-reference", "data-reference-locator"].includes(option.name) || elements.every(element => element.hasAttribute(option.name))).map(option => {
         const values = elements.map(element => element.getAttribute(option.name) ?? "")
@@ -979,6 +1002,22 @@ export class MarkFeature extends EditorFeature {
     const state = this.getState()
     if(!state.canMark || this.editor.features.math.activeMath) return null
     const svg = this.svgContext()
+    if(state.spatialSelection) {
+      const runs = this.spatialMarkRuns()!
+      const anchors = this.spatialMarkElements(runs, "a")
+      if(!state.marks.includes("a") || !anchors.length) return null
+      const selection = document.getSelection()
+      if(!selection?.rangeCount) return null
+      const range = selection.getRangeAt(0).cloneRange()
+      const context = {selection, range, block: runs[0].container}
+      const attributes = this.getAttributeState().a ?? {}
+      if(anchors.some(anchor => anchor.matches(attachmentMark))) return null
+      const text = runs.map(run => run.text.map(node => node.data).join("")).join("\n")
+      const identity = JSON.stringify([this.spatialMarkRoots().map(root => this.linkNodeID(root)), text,
+        anchors.map(anchor => [this.linkNodeID(anchor), Array.from(anchor.attributes, attribute => [attribute.name, attribute.value])])])
+      return {context, anchor: undefined, popup: null, attributes, href: attributes.href ?? "",
+        attachment: false, active: true, identity, svg: false, text}
+    }
     const active = state.marks.includes("a")
     const popup = allowUnmarked ? this.linkPopupToggle() : null
     if(!active && !(allowUnmarked && (svg || popup || this.attachmentTarget()))) return null
@@ -1404,6 +1443,7 @@ export class MarkFeature extends EditorFeature {
     const widget = this.widgetMarkContext()
     if(widget) return kind === "link" && Boolean(widget.state.a) && this.sendWidgetMark(widget, "a", null)
     if(!isLinkKind(kind) || this.editor.isEditingLocked || this.editor.features.math.activeMath) return false
+    if(!this.svgContext() && this.hasSpatialElementSelection) return kind === "link" && this.removeMark("a")
     this.clearStoredMarksIfSelectionChanged()
     const current = this.linkSelection(true)
     const draft = this.linkKindDraft
@@ -1437,6 +1477,10 @@ export class MarkFeature extends EditorFeature {
       this.#widgetLinkDraft = {widget: widget.widget, identity: crypto.randomUUID()}
       this.editor.postMarkState()
       return true
+    }
+    if(!this.svgContext() && this.hasSpatialElementSelection) {
+      if(kind !== "link") return false
+      return toggle ? this.toggleMark("a") : this.addMark("a")
     }
     this.clearStoredMarksIfSelectionChanged()
     if(this.svgContext() && kind !== "link" && kind !== "cross-reference") return false
@@ -1601,12 +1645,13 @@ export class MarkFeature extends EditorFeature {
   /** Structured state for the ruby element resolved from the current live selection. */
   getRubyState(): RubyState {
     if(this.widgetMarkContext()) return emptyRubyState
+    const spatial = this.spatialMarkRuns()
     const ruby = this.selectedRuby()
     const context = this.getSelection()
     if(!ruby) return {
       active: false,
-      canCreate: !!context && !this.selectionContainsRuby(context),
-      base: context?.range.toString() ?? "",
+      canCreate: spatial ? spatial.some(run => this.spatialMarkAllowed(run, "ruby")) : !!context && !this.selectionContainsRuby(context),
+      base: spatial ? spatial.map(run => run.text.map(node => node.data).join("")).join("\n") : context?.range.toString() ?? "",
       annotations: [],
       fallbacks: [],
     }
@@ -1783,13 +1828,13 @@ export class MarkFeature extends EditorFeature {
   /** Wraps the selected phrasing DOM as one ruby base and appends its first annotation. */
   createRuby(annotation = "", fallback = false): boolean {
     if(typeof annotation !== "string" || typeof fallback !== "boolean") return false
+    const spatial = this.spatialMarkRuns()
+    if(spatial) return this.editSpatialMarks(spatial, run => this.wrapSpatialMark(run, "ruby", annotation, fallback))
     const context = this.getSelection()
     if(!context || this.selectionContainsRuby(context)) return false
     if(context.split) return this.acrossTextRanges(context, () => this.createRuby(annotation, fallback))
 
     const ruby = document.createElement("ruby")
-    const rt = document.createElement("rt")
-    rt.textContent = annotation
     const boundaryAncestors = new Set<Element>()
     for(const point of [context.range.startContainer, context.range.endContainer]) {
       let ancestor = point instanceof Element ? point : point.parentElement
@@ -1799,6 +1844,20 @@ export class MarkFeature extends EditorFeature {
       }
     }
     ruby.append(context.range.extractContents())
+    this.appendRubyAnnotation(ruby, annotation, fallback)
+    context.range.insertNode(ruby)
+    boundaryAncestors.forEach(element => {
+      if(element.isConnected && !element.textContent && !element.children.length) element.remove()
+    })
+    context.block.normalize()
+    this.restoreSelection(context)
+    this.editor.postMarkState()
+    return true
+  }
+
+  private appendRubyAnnotation(ruby: HTMLElement, annotation: string, fallback: boolean) {
+    const rt = document.createElement("rt")
+    rt.textContent = annotation
     if(fallback) {
       const open = document.createElement("rp")
       open.textContent = "("
@@ -1810,14 +1869,6 @@ export class MarkFeature extends EditorFeature {
       close.textContent = ")"
       ruby.append(close)
     }
-    context.range.insertNode(ruby)
-    boundaryAncestors.forEach(element => {
-      if(element.isConnected && !element.textContent && !element.children.length) element.remove()
-    })
-    context.block.normalize()
-    this.restoreSelection(context)
-    this.editor.postMarkState()
-    return true
   }
 
   /** Replaces the text of one guarded direct rt/rp child, leaving all other ruby DOM untouched. */
@@ -1903,6 +1954,8 @@ export class MarkFeature extends EditorFeature {
 
   /** Removes ruby semantics while preserving the authored base subtree exactly. */
   removeRuby() {
+    const spatial = this.spatialMarkRuns()
+    if(spatial) return this.editSpatialMarks(spatial, run => this.unwrapSpatialMarks(run, element => element.localName === "ruby"))
     const ruby = this.selectedRuby()
     if(!ruby) {
       const context = this.getSelection()
@@ -1956,6 +2009,8 @@ export class MarkFeature extends EditorFeature {
     if(svg) return this.setSVGMark(svg, mark, true)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark, true)
     this.assertMark(mark)
+    const spatial = this.spatialMarkRuns()
+    if(spatial) return this.editSpatialMarks(spatial, run => this.wrapSpatialMark(run, mark))
     if(!this.isMarkAllowed(mark)) return false
     if(mark === "ruby") return this.createRuby("", false)
     const caret = this.getCaret()
@@ -1990,6 +2045,8 @@ export class MarkFeature extends EditorFeature {
     if(svg) return this.setSVGMark(svg, mark, false)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark, false)
     this.assertMark(mark)
+    const spatial = this.spatialMarkRuns()
+    if(spatial) return this.editSpatialMarks(spatial, run => this.unwrapSpatialMarks(run, element => this.semanticMarkName(element) === mark))
     if(mark === "ruby") return this.removeRuby()
     const caret = this.getCaret()
     if(caret) return this.setStoredMark(mark, false, caret)
@@ -2004,6 +2061,7 @@ export class MarkFeature extends EditorFeature {
     if(svg) return this.setSVGMark(svg, mark)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark)
     this.assertMark(mark)
+    if(this.hasSpatialElementSelection) return this.getState().marks.includes(mark) ? this.removeMark(mark) : this.addMark(mark)
     if(mark === "ruby") return this.selectedRuby() || this.getState().marks.includes("ruby") ? this.removeRuby() : this.isMarkAllowed(mark) && this.createRuby("", false)
     const caret = this.getCaret()
     if(caret) {
@@ -2187,13 +2245,14 @@ export class MarkFeature extends EditorFeature {
       return true
     }
 
-    const context = this.getSelection()
-    if(!context) return false
-    const elements = this.markElementsForSelection(context, mark)
+    const spatial = this.spatialMarkRuns()
+    const context = spatial ? null : this.getSelection()
+    if(!context && !spatial) return false
+    const elements = spatial ? this.spatialMarkElements(spatial, mark) : this.markElementsForSelection(context!, mark)
     if(!elements.length) return false
     if(attribute !== "data-reference" && elements.every(element => (attribute === "download" ? element.getAttribute(attribute) : element.getAttribute(attribute) ?? "") === value)) return false
     elements.forEach(element => this.applyMarkAttribute(element, attribute, value))
-    this.restoreSelection(context)
+    if(context) this.restoreSelection(context)
     if(!this.editingLink) this.editor.postMarkState()
     return true
   }
@@ -2235,8 +2294,12 @@ export class MarkFeature extends EditorFeature {
   private applyStyleMark(property: StyleMarkName, value: string): boolean {
     this.assertStyleMark(property)
     const normalizedValue = this.normalizeStyleValue(property, value)
-    if(normalizedValue && !this.isMarkAllowed("span")) return false
     const svg = this.svgContext()
+    if(!svg && !this.editor.features.math.activeMath) {
+      const spatial = this.spatialMarkRuns()
+      if(spatial) return this.editSpatialMarks(spatial, run => this.styleSpatialRun(run, property, normalizedValue))
+    }
+    if(normalizedValue && !this.isMarkAllowed("span")) return false
     if(svg) {
       if(svg.range.collapsed) {
         const styles = {...this.svgState(svg).styles}
@@ -2315,6 +2378,7 @@ export class MarkFeature extends EditorFeature {
     return !!this.editor.features.selection.selectedSectionElement
       || !!this.editor.features.selection.captureSelectedElement
       || this.editor.features.table.hasCellSelection
+      || this.hasSpatialElementSelection
       || $.ranges.some(range => !range.collapsed && range.startContainer.getRootNode() === document
         && range.endContainer.getRootNode() === document && range.intersectsNode(document.body))
   }
@@ -2661,7 +2725,12 @@ export class MarkFeature extends EditorFeature {
     this.editor.postMarkState()
   }
 
-  private removeMatching(matches: (element: Element) => boolean, context = this.getSelection(), restore = true): boolean {
+  private removeMatching(matches: (element: Element) => boolean, context?: MarkSelection | null, restore = true): boolean {
+    if(context === undefined) {
+      const spatial = this.spatialMarkRuns()
+      if(spatial) return this.editSpatialMarks(spatial, run => this.unwrapSpatialMarks(run, matches))
+      context = this.getSelection()
+    }
     if(!context) return false
     if(context.split) return this.acrossTextRanges(context, () => this.removeMatching(matches))
     const originalElements = new Set(context.block.querySelectorAll("*"))
@@ -2860,7 +2929,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   private getCaret(): MarkCaret | null {
-    if(this.editor.features.table.hasCellSelection || this.widgetMarkContext()) return null
+    if(this.editor.features.table.hasCellSelection || this.widgetMarkContext() || this.hasSpatialElementSelection) return null
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode || !selection.isCollapsed) return null
     if($.isGapSelection || $.isEmptyDocumentSelection) return null
@@ -2888,10 +2957,11 @@ export class MarkFeature extends EditorFeature {
     return false
   }
 
-  private marksAt(node: Node, block: Element) {
+  private marksAt(node: Node, block: Element, includeBlock = true) {
     const marks = new Set<MarkName>()
     let element = node instanceof Element? node: node.parentElement
     while(element && element !== block.parentElement) {
+      if(element === block && !includeBlock) break
       const mark = this.semanticMarkName(element)
       if(mark) marks.add(mark)
       if(element === block) break
@@ -2921,6 +2991,11 @@ export class MarkFeature extends EditorFeature {
 
   /** Resolves only one ruby element; selections spanning separate ruby runs are deliberately ambiguous. */
   private selectedRuby() {
+    const spatial = this.spatialMarkRuns()
+    if(spatial) {
+      const ruby = this.rubyAt(spatial[0]?.text[0] ?? null)
+      return ruby && spatial.every(run => run.text.every(node => this.rubyAt(node) === ruby)) ? ruby : null
+    }
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode) return null
     if(selection.anchorNode === selection.focusNode && selection.anchorNode instanceof Element
@@ -3048,10 +3123,11 @@ export class MarkFeature extends EditorFeature {
     else element.removeAttribute(attribute)
   }
 
-  private stylesAt(node: Node, block: Element) {
+  private stylesAt(node: Node, block: Element, includeBlock = true) {
     const styles: StyleMarkValues = {}
     let element = node instanceof Element? node: node.parentElement
     while(element && element !== block.parentElement) {
+      if(element === block && !includeBlock) break
       if(this.isStyleMarkSpan(element)) {
         for(const property of styleMarkNames) {
           if(styles[property] !== undefined) continue
@@ -3078,6 +3154,156 @@ export class MarkFeature extends EditorFeature {
     const span = document.createElement("span")
     span.style.setProperty(property, value)
     return span.style.getPropertyValue(property).trim()
+  }
+
+  get hasSpatialElementSelection() {
+    return this.spatialMarkRoots().length > 0
+  }
+
+  get spatialSelectionKey() {
+    const roots = this.spatialMarkRoots()
+    return roots.length ? JSON.stringify(roots.map(root => pathFromNode(document.body, root))) : undefined
+  }
+
+  private spatialMarkRoots() {
+    const {canvas, slides, selection, table} = this.editor.features
+    if(!(canvas.active || slides.active) || table.hasCellSelection) return []
+    const owner = selection.selectedSectionElement ?? selection.captureSelectedElement
+    if(owner) return [owner]
+    const selected = $.selectedElements
+    return selected.length > 1 || $.isElementSelection ? selected : []
+  }
+
+  /** Group complete phrasing subtrees without crossing blocks or opaque DOM. */
+  private spatialMarkRuns(): SpatialMarkRun[] | null {
+    if(!this.selectionReads) return this.resolveSpatialMarkRuns()
+    this.spatialSelectionRead ??= {value: this.resolveSpatialMarkRuns()}
+    return this.spatialSelectionRead.value
+  }
+
+  private resolveSpatialMarkRuns(): SpatialMarkRun[] | null {
+    const roots = this.spatialMarkRoots()
+    if(!roots.length) return null
+    const runs: SpatialMarkRun[] = []
+    const inlineText = (node: ChildNode): Text[] | null => {
+      if(node instanceof Text) return node.length ? [node] : []
+      if(!(node instanceof Element)) return []
+      const rubyAnnotation = node.matches("ruby > rt, ruby > rp")
+      if(!rubyAnnotation && !this.editor.schema.isPhrasing(node) || node.localName.includes("-") || node.hasAttribute("is")
+        || !this.isEditableHTMLContext(node, document.body)) return null
+      const text: Text[] = []
+      for(const child of node.childNodes) {
+        const childText = inlineText(child)
+        if(!childText) return null
+        text.push(...childText)
+      }
+      return rubyAnnotation ? [] : text
+    }
+    const visit = (container: Element) => {
+      if(slideLayoutRole(container) === "navigation" || !this.isEditableHTMLContext(container, document.body)) return
+      let nodes: ChildNode[] = []
+      let text: Text[] = []
+      const flush = () => {
+        if(text.some(node => node.data.trim())) runs.push({container, nodes, text})
+        nodes = []
+        text = []
+      }
+      for(const node of container.childNodes) {
+        const childText = inlineText(node)
+        if(childText) {
+          nodes.push(node)
+          text.push(...childText)
+        }
+        else if(node instanceof Element) {
+          flush()
+          visit(node)
+        }
+      }
+      flush()
+    }
+    for(const root of roots) {
+      if(!roots.some(other => other !== root && other.contains(root))) visit(root)
+    }
+    return runs
+  }
+
+  private editSpatialMarks(runs: SpatialMarkRun[], edit: (run: SpatialMarkRun) => boolean) {
+    if(!runs.length) return false
+    const selected = $.selectedElements
+    const section = this.editor.features.selection.selectedSectionElement
+    const endUndoGroup = this.editor.doc?.beginUndoGroup()
+    let changed = false
+    try {
+      for(const run of runs) {
+        if(run.container.isConnected && run.nodes.every(node => node.parentNode === run.container)) changed = edit(run) || changed
+      }
+    }
+    finally {
+      if(changed && !section && selected.length) {
+        const current = $.selectedElements
+        if(current.length !== selected.length || current.some((element, index) => element !== selected[index])) {
+          $.selectElements(selected)
+        }
+      }
+      endUndoGroup?.()
+    }
+    if(changed) this.editor.postMarkState()
+    return changed
+  }
+
+  private spatialRunElements(run: SpatialMarkRun) {
+    return run.nodes.flatMap(node => node instanceof Element ? [node, ...node.querySelectorAll("*")] : [])
+  }
+
+  private spatialMarkElements(runs: SpatialMarkRun[], mark: MarkName) {
+    return [...new Set(runs.flatMap(run => this.spatialRunElements(run).filter(element => this.semanticMarkName(element) === mark)))]
+  }
+
+  private spatialMarkAllowed(run: SpatialMarkRun, mark: MarkName) {
+    const allowed = this.allowedMarksAt(run.container)
+    if(allowed && !allowed.includes(mark)) return false
+    if(mark === "a" && run.container.closest("a, button")) return false
+    if(mark === "ruby" && run.container.closest("ruby")) return false
+    const excluded = mark === "a" ? "a, button, [tabindex]" : mark === "ruby" ? "ruby" : null
+    return !excluded || !run.nodes.some(node => node instanceof Element && (node.matches(excluded) || node.querySelector(excluded)))
+  }
+
+  private wrapSpatialMark(run: SpatialMarkRun, mark: MarkName, annotation = "", fallback = false) {
+    if(run.text.every(node => this.marksAt(node, run.container, false).has(mark))) return false
+    if(!this.spatialMarkAllowed(run, mark)) return false
+    const wrapper = document.createElement(mark)
+    if(mark === "bdo") wrapper.setAttribute("dir", "ltr")
+    run.container.insertBefore(wrapper, run.nodes[0])
+    wrapper.append(...run.nodes)
+    if(mark === "ruby") this.appendRubyAnnotation(wrapper, annotation, fallback)
+    return true
+  }
+
+  private unwrapSpatialMarks(run: SpatialMarkRun, matches: (element: Element) => boolean) {
+    const wrappers = this.spatialRunElements(run).filter(matches)
+    for(const wrapper of wrappers.reverse()) {
+      const children = Array.from(wrapper.childNodes).filter(node => wrapper.localName !== "ruby"
+        || !(node instanceof Element && (node.localName === "rt" || node.localName === "rp")))
+      wrapper.replaceWith(...children)
+    }
+    return wrappers.length > 0
+  }
+
+  private styleSpatialRun(run: SpatialMarkRun, property: StyleMarkName, value: string) {
+    if(value && !this.spatialMarkAllowed(run, "span")) return false
+    if(run.text.every(node => (this.stylesAt(node, run.container, false)[property] ?? "") === value)) return false
+    const spans = this.spatialRunElements(run).filter((element): element is HTMLElement => this.isStyleMarkSpan(element))
+    const wrapper = document.createElement("span")
+    if(value) {
+      wrapper.style.setProperty(property, value)
+      run.container.insertBefore(wrapper, run.nodes[0])
+      wrapper.append(...run.nodes)
+    }
+    for(const span of spans.reverse()) {
+      span.style.removeProperty(property)
+      this.removeEmptyStyleSpan(span)
+    }
+    return true
   }
 
   /** Format independent text runs without extracting structural or atomic elements. */
@@ -3108,6 +3334,7 @@ export class MarkFeature extends EditorFeature {
 
   private selectionReads = 0
   private selectionRead: {value: MarkSelection | null} | null = null
+  private spatialSelectionRead: {value: SpatialMarkRun[] | null} | null = null
 
   /** Lets the getters of one state report share a single reading of the
    * selection. Resolving a range walks its blocks and text, which is
@@ -3116,7 +3343,12 @@ export class MarkFeature extends EditorFeature {
   readSelectionOnce<T>(read: () => T): T {
     this.selectionReads++
     try { return read() }
-    finally { if(--this.selectionReads === 0) this.selectionRead = null }
+    finally {
+      if(--this.selectionReads === 0) {
+        this.selectionRead = null
+        this.spatialSelectionRead = null
+      }
+    }
   }
 
   private getSelection(): MarkSelection | null {
@@ -3126,7 +3358,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   private resolveSelection(): MarkSelection | null {
-    if(this.widgetMarkContext()) return null
+    if(this.widgetMarkContext() || this.hasSpatialElementSelection) return null
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode || selection.isCollapsed) return null
 
@@ -3247,7 +3479,7 @@ export class MarkFeature extends EditorFeature {
   private handleShortcut(event: KeyboardEvent) {
     if(event.defaultPrevented || event.isComposing) return
     const widget = this.widgetMarkContext()
-    if(!widget && this.editor.features.selection.isCaptureSelection && !this.isSVGTextSelection) return
+    if(!widget && this.editor.features.selection.isCaptureSelection && !this.isSVGTextSelection && !this.hasSpatialElementSelection) return
     if(widget && this.resolveWidgetShortcut) {
       const action = this.resolveWidgetShortcut(event)
       if(action !== "mark:b" && action !== "mark:i" && action !== "mark:u") return

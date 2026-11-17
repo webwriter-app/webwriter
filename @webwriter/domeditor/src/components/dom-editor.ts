@@ -581,6 +581,7 @@ export class DomEditor extends LitElement {
   private get editorBody(): ReadableElement | null { return this.documentReplica?.body ?? this.editorDocument?.body ?? null }
   private authoredSnapshotCache: {document: Document, value: string} | null = null
   private canMark = false
+  private spatialMarkSelection: string | undefined
   private canRemoveMarks = false
   private canSection = false
   private sectionType: SectionName = "section"
@@ -8867,11 +8868,12 @@ export class DomEditor extends LitElement {
       if(!this.isEditorMessage(event)) return
       this.svgText = event.data.detail.svgText === true
       this.canMark = event.data.detail.canMark
+      this.spatialMarkSelection = event.data.detail.spatialSelection
       this.canRemoveMarks = event.data.detail.canRemoveMarks === true
       // SVG label text remains inside a captured graphic. Keep its controls
       // mounted while mark and selection messages arrive independently.
       this.widgetMarks = unlessSame(this.widgetMarks, event.data.detail.widgetMarks ?? null)
-      if(this.canMark && !this.svgText && !this.widgetMarks) {
+      if(this.canMark && !this.svgText && !this.widgetMarks && !this.spatialMarkSelection) {
         this.nodeSelection = false
         this.captureSelection = false
         this.selectionGap = null
@@ -8992,10 +8994,12 @@ export class DomEditor extends LitElement {
       this.nodeSelection = event.data.detail.nodeSelected === true || event.data.detail.capture === true
       this.captureSelection = event.data.detail.capture === true
       this.selectionGap = selectionGap
-      // A captured graphic can contain the active SVG text selection. Other
-      // node/gap selections retire the independently delivered mark state.
+      // SVG text and spatial formatting can coexist with a node selection.
       const graphicText = this.svgText && event.data.detail.graphic?.capture
-      if(!graphicText && !this.widgetMarks && (this.nodeSelection || this.sectionSelected || this.selectionGap || event.data.detail.table?.cellSelection)) {
+      const spatialText = this.spatialMarkSelection && this.spatialMarkSelection === event.data.detail.spatialSelection
+      if(!graphicText && !spatialText && !this.widgetMarks && (this.spatialMarkSelection
+        || this.nodeSelection || this.sectionSelected || this.selectionGap || event.data.detail.table?.cellSelection)) {
+        this.spatialMarkSelection = undefined
         this.canMark = false
         this.marks = []
         this.popupActive = false
@@ -9435,6 +9439,7 @@ export class DomEditor extends LitElement {
     this.widgetConversion = null
     this.selectionGap = null
     this.canMark = false
+    this.spatialMarkSelection = undefined
     this.canRemoveMarks = false
     this.widgetMarks = null
     this.canSection = false

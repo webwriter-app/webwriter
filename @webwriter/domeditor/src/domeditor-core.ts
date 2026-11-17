@@ -894,6 +894,7 @@ export class DOMEditor {
   #selectionStateQueued = false
   readonly #lastReactivePosts = new Map<string, string>()
   #reactivePosting = false
+  #postedSpatialSelection?: string
 
   /** Publishes selection-derived state once after everything that reacted to
    * an edit or selection change has run. One keystroke reaches the mark,
@@ -1287,11 +1288,15 @@ export class DOMEditor {
     const widgetConversion = inDragSelection ? null : this.features.widget.getConversionState()
     const canSection = this.features.manipulation.canSectionSelection()
     const selectedElementTypes = inDragSelection ? [] : this.features.manipulation.getSelectedElementTypes()
+    const spatialSelection = this.features.mark.spatialSelectionKey
+    const spatialSelectionChanged = spatialSelection !== this.#postedSpatialSelection
+    this.#postedSpatialSelection = spatialSelection
     const detail: SelectionChangeDetail = {
       path,
       distribution: this.features.distribution.getState(attributeElement),
       distributionGeneral: this.features.distribution.getState(document.documentElement),
       ...(selectedElementTypes.length ? {selectedElementTypes} : {}),
+      ...(spatialSelection ? {spatialSelection} : {}),
       ...($.isMultiElementSelection && !inDragSelection ? {nodeSelected: true} : {}),
       documentLayout: this.getDocumentLayoutState(),
       ...(canSection && path.at(-1)?.path.join(".") === this.pathToElement(root).join(".") ? {canSection: true} : {}),
@@ -1319,6 +1324,9 @@ export class DOMEditor {
       ...(widgetConversion ? {widgetConversion} : {}),
     }
     this.postBridgeEvent(selectionChangeEvent, detail)
+    // Appendix controls can change element selection without a native
+    // selectionchange reaching the editor's mark state listener.
+    if(spatialSelectionChanged) this.postMarkState()
   }
 
   /** Sends mark availability and active marks as a DOM-derived bridge event. */
@@ -1326,7 +1334,7 @@ export class DOMEditor {
     if(this.options.reader || this.features.selection.isInDragSelection) return
     if(this.features.transformation.deferTransformSelectionState("markStatePending")) return
     this.features.graphic.rememberTextSelection()
-    if(this.features.selection.selectedSectionElement || this.features.table.hasCellSelection) {
+    if(this.features.selection.selectedSectionElement && !this.features.mark.hasSpatialElementSelection || this.features.table.hasCellSelection) {
       this.postBridgeEvent(markStateChangeEvent, {
         canMark: false,
         canRemoveMarks: this.features.mark.canRemoveMarks,
