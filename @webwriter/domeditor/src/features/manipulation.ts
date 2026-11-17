@@ -5037,16 +5037,6 @@ export class ManipulationFeature extends EditorFeature {
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if($.isMultiElementSelection) return this.withNormalization(() => $.delete())
     const selected = $.selectedElement
-    const caret = $.anchor
-    const caretItem = $.isEmpty && isElement(caret) ? caret.matches("br") ? caret.parentElement : caret : null
-    const removedItem = selected ?? caretItem
-    if(removedItem && this.editor.features.list.hasItemsAround(removedItem)
-      && this.editor.features.list.isEmptyItem(removedItem)) return this.withNormalization(() => {
-      const split = this.editor.features.list.splitAroundRemovedItem(removedItem)
-      if(!split) return
-      removedItem.remove()
-      direction === "forward" ? $.move(split.after) : $.move(split.before, -1)
-    })
     const popupRole = selected && popupElementRole(selected)
     if(selected && (popupRole === "toggle" || popupRole === "content")) {
       const wrapper = selected.closest(".ww-popup") ?? popupDisplayToggle(selected)?.closest(".ww-popup")
@@ -5112,7 +5102,8 @@ export class ManipulationFeature extends EditorFeature {
       const block = $.anchorContainer
       if(!summary && direction === "backward" && block?.previousElementSibling?.matches("details > summary")
         && isCaretAtBoundary(block, "start")) return
-      if($.isGapSelection && (direction === "backward" ? $.elementBefore : $.elementAfter)?.matches("details > summary")) return
+      const gapNeighbor = $.isGapSelection ? (direction === "backward" ? $.elementBefore : $.elementAfter) : null
+      if(isElement(gapNeighbor) && gapNeighbor.matches("details > summary")) return
     }
     const anchor = $.anchor
     const deletesNeighborText = anchor instanceof Text && direction
@@ -5120,6 +5111,10 @@ export class ManipulationFeature extends EditorFeature {
     const outsidePopup = deletesNeighborText && granularity === "character" && $.isEmpty
       ? this.editor.features.selection.outsidePopupBoundary(direction) : null
     const result = this.withNormalization(() => {
+      const caret = $.isEmpty ? $.anchorContainer : null
+      const caretItem = isElement(caret) ? caret.matches("br") ? caret.parentElement : caret : null
+      const removedItem = selected ?? caretItem
+      if(removedItem && this.editor.features.list.deleteEmptyItem(removedItem, direction)) return
       if(summary && !summary.textContent && summary.contains($.range.endContainer)) {
         $.delete()
         $.move(summary)
@@ -5137,12 +5132,10 @@ export class ManipulationFeature extends EditorFeature {
       const previousElement = $.elementBefore
       const nextElement = $.elementAfter
       if(direction === "backward" && container?.textContent && isCaretAtBoundary(container, "start") && previousElement && !previousElement.textContent) {
-        this.editor.features.list.splitAroundRemovedItem(previousElement)
         previousElement.remove()
         return
       }
       if(direction === "forward" && container?.textContent && isCaretAtBoundary(container, "end") && nextElement && !nextElement.textContent) {
-        this.editor.features.list.splitAroundRemovedItem(nextElement)
         nextElement.remove()
         return
       }
@@ -5158,16 +5151,15 @@ export class ManipulationFeature extends EditorFeature {
         const previous = isOutOfFlow(emptyContainer) ? null : flowSibling(emptyContainer, "previous")
         const next = isOutOfFlow(emptyContainer) ? null : flowSibling(emptyContainer, "next")
         $.delete()
-        const split = this.editor.features.list.splitAroundRemovedItem(emptyContainer)
         emptyContainer.remove()
-        if(direction === "forward" && (split?.after ?? next)) {
-          $.move((split?.after ?? next)!)
+        if(direction === "forward" && next) {
+          $.move(next)
         }
-        else if(split?.before ?? previous) {
-          $.move((split?.before ?? previous)!, -1)
+        else if(previous) {
+          $.move(previous, -1)
         }
-        else if(split?.after ?? next) {
-          $.move((split?.after ?? next)!)
+        else if(next) {
+          $.move(next)
         }
         else {
           // A sole empty paragraph may still be inside an authored list item
@@ -5199,7 +5191,6 @@ export class ManipulationFeature extends EditorFeature {
         const {elementBefore, elementAfter} = $
         if(elementBefore.matches("summary") || elementAfter.matches("summary") || !this.canJoinDistributionRegions(elementBefore, elementAfter)) return
         if(!elementBefore.textContent) {
-          this.editor.features.list.splitAroundRemovedItem(elementBefore)
           elementBefore.remove()
           $.selectGap(elementAfter, "before")
         }
@@ -5215,7 +5206,6 @@ export class ManipulationFeature extends EditorFeature {
         const {elementBefore, elementAfter} = $
         if(elementBefore.matches("summary") || elementAfter.matches("summary") || !this.canJoinDistributionRegions(elementBefore, elementAfter)) return
         if(!elementAfter.textContent) {
-          this.editor.features.list.splitAroundRemovedItem(elementAfter)
           elementAfter.remove()
           $.selectGap(elementBefore)
         }

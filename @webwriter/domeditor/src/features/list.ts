@@ -364,16 +364,6 @@ export class ListFeature extends EditorFeature {
     }
   }
 
-  /** Preserve the two sides of a list when deletion removes a middle item. */
-  hasItemsAround(item: Element) {
-    const list = item.parentElement
-    if(!item.matches(listItemSelector) || !list?.matches(listSelector) || !list.isConnected
-      || !list.parentNode || atomicEditingContainer(item, this.editor.schema)) return false
-    const items = this.directItems(list)
-    const index = items.indexOf(item as HTMLElement)
-    return index > 0 && index < items.length - 1
-  }
-
   isEmptyItem(item: Element) {
     return !item.textContent?.replace(/\u200B/g, "").trim()
       && Array.from(item.querySelectorAll("*")).every(element => element.matches("br")
@@ -381,24 +371,20 @@ export class ListFeature extends EditorFeature {
           && (this.editor.schema.isPhrasing(element) || this.editor.features.manipulation.isTextBlock(element)))
   }
 
-  splitAroundRemovedItem(item: Element) {
-    if(!this.hasItemsAround(item)) return
-    const list = item.parentElement!
-    const nodes = Array.from(list.childNodes)
-    const index = nodes.indexOf(item)
-    const isItem = (node: Node) => isElement(node) && node.matches(listItemSelector)
-    const following = nodes.slice(index + 1)
-    const before = nodes.slice(0, index).reverse().find(isItem)
-    const after = following.find(isItem)
-    if(!before || !after) return
-    const continuation = this.editor.features.manipulation.cloneSplitContinuation(list)
-    this.prepareSplitContinuation(list, continuation, following)
-    if(list instanceof HTMLOListElement && list.reversed && !list.hasAttribute("start")) {
-      list.setAttribute("start", String(this.directItems(list).filter(item => item.matches("li")).length))
-    }
-    continuation.append(...following)
-    list.after(continuation)
-    return {before, after}
+  /** Remove an empty middle item without splitting its list. */
+  deleteEmptyItem(item: Element, direction?: "backward" | "forward") {
+    if(!(item instanceof HTMLElement)) return false
+    const list = item.parentElement
+    if(!item.matches(listItemSelector) || !list?.matches(listSelector)
+      || !document.body.contains(list) || atomicEditingContainer(item, this.editor.schema)
+      || !this.isEmptyItem(item)) return false
+    const items = this.directItems(list)
+    const index = items.indexOf(item)
+    const before = items[index - 1], after = items[index + 1]
+    if(!before || !after) return false
+    item.remove()
+    direction === "forward" ? $.move(after) : $.move(before, -1)
+    return true
   }
 
   private readonly syncVirtualMarker = () => {
