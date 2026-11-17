@@ -89,7 +89,6 @@ export class DomEditorToolbox extends EditingControls {
     documentThemeStyles: {attribute: false},
     elementSelected: {type: Boolean, attribute: false},
     documentHead: {attribute: false},
-    documentHeadAttributeEditorId: {state: true},
     consoleOpen: {type: Boolean, attribute: "console-open", reflect: true},
     versionsOpen: {type: Boolean, attribute: "versions-open", reflect: true},
     htmlPending: {type: Boolean, attribute: "html-pending", reflect: true},
@@ -849,7 +848,6 @@ export class DomEditorToolbox extends EditingControls {
   documentThemeStyles: Record<string, unknown> = {}
   elementSelected = false
   documentHead: DocumentHeadState = emptyDocumentHeadState()
-  private documentHeadAttributeEditorId = ""
   consoleOpen = false
   versionsOpen = false
   htmlPending = false
@@ -1506,19 +1504,12 @@ export class DomEditorToolbox extends EditingControls {
     const captions = this.documentHead.captionEnumeration
     const hasCaptions = Boolean(captions && (captions.figure.enabled || captions.table.enabled))
     const resettableLayout = this.documentLayout.mode !== "document" && this.documentLayout.canConvert
-    const advancedCount = ["description", "keywords"].filter(field => this.documentHead[field as "description" | "keywords"]).length
-      + this.documentHead.elements.filter(element => !["title", "author", "license", "description", "keywords", "generator", "theme", "caption-enumeration"].includes(element.preset ?? "")).length
-      + Number(hasCaptions)
+    const advancedCount = Number(Boolean(this.documentHead.description)) + Number(Boolean(this.documentHead.keywords)) + Number(hasCaptions)
     return html`<ribbon-drawer label="Document" icon="Document" layout="element-style" show-pane-icon selectable-heading expandable
       @drawer-heading-select=${() => this.dispatchEvent(new CustomEvent("breadcrumb-item-select", {
         detail: this.selectionPath[0] ?? {path: [], name: "Document"}, bubbles: true, composed: true,
       }))}
-      data-specialized="document" .advancedCount=${advancedCount}
-      @document-head-element-options-request=${(event: CustomEvent<{id: string}>) => {
-        this.documentHeadAttributeEditorId = event.detail.id
-        const drawer = event.currentTarget as RibbonDrawer
-        if(event.detail.id) drawer.openDrawer()
-      }}>
+      data-specialized="document" .advancedCount=${advancedCount}>
       <button type="button" class="style-reset document-reset" slot="heading-action" title="Reset document options" aria-label="Reset document options"
         ?disabled=${!configured.length && !hasCaptions && !resettableLayout}
         @click=${() => {
@@ -1535,8 +1526,7 @@ export class DomEditorToolbox extends EditingControls {
           if(resettableLayout) this.selectDocumentLayout("document")
         }}>${ribbonIcon("Restore")}Reset</button>
       <div class="specialized-options document-primary">
-      <document-head-editor mode="common" expanded compact .state=${this.documentHead}
-        .attributeEditorId=${this.documentHeadAttributeEditorId}></document-head-editor>
+      <document-head-editor mode="common" expanded compact .state=${this.documentHead}></document-head-editor>
           <div class="document-layout-controls">
             <div class="document-layout-choices" role="group" aria-label="Layouts">
               ${documentLayoutModes.map(mode => renderDocumentLayoutCard(
@@ -1548,8 +1538,7 @@ export class DomEditorToolbox extends EditingControls {
           </div>
       </div>
       <div slot="more" class="specialized-options document-options">
-        <document-head-editor mode="advanced" compact .state=${this.documentHead}
-          .attributeEditorId=${this.documentHeadAttributeEditorId}></document-head-editor>
+        <document-head-editor mode="advanced" compact .state=${this.documentHead}></document-head-editor>
       </div>
     </ribbon-drawer>`
   }
@@ -1826,9 +1815,6 @@ export class DomEditorToolbox extends EditingControls {
           this.revealedHoveredIssueId = issueId
         }
       }
-    }
-    if(this.activeTool !== "Edit" || !this.documentSelected) {
-      this.documentHeadAttributeEditorId = ""
     }
     if(changed.has("activeTool")) {
       if(changed.get("activeTool") === "Review" && this.activeTool !== "Review") {

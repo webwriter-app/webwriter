@@ -56,13 +56,12 @@ const originalShowPopover = Object.getOwnPropertyDescriptor(HTMLElement.prototyp
 async function mount(
   mode: "common" | "advanced",
   documentHead = state(),
-  options: {expanded?: boolean, attributeEditorId?: string} = {},
+  options: {expanded?: boolean} = {},
 ) {
   const editor = new DocumentHeadEditor()
   editor.mode = mode
   editor.state = documentHead
   editor.expanded = options.expanded ?? false
-  editor.attributeEditorId = options.attributeEditorId ?? ""
   document.body.append(editor)
   await editor.updateComplete
   return editor
@@ -165,13 +164,6 @@ describe("document head form", () => {
       field: "description",
       value: "Updated lesson",
     })
-    expect(DocumentHeadEditor.styles.toString()).toMatch(
-      /\.add-toolbar\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\) 4\.25rem;/,
-    )
-    expect(DocumentHeadEditor.styles.toString()).toMatch(
-      /\.more-chevron\s*\{[\s\S]*?right:\s*0\.7rem;/,
-    )
-    expect(editor.shadowRoot!.querySelector(".more-select > .more-chevron")).not.toBeNull()
   })
 
   it("offers rich license suggestions while accepting a custom license", async () => {
@@ -335,24 +327,23 @@ describe("document head form", () => {
     expect(picker.shadowRoot!.querySelector(".listbox")).toBeNull()
   })
 
-  it("shows attribute and remove icon buttons beside populated common fields when expanded", async () => {
+  it("only shows the remove button beside a populated common field with extra attributes", async () => {
     const title = element({
       id: "head-title",
       tagName: "title",
       label: "Title",
       preset: "title",
+      attributes: [{name: "data-kind", value: "lesson"}],
       content: "Lesson",
     })
     const editor = await mount("common", state({title: "Lesson", elements: [title]}), {expanded: true})
     const actions: DocumentHeadAction[] = []
-    const requests: string[] = []
     editor.addEventListener("document-head-action", event => actions.push((event as CustomEvent<DocumentHeadAction>).detail))
-    editor.addEventListener("document-head-element-options-request", event => requests.push((event as CustomEvent<{id: string}>).detail.id))
+    const buttons = editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".field-action")
+    expect(buttons).toHaveLength(1)
+    expect(buttons[0]).toHaveAccessibleName("Remove title")
+    buttons[0].click()
 
-    editor.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Edit extra title attributes"]')!.click()
-    editor.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove title"]')!.click()
-
-    expect(requests).toEqual(["head-title"])
     expect(actions).toContainEqual({type: "removeDocumentHeadElement", id: "head-title"})
   })
 
@@ -364,55 +355,7 @@ describe("document head form", () => {
     expect(label.nextElementSibling?.querySelector(".field-actions")).toBeNull()
   })
 
-  it("omits common values, scripts and styles from the advanced list", async () => {
-    const editor = await mount("advanced", state({
-      title: "Lesson",
-      elements: [
-        element({id: "head-title", tagName: "title", label: "Title", preset: "title", content: "Lesson", canMoveDown: true}),
-        element({id: "head-title-duplicate", tagName: "title", label: "Title", preset: "title", content: "Alternate", canMoveUp: true, canMoveDown: true}),
-        element({
-          id: "head-script",
-          tagName: "script",
-          label: "Script",
-          preset: "script",
-          attributes: [{name: "type", value: "module"}],
-          content: "start()",
-          contentLabel: "JavaScript",
-          canMoveUp: true,
-        }),
-        element({id: "head-style", tagName: "style", label: "Style", content: "p {}"}),
-        element({id: "head-stylesheet", tagName: "link", label: "Stylesheet", attributes: [{name: "REL", value: "alternate StyleSheet"}]}),
-        element({id: "head-link", tagName: "link", label: "Link", attributes: [{name: "rel", value: "alternate"}]}),
-      ],
-    }))
-    expect(editor.shadowRoot!.querySelector('[data-head-id="head-title"]')).toBeNull()
-    expect(editor.shadowRoot!.querySelector('[data-head-id="head-title-duplicate"]')).not.toBeNull()
-    expect(editor.shadowRoot!.querySelectorAll(".entry")).toHaveLength(2)
-    expect(editor.shadowRoot!.querySelector('[data-head-id="head-script"], [data-head-id="head-style"], [data-head-id="head-stylesheet"]')).toBeNull()
-    expect(editor.shadowRoot!.querySelector('[data-head-id="head-link"]')).not.toBeNull()
-    expect(editor.state.elements).toHaveLength(6)
-  })
-
-  it("opens only the extra attributes for a common field", async () => {
-    const title = element({
-      id: "head-title",
-      tagName: "title",
-      label: "Title",
-      preset: "title",
-      attributes: [{name: "data-kind", value: "lesson"}],
-      content: "Lesson",
-    })
-    const editor = await mount("advanced", state({title: "Lesson", elements: [title]}), {
-      attributeEditorId: "head-title",
-    })
-
-    const panel = editor.shadowRoot!.querySelector<HTMLElement>(".common-attributes")!
-    expect(panel).not.toBeNull()
-    expect(panel.querySelector<HTMLInputElement>('input[aria-label="Attribute name"]')?.value).toBe("data-kind")
-    expect(panel.querySelector("textarea")).toBeNull()
-  })
-
-  it("opens metadata in the selected document Edit toolbox", async () => {
+  it("shows only structured metadata in the selected document Edit toolbox", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "File"
     document.body.append(ribbon)
@@ -428,6 +371,7 @@ describe("document head form", () => {
     toolbox.documentSelected = true
     toolbox.documentHead = state({
       title: "Lesson",
+      description: "An imported lesson",
       generator: WEBWRITER_GENERATOR,
       elements: [element({
         id: "head-title",
@@ -436,7 +380,7 @@ describe("document head form", () => {
         preset: "title",
         attributes: [{name: "data-kind", value: "lesson"}],
         content: "Lesson",
-      })],
+      }), element({id: "head-custom", attributes: [{name: "name", value: "custom"}, {name: "content", value: "Custom value"}]})],
     })
     document.body.append(toolbox)
     await toolbox.updateComplete
@@ -444,26 +388,30 @@ describe("document head form", () => {
     expect(drawer).not.toBeNull()
     await drawer.updateComplete
     expect(drawer.pane).toBe(true)
+    expect(drawer.advancedCount).toBe(1)
+    const options = drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+    expect(options).toHaveAttribute("aria-expanded", "false")
     const common = drawer.querySelector<DocumentHeadEditor>('document-head-editor[mode="common"]')!
     const advanced = drawer.querySelector<DocumentHeadEditor>('document-head-editor[mode="advanced"]')!
     expect(common.expanded).toBe(true)
     expect(advanced).not.toBeNull()
 
     await common.updateComplete
-    common.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Edit extra title attributes"]')!.click()
+    expect(common.shadowRoot!.querySelector('button[title="Extra attributes"]')).toBeNull()
+    options.click()
     await toolbox.updateComplete
     await advanced.updateComplete
-    expect(advanced.shadowRoot!.querySelector(".common-attributes")).not.toBeNull()
+    await drawer.updateComplete
+    expect(options).toHaveAttribute("aria-expanded", "true")
+    expect(advanced.shadowRoot!.querySelector('textarea[name="description"]')).toHaveValue("An imported lesson")
+    expect(advanced.shadowRoot!.querySelector('input[name="keywords"]')).not.toBeNull()
+    expect(advanced.shadowRoot!.querySelector('[aria-label="Caption numbering"]')).not.toBeNull()
+    expect(advanced.shadowRoot!.querySelector(".add-toolbar, [data-head-id], .attribute-add")).toBeNull()
+    expect(toolbox.documentHead.elements.map(entry => entry.id)).toEqual(["head-title", "head-custom"])
 
     toolbox.documentSelected = false
     await toolbox.updateComplete
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="document"]')).toBeNull()
-
-    toolbox.documentSelected = true
-    await toolbox.updateComplete
-    const reopened = toolbox.shadowRoot!.querySelector<DocumentHeadEditor>('document-head-editor[mode="advanced"]')!
-    await reopened.updateComplete
-    expect(reopened.shadowRoot!.querySelector(".common-attributes")).toBeNull()
   })
 })
 
