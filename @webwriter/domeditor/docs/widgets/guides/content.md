@@ -56,7 +56,3 @@ Declare the child elements that authors can insert and edit.
 The authoring tool treats the widget as a single element if the configuration has no `content` entry. For nested widgets, specify their tag names or groups in the [content expression](../reference/content-expressions.md). Set `uninsertable: true` if authors can insert the child widget only through a parent or snippet.
 
 Use [`slotchange`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLSlotElement/slotchange_event) to detect changes to slot assignments. Use a [`MutationObserver`](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver) to detect changes to the content of those children. Disconnect the observers when the widget disconnects. Examine the current children before you change them. Keep unfamiliar children, comments, and grouping metadata.
-
-## Allowed child elements
-
-## Changes to child content

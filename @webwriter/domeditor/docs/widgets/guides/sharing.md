@@ -158,7 +158,3 @@ Export `./widgets/ww-counter`. Set `sharedData: true` in its editing configurati
 
 Concurrent writes to `count` give one assigned value. In a standalone document with no managed data runtime, the widget uses local authored data. The second argument to a data handler is `{block, mode}`.
 <!-- /library -->
-
-## Selection of a sharing scope
-
-## Data readiness and error handling

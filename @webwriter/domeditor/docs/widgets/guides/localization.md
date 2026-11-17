@@ -87,7 +87,3 @@ static options = {
 <!-- library:lit optional -->
 For a project that uses `@lit/localize`, run `npx @webwriter/build localize`. Build the widget again. The command can also translate snippets and metadata. See the [build commands](../reference/build-test.md).
 <!-- /library -->
-
-## Language selection and fallback
-
-## Checks after a language change

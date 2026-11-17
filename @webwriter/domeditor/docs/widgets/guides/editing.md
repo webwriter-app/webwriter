@@ -89,7 +89,3 @@ Import `html` from `lit`. Declare `showCoordinates` as [local reactive state](ht
 <!-- /library -->
 
 Keep the widget controls in the [shadow DOM](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_shadow_DOM). Use the edit mode property for your library. Test both modes in **Preview**. Save the document. Open the document again. Check that the widget shows the saved content.
-
-## Controls in edit mode
-
-## Checks in read mode

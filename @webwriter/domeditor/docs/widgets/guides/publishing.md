@@ -128,7 +128,3 @@ Write a note in the standalone preview. Reload that page. Make sure that the bro
 An empty `standalone` value selects browser storage. To use a remote destination, set `standalone` to the endpoint URL. When the reader changes destinations, the drawer restores the result for the new destination. The saved result stays in its original destination. See [standalone storage](../reference/standalone.md#http-endpoint) for the endpoint requirements.
 
 Browser storage applies to the current browser profile. Use an authenticated server if the same reader needs access to results on different devices.
-
-## Package checks before release
-
-## Storage destinations for embedded widgets

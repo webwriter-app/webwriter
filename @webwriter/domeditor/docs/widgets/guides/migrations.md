@@ -59,7 +59,3 @@ This example changes one attribute and keeps all other content. On a second run,
 [`event.detail`](https://developer.mozilla.org/en-US/docs/Web/API/CustomEvent/detail) contains `{packageName, version}` for the installed package. Examine the input element to identify its format. Complete the migration within three seconds. Use only data that is available in the sandbox.
 
 Test old, current, and unusual valid HTML. Keep unrelated attributes, namespaces, child nodes, and comments. See the [package manifest reference](../reference/distribution.md).
-
-## Package versions and migration rules
-
-## Tests for existing content
