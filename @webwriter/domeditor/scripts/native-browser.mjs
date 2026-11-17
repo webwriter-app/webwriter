@@ -57,6 +57,7 @@ const expectedChecks = [
   "rotated figure captions flow upright and their transformation frames fit the content",
   "legacy widget options use document gutters and sit beside freeform widgets",
   "bundled document themes always render light colors",
+  "paragraph line breaks stay stable after highlighting and commenting",
   "standalone live learners open the document without editor controls or an iframe",
   "standalone live learners exchange private peer activity and feedback",
   "reader submission validates native forms and anchors confirmation at narrow widths",
