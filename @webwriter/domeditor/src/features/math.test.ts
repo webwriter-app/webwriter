@@ -4,7 +4,8 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import {$, isOnApple} from "../utility"
-import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathStructureOptions, mathToolGroups} from "../math"
+import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathStructureOptions, mathToolGroups} from "../math"
+import {exactMathCompletion} from "../math-input"
 import {mathFontOptions} from "../math-fonts"
 import {hasAnchorTarget} from "../anchor-positioning.test-utils"
 import {isMarkStateChangeMessage, markStateChangeEvent, isSelectionChangeMessage, selectionChangeEvent, mathKeyboardTabEvent, type SelectionChangeDetail} from "../editor-bridge"
@@ -2718,6 +2719,21 @@ describe("formula input keyboard and autocomplete", () => {
     expect(math.contains($.focus)).toBe(true)
     expect(menu()?.hidden).toBe(true)
     expect(clean()).not.toMatch(/math-completion|listbox|◆/)
+  })
+
+  it("offers all 24 uppercase Greek names in completions and backslash aliases", async () => {
+    const names = "Alpha Beta Gamma Delta Epsilon Zeta Eta Theta Iota Kappa Lambda Mu Nu Xi Omicron Pi Rho Sigma Tau Upsilon Phi Chi Psi Omega".split(" ")
+    const glyphs = [..."ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ"]
+    for(const [index, name] of names.entries()) {
+      const command = `text:${glyphs[index]}`
+      expect(exactMathCompletion(name)?.command).toBe(command)
+      expect(mathCommandAliases[name]).toBe(command)
+    }
+    const math = await ready()
+    type("Alpha ")
+    type("\\Rho")
+    key("Enter")
+    expect(math.textContent).toBe("ΑΡ")
   })
 
   it("confirms a single-letter word with Space before starting the next word", async () => {
