@@ -1,5 +1,5 @@
 import { Signal } from "signal-polyfill";
-export * from "./shapes";
+export * from "./shapes.js";
 const signal = (value, options) => new Signal.State(value, options);
 const computed = (compute, options) => new Signal.Computed(compute, options);
 function watchSignal(source, callback, lifetime) {

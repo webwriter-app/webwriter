@@ -1,7 +1,7 @@
 import {Signal} from "signal-polyfill"
-import type {ReadableSignal} from "./shapes"
+import type {ReadableSignal} from "./shapes.js"
 
-export * from "./shapes"
+export * from "./shapes.js"
 export {Signal}
 
 /** A writable signal. Keep it private to the widget and publish a `computed` from it. */
