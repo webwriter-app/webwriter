@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Palette</title>
+<style>body { font-family: system-ui; max-width: 520px; margin: 2rem auto; padding: 0 1rem; }</style>
+<p>
+  <label><input type="checkbox" id="edit"> Edit mode</label>
+  <label><input type="checkbox" id="allow" checked> Learners may arrange</label>
+</p>
+<ww-palette allow-arranging shapes='[{"id":"s1","type":"circle","x":40,"y":40},{"id":"s2","type":"slider","x":160,"y":120}]'></ww-palette>
+<p><small>
+  Drag a shape from the palette onto the canvas, move placed shapes, drop one on the trash. The slider only moves sideways.
+  Or click a shape and then a place. With the keyboard: Space picks up, the arrow keys move, Tab changes the target, Enter drops.
+</small></p>
+<script type="module">
+  import "../../dist/palette/index.js";
+  const widget = document.querySelector("ww-palette");
+  document.getElementById("edit").addEventListener("change", (e) => widget.toggleAttribute("contenteditable", e.target.checked));
+  document.getElementById("allow").addEventListener("change", (e) => widget.toggleAttribute("allow-arranging", e.target.checked));
+</script>

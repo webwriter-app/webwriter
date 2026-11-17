@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Settings without a framework</title>
+<style>body { font-family: system-ui; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }</style>
+<p>
+  <label><input type="checkbox" id="edit" checked> Edit mode</label>
+  <label><input type="checkbox" id="german"> German</label>
+</p>
+<ww-settings-plain contenteditable heading="Reading time" length="90"></ww-settings-plain>
+<pre id="attributes" style="white-space: pre-wrap"></pre>
+<script type="module">
+  import "../../dist/settings-plain/index.js";
+  const widget = document.querySelector("ww-settings-plain");
+  const show = () => (document.getElementById("attributes").textContent = widget.cloneNode(false).outerHTML);
+  new MutationObserver(show).observe(widget, { attributes: true });
+  show();
+  document.getElementById("edit").addEventListener("change", (e) => widget.toggleAttribute("contenteditable", e.target.checked));
+  document.getElementById("german").addEventListener("change", (e) => (document.documentElement.lang = e.target.checked ? "de" : ""));
+</script>

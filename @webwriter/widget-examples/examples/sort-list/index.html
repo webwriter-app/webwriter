@@ -1,0 +1,21 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sort list (Lit)</title>
+<style>body { font-family: system-ui; max-width: 480px; margin: 2rem auto; padding: 0 1rem; }</style>
+<p>
+  <label><input type="checkbox" id="edit"> Edit mode</label>
+  <label><input type="checkbox" id="allow" checked> Learners may reorder</label>
+</p>
+<ww-sort-list allow-reordering>
+  <ww-sort-item>Cherry</ww-sort-item>
+  <ww-sort-item>Apple</ww-sort-item>
+  <ww-sort-item>Banana</ww-sort-item>
+  <ww-sort-item>Date</ww-sort-item>
+</ww-sort-list>
+<p><small>Drag an item by its handle, click the handle and then a place, or focus the handle and use Space, the arrow keys and Enter.</small></p>
+<script type="module">
+  import "../../dist/sort-list/index.js";
+  const widget = document.querySelector("ww-sort-list");
+  document.getElementById("edit").addEventListener("change", (e) => widget.toggleAttribute("contenteditable", e.target.checked));
+  document.getElementById("allow").addEventListener("change", (e) => widget.toggleAttribute("allow-reordering", e.target.checked));
+</script>

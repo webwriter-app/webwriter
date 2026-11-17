@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Interact (Scene: preview events, wires, constraints, context)</title>
+<style>body { font-family: system-ui; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }</style>
+<p>
+  <label><input type="radio" name="renderer" value="svg" checked> SVG</label>
+  <label><input type="radio" name="renderer" value="pixi"> Pixi</label>
+  <label><input type="checkbox" id="click"> connect by click</label>
+</p>
+<div id="stage"></div>
+<pre id="log" style="max-height: 10rem; overflow: auto"></pre>
+<p><small>
+  Drag a to b's port or d to c: the ports take one or two wires (capacity); take the end of a wire off its port and drop it on another port
+  or in the open. n1 to n3 are wired as a whole (drag from anywhere on them); n3 takes one. The lifeline moves sideways only, the message up and
+  down within limits, the green activation stretches at its bottom edge, the bar at its sides. The arrow keys move by 10 pixels.
+  Right click and a click on the background are reported, below.
+</small></p>
+<script type="module">
+  import "../../dist/interact/index.js";
+  const stage = document.getElementById("stage");
+  const show = () => {
+    const widget = document.createElement(`ww-interact-${document.querySelector("[name=renderer]:checked").value}`);
+    widget.step = 10;
+    widget.clickConnect = document.getElementById("click").checked;
+    for (const type of ["ww-moving", "ww-activate", "ww-context", "ww-background", "ww-connecting", "ww-connect", "ww-reconnect", "ww-disconnect", "ww-ready"]) {
+      widget.addEventListener(type, (event) => {
+        if (event.type === "ww-context") event.preventDefault();
+        if (event.type === "ww-moving" && event.detail.state === "move") return;
+        if (event.type === "ww-connecting" && event.detail.state === "move") return;
+        const log = document.getElementById("log");
+        log.textContent = `${event.type} ${JSON.stringify(event.detail ?? {}, (key, value) => (value instanceof Element ? `<${value.localName}>` : value))}\n${log.textContent}`;
+      });
+    }
+    stage.replaceChildren(widget);
+  };
+  for (const input of document.querySelectorAll("input")) input.addEventListener("change", show);
+  show();
+</script>

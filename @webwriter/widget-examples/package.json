@@ -1,0 +1,25 @@
+{
+  "name": "@webwriter/widget-examples",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Example widgets and real-browser checks of the declarative widget modules of @webwriter/widget, @webwriter/lit and the other helper libraries.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:webwriter": "node scripts/build-webwriter.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/build-webwriter.mjs && node scripts/build.mjs && node test/run.mjs",
+    "test:built": "LIBRARIES=built node scripts/build-webwriter.mjs && LIBRARIES=built node scripts/build.mjs && node test/run.mjs"
+  },
+  "dependencies": {
+    "@lit-labs/signals": "0.3.0",
+    "@lit/localize": "^0.12.2",
+    "lit": "^3.3.3",
+    "pixi.js": "^8.23.0"
+  },
+  "devDependencies": {
+    "@lit/localize-tools": "^0.8.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

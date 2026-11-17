@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Library view (Viewport adapter)</title>
+<style>body { font-family: system-ui; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }</style>
+<p><label><input type="checkbox" id="locked"> Locked</label></p>
+<ww-library-view></ww-library-view>
+<p><small>The map is a stand-in for a library with its own viewport. Its wheel input is its own: scroll to pan, Ctrl or ⌘ + scroll to zoom. The buttons and, with the map focused, the keys + − 0 come from Viewport and drive the library through an adapter.</small></p>
+<script type="module">
+  import "../../dist/library-view/index.js";
+  const widget = document.querySelector("ww-library-view");
+  document.getElementById("locked").addEventListener("change", (e) => (widget.locked = e.target.checked));
+</script>

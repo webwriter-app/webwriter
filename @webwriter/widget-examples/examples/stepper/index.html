@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Stepper (Playback)</title>
+<style>body { font-family: system-ui; max-width: 480px; margin: 2rem auto; padding: 0 1rem; }</style>
+<h3>A discrete run</h3>
+<ww-stepper>
+  <p>1. Read the first symbol.</p>
+  <p>2. Move to state q1.</p>
+  <p>3. Read the second symbol.</p>
+  <p>4. Move to state q2.</p>
+  <p>5. The word is accepted.</p>
+</ww-stepper>
+<p><small>Click the step, then: Space plays and pauses, the arrow keys step.</small></p>
+<h3>A media element (three seconds of silence)</h3>
+<ww-media-stepper></ww-media-stepper>
+<script type="module" src="../../dist/stepper/index.js"></script>
+<script type="module" src="../../dist/media-stepper/index.js"></script>

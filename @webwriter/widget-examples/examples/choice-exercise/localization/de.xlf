@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+<file target-language="de" source-language="en" original="lit-localize-inputs" datatype="plaintext">
+<body>
+<trans-unit id="s10abc21163d1695c">
+  <source>Tick the correct answers.</source>
+  <target>Kreuze die richtigen Antworten an.</target>
+</trans-unit>
+<trans-unit id="sd5edc2640383eb86">
+  <source>Tick every answer that applies.</source>
+  <target>Kreuze alle zutreffenden Antworten an.</target>
+</trans-unit>
+<trans-unit id="scd9aa788d97e673c">
+  <source>Tick one answer.</source>
+  <target>Kreuze eine Antwort an.</target>
+</trans-unit>
+</body>
+</file>
+</xliff>

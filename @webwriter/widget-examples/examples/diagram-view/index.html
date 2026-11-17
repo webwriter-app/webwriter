@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Diagram view (Viewport and Help)</title>
+<style>body { font-family: system-ui; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }</style>
+<p>
+  <label><input type="checkbox" id="edit"> Edit mode</label>
+  <label><input type="checkbox" id="allow" checked> Learners may pan and zoom</label>
+  <label>Width <input type="range" id="width" min="140" max="640" value="640"></label>
+</p>
+<ww-diagram-view allow-panning></ww-diagram-view>
+<p><small>Scroll to pan, Ctrl or ⌘ + scroll to zoom, drag the empty background. Focus the stage and press + − 0. The ? button shows the help. Make the widget narrow to see the list form.</small></p>
+<h2>Canvas form</h2>
+<ww-canvas-view></ww-canvas-view>
+<p><small>The same input. The widget draws with the view the module tracks.</small></p>
+<h2>Layer form</h2>
+<ww-layer-view></ww-layer-view>
+<p><small>The canvas form on a plain element: a renderer follows the view with a subscription and reports the extent of its content.</small></p>
+<h2>Help layouts</h2>
+<p>
+  <label>Layout <select id="layout"><option>both</option><option>row</option><option>column</option><option>groups</option></select></label>
+  <label><input type="checkbox" id="dark"> Dark</label>
+  <label>Width <input type="range" id="panel-width" min="140" max="640" value="460"></label>
+</p>
+<ww-tool-panel style="width: 460px"></ww-tool-panel>
+<p><small>A toolbar as wide as the widget fans its labels out to both sides, a column of tools gets a stack beside it, and two groups share the room. Narrow the widget until only the list fits.</small></p>
+<script type="module">
+  import "../../dist/diagram-view/index.js";
+  const widget = document.querySelector("ww-diagram-view");
+  document.getElementById("edit").addEventListener("change", (e) => widget.toggleAttribute("contenteditable", e.target.checked));
+  document.getElementById("allow").addEventListener("change", (e) => widget.toggleAttribute("allow-panning", e.target.checked));
+  document.getElementById("width").addEventListener("input", (e) => (widget.style.width = `${e.target.value}px`));
+  const panel = document.querySelector("ww-tool-panel");
+  document.getElementById("layout").addEventListener("change", (e) => (panel.layout = e.target.value));
+  document.getElementById("dark").addEventListener("change", (e) => (panel.dark = e.target.checked));
+  document.getElementById("panel-width").addEventListener("input", (e) => (panel.style.width = `${e.target.value}px`));
+</script>

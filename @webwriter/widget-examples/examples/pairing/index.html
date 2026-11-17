@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pairing</title>
+<style>body { font-family: system-ui; max-width: 560px; margin: 2rem auto; padding: 0 1rem; }</style>
+<p><label><input type="checkbox" id="replace"> A new link replaces the one a definition has</label></p>
+<ww-pairing></ww-pairing>
+<p><small>
+  Drag from a term to its definition, or click the term and then the definition. With the keyboard: Space on a term,
+  the arrow keys to choose a definition, Enter to link. A definition takes one term. "Check" removes wrong links,
+  and a pairing that was wrong cannot be chosen again.
+</small></p>
+<script type="module">
+  import "../../dist/pairing/index.js";
+  const widget = document.querySelector("ww-pairing");
+  document.getElementById("replace").addEventListener("change", (e) => widget.toggleAttribute("replace", e.target.checked));
+</script>

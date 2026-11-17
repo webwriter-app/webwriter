@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Epidemic (Settings, Shortcuts, Playback)</title>
+<style>body { font-family: system-ui; max-width: 480px; margin: 2rem auto; padding: 0 1rem; }</style>
+<p>
+  <label><input type="checkbox" id="edit"> Edit mode</label>
+  <label><input type="checkbox" id="allow" checked> Learners may change infectivity</label>
+</p>
+<ww-epidemic allowinfectivity population="160"></ww-epidemic>
+<p><small>Click the simulation, then: Space plays and pauses, R restarts, Ctrl or ⌘ with ↑ raises the infectivity.</small></p>
+<pre id="attributes"></pre>
+<script type="module">
+  import "../../dist/epidemic/index.js";
+  const widget = document.querySelector("ww-epidemic");
+  const show = () => (document.getElementById("attributes").textContent = widget.cloneNode(false).outerHTML);
+  new MutationObserver(show).observe(widget, { attributes: true });
+  show();
+  document.getElementById("edit").addEventListener("change", (e) => widget.toggleAttribute("contenteditable", e.target.checked));
+  document.getElementById("allow").addEventListener("change", (e) => widget.toggleAttribute("allowinfectivity", e.target.checked));
+</script>
