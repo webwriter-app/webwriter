@@ -75,7 +75,11 @@ describe("document themes", () => {
 
 `
     for(const theme of bundledThemes) {
+      // Rebuild the historical stylesheet with the popup rules of that version.
       const original = originalThemes[theme.value].source
+        .replace("    /* Center the rotated corner where the popup's inside border edge begins. */\n", "")
+        .replace("top: calc(anchor(top) - 0.35rem + 0.5px)", "top: calc(anchor(top) - 0.4rem)")
+        .replace("top: calc(anchor(bottom) - 0.35rem - 1.5px)", "top: calc(anchor(bottom) - 0.4rem)")
       const start = original.indexOf("  :where(figure:not([is])) {")
       const end = original.indexOf("  details:not([is]) { background-color: inherit; }", start)
       const previous = original.slice(0, start) + previousFigureRules + original.slice(end)

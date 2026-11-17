@@ -438,7 +438,7 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
     const gutter = doc.documentElement.clientWidth && rootStyle.scrollbarGutter?.includes("both-edges")
       ? Math.max(0, view.innerWidth - doc.documentElement.clientWidth) : 0
     const arrowRight = bounds.left > left + box.width / 2
-    const arrow = `${selector}::before{${appearance.arrow}${arrowRight ? "left:auto;right:calc(anchor(right) + 1.25rem);" : "left:calc(anchor(left) + 1.25rem);"}top:${above ? "calc(anchor(bottom) - 0.4rem)" : "calc(anchor(top) - 0.4rem)"};${above ? "transform:rotate(225deg);" : ""}}`
+    const arrow = `${selector}::before{${appearance.arrow}${arrowRight ? "left:auto;right:calc(anchor(right) + 1.25rem);" : "left:calc(anchor(left) + 1.25rem);"}top:${above ? "calc(anchor(bottom) - 0.35rem - 1.5px)" : "calc(anchor(top) - 0.35rem + 0.5px)"};${above ? "transform:rotate(225deg);" : ""}}`
     opened.get(target)!.rule = `@layer webwriter-theme {${appearanceRules}${arrow}}${selector}{${base}left:${left - gutter}px!important;top:${top}px!important}`
     apply()
     return true

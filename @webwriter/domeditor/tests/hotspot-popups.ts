@@ -12,6 +12,15 @@ const layout = async () => {
   await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 }
 
+const assertArrowJoinsBorder = (view: Window, popup: HTMLElement) => {
+  const arrow = view.getComputedStyle(popup, "::before")
+  const border = Number.parseFloat(arrow.borderTopWidth)
+  const center = Number.parseFloat(arrow.top) + (Number.parseFloat(arrow.height) + border) / 2
+  const rect = popup.getBoundingClientRect()
+  const edge = arrow.transform.startsWith("matrix(-") ? rect.bottom - border : rect.top + border
+  assert(Math.abs(center - edge) < .2, `popup arrow center ${center} misses the inner border edge ${edge}`)
+}
+
 export async function checkHotspotPopups(append: (element: HTMLElement) => void) {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px;height:500px;max-width:none;border:0"
@@ -27,6 +36,13 @@ export async function checkHotspotPopups(append: (element: HTMLElement) => void)
     assert(view.editor, "hotspot popup fixture did not initialize")
     const editor = view.editor!, doc = frame.contentDocument!
     const first = doc.getElementById("first")!, second = doc.getElementById("second")!, mark = doc.getElementById("mark-popup")!
+    const toggle = doc.querySelector<HTMLButtonElement>('[popovertarget="mark-popup"]')!
+    // Editing intercepts native button invocation. Open with the same anchor as the reader.
+    ;(mark as HTMLElement & {showPopover(options: {source: HTMLElement}): void}).showPopover({source: toggle})
+    await layout()
+    assert(mark.matches(":popover-open"), "opening an authored popup did not reveal its contents")
+    assertArrowJoinsBorder(view, mark)
+    mark.hidePopover()
     const before = editor.toHTML(true)
     editor.features.selection.actions.selectNode({type: "selectNode", path: [0]})
     toolbox.selectedElementTypes = editor.features.manipulation.getSelectedElementTypes()
@@ -52,6 +68,7 @@ export async function checkHotspotPopups(append: (element: HTMLElement) => void)
         assert(actual.getPropertyValue(property) === expected.getPropertyValue(property), `hotspot popup differs from popup mark: ${property}`)
       }
       assert(view.getComputedStyle(first, "::before").content === '""', "hotspot popup has no shared speech-bubble pointer")
+      assertArrowJoinsBorder(view, first)
     }
     const tree = DomEditor.prototype["buildDocumentTree"].call({editorDocument: doc, installedPackages: []} as unknown as DomEditor)!
     assert(tree.children[0].children.map(child => child.name).join() === "Popup,Popup", "popup outline is not beneath the image")
