@@ -137,8 +137,8 @@ const packageExportIcons: Record<WebWriterPackageExportType, string> = {
   "custom-elements": "Document", other: "More",
 }
 
-const scopedPackageNamePattern = "@[^/\\s]+/[^/\\s]+"
-const semanticVersionPattern = "(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?"
+const scopedPackageNamePattern = String.raw`@[^\/\s]+/[^\/\s]+`
+const semanticVersionPattern = String.raw`(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*)?(\+[0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*)?`
 
 /** Selection controls shared by the top ribbon and side toolbox. Application
  * menus, AI, sharing and ribbon layout belong to AppRibbon. */
