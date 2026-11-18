@@ -1501,6 +1501,29 @@ describe("DomEditor iframe setup", () => {
     expect((editor as any).savedEditorSelection).toBeNull()
   })
 
+  it("delegates captured widget focus without replacing its native input selection", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const body = iframe.contentDocument!.body
+    const widget = iframe.contentDocument!.createElement("focus-widget")
+    const input = iframe.contentDocument!.createElement("input")
+    input.value = "1815"
+    widget.attachShadow({mode: "open"}).append(input)
+    body.replaceChildren(widget)
+    const focusCapturedWidget = vi.fn(() => { input.focus(); input.select(); return true })
+    Object.assign(editorWindow, {editor: {features: {
+      mark: {focusWidgetText: () => false}, selection: {focusCapturedWidget},
+    }}})
+    const focusBody = vi.spyOn(body, "focus")
+
+    ;(editor as any).focusEditor()
+    expect(focusCapturedWidget).toHaveBeenCalledOnce()
+    expect(widget.shadowRoot!.activeElement).toBe(input)
+    expect(input.selectionStart).toBe(0)
+    expect(input.selectionEnd).toBe(4)
+    expect(focusBody).not.toHaveBeenCalled()
+    expect((editor as any).savedEditorSelection).toBeNull()
+  })
+
   it("preserves the first widget's breadcrumb selection when refocusing the document", async () => {
     const {editor, iframe} = await mountEditor()
     const body = iframe.contentDocument!.body

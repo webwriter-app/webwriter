@@ -175,6 +175,10 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
         bookmark = null
         return
       }
+      if(editor.features.selection.focusCapturedWidget?.()) {
+        bookmark = null
+        return
+      }
       if(!data.restoreSelection) saveSelection()
       window.focus()
       document.body.focus({preventScroll: true})

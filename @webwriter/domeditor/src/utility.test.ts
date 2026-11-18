@@ -14,7 +14,7 @@ import {
 } from "./utility"
 import { Schema } from "./schema"
 import {clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, nodeEdgeRect, isTextFieldInteraction} from "./utility"
-import {childNodesInRange, nodesInRange} from "./utility"
+import {childNodesInRange, nodesInRange, renderedBoxNodes, renderedClientRect} from "./utility"
 import {authoredDetailsOpen, hasTemporaryDetailsState, markTemporaryDetailsState, widgetLookupForTags} from "./editor-artifacts"
 
 describe("native text field interactions", () => {
@@ -73,6 +73,40 @@ beforeEach(() => {
 function setBody(html: string) {
   document.body.innerHTML = html
 }
+
+describe("contents element bounds", () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it("unites light DOM boxes through nested contents and ignores hidden descendants", () => {
+    setBody('<section style="display:contents"><span style="display:contents"><b>First</b></span><i>Second</i><aside style="display:none"><p>Hidden</p></aside></section>')
+    const element = document.querySelector("section")!, first = element.querySelector("b")!, second = element.querySelector("i")!
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue(new DOMRect(80, 20, 50, 30))
+    vi.spyOn(second, "getBoundingClientRect").mockReturnValue(new DOMRect(150, 60, 40, 20))
+    expect(renderedBoxNodes(element)).toEqual([first, second])
+    expect(renderedClientRect(element)).toEqual(new DOMRect(80, 20, 110, 60))
+  })
+
+  it("includes direct text line boxes and slot fallback content", () => {
+    setBody('<section style="display:contents">Text</section>')
+    const element = document.querySelector("section")!
+    const root = element.attachShadow({mode: "open"})
+    root.innerHTML = '<slot style="display:contents"></slot><slot name="empty" style="display:contents"><b>Fallback</b></slot>'
+    const fallback = root.querySelector("b")!
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([new DOMRect(50, 20, 80, 20), new DOMRect(50, 40, 40, 20)] as unknown as DOMRectList)
+    vi.spyOn(fallback, "getBoundingClientRect").mockReturnValue(new DOMRect(140, 20, 30, 20))
+    expect(renderedBoxNodes(element)).toEqual([element.firstChild, fallback])
+    expect(renderedClientRect(element)).toEqual(new DOMRect(50, 20, 120, 40))
+  })
+
+  it("returns empty bounds for empty contents and preserves ordinary border boxes", () => {
+    setBody('<section style="display:contents"></section><p>Normal</p>')
+    expect(renderedClientRect(document.querySelector("section")!)).toEqual(new DOMRect())
+    const paragraph = document.querySelector("p")!
+    const rect = new DOMRect(20, 30, 100, 40)
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(rect)
+    expect(renderedClientRect(paragraph)).toBe(rect)
+  })
+})
 
 describe("fixed editor coordinates", () => {
   it.each(["auto", "stable", "stable both-edges"])("accounts for %s root gutters", gutter => {
@@ -314,6 +348,111 @@ describe("selectCoords()", () => {
       expect($.pointFromCoords(50, 120, document.body)).toEqual({node: document.body, offset: 1})
     }
     finally {
+      if(hitStack) Object.defineProperty(document, "elementsFromPoint", hitStack)
+      else Reflect.deleteProperty(document, "elementsFromPoint")
+    }
+  })
+
+  it.each(["block", "inline-block", "inline-block;direction:rtl"])("requires crossing the far edge of a %s widget in either drag direction", display => {
+    setBody(`<p>Before</p><opaque-widget style="display:${display}"></opaque-widget><p>After</p>`)
+    const widget = document.querySelector("opaque-widget")!
+    mockHitTest(widget, 0, widget)
+    const rect = vi.spyOn(widget, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 100, 200, 100))
+    try {
+      for(const backwards of [false, true]) {
+        const anchor = document.createRange()
+        anchor.setStart((backwards ? widget.nextElementSibling : widget.previousElementSibling)!.firstChild!, 2)
+        anchor.collapse(true)
+        const resolve = (x: number, y: number) => $.pointFromCoords(x, y, widget, undefined, undefined, undefined, anchor)
+        const excluded = {node: document.body, offset: backwards ? 2 : 1}
+        const included = {node: document.body, offset: backwards ? 1 : 2}
+        expect(resolve(100, 150)).toMatchObject(excluded)
+        if(display === "block") {
+          expect(resolve(100, backwards ? 101 : 199)).toMatchObject(excluded)
+          expect(resolve(100, backwards ? 100 : 200)).toMatchObject(excluded)
+          expect(resolve(100, backwards ? 99 : 201)).toMatchObject(included)
+        }
+        else {
+          const fromRight = backwards !== display.includes("rtl")
+          expect(resolve(fromRight ? 21 : 219, 150)).toMatchObject(excluded)
+          expect(resolve(fromRight ? 20 : 220, 150)).toMatchObject(excluded)
+          expect(resolve(fromRight ? 19 : 221, 150)).toEqual(included)
+        }
+        expect(resolve(100, 150)).toMatchObject(excluded)
+      }
+    }
+    finally { rect.mockRestore() }
+  })
+
+  it.each([false, true])("does not include a widget from its bottom gap at its start or side margins (contentful: %s)", contentful => {
+    const schema = new Schema()
+    if(contentful) schema.extendWidgets([{tagName: "margin-widget", editingConfig: {content: "flow*"}}])
+    setBody('<p>Before</p><margin-widget style="display:block"><p>Authored content</p></margin-widget><p>After</p>')
+    const widget = document.querySelector("margin-widget")!
+    const rect = vi.spyOn(widget, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 200, 200))
+    const hitStack = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [document.body]})
+    // In blank margins Chromium can report the root's first offset rather
+    // than a widget endpoint. That must not bypass the far-edge rule.
+    mockHitTest(document.body, 0)
+    const anchor = document.createRange()
+    anchor.setStart(document.body, 2)
+    anchor.collapse(true)
+    const resolve = (x: number, y: number) => $.pointFromCoords(x, y, document.body, schema, undefined, undefined, anchor)
+    try {
+      for(const [x, y] of [[200, 100], [50, 200], [350, 200], [50, 100], [350, 100]]) {
+        expect(resolve(x, y)).toMatchObject({node: document.body, offset: 2})
+      }
+      expect(resolve(200, 99)).toMatchObject({node: document.body, offset: 0})
+    }
+    finally {
+      rect.mockRestore()
+      if(hitStack) Object.defineProperty(document, "elementsFromPoint", hitStack)
+      else Reflect.deleteProperty(document, "elementsFromPoint")
+    }
+  })
+
+  it.each(["root", "wrong row"])("projects both side margins onto wrapped slotted text despite a native %s hit", nativeHit => {
+    const schema = new Schema()
+    schema.extendWidgets([
+      {tagName: "margin-timeline", editingConfig: {content: "margin-event*"}},
+      {tagName: "margin-event", editingConfig: {content: "h2 flow+"}},
+    ])
+    setBody('<margin-timeline style="display:block">' + ["First", "Second", "Third"].map(title => `<margin-event style="display:contents"><h2 slot="title">${title}</h2><p>Body of ${title.toLowerCase()} event</p></margin-event>`).join("") + '</margin-timeline>')
+    const timeline = document.querySelector("margin-timeline")!
+    const root = timeline.attachShadow({mode: "open"})
+    root.innerHTML = '<slot></slot>'
+    const mocks = [vi.spyOn(timeline, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 400, 400))]
+    for(const [index, event] of Array.from(timeline.children).entries()) {
+      const shadow = event.attachShadow({mode: "open"})
+      shadow.innerHTML = '<div><slot name="title"></slot><slot></slot></div>'
+      Object.defineProperty(event, "assignedSlot", {get: () => root.querySelector("slot")})
+      mocks.push(vi.spyOn(shadow.querySelector("div")!, "getBoundingClientRect").mockReturnValue(new DOMRect(120, 120 + index * 120, 360, 100)))
+      for(const [row, block] of Array.from(event.children).entries()) {
+        Object.defineProperty(block, "assignedSlot", {get: () => shadow.querySelector(row ? 'slot:not([name])' : 'slot[name="title"]')})
+        mocks.push(vi.spyOn(block, "getBoundingClientRect").mockReturnValue(new DOMRect(140, (row ? 170 : 130) + index * 120, 320, row ? 50 : 30)))
+      }
+    }
+    const text = timeline.children[1].querySelector("p")!.firstChild!
+    const position = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+    const hitStack = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [document.body]})
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: (x: number, y: number, options?: CaretPositionFromPointOptions) => {
+      if(options?.shadowRoots?.length && x >= 140 && x <= 460) return {offsetNode: text, offset: y < 315 ? x < 300 ? 0 : 8 : x < 300 ? 8 : text.textContent!.length}
+      return nativeHit === "root" ? {offsetNode: document.body, offset: 0} : {offsetNode: timeline.querySelector("h2")!.firstChild!, offset: 0}
+    }})
+    const anchor = document.createRange()
+    anchor.setStart(document.body, 1)
+    anchor.collapse(true)
+    try {
+      for(const [x, y, offset] of [[50, 300, 0], [550, 300, 8], [50, 325, 8], [550, 325, text.textContent!.length]]) {
+        expect($.pointFromCoords(x, y, document.body, schema, undefined, undefined, anchor)).toMatchObject({node: text, offset})
+      }
+    }
+    finally {
+      mocks.forEach(mock => mock.mockRestore())
+      if(position) Object.defineProperty(document, "caretPositionFromPoint", position)
+      else Reflect.deleteProperty(document, "caretPositionFromPoint")
       if(hitStack) Object.defineProperty(document, "elementsFromPoint", hitStack)
       else Reflect.deleteProperty(document, "elementsFromPoint")
     }
@@ -1910,6 +2049,19 @@ describe("findClosest()", () => {
 })
 
 describe("findContainingBlock()", () => {
+  it.each(["contents", "block"])("finds the shadow layout context through a %s slot", display => {
+    setBody('<layout-widget><p>Slotted</p></layout-widget>')
+    const host = document.querySelector("layout-widget")!, paragraph = host.querySelector("p")!
+    const shadow = host.attachShadow({mode: "open"})
+    shadow.innerHTML = '<div style="display: grid; transform: translateX(20px)"><slot style="display: '+display+'"></slot></div>'
+    const slot = shadow.querySelector("slot")!, wrapper = shadow.querySelector("div")!
+    // happy-dom does not implement Element.assignedSlot.
+    Object.defineProperty(paragraph, "assignedSlot", {get: () => slot})
+    expect(findContainingBlock(paragraph as HTMLElement)).toBe(display === "contents" ? wrapper : slot)
+    expect(findContainingBlock(paragraph as HTMLElement, "fixed")).toBe(wrapper)
+    expect(paragraph.parentElement).toBe(host)
+  })
+
   it("returns the nearest block-level ancestor for static elements", () => {
     setBody("<div><span><b>x</b></span></div>")
     const b = document.querySelector("b") as HTMLElement

@@ -10,7 +10,7 @@ import {captionIconSource} from "../caption-icon"
 import {mathRoot} from "../math"
 import {captionedFigureContent} from "../figure-layout.js"
 import {canvasGridSize, isCanvasStartingView} from "../canvas-viewer.js"
-import {createAnchorPositioner, cssZoomFactor, isWidgetShadowInteraction} from "../utility"
+import {createAnchorPositioner, cssZoomFactor, isWidgetShadowInteraction, renderedBoxNodes, renderedClientRect} from "../utility"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {popupElementRole} from "../element-names"
 import groupIcon from "@tabler/icons/outline/layers-union.svg?raw"
@@ -694,6 +694,15 @@ export class TransformationFeature extends EditorFeature {
       || mathRoot(target) === target && target.getAttribute("display") === "block"
   }
 
+  #resizeAxes(target: Element) {
+    const rule = this.editor.schema.get(target).resize
+    const vertical = /^(vertical|sideways)-/.test(getComputedStyle(target).writingMode)
+    return {
+      width: !rule || rule === "both" || rule === (vertical ? "block" : "inline"),
+      height: !rule || rule === "both" || rule === (vertical ? "inline" : "block"),
+    }
+  }
+
   #isBoardCardQuiz(target: Element) {
     // The quiz uses inline-size containment; a width cap can squeeze its
     // question to single-character lines inside a fixed-width board card.
@@ -728,18 +737,28 @@ export class TransformationFeature extends EditorFeature {
     const persistent = this.#isCompleteGroup(this.#group)
     const hideGroupResize = this.#group.length > 0 && !persistent
     const corner = this.target && this.#resizeAlignment(this.target) === "right" ? "down-left" : "down-right"
+    const resizeTargets = this.#group.length ? this.#group : this.target ? [this.target] : []
+    const explicitResize = resizeTargets.some(target => this.editor.schema.get(target).resize !== undefined)
+    const axes = {width: resizeTargets.every(target => this.#resizeAxes(target).width), height: resizeTargets.every(target => this.#resizeAxes(target).height)}
+    const compatible = (handle: HTMLElement) => {
+      const direction = handle.dataset.resizeDirection ?? ""
+      return (!/left|right/.test(direction) || axes.width) && (!/up|down/.test(direction) || axes.height)
+    }
+    const flowHandle = axes.width && !axes.height ? corner === "down-left" ? "left-left" : "right-right" : !axes.width && axes.height ? "down-down" : corner
     setPart(overlay, "transform-overlay-freeform", freeform)
     setPart(overlay, "transform-overlay-capture-selected", freeform && this.editor.features.selection.captureSelectedElement === this.target)
     for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
-      const hide = !allows("style") || hideGroupResize || !freeform && !(boardQuiz && midpoint.dataset.resizeDirection === "down-down")
+      const hide = !allows("style") || hideGroupResize || !compatible(midpoint)
+        || !freeform && !(explicitResize ? midpoint.dataset.resizeDirection === flowHandle : boardQuiz && midpoint.dataset.resizeDirection === "down-down")
       midpoint.hidden = hide
       setPart(midpoint, "transform-overlay-scale-hidden", hide)
     }
     for(const scaler of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not(.◆transform-overlay-midpoint)")) {
-      const hide = !allows("style") || hideGroupResize || !freeform && (boardQuiz || scaler.dataset.resizeDirection !== corner)
+      const hide = !allows("style") || hideGroupResize || !compatible(scaler)
+        || !freeform && (boardQuiz || scaler.dataset.resizeDirection !== corner)
       scaler.hidden = hide
       setPart(scaler, "transform-overlay-scale-hidden", hide)
-      setPart(scaler, "transform-overlay-scale-text", text)
+      setPart(scaler, "transform-overlay-scale-text", text || explicitResize && axes.width && !axes.height)
     }
     for(const edge of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-edge")) {
       edge.dataset.transformMode = "move"
@@ -767,7 +786,7 @@ export class TransformationFeature extends EditorFeature {
     caption.title = captionPosition === "none" ? "Add caption" : `Caption ${captionPosition}, align ${captionAlignment}: cycle position`
     caption.setAttribute("aria-label", caption.title)
     overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-mover")!.draggable =
-      !this.editor.features.canvas.active && !this.editor.features.slides.active
+      allows("move") && !this.editor.features.canvas.active && !this.editor.features.slides.active
     hidden("delete", !allows("delete"))
     setPart(overlay.querySelector("#◆transform-overlay-delete")!, "transform-overlay-delete-freeform", freeform)
     const grouping = this.#group.length > 1 ? this.groupingState(this.#group) : undefined
@@ -883,9 +902,11 @@ export class TransformationFeature extends EditorFeature {
       const content = captionedFigureContent(element)
       if(content && this.#canTransform(content)) return this.boxGeometry(content, cropped, matrices)
     }
-    let rect = measuredRect ?? element.getBoundingClientRect()
-    let {width, height} = this.#size(element, matrices, rect)
-    let matrix = this.#matrix(element, matrices)
+    const contents = getComputedStyle(element).display === "contents"
+    let rect = contents ? renderedClientRect(element) : measuredRect ?? element.getBoundingClientRect()
+    let {width, height} = contents ? rect : this.#size(element, matrices, rect)
+    // Contents bounds already include every rendered child's transforms.
+    let matrix = contents ? new DOMMatrix() : this.#matrix(element, matrices)
     if(element instanceof HTMLElement && !element.hasAttribute("is") && isWebsiteType(element.localName)) {
       // Keep the embed's own zoom in the frame dimensions so it does not
       // scale the outline or handles. Pointer gestures still use the full matrix.
@@ -979,7 +1000,7 @@ export class TransformationFeature extends EditorFeature {
     const media = this.editor.features.media.cropTargetFor(target)
     const crop = media ? getComputedStyle(media).getPropertyValue("object-view-box") : "none"
     const flowResize = this.#gesture?.mode === "scale" && this.#isTextContainer(target)
-    const anchored = !this.#isFreeformItem(target) && !floats.length && (!crop || crop === "none")
+    const anchored = getComputedStyle(target).display !== "contents" && !this.#isFreeformItem(target) && !floats.length && (!crop || crop === "none")
       && (flowResize ? matrix.isIdentity : !this.#gesture && !this.boxTransformed(target, matrices))
     const style = getComputedStyle(target)
     const {float, zIndex} = style
@@ -1371,6 +1392,7 @@ export class TransformationFeature extends EditorFeature {
   }
 
   #observeGeometry(elements: Element[]) {
+    elements = [...new Set(elements.flatMap(element => [element, ...renderedBoxNodes(element).filter((node): node is Element => node instanceof Element)]))]
     if(this.#observedElements.length === elements.length && elements.every((element, i) => this.#observedElements[i] === element)) return
     this.#resizeObserver?.disconnect()
     for(const element of elements) this.#resizeObserver?.observe(element)
@@ -1501,6 +1523,11 @@ export class TransformationFeature extends EditorFeature {
   }
 
   #resizeDimension(styles: GestureStyles, property: "width" | "height", size: number, delta: number) {
+    if(!this.#resizeAxes(styles.target)[property]) {
+      this.#write(property, "auto", "", styles)
+      this.#write(`max-${property}`, "none", "", styles)
+      return
+    }
     if(property === "width" && delta < 0) {
       delta = Math.max(delta, (pixelSize(getComputedStyle(styles.target).minWidth) ?? 0) - size)
     }
@@ -1975,7 +2002,9 @@ export class TransformationFeature extends EditorFeature {
     if(gesture.group) { this.#dragGroup(event); return }
     const target = gesture.target
     const freeform = this.#isFreeformItem(target)
-    const text = !freeform && this.#isTextContainer(target)
+    const axes = this.#resizeAxes(target)
+    const explicitResize = this.editor.schema.get(target).resize !== undefined
+    const text = !freeform && this.#isTextContainer(target) && !explicitResize || explicitResize && axes.width && !axes.height
     const player = gesture.player
     const image = !player && Boolean(gesture.image || target instanceof HTMLImageElement && !target.hasAttribute("is"))
     const direction = gesture.handle.dataset.resizeDirection ?? gesture.handle.id.replace("◆transform-overlay-scale-", "")
@@ -1983,8 +2012,9 @@ export class TransformationFeature extends EditorFeature {
     const delta = this.#vector(gesture.matrix.inverse(), event.clientX - gesture.x, event.clientY - gesture.y)
     if(!gesture.moved && (text ? Math.abs(delta.x) : Math.hypot(delta.x, delta.y)) < 1) return
     gesture.moved = true
-    const x = direction.includes("left") ? -1 : direction.includes("right") ? 1 : 0
-    const y = text ? 0 : direction.includes("up") ? -1 : direction.includes("down") ? 1 : 0
+    const x = !axes.width ? 0 : direction.includes("left") ? -1 : direction.includes("right") ? 1 : 0
+    const y = text || !axes.height ? 0 : direction.includes("up") ? -1 : direction.includes("down") ? 1 : 0
+    if(!x && !y) return
     const symmetric = modifierKeyDown(event)
     const centered = gesture.resizeCentered ?? false
     const round = this.getRoundingFunc(event)
@@ -1997,7 +2027,7 @@ export class TransformationFeature extends EditorFeature {
     const minDelta = (minimum ?? 0) - gesture.cssWidth
     let dw = x ? Math.max(1 - size.width, round(x * delta.x * (symmetric || centered ? 2 : 1))) : 0
     let dh = y ? Math.max(1 - size.height, round(y * delta.y * (symmetric ? 2 : 1))) : 0
-    const proportional = image && event.shiftKey && size.width > 0 && size.height > 0
+    const proportional = image && axes.width && axes.height && event.shiftKey && size.width > 0 && size.height > 0
     if(proportional) {
       const requested = x && (!y || Math.abs(dw / size.width) >= Math.abs(dh / size.height)) ? dw / size.width : dh / size.height
       const change = size.cssWidth > 0 ? Math.max(requested, minDelta / size.cssWidth) : requested
@@ -2007,7 +2037,7 @@ export class TransformationFeature extends EditorFeature {
     else if(x) dw = Math.max(dw, minDelta)
     const crop = gesture.canvas && !event.altKey
     const figure = target.matches(figureSelector)
-    const scaleInsteadOfResize = event.shiftKey && !crop && !text && !image && !player && !figure
+    const scaleInsteadOfResize = event.shiftKey && axes.width && axes.height && !crop && !text && !image && !player && !figure
     setPresentationState(document.body, `transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
     const popup = target.closest("[popover]")
     const insidePopup = Boolean(popup && popup !== target && popupElementRole(popup) === "content")
@@ -2032,7 +2062,15 @@ export class TransformationFeature extends EditorFeature {
         this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
         return
       }
-      if(text) {
+      if(explicitResize && !axes.width) {
+        this.#write("width", "auto")
+        this.#write("max-width", "none")
+      }
+      if(explicitResize && !axes.height) {
+        this.#write("height", "auto")
+        this.#write("max-height", "none")
+      }
+      if(text && !explicitResize) {
         this.#write("height", "auto")
         this.#write("min-height", mathRoot(target) === target ? "" : "0px")
         this.#write("max-height", "none")

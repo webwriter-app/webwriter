@@ -3015,6 +3015,64 @@ await check("widget shadow interactions capture hosts while slotted children sta
   }
 })
 
+await check("contents subwidgets keep selection outlines and affordances around their rendered content", async () => {
+  const timeline = document.createElement("native-contents-timeline")
+  timeline.style.cssText = "display:grid;grid-template-columns:20px 1fr;width:600px;margin:60px auto"
+  timeline.attachShadow({mode: "open"}).innerHTML = '<slot style="display:contents"></slot>'
+  const event = document.createElement("native-contents-event")
+  const root = event.attachShadow({mode: "open"})
+  root.innerHTML = '<style>:host{display:contents!important;width:100%}.dot{background:black;width:10px;height:10px;margin-top:8px}.event{min-height:90px}slot{display:contents}input{font:inherit;width:90px}</style><div class="dot"></div><div class="event"><input value="2000"><slot></slot></div>'
+  event.innerHTML = '<h3>Timeline event</h3><p>Event details</p>'
+  timeline.append(event)
+  fixture.append(timeline)
+  try {
+    await layoutFrame()
+    assert(event.getBoundingClientRect().width === 0, "contents host unexpectedly has a box")
+    const transformation = editor.features.transformation, selection = editor.features.selection
+    for(const mode of ["capture", "element"] as const) {
+      if(mode === "capture") selection.captureElement(event)
+      else selection.selectElement(event)
+      await layoutFrame()
+      const dot = root.querySelector(".dot")!.getBoundingClientRect(), content = root.querySelector(".event")!.getBoundingClientRect()
+      const expected = {left: Math.min(dot.left, content.left), top: Math.min(dot.top, content.top), right: Math.max(dot.right, content.right), bottom: Math.max(dot.bottom, content.bottom)}
+      for(const frame of [selection.selectionCaret!, transformation.overlay]) {
+        const box = frame.getBoundingClientRect()
+        assert(["left", "top", "right", "bottom"].every(edge => Math.abs(box[edge as keyof typeof expected] - expected[edge as keyof typeof expected]) < 2), `${mode} frame misses the event: ${JSON.stringify(box.toJSON())}`)
+        assert(frame.getRootNode() === editor.appendix, `${mode} frame escaped the appendix`)
+      }
+      for(const name of ["delete", "scale-down-right"]) {
+        const control = transformation.overlay.querySelector<HTMLElement>(`[id="◆transform-overlay-${name}"]`)!
+        assert(!control.hidden && control.getBoundingClientRect().width > 0, `${mode} lost its ${name} affordance`)
+      }
+      const before = selection.selectionCaret!.getBoundingClientRect().height
+      root.querySelector<HTMLElement>(".event")!.style.minHeight = `${before + 60}px`
+      await layoutFrame()
+      await layoutFrame()
+      assert(selection.selectionCaret!.getBoundingClientRect().height > before + 50, `${mode} frame did not follow shadow content resizing`)
+      assert(transformation.target === event, `${mode} replaced the authored selection target`)
+    }
+    const plain = document.createElement("section")
+    plain.style.display = "contents"
+    plain.innerHTML = '<span style="display:contents">Ordinary text <b>with nested contents</b></span><span>Another box</span><span hidden>Hidden</span>'
+    timeline.replaceChildren(plain)
+    timeline.style.transform = "scale(.8)"
+    for(const mode of ["capture", "element"] as const) {
+      if(mode === "capture") selection.captureElement(plain)
+      else selection.selectSectionElement(plain)
+      await layoutFrame()
+      const range = document.createRange()
+      range.selectNodeContents(plain.firstElementChild!.firstChild!)
+      const boxes = [range.getBoundingClientRect(), plain.querySelector("b")!.getBoundingClientRect(), plain.children[1].getBoundingClientRect()]
+      const expected = {left: Math.min(...boxes.map(box => box.left)), top: Math.min(...boxes.map(box => box.top)), right: Math.max(...boxes.map(box => box.right)), bottom: Math.max(...boxes.map(box => box.bottom))}
+      const actual = selection.selectionCaret!.getBoundingClientRect()
+      assert(["left", "top", "right", "bottom"].every(edge => Math.abs(actual[edge as keyof typeof expected] - expected[edge as keyof typeof expected]) < 2), `${mode} ordinary contents frame misses its transformed boxes: ${JSON.stringify(actual.toJSON())}`)
+      assert(transformation.target === plain, `${mode} replaced the ordinary contents target`)
+    }
+    assert(!event.outerHTML.includes("◆"), "selection artifacts leaked into authored content")
+  }
+  finally { timeline.remove(); editor.features.selection.processSelection(undefined, {scrollIntoView: false}) }
+})
+
 await check("widget-created hints retain their caret and inherit popup text colors", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:700px;height:350px"

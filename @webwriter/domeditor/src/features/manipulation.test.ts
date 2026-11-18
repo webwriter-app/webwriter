@@ -428,6 +428,30 @@ describe("captions", () => {
   const setCaption = (position: "none" | "above" | "below") =>
     editor.features.manipulation.actions.setCaption({type: "setCaption", position})
 
+  it.each(["p", "img", "caption-event"])("does not convert a nested %s or its top-level ancestor into a figure", tag => {
+    editor.schema.extendWidgets([
+      {tagName: "caption-timeline", editingConfig: {content: "flow*"}},
+      {tagName: "caption-event", editingConfig: {content: "flow*"}},
+    ])
+    document.body.innerHTML = `<caption-timeline><${tag}>Nested content</${tag}></caption-timeline>`
+    const target = document.querySelector(tag)!
+    editor.features.selection.selectElement(target)
+    const original = editor.toHTML(true)
+    expect(editor.features.manipulation.getCaptionPosition()).toBeNull()
+    expect(editor.features.manipulation.setCaption("below")).toBe(false)
+    expect(editor.features.manipulation.cycleCaption()).toBe(false)
+    expect(editor.toHTML(true)).toBe(original)
+    expect(document.querySelector("figure")).toBeNull()
+  })
+
+  it("does not convert a section when its nested paragraph is selected", () => {
+    document.body.innerHTML = '<section><p>Nested content</p></section>'
+    editor.features.selection.selectElement(document.querySelector("p")!)
+    expect(editor.features.manipulation.getCaptionPosition()).toBeNull()
+    expect(setCaption("below")).toBe(false)
+    expect(editor.toHTML(true)).toBe('<section><p>Nested content</p></section>')
+  })
+
   it.each(["hr", "h1", "h2", "h3", "h4", "h5", "h6"])("does not convert %s to a figure", tag => {
     document.body.innerHTML = tag === "hr" ? '<hr title="keep">' : `<${tag} title="keep">Heading</${tag}>`
     const target = document.body.firstElementChild!
@@ -650,11 +674,14 @@ describe("captions", () => {
 })
 
 describe("top-level captions", () => {
-  it.each(["p", "td", "nested-widget"])("captions the top-level container of a nested %s", tag => {
+  it.each(["p", "td", "nested-widget"])("requires explicit selection of the top-level container around a nested %s", tag => {
     document.body.innerHTML = '<section title="Keep"><p>Text</p><table><tbody><tr><td>Cell</td></tr></tbody></table><nested-widget></nested-widget></section><p>Other</p>'
     const section = document.querySelector("section")!, selected = section.querySelector(tag)!
     if(tag === "nested-widget") editor.features.selection.captureElement(selected)
     else $.move(selected.firstChild!, 1)
+    expect(editor.features.manipulation.getCaptionPosition()).toBeNull()
+    expect(editor.features.manipulation.setCaption("below")).toBe(false)
+    editor.features.selection.selectSectionElement(section)
     expect(editor.features.manipulation.getCaptionPosition()).toBe("none")
     editor.features.manipulation.setCaption("below")
     const figure = document.body.firstElementChild!
@@ -680,6 +707,7 @@ describe("top-level captions", () => {
     document.body.innerHTML = '<document-template role="document"><section><p>Text</p></section></document-template>'
     const root = document.body.firstElementChild!, section = root.firstElementChild!
     $.move(section.querySelector("p")!.firstChild!, 1)
+    editor.features.selection.selectSectionElement(section)
     editor.features.manipulation.setCaption("above")
     expect(document.body.firstElementChild).toBe(root)
     expect(root.firstElementChild!.localName).toBe("figure")
@@ -701,7 +729,7 @@ describe("top-level captions", () => {
       const container = document.createElement("section")
       paragraph.before(container)
       container.append(paragraph)
-      $.move(paragraph.firstElementChild!.firstChild!, 1)
+      editor.features.selection.selectSectionElement(container)
       expect(editor.features.manipulation.actions.setCaption({type: "setCaption", position: "below"})).toBe(true)
       const figure = root.querySelector(":scope > figure")!
       expect(figure).not.toBeNull()
@@ -3405,6 +3433,110 @@ describe("figures", () => {
     $.selectElement(document.querySelector("img")!)
     expect(editor.features.manipulation.editFigureCaption()).toBe(true)
     expect($.anchor).toBe(document.querySelector("figcaption"))
+  })
+})
+
+describe("partial contentful widget deletion", () => {
+  beforeEach(() => {
+    editor.schema.extendWidgets([
+      {tagName: "delete-timeline", editingConfig: {content: "delete-event*"}},
+      {tagName: "delete-event", editingConfig: {group: "", content: "h2 flow+"}},
+    ])
+    document.body.innerHTML = '<p>Before</p><delete-timeline><delete-event date="1900"><h2 slot="title">First</h2><p>First body</p></delete-event><delete-event date="1950"><h2 slot="title">Second</h2><p>Second body</p></delete-event><delete-event date="2000"><h2 slot="title">Third</h2><p>Third body</p></delete-event></delete-timeline><p>After</p>'
+  })
+
+  it.each([false, true])("Backspace removes only the enclosed last event (backwards: %s)", backwards => {
+    const timeline = document.querySelector("delete-timeline")!
+    const [first, second, last] = Array.from(timeline.children)
+    const authored = [first.outerHTML, second.outerHTML]
+    const after = document.body.lastElementChild!.firstChild!
+    document.getSelection()!.setBaseAndExtent(backwards ? after : timeline, backwards ? 0 : 2, backwards ? timeline : after, backwards ? 2 : 0)
+    editor.features.selection.processSelection(true)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
+
+    expect(timeline.isConnected).toBe(true)
+    expect(Array.from(timeline.children)).toEqual([first, second])
+    expect([first.outerHTML, second.outerHTML]).toEqual(authored)
+    expect(last.isConnected).toBe(false)
+    expect(document.body.lastElementChild!.textContent).toBe("After")
+  })
+
+  it.each(["Backspace", "Delete"])("%s deletes a selected event without merging its siblings", key => {
+    const timeline = document.querySelector("delete-timeline")!
+    const [first, second, last] = Array.from(timeline.children)
+    $.selectRange(timeline, 1, timeline, 2)
+    editor.features.selection.processSelection(true)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+    expect(timeline.isConnected).toBe(true)
+    expect(Array.from(timeline.children)).toEqual([first, last])
+    expect(second.isConnected).toBe(false)
+    expect(last.querySelector("h2")!.textContent).toBe("Third")
+  })
+
+  it.each([false, true])("deletes mixed title/body ranges across events without expanding the range (backwards: %s)", backwards => {
+    const timeline = document.querySelector("delete-timeline")!
+    const [first, middle, last] = Array.from(timeline.children)
+    const start = first.querySelector("p")!.firstChild!, end = last.querySelector("h2")!.firstChild!
+    document.getSelection()!.setBaseAndExtent(backwards ? end : start, backwards ? 2 : 3, backwards ? start : end, backwards ? 3 : 2)
+    editor.features.selection.processSelection(true)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
+
+    expect(Array.from(timeline.children)).toEqual([first, last])
+    expect(middle.isConnected).toBe(false)
+    expect(first.querySelector("h2")!.textContent).toBe("First")
+    expect(first.querySelector("p")!.textContent).toBe("Fir")
+    expect(last.querySelector("h2")!.textContent).toBe("ird")
+    expect(last.querySelector("p")!.textContent).toBe("Third body")
+    expect([first.getAttribute("date"), last.getAttribute("date")]).toEqual(["1900", "2000"])
+    editor.doc.syncFromDOM()
+    const deleted = editor.toHTML(true)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(deleted)
+  })
+
+  it("keeps the unselected beginning of the last event when the range ends outside the timeline", () => {
+    const timeline = document.querySelector("delete-timeline")!, last = timeline.lastElementChild!
+    const siblings = Array.from(timeline.children).slice(0, 2).map(event => event.outerHTML)
+    const after = document.body.lastElementChild!
+    $.selectRange(last.querySelector("h2")!.firstChild!, 2, after.firstChild!, 2)
+    editor.features.selection.processSelection(true)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
+    expect(timeline.parentNode).toBe(document.body)
+    expect(last.parentNode).toBe(timeline)
+    expect(last.querySelector("h2")!.textContent).toBe("Th")
+    expect(Array.from(timeline.children).slice(0, 2).map(event => event.outerHTML)).toEqual(siblings)
+    expect(after.parentNode).toBe(document.body)
+    expect(after.textContent).toBe("ter")
+  })
+
+  it.each(["Backspace", "Delete"])("%s preserves required title/body fields beside the removed content", key => {
+    const event = document.querySelector("delete-event")!
+    const last = document.createElement("p")
+    last.textContent = "Remaining body"
+    event.append(last)
+    const title = event.querySelector("h2")!
+    $.selectElement(event.querySelector("p")!)
+    editor.features.selection.processSelection(true)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+    expect(Array.from(event.children)).toEqual([title, last])
+    expect(title.textContent).toBe("First")
+    expect(last.textContent).toBe("Remaining body")
+    expect(editor.schema.isContentValid(event)).toBe(true)
+  })
+
+  it.each(["Backspace", "Delete"])("%s leaves unselected siblings intact when deleting a whole native element", key => {
+    document.body.innerHTML = '<p>Before</p><hr><p>After</p><img src="keep.png">'
+    $.selectElement(document.querySelector("hr")!)
+    editor.features.selection.processSelection(true)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+    expect(editor.toHTML(true)).toBe('<p>Before</p><p>After</p><img src="keep.png">')
   })
 })
 
@@ -7286,6 +7418,214 @@ describe("unified content transfer", () => {
     surface.dispatchEvent(transferEvent("dragstart", data))
     return {data, surface}
   }
+
+  function widgetReorderFixture() {
+    editor.schema.extendWidgets([
+      {tagName: "transfer-timeline", editingConfig: {content: "transfer-event*"}},
+      {tagName: "transfer-event", editingConfig: {group: "", content: "h2 flow+", propagateEvents: ["dragstart", "dragend"]}},
+    ])
+    document.body.innerHTML = '<transfer-timeline><transfer-event id="first" date="1900"><h2 slot="title">First</h2><p>One</p></transfer-event><transfer-event id="second" date="1800"><h2 slot="title">Second</h2><p>Two</p></transfer-event><transfer-event id="third" date="2000"><h2 slot="title">Third</h2><p>Three</p></transfer-event></transfer-timeline>'
+    const parent = document.querySelector("transfer-timeline")!
+    const events = Array.from(parent.children) as HTMLElement[]
+    for(const [index, event] of events.entries()) {
+      event.style.display = "contents"
+      event.attachShadow({mode: "open"}).innerHTML = '<div><button type="button" draggable="true">Select event</button></div><div><slot name="title"></slot><slot></slot></div>'
+      event.shadowRoot!.querySelector("button")!.draggable = true
+      vi.spyOn(event, "getBoundingClientRect").mockReturnValue(new DOMRect())
+      for(const box of event.shadowRoot!.children) {
+        vi.spyOn(box, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 20 + index * 100, 500, 80))
+      }
+    }
+    const point = vi.spyOn($, "pointFromCoords")
+    const begin = (source = events[0], frame = false) => {
+      const data = new DataTransfer()
+      if(frame) {
+        editor.features.selection.captureElement(source)
+        const mover = editor.features.transformation.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-mover")!
+        expect(mover.draggable).toBe(true)
+        mover.dispatchEvent(transferEvent("dragstart", data))
+      }
+      else {
+        const handle = source.shadowRoot!.querySelector("button")!
+        handle.focus()
+        handle.dispatchEvent(transferEvent("dragstart", data))
+      }
+      expect(editor.features.manipulation.draggedElement).toBe(source)
+      return data
+    }
+    return {parent, events, point, begin}
+  }
+
+  it.each(["edge", "frame"])("reorders contentful widget siblings from the %s using rendered gap previews and preserves dates", handle => {
+    const {parent, events, point, begin} = widgetReorderFixture()
+    const source = events[0], target = events[2], content = source.innerHTML
+    const data = begin(source, handle === "frame")
+    point.mockReturnValue({node: target.querySelector("p")!.firstChild!, offset: 2})
+    const before = parent.innerHTML
+    target.dispatchEvent(transferEvent("dragover", data, {clientX: 200, clientY: 290}))
+    expect(data.dropEffect).toBe("move")
+    const preview = editor.appendix.querySelector<HTMLElement>('[part~="drop-range-gap"]')!
+    expect(preview).not.toBeNull()
+    expect(preview.style.top).toBe("300px")
+    expect(parent.innerHTML).toBe(before)
+    target.dispatchEvent(transferEvent("drop", data, {clientX: 200, clientY: 290}))
+    expect(Array.from(parent.children)).toEqual([events[1], events[2], source])
+    expect(source.innerHTML).toBe(content)
+    expect(events.map(event => event.getAttribute("date"))).toEqual(["1900", "1800", "2000"])
+    expect(source.getAttribute("style")).toBe("display: contents;")
+    expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).toBeNull()
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
+    expect(editor.features.manipulation.hasNodeDrag).toBe(false)
+  })
+
+  it("places widget drop previews between rendered sibling boxes when dragging upward", () => {
+    const {parent, events, point, begin} = widgetReorderFixture()
+    const data = begin(events[2])
+    point.mockReturnValue({node: events[1].querySelector("h2")!.firstChild!, offset: 1})
+    events[1].dispatchEvent(transferEvent("dragover", data, {clientX: 200, clientY: 125}))
+    expect(editor.appendix.querySelector<HTMLElement>('[part~="drop-range-gap"]')!.style.top).toBe("110px")
+    events[1].dispatchEvent(transferEvent("drop", data, {clientX: 200, clientY: 125}))
+    expect(Array.from(parent.children)).toEqual([events[0], events[2], events[1]])
+  })
+
+  it("accepts structural widgets by type while excluding them from flow containers", () => {
+    const {parent, events} = widgetReorderFixture()
+    const source = events[0]
+    expect(editor.schema.canInsert(parent, source, parent.childNodes.length)).toBe(true)
+    for(const container of [document.body, document.createElement("section"), document.createElement("p"), events[1]]) {
+      expect(editor.schema.canInsert(container, source, container.childNodes.length)).toBe(false)
+    }
+  })
+
+  it.each(["transfer-event*", "widget*"])("allows moving a structural widget into another container declaring %s", content => {
+    const {parent, events, point, begin} = widgetReorderFixture()
+    editor.schema.extendWidgets([{tagName: "transfer-destination", editingConfig: {content}}])
+    const destination = document.createElement("transfer-destination")
+    parent.after(destination)
+    const source = events[0], date = source.getAttribute("date")
+    const data = begin(source)
+    point.mockReturnValue({node: destination, offset: 0})
+    destination.dispatchEvent(transferEvent("dragover", data, {clientX: 200, clientY: 350}))
+    expect(data.dropEffect).toBe("move")
+    destination.dispatchEvent(transferEvent("drop", data, {clientX: 200, clientY: 350}))
+    expect(Array.from(destination.children)).toEqual([source])
+    expect(Array.from(parent.children)).toEqual([events[1], events[2]])
+    expect(source.getAttribute("date")).toBe(date)
+    expect(editor.schema.isContentValid(destination)).toBe(true)
+  })
+
+  it("disables dragging and the Move affordance for an immovable widget without locking its content", () => {
+    const {parent, events} = widgetReorderFixture()
+    editor.schema.extendWidgets([{tagName: "transfer-event", editingConfig: {
+      group: "", content: "h2 flow+", movable: false,
+    }}])
+    const source = events[0]
+    editor.features.selection.captureElement(source)
+    expect(editor.allows("move", source)).toBe(false)
+    expect(editor.allowsSelection("move")).toBe(false)
+    expect(editor.allows("edit", source.querySelector("p"))).toBe(true)
+    expect(editor.allows("move", parent)).toBe(true)
+    const mover = editor.features.transformation.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-mover")!
+    expect(mover.hidden).toBe(true)
+    expect(mover.draggable).toBe(false)
+    const data = new DataTransfer()
+    const start = transferEvent("dragstart", data)
+    editor.features.manipulation.startNodeDrag(start as DragEvent, source)
+    expect(start.defaultPrevented).toBe(true)
+    expect(editor.features.manipulation.hasNodeDrag).toBe(false)
+    expect(data.types).toHaveLength(0)
+  })
+
+  it.each(["gap", "text"])("rejects a structural widget drop outside its parent over a %s", placement => {
+    const {parent, events, point, begin} = widgetReorderFixture()
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Outside the timeline"
+    parent.after(paragraph)
+    const data = begin()
+    point.mockReturnValue(placement === "text" ? {node: paragraph.firstChild!, offset: 2} : {node: document.body, offset: 1})
+    const original = events.map(event => event.innerHTML)
+    paragraph.dispatchEvent(transferEvent("dragover", data, {clientX: 200, clientY: 400}))
+    expect(data.dropEffect).toBe("none")
+    expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).toBeNull()
+    paragraph.dispatchEvent(transferEvent("drop", data, {clientX: 200, clientY: 400}))
+    expect(Array.from(parent.children)).toEqual(events)
+    expect(events.map(event => event.innerHTML)).toEqual(original)
+    expect(events[0].parentElement).toBe(parent)
+  })
+
+  it("rejects a no-op widget gap and keeps the original order on cancel", () => {
+    const {parent, events, point, begin} = widgetReorderFixture()
+    const original = parent.innerHTML
+    const data = begin()
+    point.mockReturnValue({node: events[1].querySelector("p")!, offset: 0})
+    events[1].dispatchEvent(transferEvent("dragover", data, {clientX: 200, clientY: 125}))
+    expect(data.dropEffect).toBe("none")
+    expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).toBeNull()
+    point.mockReturnValue({node: events[2].querySelector("p")!, offset: 0})
+    events[2].dispatchEvent(transferEvent("dragover", data, {clientX: 200, clientY: 290}))
+    events[0].shadowRoot!.querySelector("button")!.dispatchEvent(transferEvent("dragend", data))
+    expect(parent.innerHTML).toBe(original)
+    expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).toBeNull()
+    expect(editor.features.manipulation.hasNodeDrag).toBe(false)
+  })
+
+  it.each(["h2", "p"])("rejects widget sibling gaps that move %s across a required title", tag => {
+    const {events, point} = widgetReorderFixture()
+    const source = events[0].querySelector(tag)!
+    const {data} = beginDrag(source)
+    point.mockReturnValue({node: events[0], offset: tag === "h2" ? 2 : 0})
+    const original = events[0].innerHTML
+    events[0].dispatchEvent(transferEvent("dragover", data))
+    expect(data.dropEffect).toBe("none")
+    expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).toBeNull()
+    events[0].dispatchEvent(transferEvent("drop", data))
+    expect(events[0].innerHTML).toBe(original)
+  })
+
+  it("keeps unforwarded private widget drag handles out of the editor", () => {
+    const {events} = widgetReorderFixture()
+    editor.schema.extendWidgets([{tagName: "transfer-event", editingConfig: {content: "h2 flow+"}}])
+    const handle = events[0].shadowRoot!.querySelector("button")!
+    handle.focus()
+    const data = new DataTransfer()
+    handle.dispatchEvent(transferEvent("dragstart", data))
+    expect(editor.features.manipulation.hasNodeDrag).toBe(false)
+    expect(data.getData(nodeDragType)).toBe("")
+  })
+
+  it("rechecks widget source identity on drop", () => {
+    const {parent, events, point, begin} = widgetReorderFixture()
+    const data = begin()
+    point.mockReturnValue({node: events[2].querySelector("p")!, offset: 0})
+    events[2].dispatchEvent(transferEvent("dragover", data, {clientX: 200, clientY: 290}))
+    const replacement = events[0].cloneNode(true)
+    events[0].replaceWith(replacement)
+    const html = editor.toHTML(true)
+    events[2].dispatchEvent(transferEvent("drop", data, {clientX: 200, clientY: 290}))
+    expect(editor.toHTML(true)).toBe(html)
+    expect(parent.firstElementChild).toBe(replacement)
+  })
+
+  it.each([true, false])("moves live widget nodes with atomic-move support %s and supports undo/redo", atomic => {
+    const {parent, events, point, begin} = widgetReorderFixture()
+    const move = vi.fn((node: Node, before: Node | null) => { parent.insertBefore(node, before) })
+    Object.defineProperty(parent, "moveBefore", {value: atomic ? move : undefined})
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const data = begin()
+    point.mockReturnValue({node: events[2].querySelector("p")!, offset: 0})
+    events[2].dispatchEvent(transferEvent("drop", data, {clientX: 200, clientY: 290}))
+    expect(parent.lastElementChild).toBe(events[0])
+    expect(move.mock.calls.length).toBe(atomic ? 1 : 0)
+    editor.doc.syncFromDOM()
+    const changed = editor.toHTML(true)
+    expect(changed).not.toBe(original)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
 
   it("captures a dragged element after dragend from its current DOM, once, without moving it", () => {
     document.body.innerHTML = '<section><demo-widget class="authored ◆temporary"><!--keep--><span>before</span></demo-widget></section><p>Outside</p>'

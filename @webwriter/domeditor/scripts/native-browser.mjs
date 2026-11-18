@@ -34,6 +34,7 @@ const expectedChecks = [
   "shape keyboard drops stay within the captured graphic",
   "widget-created hints retain their caret and inherit popup text colors",
   "widget shadow interactions capture hosts while slotted children stay editable",
+  "contents subwidgets keep selection outlines and affordances around their rendered content",
   "widget-owned marks work through the ribbon and built-in font picker",
   "nested widget pages keep insertion, splitting and deletion inside their hosts",
   "Crossing graphic resize edges reflects shapes and preserves fixed anchors",

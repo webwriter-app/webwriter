@@ -2944,6 +2944,10 @@ export class DomEditor extends LitElement {
       this.savedEditorSelection = null
       return
     }
+    if(features?.selection?.focusCapturedWidget?.()) {
+      this.savedEditorSelection = null
+      return
+    }
     // Activating designMode can collapse the range established by a command.
     // Preserve that live range unless the caller requested its saved bookmark.
     if(!restoreSelection) {

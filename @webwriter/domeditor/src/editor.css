@@ -417,7 +417,7 @@ body:has(:is(picture, img, audio, video, iframe, embed, object):state(ww-element
   color: #1f2937;
 }
 
-body::part(atomic-selection-overlay) {
+body::part(atomic-selection-overlay), body::part(empty-text-selection-overlay) {
   position: fixed;
   pointer-events: none;
   user-select: none;
