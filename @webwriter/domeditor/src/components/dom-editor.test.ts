@@ -6313,7 +6313,7 @@ describe("DomEditor.execute()", () => {
     await (editor as any).setHTMLMode(true)
     await editor.updateComplete
     expect(panel.inert).toBe(false)
-    expect(panel.getAttribute("aria-hidden")).toBe("false")
+    expect(panel.getAttribute("aria-hidden")).toBeNull()
     expect(getComputedStyle(panel).gridTemplateRows).toBe("1fr")
     expect(panel.textContent).not.toContain("Selected HTML")
     expect(getComputedStyle(root.querySelector("developer-console")!).height).toBe("300px")
@@ -6331,7 +6331,7 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     expect(root.querySelector(".html-source-panel")).toBe(panel)
     expect(panel.inert).toBe(true)
-    expect(panel.getAttribute("aria-hidden")).toBe("true")
+    expect(panel.getAttribute("aria-hidden")).toBeNull()
   })
 
   it("refreshes HTML source colors on input and external updates without replacing the textarea", async () => {

@@ -413,7 +413,11 @@ type WidgetElementConstructor = (new (...args: any[]) => HTMLElement & Lifecycle
 export type WidgetHost = HTMLElement & {readonly widgetRuntime: WidgetRuntime}
 
 /** Add the runtime to a custom-element class before registering it. */
-export function withWidgetRuntime<T extends WidgetElementConstructor>(Base: T) {
+export function withWidgetRuntime<T extends WidgetElementConstructor>(Base: T): T & {
+  new (...args: any[]): WidgetHost & Required<Lifecycle>
+  readonly widgetAttributes: readonly string[]
+  readonly observedAttributes: string[]
+} {
   return class WidgetElement extends Base {
     static readonly widgetAttributes: readonly string[] = []
     static get observedAttributes(): string[] {

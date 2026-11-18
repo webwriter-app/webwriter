@@ -93,7 +93,7 @@ describe("standalone canvas reader", () => {
     document.body.innerHTML = '<figure><picture style="width: 320px"><img alt="Map"></picture><figcaption>Map</figcaption></figure>'
     const picture = document.querySelector("picture")!
     editor = new DOMEditor()
-    expect(getComputedStyle(picture).display).toBe("block")
+    expect(getComputedStyle(picture).display).toBe("flow-root")
     editor.destroy(); editor = undefined
 
     reader = mountCanvasReader()

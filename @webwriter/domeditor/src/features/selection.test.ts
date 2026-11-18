@@ -2489,7 +2489,7 @@ describe("contentful widgets", () => {
       if(start === 3 && index === 3) blocks[index].append(document.createElement("br"))
       if(start === 0 && index === 0) blocks[index].append(document.createTextNode(" \n"))
     }
-    const texts = blocks.map((block, index) => empty.includes(index) ? block : block.firstChild!)
+    const texts: Node[] = blocks.map((block, index) => empty.includes(index) ? block : block.firstChild!)
     const rects = blocks.map((_block, index) => new DOMRect(10, 20 + index * 40, 200, 30))
     blocks.forEach((block, index) => vi.spyOn(block, "getBoundingClientRect").mockReturnValue(rects[index]))
     vi.spyOn(Range.prototype, "getClientRects").mockImplementation(function(this: Range) {

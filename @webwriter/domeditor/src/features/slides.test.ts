@@ -822,7 +822,7 @@ describe("CSS-only Slides layout", () => {
     $.selectElement(one.querySelector(".ww-slide-next")!)
     const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
     editor.postSelectionPath()
-    expect(postMessage.mock.calls.at(-1)![0].detail.path).toEqual([
+    expect(postMessage.mock.calls.filter(([message]) => message.type === selectionChangeEvent).at(-1)![0].detail.path).toEqual([
       {path: [], name: "Slides", icon: "KeywordPresentation"},
       {path: [0, 0], name: "Slide 1", icon: "Rectangle"},
     ])

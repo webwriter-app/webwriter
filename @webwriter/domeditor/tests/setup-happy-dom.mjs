@@ -1,4 +1,21 @@
-import {Document, Element, HTMLElement, Node, Range, PropertySymbol} from "happy-dom"
+import {Document, Element, HTMLElement, Node, Range, ShadowRoot, PropertySymbol} from "happy-dom"
+
+// Happy DOM's shadow getter walks past the document into an undefined host
+// when focus belongs to another shadow tree. Stop at that tree boundary and
+// ignore detached focus, as the document getter already does.
+Object.defineProperty(ShadowRoot.prototype, "activeElement", {
+  configurable: true,
+  get() {
+    let active = this.ownerDocument[PropertySymbol.activeElement]
+    if(!active?.isConnected) return null
+    while(active) {
+      const root = active.getRootNode()
+      if(root === this) return active
+      active = root.host
+    }
+    return null
+  },
+})
 
 // Happy DOM creates MathML as generic Elements without MathMLElement.style.
 // Reuse its native CSS declaration implementation for namespaced math elements.
