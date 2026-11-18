@@ -2212,6 +2212,13 @@ export class AppRibbon extends EditingControls {
     this.menuOpen = false
   }
 
+  focusFileMenuTrigger() {
+    const trigger = this.heightConstrained
+      ? this.renderRoot.querySelector<HTMLButtonElement>("button.brand")
+      : this.renderRoot.querySelector('ribbon-tab[label="File"]')?.shadowRoot?.querySelector<HTMLButtonElement>("button")
+    trigger?.focus()
+  }
+
   private selectMenu(event: Event) {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
     if(label === "File") this.toggleFileMenu()
@@ -3955,7 +3962,7 @@ export class AppRibbon extends EditingControls {
             if(event.key !== "Escape") return
             event.stopPropagation()
             this.dismissCollapsedMenu()
-            this.renderRoot.querySelector('ribbon-tab[label="File"]')?.shadowRoot?.querySelector<HTMLButtonElement>("button")?.focus()
+            this.focusFileMenuTrigger()
           }}
           ?hidden=${!this.menuOpen || this.liveSessionActive}
           ?inert=${aiReviewPending || historyPreviewPending || this.liveSessionActive}

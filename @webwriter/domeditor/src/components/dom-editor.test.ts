@@ -5869,12 +5869,12 @@ describe("DomEditor.execute()", () => {
     const show = items.find(button => button.title === "Developer console")!
     expect(items[items.indexOf(show) + 1].title).toBe("Settings")
     expect(show.querySelector(".icon-tabler-terminal-2")).not.toBeNull()
-    expect(editor.shadowRoot!.querySelector(".html-source-panel")?.getAttribute("aria-hidden")).not.toBe("false")
+    expect(editor.shadowRoot!.querySelector(".html-source-panel:not([inert])")).toBeNull()
     show.click()
     await editor.updateComplete
     await ribbon.updateComplete
     await toolbox.updateComplete
-    expect(editor.shadowRoot!.querySelector(".html-source-panel")!.getAttribute("aria-hidden")).toBe("false")
+    expect(editor.shadowRoot!.querySelector(".html-source-panel:not([inert])")).not.toBeNull()
     expect(toolbox.consoleOpen).toBe(true)
     expect(ribbon.consoleOpen).toBe(true)
     expect(ribbon.menuOpen).toBe(false)
@@ -6042,8 +6042,18 @@ describe("DomEditor.execute()", () => {
     const console = editor.shadowRoot!.querySelector("developer-console")!
     await console.updateComplete
     expect(console.tab).toBe("Packages")
-    await host.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: false}}))
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const file = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
+    const fileButton = file.shadowRoot!.querySelector<HTMLButtonElement>("button")!
+    const inertOnFocus = vi.fn(() => panel.inert)
+    fileButton.addEventListener("focus", inertOnFocus, {once: true})
+    const close = console.shadowRoot!.querySelector<HTMLButtonElement>(".console-close")!
+    close.focus()
+    expect(editor.shadowRoot!.activeElement).toBe(console)
+    close.click()
     await editor.updateComplete
+    expect(file.shadowRoot!.activeElement).toBe(fileButton)
+    expect(inertOnFocus).toHaveReturnedWith(false)
     expect(editor.shadowRoot!.querySelector("developer-console")).toBe(console)
     expect(panel.inert).toBe(true)
     host.localPackageError = "Updated while closed"
@@ -8291,7 +8301,6 @@ describe("DomEditor.execute()", () => {
     expect(console.pinned).toBe(true)
     expect(console.tab).toBe(tab)
     expect(editor.shadowRoot!.querySelector(".html-source-panel")!.hasAttribute("inert")).toBe(false)
-    expect(editor.shadowRoot!.querySelector(".html-source-panel")!.getAttribute("aria-hidden")).toBe("false")
     expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).pinDeveloperConsole).toBe(true)
     await host.exitPreview()
     await editor.updateComplete
@@ -8318,7 +8327,6 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector("developer-console")).toBe(console)
     expect(editor.shadowRoot!.querySelector(".html-source-panel")!.hasAttribute("inert")).toBe(true)
-    expect(editor.shadowRoot!.querySelector(".html-source-panel")!.getAttribute("aria-hidden")).toBe("true")
   })
 
   it("returns to editing from the app button during a preview transition", async () => {

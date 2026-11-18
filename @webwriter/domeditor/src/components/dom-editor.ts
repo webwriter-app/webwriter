@@ -7700,7 +7700,7 @@ export class DomEditor extends LitElement {
     // Keep the opened console through collapse; inactive consoles suspend rendering.
     this.consoleRendered ||= this.consoleOpen || this.reviewOpen
     return html`
-      <div class="html-source-panel" ?inert=${!this.consoleOpen && !this.reviewOpen} aria-hidden=${String(!this.consoleOpen && !this.reviewOpen)}>
+      <div class="html-source-panel" ?inert=${!this.consoleOpen && !this.reviewOpen}>
         <div class="html-source-clip">
           ${when(this.consoleRendered, () => html`<developer-console .active=${this.consoleOpen || this.reviewOpen} .review=${this.reviewOpen} .tab=${this.consoleTab} .htmlPending=${this.htmlPending} .pinned=${this.settings.pinDeveloperConsole}
             .documentRecoveries=${this.documentRecoveryCheckpoint ? [this.documentRecoveryCheckpoint, ...this.recoveredDocuments] : this.recoveredDocuments}
@@ -7759,6 +7759,14 @@ export class DomEditor extends LitElement {
         </div>
       </div>
     `
+  }
+
+  protected willUpdate(changed: PropertyValues) {
+    super.willUpdate(changed)
+    if((this.consoleOpen || this.reviewOpen) && !this.liveSessionActive && (!this.previewActive || this.settings.pinDeveloperConsole)) return
+    if(this.shadowRoot?.activeElement?.closest(".html-source-panel")) {
+      this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.focusFileMenuTrigger()
+    }
   }
 
   protected updated(changed: PropertyValues) {
