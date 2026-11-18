@@ -2,6 +2,26 @@
 // the node itself. Keep presentation state by identity and retarget rules when
 // a node moves, without writing editor state into the document.
 const presentationDocumentKey = Symbol.for("webwriter.presentation-state")
+const nativeSelectionStates = new WeakMap()
+
+/** Widgets opt in with their own ElementInternals.states. Never attach
+ * internals here: they may already belong to a form or accessibility helper. */
+function setNativeSelectionState(element, state, active) {
+  if(state !== "element-selected" && state !== "element-capture-selected") return
+  let states = nativeSelectionStates.get(element)
+  if(!states && active) {
+    try {
+      const candidate = element.selectionStates
+      if(typeof candidate?.add === "function" && typeof candidate?.delete === "function") {
+        states = candidate
+        nativeSelectionStates.set(element, states)
+      }
+    }
+    catch { return }
+  }
+  if(active) states?.add(`ww-${state}`)
+  else states?.delete(`ww-${state}`)
+}
 // A tracked template also notes the type selector of a token's compound, as
 // :state(ww-name@type).
 const presentationToken = /:state\(ww-([\w-]+)(?:@([\w-]+))?\)/g
@@ -322,7 +342,10 @@ export function refreshPresentationStyles(doc) {
   if(!data) return
   data.observer?.takeRecords()
   for(const [state, elements] of data.elements) {
-    for(const element of elements) if(element.ownerDocument !== doc || !element.isConnected) elements.delete(element)
+    for(const element of elements) if(element.ownerDocument !== doc || !element.isConnected) {
+      setNativeSelectionState(element, state, false)
+      elements.delete(element)
+    }
     if(!elements.size) data.elements.delete(state)
     if(data.rules.has(state)) data.changed.add(state)
   }
@@ -404,6 +427,7 @@ export function setPresentationState(element, state, active = true) {
     if(!elements?.delete(element)) return
     if(!elements.size) data.elements.delete(state)
   }
+  setNativeSelectionState(element, state, active)
   data.changed.add(state)
   updatePresentationRules(data)
   if(!data.depth) updatePresentationObserver(data)
@@ -432,9 +456,10 @@ export function clearEditorPresentation(doc) {
   const data = doc[presentationDocumentKey]
   if(!data) return
   batchPresentationStates(doc, () => {
-    for(const state of data.elements.keys()) {
+    for(const [state, elements] of data.elements) {
       // Anchor bindings have their own owners, including outside DOMEditor.
       if(state.startsWith("anchor-target-") || state.startsWith("anchor-control-")) continue
+      for(const element of elements) setNativeSelectionState(element, state, false)
       data.elements.delete(state)
       data.changed.add(state)
     }

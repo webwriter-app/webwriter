@@ -1,10 +1,60 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
-import {clearPresentationState, deferPresentationPaint, hasPresentationState, presentationElementSelector, presentationStateElements, resolvePresentationSelector, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
+import {clearEditorPresentation, clearPresentationState, deferPresentationPaint, hasPresentationState, presentationElementSelector, presentationStateElements, refreshPresentationStyles, resolvePresentationSelector, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
 
 afterEach(() => document.body.replaceChildren())
 
 describe("presentation state", () => {
+  it("mirrors selection to widget-owned native states without changing authored HTML", () => {
+    const widget = document.createElement("selection-widget")
+    // Happy DOM has no ElementInternals; the browser tests exercise native :state().
+    const states = new Set(["widget-owned"])
+    Object.defineProperty(widget, "selectionStates", {value: states})
+    widget.innerHTML = "<p>Authored</p>"
+    document.body.append(widget)
+    const html = widget.outerHTML
+
+    setPresentationState(widget, "element-selected")
+    setPresentationState(widget, "element-capture-selected")
+    setPresentationState(widget, "element-hovered")
+    expect([...states]).toEqual(["widget-owned", "ww-element-selected", "ww-element-capture-selected"])
+    clearPresentationState(widget, "element-capture-selected")
+    expect([...states]).toEqual(["widget-owned", "ww-element-selected"])
+    expect(widget.outerHTML).toBe(html)
+    expect(widget.cloneNode(true)).not.toHaveProperty("selectionStates")
+
+    widget.remove()
+    clearEditorPresentation(document)
+    expect([...states]).toEqual(["widget-owned"])
+  })
+
+  it("clears native selection states on removed or adopted widgets during refresh", () => {
+    for(const adopted of [false, true]) {
+      const widget = document.createElement("selection-widget")
+      const states = new Set<string>()
+      Object.defineProperty(widget, "selectionStates", {value: states})
+      document.body.append(widget)
+      setPresentationState(widget, "element-selected")
+      setPresentationState(widget, "element-capture-selected")
+      if(adopted) document.implementation.createHTMLDocument().body.append(widget)
+      else widget.remove()
+      refreshPresentationStyles(document)
+      expect(states.size).toBe(0)
+      expect(hasPresentationState(widget, "element-selected")).toBe(false)
+    }
+  })
+
+  it("does not attach internals or require native states on other elements", () => {
+    const widget = document.createElement("ordinary-widget")
+    const attach = vi.fn(() => { throw new Error("Already attached") })
+    Object.defineProperty(widget, "attachInternals", {value: attach})
+    document.body.append(widget)
+    setPresentationState(widget, "element-selected")
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
+    expect(attach).not.toHaveBeenCalled()
+    clearPresentationState(widget, "element-selected")
+  })
+
   it("targets a live element after a sibling insertion without changing its attributes", async () => {
     document.body.innerHTML = '<p class="authored">one</p><p>two</p>'
     const target = document.body.firstElementChild!

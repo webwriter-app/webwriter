@@ -71,6 +71,10 @@ export type ContentRule = ContentRuleSelector | ContentRuleSequence | ContentRul
 /** Describes a node type: its group memberships, content model and editing behavior (placeholders, separability, default node status, namespace). */
 export type SchemaEntry = {
   group?: string[],
+  /** Whether editor move and drag operations may move this node itself. */
+  movable?: boolean
+  /** Logical axes available to editor resizing; absent preserves defaults. */
+  resize?: "inline" | "block" | "both" | "none"
   content?: ContentRule,
   headOnly?: boolean,
   sideEffects?: boolean,
@@ -100,6 +104,8 @@ export type WidgetEditingConfig = {
   /** Uses a single script[slot=data] as scoped, persistent widget state. */
   sharedData?: boolean
   group?: string
+  movable?: boolean
+  resize?: SchemaEntry["resize"]
   inline?: boolean
   isolating?: boolean
   content?: string
@@ -287,6 +293,13 @@ function expressionNullable(expression: ContentExpression): boolean {
   return expression.terms.every(expressionNullable)
 }
 
+function expressionPreservesWhitespace(expression: ContentExpression): boolean {
+  if(expression.kind === "empty") return false
+  if(expression.kind === "reference") return expression.name === "#text" || expression.name === "phrasing"
+  if(expression.kind === "star") return expressionPreservesWhitespace(expression.expression)
+  return (expression.kind === "choice" ? expression.options : expression.terms).some(expressionPreservesWhitespace)
+}
+
 function expressionDerivative(
   expression: ContentExpression,
   matches: (reference: Extract<ContentExpression, {kind: "reference"}>) => boolean,
@@ -423,6 +436,8 @@ export class Schema {
         : []
       return [tagName, {
         group: [...groups],
+        ...(editingConfig.movable === false ? {movable: false} : {}),
+        ...(editingConfig.resize && ["inline", "block", "both", "none"].includes(editingConfig.resize) ? {resize: editingConfig.resize} : {}),
         ...(content ? {content} : {}),
         inseperable: editingConfig.isolating ?? true,
         ...(marks ? {marks} : {}),
@@ -826,6 +841,10 @@ export class Schema {
       return false
     }
     else if("expression" in rule) {
+      // Formatting between structural children is not a content-expression
+      // term. Keep it in the DOM without consuming required child counts.
+      if(node.nodeType === Node.COMMENT_NODE || node instanceof Text && /^[\t\n\f\r ]*$/.test(node.data)
+        && !expressionPreservesWhitespace(rule.expression)) return true
       const current = rule.current ?? rule.expression
       const derivative = expressionDerivative(current, reference => {
         const key = elementKey ?? this.#getTypeKey(node)

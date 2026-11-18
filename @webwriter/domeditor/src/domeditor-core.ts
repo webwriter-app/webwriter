@@ -657,6 +657,7 @@ export class DOMEditor {
   }
 
   allows(permission: import("./distribution.js").DistributionPermission | "select", element: Element | null | undefined) {
+    if(permission === "move" && element && this.schema.get(element).movable === false) return false
     if(!this.options.reader) return true
     if(!element?.isConnected || !this.options.reader.allows(permission, element)) return false
     return !["move", "delete"].includes(permission) || Array.from(element.querySelectorAll("*")).every(child => this.options.reader!.allows(permission, child))
@@ -664,7 +665,7 @@ export class DOMEditor {
 
   /** Resolve capabilities against the live selection, including capture and ranges. */
   allowsSelection(permission: import("./distribution.js").DistributionPermission | "select") {
-    if(!this.options.reader) return true
+    if(!this.options.reader && permission !== "move") return true
     if($.isMultiElementSelection) return $.selectedElements.every(element => this.allows(permission, element))
     const selected = this.features.selection.captureSelectedElement ?? this.features.selection.selectedSectionElement ?? $.selectedElement
     if(selected) return this.allows(permission, selected)
