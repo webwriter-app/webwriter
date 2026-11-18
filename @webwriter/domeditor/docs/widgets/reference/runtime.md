@@ -12,7 +12,8 @@ The widget class extends `HTMLElement` or a compatible class such as [`LitElemen
 | `static observedAttributes` | Names of attributes that cause a call to `attributeChangedCallback` when they change. |
 | `attributeChangedCallback(name, oldValue, value)` | Receives local, remote, and undo changes to observed attributes. |
 | `isContentEditable` | Indicates whether a user can edit the widget. |
-| `focus(options?)` | Can move focus to a control in the widget. |
+| `focus(options?)` | Can choose the initial control after insertion or restore focus during capture. Existing shadow-control focus and input selection are preserved. See [Handle selection & input](../guides/focus.md). |
+| `selectionStates` | Optional read-only instance property returning the widget's stable `CustomStateSet`. Opts in to the editor-owned `ww-element-selected` and `ww-element-capture-selected` states. See [Style editor selection](../guides/focus.md#style-editor-selection). |
 | `static options` / `options` | [Option declarations](options-actions.md) for the Widget drawer. `hidden`, `disabled`, and `readOnly` can be [functions of the widget](options-actions.md#function-values). |
 | `static actions` / `actions` | [Action declarations](options-actions.md). Each action has a method with the same name. `hidden`, `disabled`, and `disabledReason` can be functions of the widget. |
 | `static effects` / `effects`, `static signals`, `signals` | [Reactive links](#signals) between authored widgets. |
@@ -26,6 +27,8 @@ The authoring tool gives an installed widget a persistent `id` if the widget has
 While the document is printed, the authoring tool adds the class `ww-beforeprint` to every installed widget element. It adds the class on `beforeprint`, in a print preview, and while the `print` media query matches, and removes it on `afterprint`. The class is runtime state like the temporary `contenteditable`: it is not saved, shared, or recorded in undo history. See [Support printing](../guides/printing.md#the-class-ww-beforeprint).
 
 The authoring tool handles shadow DOM events of the types in `propagateEvents`. The authoring tool also synchronizes changes that the widget makes to the authored DOM.
+
+Declare placement through `content` expressions and `group` membership, and movement and resize rules through `movable` and `resize`, in the [editing configuration](editing-configuration.md). The `selectionStates` property is a runtime hook on the element, not a configuration field. Its states are temporary presentation state and are excluded from saved HTML, collaboration and undo history.
 
 ## Undo transactions
 

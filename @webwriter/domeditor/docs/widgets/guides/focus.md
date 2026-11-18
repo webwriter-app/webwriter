@@ -51,7 +51,17 @@ focus(options) {
 
 Use [`:focus-visible`](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Selectors/:focus-visible) to show which control has focus. Use [`<output aria-live="polite">`](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Attributes/aria-live) for feedback that an assistive technology must announce.
 
+When returning focus to a capture-selected widget, including after inserting a snippet, the authoring tool calls the widget's custom `focus()` entry point. If a control inside that widget already has focus, it keeps that focus and its input selection. A widget can use `focus()` to choose its initial control without taking focus whenever an existing document loads. Wait for rendering if necessary, and check that the widget is still connected and focus has not moved elsewhere before focusing a control.
+
 The authoring tool ignores input events from the widget's shadow DOM by default. List the required event types in `propagateEvents`, for example `["keydown"]`. Test the keyboard shortcuts in widget inputs. Make sure that typing causes only the intended actions.
+
+## Capture selection and completed clicks
+
+Capture selection lets a widget's own controls receive input. Ordinary element selection addresses the widget as document content, for example through the breadcrumb or transformation frame.
+
+A pointer interaction acquires capture only after a completed click. Pointer-down alone does not capture the widget, and a drag or cancelled press does not become capture on release. Keyboard and programmatic focus can still acquire capture without a pointer click. Native input focus and text selection inside a shadow control remain intact when capture is established.
+
+For a widget with declared editable `content`, clicking or dragging in authored light-DOM children edits that content. Keep private controls in the shadow DOM and expose authored children through slots so the editor can distinguish the two.
 
 ## Move the document selection
 
@@ -68,6 +78,50 @@ Get `textNode` from the current document. Edits can replace or remove a node. Mo
 The authoring tool can follow selections in authored children while the widget has focus. To move the document selection outside the widget, first move focus away from the host.
 
 Test Tab, Shift+Tab, Enter, and Space in edit mode and in preview. Update the existing controls to keep their focus.
+
+## Ranges through authored content
+
+Declaring `content` opens the widget's authored children to ranges that cross titles, paragraphs, nested widgets and slots. A drag that starts at a gap retains that gap as its anchor and can end partway through text. Dragging along either side of the widget projects the endpoint onto authored content at the pointer's height. During document drag selection, the page scrolls near the viewport edges rather than revealing the start of the growing range.
+
+A fully enclosed widget receives the editor's blue range overlay, including widgets that expose editable content. Partial coverage keeps the authored text range. This also works for a `display: contents` host: selection geometry follows its rendered shadow and slotted boxes. Range highlighting does not acquire capture. Deleting a partial range removes the indicated content without promoting it to deletion of the enclosing widget.
+
+The transformation frame offers figure conversion for a selected top-level element. Selecting a nested child does not offer conversion of that child or implicitly convert its containing widget. Existing top-level figures and tables retain their caption controls.
+
+## Native editor drag handles
+
+A widget can make a shadow control a native editor drag handle with `draggable="true"` and `propagateEvents: ["dragstart", "dragend"]` in its [editing configuration](../reference/editing-configuration.md). A forwarded handle can start an editor drag before capture has been established; the author does not need to click or select the widget first. The editor also supports dragging an already capture-selected or element-selected widget. Ordinary completed clicks on the control keep their native behavior. Keep `draggable` off authored text and the whole widget so authors can still select text normally.
+
+The editor resolves drops within a contentful widget to gaps between its authored children, validates the resulting content against the schema, and draws its gap cursor in the shadow appendix. It rechecks the live source and destination on drop and moves the existing node, using `moveBefore()` where available and `insertBefore()` otherwise. The widget does not need its own drop handler, temporary light-DOM wrappers, or persisted ordering attributes. The transformation frame's Move affordance uses the same pipeline.
+
+The receiving element's content expression and the child's groups constrain drop destinations just as they constrain ordinary insertion. `movable: false` disables editor movement even when a widget supplies a draggable control. Timeline events are excluded from `flow` and accepted explicitly by the timeline's content expression. They change their dates to reorder; their left-edge selection button is not a drag handle.
+
+## Style editor selection
+
+A widget can opt in to native CSS selection states by exposing its own `CustomStateSet` through a read-only `selectionStates` property. Attach internals once, or reuse the internals already owned by a form or accessibility helper:
+
+```js
+class TimelineEvent extends HTMLElement {
+  #internals = this.attachInternals()
+  get selectionStates() { return this.#internals.states }
+}
+```
+
+The authoring tool maintains `ww-element-selected` while the widget is element-selected, including capture selection. It additionally sets `ww-element-capture-selected` while the widget captures input. It removes these states when selection changes or the editor is destroyed, including on disconnected widgets. Other custom states remain widget-owned. Keep the same set for the lifetime of the element, expose it before connection, and do not write these two editor-owned states yourself.
+
+Use native selectors inside the widget's shadow stylesheet:
+
+```css
+:host(:state(ww-element-selected)) .indicator { opacity: 1; }
+:host(:state(ww-element-capture-selected)) .controls { opacity: 1; }
+/* Element selection without capture: */
+:host(:state(ww-element-selected):not(:state(ww-element-capture-selected))) .indicator {
+  outline-style: dotted;
+}
+```
+
+These states describe selection of the widget itself, not text selected inside its authored children. They are transient and do not appear in saved HTML. The editor never calls `attachInternals()` on behalf of a widget or changes widgets that do not opt in.
+
+Expose `selectionStates` on the element instance; it is not an editing-configuration field. Both states are present during capture, so use the combined selector above to distinguish ordinary element selection. A range spanning several widgets can highlight them without making each widget individually element-selected.
 
 ## Keyboard focus order
 
