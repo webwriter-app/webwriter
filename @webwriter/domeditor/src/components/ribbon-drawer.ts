@@ -1627,14 +1627,15 @@ export class RibbonDrawer extends LitElement {
           <span class="summary-label">${this.label}${elementCount}</span>
         </div>
        <span class="pane-label">
-         <slot name="heading-icon"></slot>
-         ${this.selectableHeading ? html`<button type="button" class="pane-label-button"
-           @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
-           @click=${() => this.dispatchEvent(new CustomEvent("drawer-heading-select", {bubbles: true, composed: true}))}>
-           ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
-           <span class="pane-label-text">${this.label}${elementCount}</span></button>` : html`
-           ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
-           ${this.label}${elementCount}`}
+         <slot name="heading-label">
+           ${this.selectableHeading ? html`<button type="button" class="pane-label-button"
+             @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+             @click=${() => this.dispatchEvent(new CustomEvent("drawer-heading-select", {bubbles: true, composed: true}))}>
+             ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
+             <span class="pane-label-text">${this.label}${elementCount}</span></button>` : html`
+             ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
+             ${this.label}${elementCount}`}
+         </slot>
          <slot name="heading-control"></slot>
          <slot name="heading-action"></slot>
        </span>

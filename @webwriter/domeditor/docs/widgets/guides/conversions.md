@@ -78,7 +78,7 @@ customElements.define("ww-packing-checklist", PackingChecklist)
 
 Use `convertFrom` to specify what the widget can read. Use `convertTo` to specify what it can write. A key that is a lowercase HTML tag name, such as `ul`, always means a conversion between HTML elements. A key that is a file extension, such as `.json`, or a [media type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/MIME_types), such as `image/png`, always means a file conversion.
 
-The authoring tool shows available conversions for the selected element. Authors can open the Widget drawer or select the element icon to find them. A dotted underline in the Packages drawer identifies an installed widget that can accept the selected element.
+The authoring tool shows available conversions for the selected element. Authors can open the Widget drawer or select the element name and chevron in the toolbox to find them. A dotted underline in the Packages drawer identifies an installed widget that can accept the selected element.
 
 ## Convert between a native list and a packing checklist
 
@@ -158,7 +158,7 @@ Follow these rules for keys:
 - A tag key names a native element of the document, in lowercase and without angle brackets. The authoring tool offers the conversion only for elements that it knows as content of the document body. Custom element names, SVG and MathML elements, `html`, and `body` are not conversion keys. Uppercase names are ignored.
 - An extension key starts with a dot. It has letters, digits, `_`, and `-`, and can have several parts. The authoring tool compares it with the end of the file name without regard to case. Use it for formats without a registered media type, such as `.jff`, `.gift`, `.puml`, or `.mmd`, and for formats that browsers report without a type.
 - A media type key has the form `type/subtype`. Wildcards such as `image/*` are not allowed. The authoring tool compares the key with the type of the file without parameters and without regard to case. A file with an empty type cannot match.
-- A format can have an extension key and a media type key with the same handler, as in `".json": "importJson", "application/json": "importJson"`. The authoring tool offers the file chooser for both keys.
+- A format can have an extension key and a media type key with the same handler, as in `".json": "importJson", "application/json": "importJson"`. The authoring tool groups known aliases into one menu entry. Import uses the first declared key in the group that matches the chosen file. Export uses the first declared key in the group.
 - `importFormats` and `exportFormats` in the [editing configuration](../reference/editing-configuration.md#advertise-file-formats) list the keys of file conversions. They never contain tag names or wildcards. The Develop drawer reports a tag name in one of these lists as an invalid editing option.
 
 For an HTML conversion the authoring tool replaces the element and checks that the result fits at that place. A file conversion keeps the widget in the document. See the [runtime reference](../reference/runtime.md#conversions) for all return values.

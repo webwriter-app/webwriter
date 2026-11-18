@@ -78,13 +78,25 @@ export class RibbonButton extends LitElement {
     }
 
     :host([variant="element-conversion"]) {
-      flex: 0 0 1.3rem;
-      width: 1.3rem;
+      flex: 0 1 auto;
       min-width: 0;
-      margin-inline-end: 0.25rem;
     }
-    :host([variant="element-conversion"]) .main-button {padding: 0.1rem; min-height: 1.3rem;}
-    :host([variant="element-conversion"]) .button-icon {width: 1rem; height: 1rem;}
+    :host([variant="element-conversion"]) .button-row:not([data-connected]):not(:has([aria-expanded="true"])) {border-color: transparent;}
+    :host([variant="element-conversion"]) .button-row:not([data-connected]):has([aria-expanded="true"]) {
+      border-color: #c8d2df;
+      background: #dcecff;
+    }
+    :host([variant="element-conversion"]) .main-button {
+      flex-direction: row;
+      justify-content: flex-start;
+      gap: 0.25rem;
+      min-height: 1.4rem;
+      padding: 0.1rem 0.4rem 0.1rem 0.2rem;
+      color: inherit;
+      font: inherit;
+    }
+    :host([variant="element-conversion"]) .button-icon,
+    :host([variant="element-conversion"]) .submenu-chevron {flex: none;}
 
     :host {
       display: block;
@@ -286,7 +298,7 @@ export class RibbonButton extends LitElement {
       transition: var(--ww-ui-transition, transform 120ms ease);
     }
 
-    .submenu-toggle[aria-expanded="true"] .submenu-chevron {
+    button[aria-expanded="true"] > .submenu-chevron {
       transform: rotate(225deg);
     }
 
@@ -1494,7 +1506,8 @@ export class RibbonButton extends LitElement {
     const dragPackageInsertion = this.variant === "package" && ribbonInsertionAction(dragAction)
     const shapeGallery = this.submenu.some(item => typeof item !== "string" && item.category)
     const disabledTooltip = this.disabledTooltip
-    const title = action.startsWith("widget-conversion:") ? `Convert to ${this.label}`
+    const title = this.variant === "element-conversion" ? `Conversion options for ${this.label}`
+      : action.startsWith("widget-conversion:") ? `Convert to ${this.label}`
       : `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
       <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}${this.iconAction ? " has-icon-action" : ""}`} @mouseenter=${this.scheduleDetailsShow} @mouseleave=${this.leaveDetails}>
@@ -1543,6 +1556,7 @@ export class RibbonButton extends LitElement {
             <span class="button-label-text">${this.label}</span>
             ${this.selectionCount > 0 ? html`<small class="selection-count">+${this.selectionCount}</small>`: ""}
           </span>
+          ${this.variant === "element-conversion" ? html`<span class="submenu-chevron" aria-hidden="true"></span>` : nothing}
         </button>
         ${this.packageUpdate ? html`
           <button class="package-update" type="button" aria-label=${this.packageUpdate.label} title=${this.packageUpdate.label}

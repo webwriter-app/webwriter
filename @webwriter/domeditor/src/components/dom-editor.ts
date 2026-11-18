@@ -116,7 +116,8 @@ import {
 import type {DialogSelectionState} from "../dialog"
 import type {MathSelectionState} from "../math"
 import type {ElementAttributeState} from "../element-attributes"
-import {widgetOptionValue, type WidgetOptionsState} from "../widget-options"
+import {matchesWidgetFileFormat, widgetOptionValue, type WidgetOptionsState} from "../widget-options"
+import {groupWidgetFileFormats} from "../widget-file-formats"
 import {
   aiEditReviewEvent,
   attachmentConfirmationEvent,
@@ -5107,9 +5108,13 @@ export class DomEditor extends LitElement {
     const revision = this.frameRevision
     try {
       if(direction === "import") {
-        const file = await this.pickFileInput(format)
+        const group = groupWidgetFileFormats(formats).find(group => group.formats.includes(format))!
+        const accept = [...new Set(group.formats.map(format => format.toLowerCase()))].join(",")
+        const file = await this.pickFileInput(accept)
         if(!file || !this.isConnected || revision !== this.frameRevision) return
-        if(await this.execute({type: "importWidgetFile", sourceId, format, file}) !== true) {
+        const matchedFormat = group.formats.find(key => matchesWidgetFileFormat(file, key))
+        if(!matchedFormat) throw new TypeError(`Choose a file in ${group.label} format.`)
+        if(await this.execute({type: "importWidgetFile", sourceId, format: matchedFormat, file}) !== true) {
           throw new Error("The file could not be imported into the selected widget.")
         }
       }

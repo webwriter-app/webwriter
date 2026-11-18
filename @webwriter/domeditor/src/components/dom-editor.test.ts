@@ -4903,23 +4903,28 @@ describe("DomEditor file actions", () => {
   it("routes widget file conversions through the host picker and download", async () => {
     const {editor} = await mountEditor()
     const host = editor as any
-    host.widgetConversion = {sourceId: "element-1", targets: [], imports: [".quiz"], exports: ["text/plain"]}
+    host.widgetConversion = {sourceId: "element-1", targets: [], imports: ["text/csv", ".CSV", ".csv", ".quiz"], exports: ["text/plain", ".txt"]}
     const output = new File(["Exported"], "quiz.txt", {type: "text/plain"})
     const execute = vi.spyOn(editor, "execute").mockImplementation(async action => action.type === "exportWidgetFile" ? output : true)
     const download = vi.spyOn(host, "triggerFileDownload").mockImplementation(() => {})
     const run = (label: string) => host.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {detail: {label}}))
 
-    run("widget-import:element-1:.quiz")
-    const picker = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
-    expect(picker.accept).toBe(".quiz")
-    const input = new File(["Imported"], "quiz.quiz")
-    Object.defineProperty(picker, "files", {value: [input]})
-    picker.dispatchEvent(new Event("change"))
-    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "importWidgetFile", sourceId: "element-1", format: ".quiz", file: input}))
-    expect(picker.isConnected).toBe(false)
+    for(const [input, format] of [
+      [new File(["a,b"], "quiz.csv"), ".CSV"],
+      [new File(["a,b"], "quiz", {type: "text/csv"}), "text/csv"],
+    ] as const) {
+      run("widget-import:element-1:text/csv")
+      const picker = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+      expect(picker.accept).toBe("text/csv,.csv")
+      Object.defineProperty(picker, "files", {value: [input]})
+      picker.dispatchEvent(new Event("change"))
+      await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "importWidgetFile", sourceId: "element-1", format, file: input}))
+      expect(picker.isConnected).toBe(false)
+    }
 
     run("widget-export:element-1:text/plain")
     await vi.waitFor(() => expect(download).toHaveBeenCalledWith(output, "quiz.txt"))
+    expect(execute).toHaveBeenCalledWith({type: "exportWidgetFile", sourceId: "element-1", format: "text/plain"})
   })
 
   it.each([

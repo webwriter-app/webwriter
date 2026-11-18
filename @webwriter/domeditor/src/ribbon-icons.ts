@@ -314,6 +314,14 @@ const splitTable = `
   </svg>
 `
 
+const circledUndo = `
+  <svg class="circled-undo" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"
+    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="9.5" stroke-width="1.6" />
+    <g transform="translate(3.25 3.6) scale(.7)" stroke-width="2.5">${iconContents(arrowBackUp)}</g>
+  </svg>
+`
+
 /** Reload arrows surrounding an inset lightning bolt, optionally crossed out. */
 const autoReloadIcon = (off = false) => `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="icon-tabler-refresh">${iconContents(refresh)}</g><g class="icon-tabler-bolt" transform="translate(6 6) scale(.5)">${iconContents(bolt)}</g>${off ? '<path class="auto-reload-strike" d="M3 21L21 3" />' : ""}</svg>`
 
@@ -355,7 +363,7 @@ const icons: Record<string, string> = {
   Redo: arrowForwardUp,
   History: circleDot,
   Changes: historyToggle,
-  Restore: refresh,
+  Restore: circledUndo,
   Comments: messagePlus,
   Previous: arrowLeft,
   Next: arrowRight,

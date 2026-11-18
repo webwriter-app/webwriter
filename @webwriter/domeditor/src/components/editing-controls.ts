@@ -29,6 +29,7 @@ import {
   type WidgetConversionState,
 } from "../editor-bridge"
 import {widgetActionRows, type WidgetActionState, type WidgetOptionState, type WidgetOptionsState, type WidgetOptionValue} from "../widget-options"
+import {groupWidgetFileFormats} from "../widget-file-formats"
 import {renderWidgetOptionField, renderWidgetOptions} from "@webwriter/lit"
 import type {ElementAttributeState} from "../element-attributes"
 import {safeCssColor} from "../css-color"
@@ -314,9 +315,9 @@ export abstract class EditingControls extends LitElement {
       ({label: name, icon, iconUrl, action: this.widgetConversionAction(tag)!}))
     const group = (direction: "import" | "export", formats: string[], icon: string) => {
       const label = direction === "import" ? "Import" : "Export"
-      return {label, icon, buttons: formats.map(format => ({
-        label: `${label} ${format}${direction === "import" ? "…" : ""}`,
-        action: `widget-${direction}:${state.sourceId}:${format}`,
+      return {label, icon, buttons: groupWidgetFileFormats(formats).map(group => ({
+        label: `${label} ${group.label}${direction === "import" ? "…" : ""}`,
+        action: `widget-${direction}:${state.sourceId}:${group.formats[0]}`,
         icon,
         iconUrl: undefined,
       }))}

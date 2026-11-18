@@ -66,6 +66,8 @@ it("resets configured document metadata and layout through the existing commands
   toolbox.selectTool("Edit")
   await toolbox.updateComplete
   const reset = () => toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".document-reset")!
+  expect(reset().getAttribute("aria-label")).toBe("Reset document options")
+  expect(reset().textContent!.trim()).toBe("")
   expect(reset().disabled).toBe(true)
   toolbox.documentHead = {...emptyDocumentHeadState(), title: "Lesson", language: "de", description: "A lesson",
     elements: [{id: "unknown", tagName: "meta", label: "Custom", attributes: [{name: "name", value: "custom"}], canMoveUp: false, canMoveDown: false}]}
@@ -1431,6 +1433,8 @@ it("enables Style Reset for any inline style and requests a complete reset", asy
   toolbox.selectTool("Edit")
   await toolbox.updateComplete
   const reset = () => toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.style-reset')!
+  expect(reset().getAttribute("aria-label")).toBe("Reset styles")
+  expect(reset().textContent!.trim()).toBe("")
   expect(reset().slot).toBe("heading-action")
   expect(reset().disabled).toBe(true)
   toolbox.elementStyle = {
