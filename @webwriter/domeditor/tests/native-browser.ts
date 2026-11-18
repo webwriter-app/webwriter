@@ -3516,14 +3516,22 @@ await check("leaving a gap restores the native text caret", async () => {
     doc.body.innerHTML = "<p>Text caret</p>"
     const paragraph = doc.querySelector("p")!
     doc.body.focus()
-    selection.setPosition(doc.body, 0)
-    feature.processSelection(undefined, {scrollIntoView: false})
-    await layoutFrame()
-    assert(view.getComputedStyle(paragraph).caretColor === "rgba(0, 0, 0, 0)", "a gap did not suppress the native caret")
+    for(const offset of [0, 1]) {
+      selection.setPosition(doc.body, offset)
+      feature.processSelection(undefined, {scrollIntoView: false})
+      await layoutFrame()
+      assert(view.getComputedStyle(paragraph).caretColor === "rgba(0, 0, 0, 0)", "a gap did not suppress the native caret")
+      for(const root of [doc.documentElement, doc.body]) {
+        assert(view.getComputedStyle(root).caretColor === "rgba(0, 0, 0, 0)", "a gap left the editable root's native caret visible")
+      }
+    }
     selection.setPosition(paragraph.firstChild, 2)
     feature.processSelection(undefined, {scrollIntoView: false})
     await layoutFrame()
     assert(view.getComputedStyle(paragraph).caretColor !== "rgba(0, 0, 0, 0)", "moving from a gap into text left the native caret hidden")
+    for(const root of [doc.documentElement, doc.body]) {
+      assert(view.getComputedStyle(root).caretColor !== "rgba(0, 0, 0, 0)", "moving into text left the editable root's native caret hidden")
+    }
     assert(feature.gapCaret?.getAttribute("visibility") === "hidden", "moving into text left the gap caret visible")
   }
   finally { view.editor?.destroy(); frame.remove() }

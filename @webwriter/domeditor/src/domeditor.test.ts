@@ -372,7 +372,7 @@ describe("DOMEditor stylesheets", () => {
     // every element: a state on BODY above `*` or `::selection` restyles the
     // whole document whenever it changes.
     expect(editorStyleString).toMatch(/\n:state\(ww-node-caret-host\),\s*:state\(ww-node-caret-host\)\s+\*\s*\{\s*caret-color:\s*transparent\s*!important;\s*\}/)
-    expect(editorStyleString).toMatch(/@layer webwriter-theme \{\s*:state\(ww-gap-caret-host\)\s*\{\s*caret-color:\s*transparent;\s*\}\s*\}\s*body:state\(ww-gap-caret-host\)\s*\{\s*caret-color:\s*transparent\s*!important;\s*\}/)
+    expect(editorStyleString).toMatch(/@layer webwriter-theme \{\s*:state\(ww-gap-caret-host\)\s*\{\s*caret-color:\s*transparent;\s*\}\s*\}\s*html:state\(ww-gap-caret-host\),\s*body:state\(ww-gap-caret-host\)\s*\{\s*caret-color:\s*transparent\s*!important;\s*\}/)
     expect(editorStyleString).toMatch(/\n:state\(ww-drop-caret-host\),\s*:state\(ww-drop-caret-host\)\s+\*\s*\{\s*caret-color:\s*transparent\s*!important;\s*\}/)
     expect(editorStyleString).not.toMatch(/body:state\(ww-(?:gap-caret-visible|node-selection-active|drop-selection-active)\)(?:\s+\*)?\s*[,{][^}]*caret-color/)
     expect(editorStyleString).not.toMatch(/ww-gap-caret-visible[^{]*\{[^}]*::selection/)

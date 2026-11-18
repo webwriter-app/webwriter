@@ -3108,9 +3108,9 @@ export class SelectionFeature extends EditorFeature {
 
         setPart(gapCaret, `gap-caret-gap-${placement}-selected`)
         this.#markSelection(document.body, "gap-caret-visible")
-        // The collapsed native range still paints a caret at the nearest
-        // caret position.
-        this.#markNativeCaretHosts("gap-caret-host")
+        // Chromium paints at the nearest caret position; iPad Safari takes
+        // the color from the editable root instead (HTML in designMode).
+        this.#markNativeCaretHosts("gap-caret-host", document.documentElement, document.body)
       }
 
     }

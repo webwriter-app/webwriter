@@ -1327,13 +1327,15 @@ body:state(ww-graphic-manipulating) * {
  * feature states the elements whose caret color that caret can take; a rule
  * for every element would restyle the whole document whenever the gap caret
  * appears or disappears. As when the color is inherited from BODY, a caret
- * color authored on such an element stays authoritative. */
+ * color authored on such an element stays authoritative. iPad Safari uses
+ * the editable root's color instead, including HTML in designMode. */
 @layer webwriter-theme {
   :state(ww-gap-caret-host) {
     caret-color: transparent;
   }
 }
 
+html:state(ww-gap-caret-host),
 body:state(ww-gap-caret-host) {
   caret-color: transparent !important;
 }

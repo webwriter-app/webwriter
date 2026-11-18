@@ -7625,6 +7625,26 @@ describe("selection paint rules", () => {
   const caretHosts = (state: string) => presentationStateElements(document, state)
   afterEach(() => vi.restoreAllMocks())
 
+  it.each(["<p>text</p>", "<section><p>text</p></section>"])("suppresses the editable root's caret after a paragraph in %s", html => {
+    renderText()
+    document.body.innerHTML = html
+    const paragraph = document.querySelector("p")!
+    $.selectGap(paragraph, "after")
+    feature.processSelection()
+
+    expect(feature.selectionCaret?.getAttribute("part")).toContain("gap-caret-gap-after-selected")
+    expect(hasPresentationState(document.documentElement, "gap-caret-host")).toBe(true)
+    expect(hasPresentationState(document.body, "gap-caret-host")).toBe(true)
+    expect(document.body.innerHTML).toBe(html)
+
+    $.move(paragraph.firstChild!, 2)
+    feature.processSelection()
+
+    expect(caretHosts("gap-caret-host")).toEqual([])
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
+    expect(document.body.innerHTML).toBe(html)
+  })
+
   it("keeps caret paint installed while the same gap is processed again", () => {
     renderText()
     document.body.innerHTML = "<p>before</p><ul><li>item</li></ul><p>after</p><p>far</p>"
@@ -7634,10 +7654,9 @@ describe("selection paint rules", () => {
     feature.processSelection()
     expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(true)
     expect(hasPresentationState(list, "gap-before-selected")).toBe(true)
-    // The native caret is hidden where Chromium can paint it, not by a rule
-    // for every element, which restyles the whole document on each change.
-    expect(caretHosts("gap-caret-host")).toEqual([before, list, after])
-    expect(hasPresentationState(document.body, "gap-caret-host")).toBe(false)
+    // Cover Chromium's caret positions and iPad Safari's editable root
+    // without a descendant rule that restyles every element.
+    expect(caretHosts("gap-caret-host")).toEqual([document.documentElement, document.body, before, list, after])
     expect(hasPresentationState(far, "gap-caret-host")).toBe(false)
 
     // This DOM replaces a rule to change its selector.
@@ -7651,7 +7670,7 @@ describe("selection paint rules", () => {
       expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(true)
       expect(selectors().some(selector => selector.includes("body > ul:nth-child(2)"))).toBe(true)
       expect(selectors().some(selector => selector.includes("body:where(body)") || selector.includes("body.ww-inactive-presentation"))).toBe(false)
-      expect(caretHosts("gap-caret-host")).toEqual([before, list, after])
+      expect(caretHosts("gap-caret-host")).toEqual([document.documentElement, document.body, before, list, after])
 
       $.move(document.querySelector("li")!.firstChild!, 2)
       feature.processSelection()
