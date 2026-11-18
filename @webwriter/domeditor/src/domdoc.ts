@@ -12,7 +12,7 @@ import {SVG_NAMESPACE} from "./graphic"
 import type {EditorStateSnapshot} from "./editor-state"
 import {WidgetDataBindings, stampUndo, widgetDataHistoryTime, widgetDataHistoryGroup, type WidgetDataOptions} from "./widget-data"
 import {authoredDetailsOpen, clearTemporaryDetailsState, editorWidgetLookup, isAuthoredContentEditableMutation,
-  hasTemporaryDetailsState, isInsideEditorOnlyNode, isHTMLDetailsElement, markTemporaryDetailsState,
+  hasTemporaryDetailsState, releaseKeyboardInputMode, isAuthoredMutation, isInsideEditorOnlyNode, isHTMLDetailsElement, markTemporaryDetailsState,
   type WidgetLookup} from "./editor-artifacts"
 
 import {
@@ -1666,6 +1666,7 @@ export class SharedDOMDoc {
     if(mutation.type === "attributes") {
       const name = mutation.attributeName?.toLowerCase()
       if(!name || this.#isIgnoredAttribute(name) || isAuthoredContentEditableMutation(mutation, this.#isWidget) === false) return false
+      if(name === "inputmode" && !isAuthoredMutation(mutation)) return false
       if(isElement(mutation.target)) {
         const currentIgnored = this.#isInsideIgnoredElement(mutation.target)
         if(name === "class") {
@@ -1954,6 +1955,7 @@ export class SharedDOMDoc {
       try {
         if(attribute.name === "class" && attribute.namespaceURI === null) return
         if(attribute.namespaceURI === null) {
+          if(attribute.name === "inputmode") releaseKeyboardInputMode(element)
           if(element.getAttribute(attribute.name) !== attribute.value) element.setAttribute(attribute.name, attribute.value)
         }
         else if(element.getAttributeNS(attribute.namespaceURI, attribute.name.split(":").at(-1)!) !== attribute.value) {

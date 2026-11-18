@@ -218,6 +218,23 @@ await check("table paste strips marked Office placeholders", () => {
   finally { tableEditor.destroy() }
 })
 
+await check("virtual text keys preserve rendered spaces and delete complete graphemes", () => {
+  const paragraph = document.createElement("p")
+  fixture.append(paragraph)
+  const textEditor = new DOMEditor({touchKeyboard: true})
+  try {
+    document.body.focus()
+    $.move(paragraph)
+    const press = (command: "insert" | "backspace", text?: string) =>
+      textEditor.features.manipulation.actions.textKeyboardInput({type: "textKeyboardInput", command, text})
+    for(const value of ["x", " ", " ", "👩🏽‍🚀"]) assert(press("insert", value), "text insertion was rejected")
+    assert(paragraph.innerText.replaceAll("\u00a0", " ") === "x  👩🏽‍🚀", "typed spaces collapsed")
+    assert(press("backspace"), "Backspace was rejected")
+    assert(paragraph.innerText.replaceAll("\u00a0", " ") === "x  ", "Backspace did not delete one grapheme")
+  }
+  finally { paragraph.remove(); textEditor.destroy() }
+})
+
 await check("converted list items support repeated Backspace without clicking", checkListDeletion)
 await check("Command deletion stops at visual and hard line boundaries", checkLineDeletion)
 await check("interrupted live sessions recover committed data locally", checkLiveSessionRecovery)

@@ -6156,6 +6156,28 @@ describe("selection invariants", () => {
       return event
     }
 
+    it("requests the text keyboard on a text tap and leaves drags, cancellations and object selection alone", () => {
+      editor.setTouchKeyboardPreference(true)
+      const paragraph = textDocument()
+      hitTest()
+      const post = vi.spyOn(editor, "postHostMessage")
+      const request = {type: "editor-text-entry", pointerType: "touch"}
+      touch(paragraph, "pointerdown")
+      expect(post).not.toHaveBeenCalledWith(request)
+      touch(paragraph, "pointerup")
+      expect(post).toHaveBeenCalledWith(request)
+      post.mockClear()
+      touch(paragraph, "pointerdown")
+      touch(paragraph, "pointermove", 80)
+      touch(paragraph, "pointerup", 80)
+      touch(paragraph, "pointerdown")
+      touch(paragraph, "pointercancel")
+      const divider = document.body.appendChild(document.createElement("hr"))
+      touch(divider, "pointerdown")
+      touch(divider, "pointerup")
+      expect(post).not.toHaveBeenCalledWith(request)
+    })
+
     it("places a caret on tap without compatibility mouse events", () => {
       const paragraph = textDocument(), text = paragraph.firstChild!
       hitTest()

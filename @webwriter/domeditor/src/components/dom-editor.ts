@@ -35,6 +35,8 @@ import "./developer-console"
 import "./document-theme-presets"
 import type {DocumentThemePresets} from "./document-theme-presets"
 import type {DeveloperConsole} from "./developer-console"
+import type {TextKeyboardCommand} from "./text-keyboard"
+import "./text-keyboard"
 import "./math-keyboard"
 import type {MathKeyboard} from "./math-keyboard"
 import "./shape-keyboard"
@@ -126,6 +128,7 @@ import {
   executeCompleteEvent,
   emptyVersionHistoryState,
   initializeEditorMessage,
+  supportsTouchKeyboard,
   isAIEditReviewMessage,
   isExecuteResponse,
   isDocumentHeadStateChangeMessage,
@@ -149,6 +152,7 @@ import {
   loadWidgetsMessage,
   selectionChangeEvent,
   shapeKeyboardInputEvent,
+  textKeyboardRequestEvent,
   mathKeyboardTabEvent,
   type ShapeKeyboardInput,
   type ElementStyleMutation,
@@ -437,6 +441,9 @@ export class DomEditor extends LitElement {
     tableSelection: {attribute: false, state: true},
     graphicSelection: {attribute: false, state: true},
     mathSelection: {attribute: false, state: true},
+    textKeyboardEligible: {attribute: false, state: true},
+    textKeyboardDisplay: {attribute: false, state: true},
+    nativeTextKeyboard: {attribute: false, state: true},
     mathKeyboardHidden: {attribute: false, state: true},
     shapeKeyboardHidden: {attribute: false, state: true},
     shapePaint: {attribute: false, state: true},
@@ -626,6 +633,9 @@ export class DomEditor extends LitElement {
   private tableSelection: TableSelectionState | null = null
   private graphicSelection: GraphicSelectionState | null = null
   private mathSelection: MathSelectionState | null = null
+  private textKeyboardEligible = false
+  private textKeyboardDisplay: "inactive" | "open" | "closed" = "inactive"
+  private nativeTextKeyboard = false
   private mathKeyboardHidden = false
   private shapeKeyboardHidden = false
   private shapePaint: Required<GraphicShapePaint> = {...defaultGraphicShapePaint}
@@ -1014,6 +1024,14 @@ export class DomEditor extends LitElement {
 
     .math-keyboard-area dom-editor-math-keyboard { height: 100%; max-height: none; pointer-events: auto; }
 
+    .document-stage:has(.text-keyboard-area) { flex-direction: column; }
+    .text-keyboard-area {
+      flex: 0 1 auto;
+      min-height: 0;
+      max-height: 55%;
+      overflow: auto;
+    }
+
     .shape-keyboard-area { height: auto; max-height: 100%; }
     .shape-keyboard-area[hidden] { display: none; }
     .shape-keyboard-area dom-editor-shape-keyboard { pointer-events: auto; }
@@ -1352,6 +1370,7 @@ export class DomEditor extends LitElement {
     if(!source?.documentElement) return this.frameDocumentHTML
     const inertDocument = getInertDocument(source)
     const root = inertDocument.importNode(source.documentElement, true) as HTMLElement
+    copyEditorArtifactState(source.documentElement, root)
     restoreWidgetGroupingClones(source.documentElement, root)
     clearEditorArtifacts(root, [], this.isInstalledWidget)
     const serialize = prepareWidgetGroupingsForSerialization(root)
@@ -1365,6 +1384,7 @@ export class DomEditor extends LitElement {
     const editorDocument = this.editorDocument
     const source = editorDocument?.cloneNode(true) as Document | null
     if(!source?.documentElement) throw new Error("The editor document is not ready")
+    copyEditorArtifactState(editorDocument!, source)
     restoreWidgetGroupingClones(editorDocument!, source)
     return this.preparePreviewDocument(source)
   }
@@ -2195,6 +2215,9 @@ export class DomEditor extends LitElement {
 
   private initializeEditorFrame(iframe: HTMLIFrameElement) {
     if(iframe !== this.editorIframe()) return
+    this.textKeyboardEligible = false
+    this.textKeyboardDisplay = "inactive"
+    this.nativeTextKeyboard = false
     this.guidedTourReady = false
     this.handleHostWindowFocus()
     for(const pending of this.frameRequests.values()) {
@@ -2352,6 +2375,7 @@ export class DomEditor extends LitElement {
       const editorReadyReject = this.editorReadyReject
       const initializeMessage: InitializeEditorMessage = {
         type: initializeEditorMessage,
+        touchKeyboard: this.offerTextKeyboard,
         syncUrl: this.syncUrl,
         bridgeNonce: this.bridgeNonce,
         documentReplicaId: this.documentReplicaId,
@@ -2658,7 +2682,11 @@ export class DomEditor extends LitElement {
     this.dismissFloatInfo()
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     const appendix = this.editorDocument?.body.shadowRoot
-    if(isWidgetShadowInteraction(event) || appendix && event.composedPath().includes(appendix)) return
+    if(isWidgetShadowInteraction(event) || appendix && event.composedPath().includes(appendix)
+      || event.composedPath().some(node => (node as Element).matches?.("input, select, textarea"))) {
+      this.textKeyboardDisplay = "inactive"
+      return
+    }
     this.focusEditor()
     this.dismissEditorMenus()
     if(!this.editorTargetSharesTextSelection(event.target)) {
@@ -2737,9 +2765,17 @@ export class DomEditor extends LitElement {
   }
 
   private handleEditorFocus = (event: FocusEvent) => {
-    if(isWidgetShadowInteraction(event)) return
+    if(isWidgetShadowInteraction(event)) {
+      this.textKeyboardDisplay = "inactive"
+      return
+    }
+    if(isTextFieldInteraction(event, this.editorDocument?.body)) this.textKeyboardDisplay = "inactive"
     this.dismissThemePicker()
     this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
+  }
+
+  private handleHostInputFocus = (event: FocusEvent) => {
+    if(this.textKeyboardDisplay !== "inactive" && isTextFieldInteraction(event)) this.textKeyboardDisplay = "inactive"
   }
 
   private handleEditorFrameFocus = () => {
@@ -3475,6 +3511,12 @@ export class DomEditor extends LitElement {
       }
     }
     this.settings = {...settings, shortcuts: {...settings.shortcuts}}
+    if(previous.alwaysShowTextKeyboard !== settings.alwaysShowTextKeyboard) {
+      this.nativeTextKeyboard = false
+      this.textKeyboardDisplay = "inactive"
+      if(!this.offerTextKeyboard) this.textKeyboardEligible = false
+      if(this.editorWindow) this.postFrameControl("touch-keyboard-preference", {enabled: this.offerTextKeyboard})
+    }
     if(previous.proofreadingEnabledByDefault !== settings.proofreadingEnabledByDefault) {
       this.proofreadingReloading = false
       this.proofreadingState = {...emptyProofreadingState(), allowed: this.settings.proofreadingEnabledByDefault, enabled: this.settings.proofreadingEnabledByDefault && this.documentProofreadingEnabled,
@@ -5485,7 +5527,9 @@ export class DomEditor extends LitElement {
       return
     }
     if(label === "figure-caption-edit") {
-      void this.execute({type: "editFigureCaption"}).finally(() => this.focusEditor())
+      void this.execute({type: "editFigureCaption"}).then(edited => {
+        if(edited && this.offerTextKeyboard && this.textKeyboardEligible) this.textKeyboardDisplay = "open"
+      }).finally(() => this.focusEditor())
       return
     }
     if(label?.startsWith("math:")) {
@@ -7484,6 +7528,7 @@ export class DomEditor extends LitElement {
     if(tool === "Distribute") void this.loadDistributionItems()
     const expandDockedToolbox = this.narrowLayout && this.bottomPanelOpen
     if(expandDockedToolbox) {
+      if(this.textKeyboardDisplay === "open") this.textKeyboardDisplay = "closed"
       this.mathKeyboardHidden = true
       this.shapeKeyboardHidden = true
       this.linkKeyboardHidden = true
@@ -7853,11 +7898,34 @@ export class DomEditor extends LitElement {
     return (this.attachmentSelection || this.linkSelection?.active) && !this.mathSelection?.active && !this.graphicSelection?.capture
   }
 
+  private get offerTextKeyboard() {
+    return this.settings.alwaysShowTextKeyboard || supportsTouchKeyboard(window)
+  }
+
+  private get hasTextKeyboard() {
+    return this.textKeyboardEligible && (this.settings.alwaysShowTextKeyboard || this.textKeyboardDisplay !== "inactive")
+      && !this.hasLinkKeyboard && !this.graphicSelection?.capture
+      && !this.mathSelection?.active && !this.previewActive && !this.liveSessionActive
+      && !this.documentLoading && !this.documentFramePending
+  }
+
+  private setNativeTextKeyboard(enabled: boolean) {
+    this.nativeTextKeyboard = enabled
+    this.postFrameControl("touch-keyboard-mode", {enabled: !enabled})
+    this.focusEditor()
+  }
+
+  private handleTextKeyboardCommand = (event: CustomEvent<TextKeyboardCommand>) => {
+    if(!this.hasTextKeyboard || this.textKeyboardDisplay !== "open" || this.nativeTextKeyboard) return
+    void this.execute({...event.detail, type: "textKeyboardInput"}).catch(error => this.reportFileError(error))
+  }
+
   private get bottomPanelOpen() {
     if(this.liveSessionActive) return false
     if((this.consoleOpen || this.reviewOpen) && (!this.previewActive || this.settings.pinDeveloperConsole)) return true
     if(this.previewActive) return false
-    return Boolean(this.graphicSelection?.capture && !this.shapeKeyboardHidden
+    return Boolean(this.hasTextKeyboard && this.textKeyboardDisplay === "open" && !this.nativeTextKeyboard
+      || this.graphicSelection?.capture && !this.shapeKeyboardHidden
       || this.hasLinkKeyboard && !this.linkKeyboardHidden
       || this.isMathEditing && !this.mathKeyboardHidden)
   }
@@ -8808,6 +8876,12 @@ export class DomEditor extends LitElement {
       pending.resolve(event.data)
       return
     }
+    if(event.data?.type === textKeyboardRequestEvent) {
+      if(this.isEditorMessage(event) && this.offerTextKeyboard
+        && (event.data.pointerType === "touch" || event.data.pointerType === "pen" || this.settings.alwaysShowTextKeyboard) && !this.previewActive && !this.liveSessionActive
+        && this.textKeyboardDisplay === "inactive") this.textKeyboardDisplay = "open"
+      return
+    }
     if(event.data?.type === "editor-frame-interaction") {
       if(this.editorOpaque && this.isEditorMessage(event)) this.dismissFloatInfo()
       return
@@ -8816,7 +8890,10 @@ export class DomEditor extends LitElement {
       if(!this.editorOpaque || !this.isEditorMessage(event)) return
       this.dismissFloatInfo()
       const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
-      if(event.data.widgetShadow === true || event.data.appendix === true) return
+      if(event.data.widgetShadow === true || event.data.appendix === true || event.data.formControl === true) {
+        this.textKeyboardDisplay = "inactive"
+        return
+      }
       this.focusEditor()
       this.dismissEditorMenus()
       const path = event.data.targetPath
@@ -8833,7 +8910,9 @@ export class DomEditor extends LitElement {
       return
     }
     if(event.data?.type === "editor-frame-focusin") {
-      if(!this.editorOpaque || !this.isEditorMessage(event) || event.data.widgetShadow === true) return
+      if(!this.editorOpaque || !this.isEditorMessage(event)) return
+      if(event.data.widgetShadow === true || event.data.formControl === true) this.textKeyboardDisplay = "inactive"
+      if(event.data.widgetShadow === true) return
       this.dismissThemePicker()
       this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
       return
@@ -8998,6 +9077,8 @@ export class DomEditor extends LitElement {
         : null
       this.distributionSelection = this.projectDistributionState(event.data.detail.distribution ?? null)
       this.distributionGeneral = this.projectDistributionState(event.data.detail.distributionGeneral ?? null)
+      this.textKeyboardEligible = event.data.detail.textKeyboard === true
+      if(!this.textKeyboardEligible) this.textKeyboardDisplay = "inactive"
       this.selectionPath = path
       const selectedSection = event.data.detail.section
       const activeSection = path.flatMap(item => item.sections ?? []).at(-1)
@@ -9267,6 +9348,7 @@ export class DomEditor extends LitElement {
 
   connectedCallback() {
     super.connectedCallback()
+    this.addEventListener("focusin", this.handleHostInputFocus)
     if(!this.liveSessionIdFromURL()) {
       if(globalThis.indexedDB) void this.refreshDocumentRecoveries()
       this.documentRecoveryTimer = setInterval(this.pollDocumentRecovery, documentRecoveryPollMs)
@@ -9342,6 +9424,7 @@ export class DomEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    this.removeEventListener("focusin", this.handleHostInputFocus)
     clearInterval(this.documentRecoveryTimer)
     this.documentRecoveryTimer = undefined
     document.removeEventListener("visibilitychange", this.flushDocumentRecoveryWhenHidden)
@@ -9450,6 +9533,8 @@ export class DomEditor extends LitElement {
     this.distributionGeneral = null
     this.distributionSelection = null
     this.distributionItems = []
+    this.textKeyboardEligible = false
+    this.textKeyboardDisplay = "inactive"
     this.selectionPath = []
     this.nodeSelection = false
     this.captureSelection = false
@@ -9853,6 +9938,20 @@ export class DomEditor extends LitElement {
             @live-widget-state-change=${this.handleLiveWidgetStateChange}
           ></live-session-overlay>
         ` : ""}
+        ${this.hasTextKeyboard ? this.textKeyboardDisplay !== "open" || this.nativeTextKeyboard ? html`
+          <button class="math-keyboard-open" type="button" aria-label="Show text keyboard" title="Show text keyboard"
+            @pointerdown=${(event: PointerEvent) => event.preventDefault()}
+            @click=${() => {
+              this.textKeyboardDisplay = "open"
+              if(this.nativeTextKeyboard) this.setNativeTextKeyboard(false)
+              else this.focusEditor()
+            }}>${ribbonIcon("Shortcuts")}</button>` : html`
+          <section class="text-keyboard-area" aria-label="Text input">
+            <dom-editor-text-keyboard .deviceKeyboardAvailable=${supportsTouchKeyboard(window)} @text-keyboard-command=${this.handleTextKeyboardCommand}
+              @text-keyboard-native=${() => this.setNativeTextKeyboard(true)}
+              @text-keyboard-close=${() => { this.textKeyboardDisplay = "closed"; this.focusEditor() }}>
+            </dom-editor-text-keyboard>
+          </section>` : nothing}
         ${this.graphicSelection?.capture && !this.previewActive && !this.liveSessionActive ? html`
           ${this.shapeKeyboardHidden ? html`<button class="math-keyboard-open" type="button"
             title="Show shape keyboard" aria-label="Show shape keyboard"

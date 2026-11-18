@@ -31,6 +31,77 @@ describe("DOMEditor lifecycle", () => {
     expect(document.body.contains(authored)).toBe(true)
   })
 
+  it("keeps touch keyboard hints local to the editing hosts and out of snapshots and undo", () => {
+    document.body.innerHTML = '<p>Text</p><input inputmode="email">'
+    const editor = new DOMEditor({touchKeyboard: true})
+    try {
+      const history = editor.doc.canUndo
+      for(const enabled of [true, false, true]) {
+        editor.setTouchKeyboardEnabled(enabled)
+        expect(editor.touchKeyboardActive).toBe(enabled)
+        for(const host of [document.documentElement, document.body]) expect(host.getAttribute("inputmode")).toBe(enabled ? "none" : null)
+        editor.doc.syncFromDOM()
+        expect(editor.doc.body.getAttribute("inputmode")).toBeUndefined()
+        expect(editor.doc.documentAttributes!.getAttribute("inputmode")).toBeUndefined()
+        expect(editor.doc.canUndo).toBe(history)
+        const html = editor.toHTML()
+        expect(html).not.toContain('inputmode="none"')
+        expect(html).toContain('inputmode="email"')
+      }
+      const input = document.body.querySelector("input")!
+      input.dispatchEvent(new PointerEvent("pointerdown"))
+      expect(editor.touchKeyboardActive).toBe(false)
+      expect(input.getAttribute("inputmode")).toBe("email")
+      document.body.querySelector("p")!.dispatchEvent(new PointerEvent("pointerdown"))
+      expect(editor.touchKeyboardActive).toBe(true)
+
+      editor.features.manipulation.setAuthoredElementAttribute(document.documentElement, "inputmode", "none")
+      editor.doc.syncFromDOM()
+      expect(editor.doc.documentAttributes!.getAttribute("inputmode")).toBe("none")
+      document.documentElement.removeAttribute("inputmode")
+
+      // A participant can author the same value as our temporary hint.
+      editor.doc.body.setAttribute("inputmode", "none")
+      editor.doc.syncFromDOM()
+      expect(editor.doc.body.getAttribute("inputmode")).toBe("none")
+      editor.setTouchKeyboardEnabled(false)
+      expect(document.body.getAttribute("inputmode")).toBe("none")
+      document.body.removeAttribute("inputmode")
+      editor.setTouchKeyboardEnabled(true)
+    }
+    finally { editor.destroy(); document.body.removeAttribute("inputmode") }
+    expect(document.documentElement.hasAttribute("inputmode")).toBe(false)
+  })
+
+  it("honors an explicitly authored input mode and leaves stand-alone editing native", () => {
+    document.body.setAttribute("inputmode", "decimal")
+    const editor = new DOMEditor({touchKeyboard: true})
+    try {
+      expect(editor.touchKeyboardActive).toBe(false)
+      expect(document.body.getAttribute("inputmode")).toBe("decimal")
+      expect(document.documentElement.hasAttribute("inputmode")).toBe(false)
+    }
+    finally { editor.destroy() }
+    expect(document.body.getAttribute("inputmode")).toBe("decimal")
+    document.body.removeAttribute("inputmode")
+    const standalone = new DOMEditor()
+    try {
+      standalone.setTouchKeyboardEnabled(true)
+      expect(document.body.hasAttribute("inputmode")).toBe(false)
+      standalone.setTouchKeyboardPreference(true)
+      expect(standalone.touchKeyboardActive).toBe(true)
+      standalone.setTouchKeyboardEnabled(false)
+      expect(standalone.options.touchKeyboard).toBe(true)
+      expect(standalone.touchKeyboardActive).toBe(false)
+      standalone.setTouchKeyboardEnabled(true)
+      expect(standalone.touchKeyboardActive).toBe(true)
+      standalone.setTouchKeyboardPreference(false)
+      expect(standalone.options.touchKeyboard).toBe(false)
+      expect(document.body.hasAttribute("inputmode")).toBe(false)
+    }
+    finally { standalone.destroy() }
+  })
+
   it("ignores marker-only schema checks but reacts to authored positioning", async () => {
     document.body.innerHTML = '<p class="authored">Keep</p>'
     const editor = new DOMEditor()

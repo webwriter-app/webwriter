@@ -1,6 +1,6 @@
 import {hydrateWidgetGroupings, prepareWidgetGroupingsForSerialization, restoreWidgetGroupingClones} from "./widget-grouping-dom"
 import {SharedDOMDoc, type EditingMutation} from "./domdoc"
-import {isAuthoredMutation, isHTMLDetailsElement, restoreAuthoredDetailsState, setEditorWidgetLookup} from "./editor-artifacts"
+import {isAuthoredMutation, isHTMLDetailsElement, restoreAuthoredDetailsState, setDocumentKeyboardInputMode, setEditorWidgetLookup} from "./editor-artifacts"
 import {collectFeatureActions} from "./features"
 import {editorFeatureNames, type EditorFeatures, type EditorExtensionFactory} from "./editor-features"
 import { HistoryFeature } from "./features/history"
@@ -44,6 +44,7 @@ import {
   selectionChangeEvent,
   attachmentConfirmationEvent,
   shapeKeyboardInputEvent,
+  textKeyboardRequestEvent,
   presenceChangeEvent,
   documentHeadStateChangeEvent,
   historyStateChangeEvent,
@@ -196,6 +197,7 @@ export type DOMEditorOptions = {
   documentReplicaId?: string
   bridgeOrigin?: string
   accessibilityReviewEnabled?: boolean
+  touchKeyboard?: boolean
 }
 
 type HostDocumentState = {
@@ -463,6 +465,34 @@ export class DOMEditor {
     }
   }
 
+  #touchKeyboardEnabled = false
+  get touchKeyboardActive() {
+    return this.#touchKeyboardEnabled && [document.documentElement, document.body]
+      .every(host => host.getAttribute("inputmode")?.toLowerCase() === "none")
+  }
+
+  setTouchKeyboardPreference(enabled: boolean) {
+    if(this.options.reader || this.#destroyed) return
+    this.options.touchKeyboard = enabled
+    this.#touchKeyboardEnabled = enabled
+    if(enabled) document.addEventListener("pointerdown", this.#refreshKeyboardInputMode, true)
+    else document.removeEventListener("pointerdown", this.#refreshKeyboardInputMode, true)
+    this.#refreshKeyboardInputMode()
+  }
+
+  setTouchKeyboardEnabled(enabled: boolean) {
+    if(!this.options.touchKeyboard || this.options.reader || this.#destroyed) return
+    this.#touchKeyboardEnabled = enabled
+    this.#refreshKeyboardInputMode()
+  }
+
+  // Recheck authored or remotely replaced attributes before native tap focus.
+  #refreshKeyboardInputMode = (event?: PointerEvent) => {
+    const origin = event?.composedPath()[0]
+    const authoredMode = origin instanceof Element && origin.closest(':is(input, textarea, [contenteditable]):not([contenteditable="false" i])[inputmode]:not([inputmode="none" i])')
+    setDocumentKeyboardInputMode(document, this.#touchKeyboardEnabled && !authoredMode)
+  }
+
   readonly options: Omit<DOMEditorOptions, "initialState">
   documentReplicaSequence?: number
 
@@ -593,6 +623,7 @@ export class DOMEditor {
       if(!options.reader) this.#ensureDocumentContent()
       // Gecko inserts a bare <br> when designMode starts on an empty body.
       // Establish the default paragraph before enabling native editing.
+      if(options.touchKeyboard) this.setTouchKeyboardPreference(true)
       if(!options.reader) document.designMode = "on"
       Object.entries(this.features)
         .filter(([name]) => !options.reader || !["dependency", "state", "head", "template", "distribution", "history", "placeholder", "comment", "attribution", "proofreading", "collaboration", "migration"].includes(name))
@@ -876,6 +907,9 @@ export class DOMEditor {
     if(this.doc) attempt(() => this.doc.destroy())
     this.#appendixElements.forEach(reference => reference.deref()?.remove())
     this.#appendixElements.clear()
+    document.removeEventListener("pointerdown", this.#refreshKeyboardInputMode, true)
+    if(this.#documentSession && this.#touchKeyboardEnabled) setDocumentKeyboardInputMode(document, false)
+    this.#touchKeyboardEnabled = false
     this.releaseDocumentSession()
     if(teardownError) throw teardownError
   }
@@ -941,7 +975,7 @@ export class DOMEditor {
       return
     }
     // The frame host handles controls on the same window message target.
-    if(ev.data.type === selectionChangeEvent || ev.data.type === shapeKeyboardInputEvent || ev.data.type === editorFrameControlMessage
+    if(ev.data.type === selectionChangeEvent || ev.data.type === textKeyboardRequestEvent || ev.data.type === shapeKeyboardInputEvent || ev.data.type === editorFrameControlMessage
       || ev.data.type === proofreadingDictionaryAddEvent || ev.data.type === commentReviewRequestEvent || ev.data.type === attachmentConfirmationEvent) {
       return
     }
@@ -1293,6 +1327,7 @@ export class DOMEditor {
     this.#postedSpatialSelection = spatialSelection
     const detail: SelectionChangeDetail = {
       path,
+      ...(this.options.touchKeyboard && this.features.manipulation.canTypeWithTextKeyboard ? {textKeyboard: true} : {}),
       distribution: this.features.distribution.getState(attributeElement),
       distributionGeneral: this.features.distribution.getState(document.documentElement),
       ...(selectedElementTypes.length ? {selectedElementTypes} : {}),

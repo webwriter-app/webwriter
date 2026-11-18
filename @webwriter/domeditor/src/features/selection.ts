@@ -13,7 +13,7 @@ import {isAuthoredMutation} from "../editor-artifacts"
 import {isTextFieldInteraction} from "../utility"
 import {createAnchorPositioner} from "../utility"
 import {childNodesInRange} from "../utility"
-import type {ElementSelectionType} from "../editor-bridge"
+import {textKeyboardRequestEvent, type ElementSelectionType} from "../editor-bridge"
 import type {BoxGeometry} from "./transformation"
 import type {Transaction} from "yjs"
 
@@ -1314,6 +1314,10 @@ export class SelectionFeature extends EditorFeature {
     else if(event.type === "pointerup") this.#lastPopupPointerClick = null
     this.#endDrag()
     if(dragging) this.processSelection()
+    if(event.type === "pointerup" && drag && !drag.moved
+      && this.editor.options.touchKeyboard && this.editor.features.manipulation.canTypeWithTextKeyboard) {
+      this.editor.postHostMessage({type: textKeyboardRequestEvent, pointerType: drag.pointerType})
+    }
   }
 
   #beginDrag(event: PointerEvent, nativeClick: boolean) {
@@ -1668,6 +1672,11 @@ export class SelectionFeature extends EditorFeature {
   }
 
   captureListeners: DocumentListenerMap = {
+    resize: event => {
+      // Docking the host keyboard shrinks the iframe after the tap has placed
+      // the caret. Reuse input's post-layout reveal against the new viewport.
+      if(this.editor.touchKeyboardActive && this.editor.features.manipulation.canTypeWithTextKeyboard) this.#scheduleSelectionReveal(event)
+    },
     blur: event => {
       const widget = event.composedPath()[0]
       if(!(widget instanceof HTMLElement) || widget !== this.captureSelectedWidget

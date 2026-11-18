@@ -5,6 +5,49 @@ export type WidgetLookup = (element: Element) => boolean
 const widgetLookups = new WeakMap<Document, WidgetLookup>()
 const editorOnlyKey = Symbol.for("webwriter.editor-only-nodes")
 type ArtifactDocument = Document & {[editorOnlyKey]?: WeakSet<Element>}
+const keyboardModeKey = Symbol.for("webwriter.touch-keyboard-inputmode")
+type KeyboardDocument = Document & {[keyboardModeKey]?: Map<Element, Attr>}
+
+// designMode can focus HTML or BODY. Mark only the attribute nodes we
+// installed so authored hints and independently focused form fields survive.
+function ownsKeyboardInputMode(element: Element) {
+  const attr = (element.ownerDocument as KeyboardDocument)[keyboardModeKey]?.get(element)
+  return !!attr && attr.ownerElement === element && attr.value === "none"
+}
+
+/** Hand a live runtime hint back to an author writing an explicit value. */
+export function releaseKeyboardInputMode(element: Element) {
+  const owned = (element.ownerDocument as KeyboardDocument)[keyboardModeKey]
+  if(!owned?.has(element)) return
+  if(ownsKeyboardInputMode(element)) element.removeAttribute("inputmode")
+  owned.delete(element)
+}
+
+export function setDocumentKeyboardInputMode(doc: KeyboardDocument, enabled: boolean) {
+  const hosts = [doc.documentElement, doc.body]
+  const suppress = enabled && hosts.every(element => !element.hasAttribute("inputmode") || element.getAttribute("inputmode")?.toLowerCase() === "none")
+  const owned = doc[keyboardModeKey] ??= new Map<Element, Attr>()
+  for(const [element, attr] of owned) {
+    if(!ownsKeyboardInputMode(element)) {
+      if(attr.ownerElement) owned.delete(element)
+      continue
+    }
+    if(suppress && hosts.includes(element as HTMLElement)) continue
+    element.removeAttribute("inputmode")
+    // Retain removal provenance until both the frame and host observers have run.
+    setTimeout(() => {
+      if(owned.get(element) === attr) owned.delete(element)
+      if(!owned.size && doc[keyboardModeKey] === owned) delete doc[keyboardModeKey]
+    }, 0)
+  }
+  if(suppress) for(const element of hosts) {
+    if(element.hasAttribute("inputmode")) continue
+    element.setAttribute("inputmode", "none")
+    owned.set(element, element.getAttributeNode("inputmode")!)
+  }
+  if(!owned.size) delete doc[keyboardModeKey]
+}
+
 const detailsStateDocuments = new WeakSet<Document>()
 
 export function markEditorOnlyNode<T extends Element>(element: T): T {
@@ -100,6 +143,18 @@ function clearLegacyTemporaryDetailsMarkers(element: Element) {
 /** Copies runtime node and disclosure provenance alongside a structural DOM clone. */
 export function copyEditorArtifactState(source: Node, clone: Node, deep = true) {
   const doc = (source.nodeType === 9 ? source : source.ownerDocument) as ArtifactDocument | null
+  // Drop the runtime hints even for frame snapshots that serialize the clone directly.
+  const keyboardModes = (doc as KeyboardDocument | null)?.[keyboardModeKey]
+  if(keyboardModes?.size) {
+    const from = source.nodeType === 9 ? (source as Document).documentElement : source
+    const to = clone.nodeType === 9 ? (clone as Document).documentElement : clone
+    if(from?.nodeType === 1 && to?.nodeType === 1) {
+      if(ownsKeyboardInputMode(from as Element)) (to as Element).removeAttribute("inputmode")
+      if(deep && from === doc?.documentElement && ownsKeyboardInputMode(doc.body)) {
+        (to as Element).querySelector(":scope > body")?.removeAttribute("inputmode")
+      }
+    }
+  }
   if(!doc || !doc[editorOnlyKey] && !detailsStateDocuments.has(doc)) return clone
   const copy = (from: Node, to: Node): void => {
     if(from.nodeType === 1 && to.nodeType === 1 && (from.ownerDocument as ArtifactDocument)[editorOnlyKey]?.has(from as Element)) markEditorOnlyNode(to as Element)
@@ -146,6 +201,11 @@ export function isAuthoredMutation(mutation: MutationRecord) {
     const current = mutation.attributeNamespace
       ? element?.getAttributeNS(mutation.attributeNamespace, name) ?? null
       : element?.getAttribute(name) ?? null
+    if(name === "inputmode" && element && !mutation.attributeNamespace) {
+      const owned = (element.ownerDocument as KeyboardDocument)[keyboardModeKey]?.get(element)
+      if(owned && (current === null && owned.ownerElement === null && mutation.oldValue === "none"
+        || ownsKeyboardInputMode(element) && mutation.oldValue === null)) return false
+    }
     const contentEditableChanged = isAuthoredContentEditableMutation(mutation)
     if(contentEditableChanged !== undefined) return contentEditableChanged
     if(name === "class") return authoredClassValue(mutation.oldValue) !== authoredClassValue(current)
@@ -183,6 +243,7 @@ export function authoredClassValue(value: string | null, canonical = false) {
 /** The empty value on an installed widget is runtime state. Collaboration,
  * history and serialization preserve explicit authored values. */
 export function isEditorOwnedAttribute(element: Element, name: string, isWidget?: WidgetLookup) {
+  if(name === "inputmode") return ownsKeyboardInputMode(element)
   return name === "contenteditable" && element.getAttributeNS(null, name) === ""
     && ((isWidget ?? editorWidgetLookup(element))?.(element) ?? false)
 }

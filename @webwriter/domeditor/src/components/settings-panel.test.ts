@@ -93,6 +93,25 @@ describe("settings panel", () => {
     expect(loadAppSettings().proofreadingDictionary).toEqual(["Word", "Another"])
   })
 
+  it("saves the all-devices text keyboard preference and defaults existing settings to touch devices", async () => {
+    for(const value of [undefined, null, "true", 1]) {
+      localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({alwaysShowTextKeyboard: value}))
+      expect(loadAppSettings().alwaysShowTextKeyboard).toBe(false)
+    }
+    const panel = await mountPanel({...loadAppSettings(), language: "de"})
+    const checkbox = panel.shadowRoot!.querySelector<HTMLInputElement>('section[aria-label="Text keyboard"] input')!
+    panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+    expect(checkbox.checked).toBe(false)
+    checkbox.click()
+    expect(loadAppSettings()).toMatchObject({alwaysShowTextKeyboard: true, language: "de"})
+    const reloaded = await mountPanel(loadAppSettings())
+    const restored = reloaded.shadowRoot!.querySelector<HTMLInputElement>('section[aria-label="Text keyboard"] input')!
+    expect(restored.checked).toBe(true)
+    reloaded.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+    restored.click()
+    expect(loadAppSettings().alwaysShowTextKeyboard).toBe(false)
+  })
+
   it("loads, persists, and changes the proofreading default", async () => {
     const defaults = defaultAppSettings()
     expect(defaults.proofreadingEnabledByDefault).toBe(true)

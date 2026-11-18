@@ -23,6 +23,90 @@ import {replayHostDrag, selectionChangeEvent, type RibbonDropPosition, type Sele
 
 let editor: DOMEditor
 
+describe("text keyboard", () => {
+  const key = (command: "insert" | "backspace" | "enter", text?: string) =>
+    editor.features.manipulation.actions.textKeyboardInput({type: "textKeyboardInput", command, text})
+
+  beforeEach(() => {
+    editor.destroy()
+    editor = new DOMEditor({touchKeyboard: true})
+  })
+
+  it("replaces a text range in place, preserves its mark and supports undo", () => {
+    document.body.innerHTML = "<p>a<em>bc</em>d</p>"
+    const text = document.querySelector("em")!.firstChild!
+    $.selectRange(text, 1, text, 2)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(key("insert", "XY")).toBe(true)
+    expect(text.textContent).toBe("bXY")
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(3)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(document.body.innerHTML).toBe("<p>a<em>bc</em>d</p>")
+  })
+
+  it("delegates cancellation and routes Enter and Backspace through editor input", () => {
+    document.body.innerHTML = "<p>Hello!</p>"
+    const text = document.body.firstChild!.firstChild!
+    $.move(text, 5)
+    document.body.addEventListener("beforeinput", event => event.preventDefault(), {once: true})
+    key("insert", "X")
+    expect(document.body.textContent).toBe("Hello!")
+    key("enter")
+    expect(document.body.innerHTML).toBe("<p>Hello</p><p>!</p>")
+    const end = document.body.lastChild!.firstChild!
+    $.selectRange(end, 0, end, 1)
+    key("backspace")
+    expect(document.body.textContent).toBe("Hello")
+  })
+
+  it("abandons an input when a beforeinput listener moves the caret", () => {
+    document.body.innerHTML = "<p>first</p><p>other</p>"
+    $.move(document.body.firstElementChild!.firstChild!, 1)
+    document.body.addEventListener("beforeinput", () => $.move(document.body.lastElementChild!.firstChild!, 2), {once: true})
+    expect(key("insert", "!")).toBe(false)
+    expect(document.body.textContent).toBe("firstother")
+  })
+
+  it.each(["<p></p>", "<p><!--keep--><br></p>", "<figure><figcaption></figcaption></figure>"])("types at an empty text caret in %s", html => {
+    document.body.innerHTML = html
+    $.move(document.querySelector("p,figcaption")!)
+    expect(key("insert", "é")).toBe(true)
+    expect(document.body.textContent).toBe("é")
+  })
+
+  it("respects the focused editing host's inputmode", () => {
+    document.body.innerHTML = '<p inputmode="numeric" tabindex="0">123</p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 1)
+    expect(editor.features.manipulation.canTypeWithTextKeyboard).toBe(true)
+    paragraph.focus()
+    expect(editor.features.manipulation.canTypeWithTextKeyboard).toBe(false)
+    paragraph.removeAttribute("inputmode")
+    paragraph.contentEditable = "true"
+    expect(editor.features.manipulation.canTypeWithTextKeyboard).toBe(false)
+    paragraph.setAttribute("inputmode", "none")
+    document.getSelection()!.setPosition(paragraph.firstChild, 1)
+    expect(editor.features.manipulation.canTypeWithTextKeyboard).toBe(true)
+  })
+
+  it("rejects node selections, gaps, widget internals, read-only text and native fields", () => {
+    const html = '<p>one</p><hr><p><span contenteditable="false">two</span></p><test-widget>private</test-widget><textarea>native</textarea>'
+    document.body.innerHTML = html
+    $.selectElement(document.querySelector("hr")!)
+    expect(key("insert", "x")).toBe(false)
+    $.move(document.body, 1)
+    expect(key("enter")).toBe(false)
+    for(const selector of ["span", "test-widget", "textarea"]) {
+      $.move(document.querySelector(selector)!.firstChild!)
+      expect(key("backspace")).toBe(false)
+    }
+    expect(document.body.innerHTML).toBe(html)
+  })
+})
+
 describe("table insertion placement", () => {
   it("rejects ribbon and HTML insertion and drop inside a cell without changing the selection", () => {
     document.body.innerHTML = "<table><tbody><tr><th><div><p>Keep</p></div></th></tr></tbody></table>"

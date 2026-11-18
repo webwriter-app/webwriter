@@ -219,6 +219,7 @@ export type AppSettings = {
   userSnippets: UserSnippet[]
   language: string
   keyboardLayout: KeyboardLayoutPreference
+  alwaysShowTextKeyboard: boolean
   defaultLayout: DocumentLayoutMode
   updateDocumentLanguage: boolean
   disableAI: boolean
@@ -244,6 +245,7 @@ export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
     userSnippets: [],
     language,
     keyboardLayout: "auto",
+    alwaysShowTextKeyboard: false,
     defaultLayout: "document",
     updateDocumentLanguage: true,
     disableAI: false,
@@ -339,6 +341,7 @@ export function loadAppSettings(): AppSettings {
       language: typeof value.language === "string" && value.language ? value.language : defaults.language,
       keyboardLayout: typeof value.keyboardLayout === "string" && keyboardLayoutPreferences.includes(value.keyboardLayout as KeyboardLayoutPreference)
         ? value.keyboardLayout as KeyboardLayoutPreference : "auto",
+      alwaysShowTextKeyboard: value.alwaysShowTextKeyboard === true,
       defaultLayout: value.defaultLayout === "canvas" || value.defaultLayout === "slides" || value.defaultLayout === "board"
         ? value.defaultLayout
         : value.defaultLayout === "document" ? "document"

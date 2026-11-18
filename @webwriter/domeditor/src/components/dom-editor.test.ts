@@ -11819,6 +11819,81 @@ describe("DomEditor.execute()", () => {
       paint: {fill: "#ffffff", stroke: "#70ad47", "stroke-width": "8", opacity: "0.5"}})
   })
 
+  it("opens the touch text keyboard on a deliberate tap and supports switching to device input", async () => {
+    vi.spyOn(navigator, "maxTouchPoints", "get").mockReturnValue(5)
+    const {editor, editorWindow} = await mountEditor()
+    const control = vi.spyOn(editor as any, "postFrameControl")
+    const keyboard = () => editor.shadowRoot!.querySelector("dom-editor-text-keyboard")
+    const message = async (data: object) => {
+      window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data}))
+      await editor.updateComplete
+    }
+    await message({type: selectionChangeEvent, detail: {path: [], textKeyboard: true}})
+    expect(keyboard()).toBeNull()
+    await message({type: "editor-text-entry", pointerType: "mouse"})
+    expect(keyboard()).toBeNull()
+    await message({type: "editor-text-entry", pointerType: "touch"})
+    expect(keyboard()).not.toBeNull()
+    keyboard()!.dispatchEvent(new CustomEvent("text-keyboard-native"))
+    await editor.updateComplete
+    expect(control).toHaveBeenCalledWith("touch-keyboard-mode", {enabled: false})
+    expect(keyboard()).toBeNull()
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show text keyboard"]')!.click()
+    await editor.updateComplete
+    expect(control).toHaveBeenCalledWith("touch-keyboard-mode", {enabled: true})
+    expect(keyboard()).not.toBeNull()
+    await message({type: selectionChangeEvent, detail: {path: [], gap: {parentPath: [], offset: 0}}})
+    expect(keyboard()).toBeNull()
+  })
+
+  it("offers the text keyboard on desktop only with the preference and a text selection", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const host = editor as any
+    const keyboard = () => editor.shadowRoot!.querySelector("dom-editor-text-keyboard")
+    const reopen = () => editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show text keyboard"]')
+    const message = async (data: object) => {
+      window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data}))
+      await editor.updateComplete
+    }
+    const caret = {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}], textKeyboard: true}}
+    const click = {type: "editor-text-entry", pointerType: "mouse"}
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    vi.spyOn(host, "focusEditor").mockImplementation(() => {})
+    const control = vi.spyOn(host, "postFrameControl")
+    await message(caret)
+    await message(click)
+    expect(keyboard()).toBeNull()
+    expect(reopen()).toBeNull()
+
+    const preference = (enabled: boolean) => host.handleAppSettingsChange(new CustomEvent("app-settings-change", {
+      detail: {...host.settings, alwaysShowTextKeyboard: enabled},
+    }))
+    preference(true)
+    expect(control).toHaveBeenCalledWith("touch-keyboard-preference", {enabled: true})
+    await message(caret)
+    expect(reopen()).not.toBeNull()
+    await message(click)
+    expect(keyboard()).not.toBeNull()
+    keyboard()!.dispatchEvent(new CustomEvent("text-keyboard-command", {detail: {command: "insert", text: "a"}}))
+    expect(execute).toHaveBeenCalledWith({type: "textKeyboardInput", command: "insert", text: "a"})
+    keyboard()!.dispatchEvent(new CustomEvent("text-keyboard-close"))
+    await message(caret)
+    expect(keyboard()).toBeNull()
+    reopen()!.click()
+    await editor.updateComplete
+    expect(keyboard()).not.toBeNull()
+    await message({type: selectionChangeEvent, detail: {path: [], nodeSelected: true}})
+    expect(keyboard()).toBeNull()
+    expect(reopen()).toBeNull()
+    await message(caret)
+    await message(click)
+    preference(false)
+    await editor.updateComplete
+    expect(control).toHaveBeenCalledWith("touch-keyboard-preference", {enabled: false})
+    expect(keyboard()).toBeNull()
+    expect(reopen()).toBeNull()
+  })
+
   it("shows shape input for captured graphics and routes styled keys", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

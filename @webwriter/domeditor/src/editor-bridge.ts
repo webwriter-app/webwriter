@@ -41,10 +41,15 @@ export const presenceChangeEvent = "dom-editor-presence-change"
 export const documentHeadStateChangeEvent = "dom-editor-document-head-state-change"
 export const historyStateChangeEvent = "dom-editor-history-state-change"
 export const undoStateChangeEvent = "dom-editor-undo-state-change"
+export function supportsTouchKeyboard(view: Window) {
+  return view.navigator.maxTouchPoints > 0 || view.matchMedia?.("(any-pointer: coarse)").matches === true
+}
+
 export const initializeEditorMessage = "initialize-editor"
 export const loadWidgetsMessage = "load-widgets"
 export const editorFrameControlMessage = "editor-frame-control"
 export const aiEditReviewEvent = "dom-editor-ai-edit-review"
+export const textKeyboardRequestEvent = "editor-text-entry"
 export const shapeKeyboardInputEvent = "dom-editor-shape-keyboard-input"
 export const mathKeyboardTabEvent = "dom-editor-math-keyboard-tab"
 export const attachmentConfirmationEvent = "editor-attachment-confirmation"
@@ -244,6 +249,7 @@ export type InitializeEditorMessage = {
   language?: string
   username?: string
   disableAnimations?: boolean
+  touchKeyboard?: boolean
   shortcuts?: Record<string, string>
   proofreadingDictionary?: string[]
   proofreadingAllowed?: boolean
@@ -302,6 +308,7 @@ export function isInitializeEditorMessage(value: unknown): value is InitializeEd
     && isOptionalString(message.documentReplicaId)
     && (message.language === undefined || typeof message.language === "string")
     && (message.username === undefined || typeof message.username === "string")
+    && (message.touchKeyboard === undefined || typeof message.touchKeyboard === "boolean")
     && (message.disableAnimations === undefined || typeof message.disableAnimations === "boolean")
     && (message.proofreadingEnabled === undefined || typeof message.proofreadingEnabled === "boolean")
     && (message.proofreadingAllowed === undefined || typeof message.proofreadingAllowed === "boolean")
@@ -527,6 +534,8 @@ export type SelectionChangeDetail = {
   distribution?: DistributionSelection | null
   distributionGeneral?: DistributionSelection | null
   path: SelectionPathItem[]
+  /** The live document selection accepts ordinary text keyboard input. */
+  textKeyboard?: boolean
   /** True when a structural selection can be wrapped even if its common path is BODY. */
   canSection?: boolean
   /** True only for the selection update emitted by a local insertion command. */
@@ -1006,7 +1015,7 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
   if(!isRecord(value) || value.type !== selectionChangeEvent || !isRecord(value.detail)) return false
   const detail = value.detail
   return Array.isArray(detail.path) && detail.path.every(isSelectionPathItem)
-    && [detail.nodeSelected, detail.capture, detail.inserted, detail.canSection].every(isOptionalBoolean)
+    && [detail.nodeSelected, detail.capture, detail.inserted, detail.canSection, detail.textKeyboard].every(isOptionalBoolean)
     && isOptional(detail.spatialSelection, isString)
     && (detail.distribution === undefined || detail.distribution === null || isDistributionSelection(detail.distribution))
     && (detail.distributionGeneral === undefined || detail.distributionGeneral === null || isDistributionSelection(detail.distributionGeneral))
