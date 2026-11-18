@@ -3,6 +3,7 @@ import {existsSync, realpathSync} from 'node:fs'
 import {basename, resolve} from 'node:path'
 import {build} from 'esbuild'
 import { defineConfig, loadEnv, normalizePath } from 'vite'
+import {configDefaults} from 'vitest/config'
 import {componentLicensesPlugin} from './scripts/component-licenses.mjs'
 import {referenceFormatterPlugin} from './scripts/reference-formatter-plugin.mjs'
 import {distributionReaderPlugin} from './scripts/distribution-reader-plugin.mjs'
@@ -120,6 +121,7 @@ export default defineConfig(({mode}) => {
       include: ["onnxruntime-web/wasm", "axe-core"],
     },
     test: {
+      exclude: [...configDefaults.exclude, "**/dist/**"],
       coverage: {
         provider: "v8",
         include: ["src/**/*.ts"],

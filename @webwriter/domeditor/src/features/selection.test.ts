@@ -796,6 +796,39 @@ describe("contentful widget top-bar capture", () => {
     expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
   })
 
+  it("keeps a stale authored caret during shadow focus until the widget changes its range", () => {
+    editor.schema.extendWidgets([{tagName: "range-task", editingConfig: {content: "flow*"}}])
+    const widget = document.createElement("range-task")
+    widget.innerHTML = "<p>Existing text</p>"
+    const root = widget.attachShadow({mode: "open"})
+    root.innerHTML = '<button>Settings</button><slot></slot>'
+    appendToBody(widget)
+    editor.features.widget.refresh()
+    const button = root.querySelector("button")!, text = widget.querySelector("p")!.firstChild! as Text
+    $.move(text, 2)
+    const init = {button: 0, pointerId: 9, bubbles: true, composed: true, cancelable: true}
+    button.dispatchEvent(new PointerEvent("pointerdown", init))
+    button.focus()
+    button.dispatchEvent(new PointerEvent("pointerup", init))
+    button.dispatchEvent(new MouseEvent("click", init))
+    expect(feature.captureSelectedWidget).toBe(widget)
+
+    // Both live ranges follow incidental edits while the private control owns focus.
+    text.insertData(0, "New ")
+    feature.processSelection(false, {scrollIntoView: false})
+    expect(feature.captureSelectedWidget).toBe(widget)
+    expect(root.activeElement).toBe(button)
+
+    document.getSelection()!.setBaseAndExtent(text, 1, text, 3)
+    feature.processSelection(false, {scrollIntoView: false})
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(document.getSelection()!.toString()).toBe("ew")
+    expect(hasPresentationState(widget.querySelector("p")!, "text-selected")).toBe(true)
+
+    pointerClick(button, new PointerEvent("pointerdown", init))
+    expect(feature.captureSelectedWidget).toBe(widget)
+  })
+
   it.each([
     ["open", "document"], ["closed", "document"],
     ["open", "canvas"], ["closed", "canvas"],
@@ -4638,8 +4671,8 @@ describe("document listeners", () => {
     expect(postMessage).toHaveBeenCalledWith({
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
+      documentReplicaId: undefined,
       detail: {
-          captionPosition: "none",
           selectedElementTypes: expect.any(Array),
         distribution: null,
         distributionGeneral: expect.objectContaining({path: null}),
@@ -4913,8 +4946,8 @@ describe("document listeners", () => {
     expect(postMessage).toHaveBeenLastCalledWith({
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
+      documentReplicaId: undefined,
       detail: {
-          captionPosition: "none",
           selectedElementTypes: expect.any(Array),
         distribution: null,
         distributionGeneral: expect.objectContaining({path: null}),
@@ -5247,7 +5280,6 @@ describe("document listeners", () => {
     expect(activated).not.toHaveBeenCalled()
     expect($.selectedElement).toBe(widget)
     pointerClick(button, new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
-    button.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
     expect(activated).toHaveBeenCalledOnce()
   })
   it.each([false, true])("takes precedence over canvas background box selection after re-enabling: %s", reenable => {
@@ -6590,6 +6622,7 @@ describe("selection invariants", () => {
   describe("touch uses shared pointer selection", () => {
     it.each(["<picture><img></picture>", "<video controls></video>", "<figure><picture><img></picture><figcaption>Label</figcaption></figure>"])("keeps margin taps around %s as gap selections", html => {
       document.body.innerHTML = `<section><p>Before</p><!--keep-->${html}<p>After</p></section>`
+      editor.doc.syncFromDOM()
       const section = document.querySelector("section")!, media = section.querySelector("picture, video")!
       const target = media.closest("figure") ?? media
       const origin = media.querySelector("img") ?? media
@@ -6616,6 +6649,7 @@ describe("selection invariants", () => {
       expect(document.body.innerHTML).toBe(authored)
       touch(origin, "pointerdown", 50, 150)
       touch(origin, "pointerup", 50, 150)
+      origin.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, clientX: 50, clientY: 150}))
       expect(feature.captureSelectedElement).toBe(media)
     })
 
@@ -6813,6 +6847,11 @@ describe("selection invariants", () => {
       widget.attachShadow({mode: "open"}).append(control)
       expect(touch(control, "pointerdown").defaultPrevented).toBe(false)
       expect(touchStart(control).defaultPrevented).toBe(false)
+      expect(feature.captureSelectedWidget).toBeNull()
+      expect(touch(control, "pointerup").defaultPrevented).toBe(false)
+      const click = new MouseEvent("click", {bubbles: true, composed: true, cancelable: true})
+      control.dispatchEvent(click)
+      expect(click.defaultPrevented).toBe(false)
       expect(feature.captureSelectedWidget).toBe(widget)
       const button = document.createElement("button")
       editor.addAppendix(button)

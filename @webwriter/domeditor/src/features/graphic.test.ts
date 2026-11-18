@@ -59,6 +59,7 @@ async function withNativePresetBounds(run: () => void | Promise<void>) {
 function clickShape(shape: Element, shiftKey = false) {
   shape.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, shiftKey}))
   document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, shiftKey}))
+  shape.dispatchEvent(new MouseEvent("click", {bubbles: true, button: 0, shiftKey}))
 }
 
 // Happy DOM does not carry DragEventInit.dataTransfer through its constructor.
@@ -5234,7 +5235,8 @@ it("keeps canvas capture and mark availability stable when dismissing a shape la
   expect(editor.features.mark.getState()).toMatchObject({canMark: true, svgText: true})
   const post = vi.spyOn(editor, "postHostMessage")
   graphic.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 89, clientX: 10, clientY: 10}))
-  document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 89}))
+  document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 89, clientX: 10, clientY: 10}))
+  graphic.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: 10}))
   await mutationsDelivered()
   document.dispatchEvent(new Event("selectionchange"))
   const messages = post.mock.calls.map(([message]) => message as {type: string, detail?: {canMark?: boolean, svgText?: boolean, graphic?: {capture: boolean}}})

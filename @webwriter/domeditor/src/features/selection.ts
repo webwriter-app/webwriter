@@ -167,7 +167,7 @@ export class SelectionFeature extends EditorFeature {
   #lastScrollSelection: {element: Element} | {range: Range, backwards: boolean} | null = null
   #hoverFrame: number | null = null
   #nativeHoverTarget: Element | null = null
-  #focusedContentfulShadow: Element | null = null
+  #focusedContentfulShadow: {element: Element, range: Range | null} | null = null
   #blurringWidget: Element | null = null
   #hoverOwner: Element | null = null
   #floatObserver: MutationObserver | null = null
@@ -547,6 +547,10 @@ export class SelectionFeature extends EditorFeature {
   #collapseBeforeCapturedWidget(widget: Element) {
     const parent = widget.parentNode
     if(parent) document.getSelection()?.setPosition(parent, Array.from(parent.childNodes).indexOf(widget))
+    if(this.#focusedContentfulShadow?.element === widget) {
+      const selection = document.getSelection()
+      this.#focusedContentfulShadow.range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
+    }
   }
 
   private suppressSelectionScroll = false
@@ -1375,7 +1379,7 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     if(this.#drag?.pointerId !== undefined && this.#drag.pointerId !== event.pointerId) return
-    const drag = this.#drag
+    const drag = this.isInDragSelection ? this.#drag : null
     if(event.type === "pointerup" && drag && !drag.nativeClick && (!drag.moved && !drag.unit || drag.fromGap)) {
       // Native focus can replace a prevented gap press or its final range
       // with a paragraph caret. Restore the endpoints chosen by hit testing;
@@ -1784,6 +1788,9 @@ export class SelectionFeature extends EditorFeature {
         this.editor.postSelectionPath()
         return
       }
+      // The later click must not apply a capture requested before coordinate
+      // hit testing resolved this press to the media's outer margin.
+      if(this.#captureClick?.element === media) this.#captureClick.cancelled = true
     }
     if(divider) {
       ev.preventDefault()
@@ -2060,7 +2067,9 @@ export class SelectionFeature extends EditorFeature {
       const widget = widgetHostForShadowInteraction(event, this.editor.schema)
       if(this.#captureClick && widget && widget !== this.#captureClick.element) this.#captureClick = null
       if(widget === this.#blurringWidget) this.#blurringWidget = null
-      this.#focusedContentfulShadow = widget && isContentfulWidget(widget, this.editor.schema) ? widget : null
+      const selection = document.getSelection()
+      this.#focusedContentfulShadow = widget && isContentfulWidget(widget, this.editor.schema)
+        ? {element: widget, range: selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null} : null
       this.#handleWidgetShadowInteraction(event)
       if(!isAppendixInteraction(event) && !this.editor.features.media.isPlaceholderInteraction
         && !this.editor.features.slides.isSelectingForNavigation) {
@@ -2071,7 +2080,7 @@ export class SelectionFeature extends EditorFeature {
       const widget = widgetHostForShadowInteraction(event, this.editor.schema)
       if(!widget || !isContentfulWidget(widget, this.editor.schema)) return
       queueMicrotask(() => {
-        if(this.#focusedContentfulShadow === widget && focusedWidgetHost() !== widget) this.#focusedContentfulShadow = null
+        if(this.#focusedContentfulShadow?.element === widget && focusedWidgetHost() !== widget) this.#focusedContentfulShadow = null
         if(this.isEnabled) this.processSelection(undefined, {scrollIntoView: false})
       })
     },
@@ -2233,6 +2242,10 @@ export class SelectionFeature extends EditorFeature {
     // Native controls establish focus/carets before the completed click.
     // Capture must preserve that selection instead of moving it on press.
     if(event.type === "click" && document.activeElement !== widget) this.#collapseBeforeCapturedWidget(widget)
+    if(event.type === "click" && this.#focusedContentfulShadow?.element === widget) {
+      const selection = document.getSelection()
+      this.#focusedContentfulShadow.range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
+    }
     this.processSelection(undefined, {scrollIntoView: !isContentfulWidget(widget, this.editor.schema)})
     this.editor.postSelectionPath()
   }
@@ -3107,7 +3120,9 @@ export class SelectionFeature extends EditorFeature {
     const drag = this.#drag, live = document.getSelection(), root = getDocumentRoot()
     // Native focus/selection defaults may collapse a gap-origin drag into
     // the last paragraph. Its original gap and measured focus remain live.
-    if(drag?.fromGap && drag.moved && live && root.contains(drag.anchor.startContainer) && root.contains(drag.lastFocus.startContainer)
+    // A table resize can take over the pointer while BODY retains capture.
+    // The inactive text drag no longer owns the native range.
+    if(this.isInDragSelection && drag?.fromGap && drag.moved && live && root.contains(drag.anchor.startContainer) && root.contains(drag.lastFocus.startContainer)
       && (live.anchorNode !== drag.anchor.startContainer || live.anchorOffset !== drag.anchor.startOffset
         || live.focusNode !== drag.lastFocus.startContainer || live.focusOffset !== drag.lastFocus.startOffset)) {
       this.#applyDragRange(drag.anchor, drag.lastFocus, true)
@@ -3139,13 +3154,18 @@ export class SelectionFeature extends EditorFeature {
     // document editing, including when those children are slotted.
     const shadowOwner = focusedWidgetHost() === this.#blurringWidget ? null : focusedWidgetHost()
     const nativeRange = document.getSelection()
-    // Actual private focus wins over an old document caret in slotted light
-    // DOM. Moving that stale range would blur the newly focused control.
-    const authoredFocus = !shadowOwner?.shadowRoot?.activeElement && nativeRange?.anchorNode && nativeRange.focusNode
+    // Private focus wins over the range left behind when the control gained
+    // focus. A later authored selection made by the widget remains authoritative.
+    const focusedRange = this.#focusedContentfulShadow?.element === shadowOwner ? this.#focusedContentfulShadow?.range : null
+    const currentRange = nativeRange?.rangeCount === 1 ? nativeRange.getRangeAt(0) : null
+    const changedRange = currentRange && (!focusedRange
+      || currentRange.startContainer !== focusedRange.startContainer || currentRange.startOffset !== focusedRange.startOffset
+      || currentRange.endContainer !== focusedRange.endContainer || currentRange.endOffset !== focusedRange.endOffset)
+    const authoredFocus = (!shadowOwner?.shadowRoot?.activeElement || changedRange) && nativeRange?.anchorNode && nativeRange.focusNode
       && shadowOwner?.contains(nativeRange.anchorNode) && shadowOwner.contains(nativeRange.focusNode)
       && ($.isTextSelection || $.isEmptySelection || $.isGapSelection)
     const shadowFocused = shadowOwner && !authoredFocus && (shadowOwner.shadowRoot?.activeElement
-      || this.#focusedContentfulShadow === shadowOwner)
+      || this.#focusedContentfulShadow?.element === shadowOwner)
     const capturedWidget = this.#capturedElement
     if(!shadowFocused && capturedWidget && isContentfulWidget(capturedWidget, this.editor.schema)
       && nativeRange?.anchorNode && nativeRange.focusNode
