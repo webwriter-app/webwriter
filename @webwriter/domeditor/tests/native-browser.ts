@@ -3382,6 +3382,48 @@ await check("popup parts receive scoped styles without changing their layout", a
   finally { view.editor?.destroy(); frame.remove() }
 })
 
+await check("popup media remains rendered while editing locks block interaction", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px!important;max-width:none;height:400px"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
+  nativeRootEditor.addAppendix(frame)
+  const view = frame.contentWindow as Window & {editor?: DOMEditor}
+  try {
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "popup media fixture did not initialize")
+    const doc = frame.contentDocument!, editor = view.editor!, selection = view.getSelection()!
+    doc.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Recorded audio</p><h2>Heading</h2><audio controls></audio></div><p id="outside">Outside</p>'
+    const popup = doc.getElementById("note")!, audio = popup.querySelector("audio")!
+    selection.setPosition(popup.querySelector("p")!.firstChild, 2)
+    editor.features.selection.processSelection()
+    editor.features.dialog.refresh()
+    await layoutFrame()
+    const source = editor.toHTML(true)
+    const slot = editor.appendix.querySelector<HTMLSlotElement>("slot:not([name])")!
+    for(let cycle = 0; cycle < 3; cycle++) {
+      const owner = {}
+      editor.lockEditing(owner)
+      try {
+        await layoutFrame()
+        assert(doc.designMode === "off" && slot.inert, "the lock did not disable native editing and interaction")
+        assert(view.getComputedStyle(popup).display === "flex" && audio.getBoundingClientRect().height > 0,
+          "the lock hid the popup's native audio controls")
+        assert(!popup.matches(":popover-open"), "the editing lock opened a native popover")
+        assert(editor.toHTML(true) === source, "locking changed the authored popup or serialized presentation state")
+      }
+      finally { editor.unlockEditing(owner) }
+      await layoutFrame()
+      assert(doc.designMode === "on" && !slot.inert && audio.getBoundingClientRect().height > 0,
+        "unlocking lost the visible popup or left editing disabled")
+    }
+    selection.setPosition(doc.getElementById("outside")!.firstChild, 2)
+    editor.features.dialog.refresh()
+    await layoutFrame()
+    assert(view.getComputedStyle(popup).display === "none", "leaving the popup retained its editing presentation")
+  }
+  finally { view.editor?.destroy(); frame.remove() }
+})
+
 await check("popup content gaps support backward joins", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px!important;max-width:none;height:400px"

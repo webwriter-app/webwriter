@@ -80,6 +80,7 @@ const expectedChecks = [
   "popup table trailing gap accepts Enter",
   "popup toggle text selection contrasts with its button",
   "popup parts receive scoped styles without changing their layout",
+  "popup media remains rendered while editing locks block interaction",
   "popup content gaps support backward joins",
   "insertion and saved-reader controls align inside symmetric scrollbar gutters",
   "SVG shape outlines and handles align inside symmetric scrollbar gutters",
