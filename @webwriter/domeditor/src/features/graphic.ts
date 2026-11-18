@@ -3657,7 +3657,16 @@ export class GraphicFeature extends EditorFeature {
           width: `${graphic.clientWidth}px`, height: `${graphic.clientHeight}px`,
           transformOrigin: "0 0", transformBox: "border-box",
         })
-        const local = preview.getCTM?.(), screen = preview.getScreenCTM?.()
+        // Firefox omits the viewBox transform from getCTM() on a root SVG
+        // in the shadow appendix. An untransformed child includes it.
+        const measurement = document.createElementNS(SVG_NAMESPACE, "g")
+        let local: DOMMatrix | null | undefined
+        try {
+          preview.append(measurement)
+          local = measurement.getCTM?.() ?? preview.getCTM?.()
+        }
+        finally { measurement.remove() }
+        const screen = preview.getScreenCTM?.()
         if(local && screen) {
           // Derive the fixed appendix's live screen origin from the preview
           // itself, then map its SVG viewport onto the source's current CTM.
