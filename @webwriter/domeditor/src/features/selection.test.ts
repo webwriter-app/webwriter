@@ -6120,15 +6120,15 @@ describe("selection invariants", () => {
   })
 
   describe("breadcrumb selection toggle", () => {
-    it("selects a whole element and returns to a caret in it when unchecked", () => {
+    it("selects a whole element and returns to a caret on the next toggle", () => {
       document.body.innerHTML = "<section><!--keep--><p><em>Text</em></p><p>Next</p></section>"
       const element = document.querySelector("p")!
       $.move(element.querySelector("em")!.firstChild!, 1)
-      const action = {type: "setNodeSelected" as const, path: [0, 1], targetId: elementAttributeTargetId(element)}
+      const action = {type: "toggleNodeSelection" as const, path: [0, 1], targetId: elementAttributeTargetId(element)}
 
-      feature.actions.setNodeSelected({...action, selected: true})
+      feature.actions.toggleNodeSelection(action)
       expect($.selectedElement).toBe(element)
-      feature.actions.setNodeSelected({...action, selected: false})
+      feature.actions.toggleNodeSelection(action)
       expect($.selectedElement).toBeUndefined()
       expect(document.getSelection()?.isCollapsed).toBe(true)
       expect(element.contains($.anchor)).toBe(true)
@@ -6143,7 +6143,7 @@ describe("selection invariants", () => {
       original.replaceWith(replacement)
       $.move(replacement.firstChild!, 1)
 
-      feature.actions.setNodeSelected({type: "setNodeSelected", path: [0], targetId, selected: true})
+      feature.actions.toggleNodeSelection({type: "toggleNodeSelection", path: [0], targetId})
       expect($.selectedElement).toBeUndefined()
       expect($.anchor).toBe(replacement.firstChild)
     })

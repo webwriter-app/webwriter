@@ -3,7 +3,6 @@ import { LitElement, css, html, nothing } from "lit"
 import "./ribbon-menu"
 import type {RibbonMenu, RibbonMenuButton} from "./ribbon-menu"
 import { repeat } from "lit/directives/repeat.js"
-import { live } from "lit/directives/live.js"
 import { ribbonIcon } from "../ribbon-icons"
 import type { SelectionGap, SelectionPathItem, SelectionPathSection } from "../editor-bridge"
 import {createAnchorPositioner} from "../anchor-positioning.js"
@@ -200,57 +199,11 @@ export class DomEditorBreadcrumb extends LitElement {
       display: none;
     }
 
-    .element-toggle.item {
-      display: none;
-    }
-
-    .element-toggle input {
-      appearance: none;
-      box-sizing: border-box;
-      display: grid;
-      place-items: center;
-      flex: none;
-      inline-size: 16px;
-      block-size: 16px;
-      margin: 0;
-      margin-inline-start: .15rem;
-      border: 1px solid #526b86;
-      border-radius: 50%;
-      background: white;
-      cursor: pointer;
-    }
-
-    .element-toggle input:checked::after {
-      content: "";
-      box-sizing: border-box;
-      inline-size: 8px;
-      block-size: 8px;
-      border: 1px solid #19729b;
-      border-radius: 50%;
-      background: var(--sl-color-primary-400, #38bdf8);
-    }
-
-    .element-toggle input:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: 1px;
-    }
-
-    @media (forced-colors: active) {
-      .element-toggle input:checked::after {
-        forced-color-adjust: none;
-        border-color: Highlight;
-        background: Highlight;
-      }
-    }
-
     @media (pointer: coarse) {
       .breadcrumb-list {
         overflow-x: auto;
         scrollbar-width: none;
       }
-
-      .breadcrumb-entry:has(> .element-toggle) > button.item { display: none; }
-      .element-toggle.item { display: inline-flex; padding-inline-end: 0; }
     }
 
     .position-icons {
@@ -642,16 +595,13 @@ export class DomEditorBreadcrumb extends LitElement {
     const items = Array.from(list.querySelectorAll<HTMLElement>(".breadcrumb-entry"))
       .filter(item => !item.classList.contains("separator"))
     const collapsedClass = "icon-only"
-    const setCollapsed = (item: HTMLElement, collapsed: boolean) => {
-      item.querySelectorAll(":scope > .item").forEach(control => control.classList.toggle(collapsedClass, collapsed))
-    }
-    items.forEach(item => setCollapsed(item, false))
+    items.forEach(item => item.querySelector(".item")?.classList.remove(collapsedClass))
 
     let requiredWidth = this.measuredBreadcrumbWidth(list)
     let collapseCount = 0
     if(requiredWidth > availableWidth + 0.5) {
       const expandedWidths = items.map(item => item.getBoundingClientRect().width)
-      items.forEach(item => setCollapsed(item, true))
+      items.forEach(item => item.querySelector(".item")?.classList.add(collapsedClass))
       const collapsedWidths = items.map(item => item.getBoundingClientRect().width)
       for(let index = 0; index < items.length && requiredWidth > availableWidth + 0.5; index++) {
         if(!items[index].querySelector(".item")) continue
@@ -661,13 +611,13 @@ export class DomEditorBreadcrumb extends LitElement {
     }
 
     items.forEach((item, index) => {
-      setCollapsed(item, index < collapseCount)
+      item.querySelector(".item")?.classList.toggle(collapsedClass, index < collapseCount)
     })
 
     if(this.breadcrumbCollapseCount !== collapseCount) {
       this.breadcrumbCollapseCount = collapseCount
     }
-    if(requiredWidth > availableWidth + 0.5 && list.querySelector<HTMLElement>(".element-toggle")?.offsetWidth) {
+    if(requiredWidth > availableWidth + 0.5 && list.querySelector(".item[aria-pressed]")) {
       list.scrollLeft = listStyle.direction === "rtl" ? -list.scrollWidth : list.scrollWidth
     }
   }
@@ -942,12 +892,7 @@ export class DomEditorBreadcrumb extends LitElement {
     const {item} = entry
     const itemClass = `item${this.isCollapsedBreadcrumbItem(entry) ? " icon-only" : ""}${this.isNodeSelected(item) ? " node-selected" : ""}${this.isCaptured(item.path) ? " capture-selected" : ""}`
     const label = `Select ${item.name}`
-    const content = html`
-      ${this.renderItemIcon(item)}
-      <span class="item-label">${item.name}</span>
-      ${item.imageMap ? html`<span class="image-hotspot-indicator" role="img" aria-label="Interactive image hotspots" title="Interactive image hotspots">${ribbonIcon("Image hotspot")}</span>` : ""}
-      ${this.renderPositionIcons(item)}
-    `
+    const targetId = this.isSelected(item) ? item.targetId : undefined
     return html`
       <li class=${`breadcrumb-entry ${transitionClass}`}>
         <button
@@ -956,20 +901,24 @@ export class DomEditorBreadcrumb extends LitElement {
           data-path=${item.path.join(",")}
           title=${label}
           aria-label=${label}
+          aria-pressed=${targetId ? String(item.targetSelected === true) : nothing}
           @mouseenter=${() => this.hover(item)}
           @mouseleave=${() => this.clearHover(item)}
-          @click=${(event: MouseEvent) => this.select(item, event.detail === 2)}
-        >${content}</button>
-        ${item.targetId && this.isSelected(item) ? html`
-          <label class=${`${itemClass} element-toggle`}>
-            ${content}
-            <input type="checkbox" aria-label=${label} .checked=${live(item.targetSelected === true)}
-              @change=${(event: Event) => this.dispatchEvent(new CustomEvent("breadcrumb-item-toggle", {
-                detail: {path: [...item.path], targetId: item.targetId, selected: (event.currentTarget as HTMLInputElement).checked},
-                bubbles: true, composed: true,
-              }))}>
-          </label>
-        ` : nothing}
+          @click=${(event: MouseEvent) => {
+            if(!targetId) {
+              this.select(item, event.detail === 2)
+              return
+            }
+            this.dispatchEvent(new CustomEvent("breadcrumb-item-toggle", {
+              detail: {path: [...item.path], targetId}, bubbles: true, composed: true,
+            }))
+          }}
+        >
+          ${this.renderItemIcon(item)}
+          <span class="item-label">${item.name}</span>
+          ${item.imageMap ? html`<span class="image-hotspot-indicator" role="img" aria-label="Interactive image hotspots" title="Interactive image hotspots">${ribbonIcon("Image hotspot")}</span>` : ""}
+          ${this.renderPositionIcons(item)}
+        </button>
         ${this.renderSections(item)}
       </li>
     `

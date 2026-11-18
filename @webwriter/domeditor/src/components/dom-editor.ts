@@ -8173,9 +8173,9 @@ export class DomEditor extends LitElement {
 
   private handleBreadcrumbItemSelect = (event: Event) => this.selectBreadcrumbTarget(event, "selectNode")
 
-  private handleBreadcrumbItemToggle = (event: CustomEvent<{path: number[], targetId: string, selected: boolean}>) => {
-    const {path, targetId, selected} = event.detail
-    void this.execute({type: "setNodeSelected", path, targetId, selected}).finally(() => this.focusEditor())
+  private handleBreadcrumbItemToggle = (event: CustomEvent<{path: number[], targetId: string}>) => {
+    const {path, targetId} = event.detail
+    void this.execute({type: "toggleNodeSelection", path, targetId}).finally(() => this.focusEditor())
   }
 
   private handleBreadcrumbSectionSelect = (event: Event) => this.selectBreadcrumbTarget(event, "selectSection")

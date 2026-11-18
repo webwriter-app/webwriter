@@ -2046,14 +2046,13 @@ export class SelectionFeature extends EditorFeature {
       $.selectElement(node)
       this.processSelection()
     },
-    setNodeSelected: ({path, targetId, selected}: {type: "setNodeSelected", path: number[], targetId: string, selected: boolean}) => {
+    toggleNodeSelection: ({path, targetId}: {type: "toggleNodeSelection", path: number[], targetId: string}) => {
       const node = nodeAtPath(document.body, path)
       const root = getDocumentRoot()
       if(this.editor.isEditingLocked || !isElement(node) || node === root || !root.contains(node)
         || elementAttributeTargetId(node) !== targetId || !this.editor.allows("select", node)) return
       const elements = $.selectedElements
-      if(selected === elements.includes(node)) return
-      if(selected) {
+      if(!elements.includes(node)) {
         this.editor.features.table.clearCellSelection(false)
         this.actions.selectNode({type: "selectNode", path})
         return
