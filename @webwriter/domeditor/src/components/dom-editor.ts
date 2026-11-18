@@ -8301,11 +8301,13 @@ export class DomEditor extends LitElement {
       path.length === target.length && path.every((index, position) => index === target[position]))
     const stepsToTargets = (path: number[]) => [...new Set(targets!.filter(target => target.length > path.length
       && path.every((index, position) => index === target[position])).map(target => target[path.length]))].sort((a, b) => a - b)
+    const isTableWrapper = (element: ReadableElement) => element.namespaceURI === "http://www.w3.org/1999/xhtml" && !element.hasAttribute("is")
+      && ["colgroup", "col", "thead", "tbody", "tfoot", "tr", "td", "th"].includes(element.localName)
     /** Neither a section nor a wrapper the outline looks through, by name alone:
      * at most one item, whatever the element contains. */
     const outlineLeaf = (element: ReadableElement) => {
       const name = element.localName
-      return name !== "map" && !isSectionName(name) && canonicalMarkName(name) === null && !element.hasAttribute("popover")
+      return name !== "map" && !isTableWrapper(element) && !isSectionName(name) && canonicalMarkName(name) === null && !element.hasAttribute("popover")
     }
 
     const sectionItem = (element: ReadableElement, path: number[]): SelectionPathSection => ({
@@ -8332,7 +8334,7 @@ export class DomEditor extends LitElement {
         ...(sections.length ? {sections: sections.map(section => ({...section, path: [...section.path]}))} : {}),
         children: [],
       }
-      if(["table", "math", "svg"].includes(element.localName) || building.has(element)) return item
+      if(["math", "svg"].includes(element.localName) || building.has(element)) return item
       building.add(element)
       for(const popup of imageMapPopups(element)) {
         const popupPath = readableNodePath(body, popup)
@@ -8398,7 +8400,8 @@ export class DomEditor extends LitElement {
             }
             return
           }
-          if(slideRole === "viewport" || isMarkElement(childElement) && !popupRole) {
+          // Show cell contents under their table, retaining their authored paths.
+          if(slideRole === "viewport" || (isMarkElement(childElement) || isTableWrapper(childElement)) && !popupRole) {
             appendChildren(childElement, childPath, inherited, destination)
             return
           }

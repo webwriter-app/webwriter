@@ -401,7 +401,9 @@ describe("incremental frame replica", () => {
       + `<figure><img src="a.png"><figcaption>cap</figcaption></figure>`
       + `<figure><blockquote><header></header><p>q</p></blockquote></figure>`
       + `<figure><p>one</p><p>two</p></figure>`
-      + `<table><tbody><tr><td><p>cell</p></td></tr></tbody></table>`
+      + `<table><thead><tr><th><p>head</p></th></tr></thead><tbody><tr><td></td><td><p>cell</p></td></tr>`
+      + `<tr><td><table><tbody><tr><td><p>nested</p></td></tr></tbody></table></td><td><aside></aside></td></tr></tbody>`
+      + `<tfoot><tr><td><footer></footer><img></td></tr></tfoot></table>`
       + `<details><summary>s</summary><p>d</p></details>`
       + `<div class="ww-popup"><button popovertarget="pop">Open</button><div id="pop" popover><p>in</p></div><p>beside</p></div>`
       + `<div class="ww-popup"><button popovertarget="far">Far</button></div>`
@@ -10803,6 +10805,96 @@ describe("DomEditor.execute()", () => {
     expect(breadcrumb.tree!.children[0].children.map(item => ({path: item.path, name: item.name}))).toEqual([{path: [0, 2], name: "Paragraph"}])
     expect(breadcrumb.shadowRoot!.querySelector("ribbon-menu#document-tree")).not.toBeNull()
     expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual(["Document"])
+  })
+
+  it.each([false, true])("lists content from every table cell under the table (isolated frame: %s)", async isolated => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const body = iframe.contentDocument!.body
+    body.innerHTML = '<table><caption>Caption</caption><colgroup><col></colgroup><!--keep--><thead><tr><th><p>Heading</p></th><th></th></tr></thead>'
+      + '<tbody><tr><td></td><td><!--keep--><figure><img src="cell.png"><figcaption>Image caption</figcaption></figure><test-widget></test-widget></td></tr>'
+      + '<tr><td><table><tbody><tr><td><video></video></td></tr></tbody></table></td><td><section><p>Body</p></section></td></tr></tbody>'
+      + '<tfoot><tr><td><audio></audio></td></tr></tfoot></table><p>After</p>'
+    const before = body.innerHTML
+    if(isolated) {
+      host.editorOpaque = true
+      vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+      window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow, data: frameUpdate(host, iframe.contentDocument!)}))
+      host.editorDocument = null
+    }
+    const tree = host.buildDocumentTree() as DocumentTreeItem
+    expect(tree.children.map(item => item.name)).toEqual(["Table", "Paragraph"])
+    expect(tree.children[0].children.map(item => ({name: item.name, path: item.path}))).toEqual([
+      {name: "Paragraph", path: [0, 3, 0, 0, 0]},
+      {name: "Image", path: [0, 4, 0, 1, 1]},
+      {name: "Widget", path: [0, 4, 0, 1, 2]},
+      {name: "Table", path: [0, 4, 1, 0, 0]},
+      {name: "Paragraph", path: [0, 4, 1, 1, 0, 0]},
+      {name: "Audio", path: [0, 5, 0, 0, 0]},
+    ])
+    expect(tree.children[0].children[3].children).toMatchObject([
+      {name: "Video", path: [0, 4, 1, 0, 0, 0, 0, 0, 0]},
+    ])
+    expect(body.innerHTML).toBe(before)
+  })
+
+  it.each([false, true])("preserves custom cells and popup ownership in table outlines (isolated frame: %s)", async isolated => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const source = iframe.contentDocument!
+    source.body.innerHTML = '<div class="ww-popup"><button popovertarget="note">Open</button></div>'
+      + '<table><tbody><tr><td is="custom-cell"><p>Custom</p></td><td id="note" class="ww-popup-content" popover><p>Popup</p></td><td></td></tr></tbody></table>'
+    source.querySelector("td:last-child")!.append(source.createElementNS("urn:custom", "td"))
+    if(isolated) {
+      host.editorOpaque = true
+      vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+      window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow, data: frameUpdate(host, source)}))
+      host.editorDocument = null
+    }
+    const tree = host.buildDocumentTree() as DocumentTreeItem
+    expect(tree.children[0]).toMatchObject({name: "Popup", children: [
+      {name: "Popup Content", path: [1, 0, 0, 1], children: [{name: "Paragraph", path: [1, 0, 0, 1, 0]}]},
+    ]})
+    expect(tree.children[1].children.map(item => item.path)).toEqual([[1, 0, 0, 0], [1, 0, 0, 2, 0]])
+    expect(tree.children[1].children[0].children).toMatchObject([{name: "Paragraph", path: [1, 0, 0, 0, 0]}])
+  })
+
+  it.each([false, true])("selects another cell's media from the table outline and follows updates (isolated frame: %s)", async isolated => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const host = editor as any
+    const live = iframe.contentDocument!
+    live.body.innerHTML = '<table><tbody><tr><td><p>Current cell</p></td><td><img src="other.png"></td></tr></tbody></table>'
+    host.editorOpaque = isolated
+    vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    const publish = async () => {
+      if(isolated) window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: frameUpdate(host, live)}))
+      else await new Promise(resolve => setTimeout(resolve, 0))
+      await editor.updateComplete
+    }
+    await publish()
+    host.selectionPath = [{path: [], name: "Document"}, {path: [0], name: "Table"}, {path: [0, 0, 0, 0, 0], name: "Paragraph"}]
+    await editor.updateComplete
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+    const openTable = async () => {
+      breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show Table tree"]')!.click()
+      await editor.updateComplete
+      await breadcrumb.updateComplete
+      const menu = breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!
+      await menu.updateComplete
+      return menu
+    }
+    const menu = await openTable()
+    expect(menu.groups[0].buttons.map(button => typeof button === "string" ? button : button.action))
+      .toEqual(["outline:0,0,0,0,0", "outline:0,0,0,1,0"])
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="outline:0,0,0,1,0"]')!.click()
+    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 0, 0, 1, 0]})
+
+    live.querySelector("img")!.replaceWith(live.createElement("video"))
+    await publish()
+    const updatedMenu = await openTable()
+    expect(updatedMenu.groups[0].buttons).toContainEqual(expect.objectContaining({label: "Video", action: "outline:0,0,0,1,0"}))
   })
 
   it("shows the popup and its native parts in the document tree", async () => {
