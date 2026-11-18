@@ -37,7 +37,9 @@ export class CanvasFeature extends EditorFeature {
     })
   }
   private readonly onResize = () => { if(this.active) this.schedule() }
-  private readonly release = () => { this.spaceHand = false; this.syncHandMode(); this.stopPan(); this.viewer?.stopWheelPan(); this.schedule() }
+  private readonly release = () => {
+    this.spaceHand = false; this.syncHandMode(); this.stopPan(); this.viewer?.endPinch(); this.viewer?.stopWheelPan(); this.schedule()
+  }
 
   get active() { return documentLayoutMode() === "canvas" }
   get zoom() { return this.active ? this.viewer?.zoom ?? 1 : 1 }
@@ -482,6 +484,7 @@ export class CanvasFeature extends EditorFeature {
 
   captureListeners: DocumentListenerMap = {
     pointerdown: event => {
+      if(event.pointerType === "touch" && event.isPrimary === false) return
       const origin = event.composedPath()[0]
       const grab = this.active && event.button === 0 && (this.hand || this.spaceHand)
       if(grab && (origin === this.panSurface || origin === this.slot || !isAppendixInteraction(event))) {
@@ -503,6 +506,12 @@ export class CanvasFeature extends EditorFeature {
     pointerup: event => this.viewer?.endPan(event),
     pointercancel: event => this.viewer?.stopPan(event.pointerId),
     lostpointercapture: event => this.viewer?.stopPan(event.pointerId),
+    touchstart: event => {
+      if(this.active && this.viewer?.startPinch(event, this.ownEvent(event))) this.editor.features.selection.cancelTouchDrag()
+    },
+    touchmove: event => { if(this.active) this.viewer?.movePinch(event) },
+    touchend: event => this.viewer?.endPinch(event),
+    touchcancel: event => this.viewer?.endPinch(event),
     wheel: event => { this.handleWheel(event) },
     keydown: event => {
       if(!this.active) return

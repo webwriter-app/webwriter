@@ -42,6 +42,9 @@ export class CanvasViewer {
   movePan(event: PointerEvent): void
   endPan(event: PointerEvent): void
   stopPan(pointerId?: number): void
+  startPinch(event: TouchEvent, ownsStart: boolean): boolean
+  movePinch(event: TouchEvent): void
+  endPinch(event?: TouchEvent): void
   updatePanSurface(): void
   continuesWheelPan(event: WheelEvent): boolean
   stopWheelPan(): void

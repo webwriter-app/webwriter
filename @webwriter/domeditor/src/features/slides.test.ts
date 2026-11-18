@@ -208,6 +208,50 @@ describe("CSS-only Slides layout", () => {
     expect(refresh).toHaveBeenCalled()
   })
 
+  it("leaves one-finger swipes native and anchors a two-finger zoom and pan within the current slide", () => {
+    const [slide] = seed(), viewport = slide.parentElement!, paragraph = slide.querySelector("p")!
+    const feature = editor.features.slides
+    vi.spyOn(feature, "current").mockReturnValue(slide)
+    feature.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 50, 600, 720))
+    vi.spyOn(slide, "getBoundingClientRect").mockImplementation(() =>
+      new DOMRect(-viewport.scrollLeft, 50 - viewport.scrollTop, 1280 * feature.zoom, 720 * feature.zoom))
+    const scroll = vi.spyOn(viewport, "scrollBy").mockImplementation((options?: ScrollToOptions | number) => {
+      if(typeof options !== "object") return
+      viewport.scrollLeft += options.left ?? 0
+      viewport.scrollTop += options.top ?? 0
+    })
+    const authored = editor.toHTML()
+    const touch = (identifier: number, target: Element, clientX: number, clientY: number) => new Touch({identifier, target, clientX, clientY})
+    const send = (type: string, target: Element, touches: Touch[], changedTouches: Touch[]) => {
+      const event = new TouchEvent(type, {bubbles: true, composed: true, cancelable: true, touches, changedTouches})
+      target.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    const first = touch(1, slide, 150, 180), second = touch(2, paragraph, 250, 180)
+    slide.dispatchEvent(new PointerEvent("pointerdown", {pointerType: "touch", isPrimary: true, pointerId: 11,
+      bubbles: true, cancelable: true, clientX: 150, clientY: 180}))
+    expect(editor.features.selection.isInDragSelection).toBe(false)
+    expect(send("touchstart", slide, [first], [first])).toBe(false)
+    expect(send("touchstart", paragraph, [first, second], [second])).toBe(true)
+    expect(editor.features.selection.isInDragSelection).toBe(false)
+
+    const moved = touch(2, paragraph, 350, 180)
+    expect(send("touchmove", paragraph, [first, moved], [moved])).toBe(true)
+    expect(feature.zoom).toBe(2)
+    expect(scroll.mock.calls.map(([options]) => options)).toEqual([{left: 150, behavior: "instant"}, {top: 130, behavior: "instant"}])
+    scroll.mockClear()
+    const left = touch(1, slide, 120, 200), right = touch(2, paragraph, 320, 200)
+    expect(send("touchmove", slide, [left, right], [left, right])).toBe(true)
+    expect(feature.zoom).toBe(2)
+    expect(scroll.mock.calls.map(([options]) => options)).toEqual([{left: 30, behavior: "instant"}, {top: -20, behavior: "instant"}])
+    expect(editor.toHTML()).toBe(authored)
+
+    window.dispatchEvent(new Event("blur"))
+    expect(send("touchmove", paragraph, [first, second], [second])).toBe(false)
+    expect(feature.zoom).toBe(2)
+  })
+
   it("retains breadcrumb document selection for the Document toolbox", async () => {
     convert("slides")
     const html = await editor.serializeHTML()
@@ -1203,6 +1247,10 @@ describe("CSS-only Slides layout", () => {
     two.setAttribute("title", "changed outside the editor")
     editor.features.slides.current()
     expect(first.mock.calls.length + second.mock.calls.length).toBeGreaterThan(measurements + 2)
+    viewport.scrollLeft = 960
+    first.mockReturnValue(new DOMRect(-960, 0, 1600, 900))
+    second.mockReturnValue(new DOMRect(640, 0, 1600, 900))
+    expect(editor.features.slides.current()).toBe(one)
   })
 
   it("removes the bubble's slide and keeps neighboring previous/next links correct", async () => {

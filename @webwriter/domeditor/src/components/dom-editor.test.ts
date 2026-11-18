@@ -5491,7 +5491,59 @@ describe("DomEditor file actions", () => {
     editor.requestUpdate()
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector(".size-warning")).toBeNull()
+    // Happy DOM cannot resolve a focused iframe from another editor's shadow root.
+    document.body.focus()
     const {editor: reloaded} = await mountEditor()
+    expect(reloaded.shadowRoot!.querySelector(".size-warning")).not.toBeNull()
+  })
+
+  it.each([
+    ["Macintosh; Intel Mac OS X 10_15_7", "Version/17.6 Safari/605.1.15", true],
+    ["Macintosh; Intel Mac OS X 10_15_7", "Version/18.6 Safari/605.1.15", true],
+    ["iPhone; CPU iPhone OS 18_6 like Mac OS X", "Version/18.6 Mobile/15E148 Safari/604.1", true],
+    ["iPad; CPU OS 18_6 like Mac OS X", "Version/18.6 Mobile/15E148 Safari/604.1", true],
+    ["Macintosh; Intel Mac OS X 10_15_7", "Version/26.0 Safari/605.1.15", false],
+    ["iPhone; CPU iPhone OS 26_1 like Mac OS X", "Version/26.1 Mobile/15E148 Safari/604.1", false],
+    ["Macintosh; Intel Mac OS X 10_15_7", "Version/27.0 Safari/605.1.15", false],
+    ["Macintosh; Intel Mac OS X 10_15_7", "Chrome/130.0.0.0 Safari/537.36", false],
+    ["iPhone; CPU iPhone OS 18_6 like Mac OS X", "CriOS/130.0.0.0 Mobile/15E148 Safari/604.1", false],
+    ["iPhone; CPU iPhone OS 18_6 like Mac OS X", "FxiOS/130.0 Mobile/15E148 Safari/605.1.15", false],
+    ["iPhone; CPU iPhone OS 18_6 like Mac OS X", "Version/18.6 EdgiOS/130.0 Mobile/15E148 Safari/605.1.15", false],
+    ["iPhone; CPU iPhone OS 18_6 like Mac OS X", "Version/18.6 OPT/5.0 Mobile/15E148 Safari/605.1.15", false],
+    ["Linux; Android 9", "Version/4.0 Safari/537.36", false],
+    ["Macintosh; Intel Mac OS X 10_15_7", "Safari/605.1.15", false],
+    ["Macintosh; Intel Mac OS X 10_15_7", "Version/unknown Safari/605.1.15", false],
+  ])("shows the Safari warning only for outdated Safari (%s, %s)", async (platform, browser, visible) => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(`Mozilla/5.0 (${platform}) AppleWebKit/605.1.15 (KHTML, like Gecko) ${browser}`)
+    const {editor} = await mountEditor()
+    const warning = editor.shadowRoot!.querySelector(".safari-warning")
+    expect(Boolean(warning)).toBe(visible)
+    if(visible) {
+      expect(warning!.getAttribute("role")).toBe("status")
+      expect(warning!.textContent).toContain("WebWriter may not work correctly in this outdated version of Safari.")
+      expect(warning!.parentElement).toBe(editor.shadowRoot!.querySelector(".size-warning")!.parentElement)
+      expect(warning!.nextElementSibling?.localName).toBe("app-ribbon")
+    }
+  })
+
+  it("dismisses the Safari warning independently until a new editor is loaded", async () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue("Version/18.6 Safari/605.1.15")
+    const {editor} = await mountEditor()
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Dismiss size warning"]')!.click()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".safari-warning")).not.toBeNull()
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Dismiss Safari warning"]')!.click()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".safari-warning")).toBeNull()
+    editor.requestUpdate()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".safari-warning")).toBeNull()
+    // Happy DOM cannot resolve a focused iframe from another editor's shadow root.
+    document.body.focus()
+    const {editor: reloaded} = await mountEditor()
+    expect(reloaded.shadowRoot!.querySelector(".safari-warning")).not.toBeNull()
+    reloaded.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Dismiss Safari warning"]')!.click()
+    await reloaded.updateComplete
     expect(reloaded.shadowRoot!.querySelector(".size-warning")).not.toBeNull()
   })
 

@@ -729,6 +729,42 @@ describe("standalone canvas reader", () => {
     finally { vi.useRealTimers() }
   })
 
+  it("claims canvas pinches and leaves touches that start on widget controls alone", () => {
+    reader = mountCanvasReader()!
+    const slot = document.body.shadowRoot!.querySelector("slot")!
+    const widget = document.querySelector("test-widget")!
+    const input = document.createElement("input")
+    widget.attachShadow({mode: "open"}).append(input)
+    const first = new Touch({identifier: 1, target: document.querySelector("p")!, clientX: 100, clientY: 100})
+    const finger = (target: Element, clientX: number) => new Touch({identifier: 2, target, clientX, clientY: 100})
+    const send = (type: string, touch: Touch, touches: Touch[]) => {
+      const event = new TouchEvent(type, {bubbles: true, composed: true, cancelable: true, touches, changedTouches: [touch]})
+      touch.target.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    const zoom = reader.viewer.zoom
+    const background = finger(slot, 100)
+    expect(send("touchstart", background, [background])).toBe(true)
+    send("touchend", background, [])
+    expect(send("touchstart", first, [first])).toBe(false)
+    const overWidget = finger(input, 150)
+    expect(send("touchstart", overWidget, [first, overWidget])).toBe(false)
+    const movedOverWidget = finger(input, 200)
+    expect(send("touchmove", movedOverWidget, [first, movedOverWidget])).toBe(false)
+    expect(reader.viewer.zoom).toBe(zoom)
+    send("touchend", overWidget, [first])
+
+    const overCanvas = finger(slot, 150)
+    expect(send("touchstart", overCanvas, [first, overCanvas])).toBe(true)
+    const moved = finger(slot, 200)
+    expect(send("touchmove", moved, [first, moved])).toBe(true)
+    expect(reader.viewer.zoom).toBeCloseTo(zoom * 2)
+    expect(send("touchend", moved, [first])).toBe(true)
+    expect(send("touchmove", overCanvas, [first, overCanvas])).toBe(false)
+    reader.destroy()
+    expect(send("touchstart", overCanvas, [first, overCanvas])).toBe(false)
+  })
+
   it("fits freshly replaced content, including negative coordinates", () => {
     reader = mountCanvasReader()!
     const replacement = document.createElement("p")

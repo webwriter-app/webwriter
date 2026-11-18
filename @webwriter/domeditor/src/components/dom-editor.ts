@@ -368,6 +368,13 @@ const randomIdentifier = (prefix: string) => globalThis.crypto?.randomUUID?.()
 
 const clampUnit = (value: number) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
 
+const isOutdatedSafari = (userAgent: string) => {
+  if(!/Safari\//.test(userAgent) || /Chrome|Chromium|CriOS|FxiOS|Edg|OPR|OPT|Opera|Android/i.test(userAgent)) return false
+  const version = /\bVersion\/(\d+)(?:\.\d+)*\s/.exec(userAgent)
+  // Safari 26 introduced native CSS anchor positioning used by the editor UI.
+  return version !== null && Number(version[1]) < 26
+}
+
 const defaultDocumentLayoutState = (): DocumentLayoutState => ({mode: "document", canConvert: true, zoom: 100})
 
 type LiveSessionIdentity = {
@@ -466,6 +473,7 @@ export class DomEditor extends LitElement {
     documentRecoveryError: {state: true},
     documentLayoutsDismissed: {attribute: false, state: true},
     sizeWarningDismissed: {state: true},
+    safariWarningDismissed: {state: true},
     fileError: {attribute: false, state: true},
     fileOperationActive: {attribute: false, state: true},
     documentLoading: {attribute: false, state: true},
@@ -735,6 +743,7 @@ export class DomEditor extends LitElement {
   private documentLayoutsDismissed = false
   private documentLayoutsManuallyDismissed = false
   private sizeWarningDismissed = false
+  private safariWarningDismissed = false
   private documentLayoutConversionCount = 0
   private fileError = ""
   private fileOperationActive = false
@@ -943,11 +952,12 @@ export class DomEditor extends LitElement {
       min-width: 0;
     }
 
-    .size-warning {display: none; align-items: center; gap: .5rem; padding: .35rem .65rem; border-bottom: 1px solid #e4d7a9; background: #fff2cc; color: #65552b; font: .75rem/1.3 system-ui, sans-serif}
-    .size-warning span {flex: 1; min-width: 0}
-    .size-warning button {order: 1; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: 1.2rem/1 system-ui; cursor: pointer}
-    .size-warning button:hover {background: rgb(101 85 43 / 10%)}
-    .size-warning button:focus-visible {outline: 2px solid currentColor; outline-offset: 1px}
+    .environment-warning {display: flex; align-items: center; gap: .5rem; padding: .35rem .65rem; border-bottom: 1px solid #e4d7a9; background: #fff2cc; color: #65552b; font: .75rem/1.3 system-ui, sans-serif}
+    .environment-warning span {flex: 1; min-width: 0}
+    .environment-warning button {order: 1; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: 1.2rem/1 system-ui; cursor: pointer}
+    .environment-warning button:hover {background: rgb(101 85 43 / 10%)}
+    .environment-warning button:focus-visible {outline: 2px solid currentColor; outline-offset: 1px}
+    .size-warning {display: none}
     .replay-size-warning {display: flex; align-items: center; gap: .5rem; padding: .35rem .65rem; border-bottom: 1px solid #e4d7a9; background: #fff2cc; color: #65552b; font: .75rem/1.3 system-ui, sans-serif}
     .replay-size-warning span {flex: 1; min-width: 0}
     .replay-size-warning button {flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: 1.2rem/1 system-ui; cursor: pointer}
@@ -961,8 +971,8 @@ export class DomEditor extends LitElement {
       .size-warning {display: flex}
     }
     @media (width < 100px), (height < 100px) {
-      .size-warning {display: flow-root; box-sizing: border-box; max-width: calc(100vw - 1px); padding: clamp(2px, min(4vw, 4vh), 4px); font-size: clamp(6px, min(12vw, 12vh), 12px)}
-      .size-warning button {float: right; width: 1.3em; height: 1.3em; margin-left: .25em; font: inherit}
+      .environment-warning {display: flow-root; box-sizing: border-box; max-width: calc(100vw - 1px); padding: clamp(2px, min(4vw, 4vh), 4px); font-size: clamp(6px, min(12vw, 12vh), 12px)}
+      .environment-warning button {float: right; width: 1.3em; height: 1.3em; margin-left: .25em; font: inherit}
     }
 
     dom-editor-breadcrumb,
@@ -9786,10 +9796,14 @@ export class DomEditor extends LitElement {
       <app-update-notice .anchor=${() => this.renderRoot.querySelector("app-ribbon")?.shadowRoot?.querySelector<HTMLElement>(".brand-logo") ?? null}></app-update-notice>
       <header class="app-bar">
         <div class="ribbon-header">
-          ${this.sizeWarningDismissed ? "" : html`<div class="size-warning" role="alert">
+          ${this.sizeWarningDismissed ? "" : html`<div class="size-warning environment-warning" role="alert">
             <button type="button" aria-label="Dismiss size warning" title="Dismiss" @click=${() => {this.sizeWarningDismissed = true}}>×</button>
             <span>WebWriter may not work correctly at this size.</span>
           </div>`}
+          ${!this.safariWarningDismissed && isOutdatedSafari(this.ownerDocument.defaultView?.navigator.userAgent ?? "") ? html`<div class="safari-warning environment-warning" role="status">
+            <button type="button" aria-label="Dismiss Safari warning" title="Dismiss" @click=${() => {this.safariWarningDismissed = true}}>×</button>
+            <span>WebWriter may not work correctly in this outdated version of Safari. Please update to Safari 26 or later.</span>
+          </div>` : nothing}
           ${this.replaySizeWarning ? html`<div class="replay-size-warning" role="status">
             <span>This replay is larger than 256 MiB. Playback may be slow on this device.</span>
             <button type="button" aria-label="Dismiss replay size warning" title="Dismiss" @click=${() => {this.replaySizeWarning = false}}>×</button>

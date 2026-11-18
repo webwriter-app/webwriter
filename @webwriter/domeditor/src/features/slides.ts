@@ -5,6 +5,10 @@ import {$, clearInlinePlacement, createAnchorPositioner, createStylesheet, isApp
 import {getDocumentRoot} from "../document-template"
 import {documentLayoutMode, resetEmptyLayoutContent, isSlide, slideLayoutRole, slidesClass, slidesStyles, slideWidth, slideHeight} from "../document-layout"
 import {isAuthoredMutation} from "../editor-artifacts"
+import {TouchPinch} from "../touch-pinch.js"
+
+type Point = {x: number, y: number}
+type SlideZoomAnchor = {slide: HTMLElement, world: Point}
 
 /** A CSS carousel with authored fragment links. Authoring and caret placement
  * belong to the editor; navigating and reading the saved deck need no script. */
@@ -16,6 +20,8 @@ export class SlidesFeature extends EditorFeature {
   private viewZoom = 1
   private fitting = true
   private viewing = false
+  private pinch = new TouchPinch()
+  private pinchAnchor: SlideZoomAnchor | null = null
   private currentCache: {viewport: HTMLElement, left: number, width: number, slide: HTMLElement} | null = null
   private anchorsDirty = true
   get zoom() { return this.active ? this.viewZoom : 1 }
@@ -30,18 +36,36 @@ export class SlidesFeature extends EditorFeature {
     return {x: (x - rect.left) / this.zoom + slide.scrollLeft, y: (y - rect.top) / this.zoom + slide.scrollTop}
   }
 
-  private applyZoom(zoom: number) {
+  private applyZoom(zoom: number, anchor?: SlideZoomAnchor & {viewport: HTMLElement, point: Point}) {
     if(!this.active || !Number.isFinite(zoom)) return
-    const slide = this.current()
+    const slide = anchor?.slide ?? this.current()
+    const previousZoom = this.viewZoom
     this.viewZoom = Math.max(.1, Math.min(4, zoom))
-    this.removeZoomStyle?.()
-    this.removeZoomStyle = this.editor.addMainDOMStyleRule(`@media screen {
-      body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) {
-        zoom: ${this.viewZoom}; margin-inline: max(0px, calc((100vw / ${this.viewZoom} - ${slideWidth}px) / 2));
-      }
-    }`)
+    const changed = this.viewZoom !== previousZoom || !this.removeZoomStyle
+    if(changed) {
+      this.removeZoomStyle?.()
+      this.removeZoomStyle = this.editor.addMainDOMStyleRule(`@media screen {
+        body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) {
+          zoom: ${this.viewZoom}; margin-inline: max(0px, calc((100vw / ${this.viewZoom} - ${slideWidth}px) / 2));
+        }
+      }`)
+    }
     this.currentCache = null
-    slide?.scrollIntoView?.({block: "nearest", inline: "center", behavior: "instant"})
+    if(anchor) {
+      const {viewport, world, point} = anchor
+      const rect = anchor.slide.getBoundingClientRect(), view = viewport.getBoundingClientRect()
+      const dx = rect.left + (world.x - anchor.slide.scrollLeft) * this.zoom - point.x
+      const dy = rect.top + (world.y - anchor.slide.scrollTop) * this.zoom - point.y
+      // Keep the gesture on its starting slide. One-finger swipes still cross
+      // slide boundaries using the carousel's native scroll snapping.
+      const left = rect.width > view.width ? Math.max(rect.left - view.left, Math.min(rect.right - view.right, dx))
+        : (rect.left + rect.right - view.left - view.right) / 2
+      // A combined scroll can snap horizontally and discard the vertical delta.
+      if(left) viewport.scrollBy({left, behavior: "instant"})
+      if(dy) viewport.scrollBy({top: dy, behavior: "instant"})
+    }
+    else slide?.scrollIntoView?.({block: "nearest", inline: "center", behavior: "instant"})
+    if(!changed && anchor) return
     updateCanvasZoomControls(this.zoomControls, this.zoom)
     this.editor.features.transformation.updateInfo()
     this.editor.features.layout.refresh()
@@ -170,10 +194,11 @@ export class SlidesFeature extends EditorFeature {
       const cached = this.currentCache
       if(cached?.viewport === viewport && cached.left === viewport.scrollLeft && cached.width === viewport.clientWidth
         && cached.slide.parentElement === viewport) return cached.slide
-      const left = viewport.getBoundingClientRect().left
+      const center = viewport.getBoundingClientRect().left + viewport.clientWidth / 2
       let nearest: HTMLElement | null = null, distance = Infinity
       for(const slide of this.slides()) {
-        const next = Math.abs(slide.getBoundingClientRect().left - left)
+        const {left, right} = slide.getBoundingClientRect()
+        const next = Math.max(left - center, center - right, 0)
         if(next < distance) { nearest = slide; distance = next }
       }
       this.currentCache = nearest ? {viewport, left: viewport.scrollLeft, width: viewport.clientWidth, slide: nearest} : null
@@ -404,6 +429,14 @@ export class SlidesFeature extends EditorFeature {
     event.stopImmediatePropagation()
     if(event.dataTransfer) event.dataTransfer.dropEffect = "none"
   }
+
+  private endPinch(event?: TouchEvent) {
+    this.pinch.end(event)
+    if(!this.pinch.active) this.pinchAnchor = null
+  }
+
+  private readonly resetPinch = () => this.endPinch()
+
   captureListeners: DocumentListenerMap = {
     wheel: event => {
       if(!this.active || !event.ctrlKey && !event.metaKey || isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event)) return
@@ -412,6 +445,29 @@ export class SlidesFeature extends EditorFeature {
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1
       this.applyZoom(this.zoom * Math.exp(-event.deltaY * unit * .002))
     },
+    touchstart: event => {
+      if(!this.active) return
+      const origin = event.composedPath()[0], viewport = this.viewport()
+      const onSlide = origin instanceof Node && viewport?.contains(origin) && !this.navigationEvent(event)
+        && !isFormControlInteraction(event) && !isWidgetShadowInteraction(event, this.editor.schema)
+      const point = this.pinch.start(event, Boolean(onSlide), this.zoom)
+      if(!point) return
+      const slide = this.current()
+      if(!slide) { this.endPinch(); return }
+      this.pinchAnchor = {slide, world: this.clientPoint(slide, point.x, point.y)}
+      this.fitting = false
+      this.cancelNavigation()
+      this.editor.features.selection.cancelTouchDrag()
+    },
+    touchmove: event => {
+      if(!this.active || !this.pinch.active) return
+      const viewport = this.viewport(), anchor = this.pinchAnchor
+      if(!viewport || !anchor || anchor.slide.parentElement !== viewport || !isSlide(anchor.slide)) { this.endPinch(); return }
+      const sample = this.pinch.move(event)
+      if(sample) this.applyZoom(sample.zoom, {...anchor, viewport, point: sample.point})
+    },
+    touchend: event => this.endPinch(event),
+    touchcancel: event => this.endPinch(event),
     scroll: () => this.schedule(),
     pointerover: event => { if(this.controlEvent(event)) { this.hoverDirty = true; this.schedule() } },
     pointerout: event => { if(this.controlEvent(event)) { this.hoverDirty = true; this.schedule() } },
@@ -419,7 +475,7 @@ export class SlidesFeature extends EditorFeature {
     dragover: event => this.preventControlDrag(event),
     drop: event => this.preventControlDrag(event),
     scrollend: event => {
-      if(event.target !== this.viewport() || !this.active) return
+      if(event.target !== this.viewport() || !this.active || this.pinch.active) return
       const slide = this.current()
       if(slide && $.selectedElement !== slide && this.containingSlide(document.getSelection()?.anchorNode ?? null) !== slide) this.selectStart(slide)
     },
@@ -474,7 +530,7 @@ export class SlidesFeature extends EditorFeature {
     if(this.active !== this.viewing) {
       this.viewing = this.active
       if(this.active) { this.fitting = true; this.fit() }
-      else { this.removeZoomStyle?.(); this.removeZoomStyle = null; this.viewZoom = 1 }
+      else { this.endPinch(); this.removeZoomStyle?.(); this.removeZoomStyle = null; this.viewZoom = 1 }
     }
     if(this.zoomControls) this.zoomControls.hidden = !this.active
     const nav = this.active ? this.navigation() : null
@@ -572,7 +628,9 @@ export class SlidesFeature extends EditorFeature {
     // Measure older flow decks above before applying the bundled layout.
     // Its portable <style> element is blocked by the strict editing CSP.
     // Keep editor rules (including local zoom) later in the cascade.
-    this.layoutStylesheet = createStylesheet(slidesStyles)
+    this.layoutStylesheet = createStylesheet(slidesStyles + `
+      @media screen { body.ww-slides > .ww-slides-viewport { overscroll-behavior-x: contain; } }
+    `)
     document.adoptedStyleSheets = [this.layoutStylesheet, ...document.adoptedStyleSheets]
     this.controls = document.createElement("div"); this.controls.setAttribute("part", "slide-navigation-actions"); this.controls.contentEditable = "false"
     this.controls.setAttribute("role", "toolbar"); this.controls.setAttribute("aria-label", "Slide actions")
@@ -616,6 +674,7 @@ export class SlidesFeature extends EditorFeature {
     `)
     this.editor.appendix.adoptedStyleSheets = [...this.editor.appendix.adoptedStyleSheets, this.stylesheet]
     window.addEventListener("resize", this.fit)
+    window.addEventListener("blur", this.resetPinch)
     this.observer = new MutationObserver(records => { if(records.some(isAuthoredMutation)) { this.currentCache = null; this.anchorsDirty = true }; this.schedule() }); this.observer.observe(document.body, {subtree: true, childList: true, attributes: true, attributeOldValue: true})
     this.refresh()
   }
@@ -630,6 +689,8 @@ export class SlidesFeature extends EditorFeature {
     this.navigationResize?.disconnect(); this.navigationResize = null
     this.anchors.destroy()
     window.removeEventListener("resize", this.fit)
+    window.removeEventListener("blur", this.resetPinch)
+    this.endPinch()
     this.removeZoomStyle?.(); this.removeZoomStyle = null
     this.zoomControls?.remove(); this.zoomControls = null
     this.viewing = false; this.viewZoom = 1
