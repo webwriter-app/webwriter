@@ -991,10 +991,12 @@ describe("toolbox", () => {
 
   it("can hide the tabs underline without changing tab sizing", async () => {
     const toolbox = await mountToolbox()
+    const area = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs-area")!
     const tabs = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
 
     toolbox.style.setProperty("--toolbox-tabs-border-color", "transparent")
     expect(getComputedStyle(tabs).borderBottomColor).toBe("transparent")
+    expect(getComputedStyle(area).boxShadow).toContain("transparent")
     expect(getComputedStyle(tabs).borderBottomWidth).toBe("0.5px")
     expect(getComputedStyle(tabs).height).toBe("30px")
 

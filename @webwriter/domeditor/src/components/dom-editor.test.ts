@@ -3307,6 +3307,32 @@ describe("DomEditor breadcrumb visibility", () => {
     await fileMenu.updateComplete
     expect(fileMenu.shadowRoot!.querySelector('[title="Hide breadcrumb"]')).toBeNull()
   })
+
+  it.each([true, false])("applies the short viewport collapse only to fine pointers (coarse: %s)", async coarse => {
+    vi.stubGlobal("innerHeight", 800)
+    const matchMedia = window.matchMedia.bind(window)
+    const pointer = new EventTarget()
+    vi.spyOn(window, "matchMedia").mockImplementation(query => query === "(pointer: coarse)"
+      ? Object.assign(pointer, {matches: coarse, media: query}) as MediaQueryList : matchMedia(query))
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const breadcrumb = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-breadcrumb")!
+    expect(ribbon.expanded).toBe(true)
+
+    vi.stubGlobal("innerHeight", 450)
+    window.dispatchEvent(new Event("resize"))
+    await ribbon.updateComplete
+    await editor.updateComplete
+    expect(ribbon.expanded).toBe(coarse)
+    expect(breadcrumb.hidden).toBe(!coarse)
+
+    vi.stubGlobal("innerHeight", 800)
+    window.dispatchEvent(new Event("resize"))
+    await ribbon.updateComplete
+    await editor.updateComplete
+    expect(ribbon.expanded).toBe(true)
+    expect(breadcrumb.hidden).toBe(false)
+  })
 })
 
 describe("Develop local packages", () => {
@@ -8250,6 +8276,7 @@ describe("DomEditor.execute()", () => {
     const previewFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.preview-frame")!
     expect(previewFrame).not.toBe(editorFrame)
     expect(editorFrame.hidden).toBe(true)
+    expect(getComputedStyle(previewFrame.parentElement!).paddingBlockStart).toBe("1px")
     expect(previewFrame.contentDocument!.body.getAttribute("contenteditable")).toBe("true")
     expect(previewFrame.contentDocument!.querySelector("p[contenteditable='true']")).not.toBeNull()
     expect(previewFrame.contentDocument!.designMode).not.toBe("on")
@@ -8265,6 +8292,10 @@ describe("DomEditor.execute()", () => {
       .toBe("Exit preview")
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.getAttribute("aria-pressed"))
       .toBe("true")
+    const ribbonContent = ribbon.shadowRoot!.querySelector<HTMLElement>(".ribbon-content")!
+    expect(getComputedStyle(ribbonContent).borderTopColor).toBe("transparent")
+    expect(getComputedStyle(ribbonContent).backgroundImage).toContain("linear-gradient")
+    expect(getComputedStyle(ribbonContent).backgroundSize).toContain("+ 1px")
     expect(previewButton.querySelector(".preview-label")).toBeNull()
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"]')).not.toBeNull()
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Learners"]')).not.toBeNull()
@@ -8729,7 +8760,9 @@ describe("DomEditor.execute()", () => {
       const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
       await toolbox.updateComplete
       expect(toolbox.hidden).toBe(false)
-      expect(editor.shadowRoot!.querySelector("live-session-controls")).not.toBeNull()
+      const timeline = editor.shadowRoot!.querySelector("live-session-controls")!
+      expect(getComputedStyle(timeline).backgroundColor).toBe("transparent")
+      expect(getComputedStyle(timeline).borderBottomWidth).toBe("0px")
       expect(toolbox.preview).toBe(true)
       toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="Feedback"]')!.click()
       await toolbox.updateComplete
@@ -11409,7 +11442,8 @@ describe("DomEditor.execute()", () => {
     await breadcrumb.updateComplete
     expect(getComputedStyle(breadcrumb).height).toBe("30px")
     expect(getComputedStyle(tabs).height).toBe("30px")
-    expect(getComputedStyle(tabs).backgroundColor).toBe(getComputedStyle(breadcrumb).backgroundColor)
+    expect(getComputedStyle(breadcrumb).backgroundColor).toBe("transparent")
+    expect(getComputedStyle(breadcrumb).borderBottomColor).toBe("transparent")
     breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await editor.updateComplete
     await breadcrumb.updateComplete

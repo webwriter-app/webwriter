@@ -914,6 +914,29 @@ export class DomEditor extends LitElement {
       display: contents;
     }
 
+    .app-bar:has(> :is(dom-editor-breadcrumb, live-session-controls):not([hidden]))::before {
+      content: "";
+      grid-row: 2;
+      grid-column: 1 / -1;
+      background: #ededed;
+      border-bottom: 0.5px solid #a8a8a8;
+      pointer-events: none;
+    }
+
+    .app-bar:has(> :is(dom-editor-breadcrumb, live-session-controls):not([hidden])) > :is(dom-editor-breadcrumb, live-session-controls) {
+      background: transparent;
+      border-bottom-color: transparent;
+    }
+
+    .app-bar:has(> live-session-controls) > live-session-controls {
+      border-bottom-width: 0;
+    }
+
+    .app-bar:has(> :is(dom-editor-breadcrumb, live-session-controls):not([hidden])) ~ dom-editor-toolbox {
+      --toolbox-tabs-background: transparent;
+      --toolbox-tabs-border-color: transparent;
+    }
+
     .ribbon-header {
       grid-row: 1;
       grid-column: 1 / -1;
@@ -984,6 +1007,13 @@ export class DomEditor extends LitElement {
       min-height: 0;
       width: 100%;
       overflow: hidden;
+    }
+
+    .document-stage:has(> .preview-frame) {
+      /* Keep the frame's native scrollbar gutter one pixel off the divider. */
+      box-sizing: border-box;
+      padding-block-start: 1px;
+      background: white;
     }
 
     .document-loading {
@@ -1316,6 +1346,11 @@ export class DomEditor extends LitElement {
     }
 
     @container (width < 600px) {
+      .app-bar:has(> :is(dom-editor-breadcrumb, live-session-controls):not([hidden])) ~ dom-editor-toolbox:is([active-tool], [collapsed]) {
+        --toolbox-tabs-background: initial;
+        --toolbox-tabs-border-color: initial;
+      }
+
       .document-stage,
       .html-source-panel,
       .document-layouts-panel {grid-column: 1 / -1}
@@ -8138,6 +8173,11 @@ export class DomEditor extends LitElement {
 
   private handleBreadcrumbItemSelect = (event: Event) => this.selectBreadcrumbTarget(event, "selectNode")
 
+  private handleBreadcrumbItemToggle = (event: CustomEvent<{path: number[], targetId: string, selected: boolean}>) => {
+    const {path, targetId, selected} = event.detail
+    void this.execute({type: "setNodeSelected", path, targetId, selected}).finally(() => this.focusEditor())
+  }
+
   private handleBreadcrumbSectionSelect = (event: Event) => this.selectBreadcrumbTarget(event, "selectSection")
 
   private handleBreadcrumbItemHover = (event: Event) => {
@@ -9865,6 +9905,7 @@ export class DomEditor extends LitElement {
             ?hidden=${!this.breadcrumbVisible}
             @breadcrumb-tree-toggle=${this.handleBreadcrumbTreeToggle}
             @breadcrumb-item-select=${this.handleBreadcrumbItemSelect}
+            @breadcrumb-item-toggle=${this.handleBreadcrumbItemToggle}
             @breadcrumb-item-hover=${this.handleBreadcrumbItemHover}
             @breadcrumb-section-select=${this.handleBreadcrumbSectionSelect}
             @breadcrumb-section-hover=${this.handleBreadcrumbSectionHover}

@@ -12,8 +12,9 @@ import {inlineMathRoot, mathOutsidePoint, mathRoot} from "../math"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {isTextFieldInteraction} from "../utility"
 import {createAnchorPositioner} from "../utility"
-import {childNodesInRange} from "../utility"
+import {childNodesInRange, nodeAtPath} from "../utility"
 import {textKeyboardRequestEvent, type ElementSelectionType} from "../editor-bridge"
+import {elementAttributeTargetId} from "../element-attributes"
 import type {BoxGeometry} from "./transformation"
 import type {Transaction} from "yjs"
 
@@ -2044,6 +2045,24 @@ export class SelectionFeature extends EditorFeature {
       }
       $.selectElement(node)
       this.processSelection()
+    },
+    setNodeSelected: ({path, targetId, selected}: {type: "setNodeSelected", path: number[], targetId: string, selected: boolean}) => {
+      const node = nodeAtPath(document.body, path)
+      const root = getDocumentRoot()
+      if(this.editor.isEditingLocked || !isElement(node) || node === root || !root.contains(node)
+        || elementAttributeTargetId(node) !== targetId || !this.editor.allows("select", node)) return
+      const elements = $.selectedElements
+      if(selected === elements.includes(node)) return
+      if(selected) {
+        this.editor.features.table.clearCellSelection(false)
+        this.actions.selectNode({type: "selectNode", path})
+        return
+      }
+      this.#releaseCaptureSelection()
+      if(elements.length > 1) $.selectElements(elements.filter(element => element !== node))
+      else if(node.matches("figure, table") || isAtomicEditingElement(node, this.editor.schema)) $.selectGap(node)
+      else $.move(node)
+      this.processSelection(undefined, {scrollIntoView: false})
     },
     selectSection: ({path}: {type: "selectSection", path: number[]}) => {
       const section = this.#rawElementAtPath(path)

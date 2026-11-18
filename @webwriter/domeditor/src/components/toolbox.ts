@@ -354,8 +354,8 @@ export class DomEditorToolbox extends EditingControls {
     .toolbox-tabs-area {
       grid-row: 1 / -1;
       min-height: 30px;
-      background: #ededed;
-      box-shadow: inset 0 -0.5px #a8a8a8;
+      background: var(--toolbox-tabs-background, #ededed);
+      box-shadow: inset 0 -0.5px var(--toolbox-tabs-border-color, #a8a8a8);
     }
 
     :host([active-tool]) .toolbox-tabs-area {
@@ -376,7 +376,7 @@ export class DomEditorToolbox extends EditingControls {
       border-bottom-width: 0.5px;
       border-bottom-style: solid;
       border-bottom-color: var(--toolbox-tabs-border-color, #a8a8a8);
-      background: #ededed;
+      background: var(--toolbox-tabs-background, #ededed);
     }
 
     .toolbox-tab {

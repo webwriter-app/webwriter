@@ -29,7 +29,7 @@ import { DialogFeature } from "./features/dialog"
 import {floatSideFromStyles} from "./element-styles"
 import {clearEditorPresentation, clearPresentationState, hasPresentationState, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, atomicEditingContainer, clearEditorArtifacts, cloneInert, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
+import { $, adoptStylesheet, atomicEditingContainer, clearEditorArtifacts, cloneInert, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, nodeAtPath, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
 import {
   editorFrameControlMessage,
@@ -69,7 +69,7 @@ import {upgradeBundledDocumentThemes} from "./document-themes"
 import {getSectionOption, isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
 import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
-import {elementAttributeState} from "./element-attributes"
+import {elementAttributeState, elementAttributeTargetId} from "./element-attributes"
 import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
 import {runtimeDocumentBaseURL} from "./document-base-url"
 
@@ -275,6 +275,7 @@ export class DOMEditor {
   } | null = null
   readonly #bridgeNonce: string
   readonly #bridgeOrigin: string
+  readonly #coarsePointer = window.matchMedia("(pointer: coarse)")
 
   readonly #blockEditingInteraction = (event: Event) => {
     const path = event.composedPath()
@@ -1294,6 +1295,14 @@ export class DOMEditor {
     if(pendingSections.length) {
       const owner = path.at(-1)
       if(owner) owner.sections = [...(owner.sections ?? []), ...pendingSections]
+    }
+    const activeItem = this.#coarsePointer.matches && path.length > 1 ? path.at(-1) : undefined
+    if(activeItem) {
+      const target = nodeAtPath(body, activeItem.path)
+      if(isElement(target)) {
+        activeItem.targetId = elementAttributeTargetId(target)
+        activeItem.targetSelected = $.selectedElements.includes(target)
+      }
     }
     const gap: SelectionGap | undefined = !this.features.manipulation.draggedElement && !this.features.selection.isCaptureSelection
       && !focusedWidget && $.isGapSelection && isElement($.anchor)

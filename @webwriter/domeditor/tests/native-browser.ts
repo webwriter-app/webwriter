@@ -12005,6 +12005,15 @@ await check("narrow toolboxes collapse below bottom panels and restore on tab ac
     const toolbox = app.shadowRoot!.querySelector<import("../src/components/toolbox").DomEditorToolbox>("dom-editor-toolbox")!
     const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
     const tabs = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
+    const tabsArea = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs-area")!
+    host.breadcrumbVisible = true
+    await settle()
+    const divider = getComputedStyle(app.shadowRoot!.querySelector(".app-bar")!, "::before")
+    assert(divider.gridRowStart === "2" && divider.gridColumnStart === "1" && divider.gridColumnEnd === "-1"
+      && divider.borderBottomColor === "rgb(168, 168, 168)", "the shared divider does not span the breadcrumb row")
+    const transparent = "rgba(0, 0, 0, 0)"
+    assert(getComputedStyle(tabs).borderBottomColor === transparent && getComputedStyle(tabsArea).backgroundColor === transparent
+      && getComputedStyle(tabsArea).boxShadow.includes(transparent), "the adjacent toolbox paints over the shared divider")
     for(const surface of ["console", "versions", "math", "shape", "link"]) {
       Object.assign(app, {consoleOpen: false, reviewOpen: false, mathSelection: null, graphicSelection: null, linkSelection: null,
         mathKeyboardHidden: false, shapeKeyboardHidden: false, linkKeyboardHidden: false})
@@ -12033,6 +12042,7 @@ await check("narrow toolboxes collapse below bottom panels and restore on tab ac
           `${surface}: tabs are not at the bottom below the open panel`)
         assert(Math.abs(toolbox.getBoundingClientRect().height - 30) < 1, `${surface}: toolbox reserves more than the tab row`)
         assert(tabs.scrollWidth <= tabs.clientWidth, `${surface}: tabs overflow horizontally`)
+        assert(getComputedStyle(tabs).borderBottomColor === "rgb(168, 168, 168)", `${surface}: docked tabs lost their own divider`)
         assert(!toolbox.shadowRoot!.querySelector('[aria-selected="true"]'), `${surface}: hidden pane has a selected tab`)
       }
       toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`[data-tool="${toolbox.activeTool}"]`)!.click()

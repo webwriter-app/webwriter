@@ -362,6 +362,9 @@ export function isLoadWidgetsMessage(value: unknown): value is LoadWidgetsMessag
 export type SelectionPathItem = {
   /** The child-node path from BODY to this element. */
   path: number[]
+  /** Runtime identity of the active authored element, for targeted actions. */
+  targetId?: string
+  targetSelected?: boolean
   /** The human-readable name shown in the breadcrumb. */
   name: string
   /** The key used by the shared icon renderer. */
@@ -890,6 +893,8 @@ const isSelectionPathItem = (value: unknown) => {
     && isOptional(section.icon, isString)
   return isPath(value.path)
     && isString(value.name)
+    && isOptional(value.targetId, isString)
+    && isOptional(value.targetSelected, isBoolean)
     && isOptional(value.icon, isString)
     && isOptional(value.iconUrl, isString)
     && isOptional(value.imageMap, isBoolean)
