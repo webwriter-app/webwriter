@@ -35,6 +35,8 @@ import "./developer-console"
 import "./document-theme-presets"
 import type {DocumentThemePresets} from "./document-theme-presets"
 import type {DeveloperConsole} from "./developer-console"
+import type {TextKeyboardCommand} from "./text-keyboard"
+import "./text-keyboard"
 import "./math-keyboard"
 import type {MathKeyboard} from "./math-keyboard"
 import "./shape-keyboard"
@@ -116,7 +118,8 @@ import {
 import type {DialogSelectionState} from "../dialog"
 import type {MathSelectionState} from "../math"
 import type {ElementAttributeState} from "../element-attributes"
-import {widgetOptionValue, type WidgetOptionsState} from "../widget-options"
+import {matchesWidgetFileFormat, widgetOptionValue, type WidgetOptionsState} from "../widget-options"
+import {groupWidgetFileFormats} from "../widget-file-formats"
 import {
   aiEditReviewEvent,
   attachmentConfirmationEvent,
@@ -125,6 +128,7 @@ import {
   executeCompleteEvent,
   emptyVersionHistoryState,
   initializeEditorMessage,
+  supportsTouchKeyboard,
   isAIEditReviewMessage,
   isExecuteResponse,
   isDocumentHeadStateChangeMessage,
@@ -148,6 +152,7 @@ import {
   loadWidgetsMessage,
   selectionChangeEvent,
   shapeKeyboardInputEvent,
+  textKeyboardRequestEvent,
   mathKeyboardTabEvent,
   type ShapeKeyboardInput,
   type ElementStyleMutation,
@@ -363,6 +368,13 @@ const randomIdentifier = (prefix: string) => globalThis.crypto?.randomUUID?.()
 
 const clampUnit = (value: number) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
 
+const isOutdatedSafari = (userAgent: string) => {
+  if(!/Safari\//.test(userAgent) || /Chrome|Chromium|CriOS|FxiOS|Edg|OPR|OPT|Opera|Android/i.test(userAgent)) return false
+  const version = /\bVersion\/(\d+)(?:\.\d+)*\s/.exec(userAgent)
+  // Safari 26 introduced native CSS anchor positioning used by the editor UI.
+  return version !== null && Number(version[1]) < 26
+}
+
 const defaultDocumentLayoutState = (): DocumentLayoutState => ({mode: "document", canConvert: true, zoom: 100})
 
 type LiveSessionIdentity = {
@@ -436,6 +448,9 @@ export class DomEditor extends LitElement {
     tableSelection: {attribute: false, state: true},
     graphicSelection: {attribute: false, state: true},
     mathSelection: {attribute: false, state: true},
+    textKeyboardEligible: {attribute: false, state: true},
+    textKeyboardDisplay: {attribute: false, state: true},
+    nativeTextKeyboard: {attribute: false, state: true},
     mathKeyboardHidden: {attribute: false, state: true},
     shapeKeyboardHidden: {attribute: false, state: true},
     shapePaint: {attribute: false, state: true},
@@ -458,6 +473,7 @@ export class DomEditor extends LitElement {
     documentRecoveryError: {state: true},
     documentLayoutsDismissed: {attribute: false, state: true},
     sizeWarningDismissed: {state: true},
+    safariWarningDismissed: {state: true},
     fileError: {attribute: false, state: true},
     fileOperationActive: {attribute: false, state: true},
     documentLoading: {attribute: false, state: true},
@@ -625,6 +641,9 @@ export class DomEditor extends LitElement {
   private tableSelection: TableSelectionState | null = null
   private graphicSelection: GraphicSelectionState | null = null
   private mathSelection: MathSelectionState | null = null
+  private textKeyboardEligible = false
+  private textKeyboardDisplay: "inactive" | "open" | "closed" = "inactive"
+  private nativeTextKeyboard = false
   private mathKeyboardHidden = false
   private shapeKeyboardHidden = false
   private shapePaint: Required<GraphicShapePaint> = {...defaultGraphicShapePaint}
@@ -724,6 +743,7 @@ export class DomEditor extends LitElement {
   private documentLayoutsDismissed = false
   private documentLayoutsManuallyDismissed = false
   private sizeWarningDismissed = false
+  private safariWarningDismissed = false
   private documentLayoutConversionCount = 0
   private fileError = ""
   private fileOperationActive = false
@@ -903,17 +923,41 @@ export class DomEditor extends LitElement {
       display: contents;
     }
 
+    .app-bar:has(> :is(dom-editor-breadcrumb, live-session-controls):not([hidden]))::before {
+      content: "";
+      grid-row: 2;
+      grid-column: 1 / -1;
+      background: #ededed;
+      border-bottom: 0.5px solid #a8a8a8;
+      pointer-events: none;
+    }
+
+    .app-bar:has(> :is(dom-editor-breadcrumb, live-session-controls):not([hidden])) > :is(dom-editor-breadcrumb, live-session-controls) {
+      background: transparent;
+      border-bottom-color: transparent;
+    }
+
+    .app-bar:has(> live-session-controls) > live-session-controls {
+      border-bottom-width: 0;
+    }
+
+    .app-bar:has(> :is(dom-editor-breadcrumb, live-session-controls):not([hidden])) ~ dom-editor-toolbox {
+      --toolbox-tabs-background: transparent;
+      --toolbox-tabs-border-color: transparent;
+    }
+
     .ribbon-header {
       grid-row: 1;
       grid-column: 1 / -1;
       min-width: 0;
     }
 
-    .size-warning {display: none; align-items: center; gap: .5rem; padding: .35rem .65rem; border-bottom: 1px solid #e4d7a9; background: #fff2cc; color: #65552b; font: .75rem/1.3 system-ui, sans-serif}
-    .size-warning span {flex: 1; min-width: 0}
-    .size-warning button {order: 1; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: 1.2rem/1 system-ui; cursor: pointer}
-    .size-warning button:hover {background: rgb(101 85 43 / 10%)}
-    .size-warning button:focus-visible {outline: 2px solid currentColor; outline-offset: 1px}
+    .environment-warning {display: flex; align-items: center; gap: .5rem; padding: .35rem .65rem; border-bottom: 1px solid #e4d7a9; background: #fff2cc; color: #65552b; font: .75rem/1.3 system-ui, sans-serif}
+    .environment-warning span {flex: 1; min-width: 0}
+    .environment-warning button {order: 1; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: 1.2rem/1 system-ui; cursor: pointer}
+    .environment-warning button:hover {background: rgb(101 85 43 / 10%)}
+    .environment-warning button:focus-visible {outline: 2px solid currentColor; outline-offset: 1px}
+    .size-warning {display: none}
     .replay-size-warning {display: flex; align-items: center; gap: .5rem; padding: .35rem .65rem; border-bottom: 1px solid #e4d7a9; background: #fff2cc; color: #65552b; font: .75rem/1.3 system-ui, sans-serif}
     .replay-size-warning span {flex: 1; min-width: 0}
     .replay-size-warning button {flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: 1.2rem/1 system-ui; cursor: pointer}
@@ -927,8 +971,8 @@ export class DomEditor extends LitElement {
       .size-warning {display: flex}
     }
     @media (width < 100px), (height < 100px) {
-      .size-warning {display: flow-root; box-sizing: border-box; max-width: calc(100vw - 1px); padding: clamp(2px, min(4vw, 4vh), 4px); font-size: clamp(6px, min(12vw, 12vh), 12px)}
-      .size-warning button {float: right; width: 1.3em; height: 1.3em; margin-left: .25em; font: inherit}
+      .environment-warning {display: flow-root; box-sizing: border-box; max-width: calc(100vw - 1px); padding: clamp(2px, min(4vw, 4vh), 4px); font-size: clamp(6px, min(12vw, 12vh), 12px)}
+      .environment-warning button {float: right; width: 1.3em; height: 1.3em; margin-left: .25em; font: inherit}
     }
 
     dom-editor-breadcrumb,
@@ -975,6 +1019,13 @@ export class DomEditor extends LitElement {
       overflow: hidden;
     }
 
+    .document-stage:has(> .preview-frame) {
+      /* Keep the frame's native scrollbar gutter one pixel off the divider. */
+      box-sizing: border-box;
+      padding-block-start: 1px;
+      background: white;
+    }
+
     .document-loading {
       position: absolute;
       inset: 0;
@@ -1012,6 +1063,14 @@ export class DomEditor extends LitElement {
     }
 
     .math-keyboard-area dom-editor-math-keyboard { height: 100%; max-height: none; pointer-events: auto; }
+
+    .document-stage:has(.text-keyboard-area) { flex-direction: column; }
+    .text-keyboard-area {
+      flex: 0 1 auto;
+      min-height: 0;
+      max-height: 55%;
+      overflow: auto;
+    }
 
     .shape-keyboard-area { height: auto; max-height: 100%; }
     .shape-keyboard-area[hidden] { display: none; }
@@ -1297,6 +1356,11 @@ export class DomEditor extends LitElement {
     }
 
     @container (width < 600px) {
+      .app-bar:has(> :is(dom-editor-breadcrumb, live-session-controls):not([hidden])) ~ dom-editor-toolbox:is([active-tool], [collapsed]) {
+        --toolbox-tabs-background: initial;
+        --toolbox-tabs-border-color: initial;
+      }
+
       .document-stage,
       .html-source-panel,
       .document-layouts-panel {grid-column: 1 / -1}
@@ -1351,6 +1415,7 @@ export class DomEditor extends LitElement {
     if(!source?.documentElement) return this.frameDocumentHTML
     const inertDocument = getInertDocument(source)
     const root = inertDocument.importNode(source.documentElement, true) as HTMLElement
+    copyEditorArtifactState(source.documentElement, root)
     restoreWidgetGroupingClones(source.documentElement, root)
     clearEditorArtifacts(root, [], this.isInstalledWidget)
     const serialize = prepareWidgetGroupingsForSerialization(root)
@@ -1364,6 +1429,7 @@ export class DomEditor extends LitElement {
     const editorDocument = this.editorDocument
     const source = editorDocument?.cloneNode(true) as Document | null
     if(!source?.documentElement) throw new Error("The editor document is not ready")
+    copyEditorArtifactState(editorDocument!, source)
     restoreWidgetGroupingClones(editorDocument!, source)
     return this.preparePreviewDocument(source)
   }
@@ -2194,6 +2260,9 @@ export class DomEditor extends LitElement {
 
   private initializeEditorFrame(iframe: HTMLIFrameElement) {
     if(iframe !== this.editorIframe()) return
+    this.textKeyboardEligible = false
+    this.textKeyboardDisplay = "inactive"
+    this.nativeTextKeyboard = false
     this.guidedTourReady = false
     this.handleHostWindowFocus()
     for(const pending of this.frameRequests.values()) {
@@ -2351,6 +2420,7 @@ export class DomEditor extends LitElement {
       const editorReadyReject = this.editorReadyReject
       const initializeMessage: InitializeEditorMessage = {
         type: initializeEditorMessage,
+        touchKeyboard: this.offerTextKeyboard,
         syncUrl: this.syncUrl,
         bridgeNonce: this.bridgeNonce,
         documentReplicaId: this.documentReplicaId,
@@ -2657,7 +2727,11 @@ export class DomEditor extends LitElement {
     this.dismissFloatInfo()
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     const appendix = this.editorDocument?.body.shadowRoot
-    if(isWidgetShadowInteraction(event) || appendix && event.composedPath().includes(appendix)) return
+    if(isWidgetShadowInteraction(event) || appendix && event.composedPath().includes(appendix)
+      || event.composedPath().some(node => (node as Element).matches?.("input, select, textarea"))) {
+      this.textKeyboardDisplay = "inactive"
+      return
+    }
     this.focusEditor()
     this.dismissEditorMenus()
     if(!this.editorTargetSharesTextSelection(event.target)) {
@@ -2686,10 +2760,6 @@ export class DomEditor extends LitElement {
       this.frameTouchPointer = null
       if(frame.hasPointerCapture?.(event.pointerId)) frame.releasePointerCapture(event.pointerId)
     }
-  }
-
-  private handleFrameTouchStart = (event: TouchEvent) => {
-    if(this.frameTouchPointer !== null && event.touches.length === 1) event.preventDefault()
   }
 
   private dismissEditorMenus() {
@@ -2736,9 +2806,17 @@ export class DomEditor extends LitElement {
   }
 
   private handleEditorFocus = (event: FocusEvent) => {
-    if(isWidgetShadowInteraction(event)) return
+    if(isWidgetShadowInteraction(event)) {
+      this.textKeyboardDisplay = "inactive"
+      return
+    }
+    if(isTextFieldInteraction(event, this.editorDocument?.body)) this.textKeyboardDisplay = "inactive"
     this.dismissThemePicker()
     this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
+  }
+
+  private handleHostInputFocus = (event: FocusEvent) => {
+    if(this.textKeyboardDisplay !== "inactive" && isTextFieldInteraction(event)) this.textKeyboardDisplay = "inactive"
   }
 
   private handleEditorFrameFocus = () => {
@@ -2873,6 +2951,10 @@ export class DomEditor extends LitElement {
       return
     }
     if(features?.mark.focusWidgetText()) {
+      this.savedEditorSelection = null
+      return
+    }
+    if(features?.selection?.focusCapturedWidget?.()) {
       this.savedEditorSelection = null
       return
     }
@@ -3474,6 +3556,12 @@ export class DomEditor extends LitElement {
       }
     }
     this.settings = {...settings, shortcuts: {...settings.shortcuts}}
+    if(previous.alwaysShowTextKeyboard !== settings.alwaysShowTextKeyboard) {
+      this.nativeTextKeyboard = false
+      this.textKeyboardDisplay = "inactive"
+      if(!this.offerTextKeyboard) this.textKeyboardEligible = false
+      if(this.editorWindow) this.postFrameControl("touch-keyboard-preference", {enabled: this.offerTextKeyboard})
+    }
     if(previous.proofreadingEnabledByDefault !== settings.proofreadingEnabledByDefault) {
       this.proofreadingReloading = false
       this.proofreadingState = {...emptyProofreadingState(), allowed: this.settings.proofreadingEnabledByDefault, enabled: this.settings.proofreadingEnabledByDefault && this.documentProofreadingEnabled,
@@ -5107,9 +5195,13 @@ export class DomEditor extends LitElement {
     const revision = this.frameRevision
     try {
       if(direction === "import") {
-        const file = await this.pickFileInput(format)
+        const group = groupWidgetFileFormats(formats).find(group => group.formats.includes(format))!
+        const accept = [...new Set(group.formats.map(format => format.toLowerCase()))].join(",")
+        const file = await this.pickFileInput(accept)
         if(!file || !this.isConnected || revision !== this.frameRevision) return
-        if(await this.execute({type: "importWidgetFile", sourceId, format, file}) !== true) {
+        const matchedFormat = group.formats.find(key => matchesWidgetFileFormat(file, key))
+        if(!matchedFormat) throw new TypeError(`Choose a file in ${group.label} format.`)
+        if(await this.execute({type: "importWidgetFile", sourceId, format: matchedFormat, file}) !== true) {
           throw new Error("The file could not be imported into the selected widget.")
         }
       }
@@ -5480,7 +5572,9 @@ export class DomEditor extends LitElement {
       return
     }
     if(label === "figure-caption-edit") {
-      void this.execute({type: "editFigureCaption"}).finally(() => this.focusEditor())
+      void this.execute({type: "editFigureCaption"}).then(edited => {
+        if(edited && this.offerTextKeyboard && this.textKeyboardEligible) this.textKeyboardDisplay = "open"
+      }).finally(() => this.focusEditor())
       return
     }
     if(label?.startsWith("math:")) {
@@ -7479,6 +7573,7 @@ export class DomEditor extends LitElement {
     if(tool === "Distribute") void this.loadDistributionItems()
     const expandDockedToolbox = this.narrowLayout && this.bottomPanelOpen
     if(expandDockedToolbox) {
+      if(this.textKeyboardDisplay === "open") this.textKeyboardDisplay = "closed"
       this.mathKeyboardHidden = true
       this.shapeKeyboardHidden = true
       this.linkKeyboardHidden = true
@@ -7700,7 +7795,7 @@ export class DomEditor extends LitElement {
     // Keep the opened console through collapse; inactive consoles suspend rendering.
     this.consoleRendered ||= this.consoleOpen || this.reviewOpen
     return html`
-      <div class="html-source-panel" ?inert=${!this.consoleOpen && !this.reviewOpen} aria-hidden=${String(!this.consoleOpen && !this.reviewOpen)}>
+      <div class="html-source-panel" ?inert=${!this.consoleOpen && !this.reviewOpen}>
         <div class="html-source-clip">
           ${when(this.consoleRendered, () => html`<developer-console .active=${this.consoleOpen || this.reviewOpen} .review=${this.reviewOpen} .tab=${this.consoleTab} .htmlPending=${this.htmlPending} .pinned=${this.settings.pinDeveloperConsole}
             .documentRecoveries=${this.documentRecoveryCheckpoint ? [this.documentRecoveryCheckpoint, ...this.recoveredDocuments] : this.recoveredDocuments}
@@ -7759,6 +7854,14 @@ export class DomEditor extends LitElement {
         </div>
       </div>
     `
+  }
+
+  protected willUpdate(changed: PropertyValues) {
+    super.willUpdate(changed)
+    if((this.consoleOpen || this.reviewOpen) && !this.liveSessionActive && (!this.previewActive || this.settings.pinDeveloperConsole)) return
+    if(this.shadowRoot?.activeElement?.closest(".html-source-panel")) {
+      this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.focusFileMenuTrigger()
+    }
   }
 
   protected updated(changed: PropertyValues) {
@@ -7840,11 +7943,34 @@ export class DomEditor extends LitElement {
     return (this.attachmentSelection || this.linkSelection?.active) && !this.mathSelection?.active && !this.graphicSelection?.capture
   }
 
+  private get offerTextKeyboard() {
+    return this.settings.alwaysShowTextKeyboard || supportsTouchKeyboard(window)
+  }
+
+  private get hasTextKeyboard() {
+    return this.textKeyboardEligible && (this.settings.alwaysShowTextKeyboard || this.textKeyboardDisplay !== "inactive")
+      && !this.hasLinkKeyboard && !this.graphicSelection?.capture
+      && !this.mathSelection?.active && !this.previewActive && !this.liveSessionActive
+      && !this.documentLoading && !this.documentFramePending
+  }
+
+  private setNativeTextKeyboard(enabled: boolean) {
+    this.nativeTextKeyboard = enabled
+    this.postFrameControl("touch-keyboard-mode", {enabled: !enabled})
+    this.focusEditor()
+  }
+
+  private handleTextKeyboardCommand = (event: CustomEvent<TextKeyboardCommand>) => {
+    if(!this.hasTextKeyboard || this.textKeyboardDisplay !== "open" || this.nativeTextKeyboard) return
+    void this.execute({...event.detail, type: "textKeyboardInput"}).catch(error => this.reportFileError(error))
+  }
+
   private get bottomPanelOpen() {
     if(this.liveSessionActive) return false
     if((this.consoleOpen || this.reviewOpen) && (!this.previewActive || this.settings.pinDeveloperConsole)) return true
     if(this.previewActive) return false
-    return Boolean(this.graphicSelection?.capture && !this.shapeKeyboardHidden
+    return Boolean(this.hasTextKeyboard && this.textKeyboardDisplay === "open" && !this.nativeTextKeyboard
+      || this.graphicSelection?.capture && !this.shapeKeyboardHidden
       || this.hasLinkKeyboard && !this.linkKeyboardHidden
       || this.isMathEditing && !this.mathKeyboardHidden)
   }
@@ -8057,6 +8183,11 @@ export class DomEditor extends LitElement {
 
   private handleBreadcrumbItemSelect = (event: Event) => this.selectBreadcrumbTarget(event, "selectNode")
 
+  private handleBreadcrumbItemToggle = (event: CustomEvent<{path: number[], targetId: string}>) => {
+    const {path, targetId} = event.detail
+    void this.execute({type: "toggleNodeSelection", path, targetId}).finally(() => this.focusEditor())
+  }
+
   private handleBreadcrumbSectionSelect = (event: Event) => this.selectBreadcrumbTarget(event, "selectSection")
 
   private handleBreadcrumbItemHover = (event: Event) => {
@@ -8180,11 +8311,13 @@ export class DomEditor extends LitElement {
       path.length === target.length && path.every((index, position) => index === target[position]))
     const stepsToTargets = (path: number[]) => [...new Set(targets!.filter(target => target.length > path.length
       && path.every((index, position) => index === target[position])).map(target => target[path.length]))].sort((a, b) => a - b)
+    const isTableWrapper = (element: ReadableElement) => element.namespaceURI === "http://www.w3.org/1999/xhtml" && !element.hasAttribute("is")
+      && ["colgroup", "col", "thead", "tbody", "tfoot", "tr", "td", "th"].includes(element.localName)
     /** Neither a section nor a wrapper the outline looks through, by name alone:
      * at most one item, whatever the element contains. */
     const outlineLeaf = (element: ReadableElement) => {
       const name = element.localName
-      return name !== "map" && !isSectionName(name) && canonicalMarkName(name) === null && !element.hasAttribute("popover")
+      return name !== "map" && !isTableWrapper(element) && !isSectionName(name) && canonicalMarkName(name) === null && !element.hasAttribute("popover")
     }
 
     const sectionItem = (element: ReadableElement, path: number[]): SelectionPathSection => ({
@@ -8211,7 +8344,7 @@ export class DomEditor extends LitElement {
         ...(sections.length ? {sections: sections.map(section => ({...section, path: [...section.path]}))} : {}),
         children: [],
       }
-      if(["table", "math", "svg"].includes(element.localName) || building.has(element)) return item
+      if(["math", "svg"].includes(element.localName) || building.has(element)) return item
       building.add(element)
       for(const popup of imageMapPopups(element)) {
         const popupPath = readableNodePath(body, popup)
@@ -8277,7 +8410,8 @@ export class DomEditor extends LitElement {
             }
             return
           }
-          if(slideRole === "viewport" || isMarkElement(childElement) && !popupRole) {
+          // Show cell contents under their table, retaining their authored paths.
+          if(slideRole === "viewport" || (isMarkElement(childElement) || isTableWrapper(childElement)) && !popupRole) {
             appendChildren(childElement, childPath, inherited, destination)
             return
           }
@@ -8795,6 +8929,12 @@ export class DomEditor extends LitElement {
       pending.resolve(event.data)
       return
     }
+    if(event.data?.type === textKeyboardRequestEvent) {
+      if(this.isEditorMessage(event) && this.offerTextKeyboard
+        && (event.data.pointerType === "touch" || event.data.pointerType === "pen" || this.settings.alwaysShowTextKeyboard) && !this.previewActive && !this.liveSessionActive
+        && this.textKeyboardDisplay === "inactive") this.textKeyboardDisplay = "open"
+      return
+    }
     if(event.data?.type === "editor-frame-interaction") {
       if(this.editorOpaque && this.isEditorMessage(event)) this.dismissFloatInfo()
       return
@@ -8803,7 +8943,10 @@ export class DomEditor extends LitElement {
       if(!this.editorOpaque || !this.isEditorMessage(event)) return
       this.dismissFloatInfo()
       const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
-      if(event.data.widgetShadow === true || event.data.appendix === true) return
+      if(event.data.widgetShadow === true || event.data.appendix === true || event.data.formControl === true) {
+        this.textKeyboardDisplay = "inactive"
+        return
+      }
       this.focusEditor()
       this.dismissEditorMenus()
       const path = event.data.targetPath
@@ -8820,7 +8963,9 @@ export class DomEditor extends LitElement {
       return
     }
     if(event.data?.type === "editor-frame-focusin") {
-      if(!this.editorOpaque || !this.isEditorMessage(event) || event.data.widgetShadow === true) return
+      if(!this.editorOpaque || !this.isEditorMessage(event)) return
+      if(event.data.widgetShadow === true || event.data.formControl === true) this.textKeyboardDisplay = "inactive"
+      if(event.data.widgetShadow === true) return
       this.dismissThemePicker()
       this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
       return
@@ -8985,6 +9130,8 @@ export class DomEditor extends LitElement {
         : null
       this.distributionSelection = this.projectDistributionState(event.data.detail.distribution ?? null)
       this.distributionGeneral = this.projectDistributionState(event.data.detail.distributionGeneral ?? null)
+      this.textKeyboardEligible = event.data.detail.textKeyboard === true
+      if(!this.textKeyboardEligible) this.textKeyboardDisplay = "inactive"
       this.selectionPath = path
       const selectedSection = event.data.detail.section
       const activeSection = path.flatMap(item => item.sections ?? []).at(-1)
@@ -9254,6 +9401,7 @@ export class DomEditor extends LitElement {
 
   connectedCallback() {
     super.connectedCallback()
+    this.addEventListener("focusin", this.handleHostInputFocus)
     if(!this.liveSessionIdFromURL()) {
       if(globalThis.indexedDB) void this.refreshDocumentRecoveries()
       this.documentRecoveryTimer = setInterval(this.pollDocumentRecovery, documentRecoveryPollMs)
@@ -9329,6 +9477,7 @@ export class DomEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    this.removeEventListener("focusin", this.handleHostInputFocus)
     clearInterval(this.documentRecoveryTimer)
     this.documentRecoveryTimer = undefined
     document.removeEventListener("visibilitychange", this.flushDocumentRecoveryWhenHidden)
@@ -9437,6 +9586,8 @@ export class DomEditor extends LitElement {
     this.distributionGeneral = null
     this.distributionSelection = null
     this.distributionItems = []
+    this.textKeyboardEligible = false
+    this.textKeyboardDisplay = "inactive"
     this.selectionPath = []
     this.nodeSelection = false
     this.captureSelection = false
@@ -9645,10 +9796,14 @@ export class DomEditor extends LitElement {
       <app-update-notice .anchor=${() => this.renderRoot.querySelector("app-ribbon")?.shadowRoot?.querySelector<HTMLElement>(".brand-logo") ?? null}></app-update-notice>
       <header class="app-bar">
         <div class="ribbon-header">
-          ${this.sizeWarningDismissed ? "" : html`<div class="size-warning" role="alert">
+          ${this.sizeWarningDismissed ? "" : html`<div class="size-warning environment-warning" role="alert">
             <button type="button" aria-label="Dismiss size warning" title="Dismiss" @click=${() => {this.sizeWarningDismissed = true}}>×</button>
             <span>WebWriter may not work correctly at this size.</span>
           </div>`}
+          ${!this.safariWarningDismissed && isOutdatedSafari(this.ownerDocument.defaultView?.navigator.userAgent ?? "") ? html`<div class="safari-warning environment-warning" role="status">
+            <button type="button" aria-label="Dismiss Safari warning" title="Dismiss" @click=${() => {this.safariWarningDismissed = true}}>×</button>
+            <span>WebWriter may not work correctly in this outdated version of Safari. Please update to Safari 26 or later.</span>
+          </div>` : nothing}
           ${this.replaySizeWarning ? html`<div class="replay-size-warning" role="status">
             <span>This replay is larger than 256 MiB. Playback may be slow on this device.</span>
             <button type="button" aria-label="Dismiss replay size warning" title="Dismiss" @click=${() => {this.replaySizeWarning = false}}>×</button>
@@ -9767,6 +9922,7 @@ export class DomEditor extends LitElement {
             ?hidden=${!this.breadcrumbVisible}
             @breadcrumb-tree-toggle=${this.handleBreadcrumbTreeToggle}
             @breadcrumb-item-select=${this.handleBreadcrumbItemSelect}
+            @breadcrumb-item-toggle=${this.handleBreadcrumbItemToggle}
             @breadcrumb-item-hover=${this.handleBreadcrumbItemHover}
             @breadcrumb-section-select=${this.handleBreadcrumbSectionSelect}
             @breadcrumb-section-hover=${this.handleBreadcrumbSectionHover}
@@ -9827,7 +9983,7 @@ export class DomEditor extends LitElement {
           @load=${this.handleEditorFrameLoad}
           @pointerdown=${this.relayFrameTouch} @pointermove=${this.relayFrameTouch}
           @pointerup=${this.relayFrameTouch} @pointercancel=${this.relayFrameTouch}
-          @lostpointercapture=${this.relayFrameTouch} @touchstart=${this.handleFrameTouchStart}
+          @lostpointercapture=${this.relayFrameTouch}
           @dom-editor-ai-edit-review=${this.handleInlineAIEditReview}
         ></iframe>`) : ""}
         ${this.ribbonDrag && !this.previewActive ? html`<div class="ribbon-drag-shield"
@@ -9840,6 +9996,20 @@ export class DomEditor extends LitElement {
             @live-widget-state-change=${this.handleLiveWidgetStateChange}
           ></live-session-overlay>
         ` : ""}
+        ${this.hasTextKeyboard ? this.textKeyboardDisplay !== "open" || this.nativeTextKeyboard ? html`
+          <button class="math-keyboard-open" type="button" aria-label="Show text keyboard" title="Show text keyboard"
+            @pointerdown=${(event: PointerEvent) => event.preventDefault()}
+            @click=${() => {
+              this.textKeyboardDisplay = "open"
+              if(this.nativeTextKeyboard) this.setNativeTextKeyboard(false)
+              else this.focusEditor()
+            }}>${ribbonIcon("Shortcuts")}</button>` : html`
+          <section class="text-keyboard-area" aria-label="Text input">
+            <dom-editor-text-keyboard .deviceKeyboardAvailable=${supportsTouchKeyboard(window)} @text-keyboard-command=${this.handleTextKeyboardCommand}
+              @text-keyboard-native=${() => this.setNativeTextKeyboard(true)}
+              @text-keyboard-close=${() => { this.textKeyboardDisplay = "closed"; this.focusEditor() }}>
+            </dom-editor-text-keyboard>
+          </section>` : nothing}
         ${this.graphicSelection?.capture && !this.previewActive && !this.liveSessionActive ? html`
           ${this.shapeKeyboardHidden ? html`<button class="math-keyboard-open" type="button"
             title="Show shape keyboard" aria-label="Show shape keyboard"

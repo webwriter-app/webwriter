@@ -30,6 +30,40 @@ describe("generic element icons", () => {
   })
 })
 
+describe("breadcrumb element actions", () => {
+  it("toggles through the active breadcrumb button without a separate input", async () => {
+    const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+    const documentItem = {path: [], name: "Document"}
+    const paragraph = {path: [0], ...getElementPresentation("p"), targetId: "paragraph"}
+    breadcrumb.path = [documentItem, paragraph]
+    breadcrumb.tree = {...documentItem, children: [{...paragraph, children: [{path: [0, 0], name: "Link", children: []}]}]}
+    document.body.append(breadcrumb)
+    await breadcrumb.updateComplete
+
+    const root = breadcrumb.shadowRoot!
+    const button = root.querySelector<HTMLButtonElement>('.item[data-path="0"]')!
+    expect(button.getAttribute("aria-pressed")).toBe("false")
+    expect(root.querySelectorAll("[aria-pressed]")).toHaveLength(1)
+    expect(root.querySelector("input")).toBeNull()
+    expect(root.querySelector('[aria-label^="Delete"]')).toBeNull()
+    expect(button.closest("li")?.nextElementSibling?.querySelector('[aria-label="Show Paragraph tree"]')).not.toBeNull()
+    const toggle = vi.fn()
+    breadcrumb.addEventListener("breadcrumb-item-toggle", toggle)
+    button.querySelector<HTMLElement>(".item-label")!.click()
+    expect(toggle.mock.calls[0][0].detail).toEqual({path: [0], targetId: "paragraph"})
+
+    breadcrumb.path = [documentItem, {...paragraph, targetId: "replacement", targetSelected: true}]
+    await breadcrumb.updateComplete
+    expect(button.getAttribute("aria-pressed")).toBe("true")
+    button.querySelector<HTMLElement>(".item-icon")!.click()
+    expect(toggle.mock.calls[1][0].detail).toEqual({path: [0], targetId: "replacement"})
+
+    breadcrumb.path = [documentItem]
+    await breadcrumb.updateComplete
+    expect(root.querySelector("[aria-pressed]")).toBeNull()
+  })
+})
+
 describe("breadcrumb float indicators", () => {
   it.each(["left", "right"] as const)("uses the float-%s icon", async direction => {
     const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb

@@ -372,7 +372,7 @@ describe("DOMEditor stylesheets", () => {
     // every element: a state on BODY above `*` or `::selection` restyles the
     // whole document whenever it changes.
     expect(editorStyleString).toMatch(/\n:state\(ww-node-caret-host\),\s*:state\(ww-node-caret-host\)\s+\*\s*\{\s*caret-color:\s*transparent\s*!important;\s*\}/)
-    expect(editorStyleString).toMatch(/@layer webwriter-theme \{\s*:state\(ww-gap-caret-host\)\s*\{\s*caret-color:\s*transparent;\s*\}\s*\}\s*body:state\(ww-gap-caret-host\)\s*\{\s*caret-color:\s*transparent\s*!important;\s*\}/)
+    expect(editorStyleString).toMatch(/@layer webwriter-theme \{\s*:state\(ww-gap-caret-host\)\s*\{\s*caret-color:\s*transparent;\s*\}\s*\}\s*html:state\(ww-gap-caret-host\),\s*body:state\(ww-gap-caret-host\)\s*\{\s*caret-color:\s*transparent\s*!important;\s*\}/)
     expect(editorStyleString).toMatch(/\n:state\(ww-drop-caret-host\),\s*:state\(ww-drop-caret-host\)\s+\*\s*\{\s*caret-color:\s*transparent\s*!important;\s*\}/)
     expect(editorStyleString).not.toMatch(/body:state\(ww-(?:gap-caret-visible|node-selection-active|drop-selection-active)\)(?:\s+\*)?\s*[,{][^}]*caret-color/)
     expect(editorStyleString).not.toMatch(/ww-gap-caret-visible[^{]*\{[^}]*::selection/)
@@ -446,11 +446,14 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).not.toMatch(/:is\(ul, ol, menu\):empty[\s\S]*?display:\s*list-item;/)
     expect(editorStyleString).toMatch(/:is\(picture, img, video, iframe, embed, object\):state\(ww-media-empty\),\s*body::part\(graphic-image-placeholder\)\s*\{[^}]*border:\s*1px dashed #6b7280;/)
     expect(editorStyleString).not.toMatch(/:state\(ww-media-empty\):state\(ww-element-selected\)\s*\{/)
-    const mediaWidth = rules.find(rule => rule.selectorText === resolvePresentationSelector(document, ":is(picture:where(:not(html:state(ww-canvas-active) *, :is(td, th) *)), audio, video)"))?.style
+    const mediaWidths = ["picture:where(:not(html:state(ww-canvas-active) *, :is(td, th) *))", ":is(audio, video)"]
+      .map(selector => rules.find(rule => rule.selectorText === resolvePresentationSelector(document, selector))?.style)
     const mediaHeight = rules.find(rule => rule.selectorText === resolvePresentationSelector(document, ":is(picture:where(:not(html:state(ww-canvas-active) *, :is(td, th) *)), video)"))?.style
-    expect(mediaWidth?.width).toBe("100%")
-    expect(mediaWidth?.height).toBe("")
-    expect(mediaWidth?.getPropertyValue("aspect-ratio")).toBe("")
+    for(const mediaWidth of mediaWidths) {
+      expect(mediaWidth?.width).toBe("100%")
+      expect(mediaWidth?.height).toBe("")
+      expect(mediaWidth?.getPropertyValue("aspect-ratio")).toBe("")
+    }
     expect(mediaHeight?.height).toBe("auto")
     expect(editorStyleString).toMatch(/:is\(picture, img, video\):state\(ww-media-empty\)\s*\{[^}]*?aspect-ratio:\s*16\s*\/\s*9;/)
     expect(editorStyleString).not.toContain("audio:state(ww-media-empty)::-webkit-media-controls-enclosure")
@@ -838,13 +841,16 @@ describe("widget shadow interactions", () => {
     const propagated = vi.fn()
     document.addEventListener("keydown", propagated)
 
-    input.dispatchEvent(new MouseEvent("pointerdown", {
+    input.dispatchEvent(new PointerEvent("pointerdown", {
       bubbles: true,
       composed: true,
       cancelable: true,
     }))
+    input.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true}))
+    input.click()
     input.focus()
     await Promise.resolve()
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
 
     const event = new KeyboardEvent("keydown", {
       key: "a",

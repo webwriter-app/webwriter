@@ -354,8 +354,8 @@ export class DomEditorToolbox extends EditingControls {
     .toolbox-tabs-area {
       grid-row: 1 / -1;
       min-height: 30px;
-      background: #ededed;
-      box-shadow: inset 0 -0.5px #a8a8a8;
+      background: var(--toolbox-tabs-background, #ededed);
+      box-shadow: inset 0 -0.5px var(--toolbox-tabs-border-color, #a8a8a8);
     }
 
     :host([active-tool]) .toolbox-tabs-area {
@@ -376,7 +376,7 @@ export class DomEditorToolbox extends EditingControls {
       border-bottom-width: 0.5px;
       border-bottom-style: solid;
       border-bottom-color: var(--toolbox-tabs-border-color, #a8a8a8);
-      background: #ededed;
+      background: var(--toolbox-tabs-background, #ededed);
     }
 
     .toolbox-tab {
@@ -758,6 +758,7 @@ export class DomEditorToolbox extends EditingControls {
       font: inherit; font-size: 0.65rem; cursor: pointer;
     }
     .style-reset svg { width: 0.85rem; height: 0.85rem; }
+    .style-reset .circled-undo { width: 1.125rem; height: 1.125rem; }
     .style-reset:hover:not(:disabled) { background: #e8eef5; }
     .style-reset:focus-visible { outline: 2px solid #b9d7f5; }
     .style-reset:disabled { opacity: 0.4; cursor: default; }
@@ -996,7 +997,7 @@ export class DomEditorToolbox extends EditingControls {
             : !(style.hasInlineStyles ?? Object.keys(style.inline).length > 0))}
           @click=${(event: Event) => {
             event.currentTarget!.dispatchEvent(new CustomEvent("element-style-reset", {detail: documentTarget ? {theme: true} : null, bubbles: true, composed: true}))
-          }}>${ribbonIcon("Restore")}Reset</button>
+          }}>${ribbonIcon("Restore")}</button>
         ${documentTarget ? html`<document-theme-presets slot="heading-control" heading .state=${this.elementStyle}></document-theme-presets>
           <document-theme-options .state=${this.elementStyle}></document-theme-options>` : html`<element-style-editor mode="compact" orientation="vertical"
             show-presets .selectionKey=${selectionKey} .propertyNames=${[]} .state=${style}></element-style-editor>`}
@@ -1129,13 +1130,13 @@ export class DomEditorToolbox extends EditingControls {
     const conversions = this.widgetConversion?.sourceId === attributes?.targetId && this.widgetConversion
       ? this.widgetConversionGroups : []
     const conversionPicker = (name: string, icon: string, iconUrl?: string) => conversions.length ? html`
-      <ribbon-button slot="heading-icon" variant="element-conversion" icon-only dropdown-on-click
-        label=${`Conversion options for ${name}`} icon=${icon} icon-url=${iconUrl ?? ""} .submenuGroups=${conversions}></ribbon-button>
+      <ribbon-button slot="heading-label" variant="element-conversion" dropdown-on-click
+        label=${name} icon=${icon} icon-url=${iconUrl ?? ""} .submenuGroups=${conversions}></ribbon-button>
     ` : nothing
     const popupPart = attributes && (attributes.name === "Popup" && (attributes.localName === "button" || "popover" in attributes.attributes)
       || attributes.name === "Popup Content") && attributes.path
     if(popupPart) return html`<ribbon-drawer label=${attributes.name} icon="Popup" layout="popup"
-      .elementCount=${group?.count ?? 1} ?show-pane-icon=${!conversions.length} selectable-heading data-specialized=${attributes.localName}
+      .elementCount=${group?.count ?? 1} show-pane-icon selectable-heading data-specialized=${attributes.localName}
       @drawer-heading-select=${() => this.dispatchEvent(new CustomEvent("toolbox-element-select", {
         detail: {selectionTypes: [{localName: attributes.localName, namespaceURI: attributes.namespaceURI, path: attributes.path}]},
         bubbles: true, composed: true,
@@ -1230,7 +1231,7 @@ export class DomEditorToolbox extends EditingControls {
     const icon = heading ? "Heading" : list ? "List" : attributes?.icon ?? label
     const iconUrl = heading || list ? "" : attributes?.iconUrl ?? ""
     return html`<ribbon-drawer label=${label} icon=${icon} .iconUrl=${iconUrl} layout="element-style"
-      .elementCount=${group?.count ?? 1} ?show-pane-icon=${!conversions.length} selectable-heading ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
+      .elementCount=${group?.count ?? 1} show-pane-icon selectable-heading ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
       @drawer-heading-select=${() => this.dispatchEvent(new CustomEvent("toolbox-element-select", {
         detail: {selectionTypes: listGroups && listGroups.length > 1 ? listScopes : [{localName, namespaceURI,
           ...((group?.count ?? 1) === 1 && attributes?.path ? {path: attributes.path} : {}),
@@ -1247,7 +1248,7 @@ export class DomEditorToolbox extends EditingControls {
             detail: {styles: resetStyles}, bubbles: true, composed: true,
           }))
           configuredWidgetOptions.forEach(option => dispatchOption(option.name, null))
-        }}>${ribbonIcon("Restore")}${(group?.count ?? 1) > 1 ? nothing : "Reset"}</button>
+        }}>${ribbonIcon("Restore")}</button>
       ${tableControls ? html`<div class="table-structure-controls" role="group" aria-label="Table structure">${this.renderTableStructureControls()}</div>` : nothing}
       ${details && attributes ? html`<label class="specialized-widget-primary details-open-default">
         <input type="checkbox" data-ribbon-input-persistent .checked=${Object.hasOwn(attributes.attributes, "open")}
@@ -1524,7 +1525,7 @@ export class DomEditorToolbox extends EditingControls {
             }))
           }
           if(resettableLayout) this.selectDocumentLayout("document")
-        }}>${ribbonIcon("Restore")}Reset</button>
+        }}>${ribbonIcon("Restore")}</button>
       <div class="specialized-options document-primary">
       <document-head-editor mode="common" expanded compact .state=${this.documentHead}></document-head-editor>
           <div class="document-layout-controls">

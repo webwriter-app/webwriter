@@ -385,8 +385,12 @@ describe("Developer console packages", () => {
     expect(metadata.querySelector<HTMLInputElement>('input[name="author"]')!.tagName).toBe("INPUT")
     const packageName = metadata.querySelector<HTMLInputElement>('input[name="name"]')!
     const version = metadata.querySelector<HTMLInputElement>('input[name="version"]')!
-    expect(packageName.pattern).toBeTruthy()
-    expect(version.pattern).toBeTruthy()
+    packageName.value = "@local/chart-preview"
+    version.value = "1.2.3-rc-test.1+build-test"
+    expect(new RegExp(packageName.pattern, "v").test(packageName.value)).toBe(true)
+    expect(new RegExp(version.pattern, "v").test(version.value)).toBe(true)
+    expect(packageName.checkValidity()).toBe(true)
+    expect(version.checkValidity()).toBe(true)
     packageName.value = "unscoped"
     packageName.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
     version.value = "next"

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {isAuthoredContentEditableMutation, isAuthoredMutation, markTemporaryDetailsState, widgetLookupForTags} from "./editor-artifacts"
+import {setDocumentKeyboardInputMode, isAuthoredContentEditableMutation, isAuthoredMutation, markTemporaryDetailsState, widgetLookupForTags} from "./editor-artifacts"
 
 const isWidget = widgetLookupForTags(["demo-widget"])
 
@@ -32,6 +32,22 @@ describe("isAuthoredMutation", () => {
       {attributes: true, attributeOldValue: true})
     expect(isAuthoredMutation(authored)).toBe(true)
     element.remove()
+  })
+
+  it("filters both enabling and dismissing runtime keyboard hints", () => {
+    const observer = new MutationObserver(() => {})
+    observer.observe(document.documentElement, {subtree: true, attributes: true, attributeOldValue: true})
+    try {
+      for(const enabled of [true, false]) {
+        setDocumentKeyboardInputMode(document, enabled)
+        const records = observer.takeRecords()
+        expect(records).toHaveLength(2)
+        expect(records.some(isAuthoredMutation)).toBe(false)
+      }
+      document.body.setAttribute("inputmode", "decimal")
+      expect(observer.takeRecords().some(isAuthoredMutation)).toBe(true)
+    }
+    finally { observer.disconnect(); document.body.removeAttribute("inputmode") }
   })
 
   it("ignores same-value attributes and the widget editable contract", async () => {

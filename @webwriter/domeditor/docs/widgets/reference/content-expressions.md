@@ -18,6 +18,8 @@
 
 A widget declares custom groups in its `group` setting. Separate the group names with spaces. Use only node names and groups that exist. The largest finite repetition limit is 1,000.
 
+An explicit `group` replaces the default `flow` membership. Use `group: ""` for a structural child that should stay out of ordinary flow containers, and name its type in the receiving widget's content expression. The editor still adds `widget` or `widgetinline`, so a container declaring one of those groups can deliberately accept the child too. See [placement and movement](editing-configuration.md#restrict-placement-and-movement) for a complete example.
+
 ```json
 {
   "./widgets/ww-quiz": {"content": "p+ ww-option{2,}"},

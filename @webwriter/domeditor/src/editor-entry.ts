@@ -85,10 +85,11 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   window.addEventListener("pointerdown", event => {
     const target = event.target as Node | null
     post({type: "editor-frame-pointerdown", widgetShadow: isWidgetShadowInteraction(event), appendix: isAppendixInteraction(event),
+      formControl: event.composedPath().some(node => node instanceof Element && node.matches("input, select, textarea")),
       targetPath: target && document.body.contains(target) ? pathFromNode(document.body, target) : null})
   }, {capture: true, signal})
   document.addEventListener("focusin", event => {
-    post({type: "editor-frame-focusin", widgetShadow: isWidgetShadowInteraction(event)})
+    post({type: "editor-frame-focusin", widgetShadow: isWidgetShadowInteraction(event), formControl: isTextFieldInteraction(event, document.body)})
   }, {capture: true, signal})
   // Reactivating Chrome can focus only this child Window; the already-focused
   // body need not emit focusin, and cross-origin hosts cannot observe Window.focus.
@@ -113,7 +114,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   window.addEventListener("message", event => {
     if(event.source !== window.parent || event.origin !== origin || event.data?.bridgeNonce !== nonce
       || event.data?.type !== editorFrameControlMessage) return
-    const data = event.data as {command?: string, requestId?: string, disabled?: boolean, restoreSelection?: boolean, locked?: boolean,
+    const data = event.data as {command?: string, requestId?: string, disabled?: boolean, enabled?: boolean, restoreSelection?: boolean, locked?: boolean,
       shortcuts?: Record<string, string>, tags?: string[], username?: string}
     if(data.command === "sync-document") {
       documentSync.reset()
@@ -146,6 +147,13 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
       document.body.querySelectorAll<HTMLMediaElement>("audio, video").forEach(media => media.pause())
       if(data.requestId) post({type: "editor-frame-response", requestId: data.requestId})
     }
+    else if(data.command === "touch-keyboard-preference" && typeof data.enabled === "boolean") {
+      editor.setTouchKeyboardPreference(data.enabled)
+      editor.postSelectionPath()
+    }
+    else if(data.command === "touch-keyboard-mode" && typeof data.enabled === "boolean") {
+      editor.setTouchKeyboardEnabled(data.enabled)
+    }
     else if(data.command === "focus") {
       if(editor.hasEditingLock(previewEditingLock)) return
       // A queued host pointerdown can arrive after an empty image opened
@@ -164,6 +172,10 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
         return
       }
       if(editor.features.mark.focusWidgetText()) {
+        bookmark = null
+        return
+      }
+      if(editor.features.selection.focusCapturedWidget?.()) {
         bookmark = null
         return
       }
@@ -198,6 +210,7 @@ const initialize = (event: MessageEvent) => {
   window.removeEventListener("message", initialize)
   const editor = new DOMEditor({
     syncUrl: event.data.syncUrl,
+    touchKeyboard: event.data.touchKeyboard === true,
     bridgeNonce: event.data.bridgeNonce,
     documentReplicaId: event.data.documentReplicaId,
     bridgeOrigin: event.origin && event.origin !== "null" ? event.origin : window.location.origin,

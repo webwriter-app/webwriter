@@ -1,4 +1,5 @@
 import {clearPresentationState, hasPresentationState, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
+import {TouchPinch} from "./touch-pinch.js"
 /** Shared DOM canvas camera. Exports embed this source and supply SnapDOM
  * locally, without an editor dependency or a network request. */
 export const canvasGridSize = 20
@@ -677,6 +678,8 @@ class CanvasMinimap {
 }
 
 export class CanvasViewer {
+  #pinch = new TouchPinch()
+
   constructor(slot, background, controls, panSurface = null, onChange = () => {}, loadSnapdom = null, isAuthoredMutation = null) {
     slot.dispatchEvent(new Event("webwriter-canvas-viewer-dispose"))
     this.body = document.body
@@ -712,6 +715,7 @@ export class CanvasViewer {
   destroy() {
     this.minimap?.destroy()
     this.stopPan()
+    this.endPinch()
     this.stopWheelPan()
     document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.stylesheet)
     this.untrackStyles()
@@ -749,6 +753,20 @@ export class CanvasViewer {
     event.stopImmediatePropagation()
     this.stopPan()
   }
+
+  startPinch(event, ownsStart) {
+    if(!this.active || !this.#pinch.start(event, ownsStart, this.zoom)) return false
+    this.stopPan()
+    this.stopWheelPan()
+    return true
+  }
+
+  movePinch(event) {
+    const sample = this.active && this.#pinch.move(event)
+    if(sample) this.zoomAt(sample.zoom, sample.previous, sample.point)
+  }
+
+  endPinch(event) { this.#pinch.end(event) }
 
   updatePanSurface() {
     if(!this.panSurface) return
@@ -831,12 +849,12 @@ export class CanvasViewer {
     this.applyCamera()
   }
 
-  zoomAt(zoom, point = {x: window.innerWidth / 2, y: window.innerHeight / 2}) {
+  zoomAt(zoom, point = {x: window.innerWidth / 2, y: window.innerHeight / 2}, destination = point) {
     if(!Number.isFinite(zoom)) return
     const next = Math.max(.1, Math.min(4, zoom)), ratio = next / this.zoom
     const rect = this.slot?.getBoundingClientRect()
-    this.camera.x += (point.x - (rect?.left ?? this.camera.x)) * (1 - ratio)
-    this.camera.y += (point.y - (rect?.top ?? this.camera.y)) * (1 - ratio)
+    this.camera.x += (point.x - (rect?.left ?? this.camera.x)) * (1 - ratio) + destination.x - point.x
+    this.camera.y += (point.y - (rect?.top ?? this.camera.y)) * (1 - ratio) + destination.y - point.y
     this.camera.zoom = next
     this.applyCamera()
   }
@@ -879,7 +897,7 @@ export class CanvasViewer {
 
   /** Reveal local editing without asking the browser to scroll a finite page. */
   reveal(rect) {
-    if(!this.active || this.panning) return
+    if(!this.active || this.panning || this.#pinch.active) return
     const dx = rect.left < 24 ? 24 - rect.left : rect.right > window.innerWidth - 24 ? Math.min(0, window.innerWidth - 24 - rect.right) : 0
     const dy = rect.top < 24 ? 24 - rect.top : rect.bottom > window.innerHeight - 72 ? Math.min(0, window.innerHeight - 72 - rect.bottom) : 0
     if(dx || dy) { this.camera.x += dx; this.camera.y += dy; this.applyCamera() }
@@ -1098,7 +1116,7 @@ export function mountCanvasReader(loadSnapdom) {
   button("zoom-in", "+", "Zoom in")
   toolbar.append(groupCanvasZoomPresets(button("actual-size", "", "Reset zoom to 100%"), button("fit-content", "", "Fit to view")))
   const release = () => viewer.stopPan()
-  const cancelPanning = () => { release(); viewer.stopWheelPan() }
+  const cancelPanning = () => { release(); viewer.endPinch(); viewer.stopWheelPan() }
   const setHand = active => {
     hand = active
     handButton.setAttribute("aria-pressed", String(hand))
@@ -1107,9 +1125,10 @@ export function mountCanvasReader(loadSnapdom) {
     viewer.stopWheelPan()
   }
   const onContent = event => event.composedPath().some(target => target instanceof Element && target !== body && body.contains(target))
+  const onBackground = origin => origin === slot || origin === body || origin === document.documentElement
   const ownEvent = event => {
     const origin = event.composedPath()[0]
-    if(origin === panSurface || origin === slot || origin === body || origin === document.documentElement) return true
+    if(origin === panSurface || onBackground(origin)) return true
     if(!(origin instanceof Element) || origin.getRootNode() !== document) return false
     // Widgets and interactive controls own their input, including their light DOM.
     for(let el = origin; el && el !== body; el = el.parentElement) {
@@ -1120,14 +1139,24 @@ export function mountCanvasReader(loadSnapdom) {
   }
   const listeners = {
     pointerdown: event => {
+      if(event.pointerType === "touch" && event.isPrimary === false) return
       if(!ownEvent(event) && !(hand && event.button === 0 && onContent(event))) return
       const origin = event.composedPath()[0]
-      if(event.button === 1 || event.button === 0 && (hand || origin === slot || origin === body || origin === document.documentElement)) viewer.startPan(event)
+      if(event.button === 1 || event.button === 0 && (hand || onBackground(origin))) viewer.startPan(event)
     },
     pointermove: event => viewer.movePan(event),
     pointerup: event => viewer.endPan(event),
     pointercancel: event => viewer.stopPan(event.pointerId),
     lostpointercapture: event => viewer.stopPan(event.pointerId),
+    touchstart: event => {
+      if(!viewer.active) return
+      // A touch on the blank canvas starts the reader's one-finger drag.
+      if(event.touches.length === 1 && onBackground(event.composedPath()[0])) event.preventDefault()
+      viewer.startPinch(event, ownEvent(event))
+    },
+    touchmove: event => viewer.movePinch(event),
+    touchend: event => viewer.endPinch(event),
+    touchcancel: event => viewer.endPinch(event),
     wheel: event => { if(ownEvent(event) || viewer.continuesWheelPan(event) && onContent(event)) viewer.wheel(event) },
     keydown: event => {
       if(event.key === "Escape" && (hand || ownEvent(event))) setHand(false)

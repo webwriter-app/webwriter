@@ -1,5 +1,5 @@
 import {getElementPresentation} from "./element-names"
-import {authoredClassValue, authoredDetailsOpen} from "./editor-artifacts"
+import {authoredClassValue, authoredDetailsOpen, isEditorOwnedAttribute, releaseKeyboardInputMode} from "./editor-artifacts"
 
 export type ElementAttributeState = {
   /** BODY-relative child-node path. Null addresses the document element. */
@@ -172,6 +172,7 @@ function lookupAttributeNamespace(element: Element, prefix: string) {
  * A rename that keeps its prefix retains the old binding; a new prefix must
  * resolve on the element. Unprefixed names always remain unnamespaced. */
 export function setElementAttributeValue(element: Element, name: string, value: string | null, previousName?: string) {
+  if(name.toLowerCase() === "inputmode") releaseKeyboardInputMode(element)
   if(value === null) {
     element.removeAttribute(name)
     return
@@ -263,7 +264,7 @@ export function elementAttributeTargetId(element: Element) {
 
 export function elementAttributeState(element: Element, path: number[] | null): ElementAttributeState {
   const attributes = Object.fromEntries(Array.from(element.attributes).flatMap(attribute => {
-    if(isEditorOnlyElementAttribute(attribute.name)) return []
+    if(isEditorOnlyElementAttribute(attribute.name) || attribute.namespaceURI === null && isEditorOwnedAttribute(element, attribute.name)) return []
     if(attribute.name === "class") {
       const value = sanitizeAuthoredClass(attribute.value)
       return value ? [[attribute.name, value]] : []

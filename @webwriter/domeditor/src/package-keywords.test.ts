@@ -1,6 +1,11 @@
 import {describe, expect, it, vi} from "vitest"
-import {packageKeywordPresentations} from "./package-keywords"
-import widgetKeywords from "./widget-keywords.json"
+import {packageKeywordPresentations as present} from "./package-keywords"
+
+const capabilities = [
+  "widget-editable", "widget-allows-pointer-input", "widget-allows-keyboard-input", "widget-allows-touch-input",
+]
+const packageKeywordPresentations = (keywords: string[], locale: string, preferredLocales?: readonly string[]) =>
+  present([...keywords, ...capabilities], locale, preferredLocales)
 
 describe("package keyword presentation", () => {
   it("orders legacy badges by category and preserves custom tag text", () => {
@@ -19,54 +24,37 @@ describe("package keyword presentation", () => {
       {kind: "field", label: "Natural sciences", icon: "EducationFieldSciences"},
       {kind: "online", label: "Online only", icon: "KeywordOnline"},
       {kind: "level", label: "Primary school", icon: "EducationSchool"},
-      {kind: "widget", label: "Widget", icon: "Packages"},
       {kind: "custom", label: "historical-map"},
       {kind: "custom", label: "Practice"},
     ])
   })
 
-  it("recognizes every fixed widget keyword with its label, icon, and color category", () => {
-    for(const [keyword, badge] of Object.entries(widgetKeywords.badges)) {
-      if("pattern" in badge) continue
-      const {kind, label, icon} = badge
-      const description = "description" in badge ? badge.description : undefined
-      expect(packageKeywordPresentations([keyword], "en"), keyword).toEqual([{kind, label, icon, ...(description ? {description} : {})}])
+  it("hides technical and widget identity tags, including conversion formats and migration versions", () => {
+    expect(packageKeywordPresentations([
+      "webwriter-widget", "widget-has-content", "widget-stateful", "widget-configurable", "WIDGET-REACTIVE",
+      "widget-testable", "widget-supports-dynamic-loading", "widget-supports-shared-dependencies", "widget-standalone",
+      "widget-convertible-to-image/SVG+xml", "widget-convertible-from-ww-list", "widget-convertible-from-.jff",
+      "widget-migrates-from-1.2.3-RC.1+Build.02", "widget-convertible-from-", "widget-convertible-to-<b>",
+      "widget-themeable", "local-history",
+    ], "en")).toEqual([
+      {kind: "display", label: "Themeable", icon: "Theme"},
+      {kind: "custom", label: "local-history"},
+    ])
+  })
+
+  it("uses an inverse badge only when its capability was omitted", () => {
+    const inverseBadges = [
+      {kind: "editing", label: "Not editable", icon: "KeywordNotEditable"},
+      {kind: "input", label: "No pointer input", icon: "KeywordNoPointer"},
+      {kind: "input", label: "No keyboard input", icon: "KeywordNoKeyboard"},
+      {kind: "input", label: "No touch input", icon: "KeywordNoTouch"},
+    ]
+    expect(present([], "en")).toEqual(inverseBadges)
+    expect(present(capabilities, "en")).toEqual([])
+    for(const [index, keyword] of capabilities.entries()) {
+      expect(present([keyword.toUpperCase(), keyword], "en"))
+        .toEqual(inverseBadges.filter((_, badgeIndex) => index !== badgeIndex))
     }
-  })
-
-  it("passes a badge description on as the tooltip text", () => {
-    expect(packageKeywordPresentations(["widget-reactive"], "en")[0].description).toMatch(/Publishes signals/)
-  })
-
-  it("labels conversion formats and migration versions without losing their values", () => {
-    expect(packageKeywordPresentations([
-      "widget-convertible-to-image/SVG+xml", "widget-convertible-to-image/svg+xml",
-      "widget-convertible-from-ww-list", "widget-migrates-from-1.2.3-RC.1+Build.02",
-      "widget-migrates-from-1.2.3-rc.1+build.02", "widget-migrates-from-1.2.3-01",
-      "widget-convertible-from-", "widget-convertible-to-<b>",
-    ], "en")).toEqual([
-      {kind: "conversion", label: "Converts to image/svg+xml", icon: "KeywordConvertTo"},
-      {kind: "conversion", label: "Converts from ww-list", icon: "KeywordConvertFrom"},
-      {kind: "development", label: "Migrates from 1.2.3-RC.1+Build.02", icon: "KeywordMigration"},
-      {kind: "development", label: "Migrates from 1.2.3-rc.1+build.02", icon: "KeywordMigration"},
-      {kind: "custom", label: "widget-migrates-from-1.2.3-01"},
-      {kind: "custom", label: "widget-convertible-from-"},
-      {kind: "custom", label: "widget-convertible-to-<b>"},
-    ])
-  })
-
-  it("accepts a file extension in the conversion forms, as the conversion maps do", () => {
-    expect(packageKeywordPresentations([
-      "widget-convertible-to-.jff", "widget-convertible-from-.PUML", "widget-convertible-from-.tar.gz",
-      "widget-convertible-to-.", "widget-convertible-to-..jff", "widget-convertible-to-.j ff",
-    ], "en")).toEqual([
-      {kind: "conversion", label: "Converts to .jff", icon: "KeywordConvertTo"},
-      {kind: "conversion", label: "Converts from .puml", icon: "KeywordConvertFrom"},
-      {kind: "conversion", label: "Converts from .tar.gz", icon: "KeywordConvertFrom"},
-      {kind: "custom", label: "widget-convertible-to-."},
-      {kind: "custom", label: "widget-convertible-to-..jff"},
-      {kind: "custom", label: "widget-convertible-to-.j ff"},
-    ])
   })
 
   it("sorts broad fields and levels and deduplicates more specific taxonomy codes", () => {
@@ -139,11 +127,11 @@ describe("package keyword presentation", () => {
     vi.stubGlobal("Intl", {...Intl, DisplayNames: CountingDisplayNames})
 
     try {
-      const keywords = ["widget-lang-de"]
-      expect(packageKeywordPresentations(keywords, "fr-CA", ["de"])[0].label).toBe("allemand")
+      const keywords = [...capabilities, "widget-lang-de"]
+      expect(present(keywords, "fr-CA", ["de"])[0].label).toBe("allemand")
       keywords.push("widget-lang-fr")
-      expect(packageKeywordPresentations(keywords, "fr-CA", ["de"])[0].label).toBe("allemand, français")
-      expect(packageKeywordPresentations(keywords, "fr-CA", ["de"])[0].label).toBe("allemand, français")
+      expect(present(keywords, "fr-CA", ["de"])[0].label).toBe("allemand, français")
+      expect(present(keywords, "fr-CA", ["de"])[0].label).toBe("allemand, français")
       expect(constructions).toBe(1)
       expect(lookups).toBe(2)
       expect(packageKeywordPresentations(["widget-lang-de"], "de")[0].label).toBe("Deutsch")

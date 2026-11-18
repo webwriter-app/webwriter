@@ -1482,6 +1482,41 @@ describe("table cell selection", () => {
     }
   })
 
+  it("keeps a moved gap-origin text drag from rewriting selection after column resize takes over", () => {
+    document.body.innerHTML = '<table><tbody><tr><td><demo-widget>A</demo-widget></td><td>B</td></tr></tbody></table>'
+    const [first] = cells(), widget = first.firstElementChild!
+    first.getBoundingClientRect = () => new DOMRect(0, 0, 100, 30)
+    const restoreCaretPosition = mockCaretPosition(widget)
+    $.selectGap(widget, "after")
+    expect($.isGapSelection).toBe(true)
+    const native = document.getSelection()!
+    const setRange = vi.spyOn(native, "setBaseAndExtent")
+    try {
+      first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true}))
+      first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true}))
+      expect($.isGapSelection).toBe(true)
+      document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 97, clientY: 15, bubbles: true}))
+      expect(editor.features.selection.isInDragSelection).toBe(true)
+      document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 120, clientY: 15, bubbles: true}))
+      expect(hasPresentationState(document.body, "table-column-resize")).toBe(true)
+      expect(editor.features.selection.isInDragSelection).toBe(false)
+      native.setBaseAndExtent(first, 0, first, 1)
+      setRange.mockClear()
+      editor.features.selection.processSelection(false)
+      document.dispatchEvent(new Event("selectionchange"))
+      expect(setRange).not.toHaveBeenCalled()
+      expect($.selectedElement).toBe(widget)
+      document.dispatchEvent(new PointerEvent("pointermove", {buttons: 1, clientX: 140, clientY: 15, bubbles: true}))
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
+      expect(first.style.width).toBe("140px")
+    }
+    finally {
+      setRange.mockRestore()
+      document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
+      restoreCaretPosition()
+    }
+  })
+
   it.each([
     "",
     'style="width: 160px"',

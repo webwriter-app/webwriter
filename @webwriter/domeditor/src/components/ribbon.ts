@@ -255,12 +255,28 @@ export class AppRibbon extends EditingControls {
       --ribbon-area-background: #f2f2f2;
       --ribbon-area-border: #d8dee6;
       --ribbon-compact-bar-height: 24px;
+      --ribbon-preview-tab-width: 2.5rem;
+      --ribbon-preview-tab-radius: 0.35rem;
       transition: var(--ww-ui-transition, background-color 180ms ease);
     }
 
     .ribbon.preview {
       --ribbon-control-color: #000;
       --ribbon-qr-filter: brightness(0);
+    }
+
+    :host([expanded]) .ribbon.preview {
+      background: var(--ribbon-area-background);
+    }
+
+    :host([expanded]) .ribbon.preview .ribbon-top {
+      background:
+        linear-gradient(white, white) left top / calc(100% - var(--ribbon-preview-tab-width)) 100% no-repeat,
+        linear-gradient(white, white) right top / var(--ribbon-preview-tab-width) var(--ribbon-preview-tab-radius) no-repeat;
+    }
+
+    :host([expanded]) .ribbon.preview:dir(rtl) .ribbon-top {
+      background-position: right top, left top;
     }
 
     .ribbon-top {
@@ -688,9 +704,9 @@ export class AppRibbon extends EditingControls {
       align-items: center;
       justify-content: center;
       gap: 0.3rem;
-      min-width: 2.5rem;
+      min-inline-size: var(--ribbon-preview-tab-width);
       height: 40px;
-      margin-left: 10px;
+      margin-inline-start: 10px;
       padding: 0 0.5rem;
       border: 1px solid transparent;
       border-radius: 0.35rem;
@@ -700,13 +716,16 @@ export class AppRibbon extends EditingControls {
     }
 
     .preview-button[active] {
-      position: relative;
+      inline-size: var(--ribbon-preview-tab-width);
       border-color: #d8dee6;
-      border-bottom-color: transparent;
-      border-radius: 0.35rem 0.35rem 0 0;
       color: var(--ribbon-control-color, #1e4f87);
       background: var(--ribbon-area-background);
       box-shadow: none;
+    }
+
+    :host([expanded]) .preview-button[active] {
+      border-bottom-color: transparent;
+      border-radius: var(--ribbon-preview-tab-radius) var(--ribbon-preview-tab-radius) 0 0;
     }
 
     .preview-button {position: relative}
@@ -722,18 +741,6 @@ export class AppRibbon extends EditingControls {
     .recovery-restore {padding: .3rem .55rem; border: 1px solid #3977c7; border-radius: .3rem; background: #3977c7; color: white}
     .recovery-popover button:disabled {opacity: .55; cursor: default}
     .recovery-popover button:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px}
-
-    .preview-button[active]::after {
-      box-sizing: border-box;
-      position: absolute;
-      right: -1px;
-      bottom: -2px;
-      left: -1px;
-      height: 2px;
-      border-inline: 1px solid var(--ribbon-area-border);
-      background: var(--ribbon-area-background);
-      content: "";
-    }
 
     .preview-button:hover {
       color: var(--ribbon-control-color, #243447);
@@ -1075,6 +1082,20 @@ export class AppRibbon extends EditingControls {
       display: none;
     }
 
+    .ribbon.preview .ribbon-content {
+      border-top-color: transparent;
+      background-image: linear-gradient(var(--ribbon-area-border), var(--ribbon-area-border));
+      background-origin: border-box;
+      background-position: left top;
+      /* Carry the divider through the tab's 1px side border. */
+      background-size: calc(100% - var(--ribbon-preview-tab-width) + 1px) 1px;
+      background-repeat: no-repeat;
+    }
+
+    .ribbon.preview:dir(rtl) .ribbon-content {
+      background-position: right top;
+    }
+
     .ribbon-content:has(> ribbon-drawer[layout="learners"]) {
       padding-inline-start: 0.35rem;
     }
@@ -1313,9 +1334,10 @@ export class AppRibbon extends EditingControls {
 
   private heightConstrained = false
   private expandedBeforeHeightConstraint = true
+  private readonly coarsePointer = window.matchMedia("(pointer: coarse)")
 
   private updateHeightConstraint() {
-    const constrained = window.innerHeight <= 600
+    const constrained = !this.coarsePointer.matches && window.innerHeight <= 600
     if(constrained === this.heightConstrained) return
     this.heightConstrained = constrained
     if(constrained) {
@@ -1416,6 +1438,7 @@ export class AppRibbon extends EditingControls {
     document.addEventListener("keydown", this.handleDocumentKeydown, true)
     window.addEventListener("resize", this.handleWindowResize)
     window.addEventListener("scroll", this.positionRecoveryNotice, true)
+    this.coarsePointer.addEventListener("change", this.handleWindowResize)
     this.updateHeightConstraint()
   }
 
@@ -1437,6 +1460,7 @@ export class AppRibbon extends EditingControls {
     document.removeEventListener("keydown", this.handleDocumentKeydown, true)
     window.removeEventListener("resize", this.handleWindowResize)
     window.removeEventListener("scroll", this.positionRecoveryNotice, true)
+    this.coarsePointer.removeEventListener("change", this.handleWindowResize)
     super.disconnectedCallback()
   }
 
@@ -2210,6 +2234,13 @@ export class AppRibbon extends EditingControls {
     this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")?.closeSubmenus()
     this.renderRoot.querySelectorAll<RibbonButton>("ribbon-button").forEach(button => button.closeSubmenu())
     this.menuOpen = false
+  }
+
+  focusFileMenuTrigger() {
+    const trigger = this.heightConstrained
+      ? this.renderRoot.querySelector<HTMLButtonElement>("button.brand")
+      : this.renderRoot.querySelector('ribbon-tab[label="File"]')?.shadowRoot?.querySelector<HTMLButtonElement>("button")
+    trigger?.focus()
   }
 
   private selectMenu(event: Event) {
@@ -3955,7 +3986,7 @@ export class AppRibbon extends EditingControls {
             if(event.key !== "Escape") return
             event.stopPropagation()
             this.dismissCollapsedMenu()
-            this.renderRoot.querySelector('ribbon-tab[label="File"]')?.shadowRoot?.querySelector<HTMLButtonElement>("button")?.focus()
+            this.focusFileMenuTrigger()
           }}
           ?hidden=${!this.menuOpen || this.liveSessionActive}
           ?inert=${aiReviewPending || historyPreviewPending || this.liveSessionActive}

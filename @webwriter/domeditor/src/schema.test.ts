@@ -1010,6 +1010,29 @@ describe("Schema methods", () => {
   })
 
   describe("extendWidgets()", () => {
+    it("preserves formatting whitespace and comments around ordered widget children", () => {
+      schema.extendWidgets([{tagName: "webwriter-timeline-event", editingConfig: {content: "h2 flow+"}}])
+      document.body.innerHTML = '<webwriter-timeline-event>\n  <!--before--><h2 slot="title">Title</h2>\n  <p>Body</p><!--after-->\n</webwriter-timeline-event>'
+      const widget = document.querySelector("webwriter-timeline-event")!
+      const original = widget.innerHTML
+      expect(schema.isContentValid(widget)).toBe(true)
+      expect(schema.canInsert(widget, el("p"), widget.childNodes.length)).toBe(true)
+      expect(widget.innerHTML).toBe(original)
+      widget.querySelector("p")!.remove()
+      expect(schema.isContentValid(widget)).toBe(false)
+    })
+
+    it("still counts whitespace in explicit text and phrasing expressions", () => {
+      schema.extendWidgets([
+        {tagName: "text-widget", editingConfig: {content: "text+"}},
+        {tagName: "phrasing-widget", editingConfig: {content: "phrasing+"}},
+      ])
+      for(const tag of ["text-widget", "phrasing-widget"]) {
+        expect(schema.isContentValid(tag, [text(" ")])).toBe(true)
+        expect(schema.isContentValid(tag, [])).toBe(false)
+      }
+    })
+
     it("turns widget groups and nested content expressions into schema entries", () => {
       schema.extendWidgets([{
         tagName: "webwriter-slides",
@@ -1031,6 +1054,38 @@ describe("Schema methods", () => {
       expect(schema.isContentValid(first)).toBe(true)
       expect(schema.isContentValid("webwriter-slides", [])).toBe(false)
       expect(schema.isContentValid("webwriter-slides", [el("p")])).toBe(false)
+    })
+
+    it("constrains structural widget placement through content expressions and group membership", () => {
+      schema.extendWidgets([
+        {tagName: "x-timeline", editingConfig: {content: "x-event*"}},
+        {tagName: "x-event", editingConfig: {group: "", content: "h2 flow+"}},
+        {tagName: "x-widget-container", editingConfig: {content: "widget*"}},
+        {tagName: "x-other-timeline", editingConfig: {content: "x-event*"}},
+        {tagName: "x-flow-container", editingConfig: {content: "flow*"}},
+      ])
+      const timeline = el("x-timeline")
+      const event = el("x-event"); event.append(el("h2"), el("p"))
+      timeline.append(event)
+      expect(schema.canInsert(timeline, event, 0)).toBe(true)
+      expect(schema.isContentValid(timeline)).toBe(true)
+      expect(schema.getGroupMembers("flow")).not.toContain("x-event")
+      expect(schema.getGroupMembers("widget")).toContain("x-event")
+      for(const parent of [document.body, el("div"), el("section"), el("p"), el("x-flow-container"), event]) {
+        expect(schema.canInsert(parent, event, 0)).toBe(false)
+        expect(schema.isContentValid(parent, [event])).toBe(false)
+      }
+      // Another container may deliberately accept the type or its widget group.
+      for(const parent of [el("x-widget-container"), el("x-other-timeline")]) {
+        expect(schema.canInsert(parent, event, 0)).toBe(true)
+        expect(schema.isContentValid(parent, [event])).toBe(true)
+      }
+      const wrapper = el("div")
+      wrapper.append(event)
+      expect(schema.isContentValid(wrapper)).toBe(false)
+      // Destination checks do not depend on the node's current live parent.
+      expect(schema.canInsert(timeline, event, 0)).toBe(true)
+      expect(event.parentElement).toBe(wrapper)
     })
 
     it("supports ordered widget children, optional nodes and custom groups", () => {

@@ -816,6 +816,16 @@ export class SettingsPanel extends LitElement {
           <p class="setting-description">Layout used when creating a new document.</p>
         </section>
 
+        <section class="setting-card" aria-label="Text keyboard">
+          <label class="checkbox-setting">
+            <input type="checkbox" .checked=${this.settings.alwaysShowTextKeyboard}
+              @change=${(event: Event) => this.emitSettings({...this.settings, alwaysShowTextKeyboard: (event.currentTarget as HTMLInputElement).checked})}
+            />
+            <span class="checkbox-label">Offer the text keyboard on all devices</span>
+            <span class="checkbox-description">Use the on-screen keyboard for text editing on desktop as well as touch devices.</span>
+          </label>
+        </section>
+
         <section class="setting-card" aria-label="Guided tour">
           <label class="checkbox-setting">
             <input

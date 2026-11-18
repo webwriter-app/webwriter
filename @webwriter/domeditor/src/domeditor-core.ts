@@ -1,6 +1,6 @@
 import {hydrateWidgetGroupings, prepareWidgetGroupingsForSerialization, restoreWidgetGroupingClones} from "./widget-grouping-dom"
 import {SharedDOMDoc, type EditingMutation} from "./domdoc"
-import {isAuthoredMutation, isHTMLDetailsElement, restoreAuthoredDetailsState, setEditorWidgetLookup} from "./editor-artifacts"
+import {isAuthoredMutation, isHTMLDetailsElement, restoreAuthoredDetailsState, setDocumentKeyboardInputMode, setEditorWidgetLookup} from "./editor-artifacts"
 import {collectFeatureActions} from "./features"
 import {editorFeatureNames, type EditorFeatures, type EditorExtensionFactory} from "./editor-features"
 import { HistoryFeature } from "./features/history"
@@ -29,7 +29,7 @@ import { DialogFeature } from "./features/dialog"
 import {floatSideFromStyles} from "./element-styles"
 import {clearEditorPresentation, clearPresentationState, hasPresentationState, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, atomicEditingContainer, clearEditorArtifacts, cloneInert, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
+import { $, adoptStylesheet, atomicEditingContainer, clearEditorArtifacts, cloneInert, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, nodeAtPath, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
 import {
   editorFrameControlMessage,
@@ -44,6 +44,7 @@ import {
   selectionChangeEvent,
   attachmentConfirmationEvent,
   shapeKeyboardInputEvent,
+  textKeyboardRequestEvent,
   presenceChangeEvent,
   documentHeadStateChangeEvent,
   historyStateChangeEvent,
@@ -68,7 +69,7 @@ import {upgradeBundledDocumentThemes} from "./document-themes"
 import {getSectionOption, isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
 import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
-import {elementAttributeState} from "./element-attributes"
+import {elementAttributeState, elementAttributeTargetId} from "./element-attributes"
 import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
 import {runtimeDocumentBaseURL} from "./document-base-url"
 
@@ -196,6 +197,7 @@ export type DOMEditorOptions = {
   documentReplicaId?: string
   bridgeOrigin?: string
   accessibilityReviewEnabled?: boolean
+  touchKeyboard?: boolean
 }
 
 type HostDocumentState = {
@@ -273,6 +275,7 @@ export class DOMEditor {
   } | null = null
   readonly #bridgeNonce: string
   readonly #bridgeOrigin: string
+  readonly #coarsePointer = window.matchMedia("(pointer: coarse)")
 
   readonly #blockEditingInteraction = (event: Event) => {
     const path = event.composedPath()
@@ -463,6 +466,34 @@ export class DOMEditor {
     }
   }
 
+  #touchKeyboardEnabled = false
+  get touchKeyboardActive() {
+    return this.#touchKeyboardEnabled && [document.documentElement, document.body]
+      .every(host => host.getAttribute("inputmode")?.toLowerCase() === "none")
+  }
+
+  setTouchKeyboardPreference(enabled: boolean) {
+    if(this.options.reader || this.#destroyed) return
+    this.options.touchKeyboard = enabled
+    this.#touchKeyboardEnabled = enabled
+    if(enabled) document.addEventListener("pointerdown", this.#refreshKeyboardInputMode, true)
+    else document.removeEventListener("pointerdown", this.#refreshKeyboardInputMode, true)
+    this.#refreshKeyboardInputMode()
+  }
+
+  setTouchKeyboardEnabled(enabled: boolean) {
+    if(!this.options.touchKeyboard || this.options.reader || this.#destroyed) return
+    this.#touchKeyboardEnabled = enabled
+    this.#refreshKeyboardInputMode()
+  }
+
+  // Recheck authored or remotely replaced attributes before native tap focus.
+  #refreshKeyboardInputMode = (event?: PointerEvent) => {
+    const origin = event?.composedPath()[0]
+    const authoredMode = origin instanceof Element && origin.closest(':is(input, textarea, [contenteditable]):not([contenteditable="false" i])[inputmode]:not([inputmode="none" i])')
+    setDocumentKeyboardInputMode(document, this.#touchKeyboardEnabled && !authoredMode)
+  }
+
   readonly options: Omit<DOMEditorOptions, "initialState">
   documentReplicaSequence?: number
 
@@ -593,6 +624,7 @@ export class DOMEditor {
       if(!options.reader) this.#ensureDocumentContent()
       // Gecko inserts a bare <br> when designMode starts on an empty body.
       // Establish the default paragraph before enabling native editing.
+      if(options.touchKeyboard) this.setTouchKeyboardPreference(true)
       if(!options.reader) document.designMode = "on"
       Object.entries(this.features)
         .filter(([name]) => !options.reader || !["dependency", "state", "head", "template", "distribution", "history", "placeholder", "comment", "attribution", "proofreading", "collaboration", "migration"].includes(name))
@@ -625,6 +657,7 @@ export class DOMEditor {
   }
 
   allows(permission: import("./distribution.js").DistributionPermission | "select", element: Element | null | undefined) {
+    if(permission === "move" && element && this.schema.get(element).movable === false) return false
     if(!this.options.reader) return true
     if(!element?.isConnected || !this.options.reader.allows(permission, element)) return false
     return !["move", "delete"].includes(permission) || Array.from(element.querySelectorAll("*")).every(child => this.options.reader!.allows(permission, child))
@@ -632,7 +665,7 @@ export class DOMEditor {
 
   /** Resolve capabilities against the live selection, including capture and ranges. */
   allowsSelection(permission: import("./distribution.js").DistributionPermission | "select") {
-    if(!this.options.reader) return true
+    if(!this.options.reader && permission !== "move") return true
     if($.isMultiElementSelection) return $.selectedElements.every(element => this.allows(permission, element))
     const selected = this.features.selection.captureSelectedElement ?? this.features.selection.selectedSectionElement ?? $.selectedElement
     if(selected) return this.allows(permission, selected)
@@ -876,6 +909,9 @@ export class DOMEditor {
     if(this.doc) attempt(() => this.doc.destroy())
     this.#appendixElements.forEach(reference => reference.deref()?.remove())
     this.#appendixElements.clear()
+    document.removeEventListener("pointerdown", this.#refreshKeyboardInputMode, true)
+    if(this.#documentSession && this.#touchKeyboardEnabled) setDocumentKeyboardInputMode(document, false)
+    this.#touchKeyboardEnabled = false
     this.releaseDocumentSession()
     if(teardownError) throw teardownError
   }
@@ -941,7 +977,7 @@ export class DOMEditor {
       return
     }
     // The frame host handles controls on the same window message target.
-    if(ev.data.type === selectionChangeEvent || ev.data.type === shapeKeyboardInputEvent || ev.data.type === editorFrameControlMessage
+    if(ev.data.type === selectionChangeEvent || ev.data.type === textKeyboardRequestEvent || ev.data.type === shapeKeyboardInputEvent || ev.data.type === editorFrameControlMessage
       || ev.data.type === proofreadingDictionaryAddEvent || ev.data.type === commentReviewRequestEvent || ev.data.type === attachmentConfirmationEvent) {
       return
     }
@@ -1261,6 +1297,14 @@ export class DOMEditor {
       const owner = path.at(-1)
       if(owner) owner.sections = [...(owner.sections ?? []), ...pendingSections]
     }
+    const activeItem = this.#coarsePointer.matches && path.length > 1 ? path.at(-1) : undefined
+    if(activeItem) {
+      const target = nodeAtPath(body, activeItem.path)
+      if(isElement(target)) {
+        activeItem.targetId = elementAttributeTargetId(target)
+        activeItem.targetSelected = $.selectedElements.includes(target)
+      }
+    }
     const gap: SelectionGap | undefined = !this.features.manipulation.draggedElement && !this.features.selection.isCaptureSelection
       && !focusedWidget && $.isGapSelection && isElement($.anchor)
       ? {parentPath: this.pathToElement($.anchor), offset: $.anchorOffset}
@@ -1293,6 +1337,7 @@ export class DOMEditor {
     this.#postedSpatialSelection = spatialSelection
     const detail: SelectionChangeDetail = {
       path,
+      ...(this.options.touchKeyboard && this.features.manipulation.canTypeWithTextKeyboard ? {textKeyboard: true} : {}),
       distribution: this.features.distribution.getState(attributeElement),
       distributionGeneral: this.features.distribution.getState(document.documentElement),
       ...(selectedElementTypes.length ? {selectedElementTypes} : {}),

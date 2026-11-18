@@ -1,5 +1,5 @@
 import "./float-info"
-import { LitElement, css, html } from "lit"
+import { LitElement, css, html, nothing } from "lit"
 import "./ribbon-menu"
 import type {RibbonMenu, RibbonMenuButton} from "./ribbon-menu"
 import { repeat } from "lit/directives/repeat.js"
@@ -197,6 +197,13 @@ export class DomEditorBreadcrumb extends LitElement {
 
     .item.icon-only .item-label {
       display: none;
+    }
+
+    @media (pointer: coarse) {
+      .breadcrumb-list {
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
     }
 
     .position-icons {
@@ -423,6 +430,8 @@ export class DomEditorBreadcrumb extends LitElement {
         && entry.kind === other.kind
         && entry.state === other.state
         && entry.item.name === other.item.name
+        && entry.item.targetId === other.item.targetId
+        && entry.item.targetSelected === other.item.targetSelected
         && entry.item.icon === other.item.icon
         && entry.item.iconUrl === other.item.iconUrl
         && entry.item.imageMap === other.item.imageMap
@@ -607,6 +616,9 @@ export class DomEditorBreadcrumb extends LitElement {
 
     if(this.breadcrumbCollapseCount !== collapseCount) {
       this.breadcrumbCollapseCount = collapseCount
+    }
+    if(requiredWidth > availableWidth + 0.5 && list.querySelector(".item[aria-pressed]")) {
+      list.scrollLeft = listStyle.direction === "rtl" ? -list.scrollWidth : list.scrollWidth
     }
   }
 
@@ -877,24 +889,37 @@ export class DomEditorBreadcrumb extends LitElement {
       `
     }
 
+    const {item} = entry
+    const itemClass = `item${this.isCollapsedBreadcrumbItem(entry) ? " icon-only" : ""}${this.isNodeSelected(item) ? " node-selected" : ""}${this.isCaptured(item.path) ? " capture-selected" : ""}`
+    const label = `Select ${item.name}`
+    const targetId = this.isSelected(item) ? item.targetId : undefined
     return html`
       <li class=${`breadcrumb-entry ${transitionClass}`}>
         <button
-          class=${`item${this.isCollapsedBreadcrumbItem(entry) ? " icon-only" : ""}${this.isNodeSelected(entry.item) ? " node-selected" : ""}${this.isCaptured(entry.item.path) ? " capture-selected" : ""}`}
+          class=${itemClass}
           type="button"
-          data-path=${entry.item.path.join(",")}
-          title=${`Select ${entry.item.name}`}
-          aria-label=${`Select ${entry.item.name}`}
-          @mouseenter=${() => this.hover(entry.item)}
-          @mouseleave=${() => this.clearHover(entry.item)}
-          @click=${(event: MouseEvent) => this.select(entry.item, event.detail === 2)}
+          data-path=${item.path.join(",")}
+          title=${label}
+          aria-label=${label}
+          aria-pressed=${targetId ? String(item.targetSelected === true) : nothing}
+          @mouseenter=${() => this.hover(item)}
+          @mouseleave=${() => this.clearHover(item)}
+          @click=${(event: MouseEvent) => {
+            if(!targetId) {
+              this.select(item, event.detail === 2)
+              return
+            }
+            this.dispatchEvent(new CustomEvent("breadcrumb-item-toggle", {
+              detail: {path: [...item.path], targetId}, bubbles: true, composed: true,
+            }))
+          }}
         >
-          ${this.renderItemIcon(entry.item)}
-          <span class="item-label">${entry.item.name}</span>
-          ${entry.item.imageMap ? html`<span class="image-hotspot-indicator" role="img" aria-label="Interactive image hotspots" title="Interactive image hotspots">${ribbonIcon("Image hotspot")}</span>` : ""}
-          ${this.renderPositionIcons(entry.item)}
+          ${this.renderItemIcon(item)}
+          <span class="item-label">${item.name}</span>
+          ${item.imageMap ? html`<span class="image-hotspot-indicator" role="img" aria-label="Interactive image hotspots" title="Interactive image hotspots">${ribbonIcon("Image hotspot")}</span>` : ""}
+          ${this.renderPositionIcons(item)}
         </button>
-        ${this.renderSections(entry.item)}
+        ${this.renderSections(item)}
       </li>
     `
   }

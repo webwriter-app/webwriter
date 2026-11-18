@@ -218,6 +218,23 @@ await check("table paste strips marked Office placeholders", () => {
   finally { tableEditor.destroy() }
 })
 
+await check("virtual text keys preserve rendered spaces and delete complete graphemes", () => {
+  const paragraph = document.createElement("p")
+  fixture.append(paragraph)
+  const textEditor = new DOMEditor({touchKeyboard: true})
+  try {
+    document.body.focus()
+    $.move(paragraph)
+    const press = (command: "insert" | "backspace", text?: string) =>
+      textEditor.features.manipulation.actions.textKeyboardInput({type: "textKeyboardInput", command, text})
+    for(const value of ["x", " ", " ", "👩🏽‍🚀"]) assert(press("insert", value), "text insertion was rejected")
+    assert(paragraph.innerText.replaceAll("\u00a0", " ") === "x  👩🏽‍🚀", "typed spaces collapsed")
+    assert(press("backspace"), "Backspace was rejected")
+    assert(paragraph.innerText.replaceAll("\u00a0", " ") === "x  ", "Backspace did not delete one grapheme")
+  }
+  finally { paragraph.remove(); textEditor.destroy() }
+})
+
 await check("converted list items support repeated Backspace without clicking", checkListDeletion)
 await check("Command deletion stops at visual and hard line boundaries", checkLineDeletion)
 await check("interrupted live sessions recover committed data locally", checkLiveSessionRecovery)
@@ -2998,6 +3015,64 @@ await check("widget shadow interactions capture hosts while slotted children sta
   }
 })
 
+await check("contents subwidgets keep selection outlines and affordances around their rendered content", async () => {
+  const timeline = document.createElement("native-contents-timeline")
+  timeline.style.cssText = "display:grid;grid-template-columns:20px 1fr;width:600px;margin:60px auto"
+  timeline.attachShadow({mode: "open"}).innerHTML = '<slot style="display:contents"></slot>'
+  const event = document.createElement("native-contents-event")
+  const root = event.attachShadow({mode: "open"})
+  root.innerHTML = '<style>:host{display:contents!important;width:100%}.dot{background:black;width:10px;height:10px;margin-top:8px}.event{min-height:90px}slot{display:contents}input{font:inherit;width:90px}</style><div class="dot"></div><div class="event"><input value="2000"><slot></slot></div>'
+  event.innerHTML = '<h3>Timeline event</h3><p>Event details</p>'
+  timeline.append(event)
+  fixture.append(timeline)
+  try {
+    await layoutFrame()
+    assert(event.getBoundingClientRect().width === 0, "contents host unexpectedly has a box")
+    const transformation = editor.features.transformation, selection = editor.features.selection
+    for(const mode of ["capture", "element"] as const) {
+      if(mode === "capture") selection.captureElement(event)
+      else selection.selectElement(event)
+      await layoutFrame()
+      const dot = root.querySelector(".dot")!.getBoundingClientRect(), content = root.querySelector(".event")!.getBoundingClientRect()
+      const expected = {left: Math.min(dot.left, content.left), top: Math.min(dot.top, content.top), right: Math.max(dot.right, content.right), bottom: Math.max(dot.bottom, content.bottom)}
+      for(const frame of [selection.selectionCaret!, transformation.overlay]) {
+        const box = frame.getBoundingClientRect()
+        assert(["left", "top", "right", "bottom"].every(edge => Math.abs(box[edge as keyof typeof expected] - expected[edge as keyof typeof expected]) < 2), `${mode} frame misses the event: ${JSON.stringify(box.toJSON())}`)
+        assert(frame.getRootNode() === editor.appendix, `${mode} frame escaped the appendix`)
+      }
+      for(const name of ["delete", "scale-down-right"]) {
+        const control = transformation.overlay.querySelector<HTMLElement>(`[id="◆transform-overlay-${name}"]`)!
+        assert(!control.hidden && control.getBoundingClientRect().width > 0, `${mode} lost its ${name} affordance`)
+      }
+      const before = selection.selectionCaret!.getBoundingClientRect().height
+      root.querySelector<HTMLElement>(".event")!.style.minHeight = `${before + 60}px`
+      await layoutFrame()
+      await layoutFrame()
+      assert(selection.selectionCaret!.getBoundingClientRect().height > before + 50, `${mode} frame did not follow shadow content resizing`)
+      assert(transformation.target === event, `${mode} replaced the authored selection target`)
+    }
+    const plain = document.createElement("section")
+    plain.style.display = "contents"
+    plain.innerHTML = '<span style="display:contents">Ordinary text <b>with nested contents</b></span><span>Another box</span><span hidden>Hidden</span>'
+    timeline.replaceChildren(plain)
+    timeline.style.transform = "scale(.8)"
+    for(const mode of ["capture", "element"] as const) {
+      if(mode === "capture") selection.captureElement(plain)
+      else selection.selectSectionElement(plain)
+      await layoutFrame()
+      const range = document.createRange()
+      range.selectNodeContents(plain.firstElementChild!.firstChild!)
+      const boxes = [range.getBoundingClientRect(), plain.querySelector("b")!.getBoundingClientRect(), plain.children[1].getBoundingClientRect()]
+      const expected = {left: Math.min(...boxes.map(box => box.left)), top: Math.min(...boxes.map(box => box.top)), right: Math.max(...boxes.map(box => box.right)), bottom: Math.max(...boxes.map(box => box.bottom))}
+      const actual = selection.selectionCaret!.getBoundingClientRect()
+      assert(["left", "top", "right", "bottom"].every(edge => Math.abs(actual[edge as keyof typeof expected] - expected[edge as keyof typeof expected]) < 2), `${mode} ordinary contents frame misses its transformed boxes: ${JSON.stringify(actual.toJSON())}`)
+      assert(transformation.target === plain, `${mode} replaced the ordinary contents target`)
+    }
+    assert(!event.outerHTML.includes("◆"), "selection artifacts leaked into authored content")
+  }
+  finally { timeline.remove(); editor.features.selection.processSelection(undefined, {scrollIntoView: false}) }
+})
+
 await check("widget-created hints retain their caret and inherit popup text colors", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:700px;height:350px"
@@ -3365,6 +3440,48 @@ await check("popup parts receive scoped styles without changing their layout", a
   finally { view.editor?.destroy(); frame.remove() }
 })
 
+await check("popup media remains rendered while editing locks block interaction", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px!important;max-width:none;height:400px"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
+  nativeRootEditor.addAppendix(frame)
+  const view = frame.contentWindow as Window & {editor?: DOMEditor}
+  try {
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "popup media fixture did not initialize")
+    const doc = frame.contentDocument!, editor = view.editor!, selection = view.getSelection()!
+    doc.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Recorded audio</p><h2>Heading</h2><audio controls></audio></div><p id="outside">Outside</p>'
+    const popup = doc.getElementById("note")!, audio = popup.querySelector("audio")!
+    selection.setPosition(popup.querySelector("p")!.firstChild, 2)
+    editor.features.selection.processSelection()
+    editor.features.dialog.refresh()
+    await layoutFrame()
+    const source = editor.toHTML(true)
+    const slot = editor.appendix.querySelector<HTMLSlotElement>("slot:not([name])")!
+    for(let cycle = 0; cycle < 3; cycle++) {
+      const owner = {}
+      editor.lockEditing(owner)
+      try {
+        await layoutFrame()
+        assert(doc.designMode === "off" && slot.inert, "the lock did not disable native editing and interaction")
+        assert(view.getComputedStyle(popup).display === "flex" && audio.getBoundingClientRect().height > 0,
+          "the lock hid the popup's native audio controls")
+        assert(!popup.matches(":popover-open"), "the editing lock opened a native popover")
+        assert(editor.toHTML(true) === source, "locking changed the authored popup or serialized presentation state")
+      }
+      finally { editor.unlockEditing(owner) }
+      await layoutFrame()
+      assert(doc.designMode === "on" && !slot.inert && audio.getBoundingClientRect().height > 0,
+        "unlocking lost the visible popup or left editing disabled")
+    }
+    selection.setPosition(doc.getElementById("outside")!.firstChild, 2)
+    editor.features.dialog.refresh()
+    await layoutFrame()
+    assert(view.getComputedStyle(popup).display === "none", "leaving the popup retained its editing presentation")
+  }
+  finally { view.editor?.destroy(); frame.remove() }
+})
+
 await check("popup content gaps support backward joins", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px!important;max-width:none;height:400px"
@@ -3457,14 +3574,22 @@ await check("leaving a gap restores the native text caret", async () => {
     doc.body.innerHTML = "<p>Text caret</p>"
     const paragraph = doc.querySelector("p")!
     doc.body.focus()
-    selection.setPosition(doc.body, 0)
-    feature.processSelection(undefined, {scrollIntoView: false})
-    await layoutFrame()
-    assert(view.getComputedStyle(paragraph).caretColor === "rgba(0, 0, 0, 0)", "a gap did not suppress the native caret")
+    for(const offset of [0, 1]) {
+      selection.setPosition(doc.body, offset)
+      feature.processSelection(undefined, {scrollIntoView: false})
+      await layoutFrame()
+      assert(view.getComputedStyle(paragraph).caretColor === "rgba(0, 0, 0, 0)", "a gap did not suppress the native caret")
+      for(const root of [doc.documentElement, doc.body]) {
+        assert(view.getComputedStyle(root).caretColor === "rgba(0, 0, 0, 0)", "a gap left the editable root's native caret visible")
+      }
+    }
     selection.setPosition(paragraph.firstChild, 2)
     feature.processSelection(undefined, {scrollIntoView: false})
     await layoutFrame()
     assert(view.getComputedStyle(paragraph).caretColor !== "rgba(0, 0, 0, 0)", "moving from a gap into text left the native caret hidden")
+    for(const root of [doc.documentElement, doc.body]) {
+      assert(view.getComputedStyle(root).caretColor !== "rgba(0, 0, 0, 0)", "moving into text left the editable root's native caret hidden")
+    }
     assert(feature.gapCaret?.getAttribute("visibility") === "hidden", "moving into text left the gap caret visible")
   }
   finally { view.editor?.destroy(); frame.remove() }
@@ -5932,7 +6057,7 @@ await check("touch caret and ranges use shared pointer selection", async () => {
     const touchStart = new TouchEvent("touchstart", {bubbles: true, cancelable: true,
       touches: [new Touch({identifier: 71, target: paragraph, ...start})]})
     paragraph.dispatchEvent(touchStart)
-    assert(touchStart.defaultPrevented, "touch selection left native panning enabled")
+    assert(!touchStart.defaultPrevented, "touch selection prevented native scrolling")
     touch("pointerup")
     assert($.anchor === before && $.anchorOffset === 2 && $.isEmpty, "touch tap did not place the caret at the hit-tested point")
     for(let tap = 0; tap < 2; tap++) {
@@ -5948,11 +6073,15 @@ await check("touch caret and ranges use shared pointer selection", async () => {
     touch("pointerdown")
     touch("pointermove", end)
     touch("pointerup", end)
-    assert($.anchor === before && $.anchorOffset === 2 && $.focus === after && $.focusOffset === 2, "touch drag did not use shared range selection")
+    assert($.anchor === before && $.anchorOffset === 2 && $.focus === before && $.focusOffset === 2, "touch swipe changed the text selection")
     assert(!editor.features.selection.isInDragSelection, "touch selection did not clean up")
     start = point(before); end = point(after)
-    touch("pointerdown")
-    touch("pointermove", end)
+    const mouse = (type: string, coordinates = start) => paragraph.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, composed: true, cancelable: true, button: 0, buttons: type === "pointerup" ? 0 : 1,
+      pointerId: 73, pointerType: "mouse", ...coordinates,
+    }))
+    mouse("pointerdown")
+    mouse("pointermove", end)
     const transient = document.createRange()
     transient.selectNode(paragraph)
     getSelection()!.removeAllRanges()
@@ -5963,7 +6092,7 @@ await check("touch caret and ranges use shared pointer selection", async () => {
     assert(!hasPresentationState(paragraph, "element-selected") && !hasPresentationState(document.body, "node-selection-active")
       && editor.features.transformation.target === null && transform?.getAttribute("visibility") === "hidden",
       "transient element range showed active element controls during drag")
-    touch("pointerup", end)
+    mouse("pointerup", end)
     assert(hasPresentationState(paragraph, "element-selected") && editor.features.transformation.target === paragraph,
       "released drag did not restore the element selection")
     const relay = (event: "pointerdown" | "pointermove" | "pointerup", coordinates = start) => replayHostPointer({
@@ -5978,8 +6107,8 @@ await check("touch caret and ranges use shared pointer selection", async () => {
     }
     start = point(before); end = point(after)
     relay("pointerdown"); relay("pointermove", end); relay("pointerup", end)
-    assert($.anchor === before && $.anchorOffset === 2 && $.focus === after && $.focusOffset === 2
-      && !editor.features.selection.isInDragSelection, "relayed touch did not retain and clean up the shared range")
+    assert($.anchor === before && $.anchorOffset === 2 && $.focus === before && $.focusOffset === 2
+      && !editor.features.selection.isInDragSelection, "relayed touch swipe changed the text selection")
   }
   finally {paragraph.remove()}
 })
@@ -11988,6 +12117,15 @@ await check("narrow toolboxes collapse below bottom panels and restore on tab ac
     const toolbox = app.shadowRoot!.querySelector<import("../src/components/toolbox").DomEditorToolbox>("dom-editor-toolbox")!
     const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
     const tabs = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
+    const tabsArea = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs-area")!
+    host.breadcrumbVisible = true
+    await settle()
+    const divider = getComputedStyle(app.shadowRoot!.querySelector(".app-bar")!, "::before")
+    assert(divider.gridRowStart === "2" && divider.gridColumnStart === "1" && divider.gridColumnEnd === "-1"
+      && divider.borderBottomColor === "rgb(168, 168, 168)", "the shared divider does not span the breadcrumb row")
+    const transparent = "rgba(0, 0, 0, 0)"
+    assert(getComputedStyle(tabs).borderBottomColor === transparent && getComputedStyle(tabsArea).backgroundColor === transparent
+      && getComputedStyle(tabsArea).boxShadow.includes(transparent), "the adjacent toolbox paints over the shared divider")
     for(const surface of ["console", "versions", "math", "shape", "link"]) {
       Object.assign(app, {consoleOpen: false, reviewOpen: false, mathSelection: null, graphicSelection: null, linkSelection: null,
         mathKeyboardHidden: false, shapeKeyboardHidden: false, linkKeyboardHidden: false})
@@ -12016,6 +12154,7 @@ await check("narrow toolboxes collapse below bottom panels and restore on tab ac
           `${surface}: tabs are not at the bottom below the open panel`)
         assert(Math.abs(toolbox.getBoundingClientRect().height - 30) < 1, `${surface}: toolbox reserves more than the tab row`)
         assert(tabs.scrollWidth <= tabs.clientWidth, `${surface}: tabs overflow horizontally`)
+        assert(getComputedStyle(tabs).borderBottomColor === "rgb(168, 168, 168)", `${surface}: docked tabs lost their own divider`)
         assert(!toolbox.shadowRoot!.querySelector('[aria-selected="true"]'), `${surface}: hidden pane has a selected tab`)
       }
       toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`[data-tool="${toolbox.activeTool}"]`)!.click()

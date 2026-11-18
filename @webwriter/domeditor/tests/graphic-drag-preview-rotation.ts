@@ -1,28 +1,36 @@
 import {presentationStateElements} from "../src/presentation-state.js"
 import type {DOMEditor} from "../src/domeditor"
 
-const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
+const assert = (condition: unknown, message: string) => {
+  if(condition) return
+  const error = new Error(message)
+  if(!error.stack?.includes(message)) error.stack = `${message}\n${error.stack}`
+  throw error
+}
 
 /** Rotated SVG viewport drag previews keep the source graphic's screen matrix. */
-export async function checkGraphicDragPreviewRotation() {
+export async function checkGraphicDragPreviewRotation(modes: readonly ("document" | "canvas" | "slides")[] = ["document", "canvas", "slides"]) {
   const layout = async (view: Window & typeof globalThis) => {
     await new Promise<void>(resolve => view.requestAnimationFrame(() => resolve()))
     await new Promise<void>(resolve => view.requestAnimationFrame(() => resolve()))
   }
-  for(const mode of ["canvas", "slides"] as const) {
+  for(const mode of modes) {
     const frame = document.createElement("iframe")
     frame.style.cssText = "width:1000px;height:700px;border:0;max-width:none"
     frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
     document.querySelector("#fixture")!.append(frame)
     try {
       const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor, editorError?: string}
-      for(let attempt = 0; !view.editor && !view.editorError && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      for(let attempt = 0; !view.editor && !view.editorError && attempt < 400; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
       assert(view.editor && !view.editorError, `${mode}: preview fixture did not initialize (${view.editorError ?? "timed out"})`)
       const editor = view.editor!, doc = frame.contentDocument!
       doc.body.innerHTML = '<svg viewBox="100 50 1200 600" style="width:600px;height:360px"><!--keep--><rect x="400" y="250" width="160" height="100" fill="skyblue"/><ellipse cx="900" cy="400" rx="60" ry="40" fill="orange"/></svg>'
-      assert(editor.setDocumentLayout(mode, "document"), `${mode}: layout conversion failed`)
+      if(mode !== "document") assert(editor.setDocumentLayout(mode, "document"), `${mode}: layout conversion failed`)
+      const style = doc.createElement("style")
+      style.textContent = ".ww-slides-viewport { scroll-behavior: auto !important; }"
+      doc.head.append(style)
       const graphic = doc.querySelector("svg")!, shape = graphic.querySelector("rect")!
-      Object.assign(graphic.style, {left: "200px", top: "200px", rotate: "30deg", scale: "1.1 0.9", transform: "translate(12px, 8px)", transformOrigin: "25% 75%"})
+      Object.assign(graphic.style, {left: "200px", top: "80px", rotate: "30deg", scale: "1.1 0.9", transform: "translate(12px, 8px)", transformOrigin: "25% 75%"})
       editor.features.selection.captureElement(graphic)
       for(const aspect of ["xMidYMid meet", "none", "xMaxYMin slice"]) {
         graphic.setAttribute("preserveAspectRatio", aspect)

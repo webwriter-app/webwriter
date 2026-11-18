@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
+import {afterEach, beforeEach, describe, expect, it, onTestFinished, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
 import {graphicPresetFillRule, graphicPresetPath, isGraphicPresetType, readGraphicPreset, writeGraphicPreset, graphicPresetHandles} from "../graphic-shapes"
@@ -59,6 +59,7 @@ async function withNativePresetBounds(run: () => void | Promise<void>) {
 function clickShape(shape: Element, shiftKey = false) {
   shape.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, shiftKey}))
   document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, shiftKey}))
+  shape.dispatchEvent(new MouseEvent("click", {bubbles: true, button: 0, shiftKey}))
 }
 
 // Happy DOM does not carry DragEventInit.dataTransfer through its constructor.
@@ -3521,7 +3522,9 @@ describe("graphic editing", () => {
     expect(rectangle).toHaveAttribute("transform", `rotate(${expected} 800 450)`)
   })
 
-  it.each(["pointerup", "pointercancel", "lostpointercapture"])("maps rotation previews through the graphic viewport and cleans up on %s", async outcome => {
+  it.each(["pointerup", "pointercancel", "lostpointercapture"].flatMap(outcome =>
+    [false, true].map(rootOmitsViewport => ({outcome, rootOmitsViewport})),
+  ))("maps rotation previews through the graphic viewport (root omits viewport: $rootOmitsViewport) and cleans up on $outcome", async ({outcome, rootOmitsViewport}) => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
     const graphic = document.querySelector("svg")!
@@ -3555,12 +3558,25 @@ describe("graphic editing", () => {
     const preview = editor.appendix.querySelector<SVGSVGElement>(".◆graphic-preview")!
     const previewLocal = viewport.multiply(local)
     Object.defineProperties(preview, {
-      getCTM: {value: () => previewLocal},
+      getCTM: {value: () => rootOmitsViewport ? new DOMMatrix() : previewLocal},
       getScreenCTM: {value: () => DOMMatrix.fromMatrix(
         preview.style.transform ? new DOMMatrix(preview.style.transform) : new DOMMatrix(),
       ).multiply(previewLocal)},
     })
+    const createElementNS = document.createElementNS.bind(document)
+    const measurements: SVGGElement[] = []
+    const create = vi.spyOn(document, "createElementNS").mockImplementation((namespace, name, options) => {
+      const element = createElementNS(namespace, name, options)
+      if(namespace === "http://www.w3.org/2000/svg" && name === "g") {
+        Object.defineProperty(element, "getCTM", {value: () => previewLocal})
+        measurements.push(element as SVGGElement)
+      }
+      return element
+    })
+    onTestFinished(() => create.mockRestore())
     editor.features.graphic.refresh()
+    expect(measurements.length).toBeGreaterThan(0)
+    expect(measurements.every(element => !element.isConnected)).toBe(true)
     expect(preview.querySelector("rect")).toHaveAttribute("transform", "rotate(90 800 450)")
     expect(preview.style.width).toBe("800px")
     expect(preview.style.height).toBe("450px")
@@ -5219,7 +5235,8 @@ it("keeps canvas capture and mark availability stable when dismissing a shape la
   expect(editor.features.mark.getState()).toMatchObject({canMark: true, svgText: true})
   const post = vi.spyOn(editor, "postHostMessage")
   graphic.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 89, clientX: 10, clientY: 10}))
-  document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 89}))
+  document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 89, clientX: 10, clientY: 10}))
+  graphic.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: 10}))
   await mutationsDelivered()
   document.dispatchEvent(new Event("selectionchange"))
   const messages = post.mock.calls.map(([message]) => message as {type: string, detail?: {canMark?: boolean, svgText?: boolean, graphic?: {capture: boolean}}})

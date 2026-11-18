@@ -19,6 +19,36 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("declarative dialog editing", () => {
+  it.each([
+    ['<p><span class="ww-popup"><button popovertarget="note">Open</button></span></p><div class="ww-popup-content" id="note" popover="auto"><p>Body</p><h2>Heading</h2><audio controls></audio></div>', "flex", "absolute"],
+    ['<div class="ww-popup"><button popovertarget="note">Open</button><div id="note" popover="auto"><p>Body</p><audio controls></audio></div></div>', "block", "absolute"],
+    ['<div id="note" popover="auto"><p>Body</p><audio controls></audio></div>', "block", "static"],
+  ])("keeps selected popup media rendered while an editing lock blocks interaction (%s)", (html, display, position) => {
+    document.body.innerHTML = `${html}<p id="outside">Outside</p>`
+    const popup = document.getElementById("note")!, paragraph = popup.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+    editor.features.dialog.refresh()
+    const source = editor.toHTML(true)
+    const owner = {}
+    editor.lockEditing(owner)
+    try {
+      expect(getComputedStyle(popup).display).toBe(display)
+      expect(getComputedStyle(popup).position).toBe(position)
+      expect(hasPresentationState(popup, "popup-visible")).toBe(true)
+      expect(document.designMode).toBe("off")
+      expect(editor.appendix.querySelector<HTMLSlotElement>("slot:not([name])")!.inert).toBe(true)
+      const input = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText"})
+      paragraph.dispatchEvent(input)
+      expect(input.defaultPrevented).toBe(true)
+      expect(editor.toHTML(true)).toBe(source)
+    }
+    finally { editor.unlockEditing(owner) }
+    expect(document.designMode).toBe("on")
+    $.move(document.getElementById("outside")!.firstChild!, 2)
+    editor.features.dialog.refresh()
+    expect(hasPresentationState(popup, "popup-visible")).toBe(false)
+  })
+
   it("moves legacy popup content out of a table row and into its toggle cell", () => {
     document.body.innerHTML = '<table><tbody><tr><td><span class="ww-popup"><button popovertarget="note">Open</button></span></td><td>Other</td></tr></tbody></table>'
     const row = document.querySelector("tr")!, cell = row.cells[0]

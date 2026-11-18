@@ -42,28 +42,49 @@ async function mountElement(localName: string, attributes: Record<string, string
 }
 
 describe("specialized element toolbox", () => {
-  it("opens conversion choices from the selected element icon", async () => {
+  it("opens conversion choices from the element type and chevron in the drawer heading", async () => {
     const toolbox = await mountElement("course-quiz")
-    toolbox.elementAttributes = {...toolbox.elementAttributes!, targetId: "element-1"}
-    toolbox.widgetConversion = {sourceId: "element-1", imports: [".h5p"], exports: ["text/plain"], targets: [
+    toolbox.elementAttributes = {...toolbox.elementAttributes!, targetId: "element-1", name: "Course quiz"}
+    toolbox.widgetConversion = {sourceId: "element-1",
+      imports: [".h5p", "application/x-h5p", ".zip", ".quiz", "application/vnd.example.quiz"],
+      exports: ["text/plain", ".txt", "image/jpeg", ".JPG", ".jpeg"], targets: [
       {tag: "ul", name: "List", icon: "List"}, {tag: "details", name: "Details", icon: "Details"},
     ]}
-    const click = vi.fn()
+    const click = vi.fn(), select = vi.fn()
     toolbox.addEventListener("ribbon-button-click", click)
+    toolbox.addEventListener("toolbox-element-select", select)
     await toolbox.updateComplete
-    const picker = toolbox.shadowRoot!.querySelector<RibbonButton>('ribbon-button[slot="heading-icon"]')!
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('[data-specialized="course-quiz"]')!
+    await drawer.updateComplete
+    const heading = drawer.shadowRoot!.querySelector<HTMLSlotElement>('slot[name="heading-label"]')!
+    const [picker] = heading.assignedElements() as RibbonButton[]
     await picker.updateComplete
-    picker.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    const trigger = picker.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    const label = trigger.querySelector<HTMLElement>(".button-label-text")!
+    expect(label.textContent).toBe("Course quiz")
+    expect(trigger.querySelector('.submenu-chevron[aria-hidden="true"]')).not.toBeNull()
+    expect(trigger).toHaveAttribute("aria-haspopup", "menu")
+    expect(trigger).toHaveAttribute("aria-expanded", "false")
+    label.click()
     await picker.updateComplete
+    expect(trigger).toHaveAttribute("aria-expanded", "true")
     expect(click).not.toHaveBeenCalled()
+    expect(select).not.toHaveBeenCalled()
     const menu = picker.shadowRoot!.querySelector("ribbon-menu")!
     await menu.updateComplete
     const list = menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Convert to List"]')!
-    expect(menu.shadowRoot!.querySelector('section[aria-label="Import"]')!.textContent).toContain("Import .h5p")
-    expect(menu.shadowRoot!.querySelector('section[aria-label="Export"]')!.textContent).toContain("Export text/plain")
+    const labels = (group: string) => Array.from(menu.shadowRoot!.querySelectorAll(
+      `section[aria-label="${group}"] button[role="menuitem"]`), button => button.textContent!.trim())
+    expect(labels("Import")).toEqual(["Import H5P…", "Import ZIP archive…", "Import QUIZ…", "Import application/vnd.example.quiz…"])
+    expect(labels("Export")).toEqual(["Export Plain text", "Export JPEG"])
     expect(list.getAttribute("draggable")).toBe("false")
     list.click()
     expect(click.mock.calls[0][0].detail.label).toBe("widget-conversion:element-1:ul")
+    await picker.updateComplete
+    expect(trigger).toHaveAttribute("aria-expanded", "false")
+    toolbox.widgetConversion = {...toolbox.widgetConversion, sourceId: "element-2"}
+    await toolbox.updateComplete
+    expect(heading.assignedElements()).toHaveLength(0)
   })
 
   it.each([
@@ -474,7 +495,7 @@ describe("specialized element toolbox", () => {
     expect(drawers[1].shadowRoot!.querySelector(".element-count")).toBeNull()
     expect(drawers[0].querySelector(".style-reset")!.textContent!.trim()).toBe("")
     expect(drawers[0].querySelector(".style-reset")!.getAttribute("aria-label")).toBe("Reset element styles")
-    expect(drawers[1].querySelector(".style-reset")!.textContent!.trim()).toBe("Reset")
+    expect(drawers[1].querySelector(".style-reset")!.textContent!.trim()).toBe("")
     expect(drawers[2].expandable).toBe(false)
     const emptyOptions = drawers[2].shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
     expect(emptyOptions.hidden).toBe(false)

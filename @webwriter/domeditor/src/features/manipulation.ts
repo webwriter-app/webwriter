@@ -12,7 +12,7 @@ import {captionedFigureContent} from "../figure-layout.js"
 import {SVG_NAMESPACE, graphicShapeDragType, readGraphicShapeDrag, isGraphicShapeType, graphicContainerForNode} from "../graphic"
 import {boardLayoutRole, documentLayoutMode, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, caretRect, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
+import { $, caretRect, fixedClientX, renderedClientRect, widgetHostForShadowInteraction, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
 import {isMarkElement} from "../marks"
 import {isEmptyParagraph, isParagraphContent, isPointAtBoundary} from "../utility"
 import {childNodesInRange, createAnchorPositioner, cssZoomFactor, removeEditorMarker} from "../utility"
@@ -472,7 +472,10 @@ export class ManipulationFeature extends EditorFeature {
 
   startNodeDrag(event: DragEvent, element: Element) {
     if(!this.editor.allows("move", element)) { event.preventDefault(); return }
-    if(!this.isEnabled || event.defaultPrevented || !event.dataTransfer || element !== ($.selectedElement ?? this.editor.features.math.selectedMath)
+    const origin = event.composedPath()[0]
+    const nativeHandle = widgetHostForShadowInteraction(event, this.editor.schema) === element
+      && origin instanceof HTMLElement && origin.draggable && !isWidgetShadowInteraction(event, this.editor.schema)
+    if(!this.isEnabled || event.defaultPrevented || !event.dataTransfer || !nativeHandle && element !== (this.editor.features.selection.captureSelectedElement ?? $.selectedElement ?? this.editor.features.math.selectedMath)
       || !getDocumentRoot().contains(element) || element === getDocumentRoot()) {
       event.preventDefault()
       return
@@ -631,9 +634,11 @@ export class ManipulationFeature extends EditorFeature {
     const block = (child: Node | null) => isElement(child) && !this.editor.schema.isPhrasing(child) && !isOutOfFlow(child)
     const adjacent = (block(before) || !before) && (block(after) || !after) ? before ?? after : null
     const gap = isElement(adjacent) ? adjacent : null
-    const rect = gap ? gap.getBoundingClientRect() : caretRect(node, offset)
-    const top = gap && gap === before ? rect.bottom + (parseFloat(getComputedStyle(gap).marginBottom) || 0) : rect.top
-    const left = gap?.parentElement ? this.editor.features.selection.gapCaretInlinePosition(gap.parentElement)
+    const rect = gap ? renderedClientRect(gap) : caretRect(node, offset)
+    const top = before instanceof Element && after instanceof Element && gap
+      ? (renderedClientRect(before).bottom + renderedClientRect(after).top) / 2
+      : gap && gap === before ? rect.bottom + (parseFloat(getComputedStyle(gap).marginBottom) || 0) : rect.top
+    const left = gap ? this.editor.features.selection.gapCaretInlinePosition(gap)
       : `${fixedClientX(rect.left)}px`
     if(!this.dropRangeCaret) {
       this.dropRangeCaret = document.createElement("div")
@@ -782,7 +787,15 @@ export class ManipulationFeature extends EditorFeature {
   floatDropTarget(event: MouseEvent, source: Element, pointAtDrop = this.dropPointResolver(event)) {
     this.floatDropHit = null
     if(this.editor.features.canvas.active || this.editor.features.slides.active || source.namespaceURI === MATH_NAMESPACE) return null
+    if(source.localName.includes("-") && !this.editor.schema.get(source).group?.includes("flow") && !this.editor.schema.isPhrasing(source)) return null
     if(event.target instanceof Node && source.contains(event.target)) return null
+    // A widget's authored children reorder in its slots. Floating a child
+    // beside a sibling would hide the structural gap destination.
+    const parent = source.parentElement
+    if(parent && isContentfulWidget(parent, this.editor.schema)) {
+      const point = pointAtDrop()
+      if(point && parent.contains(point.node)) return null
+    }
     // Ribbon snippets should use a live text caret when the pointer is over
     // authored text. Projected float lanes cover the whole page column, so
     // their rectangles can otherwise steal a drop directly on visible text.
@@ -1572,6 +1585,31 @@ export class ManipulationFeature extends EditorFeature {
     return this.flowDropRange(event, source, pointAtDrop)
   }
 
+  /** Promote a hit on a slotted descendant to a sibling gap in its widget.
+   * Validate the final order, including removal of the moving source, so
+   * required fields and named-slot cardinalities remain intact. */
+  private widgetSiblingDropRange(event: MouseEvent, source: Element, point: NonNullable<DropPoint>, parent: Element | null = source.parentElement): Range | null | undefined {
+    if(!parent || !isContentfulWidget(parent, this.editor.schema) || !parent.contains(point.node)) return undefined
+    let offset = point.offset
+    if(point.node !== parent) {
+      let child: Node = point.node
+      while(child.parentNode && child.parentNode !== parent) child = child.parentNode
+      if(child.parentNode !== parent || !(child instanceof Element)) return null
+      const rect = renderedClientRect(child)
+      offset = Array.from(parent.childNodes).indexOf(child) + (event.clientY >= rect.top + rect.height / 2 ? 1 : 0)
+    }
+    const reference = parent.childNodes[offset] ?? null
+    const copy = event.ctrlKey || event.altKey
+    if(!copy && (reference === source || reference === source.nextSibling)) return null
+    const children = Array.from(parent.childNodes).filter(node => copy || node !== source)
+    children.splice(reference ? children.indexOf(reference) : children.length, 0, source)
+    if(!this.editor.schema.isContentValid(parent, children) || !this.allowsInsertionAt([source], parent)) return null
+    const range = document.createRange()
+    range.setStart(parent, offset)
+    range.collapse(true)
+    return range
+  }
+
   private flowDropRange(event: MouseEvent, source: Element | null, pointAtDrop: () => DropPoint) {
     if(source && (!getDocumentRoot().contains(source) || event.target instanceof Node && source.contains(event.target))) return null
     // Overlays such as the selected element's drag surface cover authored
@@ -1581,6 +1619,23 @@ export class ManipulationFeature extends EditorFeature {
     const root = getDocumentRoot()
     const point = pointAtDrop()
     if(!point || !getDocumentRoot().contains(point.node)) return null
+    if(source) {
+      const widgetGap = this.widgetSiblingDropRange(event, source, point)
+      if(widgetGap !== undefined) return widgetGap
+      const parent = source.parentElement
+      if(parent && isContentfulWidget(parent, this.editor.schema) && !event.ctrlKey && !event.altKey
+        && !this.editor.schema.isContentValid(parent, Array.from(parent.childNodes).filter(node => node !== source))) return null
+      // Structural widgets excluded from flow can only land in a widget
+      // whose explicit content expression accepts them, never in prose.
+      if(source.localName.includes("-") && !this.editor.schema.get(source).group?.includes("flow") && !this.editor.schema.isPhrasing(source)) {
+        for(let container = point.node instanceof Element ? point.node : point.node.parentElement;
+          container && root.contains(container); container = container.parentElement) {
+          const gap = this.widgetSiblingDropRange(event, source, point, container)
+          if(gap) return gap
+        }
+        return null
+      }
+    }
     if(source && !this.allowsInsertionAt([source], point.node)) return null
     const range = document.createRange()
     if(source?.contains(point.node)) return null
@@ -2198,7 +2253,13 @@ export class ManipulationFeature extends EditorFeature {
           floated = this.placeFloat(inserted, container, side)
         }
         else {
-          if(this.joinsTextOnDrop(source, range.startContainer)) {
+          if(sourceParent && range.startContainer === sourceParent && isContentfulWidget(sourceParent, this.editor.schema)) {
+            const reference = sourceParent.childNodes[range.startOffset] ?? null
+            const parent = sourceParent as HTMLElement & {moveBefore?: (node: Node, before: Node | null) => void}
+            if(inserted === source && typeof parent.moveBefore === "function") parent.moveBefore(inserted, reference)
+            else sourceParent.insertBefore(inserted, reference)
+          }
+          else if(this.joinsTextOnDrop(source, range.startContainer)) {
             // Move the live children so inline formatting, comments and widgets
             // survive without nesting or splitting either text block.
             const fragment = document.createDocumentFragment()
@@ -2213,7 +2274,7 @@ export class ManipulationFeature extends EditorFeature {
             this.insertBlocks([inserted])
           }
           else range.insertNode(inserted)
-          this.clearDropFloat(inserted)
+          if(range.startContainer !== sourceParent || !isContentfulWidget(sourceParent, this.editor.schema)) this.clearDropFloat(inserted)
         }
         if(getDocumentRoot().contains(inserted)) $.selectElement(inserted)
         if(inserted === source && sourceParent?.matches("figure:not([is])") && source.parentElement !== sourceParent) this.editor.normalizeSurroundingElements(sourceParent)
@@ -2292,12 +2353,14 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private captionTarget() {
-    let target = this.styleTarget
+    let target = this.editor.features.selection.selectedSectionElement ?? this.styleTarget
     const {board, slides} = this.editor.features
     const root = board.active ? board.containingCard(target)
       : slides.active ? slides.containingSlide(target) : getDocumentRoot()
     if(!root || target === root || !root.contains(target)) return null
-    while(target.parentElement && target.parentElement !== root) target = target.parentElement
+    let captioned = target.closest("figure:not([is]), table:not([is])")
+    while(captioned && captioned.parentElement !== root) captioned = captioned.parentElement?.closest("figure:not([is]), table:not([is])") ?? null
+    if(captioned?.parentElement === root) target = captioned
     if(target.matches("caption, figcaption, hr, h1, h2, h3, h4, h5, h6")) return null
     return target.parentElement === root && !slideLayoutRole(target) ? target : null
   }
@@ -3447,6 +3510,8 @@ export class ManipulationFeature extends EditorFeature {
    * the default node when allowed and otherwise a schema-conformant text block. */
   private insertTextBlockAtSelection() {
     this.moveInsertionAfterLoneFloat()
+    const field = $.widgetFieldAtLeadingBoundary($.range.startContainer, $.range.startOffset, this.editor.schema)
+    if(field) { $.move(field); return field }
     const container = getContainer($.range.startContainer)
     const index = Math.max(0, getIndexBefore($.range) + 1)
     const validTypes = this.editor.schema.findValidTypesToInsert()
@@ -3930,6 +3995,18 @@ export class ManipulationFeature extends EditorFeature {
     return Array.from(first.childNodes).find(isDistributionPI)?.data === Array.from(second.childNodes).find(isDistributionPI)?.data
   }
 
+  private canJoinDeletionBlocks(first: Element, second: Element, direction: "forward" | "backward") {
+    if(!this.canJoinDistributionRegions(first, second)
+      || isContentfulWidget(first, this.editor.schema) || isContentfulWidget(second, this.editor.schema)) return false
+    const parent = first.parentElement
+    if(!parent || parent !== second.parentElement || !isContentfulWidget(parent, this.editor.schema)) return true
+    const target = direction === "backward" ? first : second
+    const removed = direction === "backward" ? second : first
+    // Joining ordinary text must not remove a widget's required title/body.
+    return this.editor.schema.isContentValid(parent, Array.from(parent.childNodes).filter(node => node !== removed))
+      && this.editor.schema.isContentValid(target, [...first.childNodes, ...second.childNodes].filter(node => !isDistributionPI(node)))
+  }
+
   /** Promotes a DOM point through nested mark wrappers to an offset in the
    * containing non-mark element, splitting text and marks only when the point
    * is actually inside them. */
@@ -4384,7 +4461,73 @@ export class ManipulationFeature extends EditorFeature {
     return {html, label: text.trim().replace(/\s+/g, " ").slice(0, 80) || container.localName}
   }
 
+  /** Recheck the live range for each virtual key. A pending host command can
+   * arrive after a widget, remote change, or object selection has moved it. */
+  get canTypeWithTextKeyboard(): boolean {
+    const selection = document.getSelection()
+    const features = this.editor.features
+    if(selection?.rangeCount !== 1 || this.editor.isEditingLocked || this.editor.options.reader
+      || features.selection.isInDragSelection || features.selection.selectedSectionElement || features.selection.isCaptureSelection
+      || features.table.hasCellSelection || features.math.activeMath || features.list.isVirtualSelection
+      || features.mark.isSVGTextSelection || $.isMultiElementSelection || $.isElementSelection
+      || !features.slides.allowsSelection() || !features.board.allowsSelection()
+      || isAppendixInteraction() || document.activeElement?.matches("input, textarea, select")
+      || focusedWidgetHost()?.shadowRoot?.activeElement) return false
+    // In designMode WebKit reads inputmode from the focused editing host.
+    // An advisory attribute on an unfocused inline child does not open its
+    // own keyboard, so the document must still provide text entry there.
+    const focused = document.activeElement
+    if(focused && focused !== document.body && focused !== document.documentElement
+      && focused.matches('[contenteditable]:not([contenteditable="false" i]):not([inputmode="none" i])')) return false
+    const nativeMode = '[inputmode]:not([inputmode="none" i])'
+    if([document.documentElement, document.body, document.activeElement].some(element => element?.matches(nativeMode))) return false
+
+    const root = getDocumentRoot()
+    const editable = (node: Node | null) => {
+      const element = isElement(node) ? node : node?.parentElement
+      return element instanceof HTMLElement && root.contains(element)
+        && !element.closest('[contenteditable="false" i], [inert], [hidden], input, textarea, select')
+        && !atomicEditingContainer(element, this.editor.schema)
+    }
+    if(!editable(selection.anchorNode) || selection.anchorNode !== selection.focusNode && !editable(selection.focusNode)) return false
+    const anchor = selection.anchorNode
+    if(selection.isCollapsed && isElement(anchor) && this.isTextBlock(anchor)
+      && (isEmptyParagraph(anchor) || !anchor.childNodes.length || anchor.childNodes.length === 1 && anchor.firstElementChild?.matches("br"))) return true
+    return !$.isGapSelection && $.isTextSelection
+  }
+
+  private textKeyboardInput(command: "insert" | "backspace" | "enter", text?: string) {
+    if(!this.editor.touchKeyboardActive || !this.canTypeWithTextKeyboard
+      || !["insert", "backspace", "enter"].includes(command)
+      || command === "insert" && (typeof text !== "string" || !text.length)) return false
+    const inputType = command === "insert" ? "insertText" : command === "backspace" ? "deleteContentBackward" : "insertParagraph"
+    const init = {inputType, data: command === "insert" ? text : null, bubbles: true, composed: true}
+    const target = this.widgetEditingScope($.anchor) ?? document.body
+    const {startContainer, startOffset, endContainer, endOffset} = $.range
+    // Let marks, lists, captions and other editing features handle input just
+    // as they do for the native keyboard before applying the ordinary edit.
+    if(!target.dispatchEvent(new InputEvent("beforeinput", {...init, cancelable: true}))) return true
+    if(!this.editor.touchKeyboardActive || !this.canTypeWithTextKeyboard) return false
+    const range = $.range
+    if(range.startContainer !== startContainer || range.startOffset !== startOffset
+      || range.endContainer !== endContainer || range.endOffset !== endOffset
+      || target !== (this.widgetEditingScope($.anchor) ?? document.body)) return false
+    if(command === "enter") this.insert()
+    else if(command === "backspace") this.delete("backward")
+    // Browser insertion preserves rendered spaces and the native input event.
+    else if(document.execCommand?.("insertText", false, text)) return true
+    else if(range.startContainer === range.endContainer && range.startContainer instanceof Text) {
+      const node = range.startContainer, offset = range.startOffset
+      node.replaceData(offset, range.endOffset - offset, text!)
+      $.move(node, offset + text!.length)
+    }
+    else this.insertAtSelection(document.createTextNode(text!))
+    target.dispatchEvent(new InputEvent("input", init))
+    return true
+  }
+
   actions = {
+    textKeyboardInput: ({command, text}: {type: "textKeyboardInput", command: "insert" | "backspace" | "enter", text?: string}) => this.textKeyboardInput(command, text),
     hoverInsertion: ({hovered, tag}: {type: "hoverInsertion", hovered: boolean, tag?: string}) => this.hoverInsertion(hovered, tag),
     insertElement: ({tag}: {type: "insertElement", tag: string}) => {
       if(this.editor.isEditingLocked || !insertionMenuItems.some(item => item.tag === tag)) return
@@ -4674,6 +4817,15 @@ export class ManipulationFeature extends EditorFeature {
       event.preventDefault()
       event.stopImmediatePropagation()
       this.insertBreak("br", true)
+    },
+    "dragstart": event => {
+      const origin = event.composedPath()[0]
+      const widget = widgetHostForShadowInteraction(event, this.editor.schema)
+      // Only explicitly forwarded native handles enter the editor pipeline;
+      // private widget drags and ordinary text controls remain widget-owned.
+      if(widget && origin instanceof HTMLElement && origin.draggable && !isWidgetShadowInteraction(event, this.editor.schema)) {
+        this.startNodeDrag(event, widget)
+      }
     },
     "dragover": event => {
       // Ribbon content can land on appendix chrome. Give the graphic beneath
@@ -5083,6 +5235,8 @@ export class ManipulationFeature extends EditorFeature {
     if(direction === "backward" && this.joinFirstDetailsParagraphIntoSummary()) return
     if(direction && this.editor.features.selection.selectAdjacentContentlessWidget(direction)) return
     const range = $.range
+    const rangeWasCollapsed = range.collapsed
+    const rangeStart = range.startContainer, rangeEnd = range.endContainer
     // A widget exposes its content, not its own identity or its sibling pages,
     // to text deletion. Resolve the nearest declared host from the live caret.
     const scope = this.widgetEditingScope(range.startContainer)
@@ -5188,9 +5342,13 @@ export class ManipulationFeature extends EditorFeature {
         $.delete()
         if(deletedContent) this.preserveTrailingDeletionSpace()
       }
+      // A range around a whole child does not select either surviving
+      // neighbor. Only join blocks that held the range's partial endpoints.
+      if(!rangeWasCollapsed && $.isGapSelection
+        && (!$.elementBefore?.contains(rangeStart) || !$.elementAfter?.contains(rangeEnd))) return
       if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "backward") {
         const {elementBefore, elementAfter} = $
-        if(elementBefore.matches("summary") || elementAfter.matches("summary") || !this.canJoinDistributionRegions(elementBefore, elementAfter)) return
+        if(elementBefore.matches("summary") || elementAfter.matches("summary") || !this.canJoinDeletionBlocks(elementBefore, elementAfter, "backward")) return
         if(!elementBefore.textContent) {
           elementBefore.remove()
           $.selectGap(elementAfter, "before")
@@ -5205,7 +5363,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       else if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "forward") {
         const {elementBefore, elementAfter} = $
-        if(elementBefore.matches("summary") || elementAfter.matches("summary") || !this.canJoinDistributionRegions(elementBefore, elementAfter)) return
+        if(elementBefore.matches("summary") || elementAfter.matches("summary") || !this.canJoinDeletionBlocks(elementBefore, elementAfter, "forward")) return
         if(!elementAfter.textContent) {
           elementAfter.remove()
           $.selectGap(elementBefore)

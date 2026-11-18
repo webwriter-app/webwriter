@@ -25,6 +25,8 @@ beforeEach(() => {
     {tagName: "webwriter-choice-item", editingConfig: {group: "", content: "(p | flow)+", isolating: false}},
     {tagName: "webwriter-order", editingConfig: {group: "answer", content: "webwriter-order-item+"}},
     {tagName: "webwriter-order-item", editingConfig: {group: "", content: "(p | flow)+", isolating: false}},
+    {tagName: "webwriter-timeline", editingConfig: {content: "webwriter-timeline-event*"}},
+    {tagName: "webwriter-timeline-event", editingConfig: {content: "h2 flow+"}},
   ])
   editor.features.widget.refresh()
 })
@@ -32,6 +34,62 @@ beforeEach(() => {
 afterAll(() => editor.destroy())
 
 const sync = () => editor.doc.syncFromDOM()
+
+describe("flat timeline event content", () => {
+  it.each(["Enter", "a"])("edits the existing title from its leading boundary on %s", key => {
+    document.body.innerHTML = '<webwriter-timeline><webwriter-timeline-event>\n<!--keep--><h2 slot="title">Title</h2>\n<p>Body</p>\n</webwriter-timeline-event></webwriter-timeline>'
+    editor.features.widget.refresh()
+    const event = document.querySelector("webwriter-timeline-event")!, title = event.querySelector("h2")!
+    $.selectGap(title, "before")
+    editor.features.selection.processSelection()
+    expect($.anchor).toBe(title)
+    expect($.isGapSelection).toBe(false)
+    event.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, composed: true, cancelable: true}))
+    expect(event.querySelectorAll('h2[slot="title"]')).toHaveLength(1)
+    expect(event.querySelectorAll("h2")).toHaveLength(1)
+    expect(event.querySelector("h2")).toBe(title)
+    expect(event.innerHTML).toContain("<!--keep-->")
+    expect(editor.schema.isContentValid(event)).toBe(true)
+  })
+
+  it("rechecks the current title after a remote replacement before materializing a gap", () => {
+    document.body.innerHTML = '<webwriter-timeline><webwriter-timeline-event><h2 slot="title">Old</h2><p>Body</p></webwriter-timeline-event></webwriter-timeline>'
+    editor.features.widget.refresh()
+    const event = document.querySelector("webwriter-timeline-event")!
+    const title = document.createElement("h2")
+    title.slot = "title"
+    title.textContent = "Remote"
+    event.firstElementChild!.replaceWith(title)
+    $.selectGap(title, "before")
+    editor.features.manipulation.ensureTextBlock()
+    expect($.anchor).toBe(title)
+    expect(event.querySelectorAll("h2")).toHaveLength(1)
+  })
+
+  it.each(["keydown", "beforeinput"])("splits flow children on Enter via %s without duplicating the title", input => {
+    document.body.innerHTML = '<webwriter-timeline>\n  <webwriter-timeline-event id="event">\n    <!--keep--><h2 slot="title">Title</h2>\n    <p>abcd</p>\n  </webwriter-timeline-event>\n</webwriter-timeline>'
+    editor.features.widget.refresh()
+    const event = document.querySelector("webwriter-timeline-event")!
+    const heading = event.querySelector("h2")!
+    sync()
+    editor.doc.stopCapturing()
+    $.move(event.querySelector("p")!.firstChild!, 2)
+    event.dispatchEvent(input === "keydown"
+      ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, composed: true, cancelable: true})
+      : new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, composed: true, cancelable: true}))
+    sync()
+    expect(Array.from(event.querySelectorAll("p"), node => node.textContent)).toEqual(["ab", "cd"])
+    expect(event.querySelector("h2")).toBe(heading)
+    expect(event.querySelectorAll("h2")).toHaveLength(1)
+    expect(event.innerHTML).toContain("<!--keep-->")
+    expect(editor.schema.isContentValid(event)).toBe(true)
+    expect(editor.toHTML(true)).not.toContain("contenteditable")
+    editor.doc.undo()
+    expect(event.querySelector("p")?.textContent).toBe("abcd")
+    editor.doc.redo()
+    expect(Array.from(event.querySelectorAll("p"), node => node.textContent)).toEqual(["ab", "cd"])
+  })
+})
 
 describe("repeatable widget options", () => {
   it.each([["choice", "<p>abcd</p>"], ["order", "<p>abcd</p>"], ["choice", "abcd"]])("splits a quiz %s item containing %s", (type, content) => {

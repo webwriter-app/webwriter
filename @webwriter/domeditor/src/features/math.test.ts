@@ -892,6 +892,8 @@ describe("DOM MathML editing", () => {
     expect(hasPresentationState(math, "math-editing")).toBe(false)
     math.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 8}))
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 8}))
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    math.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, button: 0}))
     expect(editor.features.selection.captureSelectedElement).toBe(math)
     expect(math.contains($.anchor)).toBe(true)
     expect(command("text:y")).toBe(true)

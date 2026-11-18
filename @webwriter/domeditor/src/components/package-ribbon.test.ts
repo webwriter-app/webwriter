@@ -146,14 +146,16 @@ describe("package ribbon controls", () => {
       expect(button.details).toBe(details)
       expect(updates).not.toHaveBeenCalled()
       pkg.authors.push("Grace")
-      pkg.keywords.push("widget-practical")
+      pkg.keywords.push("widget-practical", "widget-allows-keyboard-input")
       pkg.description = "Changed metadata"
       ribbon.requestUpdate()
       await ribbon.updateComplete
       expect(button.details).not.toBe(details)
       expect(button.details!.authors).toEqual(["Ada", "Grace"])
       expect(button.details!.description).toBe("Changed metadata")
-      expect(button.details!.keywords!.map(keyword => keyword.label)).toEqual(["Practice", "English, German, French"])
+      expect(button.details!.keywords!.map(keyword => keyword.label)).toEqual([
+        "Practice", "English, German, French", "Not editable", "No pointer input", "No touch input",
+      ])
       ribbon.documentLanguage = "es"
       await ribbon.updateComplete
       expect(button.details!.keywords![1]).toMatchObject({label: "English, German", additionalLanguages: ["French", "Italian"]})
@@ -1161,7 +1163,10 @@ describe("package ribbon controls", () => {
     pkg.keywords = [
       "webwriter-widget", "widget-practical", "widget-lang-de-AT", "widget-lang-gd-GB", "widget-online-use",
       "isced2011-1", "isced2011-2", "isced2011-3", "iscedf2013-05", "iscedf2013-0612",
-      "historical-map", "local-history", "teacher-made", "widget-convertible-to-image/png", "widget-reactive", "widget-themeable",
+      "historical-map", "local-history", "teacher-made", "widget-themeable", "WIDGET-ALLOWS-KEYBOARD-INPUT",
+      "widget-stateful", "widget-configurable", "widget-reactive", "widget-testable", "widget-supports-dynamic-loading",
+      "widget-supports-shared-dependencies", "widget-standalone", "widget-has-content", "widget-migrates-from-1.0.0",
+      "widget-convertible-to-image/png", "widget-convertible-from-.csv",
     ]
     ribbon.packages = [pkg]
     ribbon.installedPackages = [pkg]
@@ -1204,23 +1209,25 @@ describe("package ribbon controls", () => {
     expect(details.textContent).toContain("Natural sciences")
     expect(details.textContent).not.toContain("License")
     expect(details.textContent).not.toContain("Contents")
-    expect(details.querySelector('.details-keyword[data-kind="widget"]')?.textContent?.trim()).toBe("Widget")
-    expect(details.textContent).toContain("Converts to image/png")
-    expect(details.textContent).toContain("Reactive")
     const themeBadge = details.querySelector('.details-keyword[data-kind="display"]')!
     expect(themeBadge.textContent?.trim()).toBe("Themeable")
     expect(themeBadge.querySelector(".icon-tabler-palette")).not.toBeNull()
     const badges = Array.from(details.querySelectorAll<HTMLElement>(".details-keyword"))
     expect(badges.map(badge => badge.dataset.kind)).toEqual([
-      "type", "language", "field", "field", "online", "level", "level", "widget", "conversion", "state", "display", "custom", "custom", "custom",
+      "type", "language", "field", "field", "online", "level", "level", "display", "editing", "input", "input", "custom", "custom", "custom",
     ])
+    const limitations = badges.filter(badge => badge.matches('[data-kind="editing"], [data-kind="input"]'))
+    expect(limitations.map(badge => badge.textContent?.trim())).toEqual(["Not editable", "No pointer input", "No touch input"])
+    for(const [index, icon] of ["pencil-off", "mouse-off", "hand-click-off"].entries()) {
+      expect(limitations[index].querySelector(`[aria-hidden="true"] .icon-tabler-${icon}`)).not.toBeNull()
+    }
     expect(badges[1].textContent).toContain("German")
     const languageCount = badges[1].querySelector("span[title]")
     expect(languageCount?.textContent).toBe("+1")
     expect(languageCount?.getAttribute("title")).toBe("Scottish Gaelic")
     expect(badges.at(-1)?.textContent?.trim()).toBe("teacher-made")
     expect(badges.at(-1)?.querySelector("svg")).toBeNull()
-    for(const icon of ["backpack", "microscope", "cpu", "help-square", "language", "wifi", "package", "file-export", "activity"]) {
+    for(const icon of ["backpack", "microscope", "cpu", "help-square", "language", "wifi"]) {
       expect(details.querySelector(`.icon-tabler-${icon}`)).not.toBeNull()
     }
   })

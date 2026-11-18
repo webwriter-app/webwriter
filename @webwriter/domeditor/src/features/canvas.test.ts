@@ -854,6 +854,51 @@ describe("canvas document layout", () => {
     expect(hasPresentationState(document.body, "canvas-panning")).toBe(false)
   })
 
+  it("pinches around the moving midpoint and ends the touch selection drag", () => {
+    document.body.innerHTML = "<p>Keep</p>"
+    const canvas = editor.features.canvas
+    expect(canvas.convert("canvas")).toBe(true)
+    const slot = editor.appendix.querySelector("slot")!, paragraph = document.querySelector("p")!
+    vi.spyOn(slot, "getBoundingClientRect").mockImplementation(() => {
+      const [x, y] = slot.style.transform.match(/[-\d.]+(?=px)/g)!.map(Number)
+      return makeRect(x, y, 1280 * canvas.zoom, 720 * canvas.zoom)
+    })
+    const authored = editor.toHTML()
+    const touch = (identifier: number, target: Element, clientX: number, clientY: number) => new Touch({identifier, target, clientX, clientY})
+    const send = (type: string, target: Element, touches: Touch[], changedTouches: Touch[]) => {
+      const event = new TouchEvent(type, {bubbles: true, composed: true, cancelable: true, touches, changedTouches})
+      target.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    const first = touch(1, slot, 200, 200), second = touch(2, paragraph, 300, 200)
+    slot.dispatchEvent(new PointerEvent("pointerdown", {pointerType: "touch", isPrimary: true, pointerId: 11,
+      bubbles: true, composed: true, cancelable: true, clientX: 200, clientY: 200}))
+    expect(editor.features.selection.isInDragSelection).toBe(false)
+    send("touchstart", slot, [first], [first])
+    const zoom = canvas.zoom, anchor = canvas.clientPoint(250, 200)
+    expect(send("touchstart", paragraph, [first, second], [second])).toBe(true)
+    expect(editor.features.selection.isInDragSelection).toBe(false)
+    expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
+
+    const moved = touch(2, paragraph, 400, 200)
+    expect(send("touchmove", paragraph, [first, moved], [moved])).toBe(true)
+    expect(canvas.zoom).toBeCloseTo(zoom * 2)
+    expect(canvas.clientPoint(300, 200)).toEqual({x: expect.closeTo(anchor.x), y: expect.closeTo(anchor.y)})
+    expect(send("touchmove", paragraph, [first, second], [second])).toBe(true)
+    expect(canvas.zoom).toBeCloseTo(zoom)
+    const shiftedFirst = touch(1, slot, 220, 230), shiftedSecond = touch(2, paragraph, 320, 230)
+    expect(send("touchmove", slot, [shiftedFirst, shiftedSecond], [shiftedFirst])).toBe(true)
+    expect(canvas.clientPoint(270, 230)).toEqual({x: expect.closeTo(anchor.x), y: expect.closeTo(anchor.y)})
+    expect(canvas.zoom).toBeCloseTo(zoom)
+    expect(editor.toHTML()).toBe(authored)
+
+    send("touchcancel", paragraph, [first], [second])
+    expect(send("touchmove", paragraph, [first, moved], [moved])).toBe(false)
+    expect(canvas.zoom).toBeCloseTo(zoom)
+    expect(canvas.convert("document")).toBe(true)
+    expect(send("touchstart", paragraph, [first, second], [second])).toBe(false)
+  })
+
   it("pans over inactive media and widget controls without scrolling the page or the widget", async () => {
     document.body.innerHTML = '<figure><video controls></video></figure><pan-widget></pan-widget>'
     const widget = document.querySelector("pan-widget")!

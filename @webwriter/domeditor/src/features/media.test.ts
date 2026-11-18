@@ -32,6 +32,19 @@ function fileTransfer(file: File) {
   return transfer
 }
 
+function pointerClick(target: EventTarget, down = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0})) {
+  target.dispatchEvent(down)
+  const init = {button: down.button, bubbles: true, composed: true, cancelable: true,
+    clientX: down.clientX, clientY: down.clientY, pointerId: down.pointerId}
+  target.dispatchEvent(new PointerEvent("pointerup", init))
+  target.dispatchEvent(new MouseEvent("click", init))
+}
+
+// Happy DOM omits ::part rules from its CSSOM and computed styles.
+function mediaBackdropStyle() {
+  return editorStyleString.match(/body::part\(media-placeholder-backdrop\)\s*\{([^}]+)\}/)![1]
+}
+
 beforeEach(() => {
   // Happy DOM omits these standard native media constants.
   Object.defineProperties(HTMLMediaElement, {
@@ -465,19 +478,19 @@ describe("media editing", () => {
     const content = placeholder.root.querySelector<HTMLElement>(".content")!
     content.showPopover = vi.fn()
 
-    image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
+    image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, clientX: 36, clientY: 36}))
     expect(content.showPopover).not.toHaveBeenCalled()
-    image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
-    image.dispatchEvent(new MouseEvent("click", {bubbles: true}))
+    image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, clientX: 36, clientY: 36}))
+    image.dispatchEvent(new MouseEvent("click", {bubbles: true, clientX: 36, clientY: 36}))
     await Promise.resolve()
     expect(content.showPopover).toHaveBeenCalledOnce()
     expect(placeholder.root.activeElement).toBe(placeholder.root.querySelector(".url"))
 
     placeholder.hide()
-    image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
+    image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, clientX: 36, clientY: 36}))
     image.remove()
-    image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
-    window.dispatchEvent(new MouseEvent("click"))
+    image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, clientX: 36, clientY: 36}))
+    window.dispatchEvent(new MouseEvent("click", {clientX: 36, clientY: 36}))
     await Promise.resolve()
     expect(content.showPopover).toHaveBeenCalledOnce()
   })
@@ -891,7 +904,7 @@ describe("media editing", () => {
     const target = document.body.firstElementChild!
     for(let click = 0; click < 2; click++) {
       const down = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0})
-      target.dispatchEvent(down)
+      pointerClick(target, down)
       expect(down.defaultPrevented).toBe(false)
       expect($.selectedElement).toBe(target)
       expect(editor.features.selection.captureSelectedElement).toBe(target)
@@ -926,7 +939,7 @@ describe("media editing", () => {
     const authored = editor.toHTML(true)
     for(let attempt = 0; attempt < 2; attempt++) {
       const down = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0})
-      media.dispatchEvent(down)
+      pointerClick(media, down)
       expect(down.defaultPrevented).toBe(false)
       expect(selection.captureSelectedElement).toBe(media)
       expect(selection.isInDragSelection).toBe(false)
@@ -965,7 +978,7 @@ describe("media editing", () => {
     expect($.selectedElement).toBe(picture)
 
     const video = document.querySelector("video")!
-    video.querySelector("source")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
+    pointerClick(video.querySelector("source")!)
     expect($.selectedElement).toBe(video)
   })
 
@@ -998,7 +1011,8 @@ describe("media editing", () => {
     expect(placeholder.getRootNode()).toBe(editor.appendix)
     expect(placeholder).toHaveAttribute("data-open")
     expect(placeholder).toHaveAttribute("data-media", "audio")
-    expect(getComputedStyle(placeholder).backgroundColor).toBe("rgba(31, 41, 55, 0.5)")
+    expect(placeholderController.backdrop).toHaveAttribute("part", "media-placeholder-backdrop")
+    expect(mediaBackdropStyle()).toMatch(/background:\s*rgba\(31, 41, 55, 0\.5\)/)
     const selectionZIndex = editorStyleString.match(/body::part\(selection-caret\)\s*\{[^}]*z-index:\s*(\d+)/)![1]
     const dragZIndex = editorStyleString.match(/body::part\(node-drag-surface\)\s*\{[^}]*z-index:\s*(\d+)/)![1]
     const transformZIndex = editorStyleString.match(/body::part\(transform-overlay\)\s*\{[^}]*z-index:\s*(\d+)/)![1]
@@ -1225,13 +1239,13 @@ describe("media editing", () => {
     const audio = document.querySelector("audio")!
     const video = document.querySelector("video")!
 
-    audio.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
+    pointerClick(audio)
     expect(hasPresentationState(audio, "media-empty") && hasPresentationState(audio, "element-selected")).toBe(true)
     expect(hasPresentationState(video, "media-empty")).toBe(true)
     expect(hasPresentationState(video, "element-selected")).toBe(false)
     expect(editor.features.media.placeholder.target).toBe(audio)
 
-    video.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
+    pointerClick(video)
     expect(hasPresentationState(audio, "element-selected")).toBe(false)
     expect(hasPresentationState(video, "media-empty") && hasPresentationState(video, "element-selected")).toBe(true)
     expect(editor.features.media.placeholder.target).toBe(video)
@@ -1285,7 +1299,7 @@ describe("media editing", () => {
   it("removes SVG image placeholders after source updates, removal, widget moves and disable", async () => {
     document.body.innerHTML = '<svg><image width="100" height="60"></image></svg><media-widget></media-widget>'
     const image = document.querySelector("svg image")!
-    const count = () => editor.appendix.querySelectorAll('[part="graphic-image-placeholder"]').length
+    const count = () => editor.appendix.querySelectorAll('[part~="graphic-image-placeholder"]').length
     await vi.waitFor(() => expect(count()).toBe(1))
     image.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "remote.png")
     await vi.waitFor(() => expect(count()).toBe(0))
@@ -1315,7 +1329,9 @@ describe("media editing", () => {
       placeholder.showFor(target)
 
       const style = getComputedStyle(placeholder.element)
-      expect(style.backgroundColor).toBe("rgba(31, 41, 55, 0.5)")
+      expect(placeholder.backdrop).toHaveAttribute("part", "media-placeholder-backdrop")
+      expect(mediaBackdropStyle()).toMatch(/background:\s*rgba\(31, 41, 55, 0\.5\)/)
+      expect(placeholder.backdrop.getRootNode()).toBe(editor.appendix)
       expect(style.position).toBe("fixed")
       expect([style.left, style.top, style.width, style.height]).toEqual(["20px", "60px", "320px", "180px"])
       expect(placeholder.element.getRootNode()).toBe(editor.appendix)
@@ -1465,14 +1481,14 @@ describe("media editing", () => {
 
   it("clears URL errors when switching to another empty media element", async () => {
     document.body.innerHTML = "<audio controls></audio><video controls></video>"
-    document.querySelector("audio")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
+    pointerClick(document.querySelector("audio")!)
     const placeholder = editor.features.media.placeholder
     const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
     input.value = "not a host"
     placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
     input.blur()
     await Promise.resolve()
-    document.querySelector("video")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
+    pointerClick(document.querySelector("video")!)
 
     expect(placeholder.target).toBe(document.querySelector("video"))
     expect(input.value).toBe("")

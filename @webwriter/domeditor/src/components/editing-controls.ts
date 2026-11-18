@@ -29,6 +29,7 @@ import {
   type WidgetConversionState,
 } from "../editor-bridge"
 import {widgetActionRows, type WidgetActionState, type WidgetOptionState, type WidgetOptionsState, type WidgetOptionValue} from "../widget-options"
+import {groupWidgetFileFormats} from "../widget-file-formats"
 import {renderWidgetOptionField, renderWidgetOptions} from "@webwriter/lit"
 import type {ElementAttributeState} from "../element-attributes"
 import {safeCssColor} from "../css-color"
@@ -137,8 +138,8 @@ const packageExportIcons: Record<WebWriterPackageExportType, string> = {
   "custom-elements": "Document", other: "More",
 }
 
-const scopedPackageNamePattern = "@[^/\\s]+/[^/\\s]+"
-const semanticVersionPattern = "(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?"
+const scopedPackageNamePattern = String.raw`@[^\/\s]+/[^\/\s]+`
+const semanticVersionPattern = String.raw`(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*)?(\+[0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*)?`
 
 /** Selection controls shared by the top ribbon and side toolbox. Application
  * menus, AI, sharing and ribbon layout belong to AppRibbon. */
@@ -314,9 +315,9 @@ export abstract class EditingControls extends LitElement {
       ({label: name, icon, iconUrl, action: this.widgetConversionAction(tag)!}))
     const group = (direction: "import" | "export", formats: string[], icon: string) => {
       const label = direction === "import" ? "Import" : "Export"
-      return {label, icon, buttons: formats.map(format => ({
-        label: `${label} ${format}${direction === "import" ? "…" : ""}`,
-        action: `widget-${direction}:${state.sourceId}:${format}`,
+      return {label, icon, buttons: groupWidgetFileFormats(formats).map(group => ({
+        label: `${label} ${group.label}${direction === "import" ? "…" : ""}`,
+        action: `widget-${direction}:${state.sourceId}:${group.formats[0]}`,
         icon,
         iconUrl: undefined,
       }))}

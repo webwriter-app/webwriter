@@ -9,7 +9,8 @@ const {providerDisconnect, sharedDocs, replicas} = vi.hoisted(() => ({providerDi
 const {graphicInputState} = vi.hoisted(() => ({graphicInputState: {
   graphic: {textEditingRange: null as Range | null, focusTextInput: vi.fn()},
   media: {isPlaceholderInteraction: false},
-  mark: {isSVGTextSelection: false, focusWidgetText: vi.fn(() => false)}, selection: {captureSelectedElement: null as Element | null},
+  mark: {isSVGTextSelection: false, focusWidgetText: vi.fn(() => false)},
+  selection: {captureSelectedElement: null as Element | null, focusCapturedWidget: vi.fn(() => false)},
 }}))
 vi.mock("./domeditor", () => ({
   DOMEditor: class {
@@ -315,6 +316,12 @@ it("publishes document updates, owns only document shortcuts, and disconnects co
   }}))
   expect(focusBody).not.toHaveBeenCalled()
   graphicInputState.media.isPlaceholderInteraction = false
+  graphicInputState.selection.focusCapturedWidget.mockReturnValueOnce(true)
+  window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
+    type: editorFrameControlMessage, bridgeNonce: nonce, command: "focus",
+  }}))
+  expect(graphicInputState.selection.focusCapturedWidget).toHaveBeenCalled()
+  expect(focusBody).not.toHaveBeenCalled()
   window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
     type: editorFrameControlMessage, bridgeNonce: nonce, command: "focus",
   }}))

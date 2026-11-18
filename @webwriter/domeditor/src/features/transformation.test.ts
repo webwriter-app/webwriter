@@ -292,6 +292,63 @@ it("hides transforms for a zero-area widget host and recovers when its live box 
   expect(target.hasAttribute("style")).toBe(false)
 })
 
+it.each(["node", "capture"])("fits %s selection and affordances to a contents widget's rendered boxes", mode => {
+  const container = targetElement("test-contents-container")
+  const target = document.createElement("test-contents-widget")
+  container.replaceChildren(target)
+  target.style.display = "contents"
+  target.style.width = "100%"
+  target.innerHTML = "<p>Event details</p>"
+  const root = target.attachShadow({mode: "open"})
+  root.innerHTML = '<style>.ignored { display:none }</style><div>Dot</div><section style="display:contents"><slot style="display:contents"></slot></section><aside style="display:none">Hidden</aside>'
+  const dot = root.querySelector("div")!, details = target.querySelector("p")!
+  vi.spyOn(dot, "getBoundingClientRect").mockReturnValue(new DOMRect(600, 100, 20, 90))
+  let detailsRect = new DOMRect(620, 100, 680, 90)
+  vi.spyOn(details, "getBoundingClientRect").mockImplementation(() => detailsRect)
+  vi.spyOn(root.querySelector("aside")!, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 2000, 2000))
+  const html = target.outerHTML
+  if(mode === "capture") captureNode(target)
+  else selectNode(target)
+  feature.updateInfo()
+  expect(feature.target).toBe(target)
+  expect(feature.boxGeometry(target).rect).toEqual(new DOMRect(600, 100, 700, 90))
+  expect(feature.overlay).not.toHaveAttribute("visibility")
+  expect(feature.overlay.style.left).toBe("600px")
+  expect(feature.overlay.style.width).toBe("700px")
+  const caret = editor.features.selection.selectionCaret!
+  expect(caret.style.left).toBe("600px")
+  expect(caret.style.height).toBe("90px")
+  expect(caret.getAttribute("part")).not.toContain("selection-caret-anchored")
+  expect(feature.overlay.querySelector<HTMLElement>('[data-resize-direction="down-right"]')!.hidden).toBe(false)
+  expect(feature.overlay.querySelector<HTMLElement>('[id="◆transform-overlay-delete"]')!.hidden).toBe(false)
+  detailsRect = new DOMRect(620, 100, 680, 140)
+  feature.updateInfo()
+  expect(caret.style.height).toBe("140px")
+  expect(target.outerHTML).toBe(html)
+  editor.features.selection.selectDropRange(document.createRange())
+  expect(caret.style.left).toBe("")
+  expect(feature.overlay).toHaveAttribute("visibility", "hidden")
+})
+
+describe("widget resize rules", () => {
+  it.each(["element", "capture"])("hides event resizing and ignores resize attempts for %s selection", kind => {
+    editor.schema.extendWidgets([{tagName: "fixed-event", editingConfig: {content: "flow*", resize: "none"}}])
+    const event = targetElement("fixed-event")
+    mockRect(event, {width: 200, height: 100})
+    if(kind === "capture") captureNode(event)
+    else selectNode(event)
+    const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>('.◆transform-overlay-scale'))
+    expect(handles.length).toBeGreaterThan(0)
+    expect(handles.every(handle => handle.hidden)).toBe(true)
+    const original = event.getAttribute("style")
+    const handle = feature.overlay.querySelector<HTMLElement>('#◆transform-overlay-scale-down-right')!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 100}))
+    movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 300, clientY: 200}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3, clientX: 300, clientY: 200}))
+    expect(event.getAttribute("style")).toBe(original)
+  })
+})
+
 describe("text container resizing", () => {
   it("coalesces live resize geometry and still processes an unrelated shared change", async () => {
     const target = targetElement()
