@@ -1,6 +1,6 @@
 import {sanitizePackageSnippet, type PackageMember, type WebWriterPackage} from "./packages"
 import {defaultDocumentTheme} from "./document-themes"
-import {packageKeywordPresentations, type PackageKeywordPresentation} from "./package-keywords"
+import {missingPackageCapabilityBadges, packageKeywordPresentations, type PackageKeywordPresentation} from "./package-keywords"
 
 export type GalleryWidget = {pkg: WebWriterPackage, member: PackageMember}
 
@@ -9,15 +9,21 @@ type GalleryTagFilter = Pick<PackageKeywordPresentation, "kind" | "label" | "ico
 /** Present each searchable keyword on its own, including keywords grouped into badges on the detail page. */
 export function galleryTagFilters(packages: WebWriterPackage[]) {
   const filters = new Map<string, GalleryTagFilter>()
+  const addFilter = (pkg: WebWriterPackage, tag: PackageKeywordPresentation, keyword = tag.label) => {
+    const key = `${tag.kind}:${tag.label}`
+    const filter = filters.get(key) ?? {keyword, ...tag, packages: new Set<string>()}
+    filter.packages.add(pkg.name)
+    filters.set(key, filter)
+  }
   for(const pkg of packages) {
-    for(const keyword of pkg.keywords) {
+    const keywords = new Set(pkg.keywords.map(keyword => keyword.toLowerCase()))
+    for(const keyword of keywords) {
       const [tag] = packageKeywordPresentations([keyword], "en")
-      if(!tag || tag.kind === "widget" || tag.kind === "custom" || tag.kind === "language") continue
-      const key = `${tag.kind}:${tag.label}`
-      const filter = filters.get(key) ?? {keyword: keyword.toLowerCase(), ...tag, packages: new Set<string>()}
-      filter.packages.add(pkg.name)
-      filters.set(key, filter)
+      if(!tag || tag.kind === "editing" || tag.kind === "input" || tag.kind === "custom" || tag.kind === "language") continue
+      addFilter(pkg, tag, keyword)
     }
+    // An inverse badge depends on all of the package's keywords.
+    for(const tag of missingPackageCapabilityBadges(keywords)) addFilter(pkg, tag)
   }
   return filters
 }

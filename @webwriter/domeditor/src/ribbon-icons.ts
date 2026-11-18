@@ -1,5 +1,9 @@
 import floatLeft from "@tabler/icons/outline/float-left.svg?raw"
 import mouse from "@tabler/icons/outline/mouse.svg?raw"
+import pencilOff from "@tabler/icons/outline/pencil-off.svg?raw"
+import mouseOff from "@tabler/icons/outline/mouse-off.svg?raw"
+import keyboardOff from "@tabler/icons/outline/keyboard-off.svg?raw"
+import handClickOff from "@tabler/icons/outline/hand-click-off.svg?raw"
 import fileImport from "@tabler/icons/outline/file-import.svg?raw"
 import devices from "@tabler/icons/outline/devices.svg?raw"
 import activity from "@tabler/icons/outline/activity.svg?raw"
@@ -514,6 +518,10 @@ const icons: Record<string, string> = {
   KeywordContext: squareAsterisk,
   KeywordPointer: mouse,
   KeywordKeyboard: keyboard,
+  KeywordNotEditable: pencilOff,
+  KeywordNoPointer: mouseOff,
+  KeywordNoKeyboard: keyboardOff,
+  KeywordNoTouch: handClickOff,
   KeywordConvertTo: fileExport,
   KeywordConvertFrom: fileImport,
   KeywordResponsive: devices,

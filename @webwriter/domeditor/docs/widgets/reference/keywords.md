@@ -2,7 +2,7 @@
 
 Keywords give a widget feature badges. These badges show what the widget does, what it needs, and its purpose.
 
-Add the keywords for your widget to the [`keywords` array](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/#keywords) in `package.json`. The authoring tool shows the badges in the package details tooltip.
+Add the keywords for your widget to the [`keywords` array](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/#keywords) in `package.json`. The authoring tool and widget viewer show badges for selected keywords. They show a limitation badge when editability or an input method is missing from the package's keywords.
 
 | Keyword | Meaning |
 |---|---|
@@ -48,7 +48,7 @@ For `widget-convertible-to-…` and `widget-convertible-from-…`, use one of th
 | An extension with a leading dot | A file format without a registered media type, such as JFLAP, GIFT, PlantUML, Mermaid, or a source language. | `widget-convertible-to-.jff`, `widget-convertible-from-.puml`, `widget-convertible-from-.mmd` |
 | An HTML element name without angle brackets | A conversion from or to an HTML element. This is the name of a native tag or of another widget. | `widget-convertible-to-video`, `widget-convertible-from-ww-quiz` |
 
-An extension starts with a dot and then uses letters, digits, hyphens, and underscores. A longer extension such as `.tar.gz` can have more dots. Keywords are not case-sensitive. A tag name never has a leading dot and a media type always has a slash, so the three forms cannot be confused. Use the media type if the format has one. Do not use `application/octet-stream`, `text/plain`, or a related type as a stand-in for a format without a media type. The badge shows the value after the label, for example **Converts to .jff**. Declare the same key in `convertFrom` or `convertTo`. A file format in the [editing configuration](editing-configuration.md) `importFormats` and `exportFormats` is a media type or an extension, never a tag.
+An extension starts with a dot and then uses letters, digits, hyphens, and underscores. A longer extension such as `.tar.gz` can have more dots. Keywords are not case-sensitive. A tag name never has a leading dot and a media type always has a slash, so the three forms cannot be confused. Use the media type if the format has one. Do not use `application/octet-stream`, `text/plain`, or a related type as a stand-in for a format without a media type. Declare the same key in `convertFrom` or `convertTo`. A file format in the [editing configuration](editing-configuration.md) `importFormats` and `exportFormats` is a media type or an extension, never a tag.
 
 The online forms are `widget-online`, `widget-online-edit`, and `widget-online-use`. The keywords `isced2011-<0–9>` and `iscedf2013-<code>` identify education levels and fields. [Package manifest](distribution.md#discovery-keywords) describes these discovery keywords. The [code lists](#isced-code-lists) are at the end of this page.
 

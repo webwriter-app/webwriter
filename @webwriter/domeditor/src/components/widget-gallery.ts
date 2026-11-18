@@ -784,7 +784,7 @@ export class WidgetGallery extends LitElement {
     const selected = this.tagFilters.get(this.selectedTag)
     const selectedLevel = selected && extraEducationLevels[extraEducationLevelIndex(selected)]
     const keywords = packageKeywordPresentations(pkg.keywords, language(), navigator.languages)
-      .filter(keyword => keyword.kind !== "widget" && (placement === "details" || keyword.kind !== "custom"))
+      .filter(keyword => placement === "details" || keyword.kind !== "custom")
       .filter(keyword => extraEducationLevelIndex(keyword) < 0 || keyword.label === selectedLevel?.label)
     if(selectedLevel && selected?.packages.has(pkg.name) && !keywords.some(keyword => keyword.kind === "level" && keyword.label === selectedLevel.label)) {
       keywords.push(selectedLevel)

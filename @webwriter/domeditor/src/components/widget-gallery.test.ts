@@ -108,9 +108,14 @@ it("loads WebWriter packages, searches widgets, and shows an empty search result
   expect(root.textContent).toContain("No widgets match your search.")
 })
 
-it("shows standard package tags after the gallery card description", async () => {
-  const learning = {...fixture(), keywords: ["webwriter-widget", "widget-online", "widget-practical", "widget-responsive", "custom-topic"]}
-  const historyPackage = {...fixture(), name: "@webwriter/history", label: "History", keywords: ["webwriter-widget", "another-custom-topic"]}
+it("shows standard package tags and missing capabilities after the gallery card description", async () => {
+  const learning = {...fixture(), keywords: [
+    "webwriter-widget", "widget-online", "widget-practical", "widget-responsive", "custom-topic", "widget-reactive", "widget-convertible-to-.csv",
+  ]}
+  const historyPackage = {...fixture(), name: "@webwriter/history", label: "History", keywords: [
+    "webwriter-widget", "another-custom-topic", "WIDGET-EDITABLE", "WIDGET-ALLOWS-POINTER-INPUT",
+    "widget-allows-keyboard-input", "widget-allows-touch-input",
+  ]}
   search.mockResolvedValue([learning, historyPackage])
   gallery = new WidgetGallery()
   document.body.append(gallery)
@@ -123,19 +128,26 @@ it("shows standard package tags after the gallery card description", async () =>
   expect(tagged.querySelector(".description")?.nextElementSibling).toBe(tags)
   expect(tags.getAttribute("aria-label")).toBe("Package tags")
   const badges = [...tags.querySelectorAll<HTMLLIElement>("li.keyword-badge")]
-  expect(badges.map(badge => [badge.dataset.kind, badge.textContent?.trim()]))
-    .toEqual([["type", "Practice"], ["display", "Responsive"], ["online", "Online only"]])
+  expect(badges.map(badge => [badge.dataset.kind, badge.textContent?.trim()])).toEqual([
+    ["type", "Practice"], ["display", "Responsive"], ["editing", "Not editable"],
+    ["input", "No pointer input"], ["input", "No keyboard input"], ["input", "No touch input"], ["online", "Online only"],
+  ])
   expect(badges[0].querySelector('.keyword-icon[aria-hidden="true"] svg')).not.toBeNull()
+  for(const [index, icon] of ["pencil-off", "mouse-off", "keyboard-off", "hand-click-off"].entries()) {
+    expect(badges[index + 2].querySelector(`.keyword-icon[aria-hidden="true"] .icon-tabler-${icon}`)).not.toBeNull()
+  }
   expect(untagged.querySelector("h3")?.textContent).toBe("History")
   expect(untagged.querySelector(".card-keywords")).toBeNull()
 })
 
 it("combines a tag or language with live search and keeps all filter options available", async () => {
-  const learning = {...fixture(), keywords: ["webwriter-widget", "widget-practical", "widget-lang-en", "widget-lang-fr", "atoms"]}
+  const learning = {...fixture(), keywords: [
+    "webwriter-widget", "widget-practical", "widget-lang-en", "widget-lang-fr", "atoms", "widget-allows-touch-input", "widget-configurable",
+  ]}
   const physics = {...fixture(), name: "@webwriter/physics", label: "Physics",
     description: "Explore science and atoms", keywords: ["webwriter-widget", "widget-simulational", "widget-lang-de"]}
   const historyPackage = {...fixture(), name: "@webwriter/history", label: "History",
-    description: "Explore local archives", keywords: ["webwriter-widget", "widget-practical", "widget-lang-EN-gb"]}
+    description: "Explore local archives", keywords: ["webwriter-widget", "widget-practical", "widget-lang-EN-gb", "WIDGET-ALLOWS-TOUCH-INPUT"]}
   search.mockResolvedValue([learning, physics, historyPackage])
   gallery = new WidgetGallery()
   document.body.append(gallery)
@@ -149,10 +161,20 @@ it("combines a tag or language with live search and keeps all filter options ava
   const tagLabel = (button: HTMLButtonElement) => button.textContent?.trim()
   const tagButton = (label: string) => tagButtons().find(button => tagLabel(button) === label)!
   const selectedTags = () => tagButtons().filter(button => button.getAttribute("aria-pressed") === "true").map(tagLabel)
-  expect(tagButtons().map(tagLabel).sort()).toEqual(["Practice", "Simulation"])
+  const tagLabels = ["No keyboard input", "No pointer input", "No touch input", "Not editable", "Practice", "Simulation"]
+  expect(tagButtons().map(tagLabel).sort()).toEqual(tagLabels)
   expect(selectedTags()).toEqual([])
   expect(tagButton("Practice").dataset.kind).toBe("type")
   expect(tagButton("Practice").querySelector('.keyword-icon[aria-hidden="true"] svg')).not.toBeNull()
+  const noTouch = tagButton("No touch input")
+  expect(noTouch.querySelector('.keyword-icon[aria-hidden="true"] .icon-tabler-hand-click-off')).not.toBeNull()
+  noTouch.click()
+  await gallery.updateComplete
+  expect(cards()).toEqual(["Physics"])
+  expect(selectedTags()).toEqual(["No touch input"])
+  noTouch.click()
+  await gallery.updateComplete
+  expect(cards()).toEqual(["History", "Learning", "Physics"])
 
   const languageSelects = filters.querySelectorAll<HTMLSelectElement>("select")
   expect(languageSelects).toHaveLength(1)
@@ -208,7 +230,7 @@ it("combines a tag or language with live search and keeps all filter options ava
   await gallery.updateComplete
   expect(cards()).toEqual(["Learning"])
   expect(selectedTags()).toEqual([])
-  expect(tagButtons()).toHaveLength(2)
+  expect(tagButtons()).toHaveLength(tagLabels.length)
   expect(languageOptions()).toHaveLength(languageCodes.length)
 
   tagButton("Simulation").click()
@@ -243,7 +265,8 @@ it("shows general filter tags before education levels and fields", async () => {
   search.mockResolvedValue([{...fixture(), keywords: [
     "webwriter-widget", "isced2011-6", "iscedf2013-06", "widget-practical",
     "iscedf2013-04", "isced2011-3", "iscedf2013-02", "widget-lang-en",
-    "widget-online", "widget-online-use", "widget-online-edit",
+    "widget-online", "widget-online-use", "widget-online-edit", "widget-editable",
+    "widget-allows-pointer-input", "widget-allows-keyboard-input", "widget-allows-touch-input",
   ]}])
   const root = await mount()
   const rows = [...root.querySelectorAll(".tag-filters > .tag-options")]
@@ -300,7 +323,7 @@ it("replaces Show more with extra education filters inline and shows only the se
 
   ariaLink(root, "Try Learning").click()
   await vi.waitFor(() => expect(root.querySelector(".details-keywords")).not.toBeNull())
-  expect([...root.querySelectorAll(".details-keywords [data-kind='level']")].map(badge => badge.textContent?.trim()))
+  expect([...root.querySelectorAll(".details-keywords > .details-keyword[data-kind='level']")].map(badge => badge.textContent?.trim()))
     .toEqual(["Primary school", "Bachelor's"])
 
   ariaLink(root, "Back to gallery").click()
@@ -385,7 +408,12 @@ it("opens a package URL from the gallery and closes a deep link back to the pack
     repository: "https://github.com/example/widget",
     bugs: "https://github.com/example/widget/issues",
   }
-  pkg.keywords = ["webwriter-widget", "widget-online", "widget-practical", "isced2011-0", "custom-topic"]
+  pkg.keywords = [
+    "webwriter-widget", "widget-online", "widget-practical", "isced2011-0", "custom-topic", "widget-editable",
+    "widget-allows-keyboard-input", "widget-reactive", "widget-convertible-from-.csv",
+  ]
+  const tagLabels = (page: HTMLElement) => [...page.querySelectorAll(".details-keywords > .details-keyword")].map(tag => tag.textContent?.trim())
+  const expectedTags = ["Practice", "No pointer input", "No touch input", "custom-topic", "Online only"]
   search.mockResolvedValue([pkg])
   const root = await mount()
   expect(location.pathname).toBe("/")
@@ -408,11 +436,7 @@ it("opens a package URL from the gallery and closes a deep link back to the pack
   expect(byline.textContent).toContain("Ada Lovelace")
   expect(byline.textContent).toContain("MIT")
   expect(page.textContent).toContain("Practice science")
-  expect(page.textContent).toContain("Practice")
-  expect(page.textContent).toContain("custom-topic")
-  expect(page.querySelector('.details-keyword[data-kind="widget"]')).toBeNull()
-  expect(page.querySelector('.details-keyword[data-kind="level"]')).toBeNull()
-  expect(page.querySelector(".details-keywords")?.lastElementChild?.textContent?.trim()).toBe("Online only")
+  expect(tagLabels(page)).toEqual(expectedTags)
   expect([...page.querySelectorAll<HTMLAnchorElement>('a[href^="http"]')].map(link => link.href)).toEqual([pkg.links.npm])
   expect(title.querySelector("a")?.textContent).toBe("@webwriter/learning@1.0.0")
   expect(ariaLink(root, "Back to gallery").getAttribute("href")).toBe("/packages/")
@@ -431,11 +455,7 @@ it("opens a package URL from the gallery and closes a deep link back to the pack
   expect(deepPage.querySelector(".details-title")?.textContent).toContain("@webwriter/learning@1.0.0")
   expect(deepPage.querySelector(".details-byline")?.textContent).toContain("Ada Lovelace")
   expect(deepPage.querySelector(".details-byline")?.textContent).toContain("MIT")
-  expect(deepPage.textContent).toContain("Practice")
-  expect(deepPage.textContent).toContain("custom-topic")
-  expect(deepPage.querySelector('.details-keyword[data-kind="widget"]')).toBeNull()
-  expect(deepPage.querySelector('.details-keyword[data-kind="level"]')).toBeNull()
-  expect(deepPage.querySelector(".details-keywords")?.lastElementChild?.textContent?.trim()).toBe("Online only")
+  expect(tagLabels(deepPage)).toEqual(expectedTags)
   expect(deepPage.querySelector(".details-title a")?.getAttribute("href")).toBe(pkg.links.npm)
   expect(deepPage.querySelectorAll('a[href^="http"]')).toHaveLength(1)
   expect(ariaLink(deepRoot, "Back to gallery").getAttribute("href")).toBe("/packages/")
