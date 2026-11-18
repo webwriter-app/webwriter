@@ -2752,10 +2752,6 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private handleFrameTouchStart = (event: TouchEvent) => {
-    if(this.frameTouchPointer !== null && event.touches.length === 1) event.preventDefault()
-  }
-
   private dismissEditorMenus() {
     this.dismissThemePicker()
     this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
@@ -9969,7 +9965,7 @@ export class DomEditor extends LitElement {
           @load=${this.handleEditorFrameLoad}
           @pointerdown=${this.relayFrameTouch} @pointermove=${this.relayFrameTouch}
           @pointerup=${this.relayFrameTouch} @pointercancel=${this.relayFrameTouch}
-          @lostpointercapture=${this.relayFrameTouch} @touchstart=${this.handleFrameTouchStart}
+          @lostpointercapture=${this.relayFrameTouch}
           @dom-editor-ai-edit-review=${this.handleInlineAIEditReview}
         ></iframe>`) : ""}
         ${this.ribbonDrag && !this.previewActive ? html`<div class="ribbon-drag-shield"

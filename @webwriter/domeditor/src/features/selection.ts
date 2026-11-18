@@ -145,6 +145,7 @@ export class SelectionFeature extends EditorFeature {
   #capturedElement: Element | null = null
   #modifierClick = false
   #touchSelection = false
+  #touchTap: {pointerId: number, x: number, y: number, target: Node, fromCanvasSlot?: boolean, box?: boolean} | null = null
   #selectedSection: Element | null = null
   #atomicExtension: {range: Range, backwards: boolean} | null = null
   #drag: {anchor: Range, focus: Range, lastFocus: Range, scope: Element | null, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number, pointerType: string,
@@ -1242,6 +1243,7 @@ export class SelectionFeature extends EditorFeature {
   /** Pointer capture keeps the whole editor drag in the outer document, even
    * when crossing a widget, native media controls, or a child frame. */
   readonly #endDrag = () => {
+    this.#touchTap = null
     const wasDragging = this.isInDragSelection
     const pointerId = this.#boxDrag?.pointerId ?? this.#drag?.pointerId
     const target = this.#boxDrag ? document.body : this.#drag?.target
@@ -1271,6 +1273,15 @@ export class SelectionFeature extends EditorFeature {
   }
 
   readonly #finishDrag = (event: PointerEvent) => {
+    const tap = this.#touchTap
+    if(tap) {
+      if(tap.pointerId !== event.pointerId) return
+      this.#touchTap = null
+      if(event.type !== "pointerup" || event.defaultPrevented || !tap.target.isConnected || this.editor.isEditingLocked
+        || Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 8) return
+      if(tap.box) this.beginBoxSelection(event)
+      else this.#handlePointerDown(event, tap.fromCanvasSlot)
+    }
     if(this.#boxDrag) {
       if(this.#boxDrag.pointerId !== undefined && this.#boxDrag.pointerId !== event.pointerId) return
       if(event.type === "pointerup") {
@@ -1431,10 +1442,30 @@ export class SelectionFeature extends EditorFeature {
     return range
   }
 
+  cancelTouchDrag() {
+    this.#touchTap = null
+    if(this.#drag?.pointerType === "touch" || this.#boxDrag?.pointerType === "touch") this.#endDrag()
+  }
+
+  /** Wait for a tap before changing selection. Native panning cancels the
+   * pointer stream; movement also cancels taps in non-scrolling containers. */
+  #deferTouchSelection(event: PointerEvent, options: {fromCanvasSlot?: boolean, box?: boolean} = {}) {
+    if(event.pointerType !== "touch" || event.type !== "pointerdown") return false
+    this.#endDrag()
+    if(event.target instanceof Node) {
+      this.#touchTap = {pointerId: event.pointerId, x: event.clientX, y: event.clientY, target: event.target, ...options}
+    }
+    // Suppress compatibility mouse selection without cancelling touchstart
+    // or touchmove, which the browser needs for scrolling and momentum.
+    event.preventDefault()
+    return true
+  }
+
   /** Canvas and slide backgrounds select whole items rather than nearby text. */
   beginBoxSelection(event: PointerEvent) {
     const root = this.editor.features.canvas.editingRoot
     if(event.button !== 0 || this.editor.isEditingLocked || !root) return
+    if(this.#deferTouchSelection(event, {box: true})) return
     this.#endDrag()
     this.#releaseCaptureSelection()
     this.clearSelectedSection()
@@ -1586,6 +1617,7 @@ export class SelectionFeature extends EditorFeature {
       ev.preventDefault()
       return
     }
+    if(this.#deferTouchSelection(ev, {fromCanvasSlot})) return
     this.#endDrag()
     this.clearSelectedSection()
     this.#touchSelection = ev.pointerType === "touch"
@@ -1597,9 +1629,15 @@ export class SelectionFeature extends EditorFeature {
     const media = ev.target instanceof Node ? mediaContainerForNode(ev.target) : null
     const divider = ev.target instanceof Element && ev.target.localName === "hr" ? ev.target : null
     if(media) {
-      if(this.captureSelectedElement !== media) this.captureElement(media)
-      this.editor.postSelectionPath()
-      return
+      // Touch targeting may retain nearby media while the tap is in its
+      // margin. Let the shared coordinate hit test resolve that outer gap.
+      const target = figureSelectionTarget(media), rect = target.getBoundingClientRect()
+      const outside = !isOutOfFlow(target) && rect.height > 0 && (ev.clientY < rect.top || ev.clientY > rect.bottom)
+      if(!outside) {
+        if(this.captureSelectedElement !== media) this.captureElement(media)
+        this.editor.postSelectionPath()
+        return
+      }
     }
     if(divider) {
       ev.preventDefault()
@@ -1702,15 +1740,15 @@ export class SelectionFeature extends EditorFeature {
       })
     },
     contextmenu: event => {
-      if(this.#drag || this.#boxDrag) this.#endDrag()
+      if(this.#touchTap || this.#drag || this.#boxDrag) this.#endDrag()
       if(isAppendixInteraction(event) && !isTextFieldInteraction(event)) event.preventDefault()
     },
-    // Preserve the pointer stream for editor selection instead of browser
-    // panning/long-press selection. Widget controls and appendix UI stay native.
+    // A second contact belongs to a native or layout-specific pinch.
     touchstart: event => {
-      if(event.touches.length === 1 && (this.#drag?.pointerType === "touch" || this.#boxDrag?.pointerType === "touch")) event.preventDefault()
+      if(event.touches.length > 1) this.cancelTouchDrag()
     },
     pointerdown: event => {
+      if(event.pointerType === "touch" && event.isPrimary === false) { this.cancelTouchDrag(); return }
       this.#handleKeyState(event)
       if(this.#handleModifierClick(event)) return
       const edge = event.composedPath().find(node => node instanceof Element && node.classList.contains("◆capture-edge"))
@@ -1729,6 +1767,8 @@ export class SelectionFeature extends EditorFeature {
         && this.editor.features.canvas.itemAtPoint(event.clientX, event.clientY)) this.#handlePointerDown(event, true)
     },
     pointermove: event => {
+      const tap = this.#touchTap
+      if(tap && tap.pointerId === event.pointerId && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 8) this.#touchTap = null
       this.#handleKeyState(event)
       const drag = this.#boxDrag ?? this.#drag
       if(drag && drag.pointerId === event.pointerId && !(event.buttons & 1)) this.#finishDrag(event)
@@ -1840,6 +1880,7 @@ export class SelectionFeature extends EditorFeature {
       })
     },
     keydown: event => {
+      if(event.key === "Escape" && this.#touchTap) this.#endDrag()
       this.#handleKeyState(event)
       if(!isAppendixInteraction(event) && !isWidgetShadowInteraction(event, this.editor.schema)
         && ["toggle", "content"].includes(popupElementRole($.selectedElement ?? document.body) ?? "")
@@ -1872,7 +1913,10 @@ export class SelectionFeature extends EditorFeature {
     wheel: event => this.#handleWidgetWheel(event),
     scroll: event => {
       this.#handleWidgetScroll(event)
-      if(!isWidgetShadowInteraction(event, this.editor.schema) && !isAppendixInteraction(event)) this.#refreshGapCaretInlinePosition()
+      if(!isWidgetShadowInteraction(event, this.editor.schema) && !isAppendixInteraction(event)) {
+        this.#touchTap = null
+        this.#refreshGapCaretInlinePosition()
+      }
     },
   }
 
@@ -3246,7 +3290,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Pointer behavior: 
-   * pointerdown starts a drag selection at the pointer (modifier-click selects the whole element instead), 
+   * pointerdown starts a mouse/pen drag; touch selects only on a completed tap,
    * native double/triple clicks select and drag by word/paragraph,
    * pointerup ends the drag selection. */
   activeListeners: DocumentListenerMap = {

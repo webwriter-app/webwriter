@@ -1457,6 +1457,10 @@ describe("DomEditor iframe setup", () => {
     }
     expect(touch("pointerdown").defaultPrevented).toBe(true)
     expect(post).toHaveBeenLastCalledWith("pointer", expect.objectContaining({event: "pointerdown", x: 20, y: 30, pointerId: 7}))
+    const touchStart = new Event("touchstart", {bubbles: true, composed: true, cancelable: true})
+    Object.defineProperty(touchStart, "touches", {value: [{identifier: 7}]})
+    iframe.dispatchEvent(touchStart)
+    expect(touchStart.defaultPrevented).toBe(false)
     touch("pointerdown", iframe, 8)
     touch("pointerup", iframe, 8)
     touch("pointermove")

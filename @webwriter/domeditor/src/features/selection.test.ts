@@ -6150,7 +6150,38 @@ describe("selection invariants", () => {
   })
 
   describe("touch uses shared pointer selection", () => {
-    it("routes iframe-targeted touch through the same caret and range selection", () => {
+    it.each(["<picture><img></picture>", "<video controls></video>", "<figure><picture><img></picture><figcaption>Label</figcaption></figure>"])("keeps margin taps around %s as gap selections", html => {
+      document.body.innerHTML = `<section><p>Before</p><!--keep-->${html}<p>After</p></section>`
+      const section = document.querySelector("section")!, media = section.querySelector("picture, video")!
+      const target = media.closest("figure") ?? media
+      const origin = media.querySelector("img") ?? media
+      const index = Array.from(section.childNodes).indexOf(target)
+      vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 100, 200, 100))
+      vi.spyOn(media, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 100, 200, 100))
+      vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: media, offset: 0} as unknown as CaretPosition)
+      const authored = document.body.innerHTML
+
+      for(const [y, offset] of [[90, index], [210, index + 1]]) {
+        // Touch targeting can retain the nearby media even in its margin.
+        touch(origin, "pointerdown", 50, y)
+        touch(origin, "pointerup", 50, y)
+        document.dispatchEvent(new Event("selectionchange"))
+        origin.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, clientX: 50, clientY: y}))
+        expect($.anchor).toBe(section)
+        expect($.anchorOffset).toBe(offset)
+        expect($.focusOffset).toBe(offset)
+        expect($.isGapSelection).toBe(true)
+        expect(feature.captureSelectedElement).toBeNull()
+        expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(true)
+      }
+
+      expect(document.body.innerHTML).toBe(authored)
+      touch(origin, "pointerdown", 50, 150)
+      touch(origin, "pointerup", 50, 150)
+      expect(feature.captureSelectedElement).toBe(media)
+    })
+
+    it("routes iframe-targeted taps through caret selection and leaves swipes alone", () => {
       const paragraph = textDocument(), text = paragraph.firstChild!
       hitTest()
       vi.spyOn(document, "elementFromPoint").mockReturnValue(paragraph)
@@ -6164,7 +6195,7 @@ describe("selection invariants", () => {
       relay("pointerdown")
       relay("pointermove", 40)
       expect($.anchorOffset).toBe(2)
-      expect($.focusOffset).toBe(4)
+      expect($.focusOffset).toBe(2)
       relay("pointercancel", 40)
       expect(feature.isInDragSelection).toBe(false)
       expect(editor.toHTML(true)).not.toContain("◆")
@@ -6211,10 +6242,12 @@ describe("selection invariants", () => {
     it("places a caret on tap without compatibility mouse events", () => {
       const paragraph = textDocument(), text = paragraph.firstChild!
       hitTest()
+      $.move(text, 0)
       expect(touch(paragraph, "pointerdown").defaultPrevented).toBe(true)
-      expect(touchStart(paragraph).defaultPrevented).toBe(true)
+      expect(touchStart(paragraph).defaultPrevented).toBe(false)
       expect($.anchor).toBe(text)
-      expect($.anchorOffset).toBe(2)
+      expect($.anchorOffset).toBe(0)
+      expect(feature.isInDragSelection).toBe(false)
       // A browser focus action must not replace the shared hit-test result.
       $.move(text, 0)
       touch(paragraph, "pointerup")
@@ -6242,35 +6275,96 @@ describe("selection invariants", () => {
       expect(feature.selectionCaret).toBeNull()
     })
 
-    it.each(["pointerup", "pointercancel", "lostpointercapture"])("extends a range through irregular inline DOM and cleans up on %s", ending => {
+    it.each(["pointerup", "pointercancel", "lostpointercapture"])("preserves selection while swiping irregular inline DOM and ending on %s", ending => {
       document.body.innerHTML = '<section><p><b>hello</b><!--keep--><i>world</i></p></section>'
       const paragraph = document.querySelector("p")!, before = paragraph.querySelector("b")!.firstChild!, after = paragraph.querySelector("i")!.firstChild!
       vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 100, 20))
       vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 100, 20))
       vi.spyOn(document, "caretPositionFromPoint").mockImplementation(x => ({offsetNode: x < 50 ? before : after, offset: 2}) as unknown as CaretPosition)
+      $.move(before, 1)
+      const scroll = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
       touch(paragraph, "pointerdown")
-      touch(paragraph, "pointermove", 80)
+      expect(touchStart(paragraph).defaultPrevented).toBe(false)
+      expect(touch(paragraph, "pointermove", 80).defaultPrevented).toBe(false)
       expect($.anchor).toBe(before)
-      expect($.focus).toBe(after)
-      expect(document.getSelection()!.toString()).toBe("llowo")
-      expect(feature.isInDragSelection).toBe(true)
+      expect($.anchorOffset).toBe(1)
+      expect($.focus).toBe(before)
+      expect($.focusOffset).toBe(1)
+      expect(feature.isInDragSelection).toBe(false)
       expect(hasPresentationState(document.body, "touch-caret-visible")).toBe(false)
       touch(paragraph, ending, 80)
       expect(feature.isInDragSelection).toBe(false)
+      expect($.anchorOffset).toBe(1)
+      expect($.focusOffset).toBe(1)
+      expect(scroll).not.toHaveBeenCalled()
       expect(document.body).not.toHaveClass("◆selection-dragging")
       expect(editor.toHTML(true)).not.toContain("◆")
     })
 
-    it("ignores a second finger while extending the first finger's range", () => {
+    it("cancels a pending tap when a second finger joins", () => {
       const paragraph = textDocument(), text = paragraph.firstChild!
       hitTest()
+      $.move(text, 1)
       touch(paragraph, "pointerdown")
       touch(paragraph, "pointerdown", 40, 30, 8)
       touch(paragraph, "pointerup", 40, 30, 8)
       touch(paragraph, "pointermove", 40)
+      touch(paragraph, "pointerup", 40)
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(1)
+      expect($.focusOffset).toBe(1)
+    })
+
+    it.each([[20, 90], [80, 30], [80, 90]])("keeps the existing range when a swipe moves to %s,%s and returns", (x, y) => {
+      const paragraph = textDocument(), text = paragraph.firstChild!
+      hitTest()
+      $.selectRange(text, 1, text, 4)
+      const scroll = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
+
+      touch(paragraph, "pointerdown")
+      touch(paragraph, "pointermove", x, y)
+      touch(paragraph, "pointermove")
+      touch(paragraph, "pointerup")
+
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(1)
+      expect($.focus).toBe(text)
+      expect($.focusOffset).toBe(4)
+      expect(scroll).not.toHaveBeenCalled()
+    })
+
+    it("allows small finger movement during a tap", () => {
+      const paragraph = textDocument(), text = paragraph.firstChild!
+      hitTest()
+      $.move(text, 0)
+
+      touch(paragraph, "pointerdown")
+      touch(paragraph, "pointermove", 23, 33)
+      touch(paragraph, "pointerup", 23, 33)
+
       expect($.anchor).toBe(text)
       expect($.anchorOffset).toBe(2)
-      expect($.focusOffset).toBe(4)
+      expect($.focusOffset).toBe(2)
+    })
+
+    it.each(["pointercancel", "lostpointercapture", "scroll", "contextmenu", "Escape", "blur", "disable", "replacement"])("discards a pending tap on %s", ending => {
+      const paragraph = textDocument(), text = paragraph.firstChild!
+      hitTest()
+      $.move(text, 1)
+      touch(paragraph, "pointerdown")
+      if(ending === "disable") feature.disable()
+      else if(ending === "replacement") paragraph.replaceWith(document.createElement("p"))
+      else if(ending === "blur") window.dispatchEvent(new Event("blur"))
+      else if(ending === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+      else if(ending === "scroll") document.dispatchEvent(new Event("scroll"))
+      else if(ending === "contextmenu") paragraph.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true}))
+      else touch(paragraph, ending)
+      const process = vi.spyOn(feature, "processSelection")
+
+      touch(document.body, "pointerup")
+
+      expect(process).not.toHaveBeenCalled()
+      expect(feature.isInDragSelection).toBe(false)
     })
 
     it("leaves widget shadow controls and appendix buttons native", () => {

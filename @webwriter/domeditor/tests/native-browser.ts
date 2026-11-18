@@ -5999,7 +5999,7 @@ await check("touch caret and ranges use shared pointer selection", async () => {
     const touchStart = new TouchEvent("touchstart", {bubbles: true, cancelable: true,
       touches: [new Touch({identifier: 71, target: paragraph, ...start})]})
     paragraph.dispatchEvent(touchStart)
-    assert(touchStart.defaultPrevented, "touch selection left native panning enabled")
+    assert(!touchStart.defaultPrevented, "touch selection prevented native scrolling")
     touch("pointerup")
     assert($.anchor === before && $.anchorOffset === 2 && $.isEmpty, "touch tap did not place the caret at the hit-tested point")
     for(let tap = 0; tap < 2; tap++) {
@@ -6015,11 +6015,15 @@ await check("touch caret and ranges use shared pointer selection", async () => {
     touch("pointerdown")
     touch("pointermove", end)
     touch("pointerup", end)
-    assert($.anchor === before && $.anchorOffset === 2 && $.focus === after && $.focusOffset === 2, "touch drag did not use shared range selection")
+    assert($.anchor === before && $.anchorOffset === 2 && $.focus === before && $.focusOffset === 2, "touch swipe changed the text selection")
     assert(!editor.features.selection.isInDragSelection, "touch selection did not clean up")
     start = point(before); end = point(after)
-    touch("pointerdown")
-    touch("pointermove", end)
+    const mouse = (type: string, coordinates = start) => paragraph.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, composed: true, cancelable: true, button: 0, buttons: type === "pointerup" ? 0 : 1,
+      pointerId: 73, pointerType: "mouse", ...coordinates,
+    }))
+    mouse("pointerdown")
+    mouse("pointermove", end)
     const transient = document.createRange()
     transient.selectNode(paragraph)
     getSelection()!.removeAllRanges()
@@ -6030,7 +6034,7 @@ await check("touch caret and ranges use shared pointer selection", async () => {
     assert(!hasPresentationState(paragraph, "element-selected") && !hasPresentationState(document.body, "node-selection-active")
       && editor.features.transformation.target === null && transform?.getAttribute("visibility") === "hidden",
       "transient element range showed active element controls during drag")
-    touch("pointerup", end)
+    mouse("pointerup", end)
     assert(hasPresentationState(paragraph, "element-selected") && editor.features.transformation.target === paragraph,
       "released drag did not restore the element selection")
     const relay = (event: "pointerdown" | "pointermove" | "pointerup", coordinates = start) => replayHostPointer({
@@ -6045,8 +6049,8 @@ await check("touch caret and ranges use shared pointer selection", async () => {
     }
     start = point(before); end = point(after)
     relay("pointerdown"); relay("pointermove", end); relay("pointerup", end)
-    assert($.anchor === before && $.anchorOffset === 2 && $.focus === after && $.focusOffset === 2
-      && !editor.features.selection.isInDragSelection, "relayed touch did not retain and clean up the shared range")
+    assert($.anchor === before && $.anchorOffset === 2 && $.focus === before && $.focusOffset === 2
+      && !editor.features.selection.isInDragSelection, "relayed touch swipe changed the text selection")
   }
   finally {paragraph.remove()}
 })
