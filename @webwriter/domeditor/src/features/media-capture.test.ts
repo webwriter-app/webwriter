@@ -20,6 +20,7 @@ const stream = (...tracks: Track[]) => ({
   getTracks: () => [...tracks],
   getVideoTracks: () => tracks.filter(track => track.kind === "video"),
   getAudioTracks: () => tracks.filter(track => track.kind === "audio"),
+  addTrack: (track: Track) => { tracks.push(track) },
   removeTrack: (track: Track) => { tracks = tracks.filter(item => item !== track) },
 }) as unknown as MediaStream
 
@@ -70,6 +71,7 @@ const open = (mode: MediaCaptureMode) => {
 }
 const ready = async () => vi.waitFor(() => expect(button(".capture")).not.toHaveAttribute("hidden"))
 const device = (kind: string, deviceId: string, label: string) => ({kind, deviceId, label})
+const captureStreamDescriptor = Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype, "captureStream")
 
 beforeEach(() => {
   document.body.replaceChildren()
@@ -105,6 +107,8 @@ afterEach(() => {
   editor?.destroy()
   editor = undefined
   vi.restoreAllMocks()
+  if(captureStreamDescriptor) Object.defineProperty(HTMLCanvasElement.prototype, "captureStream", captureStreamDescriptor)
+  else Reflect.deleteProperty(HTMLCanvasElement.prototype, "captureStream")
   vi.unstubAllGlobals()
 })
 
@@ -363,6 +367,323 @@ describe("native media capture lifecycle", () => {
     devices.enumerateDevices.mockClear()
     devices.dispatchEvent(new Event("devicechange"))
     expect(devices.enumerateDevices).not.toHaveBeenCalled()
+  })
+})
+
+describe("screen capture orientation", () => {
+  const sourceFrame = () => {
+    const preview = panel!.root.querySelector("video")!
+    Object.defineProperties(preview, {
+      videoWidth: {value: 1640, configurable: true},
+      videoHeight: {value: 2360, configurable: true},
+      readyState: {value: 4, configurable: true},
+    })
+    preview.dispatchEvent(new Event("resize"))
+    return preview
+  }
+  const canvasContext = () => {
+    const context = {drawImage: vi.fn(), save: vi.fn(), translate: vi.fn(), rotate: vi.fn(), restore: vi.fn()}
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(context as unknown as CanvasRenderingContext2D)
+    return {context, getContext}
+  }
+
+  const iPadScreen = (type: OrientationType = "landscape-primary") => {
+    const orientation = Object.assign(new EventTarget(), {type})
+    vi.stubGlobal("screen", {orientation})
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/27.2 Safari/605.1.15")
+    vi.spyOn(navigator, "maxTouchPoints", "get").mockReturnValue(5)
+    const video = new Track("video")
+    vi.spyOn(video, "getSettings").mockReturnValue(Object.assign({deviceId: ""}, {displaySurface: "monitor"}))
+    devices.getDisplayMedia.mockResolvedValue(stream(video))
+    return {orientation, video}
+  }
+
+  it.each([
+    ["portrait-primary", 0, 1640, 2360],
+    ["landscape-primary", 270, 2360, 1640],
+    ["portrait-secondary", 180, 1640, 2360],
+    ["landscape-secondary", 90, 2360, 1640],
+  ] as const)("automatically corrects iPad %s previews and PNGs", async (type, rotation, width, height) => {
+    iPadScreen(type)
+    const {context, getContext} = canvasContext()
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(callback => callback(new Blob(["pixels"], {type: "image/png"})))
+    open("screen-image")
+    button(".connect").click()
+    await ready()
+    const preview = sourceFrame()
+    expect(preview.style.transform).toContain(`rotate(${rotation}deg)`)
+    expect(panel!.root.querySelector(".rotation")).not.toHaveAttribute("hidden")
+    button(".capture").click()
+    const canvas = getContext.mock.instances[0] as HTMLCanvasElement
+    expect([canvas.width, canvas.height]).toEqual([width, height])
+    if(rotation) expect(context.rotate).toHaveBeenCalledWith(rotation * Math.PI / 180)
+    else expect(context.rotate).not.toHaveBeenCalled()
+    expect(inserted).toHaveBeenCalledOnce()
+  })
+
+  it("follows orientation changes during an automatically corrected recording starting upright", async () => {
+    const {orientation, video} = iPadScreen("portrait-primary")
+    const audio = new Track("audio"), corrected = new Track("video")
+    devices.getDisplayMedia.mockResolvedValue(stream(video, audio))
+    const output = stream(corrected)
+    Object.defineProperty(HTMLCanvasElement.prototype, "captureStream", {value: () => output, configurable: true})
+    const {context, getContext} = canvasContext()
+    open("screen-video")
+    button(".connect").click()
+    await ready()
+    const preview = sourceFrame()
+    let frame!: VideoFrameRequestCallback
+    Object.defineProperties(preview, {
+      requestVideoFrameCallback: {value: (callback: VideoFrameRequestCallback) => { frame = callback; return 1 }},
+      cancelVideoFrameCallback: {value: vi.fn()},
+    })
+    button(".capture").click()
+    expect(Recorder.instances[0].stream).toBe(output)
+    expect(output.getAudioTracks()).toEqual([audio])
+    orientation.type = "portrait-secondary"
+    orientation.dispatchEvent(new Event("change"))
+    frame(1, {} as VideoFrameCallbackMetadata)
+    expect(context.rotate).toHaveBeenLastCalledWith(Math.PI)
+    orientation.type = "landscape-primary"
+    orientation.dispatchEvent(new Event("change"))
+    frame(2, {} as VideoFrameCallbackMetadata)
+    expect(preview.style.transform).toContain("rotate(270deg)")
+    expect(context.rotate).toHaveBeenLastCalledWith(270 * Math.PI / 180)
+    const canvas = getContext.mock.instances[0] as HTMLCanvasElement
+    expect([canvas.width, canvas.height]).toEqual([2360, 1640])
+    button(".stop").click()
+    await vi.waitFor(() => expect(inserted).toHaveBeenCalledOnce())
+    expect(corrected.stop).toHaveBeenCalledOnce()
+    expect(video.stop).toHaveBeenCalledOnce()
+    expect(audio.stop).toHaveBeenCalledOnce()
+  })
+
+  it("preserves a manual screenshot correction across orientation and frame changes", async () => {
+    const {orientation} = iPadScreen()
+    const {context, getContext} = canvasContext()
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(callback => callback(new Blob(["pixels"], {type: "image/png"})))
+    open("screen-image")
+    button(".connect").click()
+    await ready()
+    const preview = sourceFrame()
+    expect(preview.style.transform).toContain("rotate(270deg)")
+    button(".rotate-left").click()
+    expect(preview.style.transform).toContain("rotate(180deg)")
+    orientation.type = "portrait-primary"
+    orientation.dispatchEvent(new Event("change"))
+    preview.dispatchEvent(new Event("resize"))
+    expect(preview.style.transform).toContain("rotate(180deg)")
+    button(".capture").click()
+    expect(context.rotate).toHaveBeenCalledWith(Math.PI)
+    const canvas = getContext.mock.instances[0] as HTMLCanvasElement
+    expect([canvas.width, canvas.height]).toEqual([1640, 2360])
+    expect(inserted).toHaveBeenCalledOnce()
+  })
+
+  it("allows overriding automatic video correction back to zero degrees", async () => {
+    const {orientation, video} = iPadScreen()
+    const audio = new Track("audio"), corrected = new Track("video")
+    devices.getDisplayMedia.mockResolvedValue(stream(video, audio))
+    const output = stream(corrected)
+    Object.defineProperty(HTMLCanvasElement.prototype, "captureStream", {value: () => output, configurable: true})
+    const {context} = canvasContext()
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1)
+    open("screen-video")
+    button(".connect").click()
+    await ready()
+    const preview = sourceFrame()
+    Object.defineProperty(preview, "requestVideoFrameCallback", {value: undefined})
+    button(".rotate-right").click()
+    orientation.type = "portrait-secondary"
+    orientation.dispatchEvent(new Event("change"))
+    expect(preview.style.transform).toContain("rotate(0deg)")
+    button(".capture").click()
+    expect(context.rotate).not.toHaveBeenCalled()
+    expect(Recorder.instances[0].stream.getAudioTracks()).toEqual([audio])
+    button(".stop").click()
+    await vi.waitFor(() => expect(inserted).toHaveBeenCalledOnce())
+    expect(corrected.stop).toHaveBeenCalledOnce()
+  })
+
+  it.each(["desktop", "camera", "landscape-frames", "window-source", "missing-api"] as const)(
+    "does not automatically rotate %s", async scenario => {
+      const {video} = iPadScreen()
+      if(scenario === "desktop") vi.spyOn(navigator, "maxTouchPoints", "get").mockReturnValue(0)
+      if(scenario === "missing-api") vi.stubGlobal("screen", {})
+      if(scenario === "window-source") vi.spyOn(video, "getSettings").mockReturnValue(Object.assign({deviceId: ""}, {displaySurface: "window"}))
+      if(scenario === "camera") devices.getUserMedia.mockResolvedValue(stream(video))
+      open(scenario === "camera" ? "camera-image" : "screen-image")
+      button(".connect").click()
+      await ready()
+      const preview = sourceFrame()
+      if(scenario === "landscape-frames") {
+        Object.defineProperties(preview, {videoWidth: {value: 2360}, videoHeight: {value: 1640}})
+        preview.dispatchEvent(new Event("resize"))
+      }
+      expect(preview.style.transform).toContain("rotate(0deg)")
+    },
+  )
+
+  it("removes the orientation listener when the capture dialog closes", async () => {
+    const {orientation} = iPadScreen()
+    open("screen-image")
+    button(".connect").click()
+    await ready()
+    sourceFrame()
+    const updatePreview = vi.spyOn(panel! as unknown as {updatePreview: () => void}, "updatePreview")
+    orientation.dispatchEvent(new Event("change"))
+    expect(updatePreview).toHaveBeenCalledOnce()
+    panel!.close()
+    updatePreview.mockClear()
+    orientation.dispatchEvent(new Event("change"))
+    expect(updatePreview).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [0, 0, 1640, 2360],
+    [1, 270, 2360, 1640],
+    [2, 180, 1640, 2360],
+    [3, 90, 2360, 1640],
+    [4, 0, 1640, 2360],
+  ])("applies %i left turns to the preview and saved PNG", async (turns, rotation, width, height) => {
+    const track = new Track("video")
+    devices.getDisplayMedia.mockResolvedValue(stream(track))
+    const {context, getContext} = canvasContext()
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(callback => callback(new Blob(["pixels"], {type: "image/png"})))
+    open("screen-image")
+    button(".connect").click()
+    await ready()
+    const preview = sourceFrame()
+    for(let turn = 0; turn < turns; turn++) button(".rotate-left").click()
+    expect(preview.style.transform).toContain(`rotate(${rotation}deg)`)
+    expect(panel!.root.querySelector<HTMLElement>(".preview")!.style.getPropertyValue("--aspect")).toBe(String(width / height))
+    button(".capture").click()
+    const canvas = getContext.mock.instances[0] as HTMLCanvasElement
+    expect([canvas.width, canvas.height]).toEqual([width, height])
+    if(rotation) {
+      expect(context.translate).toHaveBeenCalledWith(width / 2, height / 2)
+      expect(context.rotate).toHaveBeenCalledWith(rotation * Math.PI / 180)
+      expect(context.drawImage).toHaveBeenCalledWith(preview, -820, -1180)
+      expect(context.restore).toHaveBeenCalledOnce()
+    }
+    else expect(context.drawImage).toHaveBeenCalledWith(preview, 0, 0)
+    expect(track.stop).toHaveBeenCalledOnce()
+    expect(inserted).toHaveBeenCalledWith(expect.objectContaining({type: "image/png"}))
+  })
+
+  it.each(["stop", "cancel", "source-ended", "recorder-error"] as const)(
+    "records corrected pixels with source audio and releases everything on %s", async finish => {
+      const video = new Track("video"), audio = new Track("audio"), corrected = new Track("video")
+      devices.getDisplayMedia.mockResolvedValue(stream(video, audio))
+      const output = stream(corrected)
+      const captureStream = vi.fn(() => output)
+      Object.defineProperty(HTMLCanvasElement.prototype, "captureStream", {value: captureStream, configurable: true})
+      const {context} = canvasContext()
+      open("screen-video")
+      button(".connect").click()
+      await ready()
+      const preview = sourceFrame()
+      let frame!: VideoFrameRequestCallback
+      const requestFrame = vi.fn((callback: VideoFrameRequestCallback) => { frame = callback; return 7 })
+      const cancelFrame = vi.fn()
+      Object.defineProperties(preview, {requestVideoFrameCallback: {value: requestFrame}, cancelVideoFrameCallback: {value: cancelFrame}})
+      button(".rotate-left").click()
+      button(".capture").click()
+      expect(captureStream).toHaveBeenCalledWith(30)
+      expect(Recorder.instances[0].stream.getVideoTracks()).toEqual([corrected])
+      expect(Recorder.instances[0].stream.getAudioTracks()).toEqual([audio])
+      expect(button(".rotate-left")).toBeDisabled()
+      expect(button(".rotate-right")).toBeDisabled()
+      expect(context.rotate).toHaveBeenLastCalledWith(270 * Math.PI / 180)
+      frame(1, {} as VideoFrameCallbackMetadata)
+      expect(requestFrame).toHaveBeenCalledTimes(2)
+      if(finish === "source-ended") video.end()
+      else if(finish === "recorder-error") Recorder.instances[0].onerror!()
+      else button(finish === "stop" ? ".stop" : ".cancel").click()
+      expect(cancelFrame).toHaveBeenCalledWith(7)
+      expect(corrected.stop).toHaveBeenCalledOnce()
+      expect(video.stop).toHaveBeenCalledOnce()
+      expect(audio.stop).toHaveBeenCalledOnce()
+      const frames = requestFrame.mock.calls.length
+      frame(2, {} as VideoFrameCallbackMetadata)
+      expect(requestFrame).toHaveBeenCalledTimes(frames)
+      await Promise.resolve()
+      expect(inserted).toHaveBeenCalledTimes(finish === "stop" || finish === "source-ended" ? 1 : 0)
+    },
+  )
+
+  it("uses and cancels animation frames when video frame callbacks are unavailable", async () => {
+    const corrected = new Track("video")
+    Object.defineProperty(HTMLCanvasElement.prototype, "captureStream", {value: () => stream(corrected), configurable: true})
+    canvasContext()
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockReturnValue(19)
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame")
+    open("screen-video")
+    button(".connect").click()
+    await ready()
+    Object.defineProperty(sourceFrame(), "requestVideoFrameCallback", {value: undefined})
+    button(".rotate-right").click()
+    button(".capture").click()
+    expect(requestFrame).toHaveBeenCalledOnce()
+    panel!.close()
+    expect(cancelFrame).toHaveBeenCalledWith(19)
+    expect(corrected.stop).toHaveBeenCalledOnce()
+  })
+
+  it("keeps unrotated recording on the original stream", async () => {
+    const input = stream(new Track("video"), new Track("audio"))
+    devices.getDisplayMedia.mockResolvedValue(input)
+    open("screen-video")
+    button(".connect").click()
+    await ready()
+    button(".capture").click()
+    expect(Recorder.instances[0].stream).toBe(input)
+  })
+
+  it("ignores a cancelled frame callback after reconnecting and recording again", async () => {
+    devices.getDisplayMedia.mockImplementation(async () => stream(new Track("video")))
+    Object.defineProperty(HTMLCanvasElement.prototype, "captureStream", {value: () => stream(new Track("video")), configurable: true})
+    const {context} = canvasContext()
+    open("screen-video")
+    button(".connect").click()
+    await ready()
+    const preview = sourceFrame()
+    const frames: VideoFrameRequestCallback[] = []
+    Object.defineProperties(preview, {
+      requestVideoFrameCallback: {value: (callback: VideoFrameRequestCallback) => frames.push(callback)},
+      cancelVideoFrameCallback: {value: vi.fn()},
+    })
+    button(".rotate-left").click()
+    button(".capture").click()
+    Recorder.instances[0].onerror!()
+    button(".connect").click()
+    await ready()
+    button(".capture").click()
+    const draws = context.drawImage.mock.calls.length
+    const scheduled = frames.length
+    frames[0](1, {} as VideoFrameCallbackMetadata)
+    expect(context.drawImage).toHaveBeenCalledTimes(draws)
+    expect(frames).toHaveLength(scheduled)
+  })
+
+  it("cleans up the corrected stream when recorder construction fails", async () => {
+    const video = new Track("video"), corrected = new Track("video")
+    devices.getDisplayMedia.mockResolvedValue(stream(video))
+    Object.defineProperty(HTMLCanvasElement.prototype, "captureStream", {value: () => stream(corrected), configurable: true})
+    canvasContext()
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame")
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(29)
+    vi.stubGlobal("MediaRecorder", class { constructor() { throw new Error("Encoder unavailable") } })
+    open("screen-video")
+    button(".connect").click()
+    await ready()
+    Object.defineProperty(sourceFrame(), "requestVideoFrameCallback", {value: undefined})
+    button(".rotate-left").click()
+    button(".capture").click()
+    expect(status()).toMatch(/Capture failed/)
+    expect(cancelFrame).toHaveBeenCalledWith(29)
+    expect(video.stop).toHaveBeenCalledOnce()
+    expect(corrected.stop).toHaveBeenCalledOnce()
   })
 })
 

@@ -5,8 +5,8 @@ const stylesheet = createStylesheet(`
   :host { font: 14px/1.4 system-ui, sans-serif; color: #343740; user-select: none; -webkit-user-select: none; }
   input, select { user-select: text; -webkit-user-select: text; }
   dialog {
-    box-sizing: border-box; width: min(30rem, calc(100vw - 2rem));
-    max-height: calc(100vh - 2rem); overflow: auto; padding: 1.1rem;
+    box-sizing: border-box; width: min(30rem, calc(100dvw - 2rem));
+    max-height: calc(100dvh - 2rem); overflow: auto; padding: 1.1rem;
     border: 1px solid #c7c9ce; border-radius: .5rem; color: inherit;
     background: white; box-shadow: 0 8px 32px #0003;
   }
@@ -18,7 +18,9 @@ const stylesheet = createStylesheet(`
   .sound { display: flex; align-items: center; }
   select, button { font: inherit; }
   select { width: 100%; min-width: 0; padding: .4rem; }
-  video { display: block; width: 100%; max-height: 40vh; background: #111; margin: .75rem 0; }
+  .preview { position: relative; width: min(100%, calc(40dvh * var(--aspect, 1))); aspect-ratio: var(--aspect, 1); margin: .75rem auto; background: #111; }
+  video { display: block; position: absolute; left: 50%; top: 50%; width: 100%; height: 100%; object-fit: contain; transform: translate(-50%, -50%); }
+  .rotation { display: flex; justify-content: center; flex-wrap: wrap; gap: .5rem; }
   [hidden] { display: none !important; }
   .status { color: #526273; }
   .status.error { color: #a32424; }
@@ -55,6 +57,7 @@ export class MediaCapture {
   readonly root = this.element.attachShadow({mode: "open"})
   private readonly dialog: HTMLDialogElement
   private readonly preview: HTMLVideoElement
+  private readonly previewBox: HTMLDivElement
   private readonly camera: HTMLSelectElement
   private readonly microphone: HTMLSelectElement
   private readonly sound: HTMLInputElement
@@ -72,6 +75,11 @@ export class MediaCapture {
   private closed = false
   private timer: ReturnType<typeof setInterval> | null = null
   private trackListeners = new Map<MediaStreamTrack, () => void>()
+  private rotation = 0
+  private automaticRotation = false
+  private manualRotation = false
+  private recordingStream: MediaStream | null = null
+  private recordingFrame: {kind: "video" | "animation", id: number} | null = null
 
   constructor(
     readonly mode: MediaCaptureMode,
@@ -89,7 +97,11 @@ export class MediaCapture {
           <label class="sound"><input type="checkbox">Include audio</label>
           <label class="microphone">Microphone<select aria-label="Microphone"><option value="">Default microphone</option></select></label>
         </div>
-        <video muted autoplay playsinline hidden></video>
+        <div class="preview" hidden><video muted autoplay playsinline hidden></video></div>
+        <div class="rotation" role="group" aria-label="Source orientation" hidden>
+          <button class="rotate-left" type="button">Rotate left</button>
+          <button class="rotate-right" type="button">Rotate right</button>
+        </div>
         <p id="status" class="status" role="status" aria-live="polite"></p>
         <div class="actions">
           <button class="cancel" type="button">Cancel</button>
@@ -101,6 +113,7 @@ export class MediaCapture {
     `
     this.dialog = this.root.querySelector("dialog")!
     this.preview = this.root.querySelector("video")!
+    this.previewBox = this.root.querySelector(".preview")!
     this.preview.muted = true
     this.camera = this.root.querySelector(".camera select")!
     this.microphone = this.root.querySelector(".microphone select")!
@@ -120,6 +133,10 @@ export class MediaCapture {
     this.connect.addEventListener("click", () => void this.start())
     this.capture.addEventListener("click", () => this.media === "picture" ? this.takePhoto() : this.record())
     this.stop.addEventListener("click", () => this.finishRecording())
+    this.root.querySelector(".rotate-left")!.addEventListener("click", () => this.rotate(-90))
+    this.root.querySelector(".rotate-right")!.addEventListener("click", () => this.rotate(90))
+    this.preview.addEventListener("resize", () => this.updatePreview(), {signal: this.events.signal})
+    window.screen.orientation?.addEventListener("change", () => this.updatePreview(), {signal: this.events.signal})
     this.camera.addEventListener("change", () => void this.start())
     this.microphone.addEventListener("change", () => void this.start())
     this.sound.addEventListener("change", () => {
@@ -172,6 +189,8 @@ export class MediaCapture {
     this.connect.classList.toggle("primary", state !== "ready")
     this.capture.hidden = state !== "ready"
     this.stop.hidden = state !== "recording"
+    this.root.querySelector<HTMLElement>(".rotation")!.hidden = !this.screen || this.media === "audio" || this.preview.hidden
+    this.root.querySelectorAll<HTMLButtonElement>(".rotation button").forEach(button => { button.disabled = state !== "ready" })
     this.dialog.setAttribute("aria-busy", String(state === "pending" || state === "saving"))
   }
 
@@ -274,9 +293,11 @@ export class MediaCapture {
       void this.updateDevices()
       if(this.media !== "audio") {
         this.preview.hidden = false
+        this.previewBox.hidden = false
         this.preview.srcObject = stream
         await this.preview.play()
         if(this.closed || generation !== this.generation) return
+        this.updatePreview()
       }
       this.setState("ready", this.screen && this.media === "video" && this.sound.checked && !stream.getAudioTracks().length
         ? "Ready. This source has no shared audio; the recording will be silent."
@@ -296,11 +317,7 @@ export class MediaCapture {
         return
       }
       const canvas = document.createElement("canvas")
-      canvas.width = this.preview.videoWidth
-      canvas.height = this.preview.videoHeight
-      const context = canvas.getContext("2d")
-      if(!context) throw new Error("Canvas unavailable")
-      context.drawImage(this.preview, 0, 0)
+      this.drawFrame(canvas)
       this.releaseStream()
       this.setState("saving", "Inserting image…")
       canvas.toBlob(blob => {
@@ -316,7 +333,9 @@ export class MediaCapture {
     if(this.closed || this.state !== "ready" || !this.stream) return
     const generation = this.generation
     try {
-      const recorder = new MediaRecorder(this.stream)
+      // Keep the native stream unless its orientation needs correction. CSS
+      // transforms alone do not affect canvas snapshots or MediaRecorder.
+      const recorder = new MediaRecorder(this.rotation || this.automaticRotation ? this.rotatedRecordingStream() : this.stream)
       this.recorder = recorder
       const chunks: Blob[] = []
       recorder.ondataavailable = event => { if(event.data.size) chunks.push(event.data) }
@@ -374,7 +393,86 @@ export class MediaCapture {
     this.timer = null
   }
 
+  private rotate(degrees: number) {
+    if(this.closed || this.state !== "ready" || !this.screen || this.media === "audio") return
+    this.manualRotation = true
+    this.rotation = (this.rotation + degrees + 360) % 360
+    this.updatePreview()
+  }
+
+  private updatePreview() {
+    if(this.closed || !this.stream) return
+    const {videoWidth: width, videoHeight: height} = this.preview
+    if(!width || !height) return
+    // iPad WebKit supplies portrait screen buffers without applying the screen
+    // orientation (#512). Do not apply this mapping to cameras or other screens.
+    const userAgent = navigator.userAgent
+    const iPad = /iPad/.test(userAgent) || /Macintosh/.test(userAgent) && navigator.maxTouchPoints > 1
+    const orientation = window.screen.orientation
+    const automatic = this.screen && this.media !== "audio" && iPad && /AppleWebKit/.test(userAgent)
+      && this.stream.getVideoTracks()[0]?.getSettings().displaySurface === "monitor" && width < height && Boolean(orientation)
+    if(automatic && !this.manualRotation) {
+      this.rotation = {"portrait-primary": 0, "landscape-primary": 270, "portrait-secondary": 180, "landscape-secondary": 90}[orientation.type]
+    }
+    else if(this.automaticRotation && !this.manualRotation) this.rotation = 0
+    this.automaticRotation = automatic
+    this.root.querySelector<HTMLElement>(".rotation")!.hidden = !this.screen || this.media === "audio"
+    const quarterTurn = this.rotation % 180 !== 0
+    const aspect = quarterTurn ? height / width : width / height
+    this.previewBox.style.setProperty("--aspect", String(aspect))
+    this.preview.style.width = quarterTurn ? `calc(100% / ${aspect})` : "100%"
+    this.preview.style.height = quarterTurn ? `calc(100% * ${aspect})` : "100%"
+    this.preview.style.transform = `translate(-50%, -50%) rotate(${this.rotation}deg)`
+  }
+
+  private drawFrame(canvas: HTMLCanvasElement) {
+    const {videoWidth: width, videoHeight: height} = this.preview
+    if(!width || !height || this.preview.readyState < 2) throw new Error("No video frame available")
+    const quarterTurn = this.rotation % 180 !== 0
+    const outputWidth = quarterTurn ? height : width
+    const outputHeight = quarterTurn ? width : height
+    if(canvas.width !== outputWidth) canvas.width = outputWidth
+    if(canvas.height !== outputHeight) canvas.height = outputHeight
+    const context = canvas.getContext("2d")
+    if(!context) throw new Error("Canvas unavailable")
+    if(!this.rotation) context.drawImage(this.preview, 0, 0)
+    else {
+      context.save()
+      context.translate(canvas.width / 2, canvas.height / 2)
+      context.rotate(this.rotation * Math.PI / 180)
+      context.drawImage(this.preview, -width / 2, -height / 2)
+      context.restore()
+    }
+  }
+
+  private rotatedRecordingStream() {
+    const canvas = document.createElement("canvas")
+    if(typeof canvas.captureStream !== "function") throw new DOMException("Unavailable", "NotSupportedError")
+    this.drawFrame(canvas)
+    const stream = this.recordingStream = canvas.captureStream(30)
+    this.stream!.getAudioTracks().forEach(track => stream.addTrack(track))
+    const next = () => {
+      if(this.recordingStream !== stream) return
+      try { this.drawFrame(canvas) }
+      catch { this.fail("Recording failed. Check the source and try again."); return }
+      this.recordingFrame = this.preview.requestVideoFrameCallback
+        ? {kind: "video", id: this.preview.requestVideoFrameCallback(next)}
+        : {kind: "animation", id: requestAnimationFrame(next)}
+    }
+    next()
+    return stream
+  }
+
   private releaseStream() {
+    if(this.recordingFrame?.kind === "video") this.preview.cancelVideoFrameCallback(this.recordingFrame.id)
+    else if(this.recordingFrame) cancelAnimationFrame(this.recordingFrame.id)
+    this.recordingFrame = null
+    // Audio tracks belong to the source stream and are released below once.
+    this.recordingStream?.getVideoTracks().forEach(track => track.stop())
+    this.recordingStream = null
+    if(this.automaticRotation) this.rotation = 0
+    this.automaticRotation = false
+    this.manualRotation = false
     this.trackListeners.forEach((listener, track) => track.removeEventListener("ended", listener))
     this.trackListeners.clear()
     this.stream?.getTracks().forEach(track => track.stop())
@@ -382,6 +480,7 @@ export class MediaCapture {
     this.preview.pause()
     this.preview.srcObject = null
     this.preview.hidden = true
+    this.previewBox.hidden = true
   }
 
   private reset() {
