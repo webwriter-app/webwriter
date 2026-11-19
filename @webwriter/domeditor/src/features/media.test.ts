@@ -1025,12 +1025,9 @@ describe("media editing", () => {
       placeholderController.root.querySelector(".url-row"),
     )
     const style = Array.from(placeholderController.root.adoptedStyleSheets[0].cssRules, rule => rule.cssText).join("\n")
-    expect(style).toMatch(/\.content\s*\{[\s\S]*?display:\s*flex;/)
-    expect(getComputedStyle(placeholderController.root.querySelector(".content")!).flexWrap).toBe("wrap")
     expect(getComputedStyle(placeholder).overflow).toBe("clip")
     expect(style).toMatch(/container-type:\s*size;/)
-    expect(style).toMatch(/@container \(max-height:\s*5\.25rem\)[\s\S]*?flex-wrap:\s*nowrap;/)
-    expect(style).toMatch(/@container \(max-width:\s*30rem\)[\s\S]*?\.file-options \.label\s*\{[\s\S]*?display:\s*none;/)
+    expect(placeholderController.root.querySelector(".or")).toBeNull()
     const buttons = Array.from(placeholderController.root.querySelectorAll<HTMLButtonElement>(".file-options button"))
     expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Select file", "Capture screen", "Record"])
     expect(buttons.map(button => button.querySelector("svg")?.classList.toString())).toEqual([
@@ -1055,22 +1052,65 @@ describe("media editing", () => {
     expect(editor.toHTML(true)).toBe("<audio controls=\"\"></audio>")
   })
 
-  it("shortens the URL hint as the input shrinks and restores it when it grows", () => {
+  it("keeps a stable URL hint and media-specific accessible label across sizes", () => {
     document.body.innerHTML = "<audio controls></audio>"
     const audio = document.querySelector("audio")!
     const placeholder = editor.features.media.placeholder
     const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
-    const rect = vi.spyOn(input, "getBoundingClientRect")
-    rect.mockReturnValue(new DOMRect(0, 0, 300, 35))
-    placeholder.showFor(audio)
-    expect(input.placeholder).toBe("Enter audio URL")
-    rect.mockReturnValue(new DOMRect(0, 0, 100, 35))
-    placeholder.showFor(audio)
-    expect(input.placeholder).toBe("URL")
-    expect(input.getAttribute("aria-label")).toBe("Audio URL")
-    rect.mockReturnValue(new DOMRect(0, 0, 300, 35))
-    placeholder.showFor(audio)
-    expect(input.placeholder).toBe("Enter audio URL")
+    const rect = vi.spyOn(audio, "getBoundingClientRect")
+    for(const [width, height] of [[600, 180], [320, 80], [32, 32], [600, 180]]) {
+      rect.mockReturnValue(new DOMRect(0, 0, width, height))
+      placeholder.showFor(audio)
+      expect(input.placeholder).toBe("URL")
+      expect(input).toHaveAccessibleName("Audio URL")
+    }
+  })
+
+  it.each([[239, 180, true], [240, 40, false], [600, 39, true], [600, 40, false]])(
+    "uses the popup only when a normal control row cannot fit at %ix%i", (width, height, minimal) => {
+      document.body.innerHTML = "<picture><img></picture>"
+      const image = document.querySelector("picture")!
+      vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, width, height))
+      const placeholder = editor.features.media.placeholder
+      placeholder.showFor(image)
+      expect(placeholder.element.hasAttribute("data-compact")).toBe(minimal)
+      expect(placeholder.root.querySelector(".content")!.hasAttribute("popover")).toBe(minimal)
+    },
+  )
+
+  it("retains URL entry and focus when resizing into and out of the popup", () => {
+    document.body.innerHTML = "<picture><img></picture>"
+    const image = document.querySelector("picture")!
+    const rect = vi.spyOn(image, "getBoundingClientRect")
+    const placeholder = editor.features.media.placeholder
+    const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+    for(const [width, height] of [[600, 180], [320, 80], [100, 80], [600, 180]]) {
+      rect.mockReturnValue(new DOMRect(0, 0, width, height))
+      placeholder.showFor(image)
+      if(width === 600 && !input.value) {
+        input.value = "https://example.com/image.png"
+        input.focus()
+      }
+      expect(input.value).toBe("https://example.com/image.png")
+      expect(placeholder.root.activeElement).toBe(input)
+      expect(placeholder.element.hasAttribute("data-popup-open")).toBe(width < 240)
+    }
+  })
+
+  it("fits the full source popup beside a viewport scrollbar", () => {
+    document.body.innerHTML = "<picture><img></picture>"
+    const image = document.querySelector("picture")!
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(290, 10, 32, 32))
+    const viewport = vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(320)
+    try {
+      const placeholder = editor.features.media.placeholder
+      placeholder.showFor(image)
+      placeholder.focusUrl()
+      const content = placeholder.root.querySelector<HTMLElement>(".content")!
+      expect(content.style.width).toBe("304px")
+      expect(content.style.left).toBe("8px")
+    }
+    finally { viewport.mockRestore() }
   })
 
   it("keeps empty media source entry in view after the editing viewport is resized", () => {
@@ -1165,17 +1205,17 @@ describe("media editing", () => {
     const geometry = vi.spyOn(editor.features.transformation, "boxGeometry")
     const placeholder = editor.features.media.placeholder
     for(const target of targets) {
-      const rect = vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 40, 200, 300))
-      geometry.mockReturnValue({...box, matrix, width: 300, height: 200})
+      const rect = vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 40, 240, 300))
+      geometry.mockReturnValue({...box, matrix, width: 300, height: 240})
       placeholder.showFor(target)
       expect(placeholder.element).not.toHaveAttribute("data-compact")
       expect(placeholder.element.style.transform).toBe("")
-      expect(placeholder.element.style.width).toBe("200px")
+      expect(placeholder.element.style.width).toBe("240px")
       expect(placeholder.element.style.height).toBe("300px")
       expect(placeholder.backdrop.hidden).toBe(false)
       expect(placeholder.backdrop.style.transform).toBe("matrix(0, 1, -1, 0, 0, 0)")
       expect(placeholder.backdrop.style.width).toBe("300px")
-      expect(placeholder.backdrop.style.height).toBe("200px")
+      expect(placeholder.backdrop.style.height).toBe("240px")
 
       rect.mockReturnValue(new DOMRect(40, 40, 80, 300))
       geometry.mockReturnValue({...box, matrix, width: 300, height: 80})
@@ -1199,10 +1239,10 @@ describe("media editing", () => {
     const video = document.querySelector("video")!
     const box = editor.features.transformation.boxGeometry(video)
     const matrix = new DOMMatrix().rotate(45)
-    const projectedSize = (300 + 160) / Math.sqrt(2)
+    const projectedSize = (380 + 200) / Math.sqrt(2)
     const bounds = new DOMRect(40, 40, projectedSize, projectedSize)
     vi.spyOn(video, "getBoundingClientRect").mockReturnValue(bounds)
-    vi.spyOn(editor.features.transformation, "boxGeometry").mockReturnValue({...box, matrix, width: 300, height: 160})
+    vi.spyOn(editor.features.transformation, "boxGeometry").mockReturnValue({...box, matrix, width: 380, height: 200})
     const placeholder = editor.features.media.placeholder
 
     placeholder.showFor(video)
@@ -1214,8 +1254,8 @@ describe("media editing", () => {
     for(const x of [parseFloat(left), parseFloat(left) + parseFloat(width)]) {
       for(const y of [parseFloat(top), parseFloat(top) + parseFloat(height)]) {
         const corner = inverse.transformPoint({x: x - bounds.left - bounds.width / 2, y: y - bounds.top - bounds.height / 2})
-        expect(Math.abs(corner.x)).toBeLessThanOrEqual(150.01)
-        expect(Math.abs(corner.y)).toBeLessThanOrEqual(80.01)
+        expect(Math.abs(corner.x)).toBeLessThanOrEqual(190.01)
+        expect(Math.abs(corner.y)).toBeLessThanOrEqual(100.01)
       }
     }
   })

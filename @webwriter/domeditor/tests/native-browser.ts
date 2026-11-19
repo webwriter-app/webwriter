@@ -4534,71 +4534,74 @@ await check("media and graphics enforce minimum editing dimensions", async () =>
   }
 })
 
-await check("empty media controls wrap to fit their element", async () => {
-  const media = document.createElement("picture")
-  media.innerHTML = "<img>"
-  media.style.cssText = "height:180px;max-width:none"
-  fixture.append(media)
+await check("empty media controls use three stable layouts", async () => {
   const placeholder = editor.features.media.placeholder
+  const content = placeholder.root.querySelector<HTMLElement>(".content")!
+  const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+  const expand = placeholder.root.querySelector<HTMLButtonElement>(".expand")!
+  const sourceButtons = placeholder.root.querySelector<HTMLElement>(".file-options")!
+  const urlRow = placeholder.root.querySelector<HTMLElement>(".url-row")!
+  const sizes = [[800, 180], [600, 180], [488, 180], [487, 180], [400, 180], [320, 180],
+    [240, 180], [239, 180], [120, 180], [32, 32], [600, 104], [600, 103], [600, 80],
+    [600, 40], [600, 39], [600, 32], [320, 40], [240, 40], [800, 180]]
   try {
-    for(const width of [800, 320, 120, 800]) {
-      media.style.width = `${width}px`
-      $.selectElement(media)
-      editor.features.selection.processSelection(undefined, {scrollIntoView: false})
-      placeholder.showFor(media)
-      await layoutFrame(); await layoutFrame()
-      const buttons = placeholder.root.querySelector(".file-options")!.getBoundingClientRect()
-      const url = placeholder.root.querySelector(".url-row")!.getBoundingClientRect()
-      const host = placeholder.element.getBoundingClientRect()
-      const wraps = host.width < buttons.width + 340 // 20rem URL basis, the separator, and flex gaps
-      assert(wraps ? url.top >= buttons.bottom : Math.abs(url.top - buttons.top) < 2,
-        `URL input did not ${wraps ? "wrap" : "fit beside the buttons"} at ${width}px: ${JSON.stringify({host: host.toJSON(), buttons: buttons.toJSON(), url: url.toJSON()})}`)
-      assert(url.left >= host.left && url.right <= host.right && buttons.left >= host.left && buttons.right <= host.right,
-        `media controls overflow at ${width}px`)
-      assert(url.width > buttons.width || width === 120, "wrapped URL input does not use the available width")
-    }
-    for(const type of ["picture", "audio", "video"]) {
-      const shallow = document.createElement(type)
-      if(type === "picture") shallow.innerHTML = "<img>"
-      fixture.append(shallow)
+    for(const type of ["picture", "audio", "video", "iframe", "svg"]) {
+      const media = type === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", "svg") : document.createElement(type)
+      if(type === "picture") media.innerHTML = "<img>"
+      if(type === "svg") media.innerHTML = '<image width="800" height="180"></image>'
+      fixture.append(media)
+      const target = type === "svg" ? media.querySelector("image")! : media
       try {
-        for(const height of [32, 54, 80]) {
-          for(const width of [1000, 800, 600, 320, 200, 120]) {
-            shallow.style.cssText = `width:${width}px;height:${height}px;max-width:none`
-            $.selectElement(shallow)
-            editor.features.selection.processSelection(undefined, {scrollIntoView: false})
-            placeholder.showFor(shallow)
-            await layoutFrame()
-            const host = placeholder.element.getBoundingClientRect()
-            const buttons = placeholder.root.querySelector(".file-options")!.getBoundingClientRect()
-            const url = placeholder.root.querySelector(".url-row")!.getBoundingClientRect()
-            assert(Math.abs(url.top - buttons.top) < 2, `${type} controls wrapped at ${width}x${height}`)
-            for(const rect of [buttons, url]) {
-              assert(rect.left >= host.left - 1 && rect.right <= host.right + 1 && rect.top >= host.top - 1 && rect.bottom <= host.bottom + 1,
-                `${type} controls overflow at ${width}x${height}`)
-            }
-            assert(getComputedStyle(placeholder.element).overflow === "clip", "empty media controls allow scrolling")
-            if(width >= 600) assert(url.width >= 320, "URL input shortened before button labels yielded")
-            const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
-            assert(input.placeholder === (url.width < 240 ? "URL" : `Enter ${type === "picture" ? "image" : type} URL`), "URL hint does not match input space")
-            for(const button of placeholder.root.querySelectorAll<HTMLElement>(".file-options button:not([hidden])")) {
-              const buttonRect = button.getBoundingClientRect(), icon = button.querySelector("svg")!.getBoundingClientRect()
-              assert(icon.left >= buttonRect.left && icon.right <= buttonRect.right && buttonRect.left >= buttons.left && buttonRect.right <= buttons.right,
-                `${type} icon button is clipped at ${width}x${height}`)
-            }
-            const labels = placeholder.root.querySelectorAll<HTMLElement>(".file-options button:not([hidden]) .label")
-            assert(Array.from(labels).every(label => getComputedStyle(label).display === (host.width <= 832 ? "none" : "block")),
-              `button labels did not yield before the URL at ${width}x${height}`)
+        const states = new Set<string>()
+        for(const [width, height] of sizes) {
+          media.style.cssText = `display:block;width:${width}px;height:${height}px;min-width:0;min-height:0;max-width:none`
+          if(type === "svg") {
+            target.setAttribute("width", String(width))
+            target.setAttribute("height", String(height))
+          }
+          $.selectElement(media)
+          editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+          await layoutFrame()
+          placeholder.showFor(target)
+          input.blur()
+          // Inspect the placeholder itself, independently of selection's automatic URL focus.
+          input.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+          const host = placeholder.element.getBoundingClientRect()
+          const minimal = host.width < 240 || host.height < 40
+          const full = host.width - 8 >= 480 && host.height - 8 >= 96
+          const context = `${type} at ${width}x${height} (${host.width}x${host.height})`
+          assert(host.width > 0 && host.height > 0, `${context}: placeholder disappeared`)
+          assert(placeholder.element.hasAttribute("data-compact") === minimal, `${context}: wrong minimal boundary`)
+          assert(input.placeholder === "URL" && !placeholder.root.querySelector(".or"), `${context}: extra text transition`)
+          if(minimal) {
+            states.add("minimal")
+            assert(getComputedStyle(expand).display === "grid" && getComputedStyle(content).display === "none",
+              `${context}: minimal state does not show a single button`)
+            continue
+          }
+          states.add(full ? "full" : "compact")
+          assert(getComputedStyle(expand).display === "none", `${context}: inline state shows the popup button`)
+          const buttons = sourceButtons.getBoundingClientRect(), url = urlRow.getBoundingClientRect()
+          assert(full ? url.top >= buttons.bottom : Math.abs(url.top - buttons.top) < 2,
+            `${context}: wrong control arrangement`)
+          for(const rect of [buttons, url]) assert(rect.left >= host.left - 1 && rect.right <= host.right + 1
+            && rect.top >= host.top - 1 && rect.bottom <= host.bottom + 1, `${context}: controls overflow`)
+          assert(url.width >= 120, `${context}: inline URL field is too narrow`)
+          assert(input.getBoundingClientRect().height === 32, `${context}: input shrank`)
+          for(const button of sourceButtons.querySelectorAll<HTMLElement>("button:not([hidden])")) {
+            const label = button.querySelector<HTMLElement>(".label")!, icon = button.querySelector("svg")!.getBoundingClientRect()
+            const box = button.getBoundingClientRect()
+            assert((getComputedStyle(label).display !== "none") === full, `${context}: wrong label visibility`)
+            assert(icon.width === 18 && icon.height === 18 && icon.left >= box.left && icon.right <= box.right,
+              `${context}: icon shrank or was clipped`)
           }
         }
+        assert(states.size === 3, `${type}: did not exercise exactly three layouts: ${[...states]}`)
       }
-      finally { shallow.remove() }
+      finally { placeholder.hide(); media.remove() }
     }
   }
-  finally {
-    placeholder.hide()
-    media.remove()
-  }
+  finally { placeholder.hide() }
 })
 
 await check("tiny images open media inputs in a speech bubble", async () => {
@@ -4638,7 +4641,7 @@ await check("tiny images open media inputs in a speech bubble", async () => {
       assert(rect.left >= popup.left && rect.right <= popup.right && rect.top >= popup.top && rect.bottom <= popup.bottom, "media bubble clips its inputs")
     }
     assert(getComputedStyle(content, "::before").content === '\"\"', "media bubble has no pointer")
-    assert(placeholder.root.activeElement === input && input.placeholder === "Enter image URL", "media bubble did not focus the full URL input")
+    assert(placeholder.root.activeElement === input && input.placeholder === "URL", "media bubble did not focus the full URL input")
     content.hidePopover()
     await layoutFrame()
     assert(expand.getAttribute("aria-expanded") === "false" && !placeholder.element.hasAttribute("data-popup-open"), "native dismissal did not reset the media button")
@@ -4646,6 +4649,15 @@ await check("tiny images open media inputs in a speech bubble", async () => {
     input.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
     assert(!content.matches(":popover-open") && placeholder.root.activeElement === expand, "Escape did not close the bubble and restore button focus")
     expand.click()
+    input.value = "https://example.com/image.png"
+    for(const [width, height] of [[600, 180], [320, 180], [120, 80]]) {
+      picture.style.cssText = `width:${width}px;height:${height}px;max-width:none`
+      placeholder.showFor(picture)
+      await layoutFrame()
+      assert(input.value === "https://example.com/image.png" && placeholder.root.activeElement === input,
+        `resizing to ${width}x${height} lost URL entry or focus`)
+      assert(content.matches(":popover-open") === (width < 240), "resizing left the wrong popup state")
+    }
     placeholder.hide()
     assert(!content.matches(":popover-open"), "hiding media controls leaked an open bubble")
     assert(!editor.toHTML(true).includes("media-inputs"), "media bubble leaked into serialized content")

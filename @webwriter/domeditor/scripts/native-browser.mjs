@@ -147,7 +147,7 @@ const expectedChecks = [
   "table presets respect whole-table and cell selections without changing layout",
   "figure permalinks align with padded caption numbering",
   "empty caption numbering is visible as a grey editing placeholder",
-  "empty media controls wrap to fit their element",
+  "empty media controls use three stable layouts",
   "whitespace beside a lone floated figure selects document start",
   "audio insertion retains element selection at the document start",
   "float previews match projected media bounds",
