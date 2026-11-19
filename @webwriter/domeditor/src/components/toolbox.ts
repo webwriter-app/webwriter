@@ -1248,9 +1248,10 @@ export class DomEditorToolbox extends EditingControls {
     const tableGroup = this.selectedElementTypes.find(item => item.element.localName === "table")
       ?? this.selectedElementTypes.find(item => ["td", "th"].includes(item.element.localName))
     const tableControls = Boolean(this.table?.active && (group ? group === tableGroup : ["table", "td", "th"].includes(localName)))
-    const commands = tableControls || groupedWidgetOptions ? nothing : group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
+    const commands = tableControls || groupedWidgetOptions ? nothing : widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption,
+      {...widgetOptions, actions: widgetOptions.actions.filter(action => !action.buttonGroup)}, selectionType)
       : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
-      : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
+      : nothing
     const hasOptions = advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
     const icon = heading ? "Heading" : list ? "List" : attributes?.icon ?? label
     const iconUrl = heading || list ? "" : attributes?.iconUrl ?? ""
@@ -1335,7 +1336,8 @@ export class DomEditorToolbox extends EditingControls {
         </div>` : nothing}
       ${widgetOptions ? html`<div class="specialized-widget-primary">${groupedWidgetOptions
         ? this.renderWidgetOptionsControls(widgetOptions.options, dispatchOption, widgetOptions, selectionType)
-        : html`<div class="widget-options">${widgetOptions.options.slice(0, 3).map(option => this.renderWidgetOptionField(option, dispatchOption, group ? `${widgetOptions.path.join("-")}-` : ""))}</div>`}</div>` : nothing}
+        : html`<div class="widget-options">${widgetOptions.options.slice(0, 3).map(option => this.renderWidgetOptionField(option, dispatchOption, group ? `${widgetOptions.path.join("-")}-` : ""))}</div>
+          ${this.renderWidgetActions(widgetOptions.actions.filter(action => action.buttonGroup), selectionType)}`}</div>` : nothing}
       <element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${primary}
         .selectionKey=${JSON.stringify(group ? (listGroups ?? [group]).map(item => [item.element.namespaceURI, item.element.localName, item.element.path, item.count])
           : [[namespaceURI, localName, attributes?.path, 1]])}

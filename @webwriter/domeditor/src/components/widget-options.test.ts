@@ -142,6 +142,51 @@ describe("rich widget options drawer", () => {
     expect(changes.mock.calls.map(([event]) => event.detail)).toEqual([{name: "nfa"}])
   })
 
+  it("shows ungrouped button groups in main controls while keeping extra options and standalone actions advanced", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.widgetOptions = widgetState(
+      Array.from({length: 5}, (_, i) => ({name: `field${i}`, label: `Field ${i}`, type: "string" as const, value: `Value ${i}`})),
+      [
+        {name: "add", label: "Add", buttonGroup: "items", icon: "Plus"},
+        {name: "remove", label: "Remove", buttonGroup: "items", icon: "Delete"},
+        {name: "duplicate", label: "Duplicate", buttonGroup: "items", icon: "Copy"},
+        {name: "reset", label: "Reset"},
+      ],
+    )
+    await toolbox.updateComplete
+    const drawer = drawerFor(toolbox)
+    await settleChildren(drawer)
+    const primary = drawer.querySelector(".specialized-widget-primary")!
+    const advanced = drawer.querySelector('[slot="more"]')!
+    const labels = (root: ParentNode) => Array.from(root.querySelectorAll<RibbonButton>(".widget-action"), button => button.label)
+    expect(labels(primary)).toEqual(["Add", "Remove", "Duplicate"])
+    expect(primary.querySelectorAll('.widget-action-group[role="group"]')).toHaveLength(1)
+    expect(labels(advanced)).toEqual(["Reset"])
+    expect(drawer.querySelectorAll(".widget-action")).toHaveLength(4)
+    expect(Array.from(primary.querySelectorAll("input"), input => input.value)).toEqual(["Value 0", "Value 1", "Value 2"])
+    expect(Array.from(advanced.querySelectorAll("input"), input => input.value)).toEqual(["Value 3", "Value 4"])
+    const changes = vi.fn()
+    toolbox.addEventListener("widget-action", changes)
+    primary.querySelector<RibbonButton>(".widget-action")!.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    expect(changes.mock.calls.map(([event]) => event.detail)).toEqual([{name: "add"}])
+  })
+
+  it("omits Advanced when a widget only has a primary option and grouped actions", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.widgetOptions = widgetState([
+      {name: "view", label: "View", type: "select", value: "tabs", choices: [{value: "tabs", label: "Tabs"}]},
+    ], [
+      {name: "add", label: "Add", buttonGroup: "items"},
+      {name: "remove", label: "Remove", buttonGroup: "items"},
+      {name: "duplicate", label: "Duplicate", buttonGroup: "items"},
+    ])
+    await toolbox.updateComplete
+    const drawer = drawerFor(toolbox)
+    expect(drawer.expandable).toBe(false)
+    expect(drawer.querySelector('[slot="more"]')).toBeNull()
+    expect(drawer.querySelectorAll(".specialized-widget-primary .widget-action")).toHaveLength(3)
+  })
+
   it("confirms metadata actions and emits no event when confirmation is declined", async () => {
     const confirm = vi.fn()
     vi.stubGlobal("confirm", confirm)
@@ -170,7 +215,8 @@ describe("rich widget options drawer", () => {
     const groups = [{name: "advanced", label: "Advanced", collapsible: true, collapsed: true}]
     toolbox.widgetOptions = widgetState(
       Array.from({length: 5}, (_, i) => ({name: `field${i}`, label: `Field ${i}`, type: "string" as const, value: "value", group: "advanced"})),
-      [{name: "reset", label: "Reset", group: "advanced"}], groups,
+      [{name: "reset", label: "Reset", group: "advanced", buttonGroup: "editing"},
+        {name: "clear", label: "Clear", group: "advanced", buttonGroup: "editing"}], groups,
     )
     await toolbox.updateComplete
     const group = drawerFor(toolbox).querySelector(".widget-option-group")!
@@ -178,6 +224,7 @@ describe("rich widget options drawer", () => {
     expect(details.open).toBe(false)
     expect(group.querySelectorAll("input")).toHaveLength(5)
     expect(group.querySelector<RibbonButton>(".widget-action")?.label).toBe("Reset")
+    expect(group.querySelectorAll('.widget-action-group[role="group"] .widget-action')).toHaveLength(2)
     details.open = true
     toolbox.widgetOptions = {...toolbox.widgetOptions!, options: toolbox.widgetOptions!.options.map(option => ({...option, value: "updated"}))}
     await toolbox.updateComplete
