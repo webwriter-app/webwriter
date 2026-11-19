@@ -135,7 +135,9 @@ const ribbonOutline = (d: number) => `M 20 ${20-d/2} L 80 ${20-d/2} L 80 30 L 10
 const ribbonPreset = (label: string, down: boolean, curved: boolean) => base(label, "Stars and banners", ([d]) => {
   const path = curved
     ? `M 20 15 Q 50 ${15+d} 80 15 L 80 30 L 100 25 L 90 50 L 100 75 L 80 70 L 80 80 Q 50 ${80+d} 20 80 L 20 70 L 0 75 L 10 50 L 0 25 L 20 30 Z M 20 30 L 20 70 M 80 30 L 80 70 M 20 70 L 35 80 M 80 70 L 65 80`
-    : `${ribbonOutline(d)} M 20 30 L 20 80 M 80 30 L 80 80 M 20 65 L 80 65`
+    // The tails turn inward behind the face, with a triangular return fold.
+    // Keep the open face contour winding with the outline so its fill stays solid.
+    : `M 20 ${20-d/2} L 80 ${20-d/2} L 80 30 L 100 30 L 90 55 L 100 80 L 65 80 L 65 65 L 35 65 L 35 80 L 0 80 L 10 55 L 0 30 L 20 30 Z M 80 30 L 80 65 L 20 65 L 20 30 M 20 65 L 35 80 M 80 65 L 65 80`
   return down ? turn(path,2) : path
 }, [poi("fold", curved ? "Ribbon curve" : "Fold depth", 15, 0, curved ? 28 : 40, p => ({x:50,y:down ? curved ? 85-p/2 : 80+p/2 : curved ? 15+p/2 : 20-p/2}), "y")])
 
@@ -160,11 +162,12 @@ const scrollPath = (radius: number) => {
 
 const legacyRibbonPath = (d: number) => `${ribbonOutline(d)} M 20 30 L 20 65 L 80 65 L 80 30 M 20 65 L 35 80 M 80 65 L 65 80`
 const legacyScrollPath = (d: number) => `M 20 ${d} Q 20 0 30 0 L 95 0 Q 100 ${d} 90 ${d} L 80 ${d} L 80 ${100-d} Q 80 100 70 100 L 5 100 Q 0 ${100-d} 10 ${100-d} L 20 ${100-d} Z M 30 0 Q 40 ${d} 30 ${d} L 20 ${d} M 70 100 Q 60 ${100-d} 70 ${100-d} L 80 ${100-d}`
-export const legacyBannerPaths: Partial<Record<keyof typeof graphicShapePresets, GraphicShapePreset["draw"]>> = {
-  "ribbon-up": ([d]) => legacyRibbonPath(d),
-  "ribbon-down": ([d]) => turn(legacyRibbonPath(d), 2),
-  "vertical-scroll": ([d]) => legacyScrollPath(d),
-  "horizontal-scroll": ([d]) => turn(legacyScrollPath(d), 1),
+const legacyRibbonSeams = (d: number) => `${ribbonOutline(d)} M 20 30 L 20 80 M 80 30 L 80 80 M 20 65 L 80 65`
+export const legacyBannerPaths: Partial<Record<keyof typeof graphicShapePresets, GraphicShapePreset["draw"][]>> = {
+  "ribbon-up": [([d]) => legacyRibbonPath(d), ([d]) => legacyRibbonSeams(d)],
+  "ribbon-down": [([d]) => turn(legacyRibbonPath(d), 2), ([d]) => turn(legacyRibbonSeams(d), 2)],
+  "vertical-scroll": [([d]) => legacyScrollPath(d)],
+  "horizontal-scroll": [([d]) => turn(legacyScrollPath(d), 1)],
 }
 const cloudBubble = () => "M 12 60 C -5 60 -3 38 10 35 C -2 18 12 10 25 15 C 28 -3 46 -3 50 10 C 63 -3 78 0 78 15 C 96 5 105 20 92 33 C 110 40 100 58 88 58 C 88 78 68 80 60 67 C 48 83 32 78 30 65 C 17 78 7 73 12 60 Z"
 const cloudCoordinates = cloudBubble().match(/-?\d+/g)!.map(Number)
