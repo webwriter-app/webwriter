@@ -8,6 +8,8 @@ import {MediaCapture} from "../components/media-capture"
 import type {MediaSourceInfo} from "../components/media-source-info"
 import {mediaSourceButtonStyles} from "../components/media-source.styles"
 import {applyIframeSandboxPolicy, stripActiveContent} from "../active-content"
+import {WebsiteSandbox} from "../website-sandbox"
+import {isEditorOwnedAttribute} from "../editor-artifacts"
 import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
 import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
 import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
@@ -102,6 +104,7 @@ const isTimedResourceElement = (node: Node, resource?: TimedMediaResourceType): 
 )
 
 const stateAttributes = (element: Element) => Object.fromEntries(Array.from(element.attributes).flatMap(attribute => {
+  if(attribute.namespaceURI === null && isEditorOwnedAttribute(element, attribute.name)) return []
   if(attribute.name !== "class") return [[attribute.name, attribute.value]]
   const classes = authoredClassValue(attribute.value)
   return classes ? [["class", classes]] : []
@@ -1300,6 +1303,7 @@ export class MediaFeature extends EditorFeature {
   private pointerDown = false
   private pendingUrlFocus: Element | null = null
   private observer: MutationObserver | null = null
+  private websiteSandbox?: WebsiteSandbox
   private resizeObserver: ResizeObserver | null = null
   private refreshQueued = false
   private refreshAfterTransform = false
@@ -1600,12 +1604,21 @@ export class MediaFeature extends EditorFeature {
     if(this.isEnabled) return
     super.enable()
     applyIframeSandboxPolicy(document.body, [this.editor.options.bridgeOrigin ?? ""])
+    this.websiteSandbox = new WebsiteSandbox(document.body, async source => {
+      const known = this.editor.mediaSourceBlob(source)
+      if(known) return known
+      const response = await fetch(source)
+      if(!response.ok) throw new Error("Local website is unavailable")
+      return response.blob()
+    }, frame => !frame.hasAttribute("is") && !sourceEditingBlocked(frame, this.editor.schema))
+    this.websiteSandbox.refresh()
     document.body.querySelectorAll("audio, video").forEach(media => {
       if(media instanceof HTMLMediaElement) media.pause()
     })
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
       this.observer = new FrameMutationObserver(records => {
+        this.websiteSandbox?.refresh()
         records = records.filter(record => record.type !== "attributes" || record.attributeName !== "class"
           || authoredClassValue(record.oldValue) !== authoredClassValue((record.target as Element).getAttribute("class")))
         if(!records.length) return
@@ -1668,6 +1681,8 @@ export class MediaFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.websiteSandbox?.dispose()
+    this.websiteSandbox = undefined
     if(this.viewportFrame !== null) cancelAnimationFrame(this.viewportFrame)
     this.viewportFrame = null
     this.refreshAfterTransform = false
@@ -2890,6 +2905,7 @@ export class MediaFeature extends EditorFeature {
   }
 
   private refresh() {
+    this.websiteSandbox?.refresh()
     this.refreshAfterTransform = false
     if(this.mediaCapture && !this.mediaCapture.valid()) this.mediaCapture.controller.close()
     batchPresentationStates(document, () => {

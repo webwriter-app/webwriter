@@ -72,6 +72,7 @@ import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
 import {elementAttributeState, elementAttributeTargetId} from "./element-attributes"
 import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
 import {runtimeDocumentBaseURL} from "./document-base-url"
+import {dataURLText, localWebsiteHTML, prepareWebsiteFrames} from "./website-sandbox"
 
 async function hasOfflineModuleImports(source: string) {
   // The standalone reader cannot export offline packages.
@@ -1800,6 +1801,7 @@ export class DOMEditor {
       await this.bundleOfflinePackageModules(root)
       await this.inlineExternalResources(documentElement)
     }
+    prepareWebsiteFrames(documentElement)
     const serialize = prepareWidgetGroupingsForSerialization(documentElement)
     return serialize(`${root.doctype}${documentElement.outerHTML}`)
   }
@@ -1923,10 +1925,23 @@ export class DOMEditor {
       ["object[data]", "data"],
       ["a[download][href^='http:' i], a[download][href^='https:' i]", "href"],
     ]
-    // A downloaded HTML frame can still fetch its own scripts and resources.
-    // Do not present that document as a self-contained offline export.
-    if(root.querySelector("iframe[src], iframe[srcdoc]")) {
-      throw new Error("Offline export cannot embed an iframe's resource dependencies. Use HTML format for this document.")
+    for(const frame of root.querySelectorAll<HTMLIFrameElement>("iframe[src], iframe[srcdoc]")) {
+      const source = frame.getAttribute("src") ?? ""
+      const html = !frame.hasAttribute("srcdoc") ? localWebsiteHTML(source) : null
+      if(html === null) throw new Error("Offline export cannot embed an iframe's resource dependencies. Use HTML format for this document.")
+      jobs.push((async () => {
+        const page = new DOMParser().parseFromString(html, "text/html")
+        await this.inlineBlobSources(page)
+        await this.inlineExternalResources(page.documentElement)
+        prepareWebsiteFrames(page)
+        const bundled = `${serializeDoctype(page.doctype)}${page.documentElement.outerHTML}`
+        // Keep exact input bytes in src when no resources needed rewriting.
+        // Reopening restores the exact original even after dependency bundling.
+        const parsedOriginal = new DOMParser().parseFromString(html, "text/html")
+        if(page.documentElement.outerHTML === parsedOriginal.documentElement.outerHTML) return
+        frame.setAttribute(originalURLAttribute("src"), source)
+        frame.src = await this.blobDataURL(new Blob([bundled], {type: "text/html"}))
+      })())
     }
     const svgResources: Array<[Element, string]> = []
     for(const element of root.querySelectorAll("image, use, feImage")) {
@@ -2059,14 +2074,15 @@ export class DOMEditor {
 
   private async inlineScript(script: HTMLScriptElement) {
     const original = script.getAttribute("src")
-    if(original && /^data:/i.test(original)) return
+    const embedded = !!original && /^data:/i.test(original)
     try {
-      const source = original ? await (await this.fetchResource(original)).text() : script.textContent ?? ""
+      const source = embedded ? dataURLText(original!) : original ? await (await this.fetchResource(original)).text() : script.textContent ?? ""
+      if(source === null) throw new Error("Invalid embedded script")
       const type = script.type.trim().toLowerCase()
       if(!type || type === "module" || /^(?:text|application)\/(?:java|ecma)script$/.test(type)) {
         if(await hasOfflineModuleImports(source)) throw new Error("Offline export cannot bundle this module dependency graph. Use HTML format for this document.")
       }
-      if(!original) return
+      if(!original || embedded) return
       script.setAttribute(originalURLAttribute("src"), original)
       // Keep external script semantics and avoid HTML raw-text terminators in
       // JavaScript strings being interpreted as markup on reopening.

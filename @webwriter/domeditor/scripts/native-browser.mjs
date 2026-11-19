@@ -247,6 +247,7 @@ const expectedChecks = [
   "uploaded videos survive installing and removing packages",
   "local HTML websites load as isolated blob and saved data frames",
   "remote websites retain their origin in editing, preview and exports",
+  "shared HTML sandbox runs widget code under editor and preview CSP",
   "canvas and slide delete affordances follow rotation placement",
   "canvas and slide element selections keep Delete borderless",
   "canvas and slide copyright controls share freeform placement",
@@ -514,6 +515,11 @@ try {
   if(!valid) {
     process.stderr.write(`${result?.error ?? "Native checks failed"}\n${mathVisual && checks.length ? "" : Buffer.concat(errors).toString()}`)
     process.exitCode = 1
+  }
+  else if(result.standaloneWebsiteHTML) {
+    const filename = join(profile, "website-export.html")
+    await writeFile(filename, result.standaloneWebsiteHTML)
+    execFileSync(process.execPath, ["scripts/sandbox-standalone.mjs", `--website=${filename}`], {stdio: "inherit", timeout: 30000})
   }
 }
 finally {

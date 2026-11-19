@@ -8,6 +8,7 @@ import {packageImportMapId, packageImportMapScript} from "./package-dependencies
 import {appendSerializedAssets, originalURLAttribute} from "./serialization"
 import type {WebWriterPackage} from "./packages"
 import legacyLayoutExample from "../examples/layouts/document.html?raw"
+import {sandboxScriptHash} from "../../widget/sandbox.js"
 
 const hostOrigin = "https://app.example"
 const frameOrigin = "https://editor.example"
@@ -208,7 +209,7 @@ describe("isolated frame documents", () => {
     const root = parse(editorFrameHTML(null, editorOptions({entryURL: "http://localhost:5173/src/editor-entry.ts"})))
     const policy = root.querySelector<HTMLMetaElement>('meta[http-equiv="Content-Security-Policy"]')!.content
     expect(policy).toContain("worker-src blob: https: http://localhost:5173;")
-    expect(policy).toContain("script-src 'nonce-host-bridge-nonce' 'strict-dynamic' 'wasm-unsafe-eval';")
+    expect(policy).toContain(`script-src 'nonce-host-bridge-nonce' 'strict-dynamic' 'wasm-unsafe-eval' '${sandboxScriptHash}';`)
     expect(policy).not.toContain("worker-src blob: https: http:;")
   })
 

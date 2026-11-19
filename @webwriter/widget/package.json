@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/widget",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "DOM-backed runtime for WebWriter widgets",
   "license": "MIT",
   "repository": {
@@ -133,6 +133,11 @@
       "source": "./obfuscate.ts",
       "types": "./obfuscate.d.ts",
       "default": "./obfuscate.js"
+    },
+    "./sandbox": {
+      "source": "./sandbox.ts",
+      "types": "./sandbox.d.ts",
+      "default": "./sandbox.js"
     }
   },
   "files": [

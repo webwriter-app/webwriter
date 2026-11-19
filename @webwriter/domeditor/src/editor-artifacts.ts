@@ -49,6 +49,41 @@ export function setDocumentKeyboardInputMode(doc: KeyboardDocument, enabled: boo
 }
 
 const detailsStateDocuments = new WeakSet<Document>()
+const websiteStateDocuments = new WeakSet<Document>()
+const websiteDocuments = new WeakMap<Element, {attribute: Attr, value: string}>()
+export const websiteDocumentMarker = "data-webwriter-original-srcdoc"
+
+/** A derived execution resource. The authored iframe source stays in src. */
+export function setWebsiteDocument(frame: HTMLIFrameElement, html: string) {
+  if(ownsWebsiteDocument(frame) && frame.getAttributeNS(null, "srcdoc") === html) return
+  frame.setAttributeNS(null, "srcdoc", html)
+  websiteDocuments.set(frame, {attribute: frame.getAttributeNodeNS(null, "srcdoc")!, value: html})
+  websiteStateDocuments.add(frame.ownerDocument)
+}
+
+export function ownsWebsiteDocument(frame: Element) {
+  const state = websiteDocuments.get(frame)
+  return !!state && frame.getAttributeNodeNS(null, "srcdoc") === state.attribute && state.attribute.value === state.value
+}
+
+export function clearWebsiteDocument(frame: Element) {
+  if(ownsWebsiteDocument(frame)) frame.removeAttributeNS(null, "srcdoc")
+  // Keep removal provenance until document/history observers have run.
+}
+
+/** Exported execution documents are native resource overrides, not authored
+ * srcdoc. Register their provenance before collaboration starts. */
+function registerWebsiteDocuments(root: ParentNode) {
+  for(const frame of root.querySelectorAll<HTMLIFrameElement>(`iframe[${websiteDocumentMarker}=""]`)) {
+    const html = frame.getAttributeNS(null, "srcdoc")
+    if(html !== null) {
+      websiteDocuments.set(frame, {attribute: frame.getAttributeNodeNS(null, "srcdoc")!, value: html})
+      websiteStateDocuments.add(frame.ownerDocument)
+    }
+    frame.removeAttribute(websiteDocumentMarker)
+  }
+  root.querySelectorAll<HTMLTemplateElement>("template").forEach(template => registerWebsiteDocuments(template.content))
+}
 
 export function markEditorOnlyNode<T extends Element>(element: T): T {
   const doc = element.ownerDocument as ArtifactDocument
@@ -70,6 +105,7 @@ export function isInsideEditorOnlyNode(element: Element | null | undefined): boo
 /** Frame resources already have a browser CSP nonce. Use it to recover their
  * provenance after HTML parsing, without an extra class or attribute. */
 export function registerFrameArtifacts(doc: Document, expectedNonce?: string) {
+  registerWebsiteDocuments(doc)
   const head = doc.head
   if(!head) return
   // The widget loader can prepend an import map after the policy takes effect.
@@ -155,8 +191,9 @@ export function copyEditorArtifactState(source: Node, clone: Node, deep = true) 
       }
     }
   }
-  if(!doc || !doc[editorOnlyKey] && !detailsStateDocuments.has(doc)) return clone
+  if(!doc || !doc[editorOnlyKey] && !detailsStateDocuments.has(doc) && !websiteStateDocuments.has(doc)) return clone
   const copy = (from: Node, to: Node): void => {
+    if(from.nodeType === 1 && to.nodeType === 1 && ownsWebsiteDocument(from as Element)) (to as Element).removeAttributeNS(null, "srcdoc")
     if(from.nodeType === 1 && to.nodeType === 1 && (from.ownerDocument as ArtifactDocument)[editorOnlyKey]?.has(from as Element)) markEditorOnlyNode(to as Element)
     if(isHTMLDetailsElement(from as Element) && isHTMLDetailsElement(to as Element)) {
       const baseline = temporaryDetailsStates.get(from as Element)
@@ -197,6 +234,11 @@ export function isAuthoredMutation(mutation: MutationRecord) {
   if(mutation.type === "characterData") return mutation.oldValue !== mutation.target.nodeValue
   if(mutation.type === "attributes") {
     const name = mutation.attributeName!
+    if(name === "srcdoc" && element && !mutation.attributeNamespace) {
+      const state = websiteDocuments.get(element)
+      if(ownsWebsiteDocument(element) || state && !element.hasAttributeNS(null, "srcdoc")
+        && !state.attribute.ownerElement && mutation.oldValue === state.value) return false
+    }
     if(name === "open" && element && isHTMLDetailsElement(element) && hasTemporaryDetailsState(element)) return false
     const current = mutation.attributeNamespace
       ? element?.getAttributeNS(mutation.attributeNamespace, name) ?? null
@@ -243,6 +285,7 @@ export function authoredClassValue(value: string | null, canonical = false) {
 /** The empty value on an installed widget is runtime state. Collaboration,
  * history and serialization preserve explicit authored values. */
 export function isEditorOwnedAttribute(element: Element, name: string, isWidget?: WidgetLookup) {
+  if(name === "srcdoc") return ownsWebsiteDocument(element)
   if(name === "inputmode") return ownsKeyboardInputMode(element)
   return name === "contenteditable" && element.getAttributeNS(null, name) === ""
     && ((isWidget ?? editorWidgetLookup(element))?.(element) ?? false)
@@ -274,6 +317,7 @@ export function clearEditorOwnedAttributes(root: Node, isWidget = editorWidgetLo
 }
 
 function clearElementEditorMarkers(element: Element, isWidget?: WidgetLookup) {
+  if(ownsWebsiteDocument(element)) element.removeAttributeNS(null, "srcdoc")
   if(isHTMLDetailsElement(element)) restoreAuthoredDetailsState(element)
   if(isEditorOwnedAttribute(element, "contenteditable", isWidget)) element.removeAttributeNS(null, "contenteditable")
   const markers = Array.from(element.classList).filter(isEditorOwnedClass)

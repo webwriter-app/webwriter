@@ -12,6 +12,8 @@ import {editorFrameOrigin} from "./frame-origins"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "./local-package-worker"
 import {ensureAuthoredElementIds} from "./authored-identities"
 import {prepareWidgetGroupingsForSerialization} from "./widget-grouping-dom"
+import {sandboxScriptHash} from "../../widget/sandbox.js"
+import {prepareWebsiteFrames} from "./website-sandbox"
 
 type FrameDocumentOptions = {
   bridgeNonce: string
@@ -133,7 +135,9 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   const entryURL = new URL(options.entryURL, /^[a-z]+:/i.test(options.entryURL) ? options.hostOrigin : editorFrameOrigin())
   const workerSource = new URL(proofreadingWorkerURL, entryURL).origin
   const testShell = new URL(`${import.meta.env.BASE_URL}frame-shell.html`, `${entryURL.origin}/`).href
-  const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation} 'wasm-unsafe-eval'; style-src 'none'; style-src-elem ${packageStyles}; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src * data: blob:; media-src * data: blob:; frame-src https: blob: data: ${testShell}; worker-src blob: https: ${workerSource}; object-src 'none'; base-uri 'none'; form-action 'none'`
+  // Only the fixed runner bootstrap receives this extra authorization. Its
+  // own guard refuses user-code execution outside an opaque child sandbox.
+  const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation} 'wasm-unsafe-eval' '${sandboxScriptHash}'; style-src 'none'; style-src-elem ${packageStyles}; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src * data: blob:; media-src * data: blob:; frame-src https: blob: data: ${testShell}; worker-src blob: https: ${workerSource}; object-src 'none'; base-uri 'none'; form-action 'none'`
   const csp = `<meta http-equiv="Content-Security-Policy" content="${escapeHTMLAttribute(policy)}">`
   const bridge = `<meta name="webwriter-editor-bridge" data-nonce="${nonce}" data-host-origin="${escapeHTMLAttribute(options.hostOrigin)}">`
   // Happy DOM deliberately disables external script execution but reports
@@ -159,6 +163,7 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   restoreOriginalResourceURLs(parsed)
   upgradeBundledDocumentThemes(parsed)
   applyIframeSandboxPolicy(parsed, [options.hostOrigin, entryURL.origin])
+  prepareWebsiteFrames(parsed)
   // The iframe receives its trusted resolution through load-widgets.
   parsed.getElementById(packageImportMapId)?.remove()
   // Saved exports carry the standalone adapter. Replace it with the nonce-bearing
@@ -255,7 +260,7 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
     // Remove the earlier policy along with the other preview bootstrap nodes.
     policy.httpEquiv = "Content-Security-Policy"
     const packageEvaluation = scripts.some(script => script.hasAttribute("src")) ? " 'unsafe-eval'" : ""
-    policy.content = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation}; style-src * data: 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src * data: blob:; frame-src https: blob: data:; worker-src blob: https:; object-src 'none'; base-uri ${options.standalone ? "'self'" : "'none'"}; form-action 'none'`
+    policy.content = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation} '${sandboxScriptHash}'; style-src * data: 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src * data: blob:; frame-src https: blob: data:; worker-src blob: https:; object-src 'none'; base-uri ${options.standalone ? "'self'" : "'none'"}; form-action 'none'`
     source.head.prepend(policy)
     if(options.executeScripts && (!options.standalone || options.learnerEntryURL)) {
       if(!options.standalone) {
@@ -287,5 +292,6 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
   // DOM implementations that retain a cloned property.
   source.designMode = "off"
   const serialize = prepareWidgetGroupingsForSerialization(source.documentElement)
+  prepareWebsiteFrames(source)
   return serialize(`${serializeDoctype(source.doctype)}${source.documentElement.outerHTML}`)
 }

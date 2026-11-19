@@ -1,5 +1,6 @@
 import {isUnsafeElementAttributeName, isUnsafeElementAttributeValue} from "./element-attributes"
 import type {ReadableElement} from "./dom-readers"
+import {ownsWebsiteDocument} from "./editor-artifacts"
 
 /** MIME type essences browsers execute as classic scripts. */
 const javaScriptMimeTypes = new Set([
@@ -48,12 +49,13 @@ export function applyIframeSandboxPolicy(root: ParentNode, protectedOrigins: rea
       if(frame.namespaceURI !== "http://www.w3.org/1999/xhtml") continue
       // Source commands must set sandbox flags before navigation starts.
       const source = frame === root && pendingSource !== undefined ? pendingSource : frame.getAttribute("src")
-      if(!source && !frame.hasAttribute("srcdoc")) continue
+      const authoredSrcdoc = frame.hasAttributeNS(null, "srcdoc") && !ownsWebsiteDocument(frame)
+      if(!source && !authoredSrcdoc) continue
       let external = false
       try {
         const frameBaseURL = frame.ownerDocument === root.ownerDocument ? baseURL : undefined
         const url = new URL(source ?? "", frameBaseURL ?? frame.ownerDocument.baseURI)
-        external = !frame.hasAttribute("srcdoc") && url.protocol === "https:"
+        external = !authoredSrcdoc && url.protocol === "https:"
           && !url.username && !url.password && !origins.has(url.origin)
       }
       catch { /* Invalid and local sources never receive a real origin. */ }
@@ -69,7 +71,7 @@ export function applyIframeSandboxPolicy(root: ParentNode, protectedOrigins: rea
         // guarantee isolation before the first navigation; commands must apply
         // the policy synchronously before assigning a source.
         if(pendingSource === undefined && frame.isConnected && frame.ownerDocument.defaultView) {
-          const attribute = frame.hasAttribute("srcdoc") ? "srcdoc" : "src"
+          const attribute = authoredSrcdoc ? "srcdoc" : "src"
           const value = frame.getAttribute(attribute)
           if(value !== null) frame.setAttribute(attribute, value)
         }

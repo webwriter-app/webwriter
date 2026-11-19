@@ -7,6 +7,7 @@ import {observePrivateDistributionRegions} from "./distribution-presentation"
 import {hydrateDistributionInstructions} from "./distribution-dom"
 import {shortcutMatchesEvent} from "./app-settings"
 import {isAppendixInteraction, isTextFieldInteraction, isWidgetShadowInteraction} from "./utility"
+import {WebsiteSandbox} from "./website-sandbox"
 
 openFrameLinksInNewTabs(window)
 
@@ -16,6 +17,12 @@ const hostOrigin = bridge?.getAttribute("data-host-origin")
 
 if(nonce && hostOrigin && window.parent !== window) {
   registerFrameArtifacts(document)
+  const websites = new WebsiteSandbox(document.body, async source => {
+    const response = await fetch(source)
+    if(!response.ok) throw new Error("Local website is unavailable")
+    return response.blob()
+  })
+  websites.observe()
   hydrateDistributionInstructions(document)
   const isWidget = widgetLookupForTags((bridge?.getAttribute("data-widget-tags") ?? "").split(" "))
   const preview = new LivePreview(isWidget)
@@ -25,7 +32,9 @@ if(nonce && hostOrigin && window.parent !== window) {
     stopPrivateMarkers?.()
     stopPrivateMarkers = undefined
   }
-  window.addEventListener("pagehide", event => { if(!event.persisted) clearPrivateMarkers() })
+  window.addEventListener("pagehide", event => {
+    if(!event.persisted) { clearPrivateMarkers(); websites.dispose() }
+  })
   const post = (message: object) => window.parent.postMessage({...message, bridgeNonce: nonce}, hostOrigin)
   let feedbackShortcut = ""
   document.addEventListener("keydown", event => {

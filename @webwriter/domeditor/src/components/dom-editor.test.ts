@@ -3558,7 +3558,7 @@ describe("DomEditor iframe setup", () => {
   it("permits installed widget compilers while keeping authored scripts nonce-gated", () => {
     const editor = new DomEditor() as unknown as {installedPackages: WebWriterPackage[], readonly editorSrcdoc: string}
     editor.installedPackages = [demoPackage]
-    expect(editor.editorSrcdoc).toMatch(/script-src 'nonce-[^']+' 'strict-dynamic' 'unsafe-eval' 'wasm-unsafe-eval';/)
+    expect(editor.editorSrcdoc).toMatch(/script-src 'nonce-[^']+' 'strict-dynamic' 'unsafe-eval' 'wasm-unsafe-eval' 'sha256-[^']+';/)
     expect(editor.editorSrcdoc).toContain("style-src-elem * data: blob: 'unsafe-inline'")
     editor.installedPackages = [{...demoPackage, scripts: []}]
     expect(editor.editorSrcdoc).not.toContain("'unsafe-eval'")
