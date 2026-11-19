@@ -12641,6 +12641,72 @@ describe("DomEditor.execute()", () => {
     expect(submenu.hidden).toBe(true)
   })
 
+  it.each(["same-origin", "isolated"])("closes ribbon dropdowns on document typing in a %s frame without consuming input", async mode => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const doc = iframe.contentDocument!
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Heading"]')!
+    await heading.updateComplete
+    const toggle = heading.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!
+    const submenu = heading.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    if(mode === "isolated") (editor as any).editorOpaque = true
+    try {
+      for(const inputType of ["insertText", "insertCompositionText"]) {
+        toggle.click()
+        await heading.updateComplete
+        expect(submenu.hidden).toBe(false)
+        if(mode === "same-origin") {
+          const input = new InputEvent("beforeinput", {inputType, data: "a", isComposing: inputType === "insertCompositionText",
+            bubbles: true, composed: true, cancelable: true})
+          doc.body.dispatchEvent(input)
+          expect(input.defaultPrevented).toBe(false)
+        }
+        else {
+          // Unauthenticated messages cannot dismiss editor UI.
+          window.dispatchEvent(new MessageEvent("message", {data: {type: "editor-frame-beforeinput"}}))
+          await heading.updateComplete
+          expect(submenu.hidden).toBe(false)
+          window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type: "editor-frame-beforeinput"}}))
+        }
+        await heading.updateComplete
+        expect(submenu.hidden).toBe(true)
+      }
+    }
+    finally { (editor as any).editorOpaque = false }
+  })
+
+  it("keeps dropdowns open while typing in ribbon, appendix, form, and widget fields", async () => {
+    const {editor, iframe} = await mountEditor()
+    const doc = iframe.contentDocument!
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Heading"]')!
+    await heading.updateComplete
+    const appendix = doc.body.attachShadow({mode: "open"})
+    appendix.append(doc.createElement("slot"))
+    const appendixInput = doc.createElement("input")
+    appendix.append(appendixInput)
+    const widget = doc.createElement("demo-widget")
+    doc.body.append(widget)
+    const widgetInput = doc.createElement("input")
+    widget.attachShadow({mode: "open"}).append(widgetInput)
+    const formInput = doc.createElement("input")
+    doc.body.append(formInput)
+    const ribbonInput = document.createElement("input")
+    ribbon.shadowRoot!.append(ribbonInput)
+    heading.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await heading.updateComplete
+    const submenu = heading.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    for(const input of [appendixInput, widgetInput, formInput, ribbonInput]) {
+      input.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "a", bubbles: true, composed: true}))
+      await heading.updateComplete
+      expect(submenu.hidden).toBe(false)
+    }
+    editor.remove()
+    const dismiss = vi.spyOn(editor as any, "dismissEditorMenus")
+    doc.body.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, composed: true}))
+    expect(dismiss).not.toHaveBeenCalled()
+  })
+
   it.each(["same-origin", "isolated"])("preserves focus in appendix URL controls in a %s frame", async mode => {
     const {editor, iframe, editorWindow} = await mountEditor()
     const doc = iframe.contentDocument!

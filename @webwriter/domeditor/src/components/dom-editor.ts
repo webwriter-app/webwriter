@@ -2286,6 +2286,7 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("focus", this.handleHostWindowFocus)
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("blur", this.handleHostWindowBlur)
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("beforeinput", this.handleEditorBeforeInput, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     this.editorDocument?.removeEventListener("wheel", this.dismissFloatInfo, true)
@@ -2406,6 +2407,7 @@ export class DomEditor extends LitElement {
     }
     // Observe before feature capture listeners can claim canvas/slide gestures.
     if(!this.editorOpaque) this.editorWindow?.addEventListener("pointerdown", this.handleEditorPointerDown, true)
+    if(!this.editorOpaque) this.editorWindow?.addEventListener("beforeinput", this.handleEditorBeforeInput, true)
     this.editorDocument?.addEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.addEventListener("keydown", this.handleConfiguredShortcut, true)
     this.editorDocument?.addEventListener("wheel", this.dismissFloatInfo, {capture: true, passive: true})
@@ -2770,6 +2772,13 @@ export class DomEditor extends LitElement {
     ribbon?.dismissMenus()
     this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.dismissMenus()
     this.renderRoot.querySelector<DeveloperConsole>("developer-console")?.dismissMenus()
+  }
+
+  private handleEditorBeforeInput = (event: Event) => {
+    const body = this.editorDocument?.body
+    if(isWidgetShadowInteraction(event) || body?.shadowRoot && event.composedPath().includes(body.shadowRoot)
+      || isTextFieldInteraction(event, body)) return
+    this.dismissEditorMenus()
   }
 
   private dismissThemePicker() {
@@ -6500,6 +6509,7 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("focus", this.handleHostWindowFocus)
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("blur", this.handleHostWindowBlur)
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("beforeinput", this.handleEditorBeforeInput, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     this.editorDocument?.removeEventListener("wheel", this.dismissFloatInfo, true)
@@ -8939,6 +8949,10 @@ export class DomEditor extends LitElement {
       if(this.editorOpaque && this.isEditorMessage(event)) this.dismissFloatInfo()
       return
     }
+    if(event.data?.type === "editor-frame-beforeinput") {
+      if(this.editorOpaque && this.isEditorMessage(event)) this.dismissEditorMenus()
+      return
+    }
     if(event.data?.type === "editor-frame-pointerdown") {
       if(!this.editorOpaque || !this.isEditorMessage(event)) return
       this.dismissFloatInfo()
@@ -9546,6 +9560,7 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("focus", this.handleHostWindowFocus)
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("blur", this.handleHostWindowBlur)
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
+    if(!this.editorOpaque) this.editorWindow?.removeEventListener("beforeinput", this.handleEditorBeforeInput, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     this.editorDocument?.removeEventListener("wheel", this.dismissFloatInfo, true)
