@@ -1,6 +1,6 @@
 import {batchPresentationStates, clearPresentationState, deferPresentationPaint, flushPresentationStyles, hasPresentationState, presentationStateElements, setPresentationState, setPresentationStates} from "../presentation-state.js"
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isCaretAtBoundary, isEmptyParagraph, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, setPart, textOffsetIn, textPointAtOffset, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isCaretAtBoundary, isEmptyParagraph, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, setPart, textOffsetIn, textPointAtOffset, widgetCaptureSelectionDisabled, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {SVG_NAMESPACE, graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -1984,7 +1984,7 @@ export class SelectionFeature extends EditorFeature {
       const node = origin instanceof Node ? origin : null
       const candidate = widgetHostForShadowInteraction(event, this.editor.schema)
         ?? (node ? mediaContainerForNode(node) ?? graphicContainerForNode(node) ?? mathRoot(node) : null)
-      this.#captureClick = !event.defaultPrevented && candidate && !isAppendixInteraction(event)
+      this.#captureClick = !event.defaultPrevented && candidate && !isAppendixInteraction(event) && !widgetCaptureSelectionDisabled(candidate, event)
         ? {element: candidate, pointerId: event.pointerId, x: event.clientX, y: event.clientY, released: false, cancelled: event.button !== 0} : null
       const edge = event.composedPath().find(node => node instanceof Element && node.classList.contains("◆capture-edge"))
       const captured = this.captureSelectedElement
@@ -2285,6 +2285,11 @@ export class SelectionFeature extends EditorFeature {
    * leaving their native focus, caret, input, and event handling untouched. */
   readonly #handleWidgetShadowInteraction = (event: Event) => {
     const widget = widgetHostForShadowInteraction(event, this.editor.schema)
+    if(widget && widgetCaptureSelectionDisabled(widget, event)) {
+      if(this.#captureClick?.element === widget) this.#captureClick = null
+      this.#releaseCaptureForShadowControl()
+      return
+    }
     if(!widget) {
       const origin = event.composedPath()[0]
       const authoredOrigin = event instanceof MouseEvent
@@ -2314,6 +2319,16 @@ export class SelectionFeature extends EditorFeature {
       this.#focusedContentfulShadow.range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
     }
     this.processSelection(undefined, {scrollIntoView: !isContentfulWidget(widget, this.editor.schema)})
+    this.editor.postSelectionPath()
+  }
+
+  /** Release presentation only: the control's native focus and caret stay intact. */
+  #releaseCaptureForShadowControl() {
+    if(!this.captureSelectedElement) return
+    this.#releaseCaptureSelection()
+    this.#clearSelections()
+    this.editor.features.transformation.clearTransform()
+    this.editor.features.manipulation.refreshNodeDragTarget(null)
     this.editor.postSelectionPath()
   }
 
@@ -3212,6 +3227,12 @@ export class SelectionFeature extends EditorFeature {
 
   #processSelection(inDragSelection: boolean, {scrollIntoView = true, refreshGraphic = true}: {scrollIntoView?: boolean, refreshGraphic?: boolean}) {
     if(this.#boxDrag || this.#settingDragSelection || $.isSettingRanges) return
+    const privateFocus = focusedWidgetHost()
+    const privateCaptureDisabled = privateFocus && widgetCaptureSelectionDisabled(privateFocus)
+    if(!this.#modifierClick && privateCaptureDisabled) {
+      this.#releaseCaptureForShadowControl()
+      return
+    }
     const drag = this.#drag, live = document.getSelection(), root = getDocumentRoot()
     // Native focus/selection defaults may collapse a gap-origin drag into
     // the last paragraph. Its original gap and measured focus remain live.
@@ -3247,7 +3268,7 @@ export class SelectionFeature extends EditorFeature {
     // Shadow controls own capture and their native selection. Focus on a
     // contentful host with a range in its authored children stays ordinary
     // document editing, including when those children are slotted.
-    const shadowOwner = focusedWidgetHost() === this.#blurringWidget ? null : focusedWidgetHost()
+    const shadowOwner = privateCaptureDisabled || focusedWidgetHost() === this.#blurringWidget ? null : focusedWidgetHost()
     const nativeRange = document.getSelection()
     // Private focus wins over the range left behind when the control gained
     // focus. A later authored selection made by the widget remains authoritative.
@@ -3313,7 +3334,7 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     const focused = focusedWidgetHost()
-    const focusedWidget = focused === this.#blurringWidget || focused === this.#captureClick?.element ? null : focused
+    const focusedWidget = privateCaptureDisabled || focused === this.#blurringWidget || focused === this.#captureClick?.element ? null : focused
     const capturedChild = this.captureSelectedElement
     // A pointer can select authored media before the browser blurs the
     // widget's shadow control. Keep that selection through the focus change.

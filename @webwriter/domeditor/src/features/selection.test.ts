@@ -863,6 +863,112 @@ describe("gap clicks inside widget pages", () => {
   })
 })
 
+describe("widget capture opt-out", () => {
+  function mount(nested = false) {
+    editor.schema.extendWidgets([{tagName: "capture-opt-out-widget", editingConfig: {content: "flow*"}}])
+    const widget = el("capture-opt-out-widget")
+    widget.innerHTML = "<p>Authored content</p>"
+    const root = widget.attachShadow({mode: "open"})
+    root.innerHTML = '<div tabindex="0">Background</div><div data-ww-capture-selection="false"><button type="button">Tab</button></div><input aria-label="Unmarked">'
+    const row = root.querySelector("[data-ww-capture-selection]")!
+    const input = document.createElement("input")
+    input.value = "Page title"
+    if(nested) {
+      const control = document.createElement("nested-label-control")
+      row.append(control)
+      control.attachShadow({mode: "open"}).append(input)
+    }
+    else row.append(input)
+    return {widget, root, row, input, background: root.querySelector("div")!, unmarked: root.querySelector<HTMLInputElement>('input[aria-label="Unmarked"]')!}
+  }
+
+  const press = {button: 0, pointerId: 31, bubbles: true, composed: true, cancelable: true}
+
+  it.each([false, true])("leaves marked inputs and native editing uncaptured (nested: %s)", nested => {
+    const {widget, input} = mount(nested)
+    input.dispatchEvent(new PointerEvent("pointerdown", press))
+    input.focus()
+    input.setSelectionRange(1, 5)
+    input.dispatchEvent(new PointerEvent("pointerup", press))
+    input.dispatchEvent(new MouseEvent("click", press))
+    document.dispatchEvent(new Event("selectionchange"))
+    feature.processSelection()
+    expect(feature.captureSelectedElement).toBeNull()
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
+    expect(input.selectionStart).toBe(1)
+    expect(input.selectionEnd).toBe(5)
+    expect(input.getRootNode() instanceof ShadowRoot && (input.getRootNode() as ShadowRoot).activeElement).toBe(input)
+    const key = new KeyboardEvent("keydown", {...press, key: "Backspace"})
+    const beforeinput = new InputEvent("beforeinput", {...press, inputType: "deleteContentBackward"})
+    input.dispatchEvent(key)
+    input.dispatchEvent(beforeinput)
+    expect(key.defaultPrevented).toBe(false)
+    expect(beforeinput.defaultPrevented).toBe(false)
+    expect(widget.textContent).toBe("Authored content")
+  })
+
+  it.each([false, true])("does not reacquire capture through programmatic or keyboard focus (nested: %s)", nested => {
+    const {widget, input, unmarked} = mount(nested)
+    unmarked.focus()
+    expect(feature.captureSelectedWidget).toBe(widget)
+    input.focus()
+    input.setSelectionRange(2, 7)
+    for(const event of [new Event("selectionchange"), new KeyboardEvent("keyup", {key: "Tab", bubbles: true, composed: true})]) {
+      (event.type === "selectionchange" ? document : input).dispatchEvent(event)
+      feature.processSelection()
+      expect(feature.captureSelectedWidget).toBeNull()
+    }
+    expect(input.selectionStart).toBe(2)
+    expect(input.selectionEnd).toBe(7)
+  })
+
+  it("releases background capture on a marked control press without moving the input caret", () => {
+    const {widget, input, background} = mount()
+    pointerClick(background, new PointerEvent("pointerdown", press))
+    expect(feature.captureSelectedWidget).toBe(widget)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(true)
+    input.dispatchEvent(new PointerEvent("pointerdown", press))
+    expect(feature.captureSelectedWidget).toBeNull()
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
+    input.focus()
+    input.setSelectionRange(3, 8)
+    input.dispatchEvent(new PointerEvent("pointerup", press))
+    input.dispatchEvent(new MouseEvent("click", press))
+    feature.processSelection()
+    expect(feature.captureSelectedWidget).toBeNull()
+    expect(input.selectionStart).toBe(3)
+    expect(input.selectionEnd).toBe(8)
+    background.focus()
+    pointerClick(background, new PointerEvent("pointerdown", press))
+    expect(feature.captureSelectedWidget).toBe(widget)
+  })
+
+  it("honors marked button ancestors while leaving unmarked controls unchanged", () => {
+    const {widget, row, unmarked} = mount()
+    const button = row.querySelector("button")!
+    const clicked = vi.fn()
+    button.addEventListener("click", clicked)
+    pointerClick(button, new PointerEvent("pointerdown", press))
+    button.focus()
+    feature.processSelection()
+    expect(clicked).toHaveBeenCalledOnce()
+    expect(feature.captureSelectedWidget).toBeNull()
+    unmarked.focus()
+    expect(feature.captureSelectedWidget).toBe(widget)
+  })
+
+  it("retains explicit modifier selection of the whole widget through a marked input", () => {
+    const {widget, input} = mount()
+    input.focus()
+    pointerClick(input, new PointerEvent("pointerdown", {...press, ctrlKey: true, metaKey: true}))
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(feature.captureSelectedWidget).toBeNull()
+    expect($.selectedElement).toBe(widget)
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
+  })
+})
+
 describe("contentful widget top-bar capture", () => {
   it("waits for release and click before capture, preserving native control focus", () => {
     const widget = document.createElement("click-widget")

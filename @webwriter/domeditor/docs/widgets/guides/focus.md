@@ -61,6 +61,17 @@ Capture selection lets a widget's own controls receive input. Ordinary element s
 
 A pointer interaction acquires capture only after a completed click. Pointer-down alone does not capture the widget, and a drag or cancelled press does not become capture on release. Keyboard and programmatic focus can still acquire capture without a pointer click. Native input focus and text selection inside a shadow control remain intact when capture is established.
 
+Put `data-ww-capture-selection="false"` on a private shadow control or a shadow container of controls that should work without capture-selecting the widget, such as page tabs and their editable labels. The marker applies to completed clicks, keyboard and programmatic focus, and subsequent selection changes. Entering a marked control releases existing capture without moving its focus or text caret. It also covers controls nested in open shadow roots. Unmarked widget surfaces keep their normal capture behavior, and an explicit modifier-click can still select the whole widget.
+
+```html
+<div data-ww-capture-selection="false">
+  <button type="button">Overview</button>
+  <input aria-label="Page title">
+</div>
+```
+
+Keep this marker in the widget's shadow DOM. It does not turn private controls into authored content or forward their input events to the editor.
+
 For a widget with declared editable `content`, clicking or dragging in authored light-DOM children edits that content. Keep private controls in the shadow DOM and expose authored children through slots so the editor can distinguish the two.
 
 ## Move the document selection

@@ -2281,6 +2281,27 @@ export function focusedWidgetHost() {
     : null
 }
 
+/** A private control can retain native input without capture-selecting its widget.
+ * Walk composed event or focus ancestry so nested open controls inherit the opt-out. */
+export function widgetCaptureSelectionDisabled(widget: Element, event?: Event) {
+  const disabled = (node: EventTarget) => node instanceof Element && node.getRootNode() instanceof ShadowRoot
+    && node.getAttribute("data-ww-capture-selection") === "false"
+  if(event && event.type !== "selectionchange") {
+    for(const node of event.composedPath()) {
+      if(node === widget) break
+      if(disabled(node)) return true
+    }
+    return false
+  }
+  let focused = widget.shadowRoot?.activeElement
+  while(focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement
+  for(let node: Node | null = focused ?? null; node && node !== widget;
+    node = node instanceof Element ? node.assignedSlot ?? node.parentNode : node instanceof ShadowRoot ? node.host : node.parentNode) {
+    if(disabled(node)) return true
+  }
+  return false
+}
+
 /** The editable widget host whose surface or shadow tree originated an
  * event. Composed events are retargeted to the host by the time they reach
  * document listeners, so inspect the full path instead. Hosts in the body's
