@@ -207,6 +207,7 @@ it("keeps cards through a package reload, loading and checking, then replaces th
 })
 
 it("persists authenticated dictionary additions and sends settings removals to the checker", async () => {
+  persistAppSettings({...defaultAppSettings(), proofreadingDictionary: []})
   const editor = new DomEditor()
   Object.assign(editor, {frameStarted: true})
   const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
