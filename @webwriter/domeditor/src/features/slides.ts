@@ -1,7 +1,7 @@
 import {clearPresentationState, setPresentationState} from "../presentation-state.js"
 import {EditorFeature, type DocumentListenerMap} from "."
-import {canvasControlsStyles, groupCanvasZoomPresets, updateCanvasZoomControls, type CanvasNavigation} from "../canvas-viewer.js"
-import {$, clearInlinePlacement, createAnchorPositioner, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
+import {canvasControlsStyles, canvasIcons, groupCanvasZoomPresets, updateCanvasZoomControls, type CanvasNavigation} from "../canvas-viewer.js"
+import {$, clearInlinePlacement, createAnchorPositioner, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker, uiMotionDisabled} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {documentLayoutMode, resetEmptyLayoutContent, isSlide, slideLayoutRole, slidesClass, slidesStyles, slideWidth, slideHeight} from "../document-layout"
 import {isAuthoredMutation} from "../editor-artifacts"
@@ -165,8 +165,8 @@ export class SlidesFeature extends EditorFeature {
       else if(first instanceof Text || first instanceof Element && this.editor.features.manipulation.isTextBlock(first)
         && !first.closest('[contenteditable="false" i], [inert]')) $.move(first)
       else if(first instanceof Element) $.selectGap(first, "before")
-      // The fragment owns scrolling. Revealing this caret during its smooth
-      // animation can replace the destination with an intermediate snap point.
+      // The fragment owns scrolling. Revealing this caret separately could
+      // replace its destination with a different snap point.
       this.editor.features.selection.selectDropRange($.range, {scrollIntoView: false})
     }
     finally { this.selectingForNavigation = false }
@@ -185,6 +185,13 @@ export class SlidesFeature extends EditorFeature {
       this.navigationFrame = null
       if(this.isEnabled) this.selectStart(slide)
     })
+  }
+
+  private scrollTabs(direction: number) {
+    const nav = this.navigation()
+    if(!nav) return
+    const instant = uiMotionDisabled(nav) || window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    nav.scrollBy({left: direction * nav.clientWidth, behavior: instant ? "instant" : "smooth"})
   }
   current() {
     const pending = this.observer?.takeRecords() ?? []
@@ -583,8 +590,8 @@ export class SlidesFeature extends EditorFeature {
         this.controls!.append(button)
         return button
       }
-      button("scroll-back", "Scroll slide tabs backward", "‹", () => this.navigation()?.scrollBy({left: -(this.navigation()?.clientWidth || 0), behavior: "smooth"}))
-      button("scroll-forward", "Scroll slide tabs forward", "›", () => this.navigation()?.scrollBy({left: this.navigation()?.clientWidth || 0, behavior: "smooth"}))
+      button("scroll-back", "Scroll slide tabs backward", "‹", () => this.scrollTabs(-1))
+      button("scroll-forward", "Scroll slide tabs forward", "›", () => this.scrollTabs(1))
       button("add", "Add slide", "+", () => this.actions.addSlide({type: "addSlide"})).hidden = !canInsert
       this.removalTargets = targets.map(({slide, link}, i) => ({slide, link,
         button: Object.assign(button("remove", `Remove slide ${i + 1}`, "×", () => this.edit("remove", slide)), {
@@ -636,20 +643,20 @@ export class SlidesFeature extends EditorFeature {
     this.controls.setAttribute("role", "toolbar"); this.controls.setAttribute("aria-label", "Slide actions")
     this.editor.addAppendix(this.controls)
     this.zoomControls = document.createElement("div")
-    this.zoomControls.className = "◆canvas-controls"
+    this.zoomControls.className = "◆canvas-controls ◆canvas-toolbar"
     this.zoomControls.setAttribute("part", "slide-zoom-controls")
     this.zoomControls.contentEditable = "false"
     this.zoomControls.setAttribute("role", "toolbar"); this.zoomControls.setAttribute("aria-label", "Slide zoom")
-    const zoomButton = (operation: CanvasNavigation, label: string, text = "") => {
+    const zoomButton = (operation: CanvasNavigation, label: string, icon = "") => {
       const button = document.createElement("button")
-      button.type = "button"; button.name = operation; button.textContent = text
+      button.type = "button"; button.name = operation; button.innerHTML = icon
       button.title = label; button.setAttribute("aria-label", label)
       button.addEventListener("pointerdown", event => event.preventDefault())
       button.addEventListener("click", () => this.actions.navigateSlides({type: "navigateSlides", operation}))
       return button
     }
     this.zoomControls.append(
-      zoomButton("zoom-out", "Zoom out", "−"), document.createElement("output"), zoomButton("zoom-in", "Zoom in", "+"),
+      zoomButton("zoom-out", "Zoom out", canvasIcons.zoomOut), document.createElement("output"), zoomButton("zoom-in", "Zoom in", canvasIcons.zoomIn),
       groupCanvasZoomPresets(zoomButton("actual-size", "Reset zoom to 100%"), zoomButton("fit-content", "Fit slide")),
     )
     this.editor.addAppendix(this.zoomControls)

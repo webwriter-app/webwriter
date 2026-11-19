@@ -42,7 +42,8 @@ describe("flat timeline event content", () => {
     const event = document.querySelector("webwriter-timeline-event")!, title = event.querySelector("h2")!
     $.selectGap(title, "before")
     editor.features.selection.processSelection()
-    expect($.anchor).toBe(title)
+    expect($.anchor).toBe(title.firstChild)
+    expect($.anchorOffset).toBe(0)
     expect($.isGapSelection).toBe(false)
     event.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, composed: true, cancelable: true}))
     expect(event.querySelectorAll('h2[slot="title"]')).toHaveLength(1)
@@ -62,7 +63,8 @@ describe("flat timeline event content", () => {
     event.firstElementChild!.replaceWith(title)
     $.selectGap(title, "before")
     editor.features.manipulation.ensureTextBlock()
-    expect($.anchor).toBe(title)
+    expect($.anchor).toBe(title.firstChild)
+    expect($.anchorOffset).toBe(0)
     expect(event.querySelectorAll("h2")).toHaveLength(1)
   })
 
@@ -102,19 +104,21 @@ describe("repeatable widget options", () => {
     expect(Array.from(document.querySelectorAll(`webwriter-${type}-item`), element => editor.schema.isContentValid(element))).toEqual([true, true])
   })
 
-  it.each([["ArrowUp", 0], ["ArrowDown", 4]] as const)("navigates to the option gap with %s", (keyName, offset) => {
+  it.each([["ArrowUp", 0], ["ArrowDown", 4]] as const)("keeps %s navigation inside repeatable option content", (keyName, offset) => {
     document.body.innerHTML = '<webwriter-choice><webwriter-choice-item><p>abcd</p></webwriter-choice-item><webwriter-choice-item><p>other</p></webwriter-choice-item></webwriter-choice>'
     editor.features.widget.refresh()
     const parent = document.querySelector("webwriter-choice")!
     const item = parent.firstElementChild!
+    const authored = cloneWithoutEditorMarkers(parent, true).innerHTML
     $.move(item.querySelector("p")!.firstChild!, offset)
     const event = new KeyboardEvent("keydown", {key: keyName, bubbles: true, composed: true, cancelable: true})
     item.dispatchEvent(event)
     expect(event.defaultPrevented).toBe(true)
-    expect($.anchor).toBe(parent)
-    expect($.anchorOffset).toBe(offset ? 1 : 0)
-    expect($.isGapSelection).toBe(true)
-    expect(editor.features.selection.selectionCaret?.getAttribute("part")).toContain("gap-caret")
+    expect($.anchor).toBe(parent.children[offset ? 1 : 0].querySelector("p")!.firstChild)
+    expect($.anchorOffset).toBe(0)
+    expect($.isGapSelection).toBe(false)
+    expect(editor.features.selection.selectionCaret?.getAttribute("part") ?? "").not.toContain("gap-caret")
+    expect(cloneWithoutEditorMarkers(parent, true).innerHTML).toBe(authored)
   })
 
   it("addresses a gap above or below a widget item from its box", () => {

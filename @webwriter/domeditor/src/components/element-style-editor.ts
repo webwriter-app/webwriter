@@ -250,7 +250,7 @@ export class ElementStyleEditor extends LitElement {
     ${choiceGroupStyles}
     .specialized-choice-group {flex: 1;}
     .specialized-input > .specialized-choice-group {--choice-column-size: auto;}
-    .specialized-choice-group button {min-height: 1.6rem; padding: .15rem .2rem; font: inherit; font-size: .6rem;}
+    .specialized-choice-group button {display: grid; place-items: center; min-height: 1.6rem; padding: .15rem .2rem; font: inherit; font-size: .6rem;}
     .specialized-choice-group button span {display: flex; justify-content: center;}
     .specialized-choice-group svg {width: 1rem; height: 1rem; display: block;}
     [data-property="vertical-align"] .specialized-choice-group button {padding-inline: 0;}

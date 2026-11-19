@@ -135,8 +135,7 @@ function getTemplates() {
       : option.type === "chord" || option.type === "sequential-access-storage" || isConnectedCalloutType(option.type)
         ? [] : [values => presetDrawing(option.type, values)]
     if(reversedDetailPresets.has(option.type)) drawings.push(definition.draw)
-    const legacyBanner = legacyBannerPaths[option.type]
-    if(legacyBanner) {
+    for(const legacyBanner of legacyBannerPaths[option.type] ?? []) {
       drawings.push(legacyBanner)
       if(option.type === "ribbon-up" || option.type === "ribbon-down") {
         drawings.push(values => orientDetailContours(legacyBanner(values)))

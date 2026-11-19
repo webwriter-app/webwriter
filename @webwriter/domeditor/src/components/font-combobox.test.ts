@@ -54,7 +54,7 @@ describe("font search combobox", () => {
   it("shows the default as a placeholder and clears the input when selecting it", async () => {
     const {combo, input} = await mount()
     expect(input.value).toBe("")
-    expect(input.placeholder).toBe("Default font")
+    expect(input.placeholder).toBe("Search...")
     combo.close()
     combo.value = "Georgia, serif"
     await combo.updateComplete
@@ -73,6 +73,31 @@ describe("font search combobox", () => {
     await settle(combo)
     expect(input.value).toBe("")
     expect(combo.shadowRoot!.querySelectorAll('[role="option"]')).toHaveLength(10)
+  })
+
+  it.each([false, true])("shows a search hint only while open (built-in only: %s)", async builtInOnly => {
+    const combo = new FontCombobox()
+    combo.builtInOnly = builtInOnly
+    combo.label = "Font family"
+    document.body.append(combo)
+    await combo.updateComplete
+    const input = combo.shadowRoot!.querySelector("input")!
+    expect(input.placeholder).toBe("Default font")
+    input.click()
+    await settle(combo)
+    expect(input.placeholder).toBe("Search...")
+    expect(input.getAttribute("aria-label")).toBe("Font family")
+    expect(input.value).toBe("")
+    expect(combo.shadowRoot!.querySelector('[title="Default font"]')).not.toBeNull()
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape"}))
+    await combo.updateComplete
+    expect(input.placeholder).toBe("Default font")
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown"}))
+    await settle(combo)
+    expect(input.placeholder).toBe("Search...")
+    combo.disabled = true
+    await combo.updateComplete
+    expect(input.placeholder).toBe("Default font")
   })
 
   it("selects all input text and shows unfiltered lists on every opening until typing", async () => {

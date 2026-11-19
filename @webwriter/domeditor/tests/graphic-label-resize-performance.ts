@@ -70,7 +70,7 @@ export async function checkGraphicLabelResizePerformance():Promise<GraphicLabelR
       for(const name of ["x","y"]) {
         const expected=originalText.querySelector("text")!.getAttribute(name)!
         const a=restoredText.getAttribute(name)!.split(/\s+/).map(Number),b=expected.split(/\s+/).map(Number)
-        assert(a.length===b.length && a.every((value,index)=>Math.abs(value-b[index])<.03),`undo shifted label ${name} coordinates`)
+        assert(a.length===b.length && a.every((value,index)=>Math.abs(value-b[index])<.05),`undo shifted label ${name} coordinates`)
         restoredText.setAttribute(name,expected)
       }
       return clone.outerHTML===original

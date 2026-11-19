@@ -4059,23 +4059,18 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #constrainResize(next: Bounds, direction: string, initial: Bounds, fromCenter = false) {
-    const ratio = initial.width / initial.height
     const widthScale = next.width / initial.width
     const heightScale = next.height / initial.height
-    const center = {x: initial.x + initial.width / 2, y: initial.y + initial.height / 2}
-    if(Math.abs(widthScale - 1) >= Math.abs(heightScale - 1)) {
-      const height = Math.max(1, next.width / ratio)
-      if(fromCenter) next.y = center.y - height / 2
-      else if(direction.includes("n")) next.y = initial.y + initial.height - height
-      next.height = height
+    const scale = Math.max(1 / initial.width, 1 / initial.height,
+      Math.abs(widthScale - 1) >= Math.abs(heightScale - 1) ? widthScale : heightScale)
+    // The normalized bounds already know the fixed corner after a crossing.
+    const anchor = {
+      x: fromCenter ? initial.x + initial.width / 2 : next.x + (direction.includes("w") ? next.width : 0),
+      y: fromCenter ? initial.y + initial.height / 2 : next.y + (direction.includes("n") ? next.height : 0),
     }
-    else {
-      const width = Math.max(1, next.height * ratio)
-      if(fromCenter) next.x = center.x - width / 2
-      else if(direction.includes("w")) next.x = initial.x + initial.width - width
-      next.width = width
-    }
-    return next
+    const width = initial.width * scale, height = initial.height * scale
+    return {x: anchor.x - width * (fromCenter ? .5 : direction.includes("w") ? 1 : 0),
+      y: anchor.y - height * (fromCenter ? .5 : direction.includes("n") ? 1 : 0), width, height}
   }
 
   #snapMove(bounds: Bounds, interaction: Interaction) {
@@ -4095,6 +4090,9 @@ export class GraphicFeature extends EditorFeature {
     const reflection = {horizontal: /[we]/.test(direction) && direction.includes("w") !== originalDirection.includes("w"),
       vertical: /[ns]/.test(direction) && direction.includes("n") !== originalDirection.includes("n")}
     if(!this.#options.snap || interaction.latest.altKey) return {bounds, direction, reflection, guides: {}}
+    if(interaction.latest.shiftKey && originalDirection.length === 2 && interaction.bounds.width && interaction.bounds.height) {
+      return {...this.#snapConstrainedResize(bounds, direction, interaction), direction, reflection}
+    }
     const threshold = this.#snapThreshold(interaction.matrix)
     const moving = {
       x: direction.includes("w") ? bounds.x : bounds.x + bounds.width,
@@ -4112,6 +4110,55 @@ export class GraphicFeature extends EditorFeature {
     }
     const resized = this.#resizeBounds(moving, originalDirection, interaction)
     return {...resized, guides: {x: x?.target, y: y?.target}}
+  }
+
+  /** Intersect the moving corner's single-scale trajectory with snap lines in
+   * graphic coordinates, scoring the coupled movement in screen pixels. */
+  #snapConstrainedResize(bounds: Bounds, direction: string, interaction: Interaction): {bounds: Bounds, guides: ActiveGuides} {
+    const initial = interaction.bounds
+    const fromCenter = interaction.latest.metaKey || interaction.latest.ctrlKey
+    const west = direction.includes("w"), north = direction.includes("n")
+    const anchor = {
+      x: bounds.x + bounds.width * (fromCenter ? .5 : west ? 1 : 0),
+      y: bounds.y + bounds.height * (fromCenter ? .5 : north ? 1 : 0),
+    }
+    const step = {x: initial.width * (west ? -1 : 1) / (fromCenter ? 2 : 1),
+      y: initial.height * (north ? -1 : 1) / (fromCenter ? 2 : 1)}
+    const center = interaction.rotation ? shapeCenter(interaction.items[0].source) : anchor
+    const origin = rotateAround(anchor, center, interaction.rotation)
+    const vector = rotateAround(step, {x: 0, y: 0}, interaction.rotation)
+    const scale = bounds.width / initial.width
+    const moving = {x: origin.x + vector.x * scale, y: origin.y + vector.y * scale}
+    const matrix = interaction.matrix
+    const screenStep = Math.hypot(matrix.a * vector.x + matrix.c * vector.y, matrix.b * vector.x + matrix.d * vector.y)
+    const minimum = Math.max(1 / initial.width, 1 / initial.height)
+    const threshold = this.#snapThreshold(matrix)
+    let best: {scale: number, distance: number, target: SnapTarget} | null = null
+    for(const axis of ["x", "y"] as const) {
+      if(Math.abs(vector[axis]) < .000001) continue
+      const grid = this.#gridSnap(moving[axis], threshold[axis], axis)
+      const targets = grid ? [...interaction.candidates[axis], grid.target] : interaction.candidates[axis]
+      for(const target of targets) {
+        const nextScale = scale + (target.value - moving[axis]) / vector[axis]
+        const distance = Math.abs(nextScale - scale) * screenStep
+        if(nextScale < minimum || distance > 6) continue
+        const tie = best && Math.abs(distance - best.distance) < .000001
+        if(!best || distance < best.distance - .000001 || tie && target.kind === "object" && best.target.kind !== "object") {
+          best = {scale: nextScale, distance, target}
+        }
+      }
+    }
+    if(!best) return {bounds, guides: {}}
+    const width = initial.width * best.scale, height = initial.height * best.scale
+    const guides: ActiveGuides = {}
+    // Only advertise alignments actually satisfied by the chosen single scale.
+    for(const axis of ["x", "y"] as const) {
+      const value = origin[axis] + vector[axis] * best.scale
+      guides[axis] = (closestAlignment([value], interaction.candidates[axis], .000001)
+        ?? this.#gridSnap(value, .000001, axis))?.target
+    }
+    return {bounds: {x: anchor.x - width * (fromCenter ? .5 : west ? 1 : 0),
+      y: anchor.y - height * (fromCenter ? .5 : north ? 1 : 0), width, height}, guides}
   }
 
   #snapPoint(point: Point, interaction: Pick<Interaction, "latest" | "matrix" | "candidates">, forceGrid = false) {

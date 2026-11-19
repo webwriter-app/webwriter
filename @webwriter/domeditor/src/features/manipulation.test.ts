@@ -1802,11 +1802,10 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
   beforeEach(() => { headHTML = document.head.innerHTML })
   afterEach(() => { document.head.innerHTML = headHTML })
 
-  it.each(["p", "h1", "section", "ul", "details"])("keeps a %s root intact on Enter and native paragraph input", tag => {
+  it.each(["p", "h1", "section", "details"])("keeps a %s root intact on Enter and native paragraph input", tag => {
     for(const input of ["key", "beforeinput"]) {
       const root = document.createElement(tag)
-      root.innerHTML = tag === "section" ? "<p>ab</p>" : tag === "ul" ? "<li>ab</li>"
-        : tag === "details" ? "<summary>ab</summary><p>Body</p>" : "ab"
+      root.innerHTML = tag === "section" ? "<p>ab</p>" : tag === "details" ? "<summary>ab</summary><p>Body</p>" : "ab"
       document.body.replaceChildren(root)
       document.body.className = ""
       expect(editor.setDocumentLayout(mode, "document")).toBe(true)
@@ -1861,7 +1860,7 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
     expect(paragraph.contains($.anchor)).toBe(true)
   })
 
-  it.each(["key", "insertParagraph", "insertLineBreak"])("keeps empty text containers intact across repeated %s breaks", input => {
+  it.each(["key", "insertLineBreak"])("keeps empty text containers intact across repeated %s soft breaks", input => {
     for(const tag of ["p", "li", "dt", "dd"]) {
       document.body.innerHTML = tag === "p" ? '<p></p><p>Neighbor</p>'
         : tag === "li" ? '<ul><!--keep--><li></li><li>Neighbor</li></ul>'
@@ -1871,7 +1870,7 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
       const siblings = Array.from(parent.childNodes)
       $.move(item)
       for(let count = 1; count <= 3; count++) {
-        const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+        const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true})
           : new InputEvent("beforeinput", {inputType: input, bubbles: true, cancelable: true})
         item.dispatchEvent(event)
         expect(event.defaultPrevented).toBe(true)
@@ -1883,14 +1882,14 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
     }
   })
 
-  it.each(["ul", "ol", "menu", "dl"])("inserts a break in a new %s without exiting the list", tag => {
-    for(const input of ["key", "insertParagraph", "insertLineBreak"]) {
+  it.each(["ul", "ol", "menu", "dl"])("inserts a soft break in a new %s without exiting the list", tag => {
+    for(const input of ["key", "insertLineBreak"]) {
       document.body.innerHTML = `<${tag}><!--keep--></${tag}>`
       expect(editor.setDocumentLayout(mode, "document")).toBe(true)
       const list = document.querySelector(tag)!, parent = list.parentElement!
       const siblings = Array.from(parent.childNodes)
       $.move(list, list.childNodes.length)
-      const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+      const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true})
         : new InputEvent("beforeinput", {inputType: input, bubbles: true, cancelable: true})
       list.dispatchEvent(event)
       expect(event.defaultPrevented).toBe(true)
@@ -1901,14 +1900,14 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
     }
   })
 
-  it("shares, serializes, undoes and redoes the first break in a new list", () => {
+  it("shares, serializes, undoes and redoes the first soft break in a new list", () => {
     document.body.innerHTML = '<ul><!--keep--></ul>'
     expect(editor.setDocumentLayout(mode, "document")).toBe(true)
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     const original = editor.toHTML(true)
     $.move(document.querySelector("ul")!, 1)
-    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true}))
     editor.doc.syncFromDOM()
     const inserted = editor.toHTML(true)
     expect(inserted).toContain("<!--keep--><li><br><br></li>")
@@ -3436,11 +3435,74 @@ describe("figures", () => {
   })
 })
 
+describe("whole contentful widget range deletion", () => {
+  beforeEach(() => {
+    editor.schema.extendWidgets([
+      {tagName: "delete-pages", editingConfig: {content: "delete-page+", isolating: true}},
+      {tagName: "delete-page", editingConfig: {group: "", content: "flow+", isolating: true}},
+    ])
+    document.body.innerHTML = '<p>Before</p><delete-pages data-authored="keep"><delete-page><h2>First</h2><p>First body</p><picture style="float:right;width:180px"><img src="keep.png"></picture></delete-page><delete-page><p>Second body</p><video style="position:absolute" src="keep.webm"></video><!--keep--></delete-page></delete-pages><p></p><p>After</p>'
+  })
+
+  function select(backwards: boolean) {
+    const widget = document.querySelector("delete-pages")!, after = widget.nextElementSibling!
+    document.getSelection()!.setBaseAndExtent(backwards ? after : document.body, backwards ? 0 : 1,
+      backwards ? document.body : after, backwards ? 1 : 0)
+    editor.features.selection.processSelection(true)
+    expect(hasPresentationState(widget, "atomic-range-selected")).toBe(true)
+    return widget
+  }
+
+  describe.each([false, true])("backwards: %s", backwards => {
+    it.each(["Backspace", "Delete"])("%s removes the enclosed widget with its media and supports undo", key => {
+      const widget = select(backwards)
+      editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+      const original = editor.toHTML(true)
+      const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(widget.isConnected).toBe(false)
+      expect(document.querySelector("delete-pages,delete-page,picture,img,video")).toBeNull()
+      expect(document.body.textContent).toBe("BeforeAfter")
+      editor.doc.syncFromDOM()
+      const deleted = editor.toHTML(true)
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(original)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(deleted)
+    })
+
+    it("copies and cuts the enclosed widget with all internal flows", () => {
+      const widget = select(backwards), original = widget.outerHTML
+      const copied = $.copy()
+      expect(copied.querySelector("delete-pages")?.outerHTML).toBe(original)
+      expect(widget.isConnected).toBe(true)
+      const cut = $.cut()
+      expect(cut.querySelector("delete-pages")?.outerHTML).toBe(original)
+      expect(widget.isConnected).toBe(false)
+      expect(document.body.textContent).toBe("BeforeAfter")
+    })
+  })
+
+  it.each(["Backspace", "Delete"])("%s keeps a partially selected page and its local media", key => {
+    const widget = document.querySelector("delete-pages")!, page = widget.firstElementChild!
+    const paragraph = page.querySelector("p")!, media = page.querySelector("picture")!
+    $.selectRange(paragraph.firstChild!, 0, paragraph.firstChild!, 5)
+    editor.features.selection.processSelection(true)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+    expect(widget.isConnected).toBe(true)
+    expect(page.isConnected).toBe(true)
+    expect(media.isConnected).toBe(true)
+    expect(paragraph.textContent).toBe(" body")
+    expect(widget.lastElementChild!.textContent).toBe("Second body")
+  })
+})
+
 describe("partial contentful widget deletion", () => {
   beforeEach(() => {
     editor.schema.extendWidgets([
-      {tagName: "delete-timeline", editingConfig: {content: "delete-event*"}},
-      {tagName: "delete-event", editingConfig: {group: "", content: "h2 flow+"}},
+      {tagName: "delete-timeline", editingConfig: {content: "delete-event*", isolating: false}},
+      {tagName: "delete-event", editingConfig: {group: "", content: "h2 flow+", isolating: false}},
     ])
     document.body.innerHTML = '<p>Before</p><delete-timeline><delete-event date="1900"><h2 slot="title">First</h2><p>First body</p></delete-event><delete-event date="1950"><h2 slot="title">Second</h2><p>Second body</p></delete-event><delete-event date="2000"><h2 slot="title">Third</h2><p>Third body</p></delete-event></delete-timeline><p>After</p>'
   })
@@ -4757,6 +4819,78 @@ describe("insertion beside a lone float", () => {
 })
 
 describe("paste()", () => {
+  it.each(["native", "beforeinput", "async"].flatMap(method =>
+    ["sub", "sup", "s", "code", "kbd"].flatMap(tag =>
+      ["caret", "range"].map(target => ({method, tag, target})),
+    ),
+  ))("merges copied $tag formatting into the destination ($method, $target)", async ({method, tag, target}) => {
+    document.body.innerHTML = `<p>before <${tag}>abcd</${tag}><!--keep--> after</p>`
+    const mark = document.querySelector(tag)!, text = mark.firstChild!
+    $.selectRange(text, 1, text, 3)
+    const data = new DataTransfer()
+    if(method === "async") await editor.features.manipulation.copy()
+    else document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true}))
+    if(target === "range") $.selectRange(text, 2, text, 3)
+    else $.move(text, 2)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+
+    if(method === "async") await editor.features.manipulation.actions.paste({type: "paste"})
+    else {
+      const event = method === "beforeinput"
+        ? new InputEvent("beforeinput", {inputType: "insertFromPaste", dataTransfer: data, bubbles: true, cancelable: true})
+        : new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+
+    expect(document.querySelector(tag)).toBe(mark)
+    expect(mark.innerHTML).toBe(target === "range" ? "abbcd" : "abbccd")
+    expect($.anchor).toBe(mark.firstChild)
+    expect($.anchorOffset).toBe(4)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    const changed = editor.toHTML(true)
+    expect(changed).toContain("<!--keep-->")
+    expect(changed).not.toContain("webwriter-clipboard")
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain(`<${tag}><${tag}>`)
+    editor.doc.undo()
+    expectBodyToBe(original)
+    editor.doc.redo()
+    expectBodyToBe(changed)
+  })
+
+  it.each([
+    {source: '<sub><b>X</b></sub>', expected: 'aXb'},
+    {source: '<i><sub><b>X</b></sub></i>', expected: 'a<i>X</i>b'},
+    {source: '<sub><sub>X</sub></sub>', expected: 'a<sub>X</sub>b'},
+    {source: '<sub title="different">X</sub>', expected: 'a<sub title="different">X</sub>b'},
+    {source: '<test-widget><sub>X</sub></test-widget>', expected: null},
+  ])("merges only matching inherited wrappers in $source", ({source, expected}) => {
+    document.body.innerHTML = '<p><sub><b>ab</b></sub><!--keep--></p>'
+    const sub = document.querySelector("sub")!, bold = document.querySelector("b")!
+    $.move(bold.firstChild!, 1)
+    const data = new DataTransfer()
+    data.setData("text/html", '<meta name="webwriter-clipboard" content="1">' + source)
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    expect(document.querySelector("sub")).toBe(sub)
+    expect(document.querySelector("b")).toBe(bold)
+    if(expected !== null) expect(bold.innerHTML).toBe(expected)
+    else expect(document.querySelector("test-widget")!.innerHTML).toBe("<sub>X</sub>")
+    expect(document.body.innerHTML).toContain("<!--keep-->")
+  })
+
+  it("does not remove formatting needed outside a partially selected mark", () => {
+    document.body.innerHTML = '<p><sub>ab</sub>cd</p>'
+    const sub = document.querySelector("sub")!, paragraph = document.querySelector("p")!
+    $.selectRange(sub.firstChild!, 1, paragraph.lastChild!, 1)
+    const data = new DataTransfer()
+    data.setData("text/html", '<sub>X</sub>')
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    expect(paragraph.innerHTML).toBe('<sub>aX</sub>d')
+  })
+
   it("keeps copied paragraphs separate when pasting at the end of a paragraph", () => {
     document.body.innerHTML = '<p>A</p><p>B</p><p>C</p>'
     const [target, second, third] = Array.from(document.querySelectorAll("p"))
@@ -4938,6 +5072,36 @@ describe("paste()", () => {
     $.move(document.querySelector("b")!.firstChild!, 1)
     document.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertLineBreak", bubbles: true, cancelable: true}))
     expect(document.querySelector("p br")).not.toBeNull()
+  })
+
+  it.each(["native", "beforeinput", "async"])("undoes a complete %s paste when individual DOM syncs cannot merge by time", async method => {
+    document.body.innerHTML = '<p>old</p>'
+    editor.doc.syncFromDOM()
+    const stop = vi.spyOn(Y.UndoManager.prototype, "stopCapturing")
+    editor.doc.stopCapturing()
+    const manager = stop.mock.contexts.find((manager): manager is Y.UndoManager =>
+      manager instanceof Y.UndoManager && manager.scope.includes(editor.doc.body))!
+    stop.mockRestore()
+    // Force every ordinary DOM transaction into its own history item. The
+    // paste must group its deletion and insertion regardless of elapsed time.
+    manager.captureTimeout = 0
+    $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
+    const html = '<p><b>new</b></p>', data = new DataTransfer()
+    data.setData("text/html", html)
+    if(method === "async") {
+      await navigator.clipboard.write([new ClipboardItem({"text/html": html})])
+      await editor.features.manipulation.paste()
+    }
+    else document.dispatchEvent(method === "native"
+      ? new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true})
+      : new InputEvent("beforeinput", {inputType: "insertFromPaste", dataTransfer: data, bubbles: true, cancelable: true}))
+    expectBodyToBe('<p><b>new</b></p>')
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expectBodyToBe('<p>old</p>')
+    editor.doc.redo()
+    expectBodyToBe('<p><b>new</b></p>')
+    expect(manager.captureTimeout).toBe(0)
   })
 
   it("preserves authored metadata outside the clipboard charset prologue", () => {
@@ -5999,6 +6163,61 @@ describe("setStyle()", () => {
       if(previous === null) document.documentElement.removeAttribute("style")
       else document.documentElement.setAttribute("style", previous)
     }
+  })
+
+  describe("contentful widget preset scope", () => {
+    beforeEach(() => {
+      editor.schema.extendWidgets([
+        {tagName: "webwriter-pages", editingConfig: {content: "webwriter-page+"}},
+        {tagName: "webwriter-page", editingConfig: {content: "flow*"}},
+      ])
+      document.body.innerHTML = '<section><webwriter-pages><webwriter-page><h2>Heading</h2><!--keep--><p>Paragraph</p><p>Untouched</p></webwriter-page><webwriter-page><p>Other page</p></webwriter-page></webwriter-pages></section><p>Outside</p>'
+    })
+
+    it.each(["h2", "p"])("styles the authored %s at the caret without styling its widget ancestors", tag => {
+      const block = document.querySelector<HTMLElement>(tag)!
+      const text = block.firstChild!
+      $.move(text, 2)
+      const manipulation = editor.features.manipulation
+      expect(manipulation.topLevelStyleTarget).toBe(block)
+      expect(manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe(tag)
+      manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold", padding: "8px"}})
+      expect(block).toHaveStyle({backgroundColor: "gold", padding: "8px"})
+      expect(document.querySelectorAll("section[style], webwriter-pages[style], webwriter-page[style]")).toHaveLength(0)
+      expect(document.querySelectorAll("[style]")).toHaveLength(1)
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(2)
+    })
+
+    it.each([false, true])("styles only selected authored blocks inside a widget (backward: %s)", backward => {
+      const page = document.querySelector("webwriter-page")!
+      const heading = page.querySelector("h2")!, paragraph = page.querySelector("p")!
+      $.selectRange(backward ? paragraph.firstChild! : heading.firstChild!, 1,
+        backward ? heading.firstChild! : paragraph.firstChild!, 3)
+      const manipulation = editor.features.manipulation
+      manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold", padding: "8px"}})
+      expect(heading).toHaveStyle({backgroundColor: "gold", padding: "8px"})
+      expect(paragraph).toHaveStyle({backgroundColor: "gold", padding: "8px"})
+      expect(page.lastElementChild).not.toHaveAttribute("style")
+      expect(document.querySelectorAll("section[style], webwriter-pages[style], webwriter-page[style]")).toHaveLength(0)
+      expect(document.querySelectorAll("[style]")).toHaveLength(2)
+      manipulation.actions.resetStyle({type: "resetStyle", topLevel: true})
+      expect(heading).not.toHaveAttribute("style")
+      expect(paragraph).not.toHaveAttribute("style")
+      expect(page.innerHTML).toContain("<!--keep-->")
+    })
+
+    it.each(["webwriter-page", "webwriter-pages"])("styles an explicitly selected whole %s", tag => {
+      const widget = document.querySelector(tag)!
+      $.selectElement(widget)
+      const manipulation = editor.features.manipulation
+      expect(manipulation.topLevelStyleTarget).toBe(widget)
+      manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold", padding: "8px"}})
+      expect(widget).toHaveStyle({backgroundColor: "gold", padding: "8px"})
+      expect(document.querySelectorAll("[style]")).toHaveLength(1)
+      expect(widget.querySelector("h2, p")).not.toHaveAttribute("style")
+      expect(widget.parentElement).not.toHaveAttribute("style")
+    })
   })
 
   it.each(["section", "div", "demo-widget"])("styles the top-level %s from nested content in the Edit toolbox", tag => {
@@ -7065,7 +7284,9 @@ describe("unified content transfer", () => {
   })
 
   it("centers ribbon elements at the canvas drop position", () => {
+    document.body.innerHTML = '<p style="z-index:40">Existing</p>'
     expect(editor.features.canvas.convert("canvas")).toBe(true)
+    const existing = document.body.firstElementChild as HTMLElement
     vi.spyOn(editor.features.canvas, "clientPoint").mockImplementation((x, y) => ({x: x - 100, y: y - 50}))
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
       return new DOMRect(100 + parseFloat(this.style.left || "0"), 50 + parseFloat(this.style.top || "0"), 40, 20)
@@ -7078,6 +7299,8 @@ describe("unified content transfer", () => {
     expect(item.style.left).toBe("180px")
     expect(item.style.top).toBe("90px")
     expect(item.style.width).toBe("")
+    expect(Number(item.style.zIndex)).toBeGreaterThan(40)
+    expect(existing.style.zIndex).toBe("40")
   })
 
   it("accepts a ribbon drop on the canvas's blank shadow slot", () => {
@@ -7391,9 +7614,11 @@ describe("unified content transfer", () => {
 
   it("centers ribbon elements within the slide under the drop", () => {
     document.body.removeAttribute("class")
+    document.body.innerHTML = '<p style="z-index:40">Existing</p>'
     expect(editor.features.slides.convert("slides")).toBe(true)
     editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
     const slide = document.querySelector<HTMLElement>("section.ww-slide")!
+    const existing = slide.querySelector("p")!
     vi.spyOn(slide, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 800, 600))
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
       return new DOMRect(100 + parseFloat(this.style.left || "0"), 100 + parseFloat(this.style.top || "0"), 40, 20)
@@ -7404,6 +7629,8 @@ describe("unified content transfer", () => {
     expect(item.localName).toBe("p")
     expect(item.style.left).toBe("180px")
     expect(item.style.top).toBe("140px")
+    expect(Number(item.style.zIndex)).toBeGreaterThan(40)
+    expect(existing.style.zIndex).toBe("40")
     const before = slide.children.length
     document.body.dispatchEvent(transferEvent("drop", ribbonData("p"), {clientX: 10, clientY: 10}))
     expect(slide.children).toHaveLength(before)
@@ -7418,6 +7645,24 @@ describe("unified content transfer", () => {
     surface.dispatchEvent(transferEvent("dragstart", data))
     return {data, surface}
   }
+
+  it.each((["canvas", "slides"] as const).flatMap(mode => [false, true].map(copy => ({mode, copy}))))("preserves a $mode item's layer on native move and raises only a new copy (copy: $copy)", ({mode, copy}) => {
+    document.body.innerHTML = '<article style="z-index:1">Background</article><p style="z-index:40">Front</p>'
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const root = mode === "canvas" ? document.body : document.querySelector<HTMLElement>(".ww-slide")!
+    const source = root.querySelector("article")!, front = root.querySelector("p")!
+    vi.spyOn(root, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 800, 600))
+    $.selectElement(source)
+    const data = new DataTransfer()
+    editor.features.manipulation.startNodeDrag(transferEvent("dragstart", data) as DragEvent, source)
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: root, offset: root.childNodes.length})
+    root.dispatchEvent(transferEvent("drop", data, {clientX: 300, clientY: 250, ctrlKey: copy}))
+    const items = root.querySelectorAll("article")
+    expect(items).toHaveLength(copy ? 2 : 1)
+    expect(source.style.zIndex).toBe("1")
+    expect(front.style.zIndex).toBe("40")
+    if(copy) expect(Number(items[1].style.zIndex)).toBeGreaterThan(40)
+  })
 
   function widgetReorderFixture() {
     editor.schema.extendWidgets([
@@ -7824,7 +8069,7 @@ describe("unified content transfer", () => {
   })
 
   it.each([[120, "left"], [180, "right"]] as const)("uses the projected %s float box beyond the target's height", (x, side) => {
-    document.body.innerHTML = '<video style="width:40px;height:60px"></video><p>target</p><p>displaced content</p>'
+    document.body.innerHTML = '<video style="width:40px;min-width:0;height:60px"></video><p>target</p><p>displaced content</p>'
     const source = document.querySelector("video")!, target = document.querySelector("p")!
     vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 200, 40, 60))
     vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 100, 30))
@@ -7843,6 +8088,21 @@ describe("unified content transfer", () => {
     expectClassFloat(source, side)
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     expect(document.body.querySelector("#◆float-drop-preview")).toBeNull()
+  })
+
+  it("keeps native minimum widths in float previews without changing authored sizing", () => {
+    document.body.innerHTML = '<video style="width:120px;min-width:175px;height:90px"></video><p>target</p>'
+    const source = document.querySelector("video")!, target = document.querySelector("p")!
+    vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 200, 175, 90))
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 300, 30))
+    const authored = source.getAttribute("style")
+    editor.features.manipulation.showFloatDropPreview(target, "left", "transfer", source)
+    const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
+    expect(parseFloat(preview.style.width)).toBe(175)
+    expect(parseFloat(preview.style.height)).toBe(90)
+    expect(source.getAttribute("style")).toBe(authored)
+    editor.features.manipulation.clearFloatDropPreview("transfer")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
   })
 
   it("measures drop targets in many parents with one reused probe", () => {
@@ -7965,6 +8225,110 @@ describe("unified content transfer", () => {
       expect(parseFloat(editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!.style.top)).toBe(index * 40)
     }
     expect(sourceRect).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true].flatMap(copy => ["before", "after"].map(edge => ({copy, edge}))))("returns floated content to a zero-margin flow gap from $edge (copy: $copy)", ({copy, edge}) => {
+    document.body.innerHTML = '<picture style="width:80px;margin:9px;color:teal" class="ww-float-right"><!--keep--><img alt="source"></picture><section><p>first</p><!--boundary--><p>second</p></section>'
+    const source = document.querySelector("picture")!, section = document.querySelector("section")!
+    const [first, second] = Array.from(section.children)
+    const child = source.querySelector("img")!
+    const comment = section.childNodes[1]
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 100, 80))
+    vi.spyOn(second, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 130, 100, 80))
+    const target = edge === "before" ? second : first
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: target.firstChild!, offset: 2})
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const {data} = beginDrag(source)
+    const point = {clientX: 150, clientY: edge === "before" ? 132 : 128, ctrlKey: copy}
+    target.dispatchEvent(transferEvent("dragover", data, point))
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).not.toBeNull()
+    target.dispatchEvent(transferEvent("drop", data, point))
+    const placed = section.children[1] as HTMLElement
+    expect(Array.from(section.children).map(element => element.localName)).toEqual(["p", "picture", "p"])
+    expect(placed).not.toHaveClass("ww-float-right")
+    expect(placed.style.margin).toBe("9px")
+    expect(placed.style.width).toBe("80px")
+    expect(placed.style.color).toBe("teal")
+    expect(placed === source).toBe(!copy)
+    if(!copy) expect(placed.querySelector("img")).toBe(child)
+    expect(section.contains(comment)).toBe(true)
+    expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).toBeNull()
+    editor.doc.syncFromDOM()
+    const changed = editor.toHTML(true)
+    expect(changed).not.toMatch(/◆|drop-range|float-drop-preview/)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
+
+  it.each([false, true])("uses one projected flow slot beside a sole float (empty paragraph first: %s)", paragraphFirst => {
+    const media = '<picture id="only-source" style="position:static;float:right;height:120px;margin:0" class="ww-float-right"><!--inside--><img alt="only"></picture>'
+    const paragraph = '<p id="empty"><br></p>'
+    document.body.innerHTML = paragraphFirst ? paragraph + '<!--keep-->' + media : media + '<!--keep-->' + paragraph
+    document.body.style.cssText = '--ww-float-width:280px;padding-left:200px;padding-right:480px'
+    const source = document.querySelector("picture")!, empty = document.querySelector("p")!
+    const children = Array.from(source.childNodes), authored = document.body.innerHTML
+    const rect = HTMLElement.prototype.getBoundingClientRect
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
+      if(this === document.body) return new DOMRect(0, 0, 1400, 700)
+      if(this === source) return new DOMRect(1100, 20, 140, 120)
+      if(this === empty) return new DOMRect(200, 20, 720, 28)
+      // Supply the layout engine's result for the isolated no-float projection.
+      if(this.getRootNode() instanceof ShadowRoot && parseFloat(this.style.blockSize) === 0) return new DOMRect(340, 20, 720, 0)
+      return rect.call(this)
+    })
+    const clone = vi.spyOn(source, "cloneNode")
+    const {data, surface} = beginDrag(source)
+    const reference = paragraphFirst ? empty : source
+    for(const y of [18, 34, 50, 100]) {
+      document.body.dispatchEvent(transferEvent("dragover", data, {clientX: 700, clientY:y}))
+      const marker = editor.appendix.querySelector<HTMLElement>('[part~="drop-range-gap"]')!
+      expect(marker).not.toBeNull()
+      expect(marker.style.left).toBe("340px")
+      expect(marker.style.top).toBe("20px")
+      expect(marker.style.width).toBe("720px")
+      const range = editor.features.manipulation.dropRange(new MouseEvent("mousemove", {clientX:700, clientY:y}), source)!
+      expect(range.startContainer).toBe(document.body)
+      expect(document.body.childNodes[range.startOffset]).toBe(reference)
+    }
+    expect(clone).not.toHaveBeenCalled()
+    expect(document.body.innerHTML).toBe(authored)
+    expect(Array.from(source.childNodes)).toEqual(children)
+    // Live edits invalidate the empty slot before the geometry cache rebuilds.
+    empty.textContent = "Now authored content"
+    expect(editor.features.manipulation.emptyFlowDropRange(new MouseEvent("mousemove", {clientX:700, clientY:100}), source)).toBeNull()
+    surface.dispatchEvent(transferEvent("dragend", data))
+    expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).toBeNull()
+    expect(editor.appendix.querySelectorAll('div[style*="visibility: hidden"]')).toHaveLength(0)
+  })
+
+  it("keeps the visible content column available when a projected float would cover it", () => {
+    document.body.innerHTML = '<picture><img alt="first"></picture><picture><img alt="second"></picture><video class="ww-float-right" style="float:right;width:720px;height:300px"></video>'
+    document.body.style.cssText = '--ww-float-width:720px;padding-left:340px;padding-right:340px'
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
+    const [first, second, source] = Array.from(document.body.children)
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue(new DOMRect(340, 50, 720, 200))
+    vi.spyOn(second, "getBoundingClientRect").mockReturnValue(new DOMRect(340, 250, 720, 200))
+    vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(1100, 50, 720, 300))
+    // Native hit testing resolves atomic media to an outer boundary.
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 2})
+    const {data} = beginDrag(source)
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:700, clientY:350}), source)).toBeNull()
+    const point = {clientX: 700, clientY: 252}
+    second.dispatchEvent(transferEvent("dragover", data, point))
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    const marker = editor.appendix.querySelector<HTMLElement>('[part~="drop-range-gap"]')!
+    expect(marker.style.width).toBe("720px")
+    expect(marker.style.height).toBe("24px")
+    expect(marker.style.top).toBe("250px")
+    second.dispatchEvent(transferEvent("drop", data, point))
+    expect(Array.from(document.body.children)).toEqual([first, source, second])
+    expect(source).not.toHaveClass("ww-float-right")
+    expect(marker.isConnected).toBe(false)
   })
 
   it("keeps float drop previews at the top when attribution reserves space below", () => {

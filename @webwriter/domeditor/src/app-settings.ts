@@ -240,7 +240,7 @@ export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
     cloudServices: [],
     activeCloudServiceId: null,
     cloudServicesConfigured: false,
-    proofreadingDictionary: [],
+    proofreadingDictionary: ["Edumix", "WebWriter"],
     proofreadingEnabledByDefault: true,
     userSnippets: [],
     language,
@@ -330,7 +330,8 @@ export function loadAppSettings(): AppSettings {
       activeCloudServiceId: cloudServices.some(service => service.id === value.activeCloudServiceId)
         ? value.activeCloudServiceId! : null,
       cloudServicesConfigured: value.cloudServicesConfigured === true,
-      proofreadingDictionary: normalizeProofreadingDictionary(value.proofreadingDictionary),
+      proofreadingDictionary: Array.isArray(value.proofreadingDictionary)
+        ? normalizeProofreadingDictionary(value.proofreadingDictionary) : defaults.proofreadingDictionary,
       proofreadingEnabledByDefault: typeof value.proofreadingEnabledByDefault === "boolean"
         ? value.proofreadingEnabledByDefault
         : typeof value.disableSpellChecking === "boolean"

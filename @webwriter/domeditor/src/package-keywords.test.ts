@@ -80,6 +80,27 @@ describe("package keyword presentation", () => {
     expect(labels(["5", "6", "8"])).toEqual(["Associate deg.", "Bachelor's", "Doctorate"])
   })
 
+  it.each([
+    ["1", "2", "3", "4", "5", "6", "7", "8"],
+    ["84", "74", "65", "55", "34", "2", "1"],
+    ["0", "1", "2", "3", "5", "6", "7", "8", "9"],
+  ])("combines primary, secondary and higher education into all levels: %j", (...codes) => {
+    expect(packageKeywordPresentations([
+      "widget-practical", "iscedf2013-06", ...codes.map(code => "ISCED2011-" + code),
+    ], "en")).toEqual([
+      {kind: "type", label: "Practice", icon: "KeywordPractice"},
+      {kind: "field", label: "ICT", icon: "EducationFieldTechnology"},
+      {kind: "level", label: "All levels", icon: "EducationSchool"},
+    ])
+  })
+
+  it.each(["1", "2", "3", "5", "6", "7", "8"])("keeps individual level badges when level %s is missing", omitted => {
+    const codes = ["1", "2", "3", "4", "5", "6", "7", "8"].filter(code => code !== omitted)
+    const badges = packageKeywordPresentations(codes.map(code => "isced2011-" + code), "en")
+    expect(badges.length).toBeGreaterThan(1)
+    expect(badges.every(badge => badge.kind === "level" && badge.label !== "All levels")).toBe(true)
+  })
+
   it("combines all ten subject fields into one badge", () => {
     const fields = Array.from({length: 10}, (_, index) => "iscedf2013-" + String(index + 1).padStart(2, "0"))
     fields[5] = "iscedf2013-0612"

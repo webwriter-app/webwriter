@@ -1248,6 +1248,608 @@ describe("DomEditor document loading", () => {
   })
 })
 
+describe("DomEditor fullscreen controls", () => {
+  async function mountFullscreenEditor() {
+    const {editor, iframe} = await mountEditor(editor => {
+      Object.assign(editor, {documentLayoutsDismissed: true, documentLayoutsManuallyDismissed: true})
+    })
+    const root = editor.shadowRoot!
+    const ribbon = root.querySelector<AppRibbon>("app-ribbon")!
+    const header = root.querySelector<HTMLElement>(".ribbon-header")!
+    const toolbox = root.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const scope = root.querySelector<HTMLDialogElement>(".fullscreen-scope")!
+    let modal = false
+    const scopeMatches = scope.matches.bind(scope)
+    vi.spyOn(scope, "matches").mockImplementation(selector => selector === ":modal" ? modal : scopeMatches(selector))
+    vi.spyOn(scope, "showModal").mockImplementation(() => { modal = true; scope.open = true })
+    vi.spyOn(scope, "show").mockImplementation(() => { modal = false; scope.open = true })
+    vi.spyOn(scope, "close").mockImplementation(() => { modal = false; scope.open = false })
+    const open = new Set<HTMLElement>()
+    // Happy DOM does not implement browser top-layer promotion. Keep its state
+    // local to these controls while exercising the real host event listeners.
+    for(const element of [header, toolbox, ...root.querySelectorAll<HTMLElement>(".html-source-panel, .document-layouts-panel")]) {
+      const matches = element.matches.bind(element)
+      vi.spyOn(element, "matches").mockImplementation(selector => selector === ":popover-open" ? open.has(element) : matches(selector))
+      Object.defineProperties(element, {
+        showPopover: {configurable: true, value: vi.fn(() => {open.add(element)})},
+        hidePopover: {configurable: true, value: vi.fn(() => {open.delete(element)})},
+      })
+    }
+    let fullscreenElement: Element | null = null
+    Object.defineProperty(root, "fullscreenElement", {configurable: true, get: () => fullscreenElement})
+    const settle = async () => {
+      await ribbon.updateComplete
+      await toolbox.updateComplete
+      await editor.updateComplete
+      await ribbon.updateComplete
+      await editor.updateComplete
+    }
+    const fullscreen = async (element: Element | null) => {
+      fullscreenElement = element
+      editor.ownerDocument.dispatchEvent(new Event("fullscreenchange", {bubbles: true, composed: true}))
+      await settle()
+    }
+    return {editor, iframe, root, ribbon, header, toolbox, scope, open, fullscreen, settle}
+  }
+
+  it("immediately shows the same collapsed app bar without a launcher or default toolbox tabs", async () => {
+    const {editor, iframe, root, ribbon, header, toolbox, open, fullscreen} = await mountFullscreenEditor()
+    await fullscreen(iframe)
+    expect(open).toEqual(new Set([header]))
+    expect(header.getAttribute("popover")).toBe("manual")
+    expect(ribbon.fullscreenControls).toBe(true)
+    expect(ribbon.hasAttribute("fullscreen-controls")).toBe(true)
+    expect(ribbon.expanded).toBe(false)
+    expect(root.querySelector(".fullscreen-launcher")).toBeNull()
+    expect(root.querySelector("app-ribbon")).toBe(ribbon)
+    expect(root.querySelector("dom-editor-toolbox")).toBe(toolbox)
+    expect(iframe.contentDocument!.querySelector("app-ribbon, dom-editor-toolbox")).toBeNull()
+    expect((editor as any).fullscreenEditing).toBe(true)
+  })
+
+  it("releases the host scrollbar gutter during fullscreen and restores its styles on exit and removal", async () => {
+    const {editor, iframe, fullscreen, settle} = await mountFullscreenEditor()
+    const document = editor.ownerDocument
+    const original = [...document.adoptedStyleSheets]
+    const rootStyle = document.documentElement.getAttribute("style")
+    await fullscreen(iframe)
+    const added = document.adoptedStyleSheets.filter(sheet => !original.includes(sheet))
+    expect(added).toHaveLength(1)
+    expect(added[0].cssRules[0].cssText).toContain("scrollbar-gutter: auto !important")
+    await settle()
+    expect(document.adoptedStyleSheets).toEqual([...original, added[0]])
+    expect(document.documentElement.getAttribute("style")).toBe(rootStyle)
+    await fullscreen(null)
+    expect(document.adoptedStyleSheets).toEqual(original)
+    await fullscreen(iframe)
+    editor.remove()
+    expect(document.adoptedStyleSheets).toEqual(original)
+  })
+
+  it("replaces Preview with the existing toolbox tabs and opens, switches, and closes the same toolbox", async () => {
+    const {editor, iframe, root, ribbon, header, toolbox, open, fullscreen, settle} = await mountFullscreenEditor()
+    const tools = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".toolbox-tab-button"), button => button.dataset.tool)
+    const frameWindow = iframe.contentWindow
+    await fullscreen(iframe)
+    const tabs = () => ribbon.shadowRoot!.querySelectorAll<HTMLButtonElement>(".ribbon-top-actions .toolbox-tab-button")
+    const button = (tool: string) => ribbon.shadowRoot!.querySelector<HTMLButtonElement>(`.ribbon-top-actions [data-tool="${tool}"]`)!
+    expect(Array.from(tabs(), tab => tab.dataset.tool)).toEqual(tools)
+    expect(ribbon.shadowRoot!.querySelector(".preview-button")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".toolbox-tabs")).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('.toolbox-tabs[role="toolbar"]')).not.toBeNull()
+    button("Edit").click()
+    await settle()
+    expect(root.querySelector("dom-editor-toolbox")).toBe(toolbox)
+    expect(toolbox.activeTool).toBe("Edit")
+    expect(toolbox.collapsed).toBe(false)
+    expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!.hidden).toBe(false)
+    expect(button("Edit").getAttribute("aria-pressed")).toBe("true")
+    expect(open).toEqual(new Set([toolbox, header]))
+    button("Review").click()
+    await settle()
+    expect(toolbox.activeTool).toBe("Review")
+    expect(button("Edit").getAttribute("aria-pressed")).toBe("false")
+    expect(button("Review").getAttribute("aria-pressed")).toBe("true")
+    button("Review").click()
+    await settle()
+    expect(toolbox.activeTool).toBeNull()
+    expect(toolbox.collapsed).toBe(true)
+    expect(open).toEqual(new Set([header]))
+    await fullscreen(null)
+    expect(toolbox.tabsInRibbon).toBe(false)
+    expect(toolbox.shadowRoot!.querySelectorAll(".toolbox-tab-button")).toHaveLength(tools.length)
+    expect(ribbon.shadowRoot!.querySelector(".preview-button")).not.toBeNull()
+    expect(ribbon.shadowRoot!.querySelector(".toolbox-tabs")).toBeNull()
+    expect(iframe.contentWindow).toBe(frameWindow)
+    expect((editor as any).fullscreenToolboxOpen).toBe(false)
+  })
+
+  it("keeps an already selected toolbox closed on entry until its fullscreen tab is activated", async () => {
+    const {iframe, ribbon, toolbox, header, open, fullscreen, settle} = await mountFullscreenEditor()
+    toolbox.selectTool("Edit", true)
+    await settle()
+    await fullscreen(iframe)
+    const button = ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.ribbon-top-actions [data-tool="Edit"]')!
+    expect(toolbox.activeTool).toBe("Edit")
+    expect(toolbox.collapsed).toBe(true)
+    expect(button.getAttribute("aria-pressed")).toBe("false")
+    expect(open).toEqual(new Set([header]))
+    button.click()
+    await settle()
+    expect(toolbox.collapsed).toBe(false)
+    expect(button.getAttribute("aria-pressed")).toBe("true")
+    expect(open).toEqual(new Set([toolbox, header]))
+  })
+
+  it("shares toolbox tab availability and pending-edit restrictions with the fullscreen bar", async () => {
+    const {editor, iframe, ribbon, toolbox, fullscreen, settle} = await mountFullscreenEditor()
+    await fullscreen(iframe)
+    const host = editor as any
+    host.settings = {...host.settings, disableAI: true}
+    await settle()
+    expect(ribbon.shadowRoot!.querySelector('.ribbon-top-actions [data-tool="AI"]')).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('.ribbon-top-actions [data-tool="Feedback"]')).toBeNull()
+    host.htmlPending = true
+    await settle()
+    const buttons = Array.from(ribbon.shadowRoot!.querySelectorAll<HTMLButtonElement>(".ribbon-top-actions .toolbox-tab-button"))
+    expect(buttons.length).toBeGreaterThan(0)
+    for(const button of buttons) expect(button.disabled).toBe(button.dataset.tool !== "Edit")
+    expect(toolbox.htmlPending).toBe(true)
+  })
+
+  it("keeps fullscreen toolboxes above a visible bottom pane and clears positioning on exit", async () => {
+    const {editor, iframe, root, ribbon, toolbox, fullscreen, settle} = await mountFullscreenEditor()
+    const panel = root.querySelector<HTMLElement>(".html-source-panel")!
+    vi.spyOn(panel, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 420, 800, 180))
+    await fullscreen(iframe)
+    await (editor as any).handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
+    await settle()
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.ribbon-top-actions [data-tool="Edit"]')!.click()
+    await settle()
+    expect(toolbox.matches(":popover-open")).toBe(true)
+    expect(panel.matches(":popover-open")).toBe(true)
+    expect(toolbox.style.getPropertyValue("--fullscreen-bottom-pane-height")).toBe("180px")
+    const review = () => ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.ribbon-top-actions [data-tool="Review"]')!
+    review().click()
+    await settle()
+    expect(toolbox.activeTool).toBe("Review")
+    expect(panel.matches(":popover-open")).toBe(true)
+    review().click()
+    await settle()
+    expect(toolbox.matches(":popover-open")).toBe(false)
+    expect(panel.matches(":popover-open")).toBe(true)
+    await fullscreen(null)
+    expect(toolbox.style.getPropertyValue("--fullscreen-bottom-pane-height")).toBe("")
+    expect(toolbox.hasAttribute("popover")).toBe(false)
+  })
+
+  it("opens existing editing commands from the app icon while keeping the app bar collapsed", async () => {
+    const {iframe, ribbon, header, open, fullscreen, settle} = await mountFullscreenEditor()
+    await fullscreen(iframe)
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+    await settle()
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("#ribbon-file-menu")!
+    await menu.updateComplete
+    expect(ribbon.menuOpen).toBe(true)
+    expect(menu.hidden).toBe(false)
+    expect(menu.groups.flatMap(group => group.buttons.map(button => typeof button === "string" ? button : button.label)))
+      .toEqual(expect.arrayContaining(["Format", "Insert"]))
+    expect(ribbon.expanded).toBe(false)
+    expect(open).toEqual(new Set([header]))
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+    await settle()
+    expect(ribbon.menuOpen).toBe(false)
+    expect(open).toEqual(new Set([header]))
+  })
+
+  it.each([true, false])("restores initial expanded=%s and breadcrumb state on fullscreen exit", async expanded => {
+    vi.stubGlobal("innerHeight", 800)
+    const {editor, iframe, ribbon, header, toolbox, open, fullscreen, settle} = await mountFullscreenEditor()
+    ribbon.expanded = expanded
+    await settle()
+    const breadcrumbVisible = (editor as any).breadcrumbVisible
+    await fullscreen(iframe)
+    expect(ribbon.expanded).toBe(false)
+    expect(open).toEqual(new Set([header]))
+    await fullscreen(null)
+    expect(ribbon.expanded).toBe(expanded)
+    expect(ribbon.fullscreenControls).toBe(false)
+    expect((editor as any).breadcrumbVisible).toBe(breadcrumbVisible)
+    expect(toolbox.hidden).toBe(!breadcrumbVisible)
+    expect(open.size).toBe(0)
+    for(const element of [header, toolbox]) {
+      expect(element.hasAttribute("popover")).toBe(false)
+      expect(element.style.getPropertyValue("--fullscreen-ribbon-height")).toBe("")
+    }
+  })
+
+  it.each([600, 900])("keeps the fullscreen app bar collapsed at viewport height %s", async height => {
+    vi.stubGlobal("innerHeight", 800)
+    const {iframe, ribbon, header, open, fullscreen, settle} = await mountFullscreenEditor()
+    await fullscreen(iframe)
+    vi.stubGlobal("innerHeight", height)
+    window.dispatchEvent(new Event("resize"))
+    await settle()
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+    await settle()
+    expect(ribbon.menuOpen).toBe(true)
+    expect(ribbon.expanded).toBe(false)
+    expect(open).toEqual(new Set([header]))
+    window.dispatchEvent(new Event("resize"))
+    await settle()
+    expect(ribbon.expanded).toBe(false)
+    vi.stubGlobal("innerHeight", 800)
+    window.dispatchEvent(new Event("resize"))
+    await fullscreen(null)
+    expect(ribbon.expanded).toBe(true)
+  })
+
+  it("preserves the app bar across nested widget fullscreen changes and repeated cleanup", async () => {
+    const {editor, iframe, ribbon, header, toolbox, scope, open, fullscreen, settle} = await mountFullscreenEditor()
+    await fullscreen(iframe)
+    // Widget and shadow-descendant changes keep the same host iframe.
+    await fullscreen(iframe)
+    expect(ribbon.expanded).toBe(false)
+    expect(open).toEqual(new Set([header]))
+    expect(scope.showModal).toHaveBeenCalledOnce()
+    await fullscreen(null)
+    await fullscreen(null)
+    editor.remove()
+    await settle()
+    expect(scope.showModal).toHaveBeenCalledOnce()
+    expect(scope.close).toHaveBeenCalledTimes(2)
+    expect(open.size).toBe(0)
+    expect((editor as any).fullscreenRibbonState).toBeNull()
+    for(const element of [header, toolbox]) {
+      expect(element.hasAttribute("popover")).toBe(false)
+      expect(element.style.getPropertyValue("--fullscreen-ribbon-height")).toBe("")
+    }
+  })
+
+  it("uses a stable modal scope without moving or reloading the editor frame", async () => {
+    const {iframe, root, ribbon, header, toolbox, scope, fullscreen} = await mountFullscreenEditor()
+    const editorWindow = iframe.contentWindow
+    const editorDocument = iframe.contentDocument!
+    const paragraph = editorDocument.querySelector("p")!
+    paragraph.textContent = "Keep the live document"
+    expect(scope.open).toBe(true)
+    expect(scope.matches(":modal")).toBe(false)
+    expect(scope.getAttribute("role")).toBe("presentation")
+    expect(scope.contains(iframe)).toBe(true)
+    await fullscreen(iframe)
+    expect(scope.matches(":modal")).toBe(true)
+    expect(scope.getAttribute("role")).toBe("dialog")
+    expect(scope.showModal).toHaveBeenCalledOnce()
+    expect([ribbon, header, toolbox].every(element => scope.contains(element))).toBe(true)
+    await fullscreen(null)
+    expect(scope.open).toBe(true)
+    expect(scope.matches(":modal")).toBe(false)
+    expect(scope.getAttribute("role")).toBe("presentation")
+    expect(scope.show).toHaveBeenCalledOnce()
+    expect(root.querySelector("iframe.editor-frame")).toBe(iframe)
+    expect(iframe.contentWindow).toBe(editorWindow)
+    expect(iframe.contentDocument).toBe(editorDocument)
+    expect(editorDocument.querySelector("p")).toBe(paragraph)
+    expect(paragraph.textContent).toBe("Keep the live document")
+  })
+
+  it("routes modal cancellation through fullscreen exit while preserving its stable scope", async () => {
+    const {editor, iframe, scope, fullscreen} = await mountFullscreenEditor()
+    const exitFullscreen = vi.fn(async () => {})
+    const previous = Object.getOwnPropertyDescriptor(editor.ownerDocument, "exitFullscreen")
+    Object.defineProperty(editor.ownerDocument, "exitFullscreen", {configurable: true, value: exitFullscreen})
+    try {
+      await fullscreen(iframe)
+      const cancel = new Event("cancel", {cancelable: true})
+      expect(scope.dispatchEvent(cancel)).toBe(false)
+      expect(cancel.defaultPrevented).toBe(true)
+      expect(exitFullscreen).toHaveBeenCalledOnce()
+      expect(scope.matches(":modal")).toBe(true)
+      await fullscreen(null)
+      expect(scope.open).toBe(true)
+      expect(scope.matches(":modal")).toBe(false)
+    }
+    finally {
+      if(previous) Object.defineProperty(editor.ownerDocument, "exitFullscreen", previous)
+      else Reflect.deleteProperty(editor.ownerDocument, "exitFullscreen")
+    }
+  })
+
+  it("keeps active toolboxes closed and retains the existing app menu command path", async () => {
+    const {editor, iframe, ribbon, toolbox, header, open, fullscreen, settle} = await mountFullscreenEditor()
+    toolbox.activeTool = "Edit"
+    await toolbox.updateComplete
+    await fullscreen(iframe)
+    expect(open).toEqual(new Set([header]))
+    expect(toolbox.matches(":popover-open")).toBe(false)
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+    await settle()
+    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("#ribbon-file-menu")!
+    await menu.updateComplete
+    menu.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "mark:b", apply: true}, bubbles: true, composed: true,
+    }))
+    await settle()
+    expect(execute).toHaveBeenCalledWith({type: "addMark", mark: "b"})
+    expect(open).toEqual(new Set([header]))
+  })
+
+  it("opens and reopens the same developer console through the fullscreen app menu", async () => {
+    const {editor, iframe, root, ribbon, header, open, fullscreen, settle} = await mountFullscreenEditor()
+    const frameWindow = iframe.contentWindow
+    const panel = root.querySelector<HTMLElement>(".html-source-panel")!
+    await fullscreen(iframe)
+    expect(open).toEqual(new Set([header]))
+    const toggleConsole = async () => {
+      ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+      await settle()
+      const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("#ribbon-file-menu")!
+      await menu.updateComplete
+      menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Developer console"]')!.click()
+      await settle()
+    }
+    await toggleConsole()
+    expect((editor as any).consoleOpen).toBe(true)
+    expect(root.querySelector(".html-source-panel")).toBe(panel)
+    expect(panel.hasAttribute("inert")).toBe(false)
+    expect(panel.getAttribute("popover")).toBe("manual")
+    expect(open).toEqual(new Set([panel, header]))
+    expect([...open].at(-1)).toBe(header)
+    const consoleElement = panel.querySelector("developer-console")
+    expect(consoleElement).not.toBeNull()
+    await toggleConsole()
+    expect(panel.hasAttribute("inert")).toBe(true)
+    expect(open).toEqual(new Set([header]))
+    await toggleConsole()
+    expect(root.querySelector(".html-source-panel")).toBe(panel)
+    expect(panel.querySelector("developer-console")).toBe(consoleElement)
+    expect(open).toEqual(new Set([panel, header]))
+    expect(root.querySelector("iframe.editor-frame")).toBe(iframe)
+    expect(iframe.contentWindow).toBe(frameWindow)
+    await fullscreen(null)
+    expect(panel.hasAttribute("popover")).toBe(false)
+    expect(panel.hasAttribute("inert")).toBe(false)
+    expect((editor as any).consoleOpen).toBe(true)
+    expect(open.size).toBe(0)
+  })
+
+  it("promotes a developer console already open before fullscreen and restores its ordinary presentation", async () => {
+    const {editor, iframe, root, header, open, fullscreen, settle} = await mountFullscreenEditor()
+    const panel = root.querySelector<HTMLElement>(".html-source-panel")!
+    await (editor as any).handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
+    await settle()
+    expect(panel.hasAttribute("inert")).toBe(false)
+    expect(panel.hasAttribute("popover")).toBe(false)
+    const consoleElement = panel.querySelector("developer-console")
+    await fullscreen(iframe)
+    expect(open).toEqual(new Set([panel, header]))
+    expect(panel.querySelector("developer-console")).toBe(consoleElement)
+    await fullscreen(null)
+    expect(root.querySelector(".html-source-panel")).toBe(panel)
+    expect(panel.hasAttribute("popover")).toBe(false)
+    expect(panel.hasAttribute("inert")).toBe(false)
+    expect(open.size).toBe(0)
+  })
+
+  it("uses the existing bottom panel for review and hides it when review closes", async () => {
+    const {editor, iframe, root, header, open, fullscreen, settle} = await mountFullscreenEditor()
+    const panel = root.querySelector<HTMLElement>(".html-source-panel")!
+    await fullscreen(iframe)
+    Object.assign(editor, {reviewOpen: true})
+    await settle()
+    expect(root.querySelector(".html-source-panel")).toBe(panel)
+    expect(panel.hasAttribute("inert")).toBe(false)
+    expect(open).toEqual(new Set([panel, header]))
+    const consoleElement = panel.querySelector<HTMLElement & {review: boolean}>("developer-console")!
+    await (consoleElement as any).updateComplete
+    expect(consoleElement.review).toBe(true)
+    Object.assign(editor, {reviewOpen: false})
+    await settle()
+    expect(panel.hasAttribute("inert")).toBe(true)
+    expect(open).toEqual(new Set([header]))
+    await fullscreen(null)
+    expect(panel.hasAttribute("popover")).toBe(false)
+  })
+
+  it("promotes visible layout choices and restores their existing node on exit", async () => {
+    const {editor, iframe, root, header, open, fullscreen, settle} = await mountFullscreenEditor()
+    const panel = root.querySelector<HTMLElement>(".document-layouts-panel")!
+    await fullscreen(iframe)
+    Object.assign(editor, {documentLayoutsDismissed: false})
+    await settle()
+    expect(panel.hasAttribute("inert")).toBe(false)
+    expect(open).toEqual(new Set([panel, header]))
+    Object.assign(editor, {documentLayoutsDismissed: true})
+    await settle()
+    expect(open).toEqual(new Set([header]))
+    await fullscreen(null)
+    expect(root.querySelector(".document-layouts-panel")).toBe(panel)
+    expect(panel.hasAttribute("popover")).toBe(false)
+    expect(panel.hasAttribute("inert")).toBe(true)
+  })
+
+  it("disables Preview buttons, commands, and its configured shortcut during fullscreen", async () => {
+    const {editor, iframe, root, ribbon, fullscreen, settle} = await mountFullscreenEditor()
+    const host = editor as any
+    const preview = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!
+    expect(preview.disabled).toBe(false)
+    await fullscreen(iframe)
+    expect(ribbon.shadowRoot!.querySelector(".preview-button")).toBeNull()
+    const snapshot = vi.spyOn(host, "currentPreviewHTMLFromFrame")
+    host.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {detail: {label: "Preview"}}))
+    const shortcut = host.settings.shortcuts["editor.preview"] as string
+    const keydown = new KeyboardEvent("keydown", {
+      key: "p", code: "KeyP", ctrlKey: shortcut.includes("Ctrl"), metaKey: shortcut.includes("Meta"),
+      altKey: shortcut.includes("Alt"), shiftKey: shortcut.includes("Shift"), bubbles: true, cancelable: true,
+    })
+    iframe.contentDocument!.dispatchEvent(keydown)
+    expect(keydown.defaultPrevented).toBe(true)
+    await host.enterPreview()
+    await settle()
+    expect(host.previewActive).toBe(false)
+    expect(snapshot).not.toHaveBeenCalled()
+    expect(root.querySelector("iframe.preview-frame")).toBeNull()
+    expect(root.querySelector("iframe.editor-frame")).toBe(iframe)
+    expect(iframe.hidden).toBe(false)
+    await fullscreen(null)
+    expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.disabled).toBe(false)
+  })
+
+  it("abandons a pending preview snapshot when the editing iframe enters fullscreen", async () => {
+    const {editor, iframe, root, fullscreen, settle} = await mountFullscreenEditor()
+    const host = editor as any
+    host.editorOpaque = true
+    vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(host, "requestFrameControl").mockResolvedValue(undefined)
+    const setEditingLocked = vi.spyOn(host, "setPreviewEditingLocked").mockResolvedValue(undefined)
+    let resolveSnapshot!: (html: string) => void
+    const snapshot = vi.spyOn(host, "currentPreviewHTMLFromFrame").mockImplementation(() => new Promise<string>(resolve => { resolveSnapshot = resolve }))
+    const opening = host.enterPreview() as Promise<void>
+    await vi.waitFor(() => expect(snapshot).toHaveBeenCalledOnce())
+    await fullscreen(iframe)
+    resolveSnapshot("<!doctype html><html><head></head><body><p>Preview snapshot</p></body></html>")
+    await opening
+    await settle()
+    expect(host.previewActive).toBe(false)
+    expect(host.previewTransition).toBe(false)
+    expect(setEditingLocked).toHaveBeenCalledWith(false)
+    expect(root.querySelector("iframe.preview-frame")).toBeNull()
+    expect(root.querySelector("iframe.editor-frame")).toBe(iframe)
+    expect(iframe.hidden).toBe(false)
+  })
+
+  it("ignores fullscreen belonging to another element", async () => {
+    const {editor, header, toolbox, open, fullscreen} = await mountFullscreenEditor()
+    await fullscreen(document.createElement("video"))
+    expect((editor as any).fullscreenEditing).toBe(false)
+    expect(open.size).toBe(0)
+    for(const element of [header, toolbox]) expect(element.hasAttribute("popover")).toBe(false)
+  })
+
+  it("cleans up promoted controls and the modal scope when disconnected", async () => {
+    const {editor, iframe, header, toolbox, scope, open, fullscreen, settle} = await mountFullscreenEditor()
+    await fullscreen(iframe)
+    editor.remove()
+    await settle()
+    expect(scope.close).toHaveBeenCalledTimes(2)
+    expect(scope.matches(":modal")).toBe(false)
+    expect(open.size).toBe(0)
+    for(const element of [header, toolbox]) expect(element.hasAttribute("popover")).toBe(false)
+    editor.ownerDocument.dispatchEvent(new Event("fullscreenchange"))
+    await settle()
+    expect((editor as any).fullscreenEditing).toBe(false)
+    expect(scope.showModal).toHaveBeenCalledOnce()
+  })
+})
+
+describe("fullscreen package reload", () => {
+  async function withReload(run: (context: {
+    editor: DomEditor, iframe: HTMLIFrameElement, host: any,
+    exit: ReturnType<typeof vi.fn<() => Promise<void>>>, setFullscreen: (element: Element | null) => void,
+    snapshot: ReturnType<typeof vi.spyOn>, reset: ReturnType<typeof vi.spyOn>, cancel: ReturnType<typeof vi.spyOn>,
+  }) => Promise<void>) {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const root = editor.shadowRoot!
+    const previousFullscreen = Object.getOwnPropertyDescriptor(root, "fullscreenElement")
+    const previousExit = Object.getOwnPropertyDescriptor(editor.ownerDocument, "exitFullscreen")
+    let fullscreenElement: Element | null = iframe
+    Object.defineProperty(root, "fullscreenElement", {configurable: true, get: () => fullscreenElement})
+    const setFullscreen = (element: Element | null) => { fullscreenElement = element }
+    const exit = vi.fn(async () => {fullscreenElement = null})
+    Object.defineProperty(editor.ownerDocument, "exitFullscreen", {configurable: true, value: exit})
+    const snapshot = vi.spyOn(editor, "execute").mockResolvedValue({update: []})
+    const reset = vi.spyOn(host, "resetEditorFrame")
+    const cancel = vi.spyOn(root.querySelector<AppRibbon>("app-ribbon")!, "cancelAIWork").mockResolvedValue(undefined)
+    vi.spyOn(host, "waitForEditorWindow").mockResolvedValue(window)
+    try { await run({editor, iframe: iframe as HTMLIFrameElement, host, exit, setFullscreen, snapshot, reset, cancel}) }
+    finally {
+      if(previousFullscreen) Object.defineProperty(root, "fullscreenElement", previousFullscreen)
+      else Reflect.deleteProperty(root, "fullscreenElement")
+      if(previousExit) Object.defineProperty(editor.ownerDocument, "exitFullscreen", previousExit)
+      else Reflect.deleteProperty(editor.ownerDocument, "exitFullscreen")
+    }
+  }
+
+  it("keeps the old frame mounted and delays snapshots and reset until fullscreen exit resolves", async () => {
+    await withReload(async ({editor, iframe, host, exit, setFullscreen, snapshot, reset, cancel}) => {
+      let finishExit!: () => void
+      exit.mockImplementation(() => new Promise<void>(resolve => {finishExit = () => {setFullscreen(null); resolve()}}))
+      const oldWindow = iframe.contentWindow
+      const revision = host.frameRevision
+      const previousPackages = host.installedPackages
+      const nextPackages = [{...demoPackage, scripts: [], styles: []}]
+      const loading = host.reloadEditor(nextPackages) as Promise<void>
+      expect(exit).toHaveBeenCalledOnce()
+      expect(iframe.isConnected).toBe(true)
+      expect(iframe.contentWindow).toBe(oldWindow)
+      expect(host.frameRevision).toBe(revision)
+      expect(host.installedPackages).toBe(previousPackages)
+      expect(snapshot).not.toHaveBeenCalled()
+      expect(reset).not.toHaveBeenCalled()
+      expect(cancel).not.toHaveBeenCalled()
+      finishExit()
+      await loading
+      await editor.updateComplete
+      expect(snapshot).toHaveBeenCalledWith({type: "snapshotState"})
+      expect(reset).toHaveBeenCalledOnce()
+      expect(host.frameRevision).toBe(revision + 1)
+      expect(host.installedPackages).toBe(nextPackages)
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).not.toBe(iframe)
+      expect(iframe.isConnected).toBe(false)
+    })
+  })
+
+  it("aborts the reload without changing packages or detaching the frame if fullscreen exit fails", async () => {
+    await withReload(async ({editor, iframe, host, exit, snapshot, reset, cancel}) => {
+      const previousPackages = host.installedPackages
+      const revision = host.frameRevision
+      exit.mockRejectedValue(new Error("Fullscreen exit failed"))
+      await expect(host.reloadEditor([{...demoPackage, scripts: [], styles: []}])).rejects.toThrow("Fullscreen exit failed")
+      expect(snapshot).not.toHaveBeenCalled()
+      expect(reset).not.toHaveBeenCalled()
+      expect(cancel).not.toHaveBeenCalled()
+      expect(host.installedPackages).toBe(previousPackages)
+      expect(host.frameRevision).toBe(revision)
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBe(iframe)
+      expect(iframe.isConnected).toBe(true)
+    })
+  })
+
+  it("does not exit fullscreen belonging to an unrelated element", async () => {
+    await withReload(async ({host, exit, setFullscreen, snapshot, reset}) => {
+      setFullscreen(document.createElement("video"))
+      const revision = host.frameRevision
+      await host.reloadEditor([])
+      expect(exit).not.toHaveBeenCalled()
+      expect(snapshot).toHaveBeenCalledWith({type: "snapshotState"})
+      expect(reset).toHaveBeenCalledOnce()
+      expect(host.frameRevision).toBe(revision + 1)
+    })
+  })
+
+  it("rejects a stale reload if the editor frame changes while fullscreen exit is pending", async () => {
+    await withReload(async ({editor, host, exit, setFullscreen, reset}) => {
+      let finishExit!: () => void
+      exit.mockImplementation(() => new Promise<void>(resolve => {finishExit = () => {setFullscreen(null); resolve()}}))
+      const previousPackages = host.installedPackages
+      const revision = host.frameRevision
+      const loading = host.reloadEditor([{...demoPackage, scripts: [], styles: []}]) as Promise<void>
+      const rejected = expect(loading).rejects.toThrow("The editor changed while loading packages")
+      host.frameRevision++
+      await editor.updateComplete
+      const replacement = editor.shadowRoot!.querySelector("iframe.editor-frame")
+      finishExit()
+      await rejected
+      expect(reset).not.toHaveBeenCalled()
+      expect(host.frameRevision).toBe(revision + 1)
+      expect(host.installedPackages).toBe(previousPackages)
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBe(replacement)
+    })
+  })
+})
+
 describe("DomEditor iframe setup", () => {
   it("anchors update notifications to the app icon outside the authored document", async () => {
     const {editor, iframe} = await mountEditor()
@@ -2956,7 +3558,7 @@ describe("DomEditor iframe setup", () => {
   it("permits installed widget compilers while keeping authored scripts nonce-gated", () => {
     const editor = new DomEditor() as unknown as {installedPackages: WebWriterPackage[], readonly editorSrcdoc: string}
     editor.installedPackages = [demoPackage]
-    expect(editor.editorSrcdoc).toMatch(/script-src 'nonce-[^']+' 'strict-dynamic' 'unsafe-eval' 'wasm-unsafe-eval';/)
+    expect(editor.editorSrcdoc).toMatch(/script-src 'nonce-[^']+' 'strict-dynamic' 'unsafe-eval' 'wasm-unsafe-eval' 'sha256-[^']+';/)
     expect(editor.editorSrcdoc).toContain("style-src-elem * data: blob: 'unsafe-inline'")
     editor.installedPackages = [{...demoPackage, scripts: []}]
     expect(editor.editorSrcdoc).not.toContain("'unsafe-eval'")
@@ -4243,7 +4845,7 @@ describe("Develop local packages", () => {
     expect((editor as any).localPackages).toHaveLength(1)
     expect((editor as any).selectedLocalPackageName).toBe("@local/demo")
     expect(reload).toHaveBeenCalledWith([expect.objectContaining({name: "@local/demo"})])
-    expect(queryPermission).toHaveBeenCalledWith({mode: "readwrite"})
+    expect(queryPermission).toHaveBeenCalledWith({mode: "read"})
     expect(requestPermission).not.toHaveBeenCalled()
   })
 
@@ -6308,7 +6910,7 @@ describe("DomEditor.execute()", () => {
     expect(getComputedStyle(panel).gridColumn).toBe("1 / -1")
     expect(panel.inert).toBe(true)
     expect(getComputedStyle(panel).gridTemplateRows).toBe("0fr")
-    expect(getComputedStyle(panel).transition).toContain("grid-template-rows")
+    expect(getComputedStyle(panel).transition).not.toContain("grid-template-rows")
     expect(getComputedStyle(editor).overflow).toBe("clip")
     await (editor as any).setHTMLMode(true)
     await editor.updateComplete
@@ -6793,11 +7395,12 @@ describe("DomEditor.execute()", () => {
 
   it("routes media crop fields to the selected media instead of its top-level container", async () => {
     const {editor} = await mountEditor()
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const style = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => action.type === "getStyleState" ? style : undefined)
+    Object.assign(editor, {mediaSelection: {type: "picture", attributes: {style: "object-view-box: inset(10%)"}}, elementStyle: style})
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool("Edit")
-    toolbox.media = {type: "picture", attributes: {style: "object-view-box: inset(10%)"}}
-    toolbox.elementStyle = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+    await editor.updateComplete
     await toolbox.updateComplete
     const field = toolbox.shadowRoot!.querySelector('[data-specialized="picture"] element-style-editor')!
     field.dispatchEvent(new CustomEvent("element-style-change", {
@@ -10211,14 +10814,22 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     const bar = editor.shadowRoot!.querySelector(".document-layouts-bar")!
     expect(bar).not.toBeNull()
+    const panel = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-panel")!
+    expect(getComputedStyle(panel).transition).not.toContain("grid-template-rows")
     host.documentLayoutsDismissed = true
     await editor.updateComplete
+    expect(panel.inert).toBe(true)
+    expect(getComputedStyle(panel).gridTemplateRows).toBe("0fr")
+    expect(getComputedStyle(bar).position).toBe("absolute")
+    expect(getComputedStyle(bar).visibility).toBe("hidden")
     host.documentLayout = {mode: "canvas", canConvert: true, zoom: 100}
     await editor.updateComplete
     expect(bar.querySelector('[data-mode="canvas"]')!.getAttribute("aria-pressed")).toBe("false")
     host.documentLayoutsDismissed = false
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector(".document-layouts-bar")).toBe(bar)
+    expect(getComputedStyle(bar).position).not.toBe("absolute")
+    expect(getComputedStyle(bar).visibility).toBe("visible")
     expect(bar.querySelector('[data-mode="canvas"]')!.getAttribute("aria-pressed")).toBe("true")
     host.htmlPending = true
     await editor.updateComplete
@@ -11039,7 +11650,7 @@ describe("DomEditor.execute()", () => {
     body.className = "ww-slides"
     body.innerHTML = '<div class="ww-slides-viewport"><!--keep--><section class="ww-slide"><p>One</p></section><section class="ww-slide"><article><p>Two</p></article></section><section class="ww-slide"></section></div><nav class="ww-slides-navigation"><a>1</a><a>2</a><a>3</a></nav>'
     const slidesTree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
-    expect(slidesTree).toEqual({path: [], name: "Slides", icon: "KeywordPresentation", children: [
+    expect(slidesTree).toEqual({path: [], name: "Slides", icon: "Presentation", children: [
       {path: [0, 1], name: "Slide 1", icon: "Rectangle", children: [{path: [0, 1, 0], name: "Paragraph", icon: "Paragraph", children: []}]},
       {path: [0, 2], name: "Slide 2", icon: "Rectangle", children: [{path: [0, 2, 0, 0], name: "Paragraph", icon: "Paragraph", children: [], sections: [
         {path: [0, 2, 0], type: "article", name: "Article", icon: "Article"},
@@ -11416,6 +12027,40 @@ describe("DomEditor.execute()", () => {
     expect((editor as any).captureSelection).toBe(false)
   })
 
+  it.each([true, false])("keeps block formula font controls and selection stable (capture: %s)", async capture => {
+    const {editor, editorWindow} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    const selection = {path: [{path: [], name: "Document"}, {path: [0], name: "Formula"}],
+      nodeSelected: true, capture, math: {active: true, display: "block"}}
+    const styles = {"font-family": '"Libertinus Math", math', "font-size": "24px"}
+    const post = async (type: string, detail: object) => {
+      window.dispatchEvent(new MessageEvent("message", {data: {type, detail}, source: editorWindow}))
+      await editor.updateComplete
+      await ribbon.updateComplete
+      await breadcrumb.updateComplete
+    }
+    await post(selectionChangeEvent, selection)
+    const keyboard = editor.shadowRoot!.querySelector("dom-editor-math-keyboard")
+    for(let update = 0; update < 3; update++) {
+      await post(markStateChangeEvent, {canMark: true, marks: [], styles})
+      expect(breadcrumb.nodeSelected).toBe(true)
+      expect(breadcrumb.capture).toBe(capture)
+      expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).toBe(keyboard)
+      await post(selectionChangeEvent, selection)
+      expect(ribbon.canMark).toBe(true)
+      expect(ribbon.markStyles).toEqual(styles)
+      for(const name of ["font-family", "font-size"]) {
+        const picker = ribbon.shadowRoot!.querySelector<RibbonCombobox>(`ribbon-combobox[name="${name}"]`)!
+        expect(picker.disabled).toBe(false)
+      }
+    }
+    await post(selectionChangeEvent, {path: [selection.path[0], {path: [1], name: "Image"}], capture: true})
+    expect(ribbon.canMark).toBe(false)
+    expect(ribbon.markStyles).toEqual({})
+    expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).toBeNull()
+  })
+
   it("never applies text and node or gap selection states together", async () => {
     const {editor, editorWindow} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
@@ -11539,7 +12184,7 @@ describe("DomEditor.execute()", () => {
     expect(toolbox.shadowRoot!.querySelector('[data-tool="AI"]')).not.toBeNull()
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
-    expect(getComputedStyle(toolbox).width).toBe("216px")
+    expect(getComputedStyle(toolbox).width).toBe("250px")
   })
 
   it("opens AI in the toolbox or a closable sidebar and synchronizes the prompt", async () => {
@@ -12639,6 +13284,72 @@ describe("DomEditor.execute()", () => {
     await heading.updateComplete
 
     expect(submenu.hidden).toBe(true)
+  })
+
+  it.each(["same-origin", "isolated"])("closes ribbon dropdowns on document typing in a %s frame without consuming input", async mode => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const doc = iframe.contentDocument!
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Heading"]')!
+    await heading.updateComplete
+    const toggle = heading.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!
+    const submenu = heading.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    if(mode === "isolated") (editor as any).editorOpaque = true
+    try {
+      for(const inputType of ["insertText", "insertCompositionText"]) {
+        toggle.click()
+        await heading.updateComplete
+        expect(submenu.hidden).toBe(false)
+        if(mode === "same-origin") {
+          const input = new InputEvent("beforeinput", {inputType, data: "a", isComposing: inputType === "insertCompositionText",
+            bubbles: true, composed: true, cancelable: true})
+          doc.body.dispatchEvent(input)
+          expect(input.defaultPrevented).toBe(false)
+        }
+        else {
+          // Unauthenticated messages cannot dismiss editor UI.
+          window.dispatchEvent(new MessageEvent("message", {data: {type: "editor-frame-beforeinput"}}))
+          await heading.updateComplete
+          expect(submenu.hidden).toBe(false)
+          window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type: "editor-frame-beforeinput"}}))
+        }
+        await heading.updateComplete
+        expect(submenu.hidden).toBe(true)
+      }
+    }
+    finally { (editor as any).editorOpaque = false }
+  })
+
+  it("keeps dropdowns open while typing in ribbon, appendix, form, and widget fields", async () => {
+    const {editor, iframe} = await mountEditor()
+    const doc = iframe.contentDocument!
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Heading"]')!
+    await heading.updateComplete
+    const appendix = doc.body.attachShadow({mode: "open"})
+    appendix.append(doc.createElement("slot"))
+    const appendixInput = doc.createElement("input")
+    appendix.append(appendixInput)
+    const widget = doc.createElement("demo-widget")
+    doc.body.append(widget)
+    const widgetInput = doc.createElement("input")
+    widget.attachShadow({mode: "open"}).append(widgetInput)
+    const formInput = doc.createElement("input")
+    doc.body.append(formInput)
+    const ribbonInput = document.createElement("input")
+    ribbon.shadowRoot!.append(ribbonInput)
+    heading.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await heading.updateComplete
+    const submenu = heading.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    for(const input of [appendixInput, widgetInput, formInput, ribbonInput]) {
+      input.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "a", bubbles: true, composed: true}))
+      await heading.updateComplete
+      expect(submenu.hidden).toBe(false)
+    }
+    editor.remove()
+    const dismiss = vi.spyOn(editor as any, "dismissEditorMenus")
+    doc.body.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, composed: true}))
+    expect(dismiss).not.toHaveBeenCalled()
   })
 
   it.each(["same-origin", "isolated"])("preserves focus in appendix URL controls in a %s frame", async mode => {

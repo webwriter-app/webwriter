@@ -61,6 +61,17 @@ Capture selection lets a widget's own controls receive input. Ordinary element s
 
 A pointer interaction acquires capture only after a completed click. Pointer-down alone does not capture the widget, and a drag or cancelled press does not become capture on release. Keyboard and programmatic focus can still acquire capture without a pointer click. Native input focus and text selection inside a shadow control remain intact when capture is established.
 
+Put `data-ww-capture-selection="false"` on a private shadow control or a shadow container of controls that should work without capture-selecting the widget, such as page tabs and their editable labels. The marker applies to completed clicks, keyboard and programmatic focus, and subsequent selection changes. Entering a marked control releases existing capture without moving its focus or text caret. It also covers controls nested in open shadow roots. Unmarked widget surfaces keep their normal capture behavior, and an explicit modifier-click can still select the whole widget.
+
+```html
+<div data-ww-capture-selection="false">
+  <button type="button">Overview</button>
+  <input aria-label="Page title">
+</div>
+```
+
+Keep this marker in the widget's shadow DOM. It does not turn private controls into authored content or forward their input events to the editor.
+
 For a widget with declared editable `content`, clicking or dragging in authored light-DOM children edits that content. Keep private controls in the shadow DOM and expose authored children through slots so the editor can distinguish the two.
 
 ## Move the document selection
@@ -81,7 +92,9 @@ Test Tab, Shift+Tab, Enter, and Space in edit mode and in preview. Update the ex
 
 ## Ranges through authored content
 
-Declaring `content` opens the widget's authored children to ranges that cross titles, paragraphs, nested widgets and slots. A drag that starts at a gap retains that gap as its anchor and can end partway through text. Dragging along either side of the widget projects the endpoint onto authored content at the pointer's height. During document drag selection, the page scrolls near the viewport edges rather than revealing the start of the growing range.
+Declaring `content` opens the widget’s authored children to text selection across titles, paragraphs and slots. By default, `isolating: true` confines ranges started inside the widget to its content and prevents an outside range from ending partway inside it. Nested isolated widgets form their own boundaries. Select all inside an isolated widget selects that widget’s content.
+
+Set `isolating: false` in the [editing configuration](../reference/editing-configuration.md) to allow partial ranges across the widget boundary. This does not override isolation declared by a nested widget. A drag that starts at a gap retains that gap as its anchor and can end partway through text. Dragging along either side of the widget projects the endpoint onto authored content at the pointer's height. During document drag selection, the page scrolls near the viewport edges rather than revealing the start of the growing range.
 
 A fully enclosed widget receives the editor's blue range overlay, including widgets that expose editable content. Partial coverage keeps the authored text range. This also works for a `display: contents` host: selection geometry follows its rendered shadow and slotted boxes. Range highlighting does not acquire capture. Deleting a partial range removes the indicated content without promoting it to deletion of the enclosing widget.
 

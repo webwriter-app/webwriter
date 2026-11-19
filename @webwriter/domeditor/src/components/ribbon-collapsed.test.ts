@@ -29,6 +29,39 @@ async function open(menu: RibbonMenu, label: string) {
 }
 
 describe("collapsed ribbon file menu", () => {
+  it.each([500, 900])("keeps fullscreen editing in the app menu at viewport height %i", async height => {
+    const previousHeight = window.innerHeight
+    try {
+      Object.defineProperty(window, "innerHeight", {configurable: true, value: height})
+      const ribbon = new AppRibbon()
+      ribbon.fullscreenControls = true
+      ribbon.canMark = true
+      document.body.append(ribbon)
+      await ribbon.updateComplete
+      expect(ribbon.expanded).toBe(false)
+      const brand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!
+      expect(brand.getAttribute("aria-label")).toBe("Open File menu")
+      brand.click()
+      await ribbon.updateComplete
+      const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+      await menu.updateComplete
+      expect(menu.hidden).toBe(false)
+      expect(ribbon.expanded).toBe(false)
+      const format = await open(menu, "Format")
+      expect(format.groups.some(group => group.label === "Standard marks")).toBe(true)
+      brand.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true}))
+      await ribbon.updateComplete
+      expect(ribbon.menuOpen).toBe(true)
+      brand.click()
+      await ribbon.updateComplete
+      expect(ribbon.menuOpen).toBe(false)
+      expect(ribbon.expanded).toBe(false)
+    }
+    finally {
+      Object.defineProperty(window, "innerHeight", {configurable: true, value: previousHeight})
+    }
+  })
+
   it("requests preview exit before opening File during a live session", async () => {
     const ribbon = new AppRibbon()
     ribbon.expanded = false

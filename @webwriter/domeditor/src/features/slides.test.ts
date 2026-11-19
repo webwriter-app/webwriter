@@ -362,6 +362,16 @@ describe("CSS-only Slides layout", () => {
     const feature = editor.features.slides
     const toolbar = editor.appendix.querySelector<HTMLElement>("[part=slide-zoom-controls]")!
     expect(toolbar.classList.contains("◆canvas-controls")).toBe(true)
+    for(const [name, label] of [["zoom-in", "Zoom in"], ["zoom-out", "Zoom out"]]) {
+      const button = toolbar.querySelector<HTMLButtonElement>(`[name="${name}"]`)!
+      expect(button.getAttribute("aria-label")).toBe(label)
+      expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+      const style = getComputedStyle(button)
+      expect(style.display).toBe("inline-flex")
+      expect(style.alignItems).toBe("center")
+      expect(style.justifyContent).toBe("center")
+      expect(style.paddingTop).toBe(style.paddingLeft)
+    }
     const presets = toolbar.querySelector('[role="group"]')!
     const reset = presets.querySelector<HTMLButtonElement>('[name="actual-size"]')!
     expect(reset.querySelector("svg")).not.toBeNull()
@@ -614,7 +624,7 @@ describe("CSS-only Slides layout", () => {
     }
 
     expect(detail().path).toMatchObject([
-      {path: [], name: "Slides", icon: "KeywordPresentation"},
+      {path: [], name: "Slides", icon: "Presentation"},
       {path: [0, 3], name: "Slide 2", icon: "Rectangle"},
       {path: [0, 3, 0, 0], name: "Paragraph", icon: "Paragraph", sections: [
         {path: [0, 3, 0], type: "article", name: "Article", icon: "Article"},
@@ -823,7 +833,7 @@ describe("CSS-only Slides layout", () => {
     const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
     editor.postSelectionPath()
     expect(postMessage.mock.calls.filter(([message]) => message.type === selectionChangeEvent).at(-1)![0].detail.path).toEqual([
-      {path: [], name: "Slides", icon: "KeywordPresentation"},
+      {path: [], name: "Slides", icon: "Presentation"},
       {path: [0, 0], name: "Slide 1", icon: "Rectangle"},
     ])
   })
@@ -1223,6 +1233,26 @@ describe("CSS-only Slides layout", () => {
     expect(scroll).toHaveBeenCalledWith({left: -100, behavior: "smooth"})
     editor.features.slides.disable()
     expect(editor.appendix.querySelector('[name="scroll-back"]')).toBeNull()
+  })
+
+  it.each(["disabled", "reduced"])("scrolls slide tabs instantly when motion is %s", async preference => {
+    seed(); await settle()
+    const nav = document.querySelector<HTMLElement>("nav.ww-slides-navigation")!
+    vi.spyOn(nav, "clientWidth", "get").mockReturnValue(100)
+    vi.spyOn(nav, "scrollWidth", "get").mockReturnValue(300)
+    const scroll = vi.spyOn(nav, "scrollBy").mockImplementation(() => {})
+    if(preference === "disabled") nav.style.setProperty("--ww-ui-transition", "none")
+    else vi.spyOn(window, "matchMedia").mockImplementation(query => ({matches: query.includes("prefers-reduced-motion")} as MediaQueryList))
+    try {
+      nav.dispatchEvent(new Event("scroll")); await settle()
+      button("scroll-forward").click()
+      expect(scroll).toHaveBeenLastCalledWith({left: 100, behavior: "instant"})
+      nav.scrollLeft = 200
+      nav.dispatchEvent(new Event("scroll")); await settle()
+      button("scroll-back").click()
+      expect(scroll).toHaveBeenLastCalledWith({left: -100, behavior: "instant"})
+    }
+    finally { nav.style.removeProperty("--ww-ui-transition") }
   })
 
   it("reuses the visible slide until scrolling or authored changes invalidate its geometry", () => {

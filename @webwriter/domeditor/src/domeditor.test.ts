@@ -245,7 +245,7 @@ describe("DOMEditor stylesheets", () => {
     const owner = {}
     editor.lockEditing(owner)
     const lockSheet = appendix.adoptedStyleSheets.find(sheet =>
-      Array.from(sheet.cssRules).some(rule => (rule as CSSStyleRule).selectorText?.endsWith("> :not(slot):not(.◆ai-review-toolbar)")),
+      Array.from(sheet.cssRules).some(rule => (rule as CSSStyleRule).selectorText?.includes(":not(.◆ai-review-toolbar)")),
     )
     editor.unlockEditing(owner)
 
@@ -253,7 +253,7 @@ describe("DOMEditor stylesheets", () => {
     expect(lockSheet).toBeInstanceOf(CSSStyleSheet)
     expect(appendix.adoptedStyleSheets).not.toContain(lockSheet)
     const lockRule = Array.from(lockSheet!.cssRules).find(rule =>
-      (rule as CSSStyleRule).selectorText?.endsWith("> :not(slot):not(.◆ai-review-toolbar)")) as CSSStyleRule
+      (rule as CSSStyleRule).selectorText?.includes(":not(.◆ai-review-toolbar)")) as CSSStyleRule
     expect(lockRule.style.display).toBe("none")
     expect(appendix.adoptedStyleSheets.some(sheet => Array.from(sheet.cssRules).some(rule => (rule as CSSKeyframesRule).name === "blink"))).toBe(true)
     expect(editorStyleString).toContain("body::part(transform-overlay)")

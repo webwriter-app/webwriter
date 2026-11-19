@@ -256,6 +256,24 @@ it("publishes document updates, owns only document shortcuts, and disconnects co
 
   const appendix = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
   const appendixControl = appendix.appendChild(document.createElement("input"))
+  const beforeInput = (target: EventTarget, isComposing = false) => {
+    const event = new InputEvent("beforeinput", {inputType: isComposing ? "insertCompositionText" : "insertText",
+      data: "a", isComposing, bubbles: true, composed: true, cancelable: true})
+    target.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+  }
+  const beforeInputCount = () => postMessage.mock.calls.filter(([message]) => message.type === "editor-frame-beforeinput").length
+  const beforeAuthoredInput = beforeInputCount()
+  beforeInput(document.body)
+  beforeInput(paragraph, true)
+  expect(beforeInputCount()).toBe(beforeAuthoredInput + 2)
+  expect(postMessage).toHaveBeenLastCalledWith(expect.objectContaining({type: "editor-frame-beforeinput", bridgeNonce: nonce}), origin)
+  const appendixButton = appendix.appendChild(document.createElement("button"))
+  for(const target of [document.querySelector("input")!, widgetRoot.firstChild!, appendixButton]) {
+    beforeInput(target)
+    beforeInput(target, true)
+  }
+  expect(beforeInputCount()).toBe(beforeAuthoredInput + 2)
   for(const target of [document.querySelector("p")!, document.querySelector("input")!, widgetRoot.firstChild!, appendixControl]) {
     const event = new KeyboardEvent("keydown", {key: "p", code: "KeyP", ctrlKey: true,
       bubbles: true, composed: true, cancelable: true})
@@ -346,6 +364,10 @@ it("publishes document updates, owns only document shortcuts, and disconnects co
   window.dispatchEvent(Object.assign(new Event("pagehide"), {persisted: false}))
   expect(editor.destroy).toHaveBeenCalledOnce()
   expect((window as any).editor).toBeUndefined()
+  const beforeTeardownInput = beforeInputCount()
+  beforeInput(paragraph)
+  beforeInput(paragraph, true)
+  expect(beforeInputCount()).toBe(beforeTeardownInput)
   paragraph.append("After teardown")
   await flushMutations()
   expect(updateCount()).toBe(afterRestore)

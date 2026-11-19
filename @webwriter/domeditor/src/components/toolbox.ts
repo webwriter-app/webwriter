@@ -9,6 +9,7 @@ import "./media-source-info"
 import type {FloatInfo} from "./float-info"
 import {css, html, nothing, type TemplateResult} from "lit"
 import {guard} from "lit/directives/guard.js"
+import {ref} from "lit/directives/ref.js"
 import {live} from "lit/directives/live.js"
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 import {repeat} from "lit/directives/repeat.js"
@@ -84,6 +85,7 @@ export class DomEditorToolbox extends EditingControls {
     showStyleToolbox: {type: Boolean, attribute: "show-style-toolbox", reflect: true},
     activeTool: {type: String, attribute: "active-tool", reflect: true},
     collapsed: {type: Boolean, reflect: true},
+    tabsInRibbon: {type: Boolean, attribute: false},
     selectionPath: {attribute: false},
     documentSelected: {type: Boolean, attribute: "document-selected"},
     documentThemeStyles: {attribute: false},
@@ -262,7 +264,6 @@ export class DomEditorToolbox extends EditingControls {
       color: #2f3742;
       background: transparent;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      transition: var(--ww-ui-transition, width 180ms ease);
     }
 
     :host(:not([show-style-toolbox])) {
@@ -291,7 +292,7 @@ export class DomEditorToolbox extends EditingControls {
     .feedback-messages time {font-size: .62rem; color: #7b8795}
 
     :host([active-tool]) {
-      width: 216px;
+      width: 250px;
     }
 
     :host([ai-sidebar]) {grid-template-rows: 30px minmax(0, 1fr)}
@@ -388,7 +389,7 @@ export class DomEditorToolbox extends EditingControls {
       height: 28px;
       border-radius: 0.2rem;
       overflow: hidden;
-      transition: var(--ww-ui-transition, width 180ms ease, background-color 120ms ease);
+      transition: var(--ww-ui-transition, background-color 120ms ease);
     }
 
     .toolbox-tab[data-active] {
@@ -454,7 +455,6 @@ export class DomEditorToolbox extends EditingControls {
       min-width: 28px;
       padding: 0.35rem;
       overflow: hidden;
-      transition: var(--ww-ui-transition, width 180ms ease);
     }
 
     .toolbox-tab[data-active] .toolbox-tab-button {
@@ -478,7 +478,7 @@ export class DomEditorToolbox extends EditingControls {
       opacity: 0;
       overflow: hidden;
       pointer-events: none;
-      transition: var(--ww-ui-transition, width 180ms ease, padding 180ms ease, opacity 90ms ease);
+      transition: var(--ww-ui-transition, opacity 90ms ease);
     }
 
     .toolbox-tab[data-active] .toolbox-tab-close {
@@ -486,7 +486,7 @@ export class DomEditorToolbox extends EditingControls {
       padding: 0.3rem;
       opacity: 1;
       pointer-events: auto;
-      transition-delay: 0ms, 0ms, 90ms;
+      transition-delay: 90ms;
     }
 
     .toolbox-tab-button:hover,
@@ -616,7 +616,7 @@ export class DomEditorToolbox extends EditingControls {
       line-height: 1;
       white-space: nowrap;
       transform: translateX(-0.2rem);
-      transition: var(--ww-ui-transition, max-width 180ms ease, margin-left 180ms ease, opacity 90ms ease, transform 180ms ease);
+      transition: var(--ww-ui-transition, opacity 90ms ease, transform 180ms ease);
     }
 
     .toolbox-tab[data-active] .toolbox-tab-label,
@@ -626,7 +626,7 @@ export class DomEditorToolbox extends EditingControls {
       opacity: 1;
       transform: translateX(0);
       text-overflow: ellipsis;
-      transition-delay: 0ms, 0ms, 90ms, 0ms;
+      transition-delay: 90ms, 0ms;
     }
 
     .toolbox-tab-label[data-contextual] {
@@ -656,6 +656,20 @@ export class DomEditorToolbox extends EditingControls {
       border-left: 1px solid #a8a8a8;
       background: #f2f2f2;
       overflow: hidden;
+    }
+
+    /* Reserve the final document width once; only the panel's pixels move. */
+    @media (prefers-reduced-motion: no-preference) {
+      .toolbox-pane {
+        transition: var(--ww-ui-transition, translate 180ms ease, opacity 180ms ease);
+      }
+
+      @starting-style {
+        .toolbox-pane {
+          translate: var(--toolbox-entry-offset, 1rem 0);
+          opacity: 0;
+        }
+      }
     }
 
     .toolbox-pane[hidden] {
@@ -703,8 +717,9 @@ export class DomEditorToolbox extends EditingControls {
       z-index: 4;
     }
 
-    .specialized-widget-primary {font: .68rem/1.2 system-ui, sans-serif;}
+    .specialized-widget-primary {display: flex; flex-direction: column; gap: .45rem; font: .68rem/1.2 system-ui, sans-serif;}
     .specialized-widget-primary .widget-options {min-width: 0;}
+    .specialized-widget-primary > .widget-options:empty {display: none;}
     .specialized-options .develop-field, .specialized-widget-primary .develop-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center;}
     .develop-field:has(> .widget-option-choices, > .widget-option-segmented) {grid-template-columns: 3.65rem minmax(0, 1fr); column-gap: .2rem;}
     .specialized-widget-primary input:not([type="checkbox"], [type="radio"]), .specialized-widget-primary select {height: 1.7rem; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent; font: inherit;}
@@ -820,6 +835,8 @@ export class DomEditorToolbox extends EditingControls {
       cursor: default;
     }
 
+    :host([popover]) {grid-template-rows: minmax(0, 1fr)}
+    :host([popover]) .toolbox-pane {grid-row: 1}
     :host([collapsed]) {grid-template-rows: 30px}
     :host([collapsed]) .toolbox-tabs-area {grid-row: 1}
     :host([collapsed]) .toolbox-tabs {padding-left: 4px}
@@ -844,6 +861,13 @@ export class DomEditorToolbox extends EditingControls {
   activeTool: ToolboxTool | null = null
   // Keep the current tool's state while a bottom panel occupies its space.
   collapsed = false
+  tabsInRibbon = false
+  private toolTabs: HTMLElement | null = null
+  private readonly captureToolTabs = (element?: Element) => {
+    if(!(element instanceof HTMLElement)) return
+    this.toolTabs = element
+    if(this.documentRecoveryNoticeOpen) queueMicrotask(() => this.positionDocumentRecoveryNotice())
+  }
   selectionPath: SelectionPathItem[] = []
   documentSelected = false
   documentThemeStyles: Record<string, unknown> = {}
@@ -1224,9 +1248,10 @@ export class DomEditorToolbox extends EditingControls {
     const tableGroup = this.selectedElementTypes.find(item => item.element.localName === "table")
       ?? this.selectedElementTypes.find(item => ["td", "th"].includes(item.element.localName))
     const tableControls = Boolean(this.table?.active && (group ? group === tableGroup : ["table", "td", "th"].includes(localName)))
-    const commands = tableControls || groupedWidgetOptions ? nothing : group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
+    const commands = tableControls || groupedWidgetOptions ? nothing : widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption,
+      {...widgetOptions, actions: widgetOptions.actions.filter(action => !action.buttonGroup)}, selectionType)
       : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
-      : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
+      : nothing
     const hasOptions = advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
     const icon = heading ? "Heading" : list ? "List" : attributes?.icon ?? label
     const iconUrl = heading || list ? "" : attributes?.iconUrl ?? ""
@@ -1311,7 +1336,8 @@ export class DomEditorToolbox extends EditingControls {
         </div>` : nothing}
       ${widgetOptions ? html`<div class="specialized-widget-primary">${groupedWidgetOptions
         ? this.renderWidgetOptionsControls(widgetOptions.options, dispatchOption, widgetOptions, selectionType)
-        : html`<div class="widget-options">${widgetOptions.options.slice(0, 3).map(option => this.renderWidgetOptionField(option, dispatchOption, group ? `${widgetOptions.path.join("-")}-` : ""))}</div>`}</div>` : nothing}
+        : html`<div class="widget-options">${widgetOptions.options.slice(0, 3).map(option => this.renderWidgetOptionField(option, dispatchOption, group ? `${widgetOptions.path.join("-")}-` : ""))}</div>
+          ${this.renderWidgetActions(widgetOptions.actions.filter(action => action.buttonGroup), selectionType)}`}</div>` : nothing}
       <element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${primary}
         .selectionKey=${JSON.stringify(group ? (listGroups ?? [group]).map(item => [item.element.namespaceURI, item.element.localName, item.element.path, item.count])
           : [[namespaceURI, localName, attributes?.path, 1]])}
@@ -1848,7 +1874,7 @@ export class DomEditorToolbox extends EditingControls {
   private readonly positionDocumentRecoveryNotice = () => {
     if(!this.documentRecoveryNoticeOpen) return
     const notice = this.renderRoot.querySelector<HTMLElement>(".document-recovery-popover")
-    const anchor = this.renderRoot.querySelector<HTMLElement>("#toolbox-tab-review .toolbox-tab-icon")
+    const anchor = (this.toolTabs ?? this.renderRoot).querySelector<HTMLElement>("#toolbox-tab-review .toolbox-tab-icon")
     if(!notice || !anchor) return
     const target = anchor.getBoundingClientRect()
     notice.hidden = !target.width || !target.height
@@ -1874,7 +1900,7 @@ export class DomEditorToolbox extends EditingControls {
     const emit = (name: string) => this.dispatchEvent(new CustomEvent(name, {detail: {id: record.id}, bubbles: true, composed: true}))
     const close = () => {
       emit("close-document-recovery")
-      this.renderRoot.querySelector<HTMLButtonElement>("#toolbox-tab-review")?.focus()
+      ;(this.toolTabs ?? this.renderRoot).querySelector<HTMLButtonElement>("#toolbox-tab-review")?.focus()
     }
     return html`<aside class="document-recovery-popover" popover="manual" role="region" aria-label="Recovered document"
       @keydown=${(event: KeyboardEvent) => {
@@ -1936,28 +1962,10 @@ export class DomEditorToolbox extends EditingControls {
     </section>`
   }
 
-  render() {
-    const distributionElement = this.elementAttributes ?? this.selectionPath.at(-1)
-    const distributionPresentation = distributionElement ?? {name: "element", icon: "Section", iconUrl: undefined}
-    const distributionIcon = distributionPresentation.icon ?? (this.elementAttributes ? getElementPresentation(this.elementAttributes.localName).icon : "Section")
-    const distributionSelected = this.elementSelected && Boolean(this.distribution)
-    const popupPartSelected = this.elementSelected && Boolean(this.elementAttributes
-      && (this.elementAttributes.name === "Popup" && (this.elementAttributes.localName === "button" || "popover" in this.elementAttributes.attributes)
-        || this.elementAttributes.name === "Popup Content"))
+  /** Render the existing tool actions in either the pane or fullscreen bar. */
+  renderToolTabs(compact = false) {
     return html`
-      <div
-        class="toolbox"
-        @ribbon-drawer-toggle=${this.rememberAdvancedState}
-        @pointerdown=${this.handleRibbonPointerDown}
-        @mousedown=${this.handleRibbonPointerDown}
-        @focusin=${this.handleRibbonInputFocusIn}
-        @focusout=${this.handleRibbonInputFocusOut}
-        @change=${this.handleRibbonInputChange}
-        @keydown=${this.handleRibbonInputKeydown}
-      >
-        ${this.renderDocumentRecoveryNotice()}
-        <div class="toolbox-tabs-area">
-          <div class="toolbox-tabs" role="tablist" aria-label="Toolbox">
+          <div class="toolbox-tabs" ${ref(this.captureToolTabs)} role=${compact ? "toolbar" : "tablist"} aria-label="Toolbox">
             ${toolboxTools.filter(tool => (tool.label === "Feedback") === this.preview
               && (tool.label !== "Style" || this.showStyleToolbox) && (tool.label !== "AI" || !this.disableAI)).map(tool => {
               const active = !this.collapsed && this.activeTool === tool.label
@@ -1986,7 +1994,7 @@ export class DomEditorToolbox extends EditingControls {
                     class="toolbox-tab-button"
                     data-tool=${tool.label}
                     type="button"
-                    role="tab"
+                    role=${compact ? nothing : "tab"}
                     aria-label=${tool.label === "Review" && this.proofreadingState.error
                       ? "Review. Issue checker unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
@@ -1994,11 +2002,12 @@ export class DomEditorToolbox extends EditingControls {
                       ? "Issue checker unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel, `toolbox:${tool.label}`)}
                     aria-description=${reviewDescription || nothing}
-                    aria-controls="toolbox-pane"
-                    aria-selected=${active}
+                    aria-controls=${compact ? nothing : "toolbox-pane"}
+                    aria-selected=${compact ? nothing : active}
+                    aria-pressed=${compact ? active : nothing}
                     ?disabled=${this.htmlPending && tool.label !== "Edit"}
                     @click=${() => {
-                      this.selectTool(tool.label, true)
+                      this.selectTool(compact && active ? null : tool.label, true)
                       if(tool.label === "Review" && this.recoveredDocument && !this.documentRecoveryNoticeOpen) {
                         this.dispatchEvent(new CustomEvent("open-document-recovery", {bubbles: true, composed: true}))
                       }
@@ -2016,7 +2025,7 @@ export class DomEditorToolbox extends EditingControls {
                       aria-hidden=${!active}
                     >${tool.label === "AI" ? html`<span class="ai-tab-label-prefix">Ask </span>AI` : label}</span>
                   </button>
-                  <button
+                  ${compact ? nothing : html`<button
                     class="toolbox-tab-close"
                     type="button"
                     aria-label=${`Close ${toolLabel}`}
@@ -2025,18 +2034,40 @@ export class DomEditorToolbox extends EditingControls {
                     tabindex=${active ? 0 : -1}
                     ?disabled=${!active || this.htmlPending}
                     @click=${() => this.selectTool(null)}
-                  >${ribbonIcon("Reject")}</button>
+                  >${ribbonIcon("Reject")}</button>`}
                 </div>
               `
             })}
-          </div>
-        </div>
+          </div>`
+  }
+
+  render() {
+    const distributionElement = this.elementAttributes ?? this.selectionPath.at(-1)
+    const distributionPresentation = distributionElement ?? {name: "element", icon: "Section", iconUrl: undefined}
+    const distributionIcon = distributionPresentation.icon ?? (this.elementAttributes ? getElementPresentation(this.elementAttributes.localName).icon : "Section")
+    const distributionSelected = this.elementSelected && Boolean(this.distribution)
+    const popupPartSelected = this.elementSelected && Boolean(this.elementAttributes
+      && (this.elementAttributes.name === "Popup" && (this.elementAttributes.localName === "button" || "popover" in this.elementAttributes.attributes)
+        || this.elementAttributes.name === "Popup Content"))
+    return html`
+      <div
+        class="toolbox"
+        @ribbon-drawer-toggle=${this.rememberAdvancedState}
+        @pointerdown=${this.handleRibbonPointerDown}
+        @mousedown=${this.handleRibbonPointerDown}
+        @focusin=${this.handleRibbonInputFocusIn}
+        @focusout=${this.handleRibbonInputFocusOut}
+        @change=${this.handleRibbonInputChange}
+        @keydown=${this.handleRibbonInputKeydown}
+      >
+        ${this.renderDocumentRecoveryNotice()}
+        ${this.tabsInRibbon ? nothing : html`<div class="toolbox-tabs-area">${this.renderToolTabs()}</div>`}
         <widget-grouping-dialog></widget-grouping-dialog>
         <aside
           id="toolbox-pane"
           class="toolbox-pane"
           role="tabpanel"
-          aria-labelledby=${this.activeTool ? `toolbox-tab-${this.activeTool.toLowerCase()}` : ""}
+          aria-labelledby=${!this.tabsInRibbon && this.activeTool ? `toolbox-tab-${this.activeTool.toLowerCase()}` : nothing}
           aria-label=${this.activeTool ? `${this.activeTool} tools` : "Toolbox"}
           ?hidden=${this.activeTool === null || this.collapsed}
         >

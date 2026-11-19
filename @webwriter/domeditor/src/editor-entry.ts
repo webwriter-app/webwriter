@@ -96,6 +96,10 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   window.addEventListener("focus", () => post({type: "editor-frame-window-focus"}), {signal})
   window.addEventListener("blur", () => post({type: "editor-frame-window-blur"}), {signal})
   document.addEventListener("wheel", () => post({type: "editor-frame-interaction"}), {capture: true, passive: true, signal})
+  window.addEventListener("beforeinput", event => {
+    if(isWidgetShadowInteraction(event) || isAppendixInteraction(event) || isTextFieldInteraction(event, document.body)) return
+    post({type: "editor-frame-beforeinput"})
+  }, {capture: true, signal})
   document.addEventListener("keydown", event => {
     post({type: "editor-frame-interaction"})
     const shortcut = shortcutFromEvent(event)

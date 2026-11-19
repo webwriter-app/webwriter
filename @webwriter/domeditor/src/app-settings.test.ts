@@ -58,6 +58,25 @@ describe("app settings language", () => {
   })
 })
 
+describe("local dictionary defaults", () => {
+  it("seeds fresh settings and settings without a saved dictionary", () => {
+    expect(defaultAppSettings().proofreadingDictionary).toEqual(["Edumix", "WebWriter"])
+    expect(loadAppSettings().proofreadingDictionary).toEqual(["Edumix", "WebWriter"])
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({language: "de"}))
+    expect(loadAppSettings().proofreadingDictionary).toEqual(["Edumix", "WebWriter"])
+  })
+
+  it.each([["WebWriter"], ["Edumix"], [], ["HTML"]].map(proofreadingDictionary => ({proofreadingDictionary})))("preserves the saved dictionary $proofreadingDictionary", ({proofreadingDictionary}) => {
+    persistAppSettings({...defaultAppSettings(), proofreadingDictionary})
+    expect(loadAppSettings().proofreadingDictionary).toEqual(proofreadingDictionary)
+  })
+
+  it("keeps default dictionaries independent", () => {
+    defaultAppSettings().proofreadingDictionary.pop()
+    expect(defaultAppSettings().proofreadingDictionary).toEqual(["Edumix", "WebWriter"])
+  })
+})
+
 describe("app settings layout persistence", () => {
   it("loads Board as a saved default layout", () => {
     localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({defaultLayout: "board"}))

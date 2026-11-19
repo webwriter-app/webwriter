@@ -16,6 +16,7 @@ import type {IImportMap} from "@jspm/import-map"
 import {hasImportMapEntries, packageImportMapId, packageImportMapScript, packageModuleEntries} from "./package-dependencies"
 import {originalURLAttribute, originalPackageEntriesAttribute, offlineAssetsId, offlinePackageStyleAttribute, escapeHTMLAttribute, serializeDoctype, type HTMLDocumentParts} from "./serialization-primitives"
 import {documentWidgetStyleSource} from "./document-themes"
+import {restoreWebsiteFrames} from "./website-sandbox"
 export {originalURLAttribute, originalPackageEntriesAttribute, offlinePackageStyleAttribute, escapeHTMLAttribute, serializeDoctype} from "./serialization-primitives"
 import {scopedCustomElementRegistryScript} from "./scoped-custom-element-registry-script"
 export {scopedCustomElementRegistryScript} from "./scoped-custom-element-registry-script"
@@ -38,6 +39,7 @@ export const restorableResourceAttributes = ["src", "srcset", "poster", "data", 
 
 /** Restores authored resource URLs from a document produced by an offline save. */
 export function restoreOriginalResourceURLs(root: ParentNode) {
+  restoreWebsiteFrames(root)
   root.querySelectorAll(`head > script[type="application/json"][id="${offlineAssetsId}"]`).forEach(script => script.remove())
   root.querySelectorAll(`style[${offlinePackageStyleAttribute}]`).forEach(style => style.remove())
   root.querySelectorAll<HTMLScriptElement>(`script[${originalPackageEntriesAttribute}]`).forEach(bundle => {

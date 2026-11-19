@@ -23,7 +23,7 @@ A key identifies an export with or without its extension. The key `.` supplies p
 | `resize` | `"inline" \| "block" \| "both" \| "none"` | Existing element behavior. | Declares the logical axes the editor may resize. The frame filters handles and enforces the rule during resizing, including groups. For a content-height widget, use `"inline"` and CSS `block-size: auto`. |
 | `inline` | `boolean` | `false` | Makes a [phrasing](https://developer.mozilla.org/en-US/docs/Web/HTML/Guides/Content_categories#phrasing_content) widget in `widgetinline`, without automatically adding `flow`. |
 | `content` | `string` | None. The authoring tool treats the widget as one unit. | [Content expression](content-expressions.md) for editable light DOM children. |
-| `isolating` | `boolean` | `true` | Prevents editing from splitting or joining across the widget boundary. |
+| `isolating` | `boolean` | `true` | Prevents splitting, joining, and partial text selections across the widget boundary. The widget remains selectable as a whole from outside. Use `false` to allow text ranges to cross its authored content. |
 | `marks` | `string` | `"_"` | Permitted formatting marks. Use names separated by spaces, `""` for none, or `"_"` for all. |
 | `propagateEvents` | `string[]` | `[]` | Types of shadow DOM events that the authoring tool can handle, for example `["keydown"]`. |
 | `sharedData` | `boolean` | `false` | Enables [scoped data](data.md) in a direct `script[slot="data"]` child. |

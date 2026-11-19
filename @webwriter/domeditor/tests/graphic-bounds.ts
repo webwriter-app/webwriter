@@ -1,5 +1,5 @@
 import type {DOMEditor} from "../src/domeditor"
-import {graphicShapeOptions} from "../src/graphic"
+import {graphicShapeOptions, graphicShapeType} from "../src/graphic"
 import {graphicPresetHandles, isGraphicPresetType, readGraphicPreset, writeGraphicPreset} from "../src/graphic-shapes"
 
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -59,8 +59,10 @@ export async function checkGraphicBounds() {
       const original = geometry.getAttribute("d")
       check("inserted")
       assert(geometry.getAttribute("d") === original, `${option.type}: measuring rewrote the authored path`)
-      const preset = readGraphicPreset(geometry)!
-      for(const adjustment of preset.definition.adjustments) {
+      const preset = readGraphicPreset(geometry)
+      assert(preset || option.type === "curved-connector" && graphicShapeType(shape) === "connector",
+        `${option.type}: inserted geometry is not a recognized preset or connector`)
+      for(const adjustment of preset?.definition.adjustments ?? []) {
         for(const value of [adjustment.min, adjustment.max, adjustment.default]) {
           editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: `adjust-${adjustment.name}`, value: String(value)})
           check(`${adjustment.name}=${value}`)

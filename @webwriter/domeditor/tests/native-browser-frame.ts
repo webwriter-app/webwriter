@@ -1,4 +1,5 @@
 import {DOMEditor} from "../src/domeditor"
+import {registerFrameArtifacts} from "../src/editor-artifacts"
 
 declare global {
   interface Window {
@@ -9,6 +10,7 @@ declare global {
 }
 
 try {
+  if(new URL(import.meta.url).searchParams.has("register-frame-artifacts")) registerFrameArtifacts(document)
   window.editor = new DOMEditor({bridgeOrigin: parent.location.origin})
   // The accessibility native-browser fixture needs an initial disabled
   // document state before the feature's deferred background check can run.

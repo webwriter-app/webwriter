@@ -26,6 +26,13 @@ export function isParagraphContent(node: Node): boolean {
   return isMarkElement(node) && Array.from(node.childNodes).every(isParagraphContent)
 }
 
+/** Native breaks hold inline caret positions just like text and formatting. */
+function isTextCaretContent(node: Node | null): boolean {
+  return node instanceof Text || isMarkElement(node)
+    || isElement(node) && node.matches("br, wbr") && isParagraphContent(node)
+      && node.getAttribute("contenteditable") !== "false"
+}
+
 /** Closest edge/center alignment, preferring objects over the container on ties. */
 export function closestAlignment<T extends {value: number, kind: string}>(anchors: number[], targets: T[], threshold: number): {delta: number, target: T} | null {
   let best: {delta: number, target: T} | null = null
@@ -207,6 +214,11 @@ function adjacentElement(nodes: NodeListOf<ChildNode>, offset: number, direction
 export function isEmptyParagraph(node: Node | null): boolean {
   if(!isElement(node) || node.localName !== "p" || node.hasAttribute("is")
     || node.getAttribute("contenteditable") === "false") return false
+  return hasEmptyInlineContent(node)
+}
+
+/** Empty inline formatting and a single caret BR do not count as content. */
+export function hasEmptyInlineContent(node: Element): boolean {
   let breaks = 0
   const empty = (child: Node): boolean => child instanceof Text ? !child.data.trim()
     : child.nodeType === Node.COMMENT_NODE || child.nodeType === Node.PROCESSING_INSTRUCTION_NODE ? true
@@ -823,7 +835,7 @@ export class EditingSelection {
     }
     if(disclosureGap) return disclosureGap
     const captioned = pointerElement?.closest("figure, table") ?? caretElement?.closest("figure, table")
-    if(captioned && root.contains(captioned) && !isOutOfFlow(captioned)) {
+    if(captioned && root.contains(captioned) && !isOutOfFlow(captioned) && editingFlowRoot(captioned) === flow) {
       const rect = captioned.getBoundingClientRect()
       if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
         return {...gap(captioned, y < rect.top ? "before" : "after"), overrideNative: true}
@@ -1110,7 +1122,7 @@ export class EditingSelection {
     return this.#selection.isCollapsed
   }
 
-  /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without text children, and not in an empty container. A body boundary before its first element is also a gap when any preceding text is only whitespace. */
+  /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without inline caret content, and not in an empty container. A body boundary before its first element is also a gap when any preceding text is only whitespace. */
   static get isGapSelection() {
     const anchor = this.anchor
     if(this.isEmpty && anchor && this.summaryAtLeadingBoundary(anchor, this.anchorOffset)) return false
@@ -1151,11 +1163,11 @@ export class EditingSelection {
       }
     }
     const isInsideTable = Boolean(anchor.closest("table"))
-    let hasTextOrMarkChild = false
+    let hasTextCaretChild = false
     if(this.isEmpty && !this.isEmptySelection) {
       for(const node of anchor.childNodes) {
-        if(!isOutOfFlow(node) && (isText(node) && Boolean(node.textContent?.trim()) || isMarkElement(node))) {
-          hasTextOrMarkChild = true
+        if(!isOutOfFlow(node) && isTextCaretContent(node) && (!(node instanceof Text) || Boolean(node.data.trim()))) {
+          hasTextCaretChild = true
           break
         }
       }
@@ -1163,7 +1175,7 @@ export class EditingSelection {
     const popupContentGap = popupElementRole(anchor) === "content"
     return (!isSectionElement(anchor) || inSlide || inBoardCard || popupContentGap)
       && (!isInsideTable || popupContentGap) && this.isEmpty && !this.isEmptySelection &&
-      (!hasTextOrMarkChild
+      (!hasTextCaretChild
         || isRootBoundaryBeforeFirstElement)
   }
 
@@ -1254,7 +1266,7 @@ export class EditingSelection {
         return [
           this.anchor.childNodes.item(this.anchorOffset - 1),
           this.anchor.childNodes.item(this.anchorOffset),
-        ].some(node => !isOutOfFlow(node) && (node instanceof Text || isMarkElement(node)))
+        ].some(node => !isOutOfFlow(node) && isTextCaretContent(node))
       }
       return false
     }
@@ -1419,6 +1431,14 @@ export class EditingSelection {
       if(!this.includesNode(element) && !element.contains(this.flowRoot)) {
         excluded.push(element)
         return
+      }
+      // A wholly selected widget owns all its internal flows. Splitting around
+      // those descendants would retain its shell on deletion and omit media
+      // from copying, even though the selection encloses the entire host.
+      if(element.namespaceURI === "http://www.w3.org/1999/xhtml"
+        && (element.localName.includes("-") || element.hasAttribute("is")) && element.parentNode) {
+        const index = Array.from(element.parentNode.childNodes).indexOf(element)
+        if(range.comparePoint(element.parentNode, index) === 0 && range.comparePoint(element.parentNode, index + 1) === 0) return
       }
       const firstChild = rangeBoundaryChild(element, range.startContainer, range.startOffset, true)
       const lastChild = rangeBoundaryChild(element, range.endContainer, range.endOffset, false)
@@ -2259,6 +2279,27 @@ export function focusedWidgetHost() {
     && (activeElement.localName.includes("-") || activeElement.hasAttribute("is"))
     ? activeElement
     : null
+}
+
+/** A private control can retain native input without capture-selecting its widget.
+ * Walk composed event or focus ancestry so nested open controls inherit the opt-out. */
+export function widgetCaptureSelectionDisabled(widget: Element, event?: Event) {
+  const disabled = (node: EventTarget) => node instanceof Element && node.getRootNode() instanceof ShadowRoot
+    && node.getAttribute("data-ww-capture-selection") === "false"
+  if(event && event.type !== "selectionchange") {
+    for(const node of event.composedPath()) {
+      if(node === widget) break
+      if(disabled(node)) return true
+    }
+    return false
+  }
+  let focused = widget.shadowRoot?.activeElement
+  while(focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement
+  for(let node: Node | null = focused ?? null; node && node !== widget;
+    node = node instanceof Element ? node.assignedSlot ?? node.parentNode : node instanceof ShadowRoot ? node.host : node.parentNode) {
+    if(disabled(node)) return true
+  }
+  return false
 }
 
 /** The editable widget host whose surface or shadow tree originated an

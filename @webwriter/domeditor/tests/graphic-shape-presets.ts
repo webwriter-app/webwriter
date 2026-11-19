@@ -40,10 +40,16 @@ export function checkGraphicShapeFills() {
     outline.setAttribute("stroke-width", "2")
     svg.replaceChildren(outline)
     for(const type of ["ribbon-up", "ribbon-down"] as const) {
-      outline.setAttribute("d", graphicPresetPath(type, frame))
       const point = (x: number, y: number) => type === "ribbon-up" ? new DOMPoint(x, y) : new DOMPoint(100-x, 100-y)
-      for(const x of [20, 80]) assert(outline.isPointInStroke(point(x, 72.5)), `${type}: missing fold seam`)
-      for(const x of [30, 70]) assert(!outline.isPointInStroke(point(x, 75)), `${type}: stray diagonal outside the ribbon`)
+      const {min, default: initial, max} = graphicShapePresets[type].adjustments[0]
+      for(const depth of [min, initial, max]) {
+        outline.setAttribute("d", graphicPresetPath(type, frame, [depth]))
+        for(const x of [27.5, 72.5]) assert(outline.isPointInStroke(point(x, 72.5)), `${type}: missing diagonal fold seam`)
+        for(const x of [35, 65]) assert(outline.isPointInStroke(point(x, 72.5)), `${type}: missing inner tail edge`)
+        for(const x of [20, 80]) assert(!outline.isPointInStroke(point(x, 72.5)), `${type}: stray outer vertical seam`)
+        for(const x of [30, 70]) assert(outline.isPointInFill(point(x, 72.5)), `${type}: hollow fold`)
+        assert(!outline.isPointInFill(point(50, 72.5)), `${type}: tails joined below the face`)
+      }
     }
     for(const type of ["vertical-scroll", "horizontal-scroll"] as const) {
       const point = (x: number, y: number) => type === "vertical-scroll" ? new DOMPoint(x, y) : new DOMPoint(100-y, x)

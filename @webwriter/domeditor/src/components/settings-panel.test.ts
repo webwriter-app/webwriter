@@ -184,7 +184,7 @@ describe("settings panel", () => {
   })
 
   it("adds, removes, and clears local dictionary words through settings changes", async () => {
-    const panel = await mountPanel()
+    const panel = await mountPanel({...defaultAppSettings(), proofreadingDictionary: []})
     const changes: AppSettings[] = []
     panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
     const root = panel.shadowRoot!
@@ -207,6 +207,27 @@ describe("settings panel", () => {
     clear.click()
     await panel.updateComplete
     expect(changes.at(-1)?.proofreadingDictionary).toEqual([])
+  })
+
+  it("persists removal of both default dictionary words and clearing the dictionary", async () => {
+    const panel = await mountPanel()
+    panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+    const root = panel.shadowRoot!
+    expect([...root.querySelectorAll(".dictionary-word span")].map(word => word.textContent)).toEqual(["Edumix", "WebWriter"])
+    for(const word of ["Edumix", "WebWriter"]) {
+      root.querySelector<HTMLButtonElement>(`button[aria-label="Remove ${word}"]`)!.click()
+      await panel.updateComplete
+      panel.settings = loadAppSettings()
+      await panel.updateComplete
+      expect(root.querySelector(`button[aria-label="Remove ${word}"]`)).toBeNull()
+    }
+    expect(loadAppSettings().proofreadingDictionary).toEqual([])
+    panel.settings = defaultAppSettings()
+    await panel.updateComplete
+    const clear = [...root.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Clear dictionary")!
+    clear.click()
+    await panel.updateComplete
+    expect(loadAppSettings().proofreadingDictionary).toEqual([])
   })
   it.each([true, false])("assigns unique shortcuts to every general command (Apple: %s)", apple => {
     const settings = defaultAppSettings(apple)

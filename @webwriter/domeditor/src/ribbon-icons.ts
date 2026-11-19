@@ -243,6 +243,7 @@ import vocabulary from "@tabler/icons/outline/vocabulary.svg?raw"
 import x from "@tabler/icons/outline/x.svg?raw"
 import search from "@tabler/icons/outline/search.svg?raw"
 import alertSquare from "@tabler/icons/outline/alert-square.svg?raw"
+import presentation from "@tabler/icons/outline/presentation.svg?raw"
 import backpack from "@tabler/icons/outline/backpack.svg?raw"
 import book from "@tabler/icons/outline/book.svg?raw"
 import book2 from "@tabler/icons/outline/book-2.svg?raw"
@@ -357,6 +358,7 @@ const icons: Record<string, string> = {
   Input: input,
   Text: typography,
   Preview: playerPlay,
+  Presentation: presentation,
   Plus: plus,
   Undo: arrowBackUp,
   AIPromptSubmit: arrowBack,

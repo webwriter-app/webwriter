@@ -61,6 +61,100 @@ it("rejects wide placement when the containing section clips its content", () =>
   expect(target.classList.contains("ww-full-width")).toBe(false)
 })
 
+it("allows widening a widget containing local floats without changing its content", () => {
+  document.body.innerHTML = '<custom-card style="display:block"><aside style="float:right;width:240px">Local</aside><!--keep--></custom-card>'
+  const widget = document.querySelector<HTMLElement>("custom-card")!
+  const content = widget.innerHTML
+  editor.features.selection.captureElement(widget)
+  expect(editor.features.layout.actions.setFullWidth({type: "setFullWidth", enabled: true})).toBe(true)
+  expect(widget.innerHTML).toBe(content)
+})
+
+it("ignores local external floats when widening inside a native flow-root wrapper", () => {
+  document.body.innerHTML = '<section style="display:flow-root"><p>Target</p></section><custom-card><aside style="float:right">Local</aside></custom-card>'
+  const target = document.querySelector("p")!
+  expect(editor.features.layout.canSetFullWidth(target)).toBe(true)
+  const external = document.createElement("aside")
+  external.style.float = "right"
+  document.body.append(external)
+  expect(editor.features.layout.canSetFullWidth(target)).toBe(false)
+})
+
+it("does not widen a native wrapper around a document lane", () => {
+  document.body.innerHTML = '<main><aside style="float:right">Lane</aside><p>Text</p></main>'
+  expect(editor.features.layout.canSetFullWidth(document.querySelector("main")!)).toBe(false)
+})
+
+it("keeps internal float resizing and removal out of document lane state", async () => {
+  document.body.innerHTML = '<custom-card><aside style="float:left;width:900px">Local<!--keep--></aside></custom-card><p>Text</p>'
+  const local = document.querySelector<HTMLElement>("aside")!
+  vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(1800)
+  vi.spyOn(local, "getBoundingClientRect").mockImplementation(() => ({width: Number.parseFloat(local.style.width)} as DOMRect))
+  const observe = () => new Promise<void>(resolve => setTimeout(resolve, 0))
+  editor.features.layout.refresh()
+  expect(document.body.getAttribute("style")).toBeNull()
+  expect(editor.features.manipulation.floatColumnSide()).toBeNull()
+  local.style.width = "1500px"
+  await observe()
+  expect(document.body.getAttribute("style")).toBeNull()
+  expect(editor.toHTML(true)).toContain('style="float: left; width: 1500px;"')
+  expect(local.innerHTML).toBe("Local<!--keep-->")
+  local.remove()
+  await observe()
+  expect(document.body.getAttribute("style")).toBeNull()
+})
+
+it("measures a floated widget host while ignoring its larger opposite-side internal float", async () => {
+  document.body.innerHTML = '<custom-card class="ww-float-right" style="width:240px"><aside style="float:left;width:900px">Local</aside></custom-card><p>Text</p>'
+  const widget = document.querySelector<HTMLElement>("custom-card")!, local = widget.querySelector("aside")!
+  vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(1800)
+  vi.spyOn(widget, "getBoundingClientRect").mockReturnValue({width: 240} as DOMRect)
+  vi.spyOn(local, "getBoundingClientRect").mockReturnValue({width: 900} as DOMRect)
+  const observe = () => new Promise<void>(resolve => setTimeout(resolve, 0))
+  editor.features.layout.refresh()
+  expect(editor.features.manipulation.floatColumnSide()).toBe("right")
+  expect(document.body.style.getPropertyValue("--ww-two-column-explicit-width")).toBe("240px")
+  expect(document.body.style.getPropertyValue("--ww-left-column-explicit-width")).toBe("")
+  expect(document.body.style.getPropertyValue("--ww-right-column-explicit-width")).toBe("240px")
+  local.style.width = "1500px"
+  await observe()
+  expect(document.body.style.getPropertyValue("--ww-two-column-explicit-width")).toBe("240px")
+  widget.classList.remove("ww-float-right")
+  await observe()
+  expect(document.body.getAttribute("style")).toBeNull()
+  expect(editor.features.manipulation.floatColumnSide()).toBeNull()
+  expect(local.style.float).toBe("left")
+})
+
+it.each(["main", "article", "section"])("measures document floats directly inside native %s wrappers", tag => {
+  document.body.innerHTML = `<${tag}><aside style="float:left;width:180px">Lane</aside><section><aside style="float:right;width:900px">Local</aside></section></${tag}>`
+  const [lane, local] = Array.from(document.querySelectorAll<HTMLElement>("aside"))
+  vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(1800)
+  vi.spyOn(lane, "getBoundingClientRect").mockReturnValue({width: 180} as DOMRect)
+  vi.spyOn(local, "getBoundingClientRect").mockReturnValue({width: 900} as DOMRect)
+  editor.features.layout.refresh()
+  expect(editor.features.manipulation.floatColumnSide()).toBe("left")
+  expect(document.body.style.getPropertyValue("--ww-left-column-explicit-width")).toBe("180px")
+  expect(document.body.style.getPropertyValue("--ww-right-column-explicit-width")).toBe("")
+})
+
+it("keeps customized built-in wrapper contents local while allowing the host in a lane", () => {
+  document.body.innerHTML = '<section is="custom-card"><aside style="float:left;width:900px">Local</aside><p>Text</p></section>'
+  const widget = document.querySelector("section")!, local = widget.querySelector("aside")!
+  vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(1800)
+  vi.spyOn(widget, "getBoundingClientRect").mockReturnValue({width: 240} as DOMRect)
+  vi.spyOn(local, "getBoundingClientRect").mockReturnValue({width: 900} as DOMRect)
+  editor.features.layout.refresh()
+  expect(document.body.getAttribute("style")).toBeNull()
+  expect(editor.features.manipulation.floatColumnSide()).toBeNull()
+  expect(editor.features.layout.canSetFullWidth(widget.querySelector("p")!)).toBe(false)
+  widget.classList.add("ww-float-right")
+  widget.style.width = "240px"
+  editor.features.layout.refresh()
+  expect(document.body.style.getPropertyValue("--ww-two-column-explicit-width")).toBe("240px")
+  expect(editor.features.manipulation.floatColumnSide()).toBe("right")
+})
+
 it("tracks direct explicit size changes and clears derived widths with the column", async () => {
   document.body.innerHTML = '<aside class="ww-float-right">First</aside><aside class="ww-float-right">Second</aside><p>Text</p>'
   const [first, second] = Array.from(document.body.querySelectorAll("aside"))
@@ -204,6 +298,32 @@ describe.each(["canvas", "slides"] as const)("%s stacking placement", mode => {
     expect(root.querySelector("style")!.hasAttribute("style")).toBe(false)
     expect(root.querySelector("template")!.hasAttribute("style")).toBe(false)
     expect(root.querySelector("nav")?.hasAttribute("style") ?? false).toBe(false)
+  })
+
+  it("starts new items in front while preserving their relative stacking and all existing peers", () => {
+    const {root, items} = seed()
+    editor.doc.flushDOMChanges()
+    const existing = items.map(item => item.outerHTML)
+    const nodes = Array.from(root.childNodes)
+    const low = document.createElement("custom-card"), high = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    const style = document.createElement("style")
+    style.textContent = ".authored {color: blue}"
+    low.style.cssText = "position:absolute;z-index:-4"
+    high.style.cssText = "position:absolute;z-index:2"
+    low.innerHTML = '<span style="z-index:99">Private</span><!--keep-->'
+    root.prepend(style, high, low)
+    editor.features.layout.placeNewElements([style, high, low])
+    expect(Number(low.style.zIndex)).toBeGreaterThan(5)
+    expect(Number(high.style.zIndex)).toBeGreaterThan(Number(low.style.zIndex))
+    expect(low.innerHTML).toBe('<span style="z-index:99">Private</span><!--keep-->')
+    expect(items.map(item => item.outerHTML)).toEqual(existing)
+    expect(Array.from(root.childNodes)).toEqual([style, high, low, ...nodes])
+    expect(style.outerHTML).toBe("<style>.authored {color: blue}</style>")
+    const observer = new MutationObserver(() => {})
+    observer.observe(root, {attributes: true, subtree: true})
+    editor.features.layout.placeNewElements([style, high, low])
+    expect(observer.takeRecords()).toEqual([])
+    observer.disconnect()
   })
 
   it("repairs duplicate indices locally while preserving auto, negative and sparse peers", () => {

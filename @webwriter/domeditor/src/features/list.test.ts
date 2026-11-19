@@ -28,11 +28,194 @@ const keydown = (key: string, init: KeyboardEventInit = {}) => {
 }
 
 beforeEach(() => {
+  document.body.className = ""
   document.body.innerHTML = "<p></p>"
   $.move(document.body.firstElementChild!)
 })
 
 describe("semantic list editing", () => {
+  it.each(["canvas", "slides"] as const)("keeps empty and completed %s lists as one authored object through repeated Enter", mode => {
+    for(const html of ['<ul id="items"><!--keep--></ul>', '<ul id="items"><li></li></ul>', '<ul id="items"><li>Text</li></ul>', '<ul id="items"><li>First</li><li></li><li>Last</li></ul>']) {
+      for(const input of ["key", "beforeinput"]) {
+        document.body.className = ""
+        document.body.innerHTML = html
+        expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+        const list = document.querySelector("ul")!, parent = list.parentElement!
+        const style = list.getAttribute("style"), siblings = Array.from(parent.childNodes)
+        const target = list.querySelector("li:empty") ?? list.lastElementChild ?? list
+        $.move(target, -1)
+        for(let count = 0; count < 3; count++) {
+          const previousCount = list.children.length
+          const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+            : new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, cancelable: true})
+          document.dispatchEvent(event)
+          expect(event.defaultPrevented).toBe(true)
+          expect(document.querySelector("#items")).toBe(list)
+          expect(Array.from(parent.childNodes)).toEqual(siblings)
+          expect(list.getAttribute("style")).toBe(style)
+          expect(list.children.length).toBe(previousCount + 1)
+          expect(list.contains($.anchor)).toBe(true)
+        }
+      }
+    }
+    document.body.className = ""
+  })
+
+  it.each(["canvas", "slides"] as const)("keeps %s list toggles and paragraph conversion inside their existing list", mode => {
+    document.body.innerHTML = '<ul id="items"><li>One</li><!--keep--><li>Two</li><li>Three</li></ul>'
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const list = document.querySelector("ul")!, parent = list.parentElement!, children = Array.from(list.childNodes), siblings = Array.from(parent.childNodes)
+    const html = list.outerHTML
+    $.move(list.children[1].firstChild!, 1)
+    editor.features.list.toggleList("ul")
+    expect(editor.features.list.unwrapSelectionToParagraphs()).toBe(true)
+    expect(document.querySelector("#items")).toBe(list)
+    expect(list.outerHTML).toBe(html)
+    expect(Array.from(list.childNodes)).toEqual(children)
+    expect(Array.from(parent.childNodes)).toEqual(siblings)
+    document.body.className = ""
+  })
+
+  it.each(["canvas", "slides"] as const)("retains ordered, menu, and description %s list objects on Enter", mode => {
+    for(const tag of ["ol", "menu", "dl"]) {
+      document.body.className = ""
+      document.body.innerHTML = `<${tag} id="items"><!--keep--></${tag}>`
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      const list = document.querySelector("#items")!, siblings = Array.from(list.parentElement!.childNodes)
+      $.move(list)
+      for(let count = 0; count < 3; count++) {
+        keydown("Enter")
+        expect(document.querySelector("#items")).toBe(list)
+        expect(Array.from(list.parentElement!.childNodes)).toEqual(siblings)
+        expect(list.contains($.anchor)).toBe(true)
+      }
+      expect(list.children.length).toBeGreaterThan(0)
+      expect(Array.from(list.children).every(item => item.matches(tag === "dl" ? "dt, dd" : "li"))).toBe(true)
+    }
+    document.body.className = ""
+  })
+
+  it.each(["canvas", "slides"] as const)("lifts an empty nested %s item within its existing outer list", mode => {
+    document.body.innerHTML = '<ul id="items"><li>Owner<ul><li>First</li><li id="empty"></li><!--keep--><li>Last</li></ul></li><li>Tail</li></ul>'
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const list = document.querySelector("#items")!, empty = document.querySelector("#empty")!
+    const style = list.getAttribute("style"), siblings = Array.from(list.parentElement!.childNodes)
+    $.move(empty)
+    keydown("Enter")
+    expect(document.querySelector("#items")).toBe(list)
+    expect(empty.parentElement).toBe(list)
+    expect(list.getAttribute("style")).toBe(style)
+    expect(Array.from(list.parentElement!.childNodes)).toEqual(siblings)
+    expect(list.textContent).toBe("OwnerFirstLastTail")
+    expect(empty.querySelector("ul")!.style.position).toBe("")
+    expect(list.contains($.anchor)).toBe(true)
+    document.body.className = ""
+  })
+
+  it.each(["canvas", "slides"] as const)("does not split a %s list through the generic parent-split command", mode => {
+    document.body.innerHTML = '<ul id="items"><li><b>abcd</b></li><li>Last</li></ul>'
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const list = document.querySelector("ul")!, siblings = Array.from(list.parentElement!.childNodes)
+    $.move(list.querySelector("b")!.firstChild!, 2)
+    editor.features.manipulation.insert(undefined, 2)
+    expect(document.querySelector("#items")).toBe(list)
+    expect(Array.from(list.parentElement!.childNodes)).toEqual(siblings)
+    expect(list.children).toHaveLength(3)
+    expect(list.textContent).toBe("abcdLast")
+    document.body.className = ""
+  })
+
+  it.each(["canvas", "slides"] as const)("nests %s items with their subtrees without copying object placement", async mode => {
+    document.body.innerHTML = '<ul id="items" class="authored-object" style="color:red"><li>Owner</li><li id="moving">Moving<ul id="children"><li>Child</li></ul></li><li>Tail</li></ul>'
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const list = document.querySelector("#items") as HTMLElement, item = document.querySelector("#moving")!, child = document.querySelector("#children")!
+    Object.assign(list.style, {left: "150px", top: "230px", width: "320px"})
+    list.style.setProperty("rotate", "20deg")
+    const style = list.getAttribute("style"), parent = list.parentElement!, siblings = Array.from(parent.childNodes)
+    $.move(item.firstChild!, 2)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const before = cleanHTML()
+    keydown("Tab")
+    const nested = item.parentElement!
+    expect(nested.parentElement).toBe(list.firstElementChild)
+    expect(child.parentElement).toBe(item)
+    expect(getComputedStyle(nested).position).not.toBe("absolute")
+    expect(nested.style.width).toBe("")
+    expect(nested.style.getPropertyValue("rotate")).toBe("")
+    expect(getComputedStyle(nested).color).toBe("red")
+    expect(nested.classList.contains("authored-object")).toBe(false)
+    expect(list.getAttribute("style")).toBe(style)
+    expect(Array.from(parent.childNodes)).toEqual(siblings)
+    expect($.anchor).toBe(item.firstChild)
+    expect($.anchorOffset).toBe(2)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const after = cleanHTML()
+    editor.doc.undo(); await Promise.resolve()
+    expect(cleanHTML()).toBe(before)
+    editor.doc.redo(); await Promise.resolve()
+    expect(cleanHTML()).toBe(after)
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+    $.move(document.querySelector("#moving")!.firstChild!, 2)
+    keydown("Tab", {shiftKey: true})
+    expect(document.querySelector("#moving")!.parentElement).toBe(document.querySelector("#items"))
+    expect(document.querySelector("#children")!.parentElement).toBe(document.querySelector("#moving"))
+    document.body.className = ""
+  })
+
+  it.each(["canvas", "slides"] as const)("splits %s list items with Enter and paragraph input while retaining the positioned list", async mode => {
+    for(const input of ["key", "beforeinput"]) {
+      document.body.className = ""
+      document.body.innerHTML = '<ul id="items"><!--keep--><li class="authored"><b>abcd</b><my-widget></my-widget></li><li>Neighbor</li></ul>'
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      const list = document.querySelector("ul")!, text = list.querySelector("b")!.firstChild!
+      const style = list.getAttribute("style"), parent = list.parentElement
+      $.move(text, 2)
+      editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+      const before = cleanHTML()
+      const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+        : new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, cancelable: true})
+      text.parentElement!.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(list.innerHTML).toBe('<!--keep--><li class="authored"><b>ab</b></li><li class="authored"><b>cd</b><my-widget></my-widget></li><li>Neighbor</li>')
+      expect(list.parentElement).toBe(parent)
+      expect(list.getAttribute("style")).toBe(style)
+      expect(list.children[1].contains($.anchor)).toBe(true)
+      editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+      const after = cleanHTML()
+      expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+      editor.doc.undo(); await Promise.resolve()
+      expect(cleanHTML()).toBe(before)
+      editor.doc.redo(); await Promise.resolve()
+      expect(cleanHTML()).toBe(after)
+    }
+    document.body.className = ""
+  })
+
+  it("transforms the virtual bullet from the list's local content origin and clears it on materialization", () => {
+    document.body.innerHTML = '<ul style="box-sizing:border-box;width:200px;height:40px;padding:8px 40px;border:2px solid;transform:matrix(0,2,-2,0,0,0)"></ul>'
+    const list = document.querySelector("ul")!
+    const rect = vi.spyOn(list, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 200, 80, 400))
+    $.move(list)
+    editor.features.list.refreshSelectionPresentation()
+    const marker = editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")!
+    expect(marker.style.left).toBe("160px")
+    expect(marker.style.top).toBe("284px")
+    expect(marker.style.transformOrigin).toBe("0 0")
+    expect(marker.style.transform).toBe("matrix(0, 2, -2, 0, 0, 0)")
+    rect.mockReturnValue(new DOMRect(80, 100, 80, 400))
+    window.dispatchEvent(new Event("scroll"))
+    expect(marker.style.left).toBe("140px")
+    expect(marker.style.top).toBe("184px")
+    const input = new InputEvent("beforeinput", {inputType: "insertText", data: "A", bubbles: true, cancelable: true})
+    list.dispatchEvent(input)
+    editor.features.list.refreshSelectionPresentation()
+    expect(marker.getAttribute("part")).toContain("virtual-list-item-hidden")
+    expect(marker.style.transform).toBe("")
+    expect(list.innerHTML).toBe("<li>A</li>")
+    expect(cleanHTML()).not.toContain("virtual-list")
+    rect.mockRestore()
+  })
+
   it("mirrors aligned image markers into empty-list affordances and cleans them up", () => {
     document.body.innerHTML = '<ul style="--ww-list-marker-image: url(data:image/png;base64,AQID); list-style-image: var(--ww-list-marker-image)"></ul><p>Elsewhere</p>'
     $.move(document.querySelector("ul")!, 0)

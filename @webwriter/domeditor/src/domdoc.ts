@@ -1666,7 +1666,7 @@ export class SharedDOMDoc {
     if(mutation.type === "attributes") {
       const name = mutation.attributeName?.toLowerCase()
       if(!name || this.#isIgnoredAttribute(name) || isAuthoredContentEditableMutation(mutation, this.#isWidget) === false) return false
-      if(name === "inputmode" && !isAuthoredMutation(mutation)) return false
+      if((name === "inputmode" || name === "srcdoc") && !isAuthoredMutation(mutation)) return false
       if(isElement(mutation.target)) {
         const currentIgnored = this.#isInsideIgnoredElement(mutation.target)
         if(name === "class") {

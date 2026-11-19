@@ -220,7 +220,7 @@
       }
     }
 
-    p:not([is]) {
+    :is(&, & > :is(main, article, section):not([is])) > p:not([is]) {
       display: flow-root;
       min-inline-size: min(300px, 100%);
     }
@@ -231,11 +231,13 @@
       min-block-size: 1lh;
     }
 
+    /* Float direction remains useful locally. Page lanes only address children
+     * of the document flow, never descendants inside widgets or other blocks. */
     .ww-float-left { float: left !important; }
     .ww-float-right { float: right !important; }
     .ww-float-none { float: none !important; }
 
-    .ww-float-sticky:is(.ww-float-left, .ww-float-right) {
+    :is(&, & > :is(main, article, section):not([is])) > .ww-float-sticky:is(.ww-float-left, .ww-float-right) {
       position: sticky;
       /* The horizontal gutter can grow past the Base theme's opening margin. */
       top: min(var(--ww-page-gutter, 1rem), 1.25rem);
@@ -243,7 +245,7 @@
       z-index: 2147483638;
     }
 
-    :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+    :is(&, & > :is(main, article, section):not([is])) > :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
       /* A bounded border box fits its lane. Old floats use the theme width. */
       box-sizing: border-box !important;
       inline-size: var(--ww-float-size, var(--ww-float-width)) !important;
@@ -267,17 +269,17 @@
       --ww-single-side-limit: max(0px, calc(var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - 300px - var(--ww-float-gap)));
       --ww-left-column-width: min(var(--ww-left-column-ideal), var(--ww-single-side-limit));
       --ww-right-column-width: min(var(--ww-right-column-ideal), var(--ww-single-side-limit));
-      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])) {
+      &:has(> :is(.ww-float-left, [style*="float: left"], [style*="float:left"]), > :is(main, article, section):not([is]) > :is(.ww-float-left, [style*="float: left"], [style*="float:left"])) {
         --ww-left-lane: calc(var(--ww-left-column-width) + var(--ww-float-gap));
       }
-      &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])) {
+      &:has(> :is(.ww-float-right, [style*="float: right"], [style*="float:right"]), > :is(main, article, section):not([is]) > :is(.ww-float-right, [style*="float: right"], [style*="float:right"])) {
         --ww-right-lane: calc(var(--ww-right-column-width) + var(--ww-float-gap));
       }
-      &:has(:is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"])) {
+      &:has(> :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]), > :is(main, article, section):not([is]) > :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"])) {
         --ww-body-max: calc(var(--ww-prose-max, 45rem) + var(--ww-left-lane) + var(--ww-right-lane) + var(--ww-leading-gutter-balance, 0px) + 2 * var(--ww-page-gutter, 1rem));
       }
       /* When both lanes are occupied, leave at least 300px for prose. */
-      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])):has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])) {
+      &:has(> :is(.ww-float-left, [style*="float: left"], [style*="float:left"]), > :is(main, article, section):not([is]) > :is(.ww-float-left, [style*="float: left"], [style*="float:left"])):has(> :is(.ww-float-right, [style*="float: right"], [style*="float:right"]), > :is(main, article, section):not([is]) > :is(.ww-float-right, [style*="float: right"], [style*="float:right"])) {
         --ww-side-budget: max(0px, calc(var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - 300px - 2 * var(--ww-float-gap)));
         --ww-left-column-width: min(var(--ww-left-column-ideal), calc(var(--ww-side-budget) - min(var(--ww-right-column-ideal), var(--ww-side-budget) / 2)));
         --ww-right-column-width: min(var(--ww-right-column-ideal), calc(var(--ww-side-budget) - min(var(--ww-left-column-ideal), var(--ww-side-budget) / 2)));
@@ -286,7 +288,7 @@
        * lane. A rule for the floats after BODY's :has() would make the style
        * engine test it for every change under BODY, also in an editor's shadow
        * tree, and restyle the whole document each time. */
-      :is(.ww-float-left, [style*="float: left"], [style*="float:left"]) {
+      :is(&, & > :is(main, article, section):not([is])) > :is(.ww-float-left, [style*="float: left"], [style*="float:left"]) {
         --ww-float-width: var(--ww-left-float-width, var(--ww-left-column-width));
         float: var(--ww-left-float, left) !important;
         clear: var(--ww-left-float, left);
@@ -294,7 +296,7 @@
         margin-left: calc((1 - var(--ww-left-float-shared, 0)) * (0px - var(--ww-left-lane)) + var(--ww-left-float-shared, 0) * (var(--ww-right-lane) - min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width)))) !important;
         margin-right: calc((1 - var(--ww-left-float-shared, 0)) * (var(--ww-left-lane) - min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width))) + var(--ww-left-float-shared, 0) * (0px - var(--ww-right-lane))) !important;
       }
-      :is(.ww-float-right, [style*="float: right"], [style*="float:right"]) {
+      :is(&, & > :is(main, article, section):not([is])) > :is(.ww-float-right, [style*="float: right"], [style*="float:right"]) {
         --ww-float-width: var(--ww-right-column-width);
         float: right !important;
         clear: right;
@@ -306,7 +308,7 @@
   }
 
   @container (width >= 1400px) {
-    body:not([class~="ww-canvas"]):not([class~="ww-slides"]):has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])):has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]):has(> :is(.ww-float-left, [style*="float: left"], [style*="float:left"]), > :is(main, article, section):not([is]) > :is(.ww-float-left, [style*="float: left"], [style*="float:left"])):has(> :is(.ww-float-right, [style*="float: right"], [style*="float:right"]), > :is(main, article, section):not([is]) > :is(.ww-float-right, [style*="float: right"], [style*="float:right"])) {
       --ww-default-column-width: min(var(--ww-prose-max, 45rem), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - 2 * var(--ww-float-gap)) / 3)));
       --ww-center-column-max: min(var(--ww-prose-max, 45rem), max(var(--ww-default-column-width), calc(3 * var(--ww-default-column-width) - var(--ww-left-column-width) - var(--ww-right-column-width))));
       --ww-body-max: calc(var(--ww-center-column-max) + var(--ww-left-lane) + var(--ww-right-lane) + var(--ww-leading-gutter-balance, 0px) + 2 * var(--ww-page-gutter, 1rem));
@@ -316,7 +318,7 @@
   /* At intermediate widths, opposite side columns share the right lane.
    * Keep the authored sides so they return when the viewport is wider. */
   @container (720px <= width < 1400px) {
-    body:not([class~="ww-canvas"]):not([class~="ww-slides"]):has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])):has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]):has(> :is(.ww-float-left, [style*="float: left"], [style*="float:left"]), > :is(main, article, section):not([is]) > :is(.ww-float-left, [style*="float: left"], [style*="float:left"])):has(> :is(.ww-float-right, [style*="float: right"], [style*="float:right"]), > :is(main, article, section):not([is]) > :is(.ww-float-right, [style*="float: right"], [style*="float:right"])) {
       --ww-responsive-float: right;
       --ww-left-lane: 0px;
       --ww-right-column-width: min(max(var(--ww-left-column-ideal), var(--ww-right-column-ideal)), var(--ww-single-side-limit));
@@ -340,25 +342,25 @@
     body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
       --ww-float-width: 100%;
       --ww-responsive-float: none;
-    }
 
-    body:not([class~="ww-canvas"]):not([class~="ww-slides"]) :is(
-      [style*="float: left"], [style*="float:left"],
-      [style*="float: right"], [style*="float:right"],
-      .ww-float-left, .ww-float-right
-    ) {
-      display: flow-root;
-      float: none !important;
-      max-inline-size: 100%;
-      margin-left: auto !important;
-      margin-right: auto !important;
+      :is(&, & > :is(main, article, section):not([is])) > :is(
+        [style*="float: left"], [style*="float:left"],
+        [style*="float: right"], [style*="float:right"],
+        .ww-float-left, .ww-float-right
+      ) {
+        display: flow-root;
+        float: none !important;
+        max-inline-size: 100%;
+        margin-left: auto !important;
+        margin-right: auto !important;
+      }
+      :is(&, & > :is(main, article, section):not([is])) > .ww-float-sticky { position: static !important; }
     }
-    body .ww-float-sticky { position: static !important; }
   }
 
   @container (width >= 720px) {
     body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
-      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])):not(:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"]))) {
+      &:has(> :is(.ww-float-left, [style*="float: left"], [style*="float:left"]), > :is(main, article, section):not([is]) > :is(.ww-float-left, [style*="float: left"], [style*="float:left"])):not(:has(> :is(.ww-float-right, [style*="float: right"], [style*="float:right"]), > :is(main, article, section):not([is]) > :is(.ww-float-right, [style*="float: right"], [style*="float:right"]))) {
         --ww-alignment-left: max(0px, calc(100% - var(--ww-prose-max, 45rem)));
         --ww-alignment-right: 0px;
         --ww-flow-margin-left: auto;
@@ -368,7 +370,7 @@
           margin-right: 0;
         }
       }
-      &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])):not(:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"]))) {
+      &:has(> :is(.ww-float-right, [style*="float: right"], [style*="float:right"]), > :is(main, article, section):not([is]) > :is(.ww-float-right, [style*="float: right"], [style*="float:right"])):not(:has(> :is(.ww-float-left, [style*="float: left"], [style*="float:left"]), > :is(main, article, section):not([is]) > :is(.ww-float-left, [style*="float: left"], [style*="float:left"]))) {
         --ww-alignment-left: 0px;
         --ww-alignment-right: max(0px, calc(100% - var(--ww-prose-max, 45rem)));
         --ww-flow-margin-left: 0;

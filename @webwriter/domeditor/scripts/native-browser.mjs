@@ -9,6 +9,9 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "Panels animate without resizing document or drawer contents",
+  "Bottom panes slide without resizing document or pane contents",
+  "Slide navigation is brief and respects disabled motion",
   "table pictures keep their size in editing and preview",
   "full width resizing clears the float column",
   "captioned graphics retain their resized width and selection outline",
@@ -37,7 +40,9 @@ const expectedChecks = [
   "contents subwidgets keep selection outlines and affordances around their rendered content",
   "widget-owned marks work through the ribbon and built-in font picker",
   "nested widget pages keep insertion, splitting and deletion inside their hosts",
+  "isolating widget selections preserve whole-widget drags",
   "Crossing graphic resize edges reflects shapes and preserves fixed anchors",
+  "Shift graphic resize preserves aspect ratios while snapping",
   "Drawing brush keys are temporary and inserted shapes keep their defaults",
   "Tab cycles captured graphic and formula keyboard tabs without changing content",
   "canvas starting view frames drag, resize and open without shifting",
@@ -145,7 +150,7 @@ const expectedChecks = [
   "table presets respect whole-table and cell selections without changing layout",
   "figure permalinks align with padded caption numbering",
   "empty caption numbering is visible as a grey editing placeholder",
-  "empty media controls wrap to fit their element",
+  "empty media controls use three stable layouts",
   "whitespace beside a lone floated figure selects document start",
   "audio insertion retains element selection at the document start",
   "float previews match projected media bounds",
@@ -168,9 +173,10 @@ const expectedChecks = [
   "attribution is limited to top-level elements and follows nesting",
   "attribution inputs keep visible carets during element and capture selection",
   "toolbox attribution opens for multiple elements and deletes metadata together",
-  "attribution license picker wraps definitions on a third line and offers only current CC licenses",
+  "attribution license picker wraps definitions and searches SPDX licenses",
   "block splitting retains attribution only on the original part",
   "new paragraphs and line breaks reveal the caret at the document end",
+  "document float lanes leave widget-internal floats local",
   "native drag floats in preview areas and preserves ordinary gap drops",
   "shape keyboard drops stay in captured graphics and ribbon shapes use document flow",
   "shape keyboard drags retain capture through appendix surfaces",
@@ -230,7 +236,8 @@ const expectedChecks = [
   "ribbon dropdowns join their triggers without gaps at viewport edges",
   "shape ribbon galleries scroll only when the viewport cannot fit their contents",
   "font dropdowns join their white controls at viewport edges",
-  "font list previews only load the active web font",
+  "font list previews load sprite chunks without loading web fonts",
+  "math font options render bundled fonts before selection",
   "font searches split installed and web results without scrolling",
   "local fonts embed selected bytes and load under the editor CSP",
   "custom fonts load and survive selection changes with the document theme",
@@ -240,6 +247,7 @@ const expectedChecks = [
   "uploaded videos survive installing and removing packages",
   "local HTML websites load as isolated blob and saved data frames",
   "remote websites retain their origin in editing, preview and exports",
+  "shared HTML sandbox runs widget code under editor and preview CSP",
   "canvas and slide delete affordances follow rotation placement",
   "canvas and slide element selections keep Delete borderless",
   "canvas and slide copyright controls share freeform placement",
@@ -507,6 +515,11 @@ try {
   if(!valid) {
     process.stderr.write(`${result?.error ?? "Native checks failed"}\n${mathVisual && checks.length ? "" : Buffer.concat(errors).toString()}`)
     process.exitCode = 1
+  }
+  else if(result.standaloneWebsiteHTML) {
+    const filename = join(profile, "website-export.html")
+    await writeFile(filename, result.standaloneWebsiteHTML)
+    execFileSync(process.execPath, ["scripts/sandbox-standalone.mjs", `--website=${filename}`], {stdio: "inherit", timeout: 30000})
   }
 }
 finally {

@@ -130,6 +130,24 @@ describe("file attachments on paste and drop", () => {
 })
 
 describe("pasting positioned layout items", () => {
+  it.each(["canvas", "slides"] as const)("pastes %s items above existing peers while retaining internal paint order", mode => {
+    document.body.innerHTML = '<section style="z-index:8">High</section><aside style="z-index:-3">Low</aside><article style="z-index:25">Existing front</article>'
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const root = mode === "canvas" ? document.body : slides()[0]
+    const [high, low, front] = positioned(root)
+    const existing = [high, low, front].map(element => element.outerHTML)
+    $.selectElements([high, low])
+    const html = editor.serializeClipboardFragment($.copy()).clipboardHTML
+    editor.doc.syncFromDOM()
+    nativePaste(html)
+    const [highCopy, lowCopy] = positioned(root).slice(3)
+    expect(Number(lowCopy.style.zIndex)).toBeGreaterThan(25)
+    expect(Number(highCopy.style.zIndex)).toBeGreaterThan(Number(lowCopy.style.zIndex))
+    expect([high, low, front].map(element => element.outerHTML)).toEqual(existing)
+    expect(highCopy.textContent).toBe("High")
+    expect(lowCopy.textContent).toBe("Low")
+  })
+
   it("pastes a spatial group as a new group without joining it to the original", () => {
     const {source, sourceRoot} = canvasDeck()
     const peer = source.cloneNode(true) as HTMLElement

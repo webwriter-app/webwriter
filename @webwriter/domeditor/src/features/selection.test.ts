@@ -53,6 +53,158 @@ function el(tag = "p", text = "") {
   return element
 }
 
+describe("fullscreen selection caret", () => {
+  async function withFullscreenCaret(run: (context: {
+    outer: HTMLElement, inner: HTMLElement, first: HTMLElement, divider: HTMLElement,
+    fullscreen: (element: Element | null) => void,
+    scope: () => HTMLDialogElement | null, modal: Set<HTMLDialogElement>,
+  }) => void | Promise<void>) {
+    document.body.innerHTML = '<section id="fullscreen-outer"><section id="fullscreen-inner"><p>First</p><hr><p>Second</p></section></section><p>Outside</p>'
+    const outer = document.querySelector<HTMLElement>("#fullscreen-outer")!
+    const inner = document.querySelector<HTMLElement>("#fullscreen-inner")!
+    const first = inner.querySelector<HTMLElement>("p")!
+    const divider = inner.querySelector<HTMLElement>("hr")!
+    const previous = Object.getOwnPropertyDescriptor(document, "fullscreenElement")
+    let fullscreenElement: Element | null = null
+    Object.defineProperty(document, "fullscreenElement", {configurable: true, get: () => fullscreenElement})
+    const modal = new Set<HTMLDialogElement>()
+    const matches = HTMLDialogElement.prototype.matches
+    const match = vi.spyOn(HTMLDialogElement.prototype, "matches").mockImplementation(function(this: HTMLDialogElement, selector) {
+      return selector === ":modal" || selector === ":modal, :popover-open" ? modal.has(this) : matches.call(this, selector)
+    })
+    const show = vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function(this: HTMLDialogElement) {modal.add(this); this.open = true})
+    const close = vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function(this: HTMLDialogElement) {modal.delete(this); this.open = false})
+    const scope = () => editor.appendix.querySelector<HTMLDialogElement>("dialog.◆fullscreen-appendix")
+    const fullscreen = (element: Element | null) => {
+      fullscreenElement = element
+      ;(element?.isConnected ? element : document).dispatchEvent(new Event("fullscreenchange", {bubbles: true, composed: true}))
+    }
+    try { await run({outer, inner, first, divider, fullscreen, scope, modal}) }
+    finally {
+      fullscreen(null)
+      match.mockRestore()
+      show.mockRestore()
+      close.mockRestore()
+      if(previous) Object.defineProperty(document, "fullscreenElement", previous)
+      else Reflect.deleteProperty(document, "fullscreenElement")
+    }
+  }
+
+  it.each([
+    ["before", false], ["after", false], ["before", true], ["after", true],
+  ] as const)("promotes a gap %s its target when selected during fullscreen=%s", async (placement, duringFullscreen) => {
+    await withFullscreenCaret(({outer, divider, fullscreen, scope, modal}) => {
+      if(duringFullscreen) fullscreen(outer)
+      $.selectGap(divider, placement)
+      feature.processSelection()
+      const caret = feature.selectionCaret!
+      if(!duringFullscreen) fullscreen(outer)
+      expect(feature.selectionCaret).toBe(caret)
+      expect(caret.getRootNode()).toBe(editor.appendix)
+      expect(caret.hasAttribute("popover")).toBe(false)
+      expect(scope()!.contains(caret)).toBe(true)
+      expect(modal.has(scope()!)).toBe(true)
+      expect(caret.getAttribute("part")).toContain("gap-caret")
+      expect(caret.getAttribute("visibility")).not.toBe("hidden")
+      expect(hasPresentationState(divider, `gap-${placement}-selected`)).toBe(true)
+      fullscreen(null)
+      expect(feature.selectionCaret).toBe(caret)
+      expect(caret.hasAttribute("popover")).toBe(false)
+      expect(scope()).toBeNull()
+      expect(caret.getAttribute("visibility")).not.toBe("hidden")
+    })
+  })
+
+  it("promotes the same caret again above nested fullscreen targets", async () => {
+    await withFullscreenCaret(({outer, inner, divider, fullscreen, scope, modal}) => {
+      $.selectGap(divider, "after")
+      feature.processSelection()
+      const caret = feature.selectionCaret!
+      fullscreen(outer)
+      const layer = scope()!
+      const showed = vi.mocked(HTMLDialogElement.prototype.showModal).mock.calls.length
+      fullscreen(inner)
+      expect(feature.selectionCaret).toBe(caret)
+      expect(scope()).toBe(layer)
+      expect(layer.contains(caret)).toBe(true)
+      expect(modal.has(layer)).toBe(true)
+      expect(vi.mocked(HTMLDialogElement.prototype.showModal).mock.calls.length).toBeGreaterThan(showed)
+      expect(caret.hasAttribute("popover")).toBe(false)
+    })
+  })
+
+  it("cleans up top-layer presentation when returning from a gap to native text", async () => {
+    await withFullscreenCaret(({outer, first, divider, fullscreen, scope, modal}) => {
+      fullscreen(outer)
+      $.selectGap(divider, "before")
+      feature.processSelection()
+      const caret = feature.selectionCaret!
+      expect(scope()!.contains(caret)).toBe(true)
+      expect(modal.has(scope()!)).toBe(true)
+      $.move(first.firstChild!, 2)
+      feature.processSelection()
+      expect(feature.selectionCaret).toBe(caret)
+      expect(caret.getAttribute("visibility")).toBe("hidden")
+      expect(caret.hasAttribute("popover")).toBe(false)
+      expect(modal.has(scope()!)).toBe(true)
+      expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
+      expect(hasPresentationState(divider, "gap-before-selected")).toBe(false)
+    })
+  })
+
+  it("hides the caret safely when fullscreen content and selection endpoints are removed", async () => {
+    await withFullscreenCaret(({outer, divider, fullscreen, scope, modal}) => {
+      fullscreen(outer)
+      $.selectGap(divider, "after")
+      feature.processSelection()
+      const caret = feature.selectionCaret!
+      outer.remove()
+      $.move(document.body.querySelector("p")!.firstChild!, 0)
+      feature.processSelection()
+      fullscreen(null)
+      expect(caret.getAttribute("visibility")).toBe("hidden")
+      expect(caret.hasAttribute("popover")).toBe(false)
+      expect(scope()).toBeNull()
+      expect(hasPresentationState(divider, "gap-after-selected")).toBe(false)
+    })
+  })
+
+  it("closes and removes the promoted caret when the selection feature is disabled", async () => {
+    await withFullscreenCaret(({outer, divider, fullscreen, scope, modal}) => {
+      fullscreen(outer)
+      $.selectGap(divider, "before")
+      feature.processSelection()
+      const caret = feature.selectionCaret!
+      feature.disable()
+      expect(caret.isConnected).toBe(false)
+      expect(caret.hasAttribute("popover")).toBe(false)
+      expect(scope()!.contains(caret)).toBe(false)
+      fullscreen(outer)
+      expect(feature.selectionCaret).toBeNull()
+    })
+  })
+
+  it("keeps caret promotion out of authored attributes and shared or serialized HTML", async () => {
+    await withFullscreenCaret(({outer, divider, fullscreen, scope, modal}) => {
+      editor.doc.syncFromDOM()
+      const shared = sharedDOMBody(editor.doc.doc).toString()
+      const serialized = editor.toHTML(true)
+      const authored = document.body.innerHTML
+      fullscreen(outer)
+      $.selectGap(divider, "before")
+      feature.processSelection()
+      const caret = feature.selectionCaret!
+      expect(scope()!.contains(caret)).toBe(true)
+      expect(modal.has(scope()!)).toBe(true)
+      expect(document.body.innerHTML).toBe(authored)
+      editor.doc.syncFromDOM()
+      expect(sharedDOMBody(editor.doc.doc).toString()).toBe(shared)
+      expect(editor.toHTML(true)).toBe(serialized)
+      expect(document.body.querySelector("[popover]")).toBeNull()
+    })
+  })
+})
+
 describe("inline popup selection", () => {
   const mount = () => {
     document.body.innerHTML = '<p>Before <span class="ww-popup"><button type="button" popovertarget="note"><b>toggle</b></button><span id="note" popover="auto"><em>Popup text</em></span></span> after</p><p>Other</p>'
@@ -708,6 +860,112 @@ describe("gap clicks inside widget pages", () => {
     expect(event.defaultPrevented).toBe(false)
     expect(feature.captureSelectedWidget).toBe(organizer)
     expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
+  })
+})
+
+describe("widget capture opt-out", () => {
+  function mount(nested = false) {
+    editor.schema.extendWidgets([{tagName: "capture-opt-out-widget", editingConfig: {content: "flow*"}}])
+    const widget = el("capture-opt-out-widget")
+    widget.innerHTML = "<p>Authored content</p>"
+    const root = widget.attachShadow({mode: "open"})
+    root.innerHTML = '<div tabindex="0">Background</div><div data-ww-capture-selection="false"><button type="button">Tab</button></div><input aria-label="Unmarked">'
+    const row = root.querySelector("[data-ww-capture-selection]")!
+    const input = document.createElement("input")
+    input.value = "Page title"
+    if(nested) {
+      const control = document.createElement("nested-label-control")
+      row.append(control)
+      control.attachShadow({mode: "open"}).append(input)
+    }
+    else row.append(input)
+    return {widget, root, row, input, background: root.querySelector("div")!, unmarked: root.querySelector<HTMLInputElement>('input[aria-label="Unmarked"]')!}
+  }
+
+  const press = {button: 0, pointerId: 31, bubbles: true, composed: true, cancelable: true}
+
+  it.each([false, true])("leaves marked inputs and native editing uncaptured (nested: %s)", nested => {
+    const {widget, input} = mount(nested)
+    input.dispatchEvent(new PointerEvent("pointerdown", press))
+    input.focus()
+    input.setSelectionRange(1, 5)
+    input.dispatchEvent(new PointerEvent("pointerup", press))
+    input.dispatchEvent(new MouseEvent("click", press))
+    document.dispatchEvent(new Event("selectionchange"))
+    feature.processSelection()
+    expect(feature.captureSelectedElement).toBeNull()
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
+    expect(input.selectionStart).toBe(1)
+    expect(input.selectionEnd).toBe(5)
+    expect(input.getRootNode() instanceof ShadowRoot && (input.getRootNode() as ShadowRoot).activeElement).toBe(input)
+    const key = new KeyboardEvent("keydown", {...press, key: "Backspace"})
+    const beforeinput = new InputEvent("beforeinput", {...press, inputType: "deleteContentBackward"})
+    input.dispatchEvent(key)
+    input.dispatchEvent(beforeinput)
+    expect(key.defaultPrevented).toBe(false)
+    expect(beforeinput.defaultPrevented).toBe(false)
+    expect(widget.textContent).toBe("Authored content")
+  })
+
+  it.each([false, true])("does not reacquire capture through programmatic or keyboard focus (nested: %s)", nested => {
+    const {widget, input, unmarked} = mount(nested)
+    unmarked.focus()
+    expect(feature.captureSelectedWidget).toBe(widget)
+    input.focus()
+    input.setSelectionRange(2, 7)
+    for(const event of [new Event("selectionchange"), new KeyboardEvent("keyup", {key: "Tab", bubbles: true, composed: true})]) {
+      (event.type === "selectionchange" ? document : input).dispatchEvent(event)
+      feature.processSelection()
+      expect(feature.captureSelectedWidget).toBeNull()
+    }
+    expect(input.selectionStart).toBe(2)
+    expect(input.selectionEnd).toBe(7)
+  })
+
+  it("releases background capture on a marked control press without moving the input caret", () => {
+    const {widget, input, background} = mount()
+    pointerClick(background, new PointerEvent("pointerdown", press))
+    expect(feature.captureSelectedWidget).toBe(widget)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(true)
+    input.dispatchEvent(new PointerEvent("pointerdown", press))
+    expect(feature.captureSelectedWidget).toBeNull()
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
+    input.focus()
+    input.setSelectionRange(3, 8)
+    input.dispatchEvent(new PointerEvent("pointerup", press))
+    input.dispatchEvent(new MouseEvent("click", press))
+    feature.processSelection()
+    expect(feature.captureSelectedWidget).toBeNull()
+    expect(input.selectionStart).toBe(3)
+    expect(input.selectionEnd).toBe(8)
+    background.focus()
+    pointerClick(background, new PointerEvent("pointerdown", press))
+    expect(feature.captureSelectedWidget).toBe(widget)
+  })
+
+  it("honors marked button ancestors while leaving unmarked controls unchanged", () => {
+    const {widget, row, unmarked} = mount()
+    const button = row.querySelector("button")!
+    const clicked = vi.fn()
+    button.addEventListener("click", clicked)
+    pointerClick(button, new PointerEvent("pointerdown", press))
+    button.focus()
+    feature.processSelection()
+    expect(clicked).toHaveBeenCalledOnce()
+    expect(feature.captureSelectedWidget).toBeNull()
+    unmarked.focus()
+    expect(feature.captureSelectedWidget).toBe(widget)
+  })
+
+  it("retains explicit modifier selection of the whole widget through a marked input", () => {
+    const {widget, input} = mount()
+    input.focus()
+    pointerClick(input, new PointerEvent("pointerdown", {...press, ctrlKey: true, metaKey: true}))
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(feature.captureSelectedWidget).toBeNull()
+    expect($.selectedElement).toBe(widget)
+    expect(hasPresentationState(widget, "element-selected")).toBe(true)
+    expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
   })
 })
 
@@ -2481,13 +2739,138 @@ describe("empty text range highlighting", () => {
   })
 })
 
+describe("isolating widget selections", () => {
+  const select = (anchor: Node, anchorOffset: number, focus: Node, focusOffset: number) => {
+    // Happy DOM emits selectionchange before setBaseAndExtent has assigned
+    // the range direction. Observe the completed write, as browsers do.
+    $.isSettingRanges = true
+    try { document.getSelection()!.setBaseAndExtent(anchor, anchorOffset, focus, focusOffset) }
+    finally { $.isSettingRanges = false }
+  }
+  function pages(isolating = true) {
+    editor.schema.extendWidgets([
+      {tagName: "selection-pages", editingConfig: {content: "selection-page+", isolating}},
+      {tagName: "selection-page", editingConfig: {content: "flow*", isolating}},
+    ])
+    document.body.innerHTML = '<p>Before pages</p><selection-pages><!--keep--><selection-page><h2>First title</h2><p>First body</p></selection-page><selection-page><p>Second body</p></selection-page></selection-pages><p>After pages</p>'
+    const widget = document.querySelector("selection-pages")!
+    const [first, second] = Array.from(widget.children)
+    return {widget, first, second, start: first.querySelector("h2")!.firstChild!, end: first.querySelector("p")!.firstChild!,
+      other: second.querySelector("p")!.firstChild!, before: document.body.firstElementChild!.firstChild!, after: document.body.lastElementChild!.firstChild!}
+  }
+
+  it.each([false, true])("keeps a page-to-page range inside its anchor page (backwards: %s)", backwards => {
+    const {first, second, start, other} = pages()
+    const anchor = backwards ? other : start, focus = backwards ? start : other, scope = backwards ? second : first
+    select(anchor, 2, focus, 4)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect($.anchor === anchor).toBe(true)
+    expect($.anchorOffset).toBe(2)
+    expect($.focus).toBe(scope)
+    expect($.focusOffset).toBe(backwards ? 0 : scope.childNodes.length)
+    expect(feature.isCaptureSelection).toBe(false)
+  })
+
+  it.each([false, true])("stops an outside partial range at the Pages boundary (backwards: %s)", backwards => {
+    const {widget, start, before, after} = pages()
+    const anchor = backwards ? after : before
+    select(anchor, 2, start, 4)
+    feature.processSelection()
+    expect($.anchor === anchor).toBe(true)
+    expect($.focus).toBe(document.body)
+    expect($.focusOffset).toBe(Array.from(document.body.childNodes).indexOf(widget) + (backwards ? 1 : 0))
+  })
+
+  it.each([false, true])("keeps a range starting inside a page from reaching document text (backwards: %s)", backwards => {
+    const {first, start, before, after} = pages()
+    select(start, 2, backwards ? before : after, 4)
+    feature.processSelection()
+    expect($.anchor === start).toBe(true)
+    expect($.focus).toBe(first)
+    expect($.focusOffset).toBe(backwards ? 0 : first.childNodes.length)
+  })
+
+  it.each([false, true])("allows an outside range to enclose the complete Pages widget (backwards: %s)", backwards => {
+    const {widget, before, after} = pages()
+    const anchor = backwards ? after : before, focus = backwards ? before : after
+    select(anchor, 2, focus, 4)
+    feature.processSelection(true)
+    expect($.anchor === anchor).toBe(true)
+    expect($.focus).toBe(focus)
+    expect(hasPresentationState(widget, "atomic-range-selected")).toBe(true)
+    feature.selectElement(widget)
+    expect($.selectedElement).toBe(widget)
+  })
+
+  it.each([false, true])("uses boundary offsets to preserve direction at ancestor gaps (backwards: %s)", backwards => {
+    const {widget, first, start} = pages()
+    select(start, 2, widget, backwards ? 0 : widget.childNodes.length)
+    feature.processSelection()
+    expect($.anchor === start).toBe(true)
+    expect($.focus).toBe(first)
+    expect($.focusOffset).toBe(backwards ? 0 : first.childNodes.length)
+    const index = Array.from(document.body.childNodes).indexOf(widget) + (backwards ? 1 : 0)
+    select(document.body, index, start, 2)
+    feature.processSelection()
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(index)
+    expect($.focus).toBe(document.body)
+    expect($.focusOffset).toBe(index)
+  })
+
+  it("allows ranges between blocks inside one page and confines Select all to that page", () => {
+    const {first, start, end} = pages()
+    select(start, 2, end, 4)
+    feature.processSelection()
+    expect($.anchor === start).toBe(true)
+    expect($.focus).toBe(end)
+    document.body.dispatchEvent(new KeyboardEvent("keydown", {key: "a", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true}))
+    expect($.anchor).toBe(first)
+    expect($.anchorOffset).toBe(0)
+    expect($.focus).toBe(first)
+    expect($.focusOffset).toBe(first.childNodes.length)
+  })
+
+  it("allows partial crossings when isolating is false, while nested isolated content keeps its own boundary", () => {
+    const {first, start, other, before} = pages(false)
+    select(before, 2, start, 4)
+    feature.processSelection()
+    expect($.anchor).toBe(before)
+    expect($.focus).toBe(start)
+    select(start, 2, other, 4)
+    feature.processSelection()
+    expect($.focus).toBe(other)
+    editor.schema.extendWidgets([{tagName: "selection-page", editingConfig: {content: "flow*", isolating: true}}])
+    feature.processSelection()
+    expect($.focus).toBe(first)
+    expect($.focusOffset).toBe(first.childNodes.length)
+  })
+
+  it("revalidates replaced endpoints and leaves authored content untouched", () => {
+    const {widget, first, start, other} = pages()
+    const authored = editor.toHTML(true)
+    select(start, 2, other, 4)
+    feature.processSelection()
+    expect(editor.toHTML(true)).toBe(authored)
+    const replacement = first.cloneNode(true) as Element
+    first.replaceWith(replacement)
+    const text = replacement.querySelector("h2")!.firstChild!
+    select(text, 1, other, 3)
+    feature.processSelection()
+    expect($.anchor).toBe(text)
+    expect($.focus).toBe(replacement)
+    expect(widget.contains($.focus)).toBe(true)
+    expect(editor.toHTML(true)).toBe(authored)
+  })
+})
+
 describe("contentful widgets", () => {
   const originalHitTest = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
   beforeEach(() => {
     Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, writable: true, value: () => null})
     editor.schema.extendWidgets([
       {tagName: "timeline-widget", editingConfig: {content: "timeline-item*"}},
-      {tagName: "timeline-item", editingConfig: {content: "flow*"}},
+      {tagName: "timeline-item", editingConfig: {content: "flow*", isolating: false}},
     ])
   })
 
@@ -5400,6 +5783,26 @@ describe("document listeners", () => {
     expect([input.selectionStart, input.selectionEnd]).toEqual([1, 3])
   })
 
+  it("retains explicit capture of a structural widget part without entering its authored text", () => {
+    editor.schema.extendWidgets([
+      {tagName: "capture-parts", editingConfig: {content: "capture-part*"}},
+      {tagName: "capture-part", editingConfig: {group: "", content: "flow+"}},
+    ])
+    document.body.innerHTML = '<capture-parts><capture-part style="display:contents"><p>Authored text</p></capture-part></capture-parts>'
+    const parent = document.querySelector("capture-parts")!, part = parent.firstElementChild!
+
+    feature.captureElement(part)
+    feature.processSelection()
+
+    expect(feature.captureSelectedElement).toBe(part)
+    expect(document.getSelection()!.anchorNode).toBe(parent)
+    expect(document.getSelection()!.anchorOffset).toBe(0)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    $.move(part.querySelector("p")!.firstChild!, 1)
+    feature.processSelection()
+    expect(feature.captureSelectedElement).toBeNull()
+  })
+
   it("maintains opt-in native states through capture, element selection, text selection and destruction", () => {
     const widget = document.createElement("state-widget")
     const states = new Set(["widget-owned"])
@@ -6288,6 +6691,26 @@ describe("divider selection", () => {
 })
 
 describe("selection invariants", () => {
+  it.each(["p", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "section"])("keeps the start of an empty canvas %s in text mode after Enter", tag => {
+    document.body.innerHTML = `<${tag} style="position:absolute;width:240px"></${tag}>`
+    document.body.classList.add("ww-canvas")
+    const root = document.body.firstElementChild!
+    $.move(root)
+    root.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    expect(root.innerHTML).toBe("<br><br>")
+    const authored = editor.toHTML(true)
+    for(const offset of [0, 1, 2]) {
+      $.move(root, offset)
+      feature.processSelection()
+      expect($.anchor).toBe(root)
+      expect($.anchorOffset).toBe(offset)
+      expect($.isGapSelection).toBe(false)
+      expect(hasPresentationState(root, "text-selected")).toBe(true)
+      expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
+    }
+    expect(editor.toHTML(true)).toBe(authored)
+  })
+
   const originalHitTest = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
   const originalElementHitTest = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
   beforeEach(() => {
@@ -7258,6 +7681,31 @@ describe("selection invariants", () => {
     expect(paragraph.innerHTML).toBe("<b>al</b>fa <i>bra</i>vo charlie")
   })
 
+  it.each(["first", "last"])("stops canvas word selection at a nested hard break from the %s line", side => {
+    document.body.classList.add("ww-canvas")
+    document.body.innerHTML = '<p style="position:absolute"><b>al</b>fa<span><br></span><i>be</i>ta</p>'
+    const paragraph = document.querySelector("p")!
+    const first = paragraph.querySelector("b")!.firstChild!, last = paragraph.querySelector("i")!.firstChild!
+    const origin = side === "first" ? first : last, destination = side === "first" ? last : first
+    const rect = new DOMRect(0, 20, 200, 40)
+    const authored = paragraph.innerHTML
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(rect)
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([rect] as unknown as DOMRectList)
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: origin, offset: 1, getClientRect: () => rect})
+    const hit = vi.spyOn($, "pointFromCoords").mockReturnValue({node: origin, offset: 1})
+    paragraph.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 7,
+      pointerType: "mouse", clientX: 20, clientY: 25}))
+    pointer(paragraph, "mousedown", 20, 25, {detail: 2})
+    expect(document.getSelection()!.toString()).toBe(side === "first" ? "alfa" : "beta")
+    hit.mockReturnValue({node: destination, offset: 1})
+    paragraph.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, pointerId: 7,
+      pointerType: "mouse", buttons: 1, clientX: 100, clientY: 45}))
+    expect(document.getSelection()!.toString()).toBe("alfabeta")
+    expect($.anchor).toBe(side === "first" ? first : paragraph.lastChild)
+    paragraph.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 7}))
+    expect(paragraph.innerHTML).toBe(authored)
+  })
+
   it.each([2, 3])("leaves click %s drags native in both directions and preserves them on release", async detail => {
     document.body.innerHTML = '<section><!--keep--><p>one <b>two</b> three</p><p>four five</p></section>'
     const paragraph = document.querySelector("p")!, text = paragraph.querySelector("b")!.firstChild!
@@ -7583,7 +8031,7 @@ describe("selection invariants", () => {
   })
 
   it.each(["selectionchange", "pointerup"])("retains the gap anchor when native %s collapses a drag into widget text", phase => {
-    editor.schema.extendWidgets([{tagName: "gap-range-widget", editingConfig: {content: "flow*"}}])
+    editor.schema.extendWidgets([{tagName: "gap-range-widget", editingConfig: {content: "flow*", isolating: false}}])
     document.body.innerHTML = '<p>Before</p><gap-range-widget><h2>Title</h2><p>Last paragraph</p></gap-range-widget>'
     const widget = document.querySelector("gap-range-widget")!, paragraph = widget.querySelector("p")!, text = paragraph.firstChild!
     vi.spyOn(widget, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 200, 200))
@@ -7613,7 +8061,7 @@ describe("selection invariants", () => {
   })
 
   it("does not reveal the top of a long widget while dragging or on release", () => {
-    editor.schema.extendWidgets([{tagName: "scroll-range-widget", editingConfig: {content: "flow*"}}])
+    editor.schema.extendWidgets([{tagName: "scroll-range-widget", editingConfig: {content: "flow*", isolating: false}}])
     document.body.innerHTML = '<scroll-range-widget><h2>Title</h2><p>Last paragraph</p></scroll-range-widget>'
     const widget = document.querySelector("scroll-range-widget")!, paragraph = widget.querySelector("p")!, text = paragraph.firstChild!
     vi.spyOn(widget, "getBoundingClientRect").mockReturnValue(new DOMRect(100, -1000, 300, 1400))
@@ -7723,6 +8171,74 @@ describe("block and contentful widget gaps", () => {
     document.dispatchEvent(event)
     return event
   }
+
+  const mountPages = (isolating = true) => {
+    editor.schema.extendWidgets([
+      {tagName: "gap-pages", editingConfig: {content: "gap-page+", isolating}},
+      {tagName: "gap-page", editingConfig: {content: "p | flow*"}},
+    ])
+    document.body.innerHTML = '<p>Before</p><gap-pages><gap-page style="display:none"><p>Hidden</p></gap-page>\n<!--keep--><gap-page><p>Visible</p></gap-page><gap-page style="display:none"><p>Hidden last</p></gap-page></gap-pages><p>After</p>'
+    editor.features.widget.refresh()
+    return {pages: document.querySelector("gap-pages")!, page: document.querySelectorAll("gap-page")[1], text: document.querySelectorAll("gap-page p")[1].firstChild!}
+  }
+
+  it("redirects external gaps between structural pages into the visible page", () => {
+    const {pages, page, text} = mountPages()
+    const before = pages.innerHTML
+    for(let offset = 0; offset <= pages.childNodes.length; offset++) {
+      document.getSelection()!.setPosition(pages, offset)
+      feature.processSelection()
+      expect($.isGapSelection).toBe(false)
+      expect(page.contains($.anchor)).toBe(true)
+      expect($.anchor).toBe(text)
+      expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
+    }
+    $.move(pages.childNodes[1], 1)
+    feature.processSelection()
+    expect($.anchor).toBe(text)
+    expect(pages.innerHTML).toBe(before)
+  })
+
+  it("keeps keyboard navigation from creating an inter-page gap after a whole-page selection", () => {
+    const {pages, page} = mountPages()
+    for(const key of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]) {
+      $.selectElement(page)
+      feature.processSelection()
+      press(key)
+      expect($.isGapSelection).toBe(false)
+      expect(page.contains($.anchor) || $.selectedElement === page).toBe(true)
+    }
+    $.selectElement(pages)
+    feature.processSelection()
+    expect($.selectedElement).toBe(pages)
+    $.selectGap(pages, "after")
+    feature.processSelection()
+    expect($.isGapSelection).toBe(true)
+    expect($.anchor).toBe(document.body)
+  })
+
+  it.each([10, 350])("redirects an internal page-boundary pointer click at y=%s into visible content", y => {
+    const {pages, page, text} = mountPages()
+    pages.attachShadow({mode: "open"}).append(document.createElement("slot"))
+    vi.spyOn(pages, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 800, 400))
+    vi.spyOn(page, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 760, 300))
+    const hit = $.widgetGapFromCoords(100, y, pages, editor.schema)
+    expect(hit?.node.nodeName).toBe(pages.nodeName)
+    pointerClick(pages, new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true,
+      button: 0, pointerId: 91, pointerType: "mouse", clientX: 100, clientY: y}))
+    expect($.anchor?.nodeName).toBe("#text")
+    expect($.anchor).toBe(text)
+    expect($.isGapSelection).toBe(false)
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
+  })
+
+  it("retains intentional gaps in nonisolating structural widgets", () => {
+    const {pages, page} = mountPages(false)
+    $.selectGap(page, "before")
+    feature.processSelection()
+    expect($.isGapSelection).toBe(true)
+    expect($.anchor).toBe(pages)
+  })
 
   it.each(["before", "after"] as const)("moves a native gap %s an empty paragraph into it", placement => {
     document.body.innerHTML = '<section><p>First</p><!--keep--> <p><br></p> <!--keep--><p>Last</p></section>'

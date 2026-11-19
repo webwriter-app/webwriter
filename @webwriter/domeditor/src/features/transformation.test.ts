@@ -1398,6 +1398,20 @@ describe("freeform group transformation", () => {
     expect(last).not.toHaveAttribute("data-ww-group")
   })
 
+  it.each(["canvas", "slides"] as const)("preserves proportions when Shift-resizing a saved %s group", mode => {
+    const {first, last} = group(mode)
+    expect(feature.setSpatialGrouping("group")).toBe(true)
+    start("scale-down-right")
+    move(550, 160, {shiftKey: true})
+    end()
+    for(const target of [first, last]) {
+      expect(target.style.width).toBe("150px")
+      expect(target.style.height).toBe("75px")
+      expect(target.style.getPropertyValue("scale")).toBe("")
+      expect(target.style.transform).toBe("")
+    }
+  })
+
   it.each(["canvas", "slides"] as const)("resizes, rotates and deletes a saved %s group as a unit", async mode => {
     const {first, last, outside} = group(mode)
     expect(feature.setSpatialGrouping("group")).toBe(true)
@@ -2967,7 +2981,7 @@ describe("transform controls and geometry", () => {
     expect(sibling).toHaveAttribute("data-after", "later")
   })
 
-  it.each(["canvas", "slides"].flatMap(mode => ["p", "demo-widget", "svg"].map(tag => ({mode, tag}))))("raises a $mode $tag on frame activation with one style mutation and one undo step", async ({mode, tag}) => {
+  it.each(["canvas", "slides"].flatMap(mode => ["p", "demo-widget", "svg"].map(tag => ({mode, tag}))))("moves a $mode $tag without changing stacking and with one undo step", async ({mode, tag}) => {
     document.body.replaceChildren()
     const target = tag === "svg" ? append(document.createElementNS("http://www.w3.org/2000/svg", "svg")) : targetElement(tag)
     const sibling = targetElement("section")
@@ -2980,7 +2994,7 @@ describe("transform controls and geometry", () => {
       viewport.className = "ww-slides-viewport"; slide.className = "ww-slide"
       viewport.append(slide); document.body.append(viewport); slide.append(target, sibling)
     }
-    Object.assign(target.style, {position: "absolute", left: "20px", top: "30px"})
+    Object.assign(target.style, {position: "absolute", left: "20px", top: "30px", zIndex: "-2"})
     Object.assign(sibling.style, {position: "absolute", zIndex: "5"})
     mockRect(target)
     selectNode(target)
@@ -2996,11 +3010,14 @@ describe("transform controls and geometry", () => {
     observer.observe(target.parentElement!, {attributes: true, subtree: true, attributeFilter: ["style"]})
 
     mover.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
-    expect(observer.takeRecords().map(record => record.target)).toEqual([target])
+    expect(observer.takeRecords()).toEqual([])
     observer.disconnect()
-    expect(Number(target.style.zIndex)).toBeGreaterThan(Number(sibling.style.zIndex))
+    expect(target.style.zIndex).toBe("-2")
     expect(target.style.left).toBe("20px")
     expect(target.style.top).toBe("30px")
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 120, clientY: 100}))
+    flushAnimationFrame()
+    expect(parseFloat(target.style.left)).toBeGreaterThan(20)
     expect(target.innerHTML).toBe(content)
     expect(Array.from(document.body.childNodes)).toEqual(nodes)
     document.dispatchEvent(pointer("pointerup", {pointerId: 3, clientX: 100, clientY: 100}))
@@ -3008,7 +3025,7 @@ describe("transform controls and geometry", () => {
     editor.doc.syncFromDOM()
     const finalHTML = editor.toHTML(true)
     expect(finalHTML).not.toBe(startingHTML)
-    expect(target.style.zIndex).toBe("6")
+    expect(target.style.zIndex).toBe("-2")
     expect(sibling.getAttribute("style")).toBe(siblingStyle)
     expect(finalHTML).not.toContain("◆")
     editor.doc.undo()
@@ -3043,7 +3060,7 @@ describe("transform controls and geometry", () => {
     expect(items.map(item => Number(item.style.zIndex))).toEqual(expected)
   })
 
-  it.each(["canvas", "slides"])("keeps the last moved %s item in front throughout dragging and subsequent move starts", mode => {
+  it.each(["canvas", "slides"])("preserves explicit %s layers throughout dragging and subsequent move starts", mode => {
     document.body.replaceChildren()
     document.body.className = `ww-${mode}`
     const first = targetElement(), second = targetElement("section")
@@ -3056,15 +3073,21 @@ describe("transform controls and geometry", () => {
       Object.assign(target.style, {position: "absolute", left: "0px", top: "0px"})
       mockRect(target)
     }
+    first.style.zIndex = "1"
+    second.style.zIndex = "2"
     selectNode(first)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
     feature.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, clientX: 120, clientY: 100}))
     feature.handleMoveEnd()
-    expect(Number(first.style.zIndex)).toBeGreaterThan(Number(second.style.zIndex))
+    expect(first.style.zIndex).toBe("1")
+    expect(second.style.zIndex).toBe("2")
     expect(first.style.left).toBe("20px")
+    feature.moveZ(first, true, true)
+    expect(first.style.zIndex).toBe("3")
     selectNode(second)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0}))
-    expect(Number(second.style.zIndex)).toBeGreaterThan(Number(first.style.zIndex))
+    expect(second.style.zIndex).toBe("2")
+    expect(first.style.zIndex).toBe("3")
     feature.handleMoveEnd()
     const style = second.style.cssText
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0}))
@@ -3156,7 +3179,7 @@ describe("transform controls and geometry", () => {
     expect(sibling.style.zIndex).toBe("2")
   })
 
-  it.each(["canvas", "slides"])("keeps %s activation on cancellation and preserves a concurrent stacking change", mode => {
+  it.each(["canvas", "slides"])("preserves %s stacking on cancellation and keeps a concurrent stacking change", mode => {
     document.body.replaceChildren()
     document.body.className = `ww-${mode}`
     const target = targetElement(), sibling = targetElement()
@@ -3173,7 +3196,7 @@ describe("transform controls and geometry", () => {
     mover.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
     movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 120, clientY: 100}))
     document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
-    expect(target.style.zIndex).toBe("3")
+    expect(target.style.zIndex).toBe("1")
     expect(sibling.style.zIndex).toBe("2")
     expect(target.style.left).toBe("0px")
     expect(hasPresentationState(document.body, "transform-moving")).toBe(false)
@@ -3435,6 +3458,63 @@ describe("transform controls and geometry", () => {
     document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
   })
 
+  describe.each(["document", "canvas"])("%s Shift resizing", mode => {
+    it.each(["p", "table", "iframe", "demo-widget"])("resizes %s in layout and preserves authored content and undo", async tag => {
+      if(mode === "canvas") document.body.className = "ww-canvas"
+      const target = targetElement(tag)
+      target.innerHTML = tag === "table" ? '<tbody><tr><td>Cell<!--keep--></td></tr></tbody>' : 'Content<!--keep-->'
+      if(tag === "demo-widget") target.attachShadow({mode: "open"}).innerHTML = '<button>Widget control</button>'
+      target.style.cssText = "width:200px;height:100px"
+      if(mode === "canvas") target.style.position = "absolute"
+      mockRect(target)
+      captureNode(target)
+      expect(feature.target).toBe(target)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const original = editor.toHTML(true), content = target.innerHTML
+      const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+      handle.hidden = false
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+      const move = (shiftKey: boolean) => movePointer(pointer("pointermove", {pointerId: 3, clientX: 270, clientY: 185, altKey: true, shiftKey}))
+      move(false)
+      const resizedStyle = target.style.cssText
+      move(true)
+      expect(target.style.cssText).toBe(resizedStyle)
+      expect(target.style.maxWidth).toBe("170px")
+      expect(target.style.getPropertyValue("scale")).toBe("")
+      move(false)
+      expect(target.style.cssText).toBe(resizedStyle)
+      document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+      expect(target.innerHTML).toBe(content)
+      await mutationsDelivered()
+      editor.doc.syncFromDOM()
+      const resized = editor.toHTML(true)
+      expect(resized).not.toMatch(/◆|transform-overlay/)
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(original)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(resized)
+    })
+
+    it("preserves an authored scale when Shift-resizing a widget", () => {
+      if(mode === "canvas") document.body.className = "ww-canvas"
+      const target = targetElement("demo-widget")
+      target.style.cssText = "width:200px;height:100px;scale:1.5"
+      mockRect(target)
+      captureNode(target)
+      const original = target.style.cssText
+      const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+      handle.hidden = false
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+      movePointer(pointer("pointermove", {pointerId: 3, clientX: 255, clientY: 170, altKey: true, shiftKey: true}))
+      expect(target.style.maxWidth).toBe("170px")
+      expect(target.style.maxHeight).toBe("80px")
+      expect(target.style.getPropertyValue("scale")).toBe("1.5")
+      document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+      expect(target.style.cssText).toBe(original)
+    })
+  })
+
   describe.each(["figure", "demo-widget"])("static %s resizing", tag => {
     it.each(["up-left", "up-right", "down-left", "down-right", "up-up", "right-right", "down-down", "left-left"])("keeps normal flow when dragging %s", direction => {
       const target = targetElement(tag)
@@ -3463,12 +3543,12 @@ describe("transform controls and geometry", () => {
           else expect(target.style.height).toBe("50px")
           expect(target.style.getPropertyValue("scale") || "").toBe("")
         }
-        else if(modifiers.shiftKey) expect(target.style.scale).not.toBe("")
         else {
           if(dx) expect(parseFloat(target.style.maxWidth)).toBeLessThan(100)
           else expect(target.style.maxWidth).toBe("")
           if(dy) expect(parseFloat(target.style.maxHeight)).toBeLessThan(50)
           else expect(target.style.maxHeight).toBe("")
+          expect(target.style.getPropertyValue("scale")).toBe("")
         }
         document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
         expect(target.style.position).toBe(initialPosition)
@@ -3527,7 +3607,7 @@ describe("transform controls and geometry", () => {
   it.each([
     {modifiers: {altKey: true}, width: "113px", left: "0px", scale: ""},
     {modifiers: {ctrlKey: true}, width: "130px", left: "0px", scale: ""},
-    {modifiers: {shiftKey: true}, width: "", left: "0px", scale: "1.1 1"},
+    {modifiers: {shiftKey: true}, width: "110px", left: "0px", scale: ""},
   ])("preserves resize modifiers at edges: $modifiers", ({modifiers, width, left, scale}) => {
     const target = targetElement("div")
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
@@ -4038,6 +4118,11 @@ describe("drop, cancellation, and document ownership", () => {
     Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => x === 125 ? [target, document.body] : [child, target, document.body])})
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: child.firstChild!, offset: 0})
     selectNode(target)
+    const peer = document.body.appendChild(document.createElement("p"))
+    peer.textContent = "Other float anchor"
+    mockRect(peer)
+    // A projected lane may overlap the source's current rendered box.
+    vi.spyOn(editor.features.manipulation, "floatDropTarget").mockReturnValue(peer)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 150, clientY: 100}))
     feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: x, clientY: 125}))
     expect(target.style.float).toBe("left")
@@ -4584,6 +4669,85 @@ describe.each(["canvas", "slides"] as const)("%s movement grid and guides", mode
 })
 
 describe("queued pointer movement", () => {
+  it.each(["document", "canvas", "slides"].flatMap(mode => ["img", "figure", "demo-widget"].flatMap(tag =>
+    [false, true].map(pending => ({mode, tag, pending})))))("keeps a quick $tag resize in $mode after released capture (pending frame: $pending)", async ({mode, tag, pending}) => {
+    const target = targetElement(tag)
+    target.id = "quick-resize"
+    target.appendChild(document.createComment("keep"))
+    const content = target.innerHTML
+    if(mode !== "document") {
+      document.body.className = `ww-${mode}`
+      Object.assign(target.style, {position: "absolute", left: "0px", top: "0px"})
+    }
+    if(mode === "slides") {
+      const viewport = document.createElement("div"), slide = document.createElement("section")
+      viewport.className = "ww-slides-viewport"; slide.className = "ww-slide"
+      viewport.append(slide); document.body.append(viewport); slide.append(target)
+      flushAnimationFrame()
+      editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+    }
+    Object.assign(target.style, {width: "100px", height: "50px"})
+    mockRect(target)
+    if(tag === "demo-widget") captureNode(target)
+    else selectNode(target)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const initial = editor.toHTML(true)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 81, clientX: 200, clientY: 150}))
+    movePointer(pointer("pointermove", {pointerId: 81, buttons: 1, clientX: 180, clientY: 140}))
+    expect(target.getBoundingClientRect().width).toBeLessThan(100)
+    if(pending) queuePointer(pointer("pointermove", {pointerId: 81, buttons: 1, clientX: 160, clientY: 130}))
+    handle.dispatchEvent(pointer("lostpointercapture", {pointerId: 81, buttons: 0}))
+    const resized = target.getAttribute("style")
+    expect(target.getBoundingClientRect().width).toBe(pending ? 60 : 80)
+    expect(target.innerHTML).toBe(content)
+    expect(hasPresentationState(document.body, "transform-scaling-nwse")).toBe(false)
+    document.dispatchEvent(pointer("pointerup", {pointerId: 81}))
+    flushAnimationFrame()
+    expect(target.getAttribute("style")).toBe(resized)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const final = editor.toHTML(true)
+    expect(final).not.toMatch(/◆|transform-overlay/)
+    expect(editor.doc.body.toString()).not.toMatch(/◆|transform-overlay/)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(initial)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(final)
+  })
+
+  it.each(["held", "pointercancel", "changed", "removed", "replaced", "reparented", "other-pointer"])("handles %s during a quick resize without committing an invalid gesture", scenario => {
+    const target = targetElement("img")
+    Object.assign(target.style, {width: "100px", height: "50px"})
+    mockRect(target)
+    selectNode(target)
+    const initial = target.getAttribute("style")
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 82, clientX: 200, clientY: 150}))
+    movePointer(pointer("pointermove", {pointerId: 82, buttons: 1, clientX: 180, clientY: 140}))
+    queuePointer(pointer("pointermove", {pointerId: 82, buttons: 1, clientX: 160, clientY: 130}))
+    if(scenario === "changed") target.style.maxWidth = "777px"
+    else if(scenario === "removed") target.remove()
+    else if(scenario === "replaced") target.replaceWith(target.cloneNode(true))
+    else if(scenario === "reparented") append(document.createElement("section")).append(target)
+    handle.dispatchEvent(pointer(scenario === "pointercancel" ? "pointercancel" : "lostpointercapture", {
+      pointerId: scenario === "other-pointer" ? 99 : 82, buttons: scenario === "held" ? 1 : 0,
+    }))
+    if(scenario === "other-pointer") {
+      expect(target.getBoundingClientRect().width).toBe(80)
+      document.dispatchEvent(pointer("pointerup", {pointerId: 82}))
+      expect(target.getBoundingClientRect().width).toBe(60)
+    }
+    else if(scenario === "changed") {
+      expect(target.style.maxWidth).toBe("777px")
+      expect(target.style.height).toBe("50px")
+    }
+    else expect(target.getAttribute("style")).toBe(initial)
+    expect(hasPresentationState(document.body, "transform-scaling-nwse")).toBe(false)
+  })
+
   it.each(["move", "resize", "rotate"] as const)("applies only the latest %s input once per frame", mode => {
     const canvas = mode !== "resize"
     if(canvas) {

@@ -14,6 +14,7 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test:native-browser": "node scripts/native-browser.mjs",
+    "test:sandbox-standalone": "node scripts/sandbox-standalone.mjs",
     "test:native-browser:smoke": "node scripts/native-browser.mjs --smoke",
     "test:native-browser:smoke:chromium": "node scripts/native-browser.mjs --smoke --browser=chromium",
     "test:native-browser:import-map": "node scripts/native-browser.mjs --import-map",

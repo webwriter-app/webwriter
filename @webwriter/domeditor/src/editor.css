@@ -50,6 +50,28 @@ body {
   caret-color: currentColor;
 }
 
+/* Fullscreen must cover the frame's reserved document scrollbar gutter. */
+html:has(:fullscreen) {
+  scrollbar-gutter: auto !important;
+}
+
+/* The appendix modal includes the authored slot to preserve interaction.
+ * Keep everything outside its fullscreen boundary hidden from focus and the
+ * accessibility tree, including descendants with explicit visible styles.
+ * Use the document's retargeted fullscreen host for opaque widget internals. */
+body:state(ww-appendix-fullscreen-active) :not(:state(ww-appendix-fullscreen-target), :state(ww-appendix-fullscreen-target) *) {
+  visibility: hidden !important;
+}
+
+:where(:state(ww-appendix-fullscreen-target)) {
+  visibility: visible;
+}
+
+/* Reserve the compact editor bar without changing authored widget styles. */
+:where(:state(ww-fullscreen-widget):fullscreen) {
+  padding-top: 40px;
+}
+
 /* Legacy widget-owned controls stay in their original shadow/context tree.
  * The selected part is a manual popover, outside authored layout and clipping. */
 [contenteditable]::part(options) {
@@ -617,7 +639,7 @@ body::part(hover-caret) {
 }
 
 body::part(hover-caret-transformed),
-body:not(.ww-slides):not(.ww-inactive-presentation)::part(hover-caret-native),
+body:where(:not(.ww-slides, .ww-inactive-presentation))::part(hover-caret-native),
 body:has(:state(ww-element-hovered))::part(hover-caret),
 body:state(ww-element-hovered)::part(hover-caret),
 body:has(:state(ww-style-target-hovered))::part(hover-caret),
@@ -702,6 +724,14 @@ body::part(selection-caret) {
   pointer-events: none;
   user-select: none;
   z-index: 2147483646;
+  /* Keep caret geometry consistent in the shared fullscreen appendix layer. */
+  margin: 0;
+  padding: 0;
+  border: 0;
+  max-width: none;
+  max-height: none;
+  background: transparent;
+  color: inherit;
 }
 
 body::part(selection-caret-hidden) {
@@ -1850,10 +1880,23 @@ body::part(drop-range-caret) {
 
 body::part(drop-range-gap) {
   position-anchor: auto;
+  position-area: none;
+  display: block;
+  box-sizing: border-box;
   color: var(--sl-color-primary-400, #0078d7);
+  border: 1px dashed currentColor;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 body::part(drop-range-gap)::after {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 2px;
+  background: currentColor;
   animation: none;
 }
 

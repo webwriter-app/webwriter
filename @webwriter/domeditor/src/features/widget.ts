@@ -79,9 +79,20 @@ export class WidgetFeature extends EditorFeature {
   readonly #transactions = new Map<Element, () => void>()
   readonly #propertyUpdates = new Set<() => void>()
   #stopPrinting?: () => void
+  #fullscreenWidget: Element | null = null
+
+  #syncFullscreenWidget() {
+    if(this.#fullscreenWidget) clearPresentationState(this.#fullscreenWidget, "fullscreen-widget")
+    const target = document.fullscreenElement
+    this.#fullscreenWidget = !this.editor.options.reader && target && document.body.contains(target) && this.isWidget(target)
+      ? target : null
+    if(this.#fullscreenWidget) setPresentationState(this.#fullscreenWidget, "fullscreen-widget")
+  }
 
   // Explicit host notifications cross the ordinary widget-interaction boundary.
   captureListeners = {
+    // Native fullscreen is deliberate host state, including widget requests.
+    fullscreenchange: () => this.#syncFullscreenWidget(),
     "ww-transactionstart": (event: Event) => {
       const widget = this.hostEventTarget(event)
       if(!widget || this.editor.isEditingLocked || this.#transactions.has(widget)) return
@@ -175,6 +186,7 @@ export class WidgetFeature extends EditorFeature {
     })
     this.editor.doc.widgetData.sync()
     this.#effects?.refresh()
+    this.#syncFullscreenWidget()
   }
 
   /** IDs are authored state and survive removal and reconnection.
@@ -1032,6 +1044,8 @@ export class WidgetFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    if(this.#fullscreenWidget) clearPresentationState(this.#fullscreenWidget, "fullscreen-widget")
+    this.#fullscreenWidget = null
     for(const close of this.#transactions.values()) close()
     for(const close of this.#propertyUpdates) close()
     this.#fileConversions.abort()

@@ -644,6 +644,10 @@ describe("standalone canvas reader", () => {
     const sheets = [...document.adoptedStyleSheets]
     reader = mountCanvasReader()!
     expect(reader).not.toBeNull()
+    for(const [name, label] of [["zoom-in", "Zoom in"], ["zoom-out", "Zoom out"]]) {
+      expect(control(name).getAttribute("aria-label")).toBe(label)
+      expect(control(name).querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+    }
     const reset = control("actual-size")
     expect(reset.disabled).toBe(true)
     control("zoom-in").click()

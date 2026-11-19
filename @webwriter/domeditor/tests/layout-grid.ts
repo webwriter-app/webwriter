@@ -19,8 +19,8 @@ export async function checkLayoutGrid(host?: DOMEditor) {
       assert(editor.setDocumentLayout(mode, "document"), `${mode} conversion failed`)
       await settle()
       const target = doc.querySelector("p")!, peer = doc.querySelector<HTMLElement>("test-widget")!
-      target.style.cssText = "position:absolute;left:73px;top:117px;width:160px;height:80px;margin:0;background:#dbeafe;border-radius:8px;padding:16px;box-sizing:border-box"
-      peer.style.cssText = "position:absolute;left:420px;top:300px;width:160px;height:80px;margin:0;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:16px;box-sizing:border-box"
+      target.style.cssText = "position:absolute;left:73px;top:117px;width:160px;height:80px;margin:0;background:#dbeafe;border-radius:8px;padding:16px;box-sizing:border-box;z-index:1"
+      peer.style.cssText = "position:absolute;left:420px;top:300px;width:160px;height:80px;margin:0;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:16px;box-sizing:border-box;z-index:5"
       if(mode === "canvas") {
         editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "fit-content"})
         editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
@@ -58,8 +58,24 @@ export async function checkLayoutGrid(host?: DOMEditor) {
         assert(editor.appendix.querySelectorAll('[part~="transform-guide-object"]').length === 2, "alignment lines missing")
         assert(!editor.toHTML(true).match(/transform-grid|transform-guide|◆/), "grid leaked into serialized HTML")
         feature.handleMoveEnd()
+        assert(target.style.zIndex === "1" && peer.style.zIndex === "5", `${mode} drag changed the stacking order`)
         assert(!editor.appendix.querySelector('[part="transform-movement-overlay"]'), "grid/guide cleanup failed")
       }
+      editor.features.layout.placeElement(target, "front")
+      const front = target.style.zIndex
+      assert(Number(front) > 5, `${mode} explicit bring-to-front failed`)
+      editor.features.layout.placeElement(target, "back")
+      const back = target.style.zIndex
+      assert(Number(back) < 5, `${mode} explicit send-to-back failed`)
+      const rect = target.getBoundingClientRect()
+      feature.handleMoveStart(new view.MouseEvent("mousedown", {button: 0, clientX: rect.left, clientY: rect.top}))
+      feature.handleMoveDrag(new view.MouseEvent("mousemove", {clientX: rect.left + 40, clientY: rect.top + 20}))
+      feature.handleMoveEnd()
+      assert(target.style.zIndex === back, `${mode} moving a background item brought it forward`)
+      editor.features.manipulation.actions.insert({type: "insert", html: '<article style="background:#dcfce7;padding:16px">New front item</article>'})
+      const added = (mode === "canvas" ? doc.body : target.parentElement!).querySelector<HTMLElement>(":scope > article")!
+      assert(added && Number(view.getComputedStyle(added).zIndex) > 5, `${mode} new item did not start in front`)
+      assert(target.style.zIndex === back && peer.style.zIndex === "5", `${mode} insertion changed existing layers`)
     }
     finally {
       view.editor?.destroy(); frame.remove()

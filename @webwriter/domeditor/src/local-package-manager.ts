@@ -233,6 +233,9 @@ export class LocalPackageManager {
         await this.loadGit(previous.gitSource, id, forceInstall)
         return
       }
+      // A restored folder remains available for recovery even if its worker
+      // failed to start. A manual refresh must retry that setup as well.
+      if(forceInstall) await this.worker.start()
       const revision = previous.revision + 1
       let result: Awaited<ReturnType<typeof loadLocalPackage>>
       try {
@@ -345,6 +348,26 @@ export class LocalPackageManager {
     saveGitPackageSources([...this.gitSources].map(([id, source]) => ({id, source})))
   }
 
+  private async readRestoredPackage(id: string, directory: LocalPackageDirectoryHandle) {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        (async () => {
+          if(typeof directory.queryPermission === "function"
+            && await directory.queryPermission({mode: "read"}) !== "granted") throw new Error(folderPermissionMessage)
+          return await loadLocalPackage(directory as unknown as LocalPackageDirectory, {
+            urlFor: path => localPackageUrl(id, path, 0),
+            locale: document.documentElement.lang || navigator.language || "en",
+          })
+        })(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Reading this package folder timed out. Click Refresh to retry or add the folder again.")), 5000)
+        }),
+      ])
+    }
+    finally { clearTimeout(timer) }
+  }
+
   async loadGit(source: GitPackageSource, existingId?: string, forceInstall = true, install = true) {
     const previous = existingId ? this.records.get(existingId) : [...this.records.values()].find(record => {
       const saved = record.gitSource
@@ -396,19 +419,20 @@ export class LocalPackageManager {
     if(!worker.storedDirectories) return restoredGit
     try {
       const stored = await worker.storedDirectories()
-      if(stored.length) await worker.start()
+      let workerError: Error | undefined
+      if(stored.length) {
+        try { await worker.start() }
+        catch(error) { workerError = error instanceof Error ? error : new Error(String(error)) }
+      }
       const restored = new Map(restoredGit.map(pkg => [pkg.name, pkg]))
-      for(const entry of stored) {
-        if(this.records.has(entry.id)) continue
+      // Stale handles can leave Chrome's permission or file reads pending.
+      // Restore sources independently so one folder cannot hide every package.
+      await Promise.all(stored.map(async entry => {
+        if(this.records.has(entry.id)) return
         try {
-          if(typeof entry.handle.queryPermission === "function"
-            && await entry.handle.queryPermission({mode: "readwrite"}) !== "granted") {
-            throw new Error(folderPermissionMessage)
-          }
-          const result = await loadLocalPackage(entry.handle as unknown as LocalPackageDirectory, {
-            urlFor: path => localPackageUrl(entry.id, path, 0),
-            locale: document.documentElement.lang || navigator.language || "en",
-          })
+          if(workerError) throw workerError
+          const result = await this.readRestoredPackage(entry.id, entry.handle)
+          if(this.records.has(entry.id)) return
           result.package.developerSource = {kind: "local", path: (entry.handle as FileSystemDirectoryHandle).name}
           const record: LocalPackageRecord = {
             id: entry.id,
@@ -421,9 +445,10 @@ export class LocalPackageManager {
           this.replaceName(entry.id, result.package.name)
           this.records.set(entry.id, record)
           restored.set(result.package.name, result.package)
-          await this.watch(record)
+          void this.watch(record).catch(error => this.options.error(error instanceof Error ? error.message : String(error)))
         }
         catch(error) {
+          if(this.records.has(entry.id)) return
           const placeholder = localPackagePlaceholder(entry.handle as unknown as FileSystemDirectoryHandle, entry.id)
           const record: LocalPackageRecord = {
             id: entry.id,
@@ -436,9 +461,9 @@ export class LocalPackageManager {
           }
           this.records.set(entry.id, record)
           this.options.error(`${placeholder.label}: ${record.error}`)
-          await this.watch(record)
         }
-      }
+        this.publishList()
+      }))
       this.publishList()
       return [...restored.values()]
     }

@@ -22,6 +22,7 @@ it("keeps template indentation out of message content while preserving reply lin
   expect(content.textContent).toBe(text)
   expect(getComputedStyle(message).whiteSpace).toBe("normal")
   expect(getComputedStyle(content).whiteSpace).toBe("pre-wrap")
+  expect(getComputedStyle(content).hyphens).toBe("auto")
 })
 
 it("shows replies beside the closed AI bar and dismisses them without losing the conversation", async () => {
@@ -31,6 +32,7 @@ it("shows replies beside the closed AI bar and dismisses them without losing the
   const bubble = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-bar-reply")!
   expect(bubble.getAttribute("popover")).toBe("manual")
   expect(bubble.querySelector(".ai-bar-reply-content")!.textContent).toBe("Here is the answer.\nA second line.")
+  expect(getComputedStyle(bubble.querySelector<HTMLElement>(".ai-bar-reply-content")!).hyphens).toBe("auto")
   expect(ribbon.aiChatOpen).toBe(false)
   bubble.querySelector<HTMLButtonElement>(".ai-bar-reply-close")!.click()
   await ribbon.updateComplete
@@ -75,6 +77,20 @@ const mountRibbon = async () => {
   await ribbon.updateComplete
   return ribbon
 }
+
+it("changes AI composer geometry once while retaining the prompt draft", async () => {
+  const ribbon = await mountRibbon()
+  const prompt = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+  prompt.value = "Keep this draft"
+  prompt.dispatchEvent(new Event("input", {bubbles: true}))
+  ribbon.aiChatOpen = true
+  await ribbon.updateComplete
+  const composer = ribbon.aiToolboxTarget!.querySelector<HTMLElement>(".ai-chat-composer")!
+  for(const element of [composer, composer.querySelector(".ai-prompt-input")!]) {
+    expect(getComputedStyle(element).transition).not.toMatch(/(?:height|padding)/)
+  }
+  expect(composer.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!.value).toBe("Keep this draft")
+})
 
 const configureProvider = async (ribbon: AppRibbon) => {
   ribbon.aiDocumentToolHandler = async () => ({html: "", text: "", target: "body"})

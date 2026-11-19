@@ -10,10 +10,10 @@ import {MATH_NAMESPACE} from "../math"
 import {attributionAttributes} from "../attribution.js"
 import {captionedFigureContent} from "../figure-layout.js"
 import {SVG_NAMESPACE, graphicShapeDragType, readGraphicShapeDrag, isGraphicShapeType, graphicContainerForNode} from "../graphic"
-import {boardLayoutRole, documentLayoutMode, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
+import {boardLayoutRole, documentLayoutMode, isBoardCard, isDocumentFlowChild, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, caretRect, fixedClientX, renderedClientRect, widgetHostForShadowInteraction, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
-import {isMarkElement} from "../marks"
+import {areEquivalentMarkElements, isMarkElement} from "../marks"
 import {isEmptyParagraph, isParagraphContent, isPointAtBoundary} from "../utility"
 import {childNodesInRange, createAnchorPositioner, cssZoomFactor, removeEditorMarker} from "../utility"
 import {
@@ -50,6 +50,9 @@ type DropPoint = ReturnType<typeof $.pointFromCoords>
 
 type FloatDropZone = {container: Element, parent: Element, side: "left" | "right", center: number, rect: DOMRect, column?: {left: number, right: number}, allowed?: boolean, order: number}
 type FloatDropTargets = {source: Element, key: Element | string, zones: FloatDropZone[], scrollX: number, scrollY: number, currentScrollX: number, currentScrollY: number,
+  flowColumn?: {left: number, right: number},
+  emptyFlow?: {parent: Element, reference: Element, sourceRect: DOMRect, rect: DOMRect, scrollRange: readonly [number, number]},
+  flowEdges: {element: Element, parent: Element, rect: DOMRect, before: boolean, y: number}[],
   /** The zones ordered by top, and their greatest height; absent when a rectangle is not finite. */
   byTop?: FloatDropZone[], reach: number}
 
@@ -607,7 +610,7 @@ export class ManipulationFeature extends EditorFeature {
         this.clearDropSelection()
         return
       }
-      this.showDropRangePreview(range)
+      this.showDropRangePreview(range, event)
       this.clearFloatDropPreview("transfer")
     }
     if(!hasPresentationState(document.body, "drop-selection-active")) setPresentationState(document.body, "drop-selection-active")
@@ -624,30 +627,44 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
-  private showDropRangePreview(range: Range) {
+  showDropRangePreview(range: Range, event?: MouseEvent) {
     const {startContainer: node, startOffset: offset} = range
     let before: ChildNode | null = node.childNodes[offset - 1] ?? null
     let after: ChildNode | null = node.childNodes[offset] ?? null
-    const ignorable = (child: Node) => child.nodeType === Node.COMMENT_NODE || child instanceof Text && !child.data.trim()
+    const ignorable = (child: Node) => child.nodeType === Node.COMMENT_NODE || child instanceof Text && !child.data.trim() || isOutOfFlow(child)
     while(before && ignorable(before)) before = before.previousSibling
     while(after && ignorable(after)) after = after.nextSibling
     const block = (child: Node | null) => isElement(child) && !this.editor.schema.isPhrasing(child) && !isOutOfFlow(child)
     const adjacent = (block(before) || !before) && (block(after) || !after) ? before ?? after : null
     const gap = isElement(adjacent) ? adjacent : null
-    const rect = gap ? renderedClientRect(gap) : caretRect(node, offset)
-    const top = before instanceof Element && after instanceof Element && gap
+    const emptyFlow = !before && !after && isElement(node) && !this.editor.schema.isPhrasing(node)
+    const column = this.floatDropTargets?.flowColumn
+    const targets = this.floatDropTargets, empty = targets?.emptyFlow
+    const copy = event && "dataTransfer" in event && (event.ctrlKey || event.altKey)
+    const projected = !copy && empty && node === empty.parent && node.childNodes[offset] === empty.reference
+      && this.emptyFlowReference(targets.source) === empty.reference ? empty : null
+    const rect = projected ? this.emptyFlowPreviewRect(targets!)! : gap ? renderedClientRect(gap) : emptyFlow
+      ? new DOMRect(column?.left ?? node.getBoundingClientRect().left,
+        node.getBoundingClientRect().top + (parseFloat(getComputedStyle(node).paddingTop) || 0),
+        column ? column.right - column.left : node.getBoundingClientRect().width, 0) : caretRect(node, offset)
+    const top = projected ? rect.top : before instanceof Element && after instanceof Element && gap
       ? (renderedClientRect(before).bottom + renderedClientRect(after).top) / 2
       : gap && gap === before ? rect.bottom + (parseFloat(getComputedStyle(gap).marginBottom) || 0) : rect.top
-    const left = gap ? this.editor.features.selection.gapCaretInlinePosition(gap)
-      : `${fixedClientX(rect.left)}px`
+    const left = `${fixedClientX(rect.left)}px`
     if(!this.dropRangeCaret) {
       this.dropRangeCaret = document.createElement("div")
       this.dropRangeCaret.setAttribute("aria-hidden", "true")
       this.editor.addAppendix(this.dropRangeCaret)
     }
-    const part = gap ? "selection-caret gap-caret drop-range-gap" : "selection-caret drop-range-caret"
+    const isGap = Boolean(projected || gap || emptyFlow)
+    const part = isGap ? "selection-caret drop-range-gap" : "selection-caret drop-range-caret"
     if(this.dropRangeCaret.getAttribute("part") !== part) this.dropRangeCaret.setAttribute("part", part)
-    Object.assign(this.dropRangeCaret.style, {left, top: `${top}px`, height: `${gap ? 0 : rect.height}px`})
+    Object.assign(this.dropRangeCaret.style, {left, top: `${top}px`, width: isGap ? `${rect.width}px` : "", height: `${isGap ? 24 : rect.height}px`})
+  }
+
+  clearDropRangePreview() {
+    this.dropRangeCaret?.remove()
+    this.dropRangeCaret = null
   }
 
   /** While a drop position is shown, the selection keeps its place and its
@@ -686,6 +703,17 @@ export class ManipulationFeature extends EditorFeature {
       || !["left", "right", "none", "far-left", "far-right"].includes(side) || element === getDocumentRoot()
       || !getDocumentRoot().contains(element) || atomicEditingContainer(element.parentElement, this.editor.schema)
       || alignment !== undefined && (side !== "none" || !["left", "center", "right"].includes(alignment))) return false
+    if(!this.applyFloatStyles(element, side, alignment)) return false
+    const root = getDocumentRoot()
+    if(side !== "none" && element.parentElement === root && root.children.length === 1) {
+      const paragraph = document.createElement("p")
+      root.append(paragraph)
+      this.setFloat(paragraph, "none")
+    }
+    return true
+  }
+
+  private applyFloatStyles(element: Element, side: FloatSide, alignment?: "left" | "center" | "right") {
     const style = this.inlineStyleOf(element)
     if(!style) return false
     const desired = side === "far-left" ? "left" : side === "far-right" ? "right" : side
@@ -736,12 +764,6 @@ export class ManipulationFeature extends EditorFeature {
     }
     if(!element.classList.length) element.removeAttribute("class")
     if(!style.length) element.removeAttribute("style")
-    const root = getDocumentRoot()
-    if(desired !== "none" && element.parentElement === root && root.children.length === 1) {
-      const paragraph = document.createElement("p")
-      root.append(paragraph)
-      this.setFloat(paragraph, "none")
-    }
     return true
   }
 
@@ -776,7 +798,7 @@ export class ManipulationFeature extends EditorFeature {
     let right = false
     for(const element of getDocumentRoot().querySelectorAll<HTMLElement | SVGElement>(
       '.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]')) {
-      if(this.floatContainer(element) !== element) continue
+      if(!isDocumentFlowChild(element) || this.floatContainer(element) !== element) continue
       const side = floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList)
       if(side === "far-left") return "left"
       if(side === "far-right") right = true
@@ -834,6 +856,11 @@ export class ManipulationFeature extends EditorFeature {
     const targets = this.floatDropTargets
     if(!targets) return null
     const dx = targets.scrollX - targets.currentScrollX, dy = targets.scrollY - targets.currentScrollY
+    // Projecting a new float can move its lane over today's prose column.
+    // Keep that visible column available for returning content to normal flow.
+    if(this.emptyFlowDropRange(event, source)
+      || targets.flowColumn && event.clientX >= targets.flowColumn.left + dx && event.clientX < targets.flowColumn.right + dx
+      || this.flowEdgeDropPoint(event, source)) return null
     // Hover only checks stored rectangles. It never measures a template or
     // changes a measurement element's styles.
     const hit = (zone: FloatDropZone) => zone.container !== source && event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
@@ -934,11 +961,27 @@ export class ManipulationFeature extends EditorFeature {
     // appendix: that insertion invalidates style, and the boxes of authored
     // content do not depend on a hidden fixed element in the shadow tree.
     const boxes = candidates.map(container => container.getBoundingClientRect())
+    const body = document.body.getBoundingClientRect(), bodyStyle = getComputedStyle(document.body)
+    const flowColumn = body.width && bodyStyle.getPropertyValue("--ww-float-width")
+      && ((parseFloat(bodyStyle.paddingLeft) || 0) + (parseFloat(bodyStyle.paddingRight) || 0) > 0)
+      ? {left: body.left + (parseFloat(bodyStyle.paddingLeft) || 0), right: body.right - (parseFloat(bodyStyle.paddingRight) || 0)} : undefined
+    const flowEdges: FloatDropTargets["flowEdges"] = []
+    for(const [index, element] of candidates.entries()) {
+      const rect = boxes[index], parent = element.parentElement
+      if(!parent || !rect.width || !rect.height || this.editor.schema.isPhrasing(element)) continue
+      let inFlow = true
+      for(let ancestor: Element | null = element; ancestor && ancestor !== root; ancestor = ancestor.parentElement) {
+        if(isOutOfFlow(ancestor)) { inFlow = false; break }
+      }
+      if(inFlow) for(const before of [true, false]) flowEdges.push({element, parent, rect, before, y:before ? rect.top : rect.bottom})
+    }
+    flowEdges.sort((a, b) => a.y - b.y)
     const measurement = document.createElement("div")
     measurement.style.cssText = "position:fixed;visibility:hidden;pointer-events:none"
     this.editor.addAppendix(measurement)
     const measurements: FloatPreviewMeasurements = {geometry: new Map(), clearance: new Map(), probe: null}
     const zones: FloatDropZone[] = []
+    let emptyFlow: FloatDropTargets["emptyFlow"]
     let scroll = {x: 0, y: 0}
     try {
       for(const [index, container] of candidates.entries()) {
@@ -954,6 +997,7 @@ export class ManipulationFeature extends EditorFeature {
             column: measurements.geometry.get(parent)?.[side]?.column, order: zones.length})
         }
       }
+      emptyFlow = this.measureEmptyFlowDrop(source, measurement)
     }
     finally {
       // Removing the measurement element invalidates layout: read the scroll
@@ -968,7 +1012,9 @@ export class ManipulationFeature extends EditorFeature {
       return Number.isFinite(zone.rect.top) && Number.isFinite(zone.rect.bottom)
     })
     const byTop = finite ? zones.slice().sort((a, b) => a.rect.top - b.rect.top || a.order - b.order) : undefined
-    this.floatDropTargets = {source, key: source.isConnected ? source : source.outerHTML, zones, scrollX, scrollY, currentScrollX:scrollX, currentScrollY:scrollY, byTop, reach}
+    const hasFloats = source.isConnected && isOutOfFlow(source) || measurements.floats?.sides.some(side => side !== "none")
+    this.floatDropTargets = {source, key: source.isConnected ? source : source.outerHTML, zones, flowColumn: hasFloats ? flowColumn : undefined,
+      emptyFlow, flowEdges, scrollX, scrollY, currentScrollX:scrollX, currentScrollY:scrollY, byTop, reach}
     const schedule = () => {
       if(this.floatDropTargetsFrame !== null) return
       this.floatDropTargetsFrame = requestAnimationFrame(() => {
@@ -1121,7 +1167,7 @@ export class ManipulationFeature extends EditorFeature {
       let floats = shared ? measurements.floats : undefined
       if(!floats) {
         const elements = Array.from(document.body.querySelectorAll<HTMLElement>('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
-          .filter(element => element !== source)
+          .filter(element => element !== source && isDocumentFlowChild(element))
         floats = {elements, sides: elements.map(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList))}
         if(shared) measurements.floats = floats
       }
@@ -1194,24 +1240,27 @@ export class ManipulationFeature extends EditorFeature {
       const laneWidth = lanes ? physicalSide === "left" ? leftWidth : rightWidth : length("var(--ww-float-width)", 256)
       const lane = laneWidth + gap
       const preferred = inline?.getPropertyValue("--ww-float-size") || `min(100%, var(--ww-float-width, 256px), ${authoredWidth && authoredWidth !== "auto" ? authoredWidth : "var(--ww-float-width, 256px)"})`
+      const minimum = source?.isConnected ? getComputedStyle(source).minWidth : inline?.minWidth || "0px"
       const maximum = inline?.getPropertyValue("max-inline-size") || inline?.maxWidth || "none"
       const fallbackWidth = Math.min(available, number(inline?.width ?? "") || source?.getBoundingClientRect().width || laneWidth)
       // Parents of equal width resolve the same size. Writing the probe's
       // style again would make the style engine repeat the theme's
       // BODY:has([style*=float]) tests over the whole document for each one.
-      const widthKey = `${available}|${themed ? laneWidth : ""}|${preferred}|${maximum}|${fallbackWidth}`
+      const widthKey = `${available}|${themed ? laneWidth : ""}|${preferred}|${minimum}|${maximum}|${fallbackWidth}`
       let width = reuse ? measurements.widths?.get(widthKey) : undefined
       if(width === undefined) {
         overlay.style.width = `${available}px`
         probe.style.cssText = probeStyle
         probe.style.position = "static"
         if(themed) probe.style.setProperty("--ww-float-width", `${laneWidth}px`)
-        probe.style.width = preferred
+        // Native minimums win over the lane's preferred width on the source too.
+        probe.style.width = lanes ? `min(${preferred}, ${laneWidth}px)` : preferred
+        probe.style.minWidth = minimum
         probe.style.maxWidth = maximum
-        width = probe.getBoundingClientRect().width || Math.min(number(getComputedStyle(probe).width) || fallbackWidth, number(maximum) || Infinity)
+        const style = getComputedStyle(probe)
+        width = probe.getBoundingClientRect().width || Math.max(number(style.minWidth), Math.min(number(style.width) || fallbackWidth, number(maximum) || Infinity))
         if(reuse) (measurements.widths ??= new Map()).set(widthKey, width)
       }
-      if(lanes) width = Math.min(width, laneWidth)
       let height = 0
       if(source?.isConnected) {
         const initial = source.getBoundingClientRect()
@@ -1572,6 +1621,136 @@ export class ManipulationFeature extends EditorFeature {
     return () => (hit ??= {point: this.dropPoint(event)}).point
   }
 
+  /** An otherwise empty page has one flow slot, including the caret paragraph
+   * retained beside its sole float. Keep that paragraph and authored comments. */
+  private emptyFlowReference(source: Element) {
+    const root = getDocumentRoot(), parent = source.parentElement
+    if(!parent || root !== document.body || !isDocumentFlowChild(source) || this.editor.schema.isPhrasing(source)) return null
+    const incidental = (node: Node) => node instanceof Text ? !node.data.trim()
+      : node.nodeType === Node.COMMENT_NODE || node.nodeType === Node.PROCESSING_INSTRUCTION_NODE
+        || isElement(node) && node.matches("script, style, link, template")
+    if(parent !== root && Array.from(root.childNodes).some(node => node !== parent && !incidental(node))) return null
+    const peers = Array.from(parent.childNodes).filter(node => node !== source && !incidental(node))
+    if(peers.length > 1 || peers.length && (!isEmptyParagraph(peers[0]) || isOutOfFlow(peers[0]))) return null
+    return peers[0] && source.compareDocumentPosition(peers[0]) & Node.DOCUMENT_POSITION_PRECEDING ? peers[0] as Element : source
+  }
+
+  /** Measure the empty flow with the source absent. The shadow copy contains
+   * only native layout shells, never authored content, widgets or resources. */
+  private measureEmptyFlowDrop(source: Element, measurement: HTMLElement): FloatDropTargets["emptyFlow"] {
+    const reference = this.emptyFlowReference(source)
+    if(!reference) return
+    const parent = source.parentElement!, root = document.documentElement
+    const rootRect = root.getBoundingClientRect(), bodyStyle = getComputedStyle(document.body)
+    const host = document.createElement("div")
+    host.style.cssText = `all:initial;position:fixed;left:${rootRect.left}px;top:${rootRect.top}px;width:${rootRect.width}px;visibility:hidden;pointer-events:none`
+    // Custom properties survive 'all: initial'. Do not inherit the live body's
+    // float lanes or conditional body maximum into this independent layout.
+    for(const name of Array.from(bodyStyle)) if(name.startsWith("--")) host.style.setProperty(name, "initial")
+    const shadow = host.attachShadow({mode:"open"})
+    const sheets: CSSStyleSheet[] = []
+    for(const sheet of Array.from(document.styleSheets)) {
+      if(sheet.disabled) continue
+      try {
+        const copy = new CSSStyleSheet({media:sheet.media.mediaText})
+        copy.replaceSync(Array.from(sheet.cssRules, rule => rule.cssText).join("\n"))
+        sheets.push(copy)
+      }
+      catch { return }
+    }
+    shadow.adoptedStyleSheets = [...sheets, ...document.adoptedStyleSheets]
+    const html = root.cloneNode(false) as HTMLElement
+    const rootStyle = getComputedStyle(root)
+    for(const name of Array.from(rootStyle)) if(name.startsWith("--")) html.style.setProperty(name, rootStyle.getPropertyValue(name))
+    html.style.font = rootStyle.font
+    html.style.width = `${rootRect.width}px`
+    html.style.margin = "0"
+    // The root's measured width already excludes the viewport scrollbar.
+    // A nested HTML box must not reserve that gutter a second time.
+    html.style.scrollbarGutter = "auto"
+    html.style.overflow = "visible"
+    const body = document.body.cloneNode(false) as HTMLElement
+    const container = parent === document.body ? body : parent.cloneNode(false) as HTMLElement
+    const tag = source.localName.includes("-") || source.hasAttribute("is") || source.matches("iframe, object, embed") ? "div" : source.localName
+    const slot = document.createElementNS(source.namespaceURI, tag) as HTMLElement
+    for(const attribute of Array.from(source.attributes)) {
+      if(["id", "class", "style", "width", "height", "viewBox", "preserveAspectRatio"].includes(attribute.name)
+        || attribute.name.startsWith("data-")) slot.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+    }
+    const classPlacement = source.matches(".ww-float-left, .ww-float-right")
+    slot.style.setProperty("block-size", "0", "important")
+    slot.style.setProperty("min-block-size", "0", "important")
+    container.append(slot)
+    if(container !== body) body.append(container)
+    html.append(body)
+    shadow.append(html)
+    measurement.append(host)
+    try {
+      this.applyFloatStyles(slot, "none")
+      if(!classPlacement) for(const name of Array.from(slot.style)) if(name === "margin" || name.startsWith("margin-")) slot.style.removeProperty(name)
+      const rect = slot.getBoundingClientRect()
+      if(!rect.width) return
+      const overflow = Math.max(0, html.scrollWidth - html.clientWidth)
+      const scrollRange = rootStyle.direction === "rtl" ? [-overflow, 0] as const : [0, overflow] as const
+      return {parent, reference, sourceRect:source.getBoundingClientRect(), rect, scrollRange}
+    }
+    finally { host.remove() }
+  }
+
+  private emptyFlowPreviewRect(targets: FloatDropTargets) {
+    const empty = targets.emptyFlow
+    if(!empty) return null
+    // Returning the last float can remove horizontal overflow as well as its
+    // lane. Preview the scroll position the resulting document can retain.
+    const scrollX = Math.max(empty.scrollRange[0], Math.min(targets.currentScrollX, empty.scrollRange[1]))
+    return new DOMRect(empty.rect.left + targets.scrollX - scrollX,
+      empty.rect.top + targets.scrollY - targets.currentScrollY, empty.rect.width, 0)
+  }
+
+  /** All pointer positions in the empty prose column resolve to the same
+   * live boundary. Geometry was captured outside the pointer handler. */
+  emptyFlowDropRange(event: MouseEvent, source: Element) {
+    const targets = this.floatDropTargets, empty = targets?.emptyFlow
+    if(!targets || targets.source !== source || !empty || source.parentElement !== empty.parent
+      || this.emptyFlowReference(source) !== empty.reference
+      || event.target instanceof Node && source.contains(event.target)) return null
+    const x = event.clientX - targets.scrollX + targets.currentScrollX
+    const y = event.clientY - targets.scrollY + targets.currentScrollY
+    if(x >= empty.sourceRect.left && x < empty.sourceRect.right && y >= empty.sourceRect.top && y < empty.sourceRect.bottom) return null
+    const column = targets.flowColumn
+    const preview = this.emptyFlowPreviewRect(targets)!
+    if(!(event.clientX >= preview.left && event.clientX < preview.right) && !(column && x >= column.left && x < column.right)) return null
+    if(!this.allowsInsertionAt([source], empty.parent)) return null
+    const range = document.createRange()
+    range.setStartBefore(empty.reference)
+    range.collapse(true)
+    return range
+  }
+
+  /** Keep a reachable sibling gap even when adjacent blocks have no margin.
+   * Only the edge of a flow box claims this band; gutters remain float targets. */
+  private flowEdgeDropPoint(event: MouseEvent, source: Element): DropPoint {
+    const targets = this.floatDropTargets
+    if(!targets || this.editor.schema.isPhrasing(source)) return
+    const x = event.clientX - targets.scrollX + targets.currentScrollX
+    const y = event.clientY - targets.scrollY + targets.currentScrollY
+    const edges = targets.flowEdges
+    let low = 0, high = edges.length
+    while(low < high) {
+      const middle = (low + high) >> 1
+      if(edges[middle].y < y - 12) low = middle + 1
+      else high = middle
+    }
+    for(let index = low; index < edges.length && edges[index].y <= y + 12; index++) {
+      const {element, parent, rect, before, y: boundary} = edges[index]
+      const inset = Math.min(12, rect.width / 4)
+      if(element.parentElement !== parent || !getDocumentRoot().contains(element) || source.contains(element)
+        || x < rect.left + inset || x > rect.right - inset || y < rect.top || y > rect.bottom
+        || Math.abs(y - boundary) > Math.min(12, rect.height / 4)) continue
+      return {node: parent, offset: Array.from(parent.childNodes).indexOf(element) + Number(!before)}
+    }
+  }
+
   dropRange(event: MouseEvent, source: Element | null) {
     if(source && !getDocumentRoot().contains(source)) return null
     const pointAtDrop = this.dropPointResolver(event)
@@ -1612,12 +1791,24 @@ export class ManipulationFeature extends EditorFeature {
 
   private flowDropRange(event: MouseEvent, source: Element | null, pointAtDrop: () => DropPoint) {
     if(source && (!getDocumentRoot().contains(source) || event.target instanceof Node && source.contains(event.target))) return null
+    const empty = source && this.emptyFlowDropRange(event, source)
+    if(empty) return empty
     // Overlays such as the selected element's drag surface cover authored
     // content, which native hit testing would otherwise resolve to the appendix.
     // Bound the hit test to the editing root so its geometry fallback also
     // resolves blank space when media leaves no native text caret to hit.
     const root = getDocumentRoot()
-    const point = pointAtDrop()
+    const hit = pointAtDrop()
+    const sourceRect = source?.contains(hit?.node ?? null) ? source.getBoundingClientRect() : null
+    const overSource = sourceRect && event.clientX >= sourceRect.left && event.clientX < sourceRect.right
+      && event.clientY >= sourceRect.top && event.clientY < sourceRect.bottom
+    let point = source && !overSource && this.flowEdgeDropPoint(event, source) || hit
+    const targets = this.floatDropTargets, column = targets?.flowColumn
+    if(source?.contains(point?.node ?? null) && !overSource && source.parentElement && column && targets
+      && event.clientX >= column.left + targets.scrollX - targets.currentScrollX
+      && event.clientX < column.right + targets.scrollX - targets.currentScrollX) {
+      point = {node: source.parentElement, offset: Array.from(source.parentElement.childNodes).indexOf(source)}
+    }
     if(!point || !getDocumentRoot().contains(point.node)) return null
     if(source) {
       const widgetGap = this.widgetSiblingDropRange(event, source, point)
@@ -1754,7 +1945,8 @@ export class ManipulationFeature extends EditorFeature {
         if(target instanceof HTMLElement) {
           const added = Array.from(target.children).filter(element => !before.includes(element))
           if(!added.length) return false
-          this.placeRibbonElements(added, target, {x: position.x!, y: position.y!})
+          const placed = this.placeRibbonElements(added, target, {x: position.x!, y: position.y!})
+          this.editor.features.layout.placeNewElements(placed)
           this.editor.features.selection.processSelection()
         }
         return true
@@ -2246,7 +2438,10 @@ export class ManipulationFeature extends EditorFeature {
         if(inserted.namespaceURI === MATH_NAMESPACE && inserted.localName === "math" && inserted.getAttribute("display") !== "block") this.editor.features.math.adaptToPlacement(inserted, range.startContainer)
         const slide = this.editor.features.slides.active ? this.editor.features.slides.containingSlide(range.startContainer) : null
         const container = this.floatDropHit?.container
-        if(slide) this.placeRibbonElements([inserted], slide, this.editor.features.slides.clientPoint(slide, event.clientX, event.clientY))
+        if(slide) {
+          const placed = this.placeRibbonElements([inserted], slide, this.editor.features.slides.clientPoint(slide, event.clientX, event.clientY))
+          if(inserted !== source) this.editor.features.layout.placeNewElements(placed)
+        }
         else if(container) {
           const side = this.floatSide(container, event.clientX)
           this.clearDropSelection()
@@ -2276,6 +2471,7 @@ export class ManipulationFeature extends EditorFeature {
           else range.insertNode(inserted)
           if(range.startContainer !== sourceParent || !isContentfulWidget(sourceParent, this.editor.schema)) this.clearDropFloat(inserted)
         }
+        if(inserted !== source && !slide) this.editor.features.layout.placeNewElements([inserted])
         if(getDocumentRoot().contains(inserted)) $.selectElement(inserted)
         if(inserted === source && sourceParent?.matches("figure:not([is])") && source.parentElement !== sourceParent) this.editor.normalizeSurroundingElements(sourceParent)
       }
@@ -2325,7 +2521,8 @@ export class ManipulationFeature extends EditorFeature {
       const before = Array.from(slide.children)
       this.insertClipboardFragment(fragment)
       const added = Array.from(slide.children).filter(element => !before.includes(element))
-      this.placeRibbonElements(added, slide, point)
+      const placed = this.placeRibbonElements(added, slide, point)
+      this.editor.features.layout.placeNewElements(placed)
       return
     }
     const element = fragment.childNodes.length === 1 ? fragment.firstChild : null
@@ -2944,10 +3141,10 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   /** Edit toolbox styles use the selected table/cell, board content, or the
-   * direct container below Document. */
+   * direct container below the nearest contentful widget or Document. */
   get topLevelStyleTarget(): Element | null {
-    const root = this.editor.features.slides.active
-      ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot()
+    const root = this.widgetEditingScope(this.styleTarget) ?? (this.editor.features.slides.active
+      ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot())
     if(!this.editor.features.selection.isCaptureSelection && $.isGapSelection && $.anchor === root) return null
     let target = this.styleTarget
     const figure = target.closest("figure:not([is])")
@@ -2988,8 +3185,8 @@ export class ManipulationFeature extends EditorFeature {
   private get topLevelStyleTargets(): Element[] {
     const target = this.topLevelStyleTarget
     if(!target) return []
-    const root = this.editor.features.slides.active
-      ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot()
+    const root = this.widgetEditingScope(this.styleTarget) ?? (this.editor.features.slides.active
+      ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot())
     if(target !== root || $.selectedElement === root || $.selectedElement === document.body || $.range.collapsed) return [target]
     const ranges = $.flowRanges.filter(range => root.contains(range.startContainer) && root.contains(range.endContainer))
     if(!ranges.length) return [target]
@@ -3584,6 +3781,31 @@ export class ManipulationFeature extends EditorFeature {
     return isParagraphContent(node)
   }
 
+  /** Reuse inherited marks on paste without normalizing authored nesting.
+   * Each destination wrapper replaces at most one source wrapper per run. */
+  private mergePastedMarks(fragment: DocumentFragment) {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || $.isElementSelection || $.isGapSelection || $.isEmptyDocumentSelection
+      || !Array.from(fragment.childNodes).every(node => this.isInlineClipboardNode(node))) return
+    const common = selection.getRangeAt(0).commonAncestorContainer
+    if(!common.isConnected || !document.body.contains(common)) return
+    const inherited: Element[] = []
+    let element = isElement(common) ? common : common.parentElement
+    while(element && isMarkElement(element) && !element.hasAttribute("is")) {
+      inherited.push(element)
+      element = element.parentElement
+    }
+    const merge = (parent: DocumentFragment | Element, available: Element[]) => {
+      for(const child of Array.from(parent.children)) {
+        if(!isMarkElement(child) || child.hasAttribute("is")) continue
+        const index = available.findIndex(mark => areEquivalentMarkElements(mark, child))
+        merge(child, index < 0 ? available : available.filter((_, position) => position !== index))
+        if(index >= 0) child.replaceWith(...child.childNodes)
+      }
+    }
+    if(inherited.length) merge(fragment, inherited)
+  }
+
   /** Groups top-level inline runs beside block clipboard content into normal
    * text blocks. Formatting whitespace between source blocks is discarded. */
   private normalizeClipboardTopLevel(nodes: ChildNode[]): ChildNode[] {
@@ -3690,77 +3912,81 @@ export class ManipulationFeature extends EditorFeature {
   /** A single heading without local permissions can join an existing text container.
    * Gaps and whole-element replacements retain its authored heading level. */
   private insertPastedFragment(fragment: DocumentFragment) {
-    this.editor.features.mark.allowAutomaticLinksAfterPaste()
-    for(const math of Array.from(fragment.querySelectorAll("math"))) {
-      if(math.namespaceURI !== MATH_NAMESPACE) continue
-      let ancestor = math.parentElement
-      while(ancestor && !ancestor.localName.includes("-") && !ancestor.hasAttribute("is")) ancestor = ancestor.parentElement
-      if(!ancestor) math.setAttribute("display", "inline")
-    }
-    // Remap unambiguous copies of the built-in popup without changing
-    // arbitrary authored IDs or references we cannot safely rewrite.
-    for(const popup of fragment.querySelectorAll<HTMLElement>('[popover][id^="popup-"]')) {
-      const id = popup.id
-      if(!/^popup-[0-9a-f-]{36}$/i.test(id) || !document.getElementById(id)) continue
-      const targets = Array.from(fragment.querySelectorAll<HTMLElement>("[id]")).filter(element => element.id === id)
-      const invokers = Array.from(fragment.querySelectorAll<HTMLElement>("[popovertarget]"))
-        .filter(element => element.getAttribute("popovertarget") === id)
-      if(targets.length !== 1 || !invokers.length) continue
-      const ambiguous = Array.from(fragment.querySelectorAll("*")).some(element =>
-        Array.from(element.attributes).some(attribute => attribute.value.includes(id)
-          && !(element === popup && attribute.name === "id")
-          && !(invokers.includes(element as HTMLElement) && attribute.name === "popovertarget")
-          && !(invokers.includes(element as HTMLElement) && attribute.name === "style"
-            && attribute.value.trim() === `anchor-name: --${id};`)
-          && !(element === popup && attribute.name === "style"
-            && attribute.value.trim() === `position-anchor: --${id};`))
-        || element.localName === "style" && element.textContent?.includes(id))
-      if(ambiguous) continue
-      let replacement = `popup-${crypto.randomUUID()}`
-      while(document.getElementById(replacement) || fragment.getElementById(replacement)) replacement = `popup-${crypto.randomUUID()}`
-      popup.id = replacement
-      if(popup.style.getPropertyValue("position-anchor").trim() === `--${id}`) popup.style.setProperty("position-anchor", `--${replacement}`)
-      invokers.forEach(invoker => invoker.setAttribute("popovertarget", replacement))
-      invokers.forEach(invoker => {
-        if(invoker.style.getPropertyValue("anchor-name").trim() === `--${id}`) invoker.style.setProperty("anchor-name", `--${replacement}`)
-      })
-    }
-    remapPastedAuthoredIds(fragment, document, undefined, this.editor.features.widget.isWidget)
-    this.selectCapturedElementForInsertion()
-    if(this.insertLayoutPaste(fragment)) return
-    if(!this.editor.schema.allowsPlacement($.ranges[0]?.startContainer ?? null, Array.from(fragment.childNodes))) return false
-    if(this.insertListPaste(fragment)) return true
-    const container = $.anchorContainer
-    if(!$.isElementSelection && !$.isGapSelection && !$.isEmptyDocumentSelection
-      && container && container === $.focusContainer && !isDocumentRoot(container)
-      && !isAtomicEditingElement(container, this.editor.schema)) {
-      const nodes = Array.from(fragment.childNodes).filter(node => node.nodeType !== Node.TEXT_NODE || node.textContent?.trim())
-      const heading = nodes.length === 1 ? nodes[0] : null
-      if(isElement(heading) && /^h[1-6]$/.test(heading.localName) && !heading.hasAttribute("is")
-        && !Array.from(heading.childNodes).some(isDistributionPI)) {
-        heading.replaceWith(...heading.childNodes)
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      this.editor.features.mark.allowAutomaticLinksAfterPaste()
+      for(const math of Array.from(fragment.querySelectorAll("math"))) {
+        if(math.namespaceURI !== MATH_NAMESPACE) continue
+        let ancestor = math.parentElement
+        while(ancestor && !ancestor.localName.includes("-") && !ancestor.hasAttribute("is")) ancestor = ancestor.parentElement
+        if(!ancestor) math.setAttribute("display", "inline")
       }
+      // Remap unambiguous copies of the built-in popup without changing
+      // arbitrary authored IDs or references we cannot safely rewrite.
+      for(const popup of fragment.querySelectorAll<HTMLElement>('[popover][id^="popup-"]')) {
+        const id = popup.id
+        if(!/^popup-[0-9a-f-]{36}$/i.test(id) || !document.getElementById(id)) continue
+        const targets = Array.from(fragment.querySelectorAll<HTMLElement>("[id]")).filter(element => element.id === id)
+        const invokers = Array.from(fragment.querySelectorAll<HTMLElement>("[popovertarget]"))
+          .filter(element => element.getAttribute("popovertarget") === id)
+        if(targets.length !== 1 || !invokers.length) continue
+        const ambiguous = Array.from(fragment.querySelectorAll("*")).some(element =>
+          Array.from(element.attributes).some(attribute => attribute.value.includes(id)
+            && !(element === popup && attribute.name === "id")
+            && !(invokers.includes(element as HTMLElement) && attribute.name === "popovertarget")
+            && !(invokers.includes(element as HTMLElement) && attribute.name === "style"
+              && attribute.value.trim() === `anchor-name: --${id};`)
+            && !(element === popup && attribute.name === "style"
+              && attribute.value.trim() === `position-anchor: --${id};`))
+          || element.localName === "style" && element.textContent?.includes(id))
+        if(ambiguous) continue
+        let replacement = `popup-${crypto.randomUUID()}`
+        while(document.getElementById(replacement) || fragment.getElementById(replacement)) replacement = `popup-${crypto.randomUUID()}`
+        popup.id = replacement
+        if(popup.style.getPropertyValue("position-anchor").trim() === `--${id}`) popup.style.setProperty("position-anchor", `--${replacement}`)
+        invokers.forEach(invoker => invoker.setAttribute("popovertarget", replacement))
+        invokers.forEach(invoker => {
+          if(invoker.style.getPropertyValue("anchor-name").trim() === `--${id}`) invoker.style.setProperty("anchor-name", `--${replacement}`)
+        })
+      }
+      remapPastedAuthoredIds(fragment, document, undefined, this.editor.features.widget.isWidget)
+      this.selectCapturedElementForInsertion()
+      if(this.insertLayoutPaste(fragment)) return
+      if(!this.editor.schema.allowsPlacement($.ranges[0]?.startContainer ?? null, Array.from(fragment.childNodes))) return false
+      if(this.insertListPaste(fragment)) return true
+      const container = $.anchorContainer
+      if(!$.isElementSelection && !$.isGapSelection && !$.isEmptyDocumentSelection
+        && container && container === $.focusContainer && !isDocumentRoot(container)
+        && !isAtomicEditingElement(container, this.editor.schema)) {
+        const nodes = Array.from(fragment.childNodes).filter(node => node.nodeType !== Node.TEXT_NODE || node.textContent?.trim())
+        const heading = nodes.length === 1 ? nodes[0] : null
+        if(isElement(heading) && /^h[1-6]$/.test(heading.localName) && !heading.hasAttribute("is")
+          && !Array.from(heading.childNodes).some(isDistributionPI)) {
+          heading.replaceWith(...heading.childNodes)
+        }
+      }
+      // A copied inline Popup carries its out-of-flow content as a sibling in
+      // clipboard HTML. Insert the inline run first, then restore each linked
+      // content element beside its live text block (or inside its table cell).
+      const popupContents = Array.from(fragment.children).filter(element => element.matches(".ww-popup-content[popover][id]"))
+        .flatMap(content => {
+          const toggle = Array.from(fragment.querySelectorAll<HTMLButtonElement>(".ww-popup button[popovertarget]"))
+            .find(candidate => candidate.getAttribute("popovertarget") === content.id)
+          return toggle ? [{toggle, content}] : []
+        })
+      popupContents.forEach(({content}) => content.remove())
+      const result = this.insertClipboardFragment(fragment, false, true)
+      if(result !== false) for(const {toggle, content} of popupContents) {
+        if(!toggle.isConnected || document.getElementById(content.id)) continue
+        const wrapper = toggle.closest(".ww-popup")
+        if(!wrapper) continue
+        const block = getContainer(wrapper)
+        if(block.matches("td, th, caption")) block.append(content)
+        else block.after(content)
+      }
+      return result
     }
-    // A copied inline Popup carries its out-of-flow content as a sibling in
-    // clipboard HTML. Insert the inline run first, then restore each linked
-    // content element beside its live text block (or inside its table cell).
-    const popupContents = Array.from(fragment.children).filter(element => element.matches(".ww-popup-content[popover][id]"))
-      .flatMap(content => {
-        const toggle = Array.from(fragment.querySelectorAll<HTMLButtonElement>(".ww-popup button[popovertarget]"))
-          .find(candidate => candidate.getAttribute("popovertarget") === content.id)
-        return toggle ? [{toggle, content}] : []
-      })
-    popupContents.forEach(({content}) => content.remove())
-    const result = this.insertClipboardFragment(fragment, false, true)
-    if(result !== false) for(const {toggle, content} of popupContents) {
-      if(!toggle.isConnected || document.getElementById(content.id)) continue
-      const wrapper = toggle.closest(".ww-popup")
-      if(!wrapper) continue
-      const block = getContainer(wrapper)
-      if(block.matches("td, th, caption")) block.append(content)
-      else block.after(content)
-    }
-    return result
+    finally { end() }
   }
 
   /** Insert copied list items into the live list at an item boundary. */
@@ -3834,6 +4060,7 @@ export class ManipulationFeature extends EditorFeature {
     const end = this.editor.doc.beginUndoGroup()
     try {
       root.append(fragment)
+      this.editor.features.layout.placeNewElements(items)
       const rect = items[0].getBoundingClientRect()
       const dx = step + (previousRect ? (previousRect.left - rect.left) / zoom : 0)
       const dy = step + (previousRect ? (previousRect.top - rect.top) / zoom : 0)
@@ -3922,6 +4149,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       else this.editor.features.math.adaptToPlacement(math, math.parentNode === fragment ? $.range.startContainer : math.parentNode!)
     }
+    if(paste) this.mergePastedMarks(fragment)
     const nodes = this.normalizeClipboardTopLevel(Array.from(fragment.childNodes))
     if(!nodes.length) return
     const isVirtualSelection = $.isGapSelection || $.isEmptyDocumentSelection
@@ -4091,7 +4319,8 @@ export class ManipulationFeature extends EditorFeature {
     const maxDepth = isContentfulWidget(container, this.editor.schema) ? 0 : splitDepth
 
     for(let depth = 0; depth <= maxDepth; depth++) {
-      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container)) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
+      if(isDocumentRoot(container) || (this.editor.features.canvas.active || this.editor.features.slides.active) && container.matches("ul, ol, dl, menu")
+        || isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container)) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
         || isOutOfFlow(container) && !(this.editor.features.canvas.active && container.parentElement?.matches("body.ww-canvas")
           || this.editor.features.slides.active && container.parentElement?.matches("section.ww-slide")) || container.nodeName === "HTML") break
       const parent = container.parentElement
@@ -4171,7 +4400,8 @@ export class ManipulationFeature extends EditorFeature {
     const maxDepth = isContentfulWidget(container, this.editor.schema) ? 0 : splitDepth
 
     for(let depth = 0; depth <= maxDepth; depth++) {
-      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container)) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
+      if(isDocumentRoot(container) || (this.editor.features.canvas.active || this.editor.features.slides.active) && container.matches("ul, ol, dl, menu")
+        || isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container)) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
         || isOutOfFlow(container) && !(this.editor.features.canvas.active && container.parentElement?.matches("body.ww-canvas")
           || this.editor.features.slides.active && container.parentElement?.matches("section.ww-slide")) || container.nodeName === "HTML") break
       const parent = container.parentElement
@@ -4393,6 +4623,13 @@ export class ManipulationFeature extends EditorFeature {
     const container = this.editor.features.canvas.active ? document.body
       : this.editor.features.slides.active ? this.editor.features.slides.containingSlide(range.startContainer) : null
     if(!container || !container.contains(range.startContainer) || !container.contains(range.endContainer)) return false
+    // Ordinary Enter belongs to semantic list editing, including virtual first
+    // items. Modified Enter and insertLineBreak retain freeform soft breaks.
+    const paragraph = event instanceof KeyboardEvent
+      ? !event.altKey && !event.shiftKey && !modifierKeyDown(event)
+      : event instanceof InputEvent && event.inputType === "insertParagraph"
+    const list = getContainer(range.startContainer)?.closest("ul, ol, menu, dl")
+    if(paragraph && list?.contains(range.endContainer)) return false
     let root: Element | null = getContainer(range.startContainer)
     while(root && root.parentElement !== container) root = root.parentElement
     return Boolean(root && !slideLayoutRole(root) && root.contains(range.endContainer))

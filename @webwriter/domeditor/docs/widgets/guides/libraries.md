@@ -196,3 +196,67 @@ The offline export includes the selections for each widget instance and insertab
 6. Make sure that the selected variant starts and restores the saved state and settings.
 7. Compare the file size with a document that includes all variants.
 8. If an import fails with `OfflineImportError`, show a message that explains which variants are available offline.
+
+## Run HTML in an isolated preview
+
+Use `renderSandbox` from `@webwriter/widget/sandbox` to run user-supplied HTML and JavaScript. Bundle the helper with the widget. It needs no server or editor API at runtime.
+
+### Create the preview
+
+Put the iframe in the widget's shadow root and give it an accessible title.
+
+```js
+import {renderSandbox} from "@webwriter/widget/sandbox"
+
+class HTMLPreview extends HTMLElement {
+  constructor() {
+    super()
+    const root = this.attachShadow({mode: "open"})
+    this.frame = document.createElement("iframe")
+    this.frame.title = "HTML preview"
+    root.append(this.frame)
+  }
+
+  run(html) {
+    renderSandbox(this.frame, html)
+  }
+}
+
+customElements.define("ww-html-preview", HTMLPreview)
+```
+
+`renderSandbox(frame, html)` removes `src`, sets `sandbox="allow-scripts"`, and assigns a self-contained `srcdoc`. Each call starts a fresh preview. Remove the iframe when it is no longer needed.
+
+The preview can change its own DOM but cannot access the widget's or editor's document. Keep the sandbox permissions set by the helper. Do not add `allow-same-origin` or other permissions.
+
+### Check the host's content security policy
+
+WebWriter authorizes the runner automatically. In another host with a content security policy (CSP), add the matching bootstrap hash and `strict-dynamic` to its existing `script-src` directive:
+
+```js
+import {sandboxScriptHash} from "@webwriter/widget/sandbox"
+
+const runnerSources = `'${sandboxScriptHash}' 'strict-dynamic'`
+```
+
+Keep the host's other policy directives. Update the hash when updating the runner. A policy inside the iframe cannot override the host's policy.
+
+### Include the preview in saved HTML
+
+Bundle the sandbox module into the widget's output. For offline use, also embed the activity's images, stylesheets, scripts, and other resources.
+
+To generate a standalone HTML file, call `renderSandbox` and include `frame.outerHTML` in the exported page. The serialized iframe includes the runner and HTML. It runs from disk without an import or server. If the exported page has a CSP, authorize the bootstrap hash there too.
+
+### Check execution and offline use
+
+Classic and module scripts run in sequence unless marked `async`. The preview does not reproduce browser parser or page-load timing.
+
+- Register event handlers with `addEventListener`. Inline handlers such as `onclick` and `javascript:` URLs remain blocked by WebWriter's CSP.
+- Avoid `document.write()` and code that depends on `DOMContentLoaded` or `load` timing.
+- Use absolute URLs or embedded resources. WebWriter blocks a custom `<base>`. Resource, network, form, and module CORS policies still apply.
+- Inline modules use a data URL, which is also their `import.meta.url`.
+
+1. Run the built widget in the authoring tool and check the preview.
+2. Run another snippet and check that it starts a fresh preview.
+3. Save as **Offline HTML** and open the file with the network disabled.
+4. Check that scripts run and the activity's resources load.

@@ -39,6 +39,27 @@ export async function checkHeadingClipboard() {
     assert(doc.querySelectorAll("h2").length === 2 && !target.querySelector("h2"), "text paste inserted a heading block")
     assert(target.getBoundingClientRect().height > 0 && target.scrollWidth <= target.clientWidth, "destination text overflows its container")
     assert(!editor.toHTML(true).includes("◆") && !editor.toHTML(true).includes("webwriter-clipboard"), "clipboard artifacts leaked into serialization")
+    for(const tag of ["sub", "sup", "s", "code", "kbd"]) {
+      doc.body.innerHTML = `<p>Before <${tag}>formatted text</${tag}> after</p>`
+      const mark = doc.querySelector(tag)!, text = mark.firstChild!
+      const style = view.getComputedStyle(mark)
+      const originalSize = style.fontSize, originalAlign = style.verticalAlign
+      selection.setBaseAndExtent(text, 0, text, 9)
+      const data = new view.DataTransfer()
+      doc.dispatchEvent(new view.ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true}))
+      selection.collapse(text, 9)
+      editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+      doc.dispatchEvent(new view.ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+      await new Promise<void>(resolve => view.requestAnimationFrame(() => resolve()))
+      assert(mark.innerHTML === "formattedformatted text", `${tag}: paste nested matching formatting`)
+      assert(selection.isCollapsed && selection.anchorNode === mark.firstChild && selection.anchorOffset === 18, `${tag}: paste lost the caret`)
+      assert(style.fontSize === originalSize && style.verticalAlign === originalAlign, `${tag}: paste changed rendered formatting`)
+      assert(mark.parentElement!.scrollWidth <= mark.parentElement!.clientWidth, `${tag}: pasted text overflows its container`)
+      editor.doc.syncFromDOM(); editor.doc.undo()
+      assert(doc.querySelector(tag)?.innerHTML === "formatted text", `${tag}: paste did not undo`)
+      editor.doc.redo()
+      assert(doc.querySelector(tag)?.innerHTML === "formattedformatted text", `${tag}: paste did not redo`)
+    }
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 }

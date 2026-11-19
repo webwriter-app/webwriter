@@ -9,6 +9,7 @@ import {$, isWidgetShadowInteraction} from "../utility"
 import {isDataBlockType, stripActiveContent} from "../active-content"
 import {isWidgetOptionsState} from "../widget-options"
 import {effectiveDistribution} from "../distribution-dom"
+import {hasPresentationState} from "../presentation-state.js"
 import type {ActionDeclaration, OptionDeclaration, PermissionDeclaration} from "../../../lit/index"
 
 class OptionsWidget extends HTMLElement {
@@ -95,6 +96,141 @@ beforeEach(() => {
 })
 
 afterAll(() => editor.destroy())
+
+describe("WidgetFeature fullscreen widget presentation", () => {
+  async function withFullscreen(run: (change: (element: Element | null, origin?: EventTarget) => void) => void | Promise<void>) {
+    const previous = Object.getOwnPropertyDescriptor(document, "fullscreenElement")
+    let fullscreenElement: Element | null = null
+    Object.defineProperty(document, "fullscreenElement", {configurable: true, get: () => fullscreenElement})
+    const change = (element: Element | null, origin: EventTarget = document) => {
+      fullscreenElement = element
+      origin.dispatchEvent(new Event("fullscreenchange", {bubbles: true, composed: true}))
+    }
+    try { await run(change) }
+    finally {
+      fullscreenElement = null
+      editor.features.widget.enable()
+      document.dispatchEvent(new Event("fullscreenchange", {bubbles: true, composed: true}))
+      if(previous) Object.defineProperty(document, "fullscreenElement", previous)
+      else Reflect.deleteProperty(document, "fullscreenElement")
+    }
+  }
+
+  it("handles native fullscreen changes originating on the widget host", async () => {
+    await withFullscreen(change => {
+      const widget = document.createElement("demo-widget")
+      document.body.append(widget)
+      editor.features.widget.refresh()
+      change(widget, widget)
+      expect(hasPresentationState(widget, "fullscreen-widget")).toBe(true)
+      change(null, widget)
+      expect(hasPresentationState(widget, "fullscreen-widget")).toBe(false)
+    })
+  })
+
+  it("marks installed fullscreen widgets and clears the previous target across transitions", async () => {
+    await withFullscreen(change => {
+      document.body.innerHTML = '<demo-widget id="one"></demo-widget><demo-options id="two"></demo-options>'
+      const one = document.querySelector("#one")!, two = document.querySelector("#two")!
+      change(one)
+      expect(hasPresentationState(one, "fullscreen-widget")).toBe(true)
+      expect(hasPresentationState(two, "fullscreen-widget")).toBe(false)
+      change(two)
+      expect(hasPresentationState(one, "fullscreen-widget")).toBe(false)
+      expect(hasPresentationState(two, "fullscreen-widget")).toBe(true)
+      change(null)
+      expect(hasPresentationState(two, "fullscreen-widget")).toBe(false)
+    })
+  })
+
+  it("ignores nonwidgets and disconnected fullscreen targets", async () => {
+    await withFullscreen(change => {
+      document.body.innerHTML = '<demo-widget id="widget"></demo-widget><section></section><unknown-widget></unknown-widget>'
+      const widget = document.querySelector("demo-widget")!
+      change(widget)
+      expect(hasPresentationState(widget, "fullscreen-widget")).toBe(true)
+      for(const target of [document.querySelector("section")!, document.querySelector("unknown-widget")!]) {
+        change(target)
+        expect(hasPresentationState(widget, "fullscreen-widget")).toBe(false)
+        expect(hasPresentationState(target, "fullscreen-widget")).toBe(false)
+      }
+      change(widget)
+      widget.remove()
+      change(widget)
+      expect(hasPresentationState(widget, "fullscreen-widget")).toBe(false)
+      const disconnected = document.createElement("demo-options")
+      change(disconnected)
+      expect(hasPresentationState(disconnected, "fullscreen-widget")).toBe(false)
+    })
+  })
+
+  it("refreshes fullscreen presentation when a widget is installed or uninstalled", async () => {
+    await withFullscreen(change => {
+      const widget = document.body.appendChild(document.createElement("late-fullscreen-widget"))
+      change(widget)
+      expect(hasPresentationState(widget, "fullscreen-widget")).toBe(false)
+      editor.schema.extendWidgets([{tagName: "late-fullscreen-widget"}])
+      editor.features.widget.refresh()
+      expect(hasPresentationState(widget, "fullscreen-widget")).toBe(true)
+      const previousSchema = editor.schema
+      editor.schema = new Schema()
+      editor.features.widget.refresh(previousSchema)
+      expect(hasPresentationState(widget, "fullscreen-widget")).toBe(false)
+    })
+  })
+
+  it("clears fullscreen state on disable and restores the current target when reenabled", async () => {
+    await withFullscreen(change => {
+      document.body.innerHTML = '<demo-widget id="one"></demo-widget><demo-options id="two"></demo-options>'
+      const one = document.querySelector("#one")!, two = document.querySelector("#two")!
+      change(one)
+      editor.features.widget.disable()
+      expect(hasPresentationState(one, "fullscreen-widget")).toBe(false)
+      change(two)
+      expect(hasPresentationState(two, "fullscreen-widget")).toBe(false)
+      editor.features.widget.enable()
+      expect(hasPresentationState(one, "fullscreen-widget")).toBe(false)
+      expect(hasPresentationState(two, "fullscreen-widget")).toBe(true)
+    })
+  })
+
+  it("preserves authored styles and excludes fullscreen presentation from shared and serialized HTML", async () => {
+    await withFullscreen(change => {
+      document.body.innerHTML = '<demo-widget id="styled-fullscreen" style="padding-top: 7px; color: red" data-authored="keep"><!--keep--></demo-widget>'
+      editor.features.widget.refresh()
+      const widget = document.querySelector<HTMLElement>("demo-widget")!
+      const attributes = Array.from(widget.attributes, ({name, value}) => [name, value])
+      const shared = sharedHTML()
+      const serialized = editor.toHTML(true)
+      change(widget)
+      expect(hasPresentationState(widget, "fullscreen-widget")).toBe(true)
+      expect(widget.style.paddingTop).toBe("7px")
+      expect(Array.from(widget.attributes, ({name, value}) => [name, value])).toEqual(attributes)
+      expect(sharedHTML()).toBe(shared)
+      expect(editor.toHTML(true)).toBe(serialized)
+      expect(sharedHTML()).not.toContain("fullscreen-widget")
+      expect(editor.toHTML(true)).not.toContain("fullscreen-widget")
+      change(null)
+      expect(widget.style.paddingTop).toBe("7px")
+      expect(Array.from(widget.attributes, ({name, value}) => [name, value])).toEqual(attributes)
+    })
+  })
+
+  it("leaves fullscreen widgets unchanged in reader sessions", async () => {
+    await withFullscreen(change => {
+      const widget = document.body.appendChild(document.createElement("demo-widget"))
+      const previousReader = editor.options.reader
+      try {
+        editor.options.reader = {allows: () => true}
+        change(widget)
+        expect(hasPresentationState(widget, "fullscreen-widget")).toBe(false)
+        editor.features.widget.refresh()
+        expect(hasPresentationState(widget, "fullscreen-widget")).toBe(false)
+      }
+      finally { editor.options.reader = previousReader }
+    })
+  })
+})
 
 describe("WidgetFeature", () => {
   const widgetTransactionEvent = (widget: Element, phase: "start" | "end") => {

@@ -3,7 +3,7 @@ import {floatSideFromStyles, type FloatSide} from "../element-styles"
 import {$} from "../utility"
 import {createFigureLayout} from "../figure-layout.js"
 import {createLayoutPrint} from "../document-layout-print.js"
-import {slideLayoutRole} from "../document-layout"
+import {isDocumentFlowChild, slideLayoutRole} from "../document-layout"
 import {isAuthoredMutation} from "../editor-artifacts"
 
 type PlacementDirection = "front" | "up" | "down" | "back"
@@ -56,8 +56,9 @@ export class LayoutFeature extends EditorFeature {
     const parent = target.parentElement
     if(!target.isConnected || this.editor.isEditingLocked || !this.editor.allows("style", target) || this.editor.features.canvas.active || this.editor.features.slides.active
       || document.body.classList.contains("ww-board") || !(target instanceof HTMLElement || target instanceof SVGSVGElement)
-      || !(parent === document.body || parent?.parentElement === document.body && parent.matches("main, article, section"))) return false
-    if(target.querySelector('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]')) return false
+      || !isDocumentFlowChild(target)) return false
+    if(Array.from(target.querySelectorAll('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
+      .some(isDocumentFlowChild)) return false
     if(parent !== document.body) {
       const parentStyle = getComputedStyle(parent!)
       if(!["block", "flow-root"].includes(parentStyle.display) || (parentStyle.overflowX || parentStyle.overflow || "visible") !== "visible"
@@ -65,7 +66,7 @@ export class LayoutFeature extends EditorFeature {
         || /(?:paint|strict|content)/.test(parentStyle.contain)) return false
       if((parentStyle.display === "flow-root" || /layout/.test(parentStyle.contain))
         && Array.from(document.body.querySelectorAll('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
-          .some(element => !parent!.contains(element))) return false
+          .some(element => isDocumentFlowChild(element) && !parent!.contains(element))) return false
     }
     const style = getComputedStyle(target)
     return floatSideFromStyles(style.float, target.style, target.classList) === "none"
@@ -88,6 +89,7 @@ export class LayoutFeature extends EditorFeature {
     if(!body || !this.isEnabled) return
     const floats = Array.from(body.querySelectorAll<HTMLElement | SVGElement>(
       '.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
+      .filter(isDocumentFlowChild)
       .map(element => ({element, side: floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList)}))
       .filter(({side}) => side !== "none")
     const candidates = floats.map(({element}) => element)
@@ -211,7 +213,21 @@ export class LayoutFeature extends EditorFeature {
     return target ? this.placeElement(target, direction) : false
   }
 
-  placeElement(target: Element, direction: PlacementDirection, cycle = false) {
+  /** New local items start above existing peers, retaining their own paint order. */
+  placeNewElements(elements: readonly Element[]) {
+    if(!elements.length || this.editor.isEditingLocked) return
+    let placement = this.placement(elements[0])
+    for(let i = 1; !placement && i < elements.length; i++) placement = this.placement(elements[i])
+    if(!placement) return
+    const added = new Set(elements)
+    const ordered = [...placement.items].sort((a, b) => a.z - b.z || a.order - b.order)
+    const items = ordered.filter(item => added.has(item.element))
+    if(!items.length || ordered.slice(-items.length).every((item, index) => item === items[index])) return
+    // Initial stacking belongs to the insertion's undo transaction.
+    for(const {element} of items) this.placeElement(element, "front", false, false)
+  }
+
+  placeElement(target: Element, direction: PlacementDirection, cycle = false, undoGroup = true) {
     if(this.editor.isEditingLocked || !["front", "up", "down", "back"].includes(direction)) return false
     const placement = this.placement(target)
     if(!placement) return false
@@ -260,14 +276,14 @@ export class LayoutFeature extends EditorFeature {
       ordered.splice(destination, 0, ...ordered.splice(index, 1))
       changes = new Map(ordered.map((item, index) => [item, index + 1]))
     }
-    const end = this.editor.doc.beginUndoGroup()
+    const end = undoGroup ? this.editor.doc.beginUndoGroup() : null
     try {
       for(const [{element}, z] of changes) {
         const value = String(z)
         if(element.style.zIndex !== value) element.style.setProperty("z-index", value, element.style.getPropertyPriority("z-index"))
       }
     }
-    finally { end() }
+    finally { end?.() }
     return true
   }
 

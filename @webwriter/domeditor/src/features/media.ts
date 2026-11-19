@@ -8,6 +8,8 @@ import {MediaCapture} from "../components/media-capture"
 import type {MediaSourceInfo} from "../components/media-source-info"
 import {mediaSourceButtonStyles} from "../components/media-source.styles"
 import {applyIframeSandboxPolicy, stripActiveContent} from "../active-content"
+import {WebsiteSandbox} from "../website-sandbox"
+import {isEditorOwnedAttribute} from "../editor-artifacts"
 import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
 import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
 import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
@@ -102,6 +104,7 @@ const isTimedResourceElement = (node: Node, resource?: TimedMediaResourceType): 
 )
 
 const stateAttributes = (element: Element) => Object.fromEntries(Array.from(element.attributes).flatMap(attribute => {
+  if(attribute.namespaceURI === null && isEditorOwnedAttribute(element, attribute.name)) return []
   if(attribute.name !== "class") return [[attribute.name, attribute.value]]
   const classes = authoredClassValue(attribute.value)
   return classes ? [["class", classes]] : []
@@ -145,21 +148,21 @@ const mediaPlaceholderStylesheet = createStylesheet(`
   }
   .content {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
     justify-content: center;
-    width: min(52rem, 100%);
+    width: min(30rem, 100%);
     min-width: 0;
     gap: .65rem;
   }
   button, input { box-sizing: border-box; font: inherit; pointer-events: auto; }
   [hidden] { display: none !important; }
   ${mediaSourceButtonStyles.cssText}
+  .file-options { align-self: center; }
   .label { white-space: nowrap; }
   .icon { display: flex; flex: 0 0 auto; }
   .icon svg { display: block; width: 1.125rem; height: 1.125rem; }
-  .or { flex: 0 0 auto; color: #d1d5db; font-size: 1rem; }
-  .url-row { position: relative; flex: 1 1 20rem; min-width: 3.5rem; }
+  .url-row { position: relative; min-width: 0; }
   .url {
     caret-color: auto;
     user-select: text;
@@ -214,37 +217,11 @@ const mediaPlaceholderStylesheet = createStylesheet(`
   .apply:active { color: #1e4f87; background: rgba(196, 220, 244, 0.5); }
   input:focus { outline: none; }
   button:focus-visible { outline: 2px solid #60a5fa; outline-offset: -2px; }
-  @container (max-width: 30rem) {
+  @container (width < 30rem) or (height < 6rem) {
+    .content { flex-direction: row; gap: .35rem; }
     .file-options .label { display: none; }
     .file-options button { width: var(--control-height); padding: 0; }
-  }
-  @container (max-width: 24rem) {
-    .or { display: none; }
-    .content { gap: .35rem; }
-  }
-  @container (max-width: 10rem) {
-    .url-row { flex-basis: 100%; }
-  }
-  /* A shallow media box has room for one row only. Keep the input's preferred
-   * width until the button labels have yielded, then let the input shrink. */
-  @container (max-height: 5.25rem) {
-    .content {
-      --control-height: min(2rem, 100cqh);
-      flex-wrap: nowrap;
-      gap: .35rem;
-    }
-    .file-options { flex-shrink: 0; }
-    .url-row { flex-basis: 20rem; min-width: min(3.5rem, 25cqw); }
-    .url { padding-block: 0; }
-    .or { display: none; }
-  }
-  @container (max-height: 5.25rem) and (max-width: 52rem) {
-    .file-options .label { display: none; }
-    .file-options button { width: clamp(calc(1.125rem + .375rem + 1px), 18cqw, var(--control-height)); padding: 0; }
-  }
-  @container (max-height: 5.25rem) and (max-width: 12rem) {
-    .file-options button { width: calc(1.125rem + .375rem + 1px); }
-    .url { padding-inline-start: .4rem; }
+    .url-row { flex: 1 1 0; }
   }
   :host([data-compact]) .expand { display: grid; }
   :host([data-compact]) .content { display: none; }
@@ -255,7 +232,7 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     margin: 0;
     box-sizing: border-box;
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: .65rem;
     padding: .65rem;
     border: 1px solid #c7c9ce;
@@ -283,15 +260,15 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     bottom: -5px;
     transform: rotate(225deg);
   }
-  :host([data-compact]) .file-options .label { display: none; }
-  :host([data-compact]) .file-options button { width: 2rem; padding: 0; }
-  :host([data-compact]) .url-row { flex-basis: 100%; min-width: 0; }
-  :host([data-compact]) .or { display: none; }
+  :host([data-compact]) .file-options { max-width: 100%; flex-wrap: wrap; }
+  :host([data-compact]) .file-options .label { display: inline; }
+  :host([data-compact]) .file-options button { width: auto; padding: 0 .65rem; }
+  :host([data-compact]) .url-row { flex: 0 0 auto; }
 `)
 
 type MediaBox = {width: number, height: number, matrix: DOMMatrixReadOnly}
-const minimumPickerWidth = 120
-const minimumPickerHeight = 28
+const minimumPickerWidth = 240
+const minimumPickerHeight = 40
 
 function uprightPickerBounds(rect: DOMRect, box: MediaBox) {
   const inverse = box.matrix.inverse()
@@ -306,7 +283,8 @@ function uprightPickerBounds(rect: DOMRect, box: MediaBox) {
   let width = rect.width * scale, height = rect.height * scale
   if(width < minimumPickerWidth && rect.width >= minimumPickerWidth && height > minimumPickerHeight) {
     // A shallower row can make room for the controls on a diagonal.
-    const rowHeight = Math.min(height, 40)
+    // Leave one pixel for rounding when the centered bounds are transformed.
+    const rowHeight = Math.min(height, minimumPickerHeight + 1)
     const rowWidth = Math.min(rect.width,
       xPerWidth ? (box.width - xPerHeight * rowHeight) / xPerWidth : Infinity,
       yPerWidth ? (box.height - yPerHeight * rowHeight) / yPerWidth : Infinity)
@@ -363,9 +341,8 @@ class MediaPlaceholder {
           </button>
         </div>
         <input class="picker" type="file" hidden />
-        <span class="or">or</span>
         <div class="url-row">
-          <input class="url" inputmode="url" required />
+          <input class="url" inputmode="url" placeholder="URL" required />
           <button class="apply" type="button" aria-label="Apply URL" title="Apply URL">
             <span class="icon" aria-hidden="true">${arrowRight}</span>
           </button>
@@ -458,7 +435,6 @@ class MediaPlaceholder {
       this.root.querySelector(".expand")!.setAttribute("aria-expanded", "true")
       this.root.querySelector<HTMLElement>(".content")!.showPopover?.()
       this.positionPopup()
-      this.updateUrlHint()
     }
     this.root.querySelector<HTMLInputElement>(".url")!.focus({preventScroll: true})
   }
@@ -471,17 +447,12 @@ class MediaPlaceholder {
     if(content.hasAttribute("popover")) content.hidePopover?.()
   }
 
-  private updateUrlHint() {
-    const url = this.root.querySelector<HTMLInputElement>(".url")!
-    const label = url.getAttribute("aria-label")!
-    url.placeholder = url.getBoundingClientRect().width < 240 ? "URL" : `Enter ${label[0].toLowerCase()}${label.slice(1)}`
-  }
-
   private positionPopup() {
     const rect = this.element.getBoundingClientRect()
     const content = this.root.querySelector<HTMLElement>(".content")!
-    const width = Math.min(360, window.innerWidth - 16)
-    const left = Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8))
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth
+    const width = Math.min(480, viewportWidth - 16)
+    const left = Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, viewportWidth - width - 8))
     content.style.width = `${width}px`
     const height = content.getBoundingClientRect().height
     const above = rect.bottom + height + 16 > window.innerHeight && rect.top > height + 16
@@ -541,6 +512,7 @@ class MediaPlaceholder {
   }
 
   showFor(target: Element) {
+    const urlFocused = this.target === target && this.root.activeElement === this.root.querySelector(".url")
     if(this.target !== target) {
       this.root.querySelector<MediaSourceInfo>("media-source-info")?.hide?.()
       this.closePopup()
@@ -561,7 +533,6 @@ class MediaPlaceholder {
       : type === "audio" ? "audio/*"
       : type === "video" ? "video/*"
       : ".html,.htm,text/html"
-    url.placeholder = `Enter ${noun} URL`
     url.setAttribute("aria-label", `${noun[0].toUpperCase()}${noun.slice(1)} URL`)
     const measured = target.getBoundingClientRect()
     const box = this.mediaBox(target, measured)
@@ -613,7 +584,7 @@ class MediaPlaceholder {
     this.element.setAttribute("data-open", "")
     this.element.removeAttribute("aria-hidden")
     if(this.element.hasAttribute("data-popup-open")) this.positionPopup()
-    this.updateUrlHint()
+    if(urlFocused) this.focusUrl()
     return Boolean(rotated && compact)
   }
 
@@ -1332,6 +1303,7 @@ export class MediaFeature extends EditorFeature {
   private pointerDown = false
   private pendingUrlFocus: Element | null = null
   private observer: MutationObserver | null = null
+  private websiteSandbox?: WebsiteSandbox
   private resizeObserver: ResizeObserver | null = null
   private refreshQueued = false
   private refreshAfterTransform = false
@@ -1632,12 +1604,21 @@ export class MediaFeature extends EditorFeature {
     if(this.isEnabled) return
     super.enable()
     applyIframeSandboxPolicy(document.body, [this.editor.options.bridgeOrigin ?? ""])
+    this.websiteSandbox = new WebsiteSandbox(document.body, async source => {
+      const known = this.editor.mediaSourceBlob(source)
+      if(known) return known
+      const response = await fetch(source)
+      if(!response.ok) throw new Error("Local website is unavailable")
+      return response.blob()
+    }, frame => !frame.hasAttribute("is") && !sourceEditingBlocked(frame, this.editor.schema))
+    this.websiteSandbox.refresh()
     document.body.querySelectorAll("audio, video").forEach(media => {
       if(media instanceof HTMLMediaElement) media.pause()
     })
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
       this.observer = new FrameMutationObserver(records => {
+        this.websiteSandbox?.refresh()
         records = records.filter(record => record.type !== "attributes" || record.attributeName !== "class"
           || authoredClassValue(record.oldValue) !== authoredClassValue((record.target as Element).getAttribute("class")))
         if(!records.length) return
@@ -1700,6 +1681,8 @@ export class MediaFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.websiteSandbox?.dispose()
+    this.websiteSandbox = undefined
     if(this.viewportFrame !== null) cancelAnimationFrame(this.viewportFrame)
     this.viewportFrame = null
     this.refreshAfterTransform = false
@@ -2922,6 +2905,7 @@ export class MediaFeature extends EditorFeature {
   }
 
   private refresh() {
+    this.websiteSandbox?.refresh()
     this.refreshAfterTransform = false
     if(this.mediaCapture && !this.mediaCapture.valid()) this.mediaCapture.controller.close()
     batchPresentationStates(document, () => {

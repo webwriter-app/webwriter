@@ -7,9 +7,10 @@ import {RibbonDrawer} from "./ribbon-drawer"
 afterEach(() => {
   document.body.replaceChildren()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
-it("enables height transitions after the initial paint without reading layout", async () => {
+it("enables content entry transitions after the initial paint without reading layout", async () => {
   const frames: FrameRequestCallback[] = []
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     frames.push(callback)
@@ -59,6 +60,85 @@ async function mountDrawer(collapsed = true) {
 }
 
 describe("responsive ribbon drawer", () => {
+  it("keeps grid dimensions during closing and cancels interrupted reveals", async () => {
+    const drawer = await mountDrawer(false)
+    drawer.expandable = true
+    await drawer.updateComplete
+    const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    const animations: {cancel: ReturnType<typeof vi.fn>, onfinish?: () => void}[] = []
+    const animate = vi.fn(() => {
+      const animation = {cancel: vi.fn(), onfinish: undefined as (() => void) | undefined}
+      animations.push(animation)
+      return animation as unknown as Animation
+    })
+    section.animate = animate
+
+    drawer.openDrawer()
+    await drawer.updateComplete
+    expect(animate).toHaveBeenCalledOnce()
+    const expandedHeight = getComputedStyle(section).maxHeight
+    drawer.closeDrawer()
+    await drawer.updateComplete
+    expect(getComputedStyle(section).maxHeight).toBe(expandedHeight)
+    expect(animations[0].cancel).toHaveBeenCalledOnce()
+    expect(animate).toHaveBeenCalledTimes(2)
+
+    drawer.openDrawer()
+    await drawer.updateComplete
+    expect(animations[1].cancel).toHaveBeenCalledOnce()
+    animations[1].onfinish?.()
+    expect(drawer.hasAttribute("drawer-open")).toBe(true)
+    animations[2].onfinish?.()
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-settled")).toBe(true)
+    drawer.closeDrawer()
+    await drawer.updateComplete
+    drawer.remove()
+    expect(animations[3].cancel).toHaveBeenCalledOnce()
+  })
+
+  it("completes closing once when the fallback timer beats the animation", async () => {
+    vi.useFakeTimers()
+    const drawer = await mountDrawer(false)
+    drawer.expandable = true
+    await drawer.updateComplete
+    const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    const animation = {cancel: vi.fn(), onfinish: undefined as (() => void) | undefined}
+    section.animate = vi.fn(() => animation as unknown as Animation)
+    const closed = vi.fn()
+    drawer.addEventListener("ribbon-drawer-close-complete", closed)
+    drawer.openDrawer()
+    await drawer.updateComplete
+    drawer.closeDrawer()
+    await drawer.updateComplete
+    const delayedFinish = animation.onfinish
+    await vi.advanceTimersByTimeAsync(180)
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-visible")).toBe(false)
+    expect(animation.cancel).toHaveBeenCalled()
+    delayedFinish?.()
+    expect(closed).toHaveBeenCalledOnce()
+  })
+
+  it("skips reveals and completes immediately with reduced motion", async () => {
+    const drawer = await mountDrawer(false)
+    drawer.expandable = true
+    await drawer.updateComplete
+    const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    section.animate = vi.fn()
+    vi.stubGlobal("matchMedia", () => ({matches: true}))
+    vi.useFakeTimers()
+    drawer.openDrawer()
+    await vi.advanceTimersByTimeAsync(0)
+    await drawer.updateComplete
+    expect(section.animate).not.toHaveBeenCalled()
+    expect(drawer.hasAttribute("drawer-settled")).toBe(true)
+    drawer.closeDrawer()
+    await vi.advanceTimersByTimeAsync(0)
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-visible")).toBe(false)
+  })
+
   it("shows the package drawer shadow and bottom border only when packages overflow the top area", async () => {
     const drawer = await mountDrawer(false)
     drawer.layout = "packages"
@@ -158,8 +238,8 @@ describe("responsive ribbon drawer", () => {
     expect(getComputedStyle(controls).paddingTop).toBe("8px")
     expect(getComputedStyle(controls).paddingBottom).toBe("8px")
     expect(getComputedStyle(controls).visibility).toBe("visible")
-    expect(getComputedStyle(controls).transition).toContain("max-height")
-    expect(getComputedStyle(controls).transition).not.toContain("opacity")
+    expect(getComputedStyle(controls).transition).toContain("transform")
+    expect(getComputedStyle(controls).transition).not.toContain("height")
     expect(drawer.children).toHaveLength(3)
 
     const firstButton = drawer.children[0] as RibbonButton
@@ -168,7 +248,8 @@ describe("responsive ribbon drawer", () => {
     await drawer.updateComplete
     expect(drawer.hasAttribute("drawer-open")).toBe(false)
     expect(drawer.hasAttribute("drawer-visible")).toBe(true)
-    expect(getComputedStyle(controls).maxHeight).toBe("0")
+    expect(getComputedStyle(controls).maxHeight).toBe("90px")
+    expect(getComputedStyle(controls).opacity).toBe("0")
     expect(getComputedStyle(controls).visibility).toBe("visible")
   })
 
@@ -232,6 +313,7 @@ describe("responsive ribbon drawer", () => {
   })
 
   it("caps an expanded package drawer at the viewport bottom", async () => {
+    vi.useFakeTimers()
     const drawer = new RibbonDrawer()
     drawer.layout = "packages"
     drawer.expandable = true
@@ -251,7 +333,7 @@ describe("responsive ribbon drawer", () => {
     expect(section.style.getPropertyValue("--package-expanded-height")).toMatch(/px$/)
     expect(RibbonDrawer.styles.toString()).toContain("height: var(--package-expanded-height")
     expect(RibbonDrawer.styles.toString()).toContain("padding-bottom: var(--package-expanded-grid-padding")
-    expect(getComputedStyle(section).transition).toContain("max-height")
+    expect(getComputedStyle(section).transition).not.toContain("height")
     const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
     expect(getComputedStyle(controls).overflowY).toBe("clip")
     expect(getComputedStyle(controls).overflowX).toBe("visible")
@@ -268,27 +350,27 @@ describe("responsive ribbon drawer", () => {
     expect(getComputedStyle(controls).overflowY).toBe("clip")
     expect(getComputedStyle(controls).overflowX).toBe("visible")
 
-    const opened = new Event("transitionend") as TransitionEvent
-    Object.defineProperty(opened, "propertyName", {value: "max-height"})
-    section.dispatchEvent(opened)
+    await vi.advanceTimersByTimeAsync(220)
     await drawer.updateComplete
     expect(drawer.hasAttribute("drawer-scrollable")).toBe(false)
     expect(getComputedStyle(controls).overflowY).toBe("clip")
     expect(getComputedStyle(controls).overflowX).toBe("visible")
 
-    const rounding = new Event("transitionend") as TransitionEvent
-    Object.defineProperty(rounding, "propertyName", {value: "max-height"})
     Object.defineProperty(controls, "scrollHeight", {value: 101, configurable: true})
     Object.defineProperty(controls, "clientHeight", {value: 100, configurable: true})
-    section.dispatchEvent(rounding)
+    drawer.closeDrawer()
+    await drawer.updateComplete
+    drawer.openDrawer()
+    await vi.advanceTimersByTimeAsync(220)
     await drawer.updateComplete
     expect(drawer.hasAttribute("drawer-scrollable")).toBe(false)
 
-    const overflowing = new Event("transitionend") as TransitionEvent
-    Object.defineProperty(overflowing, "propertyName", {value: "max-height"})
     Object.defineProperty(controls, "scrollHeight", {value: 200, configurable: true})
     Object.defineProperty(controls, "clientHeight", {value: 100, configurable: true})
-    section.dispatchEvent(overflowing)
+    drawer.closeDrawer()
+    await drawer.updateComplete
+    drawer.openDrawer()
+    await vi.advanceTimersByTimeAsync(220)
     await drawer.updateComplete
     expect(drawer.hasAttribute("drawer-scrollable")).toBe(true)
     expect(getComputedStyle(controls).overflowY).toBe("auto")
@@ -380,6 +462,7 @@ describe("responsive ribbon drawer", () => {
   })
 
   it("preserves the three-row sizing when reopening during the closing transition", async () => {
+    vi.useFakeTimers()
     const drawer = new RibbonDrawer()
     drawer.layout = "packages"
     drawer.expandable = true
@@ -403,9 +486,7 @@ describe("responsive ribbon drawer", () => {
     expect(controls.style.getPropertyValue("--package-row-height")).toBe("28px")
     expect(controls.style.width).toBe("")
     drawer.closeDrawer()
-    const closed = new Event("transitionend")
-    Object.defineProperty(closed, "propertyName", {value: "max-height"})
-    drawer.shadowRoot!.querySelector(".drawer")!.dispatchEvent(closed)
+    await vi.advanceTimersByTimeAsync(180)
     await drawer.updateComplete
     expect(controls.style.getPropertyValue("--package-row-height")).toBe("")
   })
@@ -451,7 +532,8 @@ describe("responsive ribbon drawer", () => {
     await drawer.updateComplete
 
     expect(drawer.hasAttribute("drawer-visible")).toBe(false)
-    expect(getComputedStyle(controls).maxHeight).toBe("0")
+    expect(getComputedStyle(controls).maxHeight).toBe("90px")
+    expect(getComputedStyle(controls).opacity).toBe("0")
     expect(getComputedStyle(controls).visibility).toBe("hidden")
     expect(getComputedStyle(controls).transition).toBe("none")
   })

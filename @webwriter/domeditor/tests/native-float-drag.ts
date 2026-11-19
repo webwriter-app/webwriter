@@ -38,7 +38,10 @@ export async function checkNativeFloatDrag(nativeRootEditor: HostEditor, assert:
           + "; authored floats: " + Array.from(document.body.querySelectorAll(".ww-float-left, .ww-float-right")).map(item => item.outerHTML).join(" | ") + ")");
         const box = preview.getBoundingClientRect();
         editor.features.manipulation.clearFloatDropPreview("transfer");
-        return {clientX:box.left + box.width / 2, clientY:box.top + box.height / 2};
+        // A floated source returns to flow in the current prose column;
+        // switching sides therefore targets the visible outer gutter.
+        return {clientX:element.matches(".ww-float-left, .ww-float-right") ? side === "left" ? 5 : 1395 : box.left + box.width / 2,
+          clientY:box.top + box.height / 2};
       };
       const selfChild = source.appendChild(document.createElement("span"));
       selfChild.textContent = "nested";
@@ -62,7 +65,7 @@ export async function checkNativeFloatDrag(nativeRootEditor: HostEditor, assert:
           assert(!editor.appendix.querySelector("#◆float-drop-preview"), "self transformation shows a float preview");
           transform.handleMoveEnd();
         }
-        assert(source.style.cssText === originalStyle && source.parentElement === main, "self drop changed authored float or styles");
+        assert(source.style.cssText === originalStyle && source.parentElement === main, mode + " " + fraction + " self drop changed authored float or styles: " + source.outerHTML);
       }
       selfChild.remove();
       for(const [fraction, side, placement] of [[0.35, "left", "before"], [0.5, "right", "before"], [0.65, "right", "before"]]) {
@@ -156,6 +159,67 @@ export async function checkNativeFloatDrag(nativeRootEditor: HostEditor, assert:
       assert(!flowImage?.style.float && !flowImage?.style.margin && !flowImage?.style.getPropertyValue("--ww-float-size"),
         "external image flow drop injected float spacing: " + flowImage?.outerHTML)
       flowImage?.remove()
+      gapNext.style.marginTop = "0"
+      for(const mode of ["transfer", "transformation"]) for(const edge of ["before", "after"]) {
+        document.body.append(source)
+        source.style.cssText = originalStyle
+        editor.features.manipulation.setFloat(source, "right")
+        editor.features.selection.selectElement(source)
+        await new Promise(requestAnimationFrame)
+        const first = gapAnchor.getBoundingClientRect(), next = gapNext.getBoundingClientRect()
+        assert(Math.abs(first.bottom - next.top) < 1, "flow regression blocks do not touch")
+        const target = edge === "before" ? gapNext : gapAnchor
+        const point = {clientX:(next.left + next.right) / 2, clientY:edge === "before" ? next.top + 2 : first.bottom - 2,
+          bubbles:true, cancelable:true, composed:true}
+        if(mode === "transfer") {
+          const dataTransfer = new DataTransfer()
+          editor.appendix.querySelector('[part~="node-drag-surface"]').dispatchEvent(new DragEvent("dragstart", {dataTransfer, bubbles:true, cancelable:true, composed:true}))
+          target.dispatchEvent(new DragEvent("dragover", {...point, dataTransfer}))
+          assert(editor.appendix.querySelector('[part~="drop-range-gap"]'), "touching blocks have no flow drop marker")
+          target.dispatchEvent(new DragEvent("drop", {...point, dataTransfer}))
+        }
+        else {
+          const transform = editor.features.transformation, start = source.getBoundingClientRect()
+          transform.handleMoveStart(new MouseEvent("mousedown", {button:0, clientX:start.left, clientY:start.top}))
+          transform.handleMoveDrag(new MouseEvent("mousemove", {...point, ctrlKey:true}))
+          const preview = editor.appendix.querySelector("#◆float-drop-preview")
+          assert(!preview || preview.hidden, "touching block edge still claims a float")
+          transform.handleMoveEnd()
+        }
+        assert(gapAnchor.nextElementSibling === source && source.nextElementSibling === gapNext,
+          mode + " did not return content between touching blocks from " + edge)
+        assert(getComputedStyle(source).float === "none" && !source.style.getPropertyValue("--ww-float-size")
+          && source.style.margin === "9px" && (mode !== "transfer" || source.style.width === "120px") && source.style.color === "teal",
+          mode + " " + edge + " flow edge drop lost authored styles or kept float placement: " + source.outerHTML)
+        assert(!document.body.querySelector('[part~="drop-range-gap"], [part~="float-drop-preview"]'), "flow edge preview entered authored content")
+      }
+      main.append(source)
+      gapAnchor.remove(); gapNext.remove()
+      const mediaFirst = document.createElement("picture"), mediaLast = document.createElement("picture")
+      for(const media of [mediaFirst, mediaLast]) {
+        media.style.cssText = "display:block;width:720px;height:180px;margin:0;background:#ddd"
+        media.append(document.createElement("img"))
+      }
+      document.body.append(mediaFirst, mediaLast, source)
+      source.style.cssText = originalStyle
+      editor.features.manipulation.setFloat(source, "right")
+      editor.features.selection.selectElement(source)
+      await new Promise(requestAnimationFrame)
+      const mediaData = new DataTransfer()
+      editor.appendix.querySelector('[part~="node-drag-surface"]').dispatchEvent(new DragEvent("dragstart", {dataTransfer:mediaData, bubbles:true, cancelable:true, composed:true}))
+      const mediaRect = mediaLast.getBoundingClientRect()
+      const mediaPoint = {dataTransfer:mediaData, clientX:mediaRect.left + mediaRect.width / 2, clientY:mediaRect.top + 2,
+        bubbles:true, cancelable:true, composed:true}
+      mediaLast.dispatchEvent(new DragEvent("dragover", mediaPoint))
+      const mediaMarker = editor.appendix.querySelector('[part~="drop-range-gap"]')
+      assert(!editor.appendix.querySelector("#◆float-drop-preview"), "media flow edge still shows a float lane")
+      assert(mediaMarker && Math.abs(mediaMarker.getBoundingClientRect().width - mediaRect.width) < 1
+        && mediaMarker.getBoundingClientRect().height >= 24, "media flow gap lacks a full-width insertion strip")
+      mediaLast.dispatchEvent(new DragEvent("drop", mediaPoint))
+      assert(mediaFirst.nextElementSibling === source && source.nextElementSibling === mediaLast
+        && getComputedStyle(source).float === "none", "media-only gap did not return the source to flow")
+      main.append(source)
+      mediaFirst.remove(); mediaLast.remove()
       gapAnchor.remove(); gapNext.remove(); main.hidden = mainHidden
       if(originalBodyStyle === null) document.body.removeAttribute("style")
       else document.body.setAttribute("style", originalBodyStyle)
@@ -184,6 +248,90 @@ export async function checkNativeFloatDrag(nativeRootEditor: HostEditor, assert:
   try { assert(await result === null, `native float drag check: ${await result}`) }
   finally { frame.remove() }
   await checkNativeFloatContours(nativeRootEditor, assert, layoutFrame)
+  await checkNativeEmptyFloatFlow(nativeRootEditor, assert, layoutFrame)
+}
+
+/** The last float's flow preview must match the column after its lane vanishes. */
+async function checkNativeEmptyFloatFlow(nativeRootEditor: HostEditor, assert: Assert, layoutFrame: () => Promise<void>) {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;inline-size:1400px;min-inline-size:1400px;max-inline-size:none;height:700px;border:0"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts?register-frame-artifacts"></script></head><body><p></p></body>`
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "empty float fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    for(const nested of [false, true]) for(const side of ["left", "right"] as const)
+      for(const placeholder of [false, true]) for(const mode of ["transfer", "transformation"]) {
+      const source = doc.createElement("picture"), image = doc.createElement("img")
+      source.style.cssText = "height:120px;margin:0 auto;background:#ddd"
+      image.alt = "Only media"
+      source.append(image)
+      const parent = nested ? doc.createElement("main") : doc.body
+      doc.body.style.cssText = nested ? "max-width:1100px;padding-left:70px;padding-right:50px" : ""
+      doc.body.replaceChildren(...(nested ? [parent] : []))
+      parent.append(source)
+      editor.features.manipulation.setFloat(source, side)
+      if(nested) parent.append(doc.createElement("p"))
+      if(!placeholder) parent.querySelector("p")?.remove()
+      const paragraph = parent.querySelector("p")
+      if(placeholder) editor.features.selection.selectElement(source)
+      else editor.features.selection.captureElement(source)
+      await layoutFrame()
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const authored = editor.toHTML(true)
+      const data = new view.DataTransfer()
+      if(mode === "transfer") editor.features.manipulation.startNodeDrag(new view.DragEvent("dragstart", {dataTransfer:data, bubbles:true, cancelable:true, composed:true}), source)
+      else {
+        editor.features.transformation.startTransform(source)
+        const start = source.getBoundingClientRect()
+        editor.features.transformation.handleMoveStart(new view.MouseEvent("mousedown", {button:0, clientX:start.left, clientY:start.top}))
+      }
+      const body = doc.body.getBoundingClientRect(), style = view.getComputedStyle(doc.body)
+      const left = body.left + parseFloat(style.paddingLeft)
+      const box = paragraph?.getBoundingClientRect() ?? new view.DOMRect(left, source.getBoundingClientRect().top,
+        body.right - parseFloat(style.paddingRight) - left, 0)
+      const columnX = box.left + box.width / 2
+      let preview: DOMRect | undefined
+      for(const y of [box.top - 2, box.top + box.height / 2, box.bottom + 2, box.bottom + 60]) {
+        const event = new view.DragEvent("dragover", {dataTransfer:data, clientX:columnX, clientY:y, bubbles:true, cancelable:true, composed:true})
+        if(mode === "transfer") doc.body.dispatchEvent(event)
+        else editor.features.transformation.handleMoveDrag(new view.MouseEvent("mousemove", {clientX:columnX, clientY:y, ctrlKey:true}))
+        const marker = editor.appendix.querySelector<HTMLElement>('[part~="drop-range-gap"]')
+        assert(marker, "only-float flow preview missing: " + JSON.stringify({nested, side, placeholder, mode, y,
+          columnX, source:source.getBoundingClientRect(), empty:editor.features.manipulation.emptyFlowDropRange(event, source)?.startOffset}))
+        const rect = marker!.getBoundingClientRect()
+        if(preview) assert(Math.abs(rect.top - preview.top) < 1 && Math.abs(rect.left - preview.left) < 1
+          && Math.abs(rect.width - preview.width) < 1, "empty flow offers distinct before/after positions")
+        preview = rect
+        const range = editor.features.manipulation.dropRange(event, source)
+        assert(range?.startContainer === parent && parent.childNodes[range.startOffset] === source,
+          "empty flow did not resolve to its single live boundary")
+      }
+      assert(editor.toHTML(true) === authored, "empty flow preview changed authored content")
+      if(mode === "transfer") doc.body.dispatchEvent(new view.DragEvent("drop", {dataTransfer:data, clientX:columnX, clientY:box.bottom + 60, bubbles:true, cancelable:true, composed:true}))
+      else editor.features.transformation.handleMoveEnd()
+      await layoutFrame()
+      const placed = source.getBoundingClientRect()
+      assert(preview && Math.abs(placed.left - preview.left) < 1 && Math.abs(placed.width - preview.width) < 1,
+        "last-float preview does not match the resulting column: " + JSON.stringify({nested, side, placeholder, mode, preview, placed}))
+      assert(Math.abs(placed.top - (preview!.top + preview!.height / 2)) < 1, "last-float preview has the wrong block position")
+      assert((!paragraph || source.nextElementSibling === paragraph) && view.getComputedStyle(source).float === "none", "last float did not return to flow")
+      assert(!editor.appendix.querySelector('[part~="drop-range-gap"]'), "last-float preview survived the drop")
+      editor.doc.syncFromDOM()
+      const changed = editor.toHTML(true)
+      editor.doc.undo()
+      assert(editor.toHTML(true) === authored, "last-float undo lost authored content: " + JSON.stringify({nested, side, placeholder, mode, expected:authored, actual:editor.toHTML(true)}))
+      editor.doc.redo()
+      assert(editor.toHTML(true) === changed, "last-float redo lost authored content")
+    }
+  }
+  finally {
+    (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+    frame.remove()
+  }
 }
 
 /** Keep text-wrap and selection-contour geometry independent of prior drag state. */

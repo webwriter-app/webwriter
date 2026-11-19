@@ -847,6 +847,30 @@ describe("graphic editing", () => {
     expect(document.getSelection()!.anchorNode).toBe(paragraph.firstChild)
   })
 
+  it("captures an image on the consumed pointer press before its move or source controls start", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "image"})
+    const graphic = document.querySelector("svg")!, image = graphic.querySelector("image")!
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Outside the graphic"
+    graphic.after(paragraph)
+    document.body.focus()
+    $.move(paragraph.firstChild!, 1)
+    await mutationsDelivered()
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    const down = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 9})
+
+    image.dispatchEvent(down)
+
+    expect(down.defaultPrevented).toBe(true)
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(editor.features.graphic.selectedShape).toBe(image)
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 9}))
+    expect(editor.features.media.placeholder.target).toBe(image)
+    expect(editor.features.media.placeholder.root.activeElement).toBe(editor.features.media.placeholder.root.querySelector(".url"))
+  })
+
   it("loads a graphic image from the shared file picker", async () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "image"})
     const image = document.querySelector("svg image")!
@@ -6009,6 +6033,163 @@ describe("polyline and Bezier path drawing", () => {
 
     expect(rectangle).toHaveAttribute("width", "111")
     expect(rectangle).toHaveAttribute("height", "111")
+  })
+
+  describe("aspect-locked resize snapping", () => {
+    function fixture(siblings = "", scaleX = 1, scaleY = 1) {
+      editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+      const graphic = document.querySelector("svg")!
+      graphic.setAttribute("viewBox", "0 0 800 500")
+      graphic.setAttribute("preserveAspectRatio", "none")
+      graphic.style.width = `${800 * scaleX}px`
+      graphic.style.height = `${500 * scaleY}px`
+      Object.defineProperty(graphic, "getBoundingClientRect", {value: () => new DOMRect(0, 0, 800 * scaleX, 500 * scaleY)})
+      Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: scaleX, b: 0, c: 0, d: scaleY, e: 0, f: 0})})
+      graphic.innerHTML = `<rect x="100" y="100" width="200" height="100"/>${siblings}`
+      const shape = graphic.querySelector("rect")!
+      clickShape(shape)
+      return {graphic, shape}
+    }
+    const bounds = (shape: Element) => Object.fromEntries(["x", "y", "width", "height"].map(key => [key, Number(shape.getAttribute(key))]))
+    async function drag(direction: string, point: {x: number, y: number}, modifiers: PointerEventInit = {}) {
+      const handle = editor.appendix.querySelector<HTMLElement>(`[data-graphic-handle="resize-${direction}"]`)!
+      const pointer = {bubbles: true, composed: true, button: 0, pointerId: 520, shiftKey: true, ...modifiers}
+      handle.dispatchEvent(new PointerEvent("pointerdown", {...pointer, clientX: parseFloat(handle.style.left), clientY: parseFloat(handle.style.top)}))
+      document.dispatchEvent(new PointerEvent("pointermove", {...pointer, buttons: 1, clientX: point.x, clientY: point.y}))
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      return {
+        preview: editor.appendix.querySelector(".◆graphic-preview rect")!,
+        finish: (type = "pointerup") => handle.dispatchEvent(new PointerEvent(type, {...pointer, clientX: point.x, clientY: point.y})),
+      }
+    }
+
+    it.each([
+      {targetX: 344, targetY: 220, expected: {x: 100, y: 100, width: 244, height: 122}, guide: "x"},
+      {targetX: 345, targetY: 221, expected: {x: 100, y: 100, width: 242, height: 121}, guide: "y"},
+      {targetX: 344, targetY: 222, expected: {x: 100, y: 100, width: 244, height: 122}, guide: "both"},
+    ])("chooses the nearest compatible scale for conflicting sibling guides ($guide)", async ({targetX, targetY, expected, guide}) => {
+      const {shape} = fixture(`<rect x="${targetX}" y="${targetY}" width="80" height="60"/>`)
+      await mutationsDelivered()
+      editor.doc.stopCapturing()
+      const before = editor.toHTML(true)
+      const interaction = await drag("se", {x: 343, y: 221.5})
+      expect(bounds(interaction.preview)).toEqual(expected)
+      expect(editor.toHTML(true)).toBe(before)
+      for(const axis of ["x", "y"]) {
+        const line = editor.appendix.querySelector(`[data-axis="${axis}"]`)!
+        expect(line.getAttribute("display")).toBe(axis === guide || guide === "both" ? null : "none")
+      }
+      interaction.finish()
+      expect(bounds(shape)).toEqual(expected)
+      expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+      expect(presentationStateElements(document, "graphic-preview-source")).toHaveLength(0)
+      await mutationsDelivered()
+      const after = editor.toHTML(true)
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(before)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(after)
+    })
+
+    it.each(["nw", "ne", "sw", "se"])("keeps the opposite corner fixed when %s snaps to the grid", async direction => {
+      const {shape} = fixture()
+      const west = direction.includes("w"), north = direction.includes("n")
+      // X is 1px from a grid line; the independently nearest Y grid line is incompatible.
+      const anchor = {x: west ? 300 : 100, y: north ? 200 : 100}
+      const x = west ? 47 : 359, width = Math.abs(x - anchor.x)
+      const point = {x, y: anchor.y + (north ? -1 : 1) * width / 2}
+      const interaction = await drag(direction, point)
+      const expectedWidth = Math.abs((west ? 48 : 360) - anchor.x)
+      const expected = {x: west ? 48 : 100, y: north ? anchor.y - expectedWidth / 2 : 100, width: expectedWidth, height: expectedWidth / 2}
+      expect(bounds(interaction.preview)).toEqual(expected)
+      interaction.finish()
+      expect(bounds(shape)).toEqual(expected)
+    })
+
+    it.each(["ctrlKey", "metaKey"])("keeps the center fixed with %s while snapping", async modifier => {
+      const {shape} = fixture()
+      const interaction = await drag("se", {x: 359, y: 229.5}, {[modifier]: true})
+      expect(bounds(interaction.preview)).toEqual({x: 40, y: 70, width: 320, height: 160})
+      interaction.finish()
+      expect(bounds(shape)).toEqual({x: 40, y: 70, width: 320, height: 160})
+    })
+
+    it.each([{}, {altKey: true}, {ctrlKey: true}])("preserves the ratio and anchor across a crossed corner (%j)", async modifiers => {
+      const {shape} = fixture()
+      const centered = "ctrlKey" in modifiers
+      const anchor = centered ? {x: 200, y: 150} : {x: 100, y: 100}
+      const point = {x: 47, y: anchor.y - (anchor.x - 47) / 2}
+      const interaction = await drag("se", point, modifiers)
+      const next = bounds(interaction.preview)
+      expect(next.width / next.height).toBeCloseTo(2, 5)
+      expect(next.x + next.width * (centered ? .5 : 1)).toBeCloseTo(anchor.x, 5)
+      expect(next.y + next.height * (centered ? .5 : 1)).toBeCloseTo(anchor.y, 5)
+      interaction.finish()
+      expect(bounds(shape)).toEqual(next)
+    })
+
+    it.each(["disabled", "alt", "cancel"])("preserves constrained geometry with snapping %s", async mode => {
+      const {shape} = fixture('<rect x="344" y="220" width="80" height="60"/>')
+      if(mode === "disabled") editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
+      const interaction = await drag("se", {x: 343, y: 221.5}, {altKey: mode === "alt"})
+      if(mode !== "cancel") expect(bounds(interaction.preview)).toEqual({x: 100, y: 100, width: 243, height: 121.5})
+      interaction.finish(mode === "cancel" ? "pointercancel" : "pointerup")
+      expect(bounds(shape)).toEqual(mode === "cancel" ? {x: 100, y: 100, width: 200, height: 100} : {x: 100, y: 100, width: 243, height: 121.5})
+      expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+    })
+
+    it("rejects a snap whose coupled movement exceeds the screen threshold", async () => {
+      const {shape} = fixture('<rect x="600" y="224" width="80" height="60"/>', 2, 1)
+      // Y is only 2.5px away, but following it would move X by 10px on screen.
+      const interaction = await drag("se", {x: 686, y: 221.5})
+      expect(bounds(interaction.preview)).toEqual({x: 100, y: 100, width: 243, height: 121.5})
+      interaction.finish()
+      expect(bounds(shape)).toEqual({x: 100, y: 100, width: 243, height: 121.5})
+    })
+
+    it.each([[.5, .5], [2, 2], [2, 1]])("keeps the ratio when snapping at viewport scale %j", async (scaleX, scaleY) => {
+      const {shape} = fixture('<rect x="344" y="220" width="80" height="60"/>', scaleX, scaleY)
+      const interaction = await drag("se", {x: 343 * scaleX, y: 221.5 * scaleY})
+      expect(bounds(interaction.preview)).toEqual({x: 100, y: 100, width: 244, height: 122})
+      interaction.finish()
+      expect(bounds(shape)).toEqual({x: 100, y: 100, width: 244, height: 122})
+    })
+
+    it("applies the minimum size through a common scale", async () => {
+      const {shape} = fixture()
+      const interaction = await drag("se", {x: 100, y: 100})
+      expect(bounds(interaction.preview)).toEqual({x: 100, y: 100, width: 2, height: 1})
+      interaction.finish()
+      expect(bounds(shape)).toEqual({x: 100, y: 100, width: 2, height: 1})
+    })
+
+    it("snaps a rotated moving corner in graphic coordinates", async () => {
+      const {shape} = fixture('<rect x="124" y="400" width="80" height="60"/>')
+      shape.setAttribute("transform", "rotate(90 200 150)")
+      clickShape(shape)
+      // Local (343, 221.5) rotates to (128.5, 293); X=124 costs >6px, while Y=288 costs 5.59px.
+      const interaction = await drag("se", {x: 128.5, y: 293})
+      const next = bounds(interaction.preview)
+      expect(next.width).toBe(238)
+      expect(next.height).toBe(119)
+      // Stabilization preserves the original NW corner at (250, 50).
+      expect(next.x + (next.width + next.height) / 2).toBe(250)
+      expect(next.y + (next.height - next.width) / 2).toBe(50)
+      interaction.finish()
+      expect(bounds(shape)).toEqual(next)
+    })
+
+    it("uses the same scale for a multi-selection frame", async () => {
+      const {graphic, shape} = fixture('<rect x="220" y="160" width="80" height="40"/><rect x="344" y="220" width="80" height="60"/>')
+      const second = graphic.querySelectorAll("rect")[1]
+      clickShape(second, true)
+      const interaction = await drag("se", {x: 343, y: 221.5})
+      const previews = Array.from(editor.appendix.querySelectorAll(".◆graphic-preview rect")).map(bounds)
+      expect(previews[0]).toEqual({x: 100, y: 100, width: 244, height: 122})
+      expect(previews[1]).toEqual({x: 246.4, y: 173.2, width: 97.6, height: 48.8})
+      interaction.finish()
+      expect([bounds(shape), bounds(second)]).toEqual(previews)
+    })
   })
 
   it("cancels a completed curve handle drag with Escape while its tab can remain open", () => {

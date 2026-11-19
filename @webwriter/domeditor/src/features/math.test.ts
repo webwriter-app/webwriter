@@ -890,9 +890,12 @@ describe("DOM MathML editing", () => {
     expect(hasPresentationState(math, "element-selected")).toBe(true)
     expect(hasPresentationState(math, "element-capture-selected")).toBe(false)
     expect(hasPresentationState(math, "math-editing")).toBe(false)
-    math.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 8}))
+    const down = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 8})
+    math.dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(true)
+    expect(editor.features.selection.captureSelectedElement).toBe(math)
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 8}))
-    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    expect(editor.features.selection.captureSelectedElement).toBe(math)
     math.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, button: 0}))
     expect(editor.features.selection.captureSelectedElement).toBe(math)
     expect(math.contains($.anchor)).toBe(true)
@@ -2160,6 +2163,32 @@ describe("DOM MathML editing", () => {
 
 
 describe("formula marks", () => {
+  it.each(["caret", "range", "whole"])("sets block formula font and size from a %s selection", mode => {
+    const math = load('<mrow><!--keep--><mi data-author="yes">abc</mi></mrow>')
+    expect(command("display:block")).toBe(true)
+    const token = math.querySelector("mi")!
+    const text = token.firstChild!
+    if(mode === "whole") $.selectElement(math)
+    else document.getSelection()!.setBaseAndExtent(text, 1, text, mode === "range" ? 2 : 1)
+    editor.features.selection.processSelection()
+    const mark = editor.features.mark
+    expect(mark.getState().canMark).toBe(true)
+    const family = mathFontOptions[1].value
+    expect(mark.setStyleMark("font-family", family)).toBe(true)
+    expect(mark.setStyleMark("font-size", "24px")).toBe(true)
+    expect(mark.getStyleState()).toMatchObject({"font-family": family, "font-size": "24px"})
+    expect(math.getAttribute("style")).toContain(family)
+    if(mode === "caret") {
+      expect(token.hasAttribute("style")).toBe(false)
+      command("text:z")
+      expect(math.querySelector('[style*="font-size"]')!.textContent).toBe("z")
+    }
+    else expect((mode === "whole" ? math : token).getAttribute("style")).toContain("font-size: 24px")
+    expect(math.querySelector("mi[data-author=yes]")).toBe(token)
+    expect(math.firstElementChild!.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    expect(math.getAttribute("display")).toBe("block")
+  })
+
   it.each([false, true])("formats only the selected number at a neighboring token boundary (backward: %s)", backward => {
     const math = load('<mi>x</mi><mo style="color: blue">+</mo><!--keep--><mn>1</mn><mo>=</mo><mn>2</mn>')
     const nodes = Array.from(math.childNodes)

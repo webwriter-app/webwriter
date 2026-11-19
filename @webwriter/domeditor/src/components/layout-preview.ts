@@ -5,7 +5,7 @@ import {ribbonIcon} from "../ribbon-icons"
 
 export const documentLayoutModes = ["document", "canvas", "slides", "board"] as const
 export const documentLayoutLabel = (mode: DocumentLayoutMode) => mode[0].toUpperCase() + mode.slice(1)
-export const documentLayoutIcon = (mode: DocumentLayoutMode) => ({document: "Document", canvas: "Canvas", slides: "KeywordPresentation", board: "Columns"}[mode])
+export const documentLayoutIcon = (mode: DocumentLayoutMode) => ({document: "Document", canvas: "Canvas", slides: "Presentation", board: "Columns"}[mode])
 
 /** Shared with the layout gallery so both pickers use the same visual language. */
 export const documentLayoutPreviewStyles = css`

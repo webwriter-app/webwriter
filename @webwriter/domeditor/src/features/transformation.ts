@@ -59,7 +59,6 @@ type Gesture = {
   parentMatrix: DOMMatrix
   rotate: number
   rotationAngle?: number
-  scale: number[]
   initial: CSSStyleDeclaration
   written: Map<string, StyleValue>
   moved: boolean
@@ -95,7 +94,7 @@ type Gesture = {
  * Canvas and slide items also set dimensions so they can grow with the handles.
  * Top/left handles keep the opposite edge fixed by adjusting offsets.
  * Ctrl/Cmd resizes about the center;
- * Shift preserves image proportions and stretches ordinary boxes with CSS scale.
+ * Shift preserves proportions when resizing images and groups.
  * Native players resize in layout so their controls keep their proportions.
  * Alt unsnaps.
  * SVG canvases crop their viewport by default; Alt resizes their contents.
@@ -1276,7 +1275,6 @@ export class TransformationFeature extends EditorFeature {
     // A widget or remote peer can edit this same element during a drag.
     // Only defer work while its inline styles still match our own writes.
     for(const property of properties) {
-      if(property === "z-index") continue // The move can raise its target at pickup.
       const last = written.get(property)
       if(target.style.getPropertyValue(property) !== (last?.value ?? initial.getPropertyValue(property))
         || target.style.getPropertyPriority(property) !== (last?.priority ?? initial.getPropertyPriority(property))) return null
@@ -1423,7 +1421,7 @@ export class TransformationFeature extends EditorFeature {
     const first = members[0]
     this.#gesture = {...first, mode, handle, pointerId: event instanceof PointerEvent ? event.pointerId : undefined,
       x: event.clientX, y: event.clientY, rect, width, height, cssWidth: width, cssHeight: height,
-      matrix, parentMatrix: this.#matrix(renderedParentElement(first.target)), rotate: angle, scale: [1, 1],
+      matrix, parentMatrix: this.#matrix(renderedParentElement(first.target)), rotate: angle,
       moved: false, captured: false, group: {members, center, angle, persistent}, endUndoGroup: this.editor.doc.beginUndoGroup()}
     this.editor.features.canvas.setMinimapRefreshPaused(true)
     this.#suppressClick = null
@@ -1591,7 +1589,7 @@ export class TransformationFeature extends EditorFeature {
       target, parent: target.parentElement, mode, handle,
       pointerId: event instanceof PointerEvent ? event.pointerId : undefined,
       x: event.clientX, y: event.clientY, rect: (rotationTarget ?? target).getBoundingClientRect(), ...this.#size(target),
-      matrix, parentMatrix: this.#matrix(renderedParentElement(rotationTarget ?? target)), rotate: this.#angle(getComputedStyle(rotationTarget ?? target).getPropertyValue("rotate")), scale: this.#scale(style.getPropertyValue("scale")),
+      matrix, parentMatrix: this.#matrix(renderedParentElement(rotationTarget ?? target)), rotate: this.#angle(getComputedStyle(rotationTarget ?? target).getPropertyValue("rotate")),
       initial, written: new Map(), moved: false,
       image: image && this.#canTransform(image) ? {target: image, parent: image.parentElement, initial: imageStyle, written: new Map()} : undefined,
       player: player ? {target: player, size: this.#size(player)} : undefined,
@@ -1620,10 +1618,6 @@ export class TransformationFeature extends EditorFeature {
     if(event instanceof PointerEvent) {
       try { handle.setPointerCapture?.(event.pointerId) }
       catch { this.#finish(true); return false }
-    }
-    // Activating a canvas or slide move raises the item even without displacement.
-    if(mode === "move" && this.#isFreeformItem(target)) {
-      this.moveZ(target, true, true)
     }
     if(this.#coalescesGeometry) this.editor.features.canvas.setMinimapRefreshPaused(true)
     this.updateInfo()
@@ -2037,11 +2031,10 @@ export class TransformationFeature extends EditorFeature {
     else if(x) dw = Math.max(dw, minDelta)
     const crop = gesture.canvas && !event.altKey
     const figure = target.matches(figureSelector)
-    const scaleInsteadOfResize = event.shiftKey && axes.width && axes.height && !crop && !text && !image && !player && !figure
     setPresentationState(document.body, `transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
     const popup = target.closest("[popover]")
     const insidePopup = Boolean(popup && popup !== target && popupElementRole(popup) === "content")
-    const resizeMode = `${Boolean(crop)}:${scaleInsteadOfResize}:${floatSideFromStyles(float, target.style, target.classList)}:${insidePopup}`
+    const resizeMode = `${Boolean(crop)}:${floatSideFromStyles(float, target.style, target.classList)}:${insidePopup}`
     if(gesture.resizeMode !== undefined && gesture.resizeMode !== resizeMode) this.#resetWritten()
     gesture.resizeMode = resizeMode
     if(gesture.canvas && !crop) this.#writeCanvasViewBox(gesture.canvas.initial)
@@ -2143,9 +2136,6 @@ export class TransformationFeature extends EditorFeature {
         this.#write("max-height", "none")
       }
     }
-    else if(scaleInsteadOfResize) {
-      this.#write("scale", `${gesture.scale[0] * (gesture.width + dw) / gesture.width} ${gesture.scale[1] * (gesture.height + dh) / gesture.height}`)
-    }
     else {
       resizeBox()
       if(minWidth && minWidth !== "auto" && minimum === undefined && (x || proportional)) {
@@ -2165,7 +2155,7 @@ export class TransformationFeature extends EditorFeature {
     // Use the final layout size to position spatial items and SVG viewports.
     let rect: DOMRect | undefined
     let actualDW = dw, actualDH = dh
-    if((keepAnchor || crop) && !scaleInsteadOfResize) {
+    if(keepAnchor || crop) {
       if(keepAnchor && !crop) rect = this.targetRect
       const size = this.#size(target, undefined, rect)
       actualDW = size.width - gesture.width
@@ -2260,6 +2250,11 @@ export class TransformationFeature extends EditorFeature {
     this.#clearDrop(true)
     const target = this.target!
     const manipulation = this.editor.features.manipulation
+    const root = getDocumentRoot()
+    const hits = document.elementsFromPoint?.(event.clientX, event.clientY) ?? []
+    // A projected float lane can overlap the source's live box. Its own
+    // rendered content remains a self-drop, including behind appendix controls.
+    if(target.contains(hits.find(element => root.contains(element)) ?? null)) return
     const floatElement = manipulation.floatDropTarget(event, target)
     if(floatElement) {
       const float = manipulation.floatSide(floatElement, event.clientX)
@@ -2267,8 +2262,14 @@ export class TransformationFeature extends EditorFeature {
       manipulation.showFloatDropPreview(floatElement, float, "transformation", target)
       return
     }
-    const hit = document.elementsFromPoint?.(event.clientX, event.clientY).find(element =>
-      getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && !target.contains(element) && !element.contains(target))
+    const empty = manipulation.emptyFlowDropRange(event, target)
+    if(empty) {
+      this.#normalDropRange = empty
+      manipulation.showDropRangePreview(empty)
+      return
+    }
+    const hit = hits.find(element =>
+      root.contains(element) && editingFlowRoot(element) === root && !target.contains(element) && !element.contains(target))
     if(!hit) {
       const range = manipulation.dropRange(event, target)
       if(range) {
@@ -2294,6 +2295,7 @@ export class TransformationFeature extends EditorFeature {
 
   #clearDrop(keepFloatPreview = false) {
     const hadDrop = this.#drop || this.#normalDropRange
+    if(this.#normalDropRange) this.editor.features.manipulation.clearDropRangePreview()
     if(this.#drop) clearPresentationState(this.#drop.element, `drop-caret-${this.#drop.placement}`)
     this.#drop = null
     this.#normalDropRange = null
@@ -2394,8 +2396,10 @@ export class TransformationFeature extends EditorFeature {
     if(gesture.pointerId !== undefined && gesture.handle.hasPointerCapture?.(gesture.pointerId)) gesture.handle.releasePointerCapture(gesture.pointerId)
     clearPresentationState(document.body, "transform-moving", "transform-rotating", "transform-scaling-ew", "transform-scaling-ns", "transform-scaling-nwse", "transform-scaling-nesw")
     clearPresentationState(document.body, ...cropDirections.map(direction => `transform-cropping-${direction}`))
+    const dropped = !cancel && valid && gesture.moved && (this.#drop || this.#normalDropRange)
     this.#clearDrop()
     this.editor.features.manipulation.clearFloatDropTargets()
+    if(dropped) this.editor.features.layout.refresh()
     gesture.endUndoGroup()
     const stableTextTransform = valid && (gesture.mode === "scale" || gesture.mode === "move" && !this.#drop && !this.#normalDropRange)
       && !gesture.group && !gesture.captured
@@ -2673,10 +2677,11 @@ export class TransformationFeature extends EditorFeature {
       const gesture = this.#gesture
       if(!gesture || gesture.pointerId !== event.pointerId) return
       // A fast release can lose capture before pointerup reaches this listener.
-      // Keep the last move when the pointer is already released; capture loss
+      // Keep the last resize or freeform move when the pointer is released; capture loss
       // while a button is held still cancels, as do invalidated DOM targets.
-      const releasedMove = event.buttons === 0 && gesture.mode === "move" && this.#isFreeformItem(gesture.target)
-      if(releasedMove && this.#validGesture()) this.#finish(false)
+      const releasedTransform = event.buttons === 0 && (gesture.mode === "scale"
+        || gesture.mode === "move" && this.#isFreeformItem(gesture.target))
+      if(releasedTransform && this.#validGesture()) this.#finish(false)
       else this.#finish(true)
     },
     click: event => {

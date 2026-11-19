@@ -9,6 +9,7 @@ import {readFontFiles, saveFontFile, type FontFileHandle, type StoredFontFile} f
 import {cssFontString, embedFontFiles, type DeviceFont, type EmbeddedFont, type FontAccessWindow} from "../local-fonts"
 import {ribbonIcon} from "../ribbon-icons"
 import {embeddedMathFont, mathFontOptions} from "../math-fonts"
+import {fontPreview} from "../font-previews"
 
 type LocalFontOption = ComboboxOption & {source: "installed" | "imported", devices?: DeviceFont[], record?: StoredFontFile}
 const isLocalOption = (option: ComboboxOption): option is LocalFontOption => "source" in option
@@ -16,6 +17,10 @@ const isLocalOption = (option: ComboboxOption): option is LocalFontOption => "so
 const standardFontOptions: readonly ComboboxOption[] = fontFamilyOptions.map(option => ({...option, group: "Standard fonts"}))
 const standardFamilies = new Set(fontFamilyOptions.flatMap(option => fontFamilies(option.value).slice(0, 1)))
 const isStandardFamily = (family: string) => standardFamilies.has(family.toLocaleLowerCase("en"))
+const mathPreviewFamily = (label: string) => `WebWriter preview ${label}`
+const mathFontURL = (label: string) => label === "Libertinus Math"
+  ? new URL("../assets/math-fonts/LibertinusMath-Regular.woff2", import.meta.url)
+  : new URL("../assets/math-fonts/NotoSansMath-Regular.woff2", import.meta.url)
 
 /** The font picker shares selection, keyboard navigation and popup behavior. */
 export class FontCombobox extends StyleCombobox {
@@ -51,6 +56,16 @@ export class FontCombobox extends StyleCombobox {
     .search-section .option {height: 1.75rem; min-height: 0; padding-block: .25rem;}
     .search-section .option-code {white-space: nowrap;}
     .search-section .option .option-name {display: none;}
+    .option:has(.font-preview) {padding-block: .125rem;}
+    .font-preview {position: relative; display: block; max-width: 100%; height: 24px; width: 160px; overflow: hidden;}
+    .font-preview img {display: block; max-width: 100%; object-fit: none; opacity: 0;}
+    .font-preview img[data-loaded] {opacity: 1;}
+    .font-preview-fallback {position: absolute; inset: 0; display: flex; align-items: center;}
+    .font-preview:has(img[data-loaded]) .font-preview-fallback {opacity: 0;}
+    @media (forced-colors: active) {
+      .font-preview img[data-loaded] {opacity: 0;}
+      .font-preview:has(img[data-loaded]) .font-preview-fallback {opacity: 1;}
+    }
   `, connectedComboboxStyles]
 
   options = standardFontOptions
@@ -73,24 +88,25 @@ export class FontCombobox extends StyleCombobox {
   private dropdownReady = false
   private searchLimits = [0, 0]
   private selectionRequest = 0
+  private mathPreviewFaces: FontFace[] = []
   private readonly fontAccess = window as FontAccessWindow
-  private readonly previewFamily = `webwriter-font-preview-${crypto.randomUUID()}`
-  private previewTarget = ""
-  private previewValue = ""
-  private previewRequest?: AbortController
-  private previewFaces: FontFace[] = []
-
-  private activeOption() {
-    const options = this.filteredOptions()
-    const selected = this.selectedOption()
-    return this.activeIndex >= 0 ? options[this.activeIndex] : options.find(option => option === selected)
-  }
-
-  protected optionStyle(option: ComboboxOption, index: number) {
+  protected optionStyle(option: ComboboxOption, _index: number) {
+    if(option.group === "Math fonts") return option.value
+      ? `font-family: ${cssFontString(mathPreviewFamily(option.label))}, math; font-size-adjust: from-font` : ""
     if(option.group === "Standard fonts") return option.value ? `font-family: ${option.value}` : ""
     if(isLocalOption(option)) return option.source === "installed" ? `font-family: ${cssFontString(option.label)}, sans-serif` : ""
-    if(this.activeIndex >= 0 ? index !== this.activeIndex : !this.value || fontFamilies(option.value)[0] !== fontFamilies(this.value)[0]) return ""
-    return `font-family: ${this.previewValue === option.value ? `${cssFontString(this.previewFamily)}, ` : ""}${option.value}`
+    return ""
+  }
+
+  protected renderOptionLabel(option: ComboboxOption): unknown {
+    const preview = option.group === "Custom fonts" && !isLocalOption(option) ? fontPreview(option.label) : undefined
+    if(!preview) return super.renderOptionLabel(option)
+    // A src fallback would become a 1x candidate and double the sprite scale on 1x screens.
+    return html`<strong class="option-code font-preview"><img srcset=${`${preview.url} 2x`} alt="" aria-hidden="true"
+        loading="lazy" decoding="async" width=${preview.width} height=${preview.height}
+        style=${`object-position: left -${preview.offset}px`}
+        @load=${(event: Event) => (event.currentTarget as HTMLImageElement).toggleAttribute("data-loaded", true)}
+        @error=${(event: Event) => (event.currentTarget as HTMLImageElement).removeAttribute("data-loaded")}><span class="font-preview-fallback">${option.label}</span></strong>`
   }
 
   protected activateOption(_option: ComboboxOption, index: number) {
@@ -98,51 +114,6 @@ export class FontCombobox extends StyleCombobox {
     this.retainDropdownSize()
     this.activeIndex = index
     this.requestUpdate()
-  }
-
-  private clearPreview() {
-    this.previewRequest?.abort()
-    this.previewRequest = undefined
-    for(const face of this.previewFaces) this.ownerDocument.fonts.delete(face)
-    this.previewFaces = []
-    this.previewTarget = this.previewValue = ""
-  }
-
-  private syncPreview() {
-    const option = this.open ? this.activeOption() : undefined
-    const font = option && option.group === "Custom fonts" && !isLocalOption(option)
-      ? this.fonts.find(font => bunnyFontValue(font) === option.value) : undefined
-    const target = font ? option!.value : ""
-    if(target === this.previewTarget) return
-    this.clearPreview()
-    if(!font || typeof FontFace === "undefined" || !this.ownerDocument.fonts?.add) return
-    this.previewTarget = target
-    const controller = this.previewRequest = new AbortController()
-    // A list label needs one face; other weights and styles belong to document selection.
-    const weight = font.weights.reduce((best, weight) => Math.abs(weight - 400) < Math.abs(best - 400) ? weight : best, font.weights[0] ?? 400)
-    const href = bunnyFontStylesheet({...font, weights: [weight], styles: [font.styles.includes("normal") ? "normal" : font.styles[0] ?? "normal"]})
-    void fetch(href, {credentials: "omit", signal: controller.signal}).then(async response => {
-      if(!response.ok) throw new Error("Font preview unavailable")
-      const sheet = new CSSStyleSheet()
-      sheet.replaceSync(await response.text())
-      if(controller.signal.aborted || !this.open || !this.isConnected) return
-      const faces = Array.from(sheet.cssRules).filter(rule => rule.type === 5).map(rule => {
-        const style = (rule as CSSFontFaceRule).style
-        const source = style.getPropertyValue("src").replace(/url\(\s*(["']?)(.*?)\1\s*\)/g,
-          (_match, _quote, url) => `url(${cssFontString(new URL(url, response.url || href).href)})`)
-        return new FontFace(this.previewFamily, source, {
-          weight: style.fontWeight || "400", style: style.fontStyle || "normal",
-          stretch: style.fontStretch || "normal", unicodeRange: style.getPropertyValue("unicode-range") || "U+0-10FFFF", display: "swap",
-        })
-      })
-      this.previewFaces = faces
-      for(const face of faces) {
-        void face.loaded.catch(() => {})
-        this.ownerDocument.fonts.add(face)
-      }
-      this.previewValue = target
-      this.requestUpdate()
-    }).catch(() => { /* Preview failures leave the normal label and selection available. */ })
   }
 
   protected displayedValue() {
@@ -278,10 +249,7 @@ export class FontCombobox extends StyleCombobox {
     if(this.mathOnly && option.value) {
       const request = ++this.selectionRequest
       this.localError = ""
-      const url = option.label === "Libertinus Math"
-        ? new URL("../assets/math-fonts/LibertinusMath-Regular.woff2", import.meta.url)
-        : new URL("../assets/math-fonts/NotoSansMath-Regular.woff2", import.meta.url)
-      void embeddedMathFont(option, url).then(font => {
+      void embeddedMathFont(option, mathFontURL(option.label)).then(font => {
         if(request === this.selectionRequest && this.isConnected && this.mathOnly && !this.disabled) this.emitEmbedded(font)
       }).catch(error => { if(request === this.selectionRequest && this.mathOnly) this.showLocalError(error) })
       return
@@ -415,7 +383,7 @@ export class FontCombobox extends StyleCombobox {
   }
 
   close(reset = true) {
-    this.clearPreview()
+    this.clearMathPreviews()
     this.dropdownReady = false
     this.query = ""
     this.hasInput = false
@@ -434,6 +402,7 @@ export class FontCombobox extends StyleCombobox {
   }
 
   disconnectedCallback() {
+    this.clearMathPreviews()
     this.selectionRequest++
     this.selecting = false
     super.disconnectedCallback()
@@ -468,6 +437,15 @@ export class FontCombobox extends StyleCombobox {
     const update = super.setOpen(open)
     void update.then(() => this.connectDropdown())
     if(this.open && !wasOpen) {
+      if(this.mathOnly) {
+        // Document font faces also render in nested shadow roots. Private family
+        // names keep these temporary previews separate from authored fonts.
+        this.mathPreviewFaces = mathFontOptions.filter(option => option.value).map(option => {
+          const face = new FontFace(mathPreviewFamily(option.label), `url("${mathFontURL(option.label)}")`, {display: "swap"})
+          this.ownerDocument.fonts.add(face)
+          return face
+        })
+      }
       const selectInput = !this.hasInput
       if(selectInput) { this.query = ""; this.activeIndex = -1 }
       if(!this.builtInOnly && !this.mathOnly) {
@@ -491,9 +469,14 @@ export class FontCombobox extends StyleCombobox {
     return update
   }
 
+  private clearMathPreviews() {
+    for(const face of this.mathPreviewFaces) this.ownerDocument.fonts.delete(face)
+    this.mathPreviewFaces = []
+  }
+
   protected willUpdate(changed: Map<string, unknown>) {
     super.willUpdate(changed)
-    if(changed.has("mathOnly")) this.placeholder = this.mathOnly ? "Default math" : "Default font"
+    if(changed.has("open") || changed.has("mathOnly")) this.placeholder = this.open ? "Search..." : this.mathOnly ? "Default math" : "Default font"
   }
 
   protected updated(changed: Map<string, unknown>) {
@@ -503,7 +486,6 @@ export class FontCombobox extends StyleCombobox {
     super.updated(changed)
     this.connectDropdown()
     this.measureSearchResults()
-    this.syncPreview()
   }
 
   private connectDropdown() {

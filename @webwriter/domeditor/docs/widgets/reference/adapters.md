@@ -40,6 +40,8 @@ customElements.define("ww-label", WwLabel)
 
 ## Modules
 
+For HTML and JavaScript previews, import `renderSandbox` from `@webwriter/widget/sandbox`. This helper creates a self-contained iframe document in an opaque script sandbox, without a server or editor runtime dependency. See [Run HTML in an isolated preview](../guides/libraries.md#run-html-in-an-isolated-preview) for CSP authorization, standalone exports, and supported execution behavior.
+
 A [module](#module-declarations) is a class with the suffix `Core`. Import each module from its own path, such as `@webwriter/widget/drag`. Create the module for the host. Call `connect()` and `disconnect()` in the lifecycle callbacks. Call `refresh()` after the widget changes its shadow DOM. Read the state with `getSnapshot()` and follow it with `subscribe()`, which returns the function that stops following. Pass `rendered` to a core when the widget renders asynchronously. The function returns a promise that settles after the next render. Pass `root` when the shadow root is not `host.shadowRoot`.
 
 | Module | Import path | Core |

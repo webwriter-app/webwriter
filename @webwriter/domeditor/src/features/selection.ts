@@ -1,6 +1,6 @@
 import {batchPresentationStates, clearPresentationState, deferPresentationPaint, flushPresentationStyles, hasPresentationState, presentationStateElements, setPresentationState, setPresentationStates} from "../presentation-state.js"
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isCaretAtBoundary, isEmptyParagraph, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, setPart, textOffsetIn, textPointAtOffset, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isCaretAtBoundary, isEmptyParagraph, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, setPart, textOffsetIn, textPointAtOffset, widgetCaptureSelectionDisabled, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {SVG_NAMESPACE, graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -12,7 +12,7 @@ import {inlineMathRoot, mathOutsidePoint, mathRoot} from "../math"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {isTextFieldInteraction} from "../utility"
 import {createAnchorPositioner} from "../utility"
-import {childNodesInRange, nodeAtPath} from "../utility"
+import {childNodesInRange, getInertDocument, nodeAtPath} from "../utility"
 import {isParagraphContent, renderedClientRect, renderedParentElement, widgetSlotContentFromCoords} from "../utility"
 import {textKeyboardRequestEvent, type ElementSelectionType} from "../editor-bridge"
 import {elementAttributeTargetId} from "../element-attributes"
@@ -144,7 +144,7 @@ export class SelectionFeature extends EditorFeature {
 
   #sharedRefreshQueued = false
   #capturedElement: Element | null = null
-  #captureClick: {element: Element, pointerId?: number, x: number, y: number, released: boolean, cancelled: boolean,
+  #captureClick: {element: Element, event: PointerEvent, pointerId?: number, x: number, y: number, released: boolean, cancelled: boolean,
     requested?: {preserveNativeSelection?: boolean}} | null = null
   #modifierClick = false
   #touchSelection = false
@@ -524,8 +524,13 @@ export class SelectionFeature extends EditorFeature {
   captureElement(element: Element, {preserveNativeSelection = false} = {}) {
     if(!this.editor.allows("select", element) || !element.isConnected || element === document.body || !document.body.contains(element)) return
     if(this.#captureClick?.element === element) {
-      this.#captureClick.requested = {preserveNativeSelection}
-      return
+      // Direct manipulation consumes the press before starting a drag or
+      // opening editing controls. Native interactions wait for their click.
+      if(!this.#captureClick.event.defaultPrevented) {
+        this.#captureClick.requested = {preserveNativeSelection}
+        return
+      }
+      this.#captureClick = null
     }
     if(element.matches("caption, figcaption, details > summary")) {
       this.selectElement(element)
@@ -1171,6 +1176,53 @@ export class SelectionFeature extends EditorFeature {
     else selection.extend(flow, backwards ? 0 : flow.childNodes.length)
   }
 
+  /** Isolating content remains editable internally and selectable as a whole
+   * from outside. Only partial text endpoints may not cross its boundary. */
+  #isolatingSelectionRoot(node: Node | null) {
+    const root = getDocumentRoot()
+    for(let element = isElement(node) ? node : node?.parentElement;
+      element && element !== root; element = element.parentElement) {
+      if(isContentfulWidget(element, this.editor.schema) && this.editor.schema.get(element).inseperable) return element
+    }
+    return null
+  }
+
+  #constrainSelectionToIsolatingContent() {
+    const selection = document.getSelection()
+    if(!selection?.anchorNode || !selection.focusNode || selection.isCollapsed) return
+    const root = getDocumentRoot()
+    if(!root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) return
+    const scope = this.#isolatingSelectionRoot(selection.anchorNode)
+    const range = selection.getRangeAt(0)
+    const backwards = selection.anchorNode === range.endContainer && selection.anchorOffset === range.endOffset
+    let node = selection.focusNode, offset = selection.focusOffset
+    if(scope && !scope.contains(node)) {
+      node = scope
+      offset = backwards ? 0 : scope.childNodes.length
+    }
+    else {
+      // Snap to the near edge of the outermost foreign island. Passing its
+      // far edge still encloses the widget normally, without entering it.
+      let boundary: Element | null = null
+      for(let element = isElement(node) ? node : node.parentElement;
+        element && element !== root && element !== scope; element = element.parentElement) {
+        if(!element.contains(selection.anchorNode) && isContentfulWidget(element, this.editor.schema)
+          && this.editor.schema.get(element).inseperable) boundary = element
+      }
+      if(boundary?.parentNode) {
+        node = boundary.parentNode
+        offset = Array.from(node.childNodes).indexOf(boundary) + (backwards ? 1 : 0)
+      }
+    }
+    if(node === selection.focusNode && offset === selection.focusOffset) return
+    const anchor = document.createRange(), focus = document.createRange()
+    anchor.setStart(selection.anchorNode, selection.anchorOffset)
+    anchor.collapse(true)
+    focus.setStart(node, offset)
+    focus.collapse(true)
+    this.#applyDragRange(anchor, focus)
+  }
+
   enable() {
     if(this.isEnabled) return
     const first = document.body.firstElementChild
@@ -1423,11 +1475,14 @@ export class SelectionFeature extends EditorFeature {
       this.#endDrag()
       return
     }
+    this.#constrainSelectionToIsolatingContent()
     const flow = editingFlowRoot(selection.focusNode)
     const fromGap = !nativeClick && $.isGapSelection
     // A popup bubble is its own editing flow even in the document layout.
     const popupScope = popupElementRole(flow) === "content" && flow.contains(selection.anchorNode) ? flow : null
-    const scope = popupScope ?? this.#layoutSelectionItem(selection.focusNode, selection.focusNode)
+    const isolated = this.#isolatingSelectionRoot(selection.anchorNode)
+    const scope = isolated && (!popupScope || popupScope.contains(isolated)) ? isolated
+      : popupScope ?? this.#layoutSelectionItem(selection.focusNode, selection.focusNode)
     if(scope && !scope.contains(selection.anchorNode)) selection.collapse(selection.focusNode, selection.focusOffset)
     const anchor = document.createRange()
     anchor.setStart(selection.anchorNode, selection.anchorOffset)
@@ -1464,6 +1519,7 @@ export class SelectionFeature extends EditorFeature {
     // their current roots before using them after a concurrent DOM mutation.
     const root = drag.scope ?? getDocumentRoot()
     if(!root.isConnected || drag.scope && popupElementRole(drag.scope) !== "content"
+      && this.#isolatingSelectionRoot(drag.scope) !== drag.scope
       && this.#layoutSelectionItem(drag.scope, drag.scope) !== drag.scope
       || !root.contains(drag.anchor.startContainer) || !root.contains(drag.focus.startContainer)) {
       this.#endDrag()
@@ -1542,13 +1598,25 @@ export class SelectionFeature extends EditorFeature {
       range.setEnd(...last)
     }
     else {
+      // textContent joins words on opposite sides of BRs. Segment only the
+      // current hard line, retaining DOM offsets across inline formatting.
+      const line = document.createRange()
+      line.selectNodeContents(block)
+      for(const br of block.querySelectorAll("br")) {
+        if(atomicEditingContainer(br, this.editor.schema)) continue
+        const boundary = document.createRange()
+        boundary.selectNode(br)
+        if(boundary.comparePoint(node, offset) > 0) line.setStartAfter(br)
+        else { line.setEndBefore(br); break }
+      }
+      const start = textOffsetIn(block, line.startContainer, line.startOffset)
       const position = textOffsetIn(block, node, offset)
-      if(position === null) return
-      const segments = new Intl.Segmenter(undefined, {granularity: "word"}).segment(block.textContent ?? "")
-      const unit = segments.containing(position) ?? segments.containing(position - 1)
+      if(start === null || position === null) return
+      const segments = new Intl.Segmenter(undefined, {granularity: "word"}).segment(line.toString())
+      const unit = segments.containing(position - start) ?? segments.containing(position - start - 1)
       if(!unit) return
-      range.setStart(...textPointAtOffset(block, unit.index, undefined, "forward"))
-      range.setEnd(...textPointAtOffset(block, unit.index + unit.segment.length))
+      range.setStart(...textPointAtOffset(block, start + unit.index, undefined, "forward"))
+      range.setEnd(...textPointAtOffset(block, start + unit.index + unit.segment.length))
     }
     return range
   }
@@ -1870,6 +1938,10 @@ export class SelectionFeature extends EditorFeature {
   }
 
   captureListeners: DocumentListenerMap = {
+    fullscreenchange: () => {
+      this.#refreshGapCaretInlinePosition()
+      this.#atomicAnchors.refresh()
+    },
     resize: event => {
       // Docking the host keyboard shrinks the iframe after the tap has placed
       // the caret. Reuse input's post-layout reveal against the new viewport.
@@ -1917,8 +1989,8 @@ export class SelectionFeature extends EditorFeature {
       const node = origin instanceof Node ? origin : null
       const candidate = widgetHostForShadowInteraction(event, this.editor.schema)
         ?? (node ? mediaContainerForNode(node) ?? graphicContainerForNode(node) ?? mathRoot(node) : null)
-      this.#captureClick = !event.defaultPrevented && candidate && !isAppendixInteraction(event)
-        ? {element: candidate, pointerId: event.pointerId, x: event.clientX, y: event.clientY, released: false, cancelled: event.button !== 0} : null
+      this.#captureClick = !event.defaultPrevented && candidate && !isAppendixInteraction(event) && !widgetCaptureSelectionDisabled(candidate, event)
+        ? {element: candidate, event, pointerId: event.pointerId, x: event.clientX, y: event.clientY, released: false, cancelled: event.button !== 0} : null
       const edge = event.composedPath().find(node => node instanceof Element && node.classList.contains("◆capture-edge"))
       const captured = this.captureSelectedElement
       if(edge instanceof Element && edge.parentElement === this.selectionCaret && captured
@@ -2218,6 +2290,11 @@ export class SelectionFeature extends EditorFeature {
    * leaving their native focus, caret, input, and event handling untouched. */
   readonly #handleWidgetShadowInteraction = (event: Event) => {
     const widget = widgetHostForShadowInteraction(event, this.editor.schema)
+    if(widget && widgetCaptureSelectionDisabled(widget, event)) {
+      if(this.#captureClick?.element === widget) this.#captureClick = null
+      this.#releaseCaptureForShadowControl()
+      return
+    }
     if(!widget) {
       const origin = event.composedPath()[0]
       const authoredOrigin = event instanceof MouseEvent
@@ -2247,6 +2324,16 @@ export class SelectionFeature extends EditorFeature {
       this.#focusedContentfulShadow.range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
     }
     this.processSelection(undefined, {scrollIntoView: !isContentfulWidget(widget, this.editor.schema)})
+    this.editor.postSelectionPath()
+  }
+
+  /** Release presentation only: the control's native focus and caret stay intact. */
+  #releaseCaptureForShadowControl() {
+    if(!this.captureSelectedElement) return
+    this.#releaseCaptureSelection()
+    this.#clearSelections()
+    this.editor.features.transformation.clearTransform()
+    this.editor.features.manipulation.refreshNodeDragTarget(null)
     this.editor.postSelectionPath()
   }
 
@@ -2880,6 +2967,31 @@ export class SelectionFeature extends EditorFeature {
     if(!retainedKind || !this.selectionCaret?.matches(`[part~="selection-caret-${retainedKind}"]`)) this.#hideSelectionCaret()
   }
 
+  /** Structural widget containers may only accept their own parts, not a
+   * new text block. Their inter-part boundaries are not insertion carets. */
+  #normalizeStructuralWidgetGap(selection: Selection) {
+    if(!selection.isCollapsed || !selection.anchorNode) return
+    const anchor = selection.anchorNode
+    if(anchor instanceof Text && anchor.data.trim()) return
+    const parent = isElement(anchor) ? anchor : anchor.parentElement
+    const schema = this.editor.schema
+    if(!parent || !getDocumentRoot().contains(parent) || !isContentfulWidget(parent, schema)
+      || !schema.get(parent).inseperable || !schema.isContentValid(parent)) return
+    const nodes = Array.from(parent.childNodes)
+    const offset = anchor === parent ? selection.anchorOffset
+      : nodes.indexOf(anchor as ChildNode) + Number(selection.anchorOffset > 0)
+    if(schema.canInsert(parent, schema.create(undefined, getInertDocument(parent)), offset)) return
+    const candidates = nodes.filter((node): node is Element => isElement(node) && !isOutOfFlow(node)
+      && !node.matches("[hidden], [inert]") && getComputedStyle(node).display !== "none")
+    const child = candidates.find(node => nodes.indexOf(node) >= offset) ?? candidates.at(-1)
+    if(!child) { $.selectElement(parent, false); return }
+    if(isAtomicEditingElement(child, schema)) { $.selectElement(child, false); return }
+    const end = nodes.indexOf(child) < offset
+    const edge = this.#disclosureEdge(child, end ? "forward" : "backward") ?? child
+    if(isAtomicEditingElement(edge, schema)) $.move(child, end ? -1 : 0)
+    else $.move(edge, end ? edge instanceof Text ? edge.length : -1 : 0)
+  }
+
   /** Replaces malformed or newly entered element selections with one
    * canonical forward range, preserving explicit Shift-arrow extensions.
    * This resets browser selection direction/state
@@ -2889,6 +3001,11 @@ export class SelectionFeature extends EditorFeature {
     if(this.editor.features.mark.isSVGTextSelection || $.isMultiElementSelection) return
     let selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode) return
+    // Explicit widget capture keeps an inert native boundary before the
+    // host. It is not a structural insertion gap to move into authored text.
+    const captured = this.captureSelectedElement
+    if(selection.isCollapsed && captured?.parentNode === selection.anchorNode
+      && selection.anchorNode.childNodes.item(selection.anchorOffset) === captured) return
     // An explicit extension owns its anchor, even when it spans exactly one
     // node. Live Range boundaries follow concurrent DOM mutations.
     const extended = this.#atomicExtension
@@ -2898,6 +3015,9 @@ export class SelectionFeature extends EditorFeature {
       && extended.range.endContainer === range.endContainer && extended.range.endOffset === range.endOffset) return
     this.#atomicExtension = null
     if(selection.isCollapsed) {
+      this.#normalizeStructuralWidgetGap(selection)
+      selection = document.getSelection()
+      if(!selection?.anchorNode || !selection.focusNode) return
       const summary = $.summaryAtLeadingBoundary(selection.anchorNode, selection.anchorOffset)
         ?? $.widgetFieldAtLeadingBoundary(selection.anchorNode, selection.anchorOffset, this.editor.schema)
       if(summary) $.move(summary)
@@ -3117,6 +3237,12 @@ export class SelectionFeature extends EditorFeature {
 
   #processSelection(inDragSelection: boolean, {scrollIntoView = true, refreshGraphic = true}: {scrollIntoView?: boolean, refreshGraphic?: boolean}) {
     if(this.#boxDrag || this.#settingDragSelection || $.isSettingRanges) return
+    const privateFocus = focusedWidgetHost()
+    const privateCaptureDisabled = privateFocus && widgetCaptureSelectionDisabled(privateFocus)
+    if(!this.#modifierClick && privateCaptureDisabled) {
+      this.#releaseCaptureForShadowControl()
+      return
+    }
     const drag = this.#drag, live = document.getSelection(), root = getDocumentRoot()
     // Native focus/selection defaults may collapse a gap-origin drag into
     // the last paragraph. Its original gap and measured focus remain live.
@@ -3152,7 +3278,7 @@ export class SelectionFeature extends EditorFeature {
     // Shadow controls own capture and their native selection. Focus on a
     // contentful host with a range in its authored children stays ordinary
     // document editing, including when those children are slotted.
-    const shadowOwner = focusedWidgetHost() === this.#blurringWidget ? null : focusedWidgetHost()
+    const shadowOwner = privateCaptureDisabled || focusedWidgetHost() === this.#blurringWidget ? null : focusedWidgetHost()
     const nativeRange = document.getSelection()
     // Private focus wins over the range left behind when the control gained
     // focus. A later authored selection made by the widget remains authoritative.
@@ -3218,7 +3344,7 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     const focused = focusedWidgetHost()
-    const focusedWidget = focused === this.#blurringWidget || focused === this.#captureClick?.element ? null : focused
+    const focusedWidget = privateCaptureDisabled || focused === this.#blurringWidget || focused === this.#captureClick?.element ? null : focused
     const capturedChild = this.captureSelectedElement
     // A pointer can select authored media before the browser blurs the
     // widget's shadow control. Keep that selection through the focus change.
@@ -3255,6 +3381,7 @@ export class SelectionFeature extends EditorFeature {
       this.#constrainSelectionToBody()
       this.#constrainSelectionToFlow()
       this.#constrainSelectionToAtomicContent()
+      this.#constrainSelectionToIsolatingContent()
       this.normalizePopupSelection()
       sel = document.getSelection()
       const root = getDocumentRoot()
@@ -3263,7 +3390,7 @@ export class SelectionFeature extends EditorFeature {
         if(!this.editor.features.slides.active) $.selectDocumentStart()
         sel = document.getSelection()
       }
-      if(!inDragSelection) this.#normalizeNativeSelection()
+      if(!inDragSelection || $.isEmpty) this.#normalizeNativeSelection()
       this.editor.features.slides.constrainSelection()
       this.editor.features.board.constrainSelection()
       sel = document.getSelection()
@@ -3565,7 +3692,9 @@ export class SelectionFeature extends EditorFeature {
       if(ev.key.toLowerCase() === "a" && modifierKeyDown(ev)) {
         ev.preventDefault()
         const flow = editingFlowRoot($.selectedElement ?? $.anchor)
-        const root = popupElementRole(flow) === "content" ? flow : this.editor.features.canvas.editingRoot ?? getDocumentRoot()
+        const isolated = this.#isolatingSelectionRoot($.anchor)
+        const root = isolated && (popupElementRole(flow) !== "content" || flow.contains(isolated)) ? isolated
+          : popupElementRole(flow) === "content" ? flow : this.editor.features.canvas.editingRoot ?? getDocumentRoot()
         $.selectRange(root, 0, root, root.childNodes.length)
         this.processSelection()
       }

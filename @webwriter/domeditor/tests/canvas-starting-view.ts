@@ -153,7 +153,7 @@ export async function checkCanvasStartingView() {
         assert(clicked && (root === shadow ? shadow.activeElement : output.activeElement) === input, "widget action or editable input failed with Hand off")
       }
       pan.click()
-      const panSurface = appendix.querySelector<HTMLElement>('[part="canvas-pan-surface"]')!
+      const panSurface = appendix.querySelector<HTMLElement>('[part~="canvas-pan-surface"]')!
       assert(panSurface && !panSurface.hidden, "Hand did not show the canvas pan surface")
       for(const root of [outputWidget, shadow]) {
         const action = root.querySelector<HTMLButtonElement>("button")!

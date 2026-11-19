@@ -933,7 +933,7 @@ describe("toolbox", () => {
 
   it.each([
     ["document", "Document", "Document"], ["canvas", "Canvas", "Canvas"],
-    ["slides", "Slides", "KeywordPresentation"], ["board", "Board", "Columns"],
+    ["slides", "Slides", "Presentation"], ["board", "Board", "Columns"],
   ] as const)("uses the %s layout name and icon for document distribution", async (mode, label, icon) => {
     const toolbox = await mountToolbox()
     toolbox.documentLayout = {mode, canConvert: true, zoom: 100}
@@ -1019,7 +1019,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(toolbox.activeTool).toBe("Edit")
     expect(toolbox.getAttribute("active-tool")).toBe("Edit")
-    expect(getComputedStyle(toolbox).width).toBe("216px")
+    expect(getComputedStyle(toolbox).width).toBe("250px")
     expect(edit.getAttribute("aria-selected")).toBe("true")
     expect(style.getAttribute("aria-selected")).toBe("false")
     expect(getComputedStyle(editTab).width).toBe("128px")
@@ -1034,7 +1034,8 @@ describe("toolbox", () => {
     expect(Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
       .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["1", "0", "0", "0", "0"])
     expect(getComputedStyle(style).width).toBe("28px")
-    expect(getComputedStyle(editTab).transition).toContain("width")
+    expect(getComputedStyle(editTab).transition).not.toContain("width")
+    expect(getComputedStyle(toolbox).transition).not.toContain("width")
     expect(getComputedStyle(edit.querySelector<HTMLElement>(".toolbox-tab-label")!).opacity).toBe("1")
     const editClose = editTab.querySelector<HTMLButtonElement>(".toolbox-tab-close")!
     expect(editClose.disabled).toBe(false)
@@ -1053,7 +1054,7 @@ describe("toolbox", () => {
     expect(editClose.disabled).toBe(true)
 
     const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
-    expect(getComputedStyle(toolbox).width).toBe("216px")
+    expect(getComputedStyle(toolbox).width).toBe("250px")
     expect(getComputedStyle(pane).width).toBe("100%")
 
     styleTab.querySelector<HTMLButtonElement>(".toolbox-tab-close")!.click()
