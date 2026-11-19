@@ -715,8 +715,9 @@ export class DomEditorToolbox extends EditingControls {
       z-index: 4;
     }
 
-    .specialized-widget-primary {font: .68rem/1.2 system-ui, sans-serif;}
+    .specialized-widget-primary {display: flex; flex-direction: column; gap: .45rem; font: .68rem/1.2 system-ui, sans-serif;}
     .specialized-widget-primary .widget-options {min-width: 0;}
+    .specialized-widget-primary > .widget-options:empty {display: none;}
     .specialized-options .develop-field, .specialized-widget-primary .develop-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center;}
     .develop-field:has(> .widget-option-choices, > .widget-option-segmented) {grid-template-columns: 3.65rem minmax(0, 1fr); column-gap: .2rem;}
     .specialized-widget-primary input:not([type="checkbox"], [type="radio"]), .specialized-widget-primary select {height: 1.7rem; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent; font: inherit;}
