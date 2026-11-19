@@ -80,6 +80,7 @@ import {checkGraphicDragPreviewRotation} from "./graphic-drag-preview-rotation"
 import {checkRibbonSnippetDrop} from "./ribbon-snippet-drop"
 import {checkResizeAlignment} from "./resize-alignment"
 import {checkNativeFloatDrag} from "./native-float-drag"
+import {checkNativeWidgetFloats} from "./native-widget-floats"
 import {checkMediaCentering} from "./media-centering"
 import documentLayoutExample from "../examples/layouts/document.html?raw"
 
@@ -11842,6 +11843,8 @@ await check("shape keyboard drags retain capture through appendix surfaces", asy
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
+
+await check("document float lanes leave widget-internal floats local", () => checkNativeWidgetFloats(nativeRootEditor, assert, layoutFrame))
 
 await check("native drag floats in preview areas and preserves ordinary gap drops", () => checkNativeFloatDrag(nativeRootEditor, assert, layoutFrame))
 

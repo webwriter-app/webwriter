@@ -3,7 +3,7 @@ import {floatSideFromStyles, type FloatSide} from "../element-styles"
 import {$} from "../utility"
 import {createFigureLayout} from "../figure-layout.js"
 import {createLayoutPrint} from "../document-layout-print.js"
-import {slideLayoutRole} from "../document-layout"
+import {isDocumentFlowChild, slideLayoutRole} from "../document-layout"
 import {isAuthoredMutation} from "../editor-artifacts"
 
 type PlacementDirection = "front" | "up" | "down" | "back"
@@ -56,8 +56,9 @@ export class LayoutFeature extends EditorFeature {
     const parent = target.parentElement
     if(!target.isConnected || this.editor.isEditingLocked || !this.editor.allows("style", target) || this.editor.features.canvas.active || this.editor.features.slides.active
       || document.body.classList.contains("ww-board") || !(target instanceof HTMLElement || target instanceof SVGSVGElement)
-      || !(parent === document.body || parent?.parentElement === document.body && parent.matches("main, article, section"))) return false
-    if(target.querySelector('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]')) return false
+      || !isDocumentFlowChild(target)) return false
+    if(Array.from(target.querySelectorAll('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
+      .some(isDocumentFlowChild)) return false
     if(parent !== document.body) {
       const parentStyle = getComputedStyle(parent!)
       if(!["block", "flow-root"].includes(parentStyle.display) || (parentStyle.overflowX || parentStyle.overflow || "visible") !== "visible"
@@ -65,7 +66,7 @@ export class LayoutFeature extends EditorFeature {
         || /(?:paint|strict|content)/.test(parentStyle.contain)) return false
       if((parentStyle.display === "flow-root" || /layout/.test(parentStyle.contain))
         && Array.from(document.body.querySelectorAll('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
-          .some(element => !parent!.contains(element))) return false
+          .some(element => isDocumentFlowChild(element) && !parent!.contains(element))) return false
     }
     const style = getComputedStyle(target)
     return floatSideFromStyles(style.float, target.style, target.classList) === "none"
@@ -88,6 +89,7 @@ export class LayoutFeature extends EditorFeature {
     if(!body || !this.isEnabled) return
     const floats = Array.from(body.querySelectorAll<HTMLElement | SVGElement>(
       '.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
+      .filter(isDocumentFlowChild)
       .map(element => ({element, side: floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList)}))
       .filter(({side}) => side !== "none")
     const candidates = floats.map(({element}) => element)

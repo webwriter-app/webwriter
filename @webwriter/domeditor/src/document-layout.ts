@@ -8,6 +8,13 @@ export type DocumentLayoutState = {
   conversions?: Partial<Record<DocumentLayoutMode, string | null>>
 }
 
+/** Document lanes stop at flow children; nested content keeps its local layout. */
+export function isDocumentFlowChild(element: Element) {
+  const parent = element.parentElement, body = element.ownerDocument.body
+  return Boolean(parent && body && (parent === body || parent.parentElement === body
+    && parent.namespaceURI === "http://www.w3.org/1999/xhtml" && parent.matches(":is(main, article, section):not([is])")))
+}
+
 /** Placement values emitted when converting a fresh empty document. */
 export const emptyLayoutPlacementValues: Record<string, readonly string[]> = {
   position: ["absolute", "static"], left: ["0px", "var(--ww-page-gutter, 1.25rem)"],

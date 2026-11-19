@@ -176,6 +176,7 @@ const expectedChecks = [
   "attribution license picker wraps definitions on a third line and offers only current CC licenses",
   "block splitting retains attribution only on the original part",
   "new paragraphs and line breaks reveal the caret at the document end",
+  "document float lanes leave widget-internal floats local",
   "native drag floats in preview areas and preserves ordinary gap drops",
   "shape keyboard drops stay in captured graphics and ribbon shapes use document flow",
   "shape keyboard drags retain capture through appendix surfaces",

@@ -10,7 +10,7 @@ import {MATH_NAMESPACE} from "../math"
 import {attributionAttributes} from "../attribution.js"
 import {captionedFigureContent} from "../figure-layout.js"
 import {SVG_NAMESPACE, graphicShapeDragType, readGraphicShapeDrag, isGraphicShapeType, graphicContainerForNode} from "../graphic"
-import {boardLayoutRole, documentLayoutMode, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
+import {boardLayoutRole, documentLayoutMode, isBoardCard, isDocumentFlowChild, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, caretRect, fixedClientX, renderedClientRect, widgetHostForShadowInteraction, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
 import {isMarkElement} from "../marks"
@@ -776,7 +776,7 @@ export class ManipulationFeature extends EditorFeature {
     let right = false
     for(const element of getDocumentRoot().querySelectorAll<HTMLElement | SVGElement>(
       '.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]')) {
-      if(this.floatContainer(element) !== element) continue
+      if(!isDocumentFlowChild(element) || this.floatContainer(element) !== element) continue
       const side = floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList)
       if(side === "far-left") return "left"
       if(side === "far-right") right = true
@@ -1121,7 +1121,7 @@ export class ManipulationFeature extends EditorFeature {
       let floats = shared ? measurements.floats : undefined
       if(!floats) {
         const elements = Array.from(document.body.querySelectorAll<HTMLElement>('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
-          .filter(element => element !== source)
+          .filter(element => element !== source && isDocumentFlowChild(element))
         floats = {elements, sides: elements.map(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList))}
         if(shared) measurements.floats = floats
       }

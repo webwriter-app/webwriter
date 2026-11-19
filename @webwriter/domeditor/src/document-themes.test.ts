@@ -1,5 +1,8 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
+import {transformSync} from "esbuild"
+import currentFloatSource from "./document-floats.css?raw"
+import previousFloatSource from "./test-fixtures/document-floats-before-widget-boundaries.css?raw"
 import originalThemes from "virtual:document-theme-sources-original"
 import {documentTypographyCSS} from "./document-theme-options"
 
@@ -13,6 +16,12 @@ import {
 const documentThemes = bundledThemes.map(theme => ({...theme, source: originalThemes[theme.value].source}))
 const defaultDocumentTheme = documentThemes[0]
 const documentTheme = (name: string) => documentThemes.find(theme => theme.value === name)
+
+// Keep historical upgrade fixtures historical when current layout rules change.
+const minifiedFloats = (source: string) => transformSync(source, {loader: "css", minify: true, charset: "utf8", legalComments: "inline"}).code.trimEnd()
+const beforeWidgetFloatBoundary = (source: string) => source
+  .replace(currentFloatSource, previousFloatSource)
+  .replace(minifiedFloats(currentFloatSource), minifiedFloats(previousFloatSource))
 
 const ruleHeaders = (source: string) => Array.from(
   source.replaceAll(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{/g),
@@ -50,7 +59,7 @@ describe("document themes", () => {
     const theme = bundledThemes[0]
     expect(theme.source).toContain("padding-inline-end:1.9375px")
     // The stylesheet as it was before the padding rule and the color tokens.
-    const previous = theme.source.slice(0, theme.source.indexOf("\n@layer webwriter-theme-options {\n  :root {\n    --ww-surface")).replace(";padding-inline-end:1.9375px", "")
+    const previous = beforeWidgetFloatBoundary(theme.source.slice(0, theme.source.indexOf("\n@layer webwriter-theme-options {\n  :root {\n    --ww-surface"))).replace(";padding-inline-end:1.9375px", "")
     const root = document.implementation.createHTMLDocument()
     const stock = root.createElement("style"), customized = root.createElement("style")
     stock.setAttribute("data-ww-theme", "base")
@@ -79,6 +88,24 @@ describe("document themes", () => {
     expect(documentWidgetStyleSource([{tagName: "div"}])).toBe("")
   })
 
+  it("upgrades stock themes with the former widget-leaking float rules while preserving customizations", () => {
+    for(const theme of bundledThemes) {
+      for(const source of [theme.source, originalThemes[theme.value].source]) {
+        const previous = beforeWidgetFloatBoundary(source)
+        const root = document.implementation.createHTMLDocument()
+        const stock = root.createElement("style"), customized = root.createElement("style")
+        stock.setAttribute("data-ww-theme", theme.value)
+        customized.setAttribute("data-ww-theme", theme.value)
+        stock.textContent = previous
+        customized.textContent = previous + "\np { color: rebeccapurple; }"
+        root.head.append(stock, customized)
+        upgradeBundledDocumentThemes(root)
+        expect(stock.textContent).toBe(theme.source)
+        expect(customized.textContent).toBe(previous + "\np { color: rebeccapurple; }")
+      }
+    }
+  })
+
   it("updates stock media figure layout without replacing customized theme CSS", () => {
     const previousFigureRules = `  :where(figure:not([is]):has(> figcaption):has(> :is(audio, video):not([is]))) {
     display: flow-root;
@@ -95,7 +122,7 @@ describe("document themes", () => {
 `
     for(const theme of bundledThemes) {
       // Rebuild the historical stylesheet, including the paragraph and popup rules of that version.
-      const original = originalThemes[theme.value].source
+      const original = beforeWidgetFloatBoundary(originalThemes[theme.value].source)
         .replace(/  \/\* Leave room for Chromium[^\n]+\n  padding-inline-end: 1\.9375px;\n/, "")
         .replace("    /* Center the rotated corner where the popup's inside border edge begins. */\n", "")
         .replace("top: calc(anchor(top) - 0.35rem + 0.5px)", "top: calc(anchor(top) - 0.4rem)")
@@ -216,7 +243,7 @@ describe("document themes", () => {
       expect(theme.source).toContain("--ww-responsive-float: right;")
       expect(theme.source).toContain("float: right !important;")
       expect(theme.source).toContain("--ww-right-lane: calc(var(--ww-right-column-width) + var(--ww-float-gap));")
-      expect(theme.source).toContain(":has(:is(.ww-float-left, .ww-float-right,")
+      expect(theme.source).toContain(":has(> :is(.ww-float-left, .ww-float-right,")
       expect(theme.source).toContain("inline-size: var(--ww-float-size, var(--ww-float-width)) !important;")
       expect(theme.source).toContain(":is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover], .◆hotspot-popup[popover]) {\n      inline-size: 100%;\n      margin-left: var(--ww-flow-margin-left, auto);\n      margin-right: var(--ww-flow-margin-right, auto);")
       // A descendant subject after BODY:has() restyles the whole document on
