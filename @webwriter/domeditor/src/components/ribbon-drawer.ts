@@ -297,7 +297,6 @@ export class RibbonDrawer extends LitElement {
       border: 1px solid transparent;
       border-right-color: #d8dee6;
       background: #f2f2f2;
-      transition: var(--ww-ui-transition, max-height 180ms ease);
     }
 
     :host(:last-child) .drawer {
@@ -321,20 +320,11 @@ export class RibbonDrawer extends LitElement {
       border-left-color: #d8dee6;
       background: #f2f2f2;
       box-shadow: 0 0.45rem 1rem rgb(0 0 0 / 18%);
-      clip-path: polygon(
-        0 0,
-        100% 0,
-        100% calc(var(--collapsed-drawer-height) + 3px),
-        calc(100% + 1rem) calc(var(--collapsed-drawer-height) + 3px),
-        calc(100% + 1rem) calc(100% + 1rem),
-        -1rem calc(100% + 1rem),
-        -1rem calc(var(--collapsed-drawer-height) + 3px),
-        0 calc(var(--collapsed-drawer-height) + 3px)
-      );
+      clip-path: inset(0 -1rem -1rem -1rem);
     }
 
     .drawer.expanded.closing {
-      max-height: var(--drawer-collapsed-height, 100%);
+      clip-path: inset(0 -1rem calc(100% - var(--drawer-collapsed-height, 100%)) -1rem);
     }
 
     :host([layout="marks"]) .drawer.expanded {
@@ -568,20 +558,12 @@ export class RibbonDrawer extends LitElement {
       box-shadow: 0 0.45rem 1rem rgb(0 0 0 / 18%);
     }
 
-    :host([layout="packages"]) .drawer.expanded.closing {
-      max-height: var(--drawer-collapsed-height, 100%);
-    }
-
     :host([layout="elements"]) .drawer.expanded {
       /* Share the preceding separator without moving the controls. */
       margin-left: -1px;
       padding-left: calc(0.5rem + 1px);
       height: var(--layout-expanded-height, calc(100% + var(--ribbon-drawer-more-height)));
       max-height: var(--layout-expanded-height, calc(100% + var(--ribbon-drawer-more-height)));
-    }
-
-    :host([layout="elements"]) .drawer.expanded.closing {
-      max-height: var(--drawer-collapsed-height, 100%);
     }
 
     :host([layout="packages"][drawer-visible]) .controls {
@@ -693,7 +675,6 @@ export class RibbonDrawer extends LitElement {
       background: transparent;
       cursor: pointer;
       transform: translateX(-50%);
-      transition: var(--ww-ui-transition, bottom 180ms ease);
     }
 
     .drawer.expanded .drawer-toggle {
@@ -848,44 +829,40 @@ export class RibbonDrawer extends LitElement {
       z-index: 0;
       width: var(--ribbon-drawer-width);
       height: var(--ribbon-drawer-height);
-      max-height: 0;
-      padding: 0 0.5rem;
+      max-height: var(--ribbon-drawer-height);
+      padding: var(--ribbon-drawer-panel-padding-block) 0.5rem;
       border: 1px solid #d8dee6;
       background: #f2f2f2;
       box-shadow: 0 0.45rem 1rem rgb(0 0 0 / 18%);
       visibility: hidden;
       overflow: hidden;
       pointer-events: none;
+      transform: translateY(-0.5rem);
+      opacity: 0;
       transition: none;
     }
 
     :host([collapsed][drawer-visible]) .controls {
       visibility: visible;
       transition: var(--ww-ui-transition,
-        max-height 180ms ease,
-        padding 180ms ease);
+        transform 180ms ease,
+        opacity 180ms ease);
     }
 
     :host([collapsed][drawer-open]) .controls {
-      max-height: var(--ribbon-drawer-height);
-      padding-top: var(--ribbon-drawer-panel-padding-block);
-      padding-bottom: var(--ribbon-drawer-panel-padding-block);
       visibility: visible;
       pointer-events: auto;
+      transform: none;
+      opacity: 1;
       transition-delay: 0s;
     }
 
     :host([layout="elements"][collapsed]) .controls {
       height: var(--layout-expanded-height, var(--ribbon-drawer-height));
-    }
-
-    :host([layout="elements"][collapsed][drawer-open]) .controls {
       max-height: var(--layout-expanded-height, var(--ribbon-drawer-height));
-      padding-block: var(--ribbon-drawer-panel-padding-block);
     }
 
-    :host([layout="settings"][collapsed]) .controls,
-    :host([layout="settings"][collapsed][drawer-open]) .controls {
+    :host([layout="settings"][collapsed]) .controls {
       padding: 0;
     }
 
@@ -1200,6 +1177,11 @@ export class RibbonDrawer extends LitElement {
   private forcedOpen = false
   private drawerCloseTimer: ReturnType<typeof setTimeout> | undefined
   private drawerSettleTimer: ReturnType<typeof setTimeout> | undefined
+  private revealAnimation: Animation | undefined
+
+  private get motionDisabled() {
+    return uiMotionDisabled(this) || window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  }
 
   private readonly handleWindowResize = () => {
     if(!this.drawerOpen) return
@@ -1248,6 +1230,8 @@ export class RibbonDrawer extends LitElement {
   }
 
   disconnectedCallback() {
+    this.revealAnimation?.cancel()
+    this.revealAnimation = undefined
     this.cancelDrawerClose()
     this.cancelDrawerSettle()
     this.removeEventListener("ribbon-button-click", this.handleRibbonAction)
@@ -1260,6 +1244,30 @@ export class RibbonDrawer extends LitElement {
   protected willUpdate(changed: Map<string, unknown>) {
     if(changed.has("collapsed") && !this.collapsed) this.closeDrawer()
     if(changed.has("expandable") && !this.expandable && !this.collapsed && !this.forcedOpen) this.closeDrawer()
+  }
+
+  protected updated(changed: Map<string, unknown>) {
+    if(!changed.has("drawerOpen")) return
+    const drawer = this.renderRoot.querySelector<HTMLElement>(".drawer")
+    const currentClip = this.revealAnimation && drawer ? getComputedStyle(drawer).clipPath : undefined
+    this.revealAnimation?.cancel()
+    this.revealAnimation = undefined
+    if(!drawer || this.collapsed || this.pane || !this.drawerContentOpen ||
+      typeof drawer.animate !== "function" || this.motionDisabled) return
+    // Keep the final grid size throughout the reveal, including interrupted closes.
+    const closed = "inset(0 -1rem calc(100% - var(--drawer-collapsed-height, 100%)) -1rem)"
+    const opened = "inset(0 -1rem -1rem -1rem)"
+    const animation = drawer.animate([
+      {clipPath: currentClip || (this.drawerOpen ? closed : opened)},
+      {clipPath: this.drawerOpen ? opened : closed},
+    ], {duration: 180, easing: "ease"})
+    this.revealAnimation = animation
+    animation.onfinish = () => {
+      if(this.revealAnimation !== animation) return
+      this.revealAnimation = undefined
+      if(this.drawerOpen) this.finishDrawerSettle()
+      else this.finishDrawerClose()
+    }
   }
 
   private lengthInPixels(value: string, fallback: number) {
@@ -1409,8 +1417,7 @@ export class RibbonDrawer extends LitElement {
       const primary = this.renderRoot.querySelector<HTMLElement>(".elements-primary-controls")
       const headerHeight = primary?.getBoundingClientRect().height || this.lengthInPixels("5.625rem", 90)
       const panelStyle = getComputedStyle(this.collapsed ? controls : drawer)
-      // Read the final padding token: computed padding is still interpolating
-      // from zero when the pullout's opening animation begins.
+      // Use the authored padding token independently of the reveal's position.
       const blockPadding = this.collapsed
         ? 2 * this.lengthInPixels(getComputedStyle(this).getPropertyValue("--ribbon-drawer-panel-padding-block").trim(), 8)
         : paddingTop + paddingBottom
@@ -1555,14 +1562,16 @@ export class RibbonDrawer extends LitElement {
 
   private scheduleDrawerSettle() {
     this.cancelDrawerSettle()
-    // The height transition lasts 180ms. Give the browser a frame to settle
+    // The reveal lasts 180ms. Give the browser a frame to settle
     // its final grid layout before deciding whether a scrollbar is needed.
-    this.drawerSettleTimer = setTimeout(() => this.finishDrawerSettle(), uiMotionDisabled(this) ? 0 : 220)
+    this.drawerSettleTimer = setTimeout(() => this.finishDrawerSettle(), this.motionDisabled ? 0 : 220)
   }
 
   private finishDrawerClose() {
     this.cancelDrawerClose()
-    if(this.drawerOpen) return
+    if(this.drawerOpen || !this.drawerContentOpen) return
+    this.revealAnimation?.cancel()
+    this.revealAnimation = undefined
     this.drawerContentOpen = false
     const controls = this.renderRoot.querySelector<HTMLElement>(".controls")
     controls?.style.removeProperty("--package-row-height")
@@ -1576,11 +1585,12 @@ export class RibbonDrawer extends LitElement {
 
   private scheduleDrawerClose() {
     this.cancelDrawerClose()
-    this.drawerCloseTimer = setTimeout(() => this.finishDrawerClose(), uiMotionDisabled(this) ? 0 : 180)
+    this.drawerCloseTimer = setTimeout(() => this.finishDrawerClose(), this.motionDisabled ? 0 : 180)
   }
 
   private readonly handleDrawerTransitionEnd = (event: TransitionEvent) => {
-    if(event.target !== event.currentTarget || event.propertyName !== "max-height") return
+    const controls = this.renderRoot.querySelector(".controls")
+    if(event.target !== controls || event.propertyName !== "transform") return
     if(this.drawerOpen) this.finishDrawerSettle()
     else this.finishDrawerClose()
   }

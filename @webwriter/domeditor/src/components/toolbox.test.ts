@@ -1034,7 +1034,8 @@ describe("toolbox", () => {
     expect(Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
       .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["1", "0", "0", "0", "0"])
     expect(getComputedStyle(style).width).toBe("28px")
-    expect(getComputedStyle(editTab).transition).toContain("width")
+    expect(getComputedStyle(editTab).transition).not.toContain("width")
+    expect(getComputedStyle(toolbox).transition).not.toContain("width")
     expect(getComputedStyle(edit.querySelector<HTMLElement>(".toolbox-tab-label")!).opacity).toBe("1")
     const editClose = editTab.querySelector<HTMLButtonElement>(".toolbox-tab-close")!
     expect(editClose.disabled).toBe(false)

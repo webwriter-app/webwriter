@@ -218,12 +218,6 @@ export class AppRibbon extends EditingControls {
       transition: none;
     }
 
-    :host([transitions-ready]) {
-      transition: var(--ww-ui-transition,
-        height 180ms ease,
-        max-height 180ms ease);
-    }
-
     :host([preview-transition]) {
       overflow: hidden;
     }
@@ -1082,6 +1076,16 @@ export class AppRibbon extends EditingControls {
       display: none;
     }
 
+    @media (prefers-reduced-motion: no-preference) {
+      :host([transitions-ready]) .ribbon-content {
+        transition: var(--ww-ui-transition, transform 180ms ease, opacity 180ms ease);
+      }
+
+      @starting-style {
+        .ribbon-content {transform: translateY(-0.5rem); opacity: 0;}
+      }
+    }
+
     .ribbon.preview .ribbon-content {
       border-top-color: transparent;
       background-image: linear-gradient(var(--ribbon-area-border), var(--ribbon-area-border));
@@ -1465,7 +1469,7 @@ export class AppRibbon extends EditingControls {
   }
 
   protected firstUpdated() {
-    // Let the initial expanded layout paint before enabling height transitions.
+    // Paint the initial layout before enabling the content's entry transition.
     this.transitionReadyFrame = requestAnimationFrame(() => {
       this.transitionReadyFrame = requestAnimationFrame(() => {
         this.transitionReadyFrame = 0

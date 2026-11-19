@@ -552,7 +552,7 @@ describe("mark ribbon controls", () => {
     finally {window.innerHeight = previousHeight}
   })
 
-  it("starts at full height before enabling transitions for app-button toggles", async () => {
+  it("starts at full height and switches sizes without layout transitions", async () => {
     class StartupRibbon extends AppRibbon {
       initialLayout: {expanded: boolean, height: string, transition: string} | null = null
       protected firstUpdated() {
@@ -570,8 +570,8 @@ describe("mark ribbon controls", () => {
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
     await ribbon.updateComplete
     expect(ribbon.expanded).toBe(false)
-    expect(getComputedStyle(ribbon).transition).toContain("height")
-    expect(getComputedStyle(ribbon).transition).toContain("max-height")
+    expect(getComputedStyle(ribbon).transition).not.toContain("height")
+    expect(getComputedStyle(ribbon).transition).not.toContain("max-height")
   })
 
   it("toggles the ribbon from the app icon while the File tab stays collapsed", async () => {
@@ -579,8 +579,8 @@ describe("mark ribbon controls", () => {
     const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
 
     await vi.waitFor(() => expect(ribbon.hasAttribute("transitions-ready")).toBe(true))
-    expect(getComputedStyle(ribbon).transition).toContain("height")
-    expect(getComputedStyle(ribbon).transition).toContain("max-height")
+    expect(getComputedStyle(ribbon).transition).not.toContain("height")
+    expect(getComputedStyle(ribbon).transition).not.toContain("max-height")
     expect(getComputedStyle(ribbon).height).toBe("140px")
     expect(fileTab.ribbonCollapsed).toBe(true)
 

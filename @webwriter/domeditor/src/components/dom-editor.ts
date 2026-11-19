@@ -1365,6 +1365,7 @@ export class DomEditor extends LitElement {
       .html-source-panel,
       .document-layouts-panel {grid-column: 1 / -1}
       dom-editor-toolbox[active-tool]:not([hidden]) {
+        --toolbox-entry-offset: 0 1rem;
         grid-column: 1 / -1;
         grid-row: 4;
         justify-self: stretch;
@@ -3239,9 +3240,8 @@ export class DomEditor extends LitElement {
     await this.updateComplete
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     await ribbon?.updateComplete
-    // Reading the animations after Lit reflects `expanded` flushes the new
-    // styles. Loading srcdoc earlier makes document parsing and widget startup
-    // compete with the ribbon's height transition on the main thread.
+    // Read any host animations after Lit reflects `expanded`, before starting
+    // preview document parsing and widget startup.
     await Promise.allSettled((ribbon?.getAnimations?.() ?? []).map(animation => animation.finished))
     if(this.isConnected && this.previewActive && this.previewGeneration === generation) {
       this.previewFramePending = false

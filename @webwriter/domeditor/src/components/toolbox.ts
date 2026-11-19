@@ -262,7 +262,6 @@ export class DomEditorToolbox extends EditingControls {
       color: #2f3742;
       background: transparent;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      transition: var(--ww-ui-transition, width 180ms ease);
     }
 
     :host(:not([show-style-toolbox])) {
@@ -388,7 +387,7 @@ export class DomEditorToolbox extends EditingControls {
       height: 28px;
       border-radius: 0.2rem;
       overflow: hidden;
-      transition: var(--ww-ui-transition, width 180ms ease, background-color 120ms ease);
+      transition: var(--ww-ui-transition, background-color 120ms ease);
     }
 
     .toolbox-tab[data-active] {
@@ -454,7 +453,6 @@ export class DomEditorToolbox extends EditingControls {
       min-width: 28px;
       padding: 0.35rem;
       overflow: hidden;
-      transition: var(--ww-ui-transition, width 180ms ease);
     }
 
     .toolbox-tab[data-active] .toolbox-tab-button {
@@ -478,7 +476,7 @@ export class DomEditorToolbox extends EditingControls {
       opacity: 0;
       overflow: hidden;
       pointer-events: none;
-      transition: var(--ww-ui-transition, width 180ms ease, padding 180ms ease, opacity 90ms ease);
+      transition: var(--ww-ui-transition, opacity 90ms ease);
     }
 
     .toolbox-tab[data-active] .toolbox-tab-close {
@@ -486,7 +484,7 @@ export class DomEditorToolbox extends EditingControls {
       padding: 0.3rem;
       opacity: 1;
       pointer-events: auto;
-      transition-delay: 0ms, 0ms, 90ms;
+      transition-delay: 90ms;
     }
 
     .toolbox-tab-button:hover,
@@ -616,7 +614,7 @@ export class DomEditorToolbox extends EditingControls {
       line-height: 1;
       white-space: nowrap;
       transform: translateX(-0.2rem);
-      transition: var(--ww-ui-transition, max-width 180ms ease, margin-left 180ms ease, opacity 90ms ease, transform 180ms ease);
+      transition: var(--ww-ui-transition, opacity 90ms ease, transform 180ms ease);
     }
 
     .toolbox-tab[data-active] .toolbox-tab-label,
@@ -626,7 +624,7 @@ export class DomEditorToolbox extends EditingControls {
       opacity: 1;
       transform: translateX(0);
       text-overflow: ellipsis;
-      transition-delay: 0ms, 0ms, 90ms, 0ms;
+      transition-delay: 90ms, 0ms;
     }
 
     .toolbox-tab-label[data-contextual] {
@@ -656,6 +654,20 @@ export class DomEditorToolbox extends EditingControls {
       border-left: 1px solid #a8a8a8;
       background: #f2f2f2;
       overflow: hidden;
+    }
+
+    /* Reserve the final document width once; only the panel's pixels move. */
+    @media (prefers-reduced-motion: no-preference) {
+      .toolbox-pane {
+        transition: var(--ww-ui-transition, translate 180ms ease, opacity 180ms ease);
+      }
+
+      @starting-style {
+        .toolbox-pane {
+          translate: var(--toolbox-entry-offset, 1rem 0);
+          opacity: 0;
+        }
+      }
     }
 
     .toolbox-pane[hidden] {
