@@ -1011,6 +1011,29 @@ describe("isElementSelection", () => {
 })
 
 describe("isTextSelection", () => {
+  it.each(["p", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "li", "dt", "dd", "summary", "figcaption", "td", "th"])("keeps native break carets inside %s in text mode", tag => {
+    for(const contents of ["<br>", "<br><br>", "<wbr><br>", "<b><br></b>"]) {
+      const element = `<${tag}>${contents}</${tag}>`
+      setBody(tag === "li" ? `<ul>${element}</ul>` : tag === "dt" || tag === "dd" ? `<dl>${element}</dl>`
+        : tag === "summary" ? `<details>${element}</details>` : tag === "figcaption" ? `<figure>${element}</figure>`
+          : tag === "td" || tag === "th" ? `<table><tbody><tr>${element}</tr></tbody></table>` : element)
+      const container = document.querySelector(tag)!
+      for(let offset = 0; offset <= container.childNodes.length; offset++) {
+        $.move(container, offset)
+        expect($.isGapSelection, `${tag} ${contents} offset ${offset}`).toBe(false)
+        expect($.isTextSelection, `${tag} ${contents} offset ${offset}`).toBe(true)
+      }
+      expect(container.innerHTML).toBe(contents)
+    }
+  })
+
+  it.each(['<br is="break-widget">', '<br contenteditable="false">', '<custom-break></custom-break>'])("retains structural gaps for an atomic break: %s", contents => {
+    setBody(`<h1>${contents}</h1>`)
+    $.move(document.body.firstElementChild!, 0)
+    expect($.isTextSelection).toBe(false)
+    expect($.isGapSelection).toBe(true)
+  })
+
   it("is true for a range within one text node", () => {
     setBody("<p>hello</p>")
     $.selectRange(firstText(), 0, firstText(), 2)

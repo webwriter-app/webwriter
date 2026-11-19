@@ -6288,6 +6288,26 @@ describe("divider selection", () => {
 })
 
 describe("selection invariants", () => {
+  it.each(["p", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "section"])("keeps the start of an empty canvas %s in text mode after Enter", tag => {
+    document.body.innerHTML = `<${tag} style="position:absolute;width:240px"></${tag}>`
+    document.body.classList.add("ww-canvas")
+    const root = document.body.firstElementChild!
+    $.move(root)
+    root.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    expect(root.innerHTML).toBe("<br><br>")
+    const authored = editor.toHTML(true)
+    for(const offset of [0, 1, 2]) {
+      $.move(root, offset)
+      feature.processSelection()
+      expect($.anchor).toBe(root)
+      expect($.anchorOffset).toBe(offset)
+      expect($.isGapSelection).toBe(false)
+      expect(hasPresentationState(root, "text-selected")).toBe(true)
+      expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
+    }
+    expect(editor.toHTML(true)).toBe(authored)
+  })
+
   const originalHitTest = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
   const originalElementHitTest = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
   beforeEach(() => {

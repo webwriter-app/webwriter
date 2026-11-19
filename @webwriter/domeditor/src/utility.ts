@@ -26,6 +26,13 @@ export function isParagraphContent(node: Node): boolean {
   return isMarkElement(node) && Array.from(node.childNodes).every(isParagraphContent)
 }
 
+/** Native breaks hold inline caret positions just like text and formatting. */
+function isTextCaretContent(node: Node | null): boolean {
+  return node instanceof Text || isMarkElement(node)
+    || isElement(node) && node.matches("br, wbr") && isParagraphContent(node)
+      && node.getAttribute("contenteditable") !== "false"
+}
+
 /** Closest edge/center alignment, preferring objects over the container on ties. */
 export function closestAlignment<T extends {value: number, kind: string}>(anchors: number[], targets: T[], threshold: number): {delta: number, target: T} | null {
   let best: {delta: number, target: T} | null = null
@@ -1115,7 +1122,7 @@ export class EditingSelection {
     return this.#selection.isCollapsed
   }
 
-  /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without text children, and not in an empty container. A body boundary before its first element is also a gap when any preceding text is only whitespace. */
+  /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without inline caret content, and not in an empty container. A body boundary before its first element is also a gap when any preceding text is only whitespace. */
   static get isGapSelection() {
     const anchor = this.anchor
     if(this.isEmpty && anchor && this.summaryAtLeadingBoundary(anchor, this.anchorOffset)) return false
@@ -1156,11 +1163,11 @@ export class EditingSelection {
       }
     }
     const isInsideTable = Boolean(anchor.closest("table"))
-    let hasTextOrMarkChild = false
+    let hasTextCaretChild = false
     if(this.isEmpty && !this.isEmptySelection) {
       for(const node of anchor.childNodes) {
-        if(!isOutOfFlow(node) && (isText(node) && Boolean(node.textContent?.trim()) || isMarkElement(node))) {
-          hasTextOrMarkChild = true
+        if(!isOutOfFlow(node) && isTextCaretContent(node) && (!(node instanceof Text) || Boolean(node.data.trim()))) {
+          hasTextCaretChild = true
           break
         }
       }
@@ -1168,7 +1175,7 @@ export class EditingSelection {
     const popupContentGap = popupElementRole(anchor) === "content"
     return (!isSectionElement(anchor) || inSlide || inBoardCard || popupContentGap)
       && (!isInsideTable || popupContentGap) && this.isEmpty && !this.isEmptySelection &&
-      (!hasTextOrMarkChild
+      (!hasTextCaretChild
         || isRootBoundaryBeforeFirstElement)
   }
 
@@ -1259,7 +1266,7 @@ export class EditingSelection {
         return [
           this.anchor.childNodes.item(this.anchorOffset - 1),
           this.anchor.childNodes.item(this.anchorOffset),
-        ].some(node => !isOutOfFlow(node) && (node instanceof Text || isMarkElement(node)))
+        ].some(node => !isOutOfFlow(node) && isTextCaretContent(node))
       }
       return false
     }
