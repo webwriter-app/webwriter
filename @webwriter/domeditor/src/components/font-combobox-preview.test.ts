@@ -48,6 +48,7 @@ describe("font option previews", () => {
     expect(input.placeholder).toBe("Default math")
     input.click()
     await settle(combo)
+    expect(input.placeholder).toBe("Search...")
     expect(fetcher).not.toHaveBeenCalled()
     expect([...combo.shadowRoot!.querySelectorAll('[role="option"]')].map(option => option.getAttribute("title")))
       .toEqual(["Default math", "Libertinus Math", "Noto Sans Math"])

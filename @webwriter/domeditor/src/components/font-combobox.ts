@@ -476,7 +476,7 @@ export class FontCombobox extends StyleCombobox {
 
   protected willUpdate(changed: Map<string, unknown>) {
     super.willUpdate(changed)
-    if(changed.has("mathOnly")) this.placeholder = this.mathOnly ? "Default math" : "Default font"
+    if(changed.has("open") || changed.has("mathOnly")) this.placeholder = this.open ? "Search..." : this.mathOnly ? "Default math" : "Default font"
   }
 
   protected updated(changed: Map<string, unknown>) {
