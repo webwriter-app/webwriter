@@ -7064,7 +7064,9 @@ describe("unified content transfer", () => {
   })
 
   it("centers ribbon elements at the canvas drop position", () => {
+    document.body.innerHTML = '<p style="z-index:40">Existing</p>'
     expect(editor.features.canvas.convert("canvas")).toBe(true)
+    const existing = document.body.firstElementChild as HTMLElement
     vi.spyOn(editor.features.canvas, "clientPoint").mockImplementation((x, y) => ({x: x - 100, y: y - 50}))
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
       return new DOMRect(100 + parseFloat(this.style.left || "0"), 50 + parseFloat(this.style.top || "0"), 40, 20)
@@ -7077,6 +7079,8 @@ describe("unified content transfer", () => {
     expect(item.style.left).toBe("180px")
     expect(item.style.top).toBe("90px")
     expect(item.style.width).toBe("")
+    expect(Number(item.style.zIndex)).toBeGreaterThan(40)
+    expect(existing.style.zIndex).toBe("40")
   })
 
   it("accepts a ribbon drop on the canvas's blank shadow slot", () => {
@@ -7390,9 +7394,11 @@ describe("unified content transfer", () => {
 
   it("centers ribbon elements within the slide under the drop", () => {
     document.body.removeAttribute("class")
+    document.body.innerHTML = '<p style="z-index:40">Existing</p>'
     expect(editor.features.slides.convert("slides")).toBe(true)
     editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
     const slide = document.querySelector<HTMLElement>("section.ww-slide")!
+    const existing = slide.querySelector("p")!
     vi.spyOn(slide, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 800, 600))
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
       return new DOMRect(100 + parseFloat(this.style.left || "0"), 100 + parseFloat(this.style.top || "0"), 40, 20)
@@ -7403,6 +7409,8 @@ describe("unified content transfer", () => {
     expect(item.localName).toBe("p")
     expect(item.style.left).toBe("180px")
     expect(item.style.top).toBe("140px")
+    expect(Number(item.style.zIndex)).toBeGreaterThan(40)
+    expect(existing.style.zIndex).toBe("40")
     const before = slide.children.length
     document.body.dispatchEvent(transferEvent("drop", ribbonData("p"), {clientX: 10, clientY: 10}))
     expect(slide.children).toHaveLength(before)
@@ -7417,6 +7425,24 @@ describe("unified content transfer", () => {
     surface.dispatchEvent(transferEvent("dragstart", data))
     return {data, surface}
   }
+
+  it.each((["canvas", "slides"] as const).flatMap(mode => [false, true].map(copy => ({mode, copy}))))("preserves a $mode item's layer on native move and raises only a new copy (copy: $copy)", ({mode, copy}) => {
+    document.body.innerHTML = '<article style="z-index:1">Background</article><p style="z-index:40">Front</p>'
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const root = mode === "canvas" ? document.body : document.querySelector<HTMLElement>(".ww-slide")!
+    const source = root.querySelector("article")!, front = root.querySelector("p")!
+    vi.spyOn(root, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 800, 600))
+    $.selectElement(source)
+    const data = new DataTransfer()
+    editor.features.manipulation.startNodeDrag(transferEvent("dragstart", data) as DragEvent, source)
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: root, offset: root.childNodes.length})
+    root.dispatchEvent(transferEvent("drop", data, {clientX: 300, clientY: 250, ctrlKey: copy}))
+    const items = root.querySelectorAll("article")
+    expect(items).toHaveLength(copy ? 2 : 1)
+    expect(source.style.zIndex).toBe("1")
+    expect(front.style.zIndex).toBe("40")
+    if(copy) expect(Number(items[1].style.zIndex)).toBeGreaterThan(40)
+  })
 
   function widgetReorderFixture() {
     editor.schema.extendWidgets([

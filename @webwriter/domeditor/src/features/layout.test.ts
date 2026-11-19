@@ -206,6 +206,32 @@ describe.each(["canvas", "slides"] as const)("%s stacking placement", mode => {
     expect(root.querySelector("nav")?.hasAttribute("style") ?? false).toBe(false)
   })
 
+  it("starts new items in front while preserving their relative stacking and all existing peers", () => {
+    const {root, items} = seed()
+    editor.doc.flushDOMChanges()
+    const existing = items.map(item => item.outerHTML)
+    const nodes = Array.from(root.childNodes)
+    const low = document.createElement("custom-card"), high = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    const style = document.createElement("style")
+    style.textContent = ".authored {color: blue}"
+    low.style.cssText = "position:absolute;z-index:-4"
+    high.style.cssText = "position:absolute;z-index:2"
+    low.innerHTML = '<span style="z-index:99">Private</span><!--keep-->'
+    root.prepend(style, high, low)
+    editor.features.layout.placeNewElements([style, high, low])
+    expect(Number(low.style.zIndex)).toBeGreaterThan(5)
+    expect(Number(high.style.zIndex)).toBeGreaterThan(Number(low.style.zIndex))
+    expect(low.innerHTML).toBe('<span style="z-index:99">Private</span><!--keep-->')
+    expect(items.map(item => item.outerHTML)).toEqual(existing)
+    expect(Array.from(root.childNodes)).toEqual([style, high, low, ...nodes])
+    expect(style.outerHTML).toBe("<style>.authored {color: blue}</style>")
+    const observer = new MutationObserver(() => {})
+    observer.observe(root, {attributes: true, subtree: true})
+    editor.features.layout.placeNewElements([style, high, low])
+    expect(observer.takeRecords()).toEqual([])
+    observer.disconnect()
+  })
+
   it("repairs duplicate indices locally while preserving auto, negative and sparse peers", () => {
     const {items} = seed()
     items.forEach((item, i) => item.style.zIndex = ["auto", "-4", "7", "7", "90"][i])

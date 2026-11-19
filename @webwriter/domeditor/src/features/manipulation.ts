@@ -1754,7 +1754,8 @@ export class ManipulationFeature extends EditorFeature {
         if(target instanceof HTMLElement) {
           const added = Array.from(target.children).filter(element => !before.includes(element))
           if(!added.length) return false
-          this.placeRibbonElements(added, target, {x: position.x!, y: position.y!})
+          const placed = this.placeRibbonElements(added, target, {x: position.x!, y: position.y!})
+          this.editor.features.layout.placeNewElements(placed)
           this.editor.features.selection.processSelection()
         }
         return true
@@ -2246,7 +2247,10 @@ export class ManipulationFeature extends EditorFeature {
         if(inserted.namespaceURI === MATH_NAMESPACE && inserted.localName === "math" && inserted.getAttribute("display") !== "block") this.editor.features.math.adaptToPlacement(inserted, range.startContainer)
         const slide = this.editor.features.slides.active ? this.editor.features.slides.containingSlide(range.startContainer) : null
         const container = this.floatDropHit?.container
-        if(slide) this.placeRibbonElements([inserted], slide, this.editor.features.slides.clientPoint(slide, event.clientX, event.clientY))
+        if(slide) {
+          const placed = this.placeRibbonElements([inserted], slide, this.editor.features.slides.clientPoint(slide, event.clientX, event.clientY))
+          if(inserted !== source) this.editor.features.layout.placeNewElements(placed)
+        }
         else if(container) {
           const side = this.floatSide(container, event.clientX)
           this.clearDropSelection()
@@ -2276,6 +2280,7 @@ export class ManipulationFeature extends EditorFeature {
           else range.insertNode(inserted)
           if(range.startContainer !== sourceParent || !isContentfulWidget(sourceParent, this.editor.schema)) this.clearDropFloat(inserted)
         }
+        if(inserted !== source && !slide) this.editor.features.layout.placeNewElements([inserted])
         if(getDocumentRoot().contains(inserted)) $.selectElement(inserted)
         if(inserted === source && sourceParent?.matches("figure:not([is])") && source.parentElement !== sourceParent) this.editor.normalizeSurroundingElements(sourceParent)
       }
@@ -2325,7 +2330,8 @@ export class ManipulationFeature extends EditorFeature {
       const before = Array.from(slide.children)
       this.insertClipboardFragment(fragment)
       const added = Array.from(slide.children).filter(element => !before.includes(element))
-      this.placeRibbonElements(added, slide, point)
+      const placed = this.placeRibbonElements(added, slide, point)
+      this.editor.features.layout.placeNewElements(placed)
       return
     }
     const element = fragment.childNodes.length === 1 ? fragment.firstChild : null
@@ -3834,6 +3840,7 @@ export class ManipulationFeature extends EditorFeature {
     const end = this.editor.doc.beginUndoGroup()
     try {
       root.append(fragment)
+      this.editor.features.layout.placeNewElements(items)
       const rect = items[0].getBoundingClientRect()
       const dx = step + (previousRect ? (previousRect.left - rect.left) / zoom : 0)
       const dy = step + (previousRect ? (previousRect.top - rect.top) / zoom : 0)

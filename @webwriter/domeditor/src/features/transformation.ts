@@ -1275,7 +1275,6 @@ export class TransformationFeature extends EditorFeature {
     // A widget or remote peer can edit this same element during a drag.
     // Only defer work while its inline styles still match our own writes.
     for(const property of properties) {
-      if(property === "z-index") continue // The move can raise its target at pickup.
       const last = written.get(property)
       if(target.style.getPropertyValue(property) !== (last?.value ?? initial.getPropertyValue(property))
         || target.style.getPropertyPriority(property) !== (last?.priority ?? initial.getPropertyPriority(property))) return null
@@ -1619,10 +1618,6 @@ export class TransformationFeature extends EditorFeature {
     if(event instanceof PointerEvent) {
       try { handle.setPointerCapture?.(event.pointerId) }
       catch { this.#finish(true); return false }
-    }
-    // Activating a canvas or slide move raises the item even without displacement.
-    if(mode === "move" && this.#isFreeformItem(target)) {
-      this.moveZ(target, true, true)
     }
     if(this.#coalescesGeometry) this.editor.features.canvas.setMinimapRefreshPaused(true)
     this.updateInfo()

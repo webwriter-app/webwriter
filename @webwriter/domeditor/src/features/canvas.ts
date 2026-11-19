@@ -388,6 +388,7 @@ export class CanvasFeature extends EditorFeature {
           if(sharedHeight !== null) item.style.height = `${sharedHeight}px`
           offset += item.getBoundingClientRect().height / zoom + 24
         }
+        this.editor.features.layout.placeNewElements(added)
         if(centered && added.length) {
           // Measure the final border boxes: margins, authored transforms and
           // intrinsic widget sizes all affect their visual center.
@@ -563,6 +564,7 @@ export class CanvasFeature extends EditorFeature {
       const paragraph = document.createElement("p")
       Object.assign(paragraph.style, {position: "absolute", left: `${world.x}px`, top: `${world.y}px`})
       root.append(paragraph)
+      this.editor.features.layout.placeNewElements([paragraph])
       $.move(paragraph)
       this.editor.features.selection.selectDropRange($.range)
     }

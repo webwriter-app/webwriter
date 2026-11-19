@@ -211,7 +211,21 @@ export class LayoutFeature extends EditorFeature {
     return target ? this.placeElement(target, direction) : false
   }
 
-  placeElement(target: Element, direction: PlacementDirection, cycle = false) {
+  /** New local items start above existing peers, retaining their own paint order. */
+  placeNewElements(elements: readonly Element[]) {
+    if(!elements.length || this.editor.isEditingLocked) return
+    let placement = this.placement(elements[0])
+    for(let i = 1; !placement && i < elements.length; i++) placement = this.placement(elements[i])
+    if(!placement) return
+    const added = new Set(elements)
+    const ordered = [...placement.items].sort((a, b) => a.z - b.z || a.order - b.order)
+    const items = ordered.filter(item => added.has(item.element))
+    if(!items.length || ordered.slice(-items.length).every((item, index) => item === items[index])) return
+    // Initial stacking belongs to the insertion's undo transaction.
+    for(const {element} of items) this.placeElement(element, "front", false, false)
+  }
+
+  placeElement(target: Element, direction: PlacementDirection, cycle = false, undoGroup = true) {
     if(this.editor.isEditingLocked || !["front", "up", "down", "back"].includes(direction)) return false
     const placement = this.placement(target)
     if(!placement) return false
@@ -260,14 +274,14 @@ export class LayoutFeature extends EditorFeature {
       ordered.splice(destination, 0, ...ordered.splice(index, 1))
       changes = new Map(ordered.map((item, index) => [item, index + 1]))
     }
-    const end = this.editor.doc.beginUndoGroup()
+    const end = undoGroup ? this.editor.doc.beginUndoGroup() : null
     try {
       for(const [{element}, z] of changes) {
         const value = String(z)
         if(element.style.zIndex !== value) element.style.setProperty("z-index", value, element.style.getPropertyPriority("z-index"))
       }
     }
-    finally { end() }
+    finally { end?.() }
     return true
   }
 

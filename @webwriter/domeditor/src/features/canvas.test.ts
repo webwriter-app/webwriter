@@ -49,6 +49,42 @@ afterEach(() => {
 })
 
 describe("canvas document layout", () => {
+  it.each((["canvas", "slides"] as const).flatMap(mode => ["command", "double-click", "paste"].map(operation => ({mode, operation}))))("starts new $mode items in front through $operation and undoes placement with insertion", async ({mode, operation}) => {
+    document.body.innerHTML = '<p id="front" style="z-index:40">Front</p><!--keep--><custom-card style="z-index:7"><p>Private</p></custom-card>'
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const root = mode === "canvas" ? document.body : document.querySelector<HTMLElement>(".ww-slide")!
+    mockGeometry(root, makeRect(0, 0, 900, 700))
+    const before = Array.from(root.children)
+    const front = document.getElementById("front")!
+    const original = before.map(element => element.outerHTML)
+    await settle()
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    $.move(root, root.childNodes.length)
+    if(operation === "command") editor.features.manipulation.actions.insert({type: "insert", html: '<custom-card><p>New</p><!--inside--></custom-card>'})
+    else if(operation === "double-click") root.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, composed: true, cancelable: true, button: 0, clientX: 500, clientY: 300}))
+    else {
+      const data = new DataTransfer()
+      data.setData("text/html", '<img alt="New image">')
+      root.dispatchEvent(new ClipboardEvent("paste", {bubbles: true, cancelable: true, clipboardData: data}))
+    }
+    const added = Array.from(root.children).filter(element => !before.includes(element)) as HTMLElement[]
+    expect(added).toHaveLength(1)
+    expect(Number(getComputedStyle(added[0]).zIndex)).toBeGreaterThan(40)
+    expect(before.map(element => element.outerHTML)).toEqual(original)
+    const id = added[0].id, style = added[0].getAttribute("style")
+    await settle()
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).toContain("z-index: 41")
+    expect(editor.toHTML(true)).not.toMatch(/◆|transform-overlay/)
+    editor.doc.undo()
+    expect(added[0].isConnected).toBe(false)
+    expect(document.getElementById("front")?.getAttribute("style")).toBe(front.getAttribute("style"))
+    editor.doc.redo()
+    const currentRoot = mode === "canvas" ? document.body : document.querySelector<HTMLElement>(".ww-slide")!
+    const restored = id ? document.getElementById(id)! : Array.from(currentRoot.children).find(element => element.getAttribute("style") === style)!
+    expect(restored.getAttribute("style")).toBe(style)
+  })
+
   it("saves current camera bounds as one shared, serializable starting view and replaces them on save", () => {
     document.body.innerHTML = '<!--keep--><test-widget><span>Keep</span></test-widget>'
     editor.features.canvas.convert("canvas")

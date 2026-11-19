@@ -2981,7 +2981,7 @@ describe("transform controls and geometry", () => {
     expect(sibling).toHaveAttribute("data-after", "later")
   })
 
-  it.each(["canvas", "slides"].flatMap(mode => ["p", "demo-widget", "svg"].map(tag => ({mode, tag}))))("raises a $mode $tag on frame activation with one style mutation and one undo step", async ({mode, tag}) => {
+  it.each(["canvas", "slides"].flatMap(mode => ["p", "demo-widget", "svg"].map(tag => ({mode, tag}))))("moves a $mode $tag without changing stacking and with one undo step", async ({mode, tag}) => {
     document.body.replaceChildren()
     const target = tag === "svg" ? append(document.createElementNS("http://www.w3.org/2000/svg", "svg")) : targetElement(tag)
     const sibling = targetElement("section")
@@ -2994,7 +2994,7 @@ describe("transform controls and geometry", () => {
       viewport.className = "ww-slides-viewport"; slide.className = "ww-slide"
       viewport.append(slide); document.body.append(viewport); slide.append(target, sibling)
     }
-    Object.assign(target.style, {position: "absolute", left: "20px", top: "30px"})
+    Object.assign(target.style, {position: "absolute", left: "20px", top: "30px", zIndex: "-2"})
     Object.assign(sibling.style, {position: "absolute", zIndex: "5"})
     mockRect(target)
     selectNode(target)
@@ -3010,11 +3010,14 @@ describe("transform controls and geometry", () => {
     observer.observe(target.parentElement!, {attributes: true, subtree: true, attributeFilter: ["style"]})
 
     mover.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
-    expect(observer.takeRecords().map(record => record.target)).toEqual([target])
+    expect(observer.takeRecords()).toEqual([])
     observer.disconnect()
-    expect(Number(target.style.zIndex)).toBeGreaterThan(Number(sibling.style.zIndex))
+    expect(target.style.zIndex).toBe("-2")
     expect(target.style.left).toBe("20px")
     expect(target.style.top).toBe("30px")
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 120, clientY: 100}))
+    flushAnimationFrame()
+    expect(parseFloat(target.style.left)).toBeGreaterThan(20)
     expect(target.innerHTML).toBe(content)
     expect(Array.from(document.body.childNodes)).toEqual(nodes)
     document.dispatchEvent(pointer("pointerup", {pointerId: 3, clientX: 100, clientY: 100}))
@@ -3022,7 +3025,7 @@ describe("transform controls and geometry", () => {
     editor.doc.syncFromDOM()
     const finalHTML = editor.toHTML(true)
     expect(finalHTML).not.toBe(startingHTML)
-    expect(target.style.zIndex).toBe("6")
+    expect(target.style.zIndex).toBe("-2")
     expect(sibling.getAttribute("style")).toBe(siblingStyle)
     expect(finalHTML).not.toContain("◆")
     editor.doc.undo()
@@ -3057,7 +3060,7 @@ describe("transform controls and geometry", () => {
     expect(items.map(item => Number(item.style.zIndex))).toEqual(expected)
   })
 
-  it.each(["canvas", "slides"])("keeps the last moved %s item in front throughout dragging and subsequent move starts", mode => {
+  it.each(["canvas", "slides"])("preserves explicit %s layers throughout dragging and subsequent move starts", mode => {
     document.body.replaceChildren()
     document.body.className = `ww-${mode}`
     const first = targetElement(), second = targetElement("section")
@@ -3070,15 +3073,21 @@ describe("transform controls and geometry", () => {
       Object.assign(target.style, {position: "absolute", left: "0px", top: "0px"})
       mockRect(target)
     }
+    first.style.zIndex = "1"
+    second.style.zIndex = "2"
     selectNode(first)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
     feature.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, clientX: 120, clientY: 100}))
     feature.handleMoveEnd()
-    expect(Number(first.style.zIndex)).toBeGreaterThan(Number(second.style.zIndex))
+    expect(first.style.zIndex).toBe("1")
+    expect(second.style.zIndex).toBe("2")
     expect(first.style.left).toBe("20px")
+    feature.moveZ(first, true, true)
+    expect(first.style.zIndex).toBe("3")
     selectNode(second)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0}))
-    expect(Number(second.style.zIndex)).toBeGreaterThan(Number(first.style.zIndex))
+    expect(second.style.zIndex).toBe("2")
+    expect(first.style.zIndex).toBe("3")
     feature.handleMoveEnd()
     const style = second.style.cssText
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0}))
@@ -3170,7 +3179,7 @@ describe("transform controls and geometry", () => {
     expect(sibling.style.zIndex).toBe("2")
   })
 
-  it.each(["canvas", "slides"])("keeps %s activation on cancellation and preserves a concurrent stacking change", mode => {
+  it.each(["canvas", "slides"])("preserves %s stacking on cancellation and keeps a concurrent stacking change", mode => {
     document.body.replaceChildren()
     document.body.className = `ww-${mode}`
     const target = targetElement(), sibling = targetElement()
@@ -3187,7 +3196,7 @@ describe("transform controls and geometry", () => {
     mover.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
     movePointer(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 120, clientY: 100}))
     document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
-    expect(target.style.zIndex).toBe("3")
+    expect(target.style.zIndex).toBe("1")
     expect(sibling.style.zIndex).toBe("2")
     expect(target.style.left).toBe("0px")
     expect(hasPresentationState(document.body, "transform-moving")).toBe(false)
