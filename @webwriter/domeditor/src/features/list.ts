@@ -261,6 +261,8 @@ export class ListFeature extends EditorFeature {
       marker.removeAttribute("value")
       marker.style.removeProperty("left")
       marker.style.removeProperty("top")
+      marker.style.removeProperty("transform")
+      marker.style.removeProperty("transform-origin")
     }
     this.updateCoordinateListeners(false)
   }
@@ -447,14 +449,10 @@ export class ListFeature extends EditorFeature {
       || this.editor.features.transformation.boxTransformed(anchorHasBox)
     this.updateCoordinateListeners(transformed)
     if(transformed) {
-      const anchorRect = anchorHasBox.getBoundingClientRect()
-      const listRect = list.getBoundingClientRect()
-      const listPadding = Number.parseFloat(listStyle.paddingInlineStart || listStyle.paddingLeft) || 40
-      const contentLeft = list.matches("dl")
-        ? listRect.left + (nextType === "dd" ? 40 : 0)
-        : useListAnchor ? listRect.left + listPadding : anchorRect.left
-      marker.style.left = `${fixedClientX(Math.max(0, contentLeft))}px`
-      marker.style.top = `${Math.max(0, useListAnchor ? listRect.top : anchorRect.bottom)}px`
+      const x = list.matches("dl") ? nextType === "dd" ? 40 : 0
+        : useListAnchor ? (Number.parseFloat(listStyle.borderLeftWidth) || 0) + (Number.parseFloat(listStyle.paddingLeft) || 0) : 0
+      const y = useListAnchor ? (Number.parseFloat(listStyle.borderTopWidth) || 0) + (Number.parseFloat(listStyle.paddingTop) || 0) : undefined
+      this.positionTransformedMarker(marker, anchorHasBox, x || 0, y)
       this.anchorPositioner?.release(marker)
     }
     else {
@@ -472,6 +470,17 @@ export class ListFeature extends EditorFeature {
     marker.style.setProperty("--virtual-list-line-height", lineHeight)
   }
 
+  /** Appendix markers use the same local border box and ancestor matrix as
+   * selection frames. Bounding-rect corners alone lose rotated text origins. */
+  private positionTransformedMarker(marker: HTMLElement, anchor: HTMLElement, x: number, y?: number) {
+    const {rect, width, height, matrix} = this.editor.features.transformation.boxGeometry(anchor, false)
+    const point = matrix.transformPoint({x: x - width / 2, y: (y ?? height) - height / 2})
+    marker.style.left = `${fixedClientX(rect.left + rect.width / 2 + point.x)}px`
+    marker.style.top = `${rect.top + rect.height / 2 + point.y}px`
+    marker.style.transformOrigin = "0 0"
+    marker.style.transform = `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, 0, 0)`
+  }
+
   private syncEmptyItemCaret() {
     const selection = document.getSelection()
     const item = selection?.anchorNode
@@ -487,8 +496,8 @@ export class ListFeature extends EditorFeature {
     if(list.matches("ol")) marker.setAttribute("value", String(this.orderedValueOf(list as HTMLOListElement, item as HTMLLIElement)))
     marker.style.direction = style.direction
     const lineHeight = Number.parseFloat(style.lineHeight) || rect.height || 20
-    marker.style.left = `${fixedClientX(style.direction === "rtl" ? rect.right : rect.left)}px`
-    marker.style.top = `${rect.top}px`
+    const width = this.editor.features.transformation.boxGeometry(item, false).width
+    this.positionTransformedMarker(marker, item, style.direction === "rtl" ? width : 0, 0)
     marker.style.minHeight = `${lineHeight}px`
     marker.style.setProperty("--virtual-list-line-height", `${lineHeight}px`)
     setPart(marker, `virtual-list-item-${list.localName}`, true)
@@ -564,7 +573,7 @@ export class ListFeature extends EditorFeature {
     if(event.inputType === "insertParagraph") {
       event.preventDefault()
       event.stopImmediatePropagation()
-      this.advanceVirtualItem(point, true)
+      this.editor.features.canvas.preservePlacement(() => this.advanceVirtualItem(point, true))
       return
     }
     if(event.inputType === "insertText" || event.inputType === "insertReplacementText") {
@@ -605,7 +614,7 @@ export class ListFeature extends EditorFeature {
       if(point) {
         event.preventDefault()
         event.stopImmediatePropagation()
-        this.advanceVirtualItem(point, true)
+        this.editor.features.canvas.preservePlacement(() => this.advanceVirtualItem(point, true))
         return
       }
       if(this.enterItem()) {
@@ -689,17 +698,19 @@ export class ListFeature extends EditorFeature {
       || !item.parentElement.contains(range.endContainer)
       || atomicEditingContainer(range.startContainer, this.editor.schema)
       || atomicEditingContainer(range.endContainer, this.editor.schema)) return false
-    const wasEmpty = selection.isCollapsed && this.isEmptyItem(item)
-    this.editor.features.mark.finishAutomaticLinkBeforeBreak()
-    if(!selection.isCollapsed) $.delete()
-    if(!item.isConnected || !item.contains($.anchor)) return true
-    if(wasEmpty) this.liftOrExitEmptyItem(item)
-    else if(item.parentElement?.matches("dl") || isCaretAtBoundary(item, "end")) this.insertEmptyItemAfter(item)
-    else {
-      this.editor.features.manipulation.splitListItem(item)
-    }
-    this.syncVirtualMarker()
-    return true
+    return this.editor.features.canvas.preservePlacement(() => {
+      const wasEmpty = selection.isCollapsed && this.isEmptyItem(item)
+      this.editor.features.mark.finishAutomaticLinkBeforeBreak()
+      if(!selection.isCollapsed) $.delete()
+      if(!item.isConnected || !item.contains($.anchor)) return true
+      if(wasEmpty) this.liftOrExitEmptyItem(item)
+      else if(item.parentElement?.matches("dl") || isCaretAtBoundary(item, "end")) this.insertEmptyItemAfter(item)
+      else {
+        this.editor.features.manipulation.splitListItem(item)
+      }
+      this.syncVirtualMarker()
+      return true
+    })
   }
 
   /** Enter on the virtual first item exits an empty top-level list. For an

@@ -98,7 +98,7 @@ export const baseSchema = {
     group: ["heading", "flow"],
     content: {group: "phrasing", min: 0, max: Infinity},
     inseperable: true,
-    emptySelector: "h1:is(:has(br:only-child), :empty)",
+    emptySelector: "h1:is(:empty, :state(ww-empty-heading))",
     get placeholderStyle() {
       return {
         content: '"Heading"',
@@ -114,7 +114,7 @@ export const baseSchema = {
     group: ["heading", "flow"],
     content: {group: "phrasing", min: 0, max: Infinity},
     inseperable: true,
-    emptySelector: "h2:is(:has(br:only-child), :empty)",
+    emptySelector: "h2:is(:empty, :state(ww-empty-heading))",
     get placeholderStyle() {
       return {
         content: '"Heading"',
@@ -128,7 +128,7 @@ export const baseSchema = {
     group: ["heading", "flow"],
     content: {group: "phrasing", min: 0, max: Infinity},
     inseperable: true,
-    emptySelector: "h3:is(:has(br:only-child), :empty)",
+    emptySelector: "h3:is(:empty, :state(ww-empty-heading))",
     get placeholderStyle() {
       return {
         content: '"Heading"',
@@ -142,7 +142,7 @@ export const baseSchema = {
     group: ["heading", "flow"],
     content: {group: "phrasing", min: 0, max: Infinity},
     inseperable: true,
-    emptySelector: "h4:is(:has(br:only-child), :empty)",
+    emptySelector: "h4:is(:empty, :state(ww-empty-heading))",
     get placeholderStyle() {
       return {
         content: '"Heading"',
@@ -156,7 +156,7 @@ export const baseSchema = {
     group: ["heading", "flow"],
     content: {group: "phrasing", min: 0, max: Infinity},
     inseperable: true,
-    emptySelector: "h5:is(:has(br:only-child), :empty)",
+    emptySelector: "h5:is(:empty, :state(ww-empty-heading))",
     get placeholderStyle() {
       return {
         content: '"Heading"',
@@ -170,7 +170,7 @@ export const baseSchema = {
     group: ["heading", "flow"],
     content: {group: "phrasing", min: 0, max: Infinity},
     inseperable: true,
-    emptySelector: "h6:is(:has(br:only-child), :empty)",
+    emptySelector: "h6:is(:empty, :state(ww-empty-heading))",
     get placeholderStyle() {
       return {
         content: '"Heading"',

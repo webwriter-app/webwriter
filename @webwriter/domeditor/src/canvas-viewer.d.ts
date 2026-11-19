@@ -15,7 +15,7 @@ type StartingViewEditing = {
   resize(frame: HTMLDivElement, bounds: CanvasStartingViewBounds): void
 }
 export const canvasGridSize: number
-export const canvasIcons: {hand: string, fit: string, reset: string}
+export const canvasIcons: {hand: string, fit: string, reset: string, zoomIn: string, zoomOut: string}
 export function groupCanvasZoomPresets(reset: HTMLButtonElement, fit: HTMLButtonElement): HTMLElement
 export function updateCanvasZoomControls(controls: HTMLElement | null, zoom: number): void
 export type CanvasNavigation = "zoom-in" | "zoom-out" | "actual-size" | "fit-content"

@@ -8,6 +8,8 @@ const startingViewSelector = "div.ww-canvas-starting-view:not([is])"
 
 // Tabler outline icons are embedded because this module is also exported standalone.
 export const canvasIcons = {
+  zoomIn: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`,
+  zoomOut: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>`,
   hand: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 11v-3.5a1.5 1.5 0 0 1 3 0v2.5"/><path d="M11 9.5v-3a1.5 1.5 0 0 1 3 0v3.5"/><path d="M14 7.5a1.5 1.5 0 0 1 3 0v2.5"/><path d="M17 9.5a1.5 1.5 0 0 1 3 0v4.5a6 6 0 0 1 -6 6h-2h.208a6 6 0 0 1 -5.012 -2.7l-.196 -.3c-.312 -.479 -1.407 -2.388 -3.286 -5.728a1.5 1.5 0 0 1 .536 -2.022a1.867 1.867 0 0 1 2.28 .28l1.47 1.47"/></svg>`,
   fit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/><path d="M16 16l-2.5 -2.5"/><path d="M3 7v-2a2 2 0 0 1 2 -2h2"/><path d="M3 17v2a2 2 0 0 0 2 2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M17 21h2a2 2 0 0 0 2 -2v-2"/></svg>`,
   reset: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 21l-6 -6"/><path d="M3.268 12.043a7.017 7.017 0 0 0 6.634 4.957a7.012 7.012 0 0 0 7.043 -6.131a7 7 0 0 0 -5.314 -7.672a7.021 7.021 0 0 0 -8.241 4.403"/><path d="M3 4v4h4"/></svg>`,
@@ -962,6 +964,8 @@ export const canvasControlsStyles = `
       .◆canvas-controls output { min-width: 3em; text-align: center; }
       .◆canvas-controls.◆canvas-viewer-controls:not([hidden]) { display: grid; align-items: stretch; }
       .◆canvas-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+      .◆canvas-toolbar button { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; min-inline-size: 24px; min-block-size: 24px; padding: 5px; }
+      @media (pointer: coarse) { .◆canvas-toolbar button { min-inline-size: 44px; min-block-size: 44px; } }
       .◆canvas-controls button[name=minimap-toggle] { margin-inline-start: auto; background: transparent; }
       .◆canvas-controls button[name=minimap-toggle][aria-expanded=true] svg { transform: rotate(180deg); }
       .◆canvas-button-group, .◆canvas-starting-view-controls { display: inline-flex; border-radius: 6px; overflow: hidden; }
@@ -1111,9 +1115,9 @@ export function mountCanvasReader(loadSnapdom) {
   const handButton = button("hand", "Pan", "Toggle hand tool (middle-drag also pans)")
   handButton.innerHTML = canvasIcons.hand
   handButton.setAttribute("aria-pressed", "false")
-  button("zoom-out", "−", "Zoom out")
+  button("zoom-out", "", "Zoom out").innerHTML = canvasIcons.zoomOut
   toolbar.append(document.createElement("output"))
-  button("zoom-in", "+", "Zoom in")
+  button("zoom-in", "", "Zoom in").innerHTML = canvasIcons.zoomIn
   toolbar.append(groupCanvasZoomPresets(button("actual-size", "", "Reset zoom to 100%"), button("fit-content", "", "Fit to view")))
   const release = () => viewer.stopPan()
   const cancelPanning = () => { release(); viewer.endPinch(); viewer.stopWheelPan() }

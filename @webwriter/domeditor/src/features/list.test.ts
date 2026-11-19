@@ -33,6 +33,79 @@ beforeEach(() => {
 })
 
 describe("semantic list editing", () => {
+  it.each(["<ul></ul>", "<ul><li></li></ul>"])("retains canvas placement when Enter exits %s", html => {
+    document.body.innerHTML = html
+    expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+    const list = document.querySelector("ul")!
+    Object.assign(list.style, {left: "150px", top: "230px"})
+    const rect = vi.spyOn(list, "getBoundingClientRect").mockReturnValue(new DOMRect(150, 230, 200, 40))
+    const point = vi.spyOn(editor.features.canvas, "clientPoint").mockImplementation((x, y) => ({x, y}))
+    $.move(list.firstElementChild ?? list)
+    keydown("Enter")
+    const paragraph = document.querySelector("p")!
+    expect(paragraph.style.position).toBe("absolute")
+    expect(paragraph.style.left).toBe("150px")
+    expect(paragraph.style.top).toBe("230px")
+    expect($.anchor).toBe(paragraph)
+    document.body.className = ""
+    rect.mockRestore()
+    point.mockRestore()
+  })
+
+  it.each(["canvas", "slides"] as const)("splits %s list items with Enter and paragraph input while retaining the positioned list", async mode => {
+    for(const input of ["key", "beforeinput"]) {
+      document.body.className = ""
+      document.body.innerHTML = '<ul id="items"><!--keep--><li class="authored"><b>abcd</b><my-widget></my-widget></li><li>Neighbor</li></ul>'
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      const list = document.querySelector("ul")!, text = list.querySelector("b")!.firstChild!
+      const style = list.getAttribute("style"), parent = list.parentElement
+      $.move(text, 2)
+      editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+      const before = cleanHTML()
+      const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+        : new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, cancelable: true})
+      text.parentElement!.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(list.innerHTML).toBe('<!--keep--><li class="authored"><b>ab</b></li><li class="authored"><b>cd</b><my-widget></my-widget></li><li>Neighbor</li>')
+      expect(list.parentElement).toBe(parent)
+      expect(list.getAttribute("style")).toBe(style)
+      expect(list.children[1].contains($.anchor)).toBe(true)
+      editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+      const after = cleanHTML()
+      expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+      editor.doc.undo(); await Promise.resolve()
+      expect(cleanHTML()).toBe(before)
+      editor.doc.redo(); await Promise.resolve()
+      expect(cleanHTML()).toBe(after)
+    }
+    document.body.className = ""
+  })
+
+  it("transforms the virtual bullet from the list's local content origin and clears it on materialization", () => {
+    document.body.innerHTML = '<ul style="box-sizing:border-box;width:200px;height:40px;padding:8px 40px;border:2px solid;transform:matrix(0,2,-2,0,0,0)"></ul>'
+    const list = document.querySelector("ul")!
+    const rect = vi.spyOn(list, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 200, 80, 400))
+    $.move(list)
+    editor.features.list.refreshSelectionPresentation()
+    const marker = editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")!
+    expect(marker.style.left).toBe("160px")
+    expect(marker.style.top).toBe("284px")
+    expect(marker.style.transformOrigin).toBe("0 0")
+    expect(marker.style.transform).toBe("matrix(0, 2, -2, 0, 0, 0)")
+    rect.mockReturnValue(new DOMRect(80, 100, 80, 400))
+    window.dispatchEvent(new Event("scroll"))
+    expect(marker.style.left).toBe("140px")
+    expect(marker.style.top).toBe("184px")
+    const input = new InputEvent("beforeinput", {inputType: "insertText", data: "A", bubbles: true, cancelable: true})
+    list.dispatchEvent(input)
+    editor.features.list.refreshSelectionPresentation()
+    expect(marker.getAttribute("part")).toContain("virtual-list-item-hidden")
+    expect(marker.style.transform).toBe("")
+    expect(list.innerHTML).toBe("<li>A</li>")
+    expect(cleanHTML()).not.toContain("virtual-list")
+    rect.mockRestore()
+  })
+
   it("mirrors aligned image markers into empty-list affordances and cleans them up", () => {
     document.body.innerHTML = '<ul style="--ww-list-marker-image: url(data:image/png;base64,AQID); list-style-image: var(--ww-list-marker-image)"></ul><p>Elsewhere</p>'
     $.move(document.querySelector("ul")!, 0)

@@ -4393,6 +4393,13 @@ export class ManipulationFeature extends EditorFeature {
     const container = this.editor.features.canvas.active ? document.body
       : this.editor.features.slides.active ? this.editor.features.slides.containingSlide(range.startContainer) : null
     if(!container || !container.contains(range.startContainer) || !container.contains(range.endContainer)) return false
+    // Ordinary Enter belongs to semantic list editing, including virtual first
+    // items. Modified Enter and insertLineBreak retain freeform soft breaks.
+    const paragraph = event instanceof KeyboardEvent
+      ? !event.altKey && !event.shiftKey && !modifierKeyDown(event)
+      : event instanceof InputEvent && event.inputType === "insertParagraph"
+    const list = getContainer(range.startContainer)?.closest("ul, ol, menu, dl")
+    if(paragraph && list?.contains(range.endContainer)) return false
     let root: Element | null = getContainer(range.startContainer)
     while(root && root.parentElement !== container) root = root.parentElement
     return Boolean(root && !slideLayoutRole(root) && root.contains(range.endContainer))

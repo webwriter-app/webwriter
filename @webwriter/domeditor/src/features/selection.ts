@@ -1542,13 +1542,25 @@ export class SelectionFeature extends EditorFeature {
       range.setEnd(...last)
     }
     else {
+      // textContent joins words on opposite sides of BRs. Segment only the
+      // current hard line, retaining DOM offsets across inline formatting.
+      const line = document.createRange()
+      line.selectNodeContents(block)
+      for(const br of block.querySelectorAll("br")) {
+        if(atomicEditingContainer(br, this.editor.schema)) continue
+        const boundary = document.createRange()
+        boundary.selectNode(br)
+        if(boundary.comparePoint(node, offset) > 0) line.setStartAfter(br)
+        else { line.setEndBefore(br); break }
+      }
+      const start = textOffsetIn(block, line.startContainer, line.startOffset)
       const position = textOffsetIn(block, node, offset)
-      if(position === null) return
-      const segments = new Intl.Segmenter(undefined, {granularity: "word"}).segment(block.textContent ?? "")
-      const unit = segments.containing(position) ?? segments.containing(position - 1)
+      if(start === null || position === null) return
+      const segments = new Intl.Segmenter(undefined, {granularity: "word"}).segment(line.toString())
+      const unit = segments.containing(position - start) ?? segments.containing(position - start - 1)
       if(!unit) return
-      range.setStart(...textPointAtOffset(block, unit.index, undefined, "forward"))
-      range.setEnd(...textPointAtOffset(block, unit.index + unit.segment.length))
+      range.setStart(...textPointAtOffset(block, start + unit.index, undefined, "forward"))
+      range.setEnd(...textPointAtOffset(block, start + unit.index + unit.segment.length))
     }
     return range
   }

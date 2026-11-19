@@ -745,10 +745,15 @@ describe("canvas document layout", () => {
     expect(dots.style.backgroundSize).toBe("20px 20px")
 
     expect(controls.querySelector('button[name="text"]')).toBeNull()
-    for(const [name, label] of [["hand", "Toggle hand tool (middle-drag also pans)"], ["actual-size", "Reset zoom to 100%"], ["fit-content", "Fit to view"]]) {
+    for(const [name, label] of [["hand", "Toggle hand tool (middle-drag also pans)"], ["zoom-out", "Zoom out"], ["zoom-in", "Zoom in"], ["actual-size", "Reset zoom to 100%"], ["fit-content", "Fit to view"]]) {
       const button = controls.querySelector<HTMLButtonElement>(`button[name="${name}"]`)!
       expect(button.getAttribute("aria-label")).toBe(label)
-      expect(button.querySelector("svg")).not.toBeNull()
+      expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+      const style = getComputedStyle(button)
+      expect(style.display).toBe("inline-flex")
+      expect(style.alignItems).toBe("center")
+      expect(style.justifyContent).toBe("center")
+      expect(style.paddingTop).toBe(style.paddingLeft)
     }
   })
 

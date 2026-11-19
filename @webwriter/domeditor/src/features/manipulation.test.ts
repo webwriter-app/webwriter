@@ -1802,11 +1802,10 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
   beforeEach(() => { headHTML = document.head.innerHTML })
   afterEach(() => { document.head.innerHTML = headHTML })
 
-  it.each(["p", "h1", "section", "ul", "details"])("keeps a %s root intact on Enter and native paragraph input", tag => {
+  it.each(["p", "h1", "section", "details"])("keeps a %s root intact on Enter and native paragraph input", tag => {
     for(const input of ["key", "beforeinput"]) {
       const root = document.createElement(tag)
-      root.innerHTML = tag === "section" ? "<p>ab</p>" : tag === "ul" ? "<li>ab</li>"
-        : tag === "details" ? "<summary>ab</summary><p>Body</p>" : "ab"
+      root.innerHTML = tag === "section" ? "<p>ab</p>" : tag === "details" ? "<summary>ab</summary><p>Body</p>" : "ab"
       document.body.replaceChildren(root)
       document.body.className = ""
       expect(editor.setDocumentLayout(mode, "document")).toBe(true)
@@ -1861,7 +1860,7 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
     expect(paragraph.contains($.anchor)).toBe(true)
   })
 
-  it.each(["key", "insertParagraph", "insertLineBreak"])("keeps empty text containers intact across repeated %s breaks", input => {
+  it.each(["key", "insertLineBreak"])("keeps empty text containers intact across repeated %s soft breaks", input => {
     for(const tag of ["p", "li", "dt", "dd"]) {
       document.body.innerHTML = tag === "p" ? '<p></p><p>Neighbor</p>'
         : tag === "li" ? '<ul><!--keep--><li></li><li>Neighbor</li></ul>'
@@ -1871,7 +1870,7 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
       const siblings = Array.from(parent.childNodes)
       $.move(item)
       for(let count = 1; count <= 3; count++) {
-        const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+        const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true})
           : new InputEvent("beforeinput", {inputType: input, bubbles: true, cancelable: true})
         item.dispatchEvent(event)
         expect(event.defaultPrevented).toBe(true)
@@ -1883,14 +1882,14 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
     }
   })
 
-  it.each(["ul", "ol", "menu", "dl"])("inserts a break in a new %s without exiting the list", tag => {
-    for(const input of ["key", "insertParagraph", "insertLineBreak"]) {
+  it.each(["ul", "ol", "menu", "dl"])("inserts a soft break in a new %s without exiting the list", tag => {
+    for(const input of ["key", "insertLineBreak"]) {
       document.body.innerHTML = `<${tag}><!--keep--></${tag}>`
       expect(editor.setDocumentLayout(mode, "document")).toBe(true)
       const list = document.querySelector(tag)!, parent = list.parentElement!
       const siblings = Array.from(parent.childNodes)
       $.move(list, list.childNodes.length)
-      const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+      const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true})
         : new InputEvent("beforeinput", {inputType: input, bubbles: true, cancelable: true})
       list.dispatchEvent(event)
       expect(event.defaultPrevented).toBe(true)
@@ -1901,14 +1900,14 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
     }
   })
 
-  it("shares, serializes, undoes and redoes the first break in a new list", () => {
+  it("shares, serializes, undoes and redoes the first soft break in a new list", () => {
     document.body.innerHTML = '<ul><!--keep--></ul>'
     expect(editor.setDocumentLayout(mode, "document")).toBe(true)
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     const original = editor.toHTML(true)
     $.move(document.querySelector("ul")!, 1)
-    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true}))
     editor.doc.syncFromDOM()
     const inserted = editor.toHTML(true)
     expect(inserted).toContain("<!--keep--><li><br><br></li>")

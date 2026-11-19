@@ -608,9 +608,9 @@ export class CanvasFeature extends EditorFeature {
       const hand = button("hand", "", "Toggle hand tool (middle-drag also pans)")
       hand.innerHTML = canvasIcons.hand
       hand.setAttribute("aria-pressed", String(this.hand))
-      button("zoom-out", "−", "Zoom out")
+      button("zoom-out", "", "Zoom out").innerHTML = canvasIcons.zoomOut
       buttons.append(document.createElement("output"))
-      button("zoom-in", "+", "Zoom in")
+      button("zoom-in", "", "Zoom in").innerHTML = canvasIcons.zoomIn
       buttons.append(groupCanvasZoomPresets(button("actual-size", "", "Reset zoom to 100%"), button("fit-content", "", "Fit to view")))
       updateCanvasZoomControls(this.controls, this.zoom)
     }

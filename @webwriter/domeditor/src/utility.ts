@@ -207,6 +207,11 @@ function adjacentElement(nodes: NodeListOf<ChildNode>, offset: number, direction
 export function isEmptyParagraph(node: Node | null): boolean {
   if(!isElement(node) || node.localName !== "p" || node.hasAttribute("is")
     || node.getAttribute("contenteditable") === "false") return false
+  return hasEmptyInlineContent(node)
+}
+
+/** Empty inline formatting and a single caret BR do not count as content. */
+export function hasEmptyInlineContent(node: Element): boolean {
   let breaks = 0
   const empty = (child: Node): boolean => child instanceof Text ? !child.data.trim()
     : child.nodeType === Node.COMMENT_NODE || child.nodeType === Node.PROCESSING_INSTRUCTION_NODE ? true
