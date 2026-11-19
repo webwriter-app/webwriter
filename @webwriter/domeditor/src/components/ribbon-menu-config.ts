@@ -130,7 +130,7 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
       return [{
         label: "Heading",
         action: `element:${item.tag}`,
-        submenu: insertionSubmenuForTags(headingInsertionTags),
+        submenu: insertionSubmenuForTags(["h1", ...headingInsertionTags]),
       } satisfies RibbonMenuButton]
     }
     if(item.section === "Text" && headingInsertionTags.includes(item.tag as typeof headingInsertionTags[number])) return []

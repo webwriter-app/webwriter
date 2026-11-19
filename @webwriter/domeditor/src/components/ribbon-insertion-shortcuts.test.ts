@@ -47,6 +47,25 @@ async function mountRibbon(settings = defaultAppSettings(false)) {
 }
 
 describe("insertion ribbon shortcuts", () => {
+  it("offers Heading 1 before the other heading levels and dispatches its insertion command", async () => {
+    const ribbon = await mountRibbon()
+    const command = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", command)
+    const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Heading"]')!
+    heading.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await heading.updateComplete
+    const menu = heading.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    const items = Array.from(menu.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item"))
+    expect(items.map(item => item.textContent?.trim()).slice(0, 6))
+      .toEqual(["Heading 1", "Heading 2", "Heading 3", "Heading 4", "Heading 5", "Heading 6"])
+    items[0].click()
+    expect(command).toHaveBeenCalledOnce()
+    expect(command.mock.calls[0][0].detail.label).toBe("element:h1")
+    await heading.updateComplete
+    expect(menu.hidden).toBe(true)
+  })
+
   it("drags ribbon elements and dropdown entries with their icon and tag", async () => {
     const ribbon = await mountRibbon()
     const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Paragraph"]')!
