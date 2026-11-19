@@ -142,15 +142,17 @@ button.onclick = async () => {
       closeTo(target.getBoundingClientRect().width, 280, "Narrow allocation")
       assert(target.style.width === "100%" && target.style.maxWidth === "920px", "Responsive width retained")
     })
-    check("Shift retains CSS scaling", () => {
+    check("Shift keeps ordinary boxes in layout", () => {
       const target = targetElement("horizontal-tb", "border-box", "relative")
+      target.style.margin = "30px 0"
+      editor.features.selection.captureElement(target)
       const before = target.getBoundingClientRect()
-      drag(target, "right", 40, 0, {shiftKey: true})
+      drag(target, "down-right", 40, 0, {shiftKey: true})
       const rect = target.getBoundingClientRect()
-      closeTo(rect.width, before.width + 40, "Scaled width")
+      closeTo(rect.width, before.width, "Authored width")
       closeTo(rect.left, before.left, "Opposite edge")
-      assert(target.style.maxInlineSize === "unset" && target.style.maxBlockSize === "", "Maximums unchanged")
-      assert(target.style.scale !== "", "Scale authored")
+      assert(target.style.maxWidth === "360px", "Maximum width authored")
+      assert(target.style.scale === "", "No scale authored")
     })
     check("static edge resize stays centered in normal flow", () => {
       const target = targetElement()

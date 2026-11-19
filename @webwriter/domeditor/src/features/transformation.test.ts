@@ -1398,6 +1398,20 @@ describe("freeform group transformation", () => {
     expect(last).not.toHaveAttribute("data-ww-group")
   })
 
+  it.each(["canvas", "slides"] as const)("preserves proportions when Shift-resizing a saved %s group", mode => {
+    const {first, last} = group(mode)
+    expect(feature.setSpatialGrouping("group")).toBe(true)
+    start("scale-down-right")
+    move(550, 160, {shiftKey: true})
+    end()
+    for(const target of [first, last]) {
+      expect(target.style.width).toBe("150px")
+      expect(target.style.height).toBe("75px")
+      expect(target.style.getPropertyValue("scale")).toBe("")
+      expect(target.style.transform).toBe("")
+    }
+  })
+
   it.each(["canvas", "slides"] as const)("resizes, rotates and deletes a saved %s group as a unit", async mode => {
     const {first, last, outside} = group(mode)
     expect(feature.setSpatialGrouping("group")).toBe(true)
@@ -3435,6 +3449,63 @@ describe("transform controls and geometry", () => {
     document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
   })
 
+  describe.each(["document", "canvas"])("%s Shift resizing", mode => {
+    it.each(["p", "table", "iframe", "demo-widget"])("resizes %s in layout and preserves authored content and undo", async tag => {
+      if(mode === "canvas") document.body.className = "ww-canvas"
+      const target = targetElement(tag)
+      target.innerHTML = tag === "table" ? '<tbody><tr><td>Cell<!--keep--></td></tr></tbody>' : 'Content<!--keep-->'
+      if(tag === "demo-widget") target.attachShadow({mode: "open"}).innerHTML = '<button>Widget control</button>'
+      target.style.cssText = "width:200px;height:100px"
+      if(mode === "canvas") target.style.position = "absolute"
+      mockRect(target)
+      captureNode(target)
+      expect(feature.target).toBe(target)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const original = editor.toHTML(true), content = target.innerHTML
+      const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+      handle.hidden = false
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+      const move = (shiftKey: boolean) => movePointer(pointer("pointermove", {pointerId: 3, clientX: 270, clientY: 185, altKey: true, shiftKey}))
+      move(false)
+      const resizedStyle = target.style.cssText
+      move(true)
+      expect(target.style.cssText).toBe(resizedStyle)
+      expect(target.style.maxWidth).toBe("170px")
+      expect(target.style.getPropertyValue("scale")).toBe("")
+      move(false)
+      expect(target.style.cssText).toBe(resizedStyle)
+      document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+      expect(target.innerHTML).toBe(content)
+      await mutationsDelivered()
+      editor.doc.syncFromDOM()
+      const resized = editor.toHTML(true)
+      expect(resized).not.toMatch(/◆|transform-overlay/)
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(original)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(resized)
+    })
+
+    it("preserves an authored scale when Shift-resizing a widget", () => {
+      if(mode === "canvas") document.body.className = "ww-canvas"
+      const target = targetElement("demo-widget")
+      target.style.cssText = "width:200px;height:100px;scale:1.5"
+      mockRect(target)
+      captureNode(target)
+      const original = target.style.cssText
+      const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+      handle.hidden = false
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+      movePointer(pointer("pointermove", {pointerId: 3, clientX: 255, clientY: 170, altKey: true, shiftKey: true}))
+      expect(target.style.maxWidth).toBe("170px")
+      expect(target.style.maxHeight).toBe("80px")
+      expect(target.style.getPropertyValue("scale")).toBe("1.5")
+      document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+      expect(target.style.cssText).toBe(original)
+    })
+  })
+
   describe.each(["figure", "demo-widget"])("static %s resizing", tag => {
     it.each(["up-left", "up-right", "down-left", "down-right", "up-up", "right-right", "down-down", "left-left"])("keeps normal flow when dragging %s", direction => {
       const target = targetElement(tag)
@@ -3463,12 +3534,12 @@ describe("transform controls and geometry", () => {
           else expect(target.style.height).toBe("50px")
           expect(target.style.getPropertyValue("scale") || "").toBe("")
         }
-        else if(modifiers.shiftKey) expect(target.style.scale).not.toBe("")
         else {
           if(dx) expect(parseFloat(target.style.maxWidth)).toBeLessThan(100)
           else expect(target.style.maxWidth).toBe("")
           if(dy) expect(parseFloat(target.style.maxHeight)).toBeLessThan(50)
           else expect(target.style.maxHeight).toBe("")
+          expect(target.style.getPropertyValue("scale")).toBe("")
         }
         document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
         expect(target.style.position).toBe(initialPosition)
@@ -3527,7 +3598,7 @@ describe("transform controls and geometry", () => {
   it.each([
     {modifiers: {altKey: true}, width: "113px", left: "0px", scale: ""},
     {modifiers: {ctrlKey: true}, width: "130px", left: "0px", scale: ""},
-    {modifiers: {shiftKey: true}, width: "", left: "0px", scale: "1.1 1"},
+    {modifiers: {shiftKey: true}, width: "110px", left: "0px", scale: ""},
   ])("preserves resize modifiers at edges: $modifiers", ({modifiers, width, left, scale}) => {
     const target = targetElement("div")
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})

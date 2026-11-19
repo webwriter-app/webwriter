@@ -4130,13 +4130,14 @@ await check("canvas and slide text exposes eight functional resize handles", asy
         else target.innerHTML = 'Text <em>with formatting</em><!--keep--><unfamiliar-inline>and content</unfamiliar-inline>'
         doc.querySelector("p")!.replaceWith(target)
         const children = Array.from(target.childNodes), feature = editor.features.transformation
-        for(const direction of ["up-left", "up-up", "up-right", "right-right", "down-right", "down-down", "down-left", "left-left"]) {
+        for(const {direction, shiftKey} of ["up-left", "up-up", "up-right", "right-right", "down-right", "down-down", "down-left", "left-left"]
+          .flatMap(direction => [false, true].map(shiftKey => ({direction, shiftKey})))) {
           target.style.cssText = "display:block;width:320px;height:100px;left:480px;top:140px"
           editor.features.selection.captureElement(target)
           feature.updateInfo()
           await layoutFrame()
           const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
-          const context = `${mode}/${tag}/${direction}`
+          const context = `${mode}/${tag}/${direction}/Shift:${shiftKey}`
           assert(handles.length === 8, `${context}: missing resize handles`)
           const before = target.getBoundingClientRect(), handle = handles.find(handle => handle.dataset.resizeDirection === direction)!
           const rect = handle.getBoundingClientRect(), style = view.getComputedStyle(handle)
@@ -4149,10 +4150,13 @@ await check("canvas and slide text exposes eight functional resize handles", asy
             `${context}: handle does not follow its vertical edge`)
           handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
           handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: rect.left + 4, clientY: rect.top + 4}))
-          feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: rect.left + 4 + x * 40, clientY: rect.top + 4 + y * 30}))
+          feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: rect.left + 4 + x * 40, clientY: rect.top + 4 + y * 30, shiftKey}))
           feature.handleScaleEnd()
           await layoutFrame()
           const after = target.getBoundingClientRect()
+          assert(!target.style.getPropertyValue("scale"), `${context}: resize authored CSS scale`)
+          const resizedHandle = handle.getBoundingClientRect()
+          assert(resizedHandle.width === 8 && resizedHandle.height === 8, `${context}: resize scaled the handle`)
           assert(Math.abs(after.width - before.width - (x ? 40 : 0)) < 1 && Math.abs(after.height - before.height - (y ? 30 : 0)) < 1,
             `${context}: resize dimensions did not follow the pointer`)
           assert(Math.abs((x < 0 ? after.right - before.right : after.left - before.left)) < 1

@@ -134,7 +134,7 @@ The theme expresses the widget maximum through `--ww-widget-max`, which defaults
 
 ## Resize during transformations
 
-Transformation resizing defaults to the authored `max-inline-size` and `max-block-size` on the affected logical axes. These are upper bounds, so content can remain smaller and continue responding to its available space. Existing explicit dimensions remain in place; raising a maximum does not force an element beyond its explicit or natural size. Shift still uses CSS `scale` for visual resizing; it does not change the layout bounds.
+Transformation resizing defaults to the authored `max-inline-size` and `max-block-size` on the affected logical axes. These are upper bounds, so content can remain smaller and continue responding to its available space. Existing explicit dimensions remain in place; raising a maximum does not force an element beyond its explicit or natural size. Shift preserves proportions when resizing images and groups; ordinary elements continue to resize in layout without adding CSS `scale`.
 
 ## Respond to the container
 

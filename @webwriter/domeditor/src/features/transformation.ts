@@ -59,7 +59,6 @@ type Gesture = {
   parentMatrix: DOMMatrix
   rotate: number
   rotationAngle?: number
-  scale: number[]
   initial: CSSStyleDeclaration
   written: Map<string, StyleValue>
   moved: boolean
@@ -95,7 +94,7 @@ type Gesture = {
  * Canvas and slide items also set dimensions so they can grow with the handles.
  * Top/left handles keep the opposite edge fixed by adjusting offsets.
  * Ctrl/Cmd resizes about the center;
- * Shift preserves image proportions and stretches ordinary boxes with CSS scale.
+ * Shift preserves proportions when resizing images and groups.
  * Native players resize in layout so their controls keep their proportions.
  * Alt unsnaps.
  * SVG canvases crop their viewport by default; Alt resizes their contents.
@@ -1423,7 +1422,7 @@ export class TransformationFeature extends EditorFeature {
     const first = members[0]
     this.#gesture = {...first, mode, handle, pointerId: event instanceof PointerEvent ? event.pointerId : undefined,
       x: event.clientX, y: event.clientY, rect, width, height, cssWidth: width, cssHeight: height,
-      matrix, parentMatrix: this.#matrix(renderedParentElement(first.target)), rotate: angle, scale: [1, 1],
+      matrix, parentMatrix: this.#matrix(renderedParentElement(first.target)), rotate: angle,
       moved: false, captured: false, group: {members, center, angle, persistent}, endUndoGroup: this.editor.doc.beginUndoGroup()}
     this.editor.features.canvas.setMinimapRefreshPaused(true)
     this.#suppressClick = null
@@ -1591,7 +1590,7 @@ export class TransformationFeature extends EditorFeature {
       target, parent: target.parentElement, mode, handle,
       pointerId: event instanceof PointerEvent ? event.pointerId : undefined,
       x: event.clientX, y: event.clientY, rect: (rotationTarget ?? target).getBoundingClientRect(), ...this.#size(target),
-      matrix, parentMatrix: this.#matrix(renderedParentElement(rotationTarget ?? target)), rotate: this.#angle(getComputedStyle(rotationTarget ?? target).getPropertyValue("rotate")), scale: this.#scale(style.getPropertyValue("scale")),
+      matrix, parentMatrix: this.#matrix(renderedParentElement(rotationTarget ?? target)), rotate: this.#angle(getComputedStyle(rotationTarget ?? target).getPropertyValue("rotate")),
       initial, written: new Map(), moved: false,
       image: image && this.#canTransform(image) ? {target: image, parent: image.parentElement, initial: imageStyle, written: new Map()} : undefined,
       player: player ? {target: player, size: this.#size(player)} : undefined,
@@ -2037,11 +2036,10 @@ export class TransformationFeature extends EditorFeature {
     else if(x) dw = Math.max(dw, minDelta)
     const crop = gesture.canvas && !event.altKey
     const figure = target.matches(figureSelector)
-    const scaleInsteadOfResize = event.shiftKey && axes.width && axes.height && !crop && !text && !image && !player && !figure
     setPresentationState(document.body, `transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
     const popup = target.closest("[popover]")
     const insidePopup = Boolean(popup && popup !== target && popupElementRole(popup) === "content")
-    const resizeMode = `${Boolean(crop)}:${scaleInsteadOfResize}:${floatSideFromStyles(float, target.style, target.classList)}:${insidePopup}`
+    const resizeMode = `${Boolean(crop)}:${floatSideFromStyles(float, target.style, target.classList)}:${insidePopup}`
     if(gesture.resizeMode !== undefined && gesture.resizeMode !== resizeMode) this.#resetWritten()
     gesture.resizeMode = resizeMode
     if(gesture.canvas && !crop) this.#writeCanvasViewBox(gesture.canvas.initial)
@@ -2143,9 +2141,6 @@ export class TransformationFeature extends EditorFeature {
         this.#write("max-height", "none")
       }
     }
-    else if(scaleInsteadOfResize) {
-      this.#write("scale", `${gesture.scale[0] * (gesture.width + dw) / gesture.width} ${gesture.scale[1] * (gesture.height + dh) / gesture.height}`)
-    }
     else {
       resizeBox()
       if(minWidth && minWidth !== "auto" && minimum === undefined && (x || proportional)) {
@@ -2165,7 +2160,7 @@ export class TransformationFeature extends EditorFeature {
     // Use the final layout size to position spatial items and SVG viewports.
     let rect: DOMRect | undefined
     let actualDW = dw, actualDH = dh
-    if((keepAnchor || crop) && !scaleInsteadOfResize) {
+    if(keepAnchor || crop) {
       if(keepAnchor && !crop) rect = this.targetRect
       const size = this.#size(target, undefined, rect)
       actualDW = size.width - gesture.width
