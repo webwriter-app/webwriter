@@ -5002,6 +5002,36 @@ describe("paste()", () => {
     expect(document.querySelector("p br")).not.toBeNull()
   })
 
+  it.each(["native", "beforeinput", "async"])("undoes a complete %s paste when individual DOM syncs cannot merge by time", async method => {
+    document.body.innerHTML = '<p>old</p>'
+    editor.doc.syncFromDOM()
+    const stop = vi.spyOn(Y.UndoManager.prototype, "stopCapturing")
+    editor.doc.stopCapturing()
+    const manager = stop.mock.contexts.find((manager): manager is Y.UndoManager =>
+      manager instanceof Y.UndoManager && manager.scope.includes(editor.doc.body))!
+    stop.mockRestore()
+    // Force every ordinary DOM transaction into its own history item. The
+    // paste must group its deletion and insertion regardless of elapsed time.
+    manager.captureTimeout = 0
+    $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
+    const html = '<p><b>new</b></p>', data = new DataTransfer()
+    data.setData("text/html", html)
+    if(method === "async") {
+      await navigator.clipboard.write([new ClipboardItem({"text/html": html})])
+      await editor.features.manipulation.paste()
+    }
+    else document.dispatchEvent(method === "native"
+      ? new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true})
+      : new InputEvent("beforeinput", {inputType: "insertFromPaste", dataTransfer: data, bubbles: true, cancelable: true}))
+    expectBodyToBe('<p><b>new</b></p>')
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expectBodyToBe('<p>old</p>')
+    editor.doc.redo()
+    expectBodyToBe('<p><b>new</b></p>')
+    expect(manager.captureTimeout).toBe(0)
+  })
+
   it("preserves authored metadata outside the clipboard charset prologue", () => {
     const html = '<meta charset="utf-8"><meta itemprop="name" content="Lesson"><test-widget><meta charset="utf-8"><p>Widget</p></test-widget>'
     const {fragment} = editor.parseHTMLFragment(html, true, false)
@@ -7967,7 +7997,7 @@ describe("unified content transfer", () => {
   })
 
   it.each([[120, "left"], [180, "right"]] as const)("uses the projected %s float box beyond the target's height", (x, side) => {
-    document.body.innerHTML = '<video style="width:40px;height:60px"></video><p>target</p><p>displaced content</p>'
+    document.body.innerHTML = '<video style="width:40px;min-width:0;height:60px"></video><p>target</p><p>displaced content</p>'
     const source = document.querySelector("video")!, target = document.querySelector("p")!
     vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 200, 40, 60))
     vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 100, 30))
@@ -7986,6 +8016,21 @@ describe("unified content transfer", () => {
     expectClassFloat(source, side)
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     expect(document.body.querySelector("#◆float-drop-preview")).toBeNull()
+  })
+
+  it("keeps native minimum widths in float previews without changing authored sizing", () => {
+    document.body.innerHTML = '<video style="width:120px;min-width:175px;height:90px"></video><p>target</p>'
+    const source = document.querySelector("video")!, target = document.querySelector("p")!
+    vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 200, 175, 90))
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 300, 30))
+    const authored = source.getAttribute("style")
+    editor.features.manipulation.showFloatDropPreview(target, "left", "transfer", source)
+    const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
+    expect(parseFloat(preview.style.width)).toBe(175)
+    expect(parseFloat(preview.style.height)).toBe(90)
+    expect(source.getAttribute("style")).toBe(authored)
+    editor.features.manipulation.clearFloatDropPreview("transfer")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
   })
 
   it("measures drop targets in many parents with one reused probe", () => {

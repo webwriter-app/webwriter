@@ -92,8 +92,8 @@ export async function checkSlideEditing(host?: DOMEditor) {
       assert(rect.top > 5, "box-selection fixture lacks a grey margin")
       const origin = doc.elementFromPoint(start.clientX, start.clientY)!
       assert(origin && origin !== slide && !slide.contains(origin), "box selection did not start in the grey margin")
-      origin.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 4, button: 0, ...start}))
-      doc.body.dispatchEvent(new view.PointerEvent("pointermove", {bubbles: true, cancelable: true, pointerId: 4, button: 0, ...end}))
+      origin.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 4, button: 0, buttons: 1, ...start}))
+      doc.body.dispatchEvent(new view.PointerEvent("pointermove", {bubbles: true, cancelable: true, pointerId: 4, button: 0, buttons: 1, ...end}))
       assert(editor.appendix.querySelectorAll('[part~="box-selection-preview"]').length === 2, "grey-to-slide drag did not preview the enclosed items")
       doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, cancelable: true, pointerId: 4, button: 0, ...end}))
       await settle()

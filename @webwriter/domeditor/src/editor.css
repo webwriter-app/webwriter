@@ -639,7 +639,7 @@ body::part(hover-caret) {
 }
 
 body::part(hover-caret-transformed),
-body:not(.ww-slides):not(.ww-inactive-presentation)::part(hover-caret-native),
+body:where(:not(.ww-slides, .ww-inactive-presentation))::part(hover-caret-native),
 body:has(:state(ww-element-hovered))::part(hover-caret),
 body:state(ww-element-hovered)::part(hover-caret),
 body:has(:state(ww-style-target-hovered))::part(hover-caret),

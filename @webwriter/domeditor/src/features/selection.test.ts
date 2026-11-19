@@ -5783,6 +5783,26 @@ describe("document listeners", () => {
     expect([input.selectionStart, input.selectionEnd]).toEqual([1, 3])
   })
 
+  it("retains explicit capture of a structural widget part without entering its authored text", () => {
+    editor.schema.extendWidgets([
+      {tagName: "capture-parts", editingConfig: {content: "capture-part*"}},
+      {tagName: "capture-part", editingConfig: {group: "", content: "flow+"}},
+    ])
+    document.body.innerHTML = '<capture-parts><capture-part style="display:contents"><p>Authored text</p></capture-part></capture-parts>'
+    const parent = document.querySelector("capture-parts")!, part = parent.firstElementChild!
+
+    feature.captureElement(part)
+    feature.processSelection()
+
+    expect(feature.captureSelectedElement).toBe(part)
+    expect(document.getSelection()!.anchorNode).toBe(parent)
+    expect(document.getSelection()!.anchorOffset).toBe(0)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    $.move(part.querySelector("p")!.firstChild!, 1)
+    feature.processSelection()
+    expect(feature.captureSelectedElement).toBeNull()
+  })
+
   it("maintains opt-in native states through capture, element selection, text selection and destruction", () => {
     const widget = document.createElement("state-widget")
     const states = new Set(["widget-owned"])

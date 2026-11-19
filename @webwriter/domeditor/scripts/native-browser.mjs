@@ -173,7 +173,7 @@ const expectedChecks = [
   "attribution is limited to top-level elements and follows nesting",
   "attribution inputs keep visible carets during element and capture selection",
   "toolbox attribution opens for multiple elements and deletes metadata together",
-  "attribution license picker wraps definitions on a third line and offers only current CC licenses",
+  "attribution license picker wraps definitions and searches SPDX licenses",
   "block splitting retains attribution only on the original part",
   "new paragraphs and line breaks reveal the caret at the document end",
   "document float lanes leave widget-internal floats local",

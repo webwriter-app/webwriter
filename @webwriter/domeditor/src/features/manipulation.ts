@@ -1240,24 +1240,27 @@ export class ManipulationFeature extends EditorFeature {
       const laneWidth = lanes ? physicalSide === "left" ? leftWidth : rightWidth : length("var(--ww-float-width)", 256)
       const lane = laneWidth + gap
       const preferred = inline?.getPropertyValue("--ww-float-size") || `min(100%, var(--ww-float-width, 256px), ${authoredWidth && authoredWidth !== "auto" ? authoredWidth : "var(--ww-float-width, 256px)"})`
+      const minimum = source?.isConnected ? getComputedStyle(source).minWidth : inline?.minWidth || "0px"
       const maximum = inline?.getPropertyValue("max-inline-size") || inline?.maxWidth || "none"
       const fallbackWidth = Math.min(available, number(inline?.width ?? "") || source?.getBoundingClientRect().width || laneWidth)
       // Parents of equal width resolve the same size. Writing the probe's
       // style again would make the style engine repeat the theme's
       // BODY:has([style*=float]) tests over the whole document for each one.
-      const widthKey = `${available}|${themed ? laneWidth : ""}|${preferred}|${maximum}|${fallbackWidth}`
+      const widthKey = `${available}|${themed ? laneWidth : ""}|${preferred}|${minimum}|${maximum}|${fallbackWidth}`
       let width = reuse ? measurements.widths?.get(widthKey) : undefined
       if(width === undefined) {
         overlay.style.width = `${available}px`
         probe.style.cssText = probeStyle
         probe.style.position = "static"
         if(themed) probe.style.setProperty("--ww-float-width", `${laneWidth}px`)
-        probe.style.width = preferred
+        // Native minimums win over the lane's preferred width on the source too.
+        probe.style.width = lanes ? `min(${preferred}, ${laneWidth}px)` : preferred
+        probe.style.minWidth = minimum
         probe.style.maxWidth = maximum
-        width = probe.getBoundingClientRect().width || Math.min(number(getComputedStyle(probe).width) || fallbackWidth, number(maximum) || Infinity)
+        const style = getComputedStyle(probe)
+        width = probe.getBoundingClientRect().width || Math.max(number(style.minWidth), Math.min(number(style.width) || fallbackWidth, number(maximum) || Infinity))
         if(reuse) (measurements.widths ??= new Map()).set(widthKey, width)
       }
-      if(lanes) width = Math.min(width, laneWidth)
       let height = 0
       if(source?.isConnected) {
         const initial = source.getBoundingClientRect()
@@ -3884,77 +3887,81 @@ export class ManipulationFeature extends EditorFeature {
   /** A single heading without local permissions can join an existing text container.
    * Gaps and whole-element replacements retain its authored heading level. */
   private insertPastedFragment(fragment: DocumentFragment) {
-    this.editor.features.mark.allowAutomaticLinksAfterPaste()
-    for(const math of Array.from(fragment.querySelectorAll("math"))) {
-      if(math.namespaceURI !== MATH_NAMESPACE) continue
-      let ancestor = math.parentElement
-      while(ancestor && !ancestor.localName.includes("-") && !ancestor.hasAttribute("is")) ancestor = ancestor.parentElement
-      if(!ancestor) math.setAttribute("display", "inline")
-    }
-    // Remap unambiguous copies of the built-in popup without changing
-    // arbitrary authored IDs or references we cannot safely rewrite.
-    for(const popup of fragment.querySelectorAll<HTMLElement>('[popover][id^="popup-"]')) {
-      const id = popup.id
-      if(!/^popup-[0-9a-f-]{36}$/i.test(id) || !document.getElementById(id)) continue
-      const targets = Array.from(fragment.querySelectorAll<HTMLElement>("[id]")).filter(element => element.id === id)
-      const invokers = Array.from(fragment.querySelectorAll<HTMLElement>("[popovertarget]"))
-        .filter(element => element.getAttribute("popovertarget") === id)
-      if(targets.length !== 1 || !invokers.length) continue
-      const ambiguous = Array.from(fragment.querySelectorAll("*")).some(element =>
-        Array.from(element.attributes).some(attribute => attribute.value.includes(id)
-          && !(element === popup && attribute.name === "id")
-          && !(invokers.includes(element as HTMLElement) && attribute.name === "popovertarget")
-          && !(invokers.includes(element as HTMLElement) && attribute.name === "style"
-            && attribute.value.trim() === `anchor-name: --${id};`)
-          && !(element === popup && attribute.name === "style"
-            && attribute.value.trim() === `position-anchor: --${id};`))
-        || element.localName === "style" && element.textContent?.includes(id))
-      if(ambiguous) continue
-      let replacement = `popup-${crypto.randomUUID()}`
-      while(document.getElementById(replacement) || fragment.getElementById(replacement)) replacement = `popup-${crypto.randomUUID()}`
-      popup.id = replacement
-      if(popup.style.getPropertyValue("position-anchor").trim() === `--${id}`) popup.style.setProperty("position-anchor", `--${replacement}`)
-      invokers.forEach(invoker => invoker.setAttribute("popovertarget", replacement))
-      invokers.forEach(invoker => {
-        if(invoker.style.getPropertyValue("anchor-name").trim() === `--${id}`) invoker.style.setProperty("anchor-name", `--${replacement}`)
-      })
-    }
-    remapPastedAuthoredIds(fragment, document, undefined, this.editor.features.widget.isWidget)
-    this.selectCapturedElementForInsertion()
-    if(this.insertLayoutPaste(fragment)) return
-    if(!this.editor.schema.allowsPlacement($.ranges[0]?.startContainer ?? null, Array.from(fragment.childNodes))) return false
-    if(this.insertListPaste(fragment)) return true
-    const container = $.anchorContainer
-    if(!$.isElementSelection && !$.isGapSelection && !$.isEmptyDocumentSelection
-      && container && container === $.focusContainer && !isDocumentRoot(container)
-      && !isAtomicEditingElement(container, this.editor.schema)) {
-      const nodes = Array.from(fragment.childNodes).filter(node => node.nodeType !== Node.TEXT_NODE || node.textContent?.trim())
-      const heading = nodes.length === 1 ? nodes[0] : null
-      if(isElement(heading) && /^h[1-6]$/.test(heading.localName) && !heading.hasAttribute("is")
-        && !Array.from(heading.childNodes).some(isDistributionPI)) {
-        heading.replaceWith(...heading.childNodes)
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      this.editor.features.mark.allowAutomaticLinksAfterPaste()
+      for(const math of Array.from(fragment.querySelectorAll("math"))) {
+        if(math.namespaceURI !== MATH_NAMESPACE) continue
+        let ancestor = math.parentElement
+        while(ancestor && !ancestor.localName.includes("-") && !ancestor.hasAttribute("is")) ancestor = ancestor.parentElement
+        if(!ancestor) math.setAttribute("display", "inline")
       }
+      // Remap unambiguous copies of the built-in popup without changing
+      // arbitrary authored IDs or references we cannot safely rewrite.
+      for(const popup of fragment.querySelectorAll<HTMLElement>('[popover][id^="popup-"]')) {
+        const id = popup.id
+        if(!/^popup-[0-9a-f-]{36}$/i.test(id) || !document.getElementById(id)) continue
+        const targets = Array.from(fragment.querySelectorAll<HTMLElement>("[id]")).filter(element => element.id === id)
+        const invokers = Array.from(fragment.querySelectorAll<HTMLElement>("[popovertarget]"))
+          .filter(element => element.getAttribute("popovertarget") === id)
+        if(targets.length !== 1 || !invokers.length) continue
+        const ambiguous = Array.from(fragment.querySelectorAll("*")).some(element =>
+          Array.from(element.attributes).some(attribute => attribute.value.includes(id)
+            && !(element === popup && attribute.name === "id")
+            && !(invokers.includes(element as HTMLElement) && attribute.name === "popovertarget")
+            && !(invokers.includes(element as HTMLElement) && attribute.name === "style"
+              && attribute.value.trim() === `anchor-name: --${id};`)
+            && !(element === popup && attribute.name === "style"
+              && attribute.value.trim() === `position-anchor: --${id};`))
+          || element.localName === "style" && element.textContent?.includes(id))
+        if(ambiguous) continue
+        let replacement = `popup-${crypto.randomUUID()}`
+        while(document.getElementById(replacement) || fragment.getElementById(replacement)) replacement = `popup-${crypto.randomUUID()}`
+        popup.id = replacement
+        if(popup.style.getPropertyValue("position-anchor").trim() === `--${id}`) popup.style.setProperty("position-anchor", `--${replacement}`)
+        invokers.forEach(invoker => invoker.setAttribute("popovertarget", replacement))
+        invokers.forEach(invoker => {
+          if(invoker.style.getPropertyValue("anchor-name").trim() === `--${id}`) invoker.style.setProperty("anchor-name", `--${replacement}`)
+        })
+      }
+      remapPastedAuthoredIds(fragment, document, undefined, this.editor.features.widget.isWidget)
+      this.selectCapturedElementForInsertion()
+      if(this.insertLayoutPaste(fragment)) return
+      if(!this.editor.schema.allowsPlacement($.ranges[0]?.startContainer ?? null, Array.from(fragment.childNodes))) return false
+      if(this.insertListPaste(fragment)) return true
+      const container = $.anchorContainer
+      if(!$.isElementSelection && !$.isGapSelection && !$.isEmptyDocumentSelection
+        && container && container === $.focusContainer && !isDocumentRoot(container)
+        && !isAtomicEditingElement(container, this.editor.schema)) {
+        const nodes = Array.from(fragment.childNodes).filter(node => node.nodeType !== Node.TEXT_NODE || node.textContent?.trim())
+        const heading = nodes.length === 1 ? nodes[0] : null
+        if(isElement(heading) && /^h[1-6]$/.test(heading.localName) && !heading.hasAttribute("is")
+          && !Array.from(heading.childNodes).some(isDistributionPI)) {
+          heading.replaceWith(...heading.childNodes)
+        }
+      }
+      // A copied inline Popup carries its out-of-flow content as a sibling in
+      // clipboard HTML. Insert the inline run first, then restore each linked
+      // content element beside its live text block (or inside its table cell).
+      const popupContents = Array.from(fragment.children).filter(element => element.matches(".ww-popup-content[popover][id]"))
+        .flatMap(content => {
+          const toggle = Array.from(fragment.querySelectorAll<HTMLButtonElement>(".ww-popup button[popovertarget]"))
+            .find(candidate => candidate.getAttribute("popovertarget") === content.id)
+          return toggle ? [{toggle, content}] : []
+        })
+      popupContents.forEach(({content}) => content.remove())
+      const result = this.insertClipboardFragment(fragment, false, true)
+      if(result !== false) for(const {toggle, content} of popupContents) {
+        if(!toggle.isConnected || document.getElementById(content.id)) continue
+        const wrapper = toggle.closest(".ww-popup")
+        if(!wrapper) continue
+        const block = getContainer(wrapper)
+        if(block.matches("td, th, caption")) block.append(content)
+        else block.after(content)
+      }
+      return result
     }
-    // A copied inline Popup carries its out-of-flow content as a sibling in
-    // clipboard HTML. Insert the inline run first, then restore each linked
-    // content element beside its live text block (or inside its table cell).
-    const popupContents = Array.from(fragment.children).filter(element => element.matches(".ww-popup-content[popover][id]"))
-      .flatMap(content => {
-        const toggle = Array.from(fragment.querySelectorAll<HTMLButtonElement>(".ww-popup button[popovertarget]"))
-          .find(candidate => candidate.getAttribute("popovertarget") === content.id)
-        return toggle ? [{toggle, content}] : []
-      })
-    popupContents.forEach(({content}) => content.remove())
-    const result = this.insertClipboardFragment(fragment, false, true)
-    if(result !== false) for(const {toggle, content} of popupContents) {
-      if(!toggle.isConnected || document.getElementById(content.id)) continue
-      const wrapper = toggle.closest(".ww-popup")
-      if(!wrapper) continue
-      const block = getContainer(wrapper)
-      if(block.matches("td, th, caption")) block.append(content)
-      else block.after(content)
-    }
-    return result
+    finally { end() }
   }
 
   /** Insert copied list items into the live list at an item boundary. */

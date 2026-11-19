@@ -834,8 +834,8 @@ describe("collaborative version history", () => {
     expect(hasPresentationState(document.body, "editing-locked")).toBe(true)
     const lockedAffordanceRule = editor.appendix.adoptedStyleSheets
       .flatMap(stylesheet => Array.from(stylesheet.cssRules))
-      .find(rule => (rule as CSSStyleRule).selectorText ?.endsWith("> :not(slot):not(.◆ai-review-toolbar)")) as CSSStyleRule
-    expect(lockedAffordanceRule.style.display).toBe("none")
+      .find(rule => (rule as CSSStyleRule).selectorText?.endsWith(":not(.◆ai-review-toolbar)")) as CSSStyleRule
+    expect(lockedAffordanceRule?.style.display).toBe("none")
 
     const beforeInput = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText"})
     document.querySelector("p")!.dispatchEvent(beforeInput)

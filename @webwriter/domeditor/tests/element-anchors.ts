@@ -173,12 +173,12 @@ export async function checkElementAnchors(inspect = false) {
           near(caret[key], expectedRect[key], `${fixture.name} ${label} caret ${key}`)
         }
       }
-      const assertTransformMatchesContent = (label: string) => {
-        const frameRect = editor.features.transformation.overlay.getBoundingClientRect(), contentRect = content.getBoundingClientRect()
-        for(const key of ["left", "top", "width", "height"] as const) near(frameRect[key], contentRect[key], `${fixture.name} ${label} transformation frame ${key}`)
+      const assertTransformMatches = (expected: Element, label: string) => {
+        const frameRect = editor.features.transformation.overlay.getBoundingClientRect(), expectedRect = expected.getBoundingClientRect()
+        for(const key of ["left", "top", "width", "height"] as const) near(frameRect[key], expectedRect[key], `${fixture.name} ${label} transformation frame ${key}`)
       }
       assertCaretMatches(figure, "captioned figure")
-      assertTransformMatchesContent("initial")
+      assertTransformMatches(figure, "initial")
       const originalFigureHeight = figure.getBoundingClientRect().height
       figure.prepend(caption)
       const extra = doc.createElement("p"); extra.textContent = `Additional ${fixture.name} content before the captured item.`
@@ -187,10 +187,10 @@ export async function checkElementAnchors(inspect = false) {
       await layout(view)
       assert(figure.getBoundingClientRect().height > originalFigureHeight + 60, `${fixture.name}: fixture reflow did not grow the figure`)
       assertCaretMatches(figure, "reflowed figure")
-      assertTransformMatchesContent("reflowed")
+      assertTransformMatches(figure, "reflowed")
       doc.defaultView!.scrollTo(360, 520); await layout(view)
       assertCaretMatches(figure, "scrolled figure")
-      assertTransformMatchesContent("scrolled")
+      assertTransformMatches(figure, "scrolled")
       if(inspect) {
         view.scrollTo(0, Math.max(0, figure.offsetTop - 100))
         await layout(view)
@@ -198,7 +198,7 @@ export async function checkElementAnchors(inspect = false) {
       }
       figure.before(content); editor.features.selection.captureElement(content); await layout(view)
       assertCaretMatches(content, "content after leaving figure")
-      assertTransformMatchesContent("content after leaving figure")
+      assertTransformMatches(content, "content after leaving figure")
       assert(editor.features.selection.captureSelectedElement === content, `${fixture.name}: moving content changed capture ownership`)
       figure.remove(); content.remove()
     }

@@ -35,13 +35,14 @@ export async function checkRibbonSnippetDrop(nativeRootEditor: HostEditor, asser
       const init = {dataTransfer: data, clientX: x, clientY: y, bubbles: true, cancelable: true, composed: true}
       const over = new DragEvent("dragover", init)
       const selectionFeature = editor.features.selection
+      const selection = doc.getSelection()!, original = selection.getRangeAt(0).cloneRange()
       surface.dispatchEvent(over)
       assert(over.defaultPrevented, "ribbon insertion drag was not accepted")
       if(mode === "document") {
-        const selection = doc.getSelection()
-        if(selection?.anchorNode !== paragraph.firstChild || selection.anchorOffset !== 7) {
-          assert(false, `moving drop caret is absent (expected Text@7, got ${selection?.anchorNode?.nodeName}@${selection?.anchorOffset}; ${paragraph.outerHTML})`)
-        }
+        const marker = editor.appendix.querySelector<HTMLElement>('[part~="drop-range-caret"]')?.getBoundingClientRect()
+        assert(marker && Math.abs(marker.left - caret.left) < 1 && Math.abs(marker.top - caret.top) < 1, "moving drop caret is absent")
+        assert(selection.getRangeAt(0).compareBoundaryPoints(Range.START_TO_START, original) === 0
+          && selection.getRangeAt(0).compareBoundaryPoints(Range.END_TO_END, original) === 0, "ribbon drag preview moved the authored selection")
       }
       surface.dispatchEvent(new DragEvent("drop", init))
       assert(message, "ribbon drop did not request insertion")

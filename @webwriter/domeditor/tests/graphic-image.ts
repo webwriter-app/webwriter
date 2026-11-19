@@ -49,9 +49,10 @@ export async function checkGraphicImage() {
       assert(!editor.features.selection.captureSelectedElement, `${layout}: moving to document text retained capture`)
       assert(!hasPresentationState(image, "graphic-shape-selected"), `${layout}: leaving the graphic retained the image marker`)
       const box = image.getBoundingClientRect()
-      image.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 9,
-        clientX: box.x + box.width / 2, clientY: box.y + box.height / 2}))
-      doc.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 9}))
+      const point = {clientX: box.x + box.width / 2, clientY: box.y + box.height / 2}
+      image.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 9, ...point}))
+      image.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 9, ...point}))
+      image.dispatchEvent(new view.MouseEvent("click", {bubbles: true, cancelable: true, button: 0, ...point}))
       await settle()
       assert(editor.features.graphic.selectedShape === image, `${layout}: reselecting an empty image lost selection`)
       assert(placeholder.target === image && placeholder.root.activeElement === input, `${layout}: reselecting an image lost its source input`)

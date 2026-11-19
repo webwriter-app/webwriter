@@ -487,7 +487,11 @@ describe("media editing", () => {
     expect(placeholder.root.activeElement).toBe(placeholder.root.querySelector(".url"))
 
     placeholder.hide()
+    // The mocked popover does not restore focus when it closes.
+    placeholder.root.querySelector<HTMLInputElement>(".url")!.blur()
+    expect(content.showPopover).toHaveBeenCalledOnce()
     image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, clientX: 36, clientY: 36}))
+    expect(content.showPopover).toHaveBeenCalledOnce()
     image.remove()
     image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, clientX: 36, clientY: 36}))
     window.dispatchEvent(new MouseEvent("click", {clientX: 36, clientY: 36}))

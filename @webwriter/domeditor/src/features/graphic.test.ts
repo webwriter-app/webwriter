@@ -847,6 +847,30 @@ describe("graphic editing", () => {
     expect(document.getSelection()!.anchorNode).toBe(paragraph.firstChild)
   })
 
+  it("captures an image on the consumed pointer press before its move or source controls start", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "image"})
+    const graphic = document.querySelector("svg")!, image = graphic.querySelector("image")!
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Outside the graphic"
+    graphic.after(paragraph)
+    document.body.focus()
+    $.move(paragraph.firstChild!, 1)
+    await mutationsDelivered()
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    const down = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 9})
+
+    image.dispatchEvent(down)
+
+    expect(down.defaultPrevented).toBe(true)
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(editor.features.graphic.selectedShape).toBe(image)
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 9}))
+    expect(editor.features.media.placeholder.target).toBe(image)
+    expect(editor.features.media.placeholder.root.activeElement).toBe(editor.features.media.placeholder.root.querySelector(".url"))
+  })
+
   it("loads a graphic image from the shared file picker", async () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "image"})
     const image = document.querySelector("svg image")!

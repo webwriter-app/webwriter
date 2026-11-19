@@ -2250,6 +2250,11 @@ export class TransformationFeature extends EditorFeature {
     this.#clearDrop(true)
     const target = this.target!
     const manipulation = this.editor.features.manipulation
+    const root = getDocumentRoot()
+    const hits = document.elementsFromPoint?.(event.clientX, event.clientY) ?? []
+    // A projected float lane can overlap the source's live box. Its own
+    // rendered content remains a self-drop, including behind appendix controls.
+    if(target.contains(hits.find(element => root.contains(element)) ?? null)) return
     const floatElement = manipulation.floatDropTarget(event, target)
     if(floatElement) {
       const float = manipulation.floatSide(floatElement, event.clientX)
@@ -2263,8 +2268,8 @@ export class TransformationFeature extends EditorFeature {
       manipulation.showDropRangePreview(empty)
       return
     }
-    const hit = document.elementsFromPoint?.(event.clientX, event.clientY).find(element =>
-      getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && !target.contains(element) && !element.contains(target))
+    const hit = hits.find(element =>
+      root.contains(element) && editingFlowRoot(element) === root && !target.contains(element) && !element.contains(target))
     if(!hit) {
       const range = manipulation.dropRange(event, target)
       if(range) {

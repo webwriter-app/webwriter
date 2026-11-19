@@ -7395,11 +7395,12 @@ describe("DomEditor.execute()", () => {
 
   it("routes media crop fields to the selected media instead of its top-level container", async () => {
     const {editor} = await mountEditor()
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const style = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => action.type === "getStyleState" ? style : undefined)
+    Object.assign(editor, {mediaSelection: {type: "picture", attributes: {style: "object-view-box: inset(10%)"}}, elementStyle: style})
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool("Edit")
-    toolbox.media = {type: "picture", attributes: {style: "object-view-box: inset(10%)"}}
-    toolbox.elementStyle = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+    await editor.updateComplete
     await toolbox.updateComplete
     const field = toolbox.shadowRoot!.querySelector('[data-specialized="picture"] element-style-editor')!
     field.dispatchEvent(new CustomEvent("element-style-change", {
@@ -12183,7 +12184,7 @@ describe("DomEditor.execute()", () => {
     expect(toolbox.shadowRoot!.querySelector('[data-tool="AI"]')).not.toBeNull()
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
-    expect(getComputedStyle(toolbox).width).toBe("216px")
+    expect(getComputedStyle(toolbox).width).toBe("250px")
   })
 
   it("opens AI in the toolbox or a closable sidebar and synchronizes the prompt", async () => {

@@ -144,7 +144,7 @@ export class SelectionFeature extends EditorFeature {
 
   #sharedRefreshQueued = false
   #capturedElement: Element | null = null
-  #captureClick: {element: Element, pointerId?: number, x: number, y: number, released: boolean, cancelled: boolean,
+  #captureClick: {element: Element, event: PointerEvent, pointerId?: number, x: number, y: number, released: boolean, cancelled: boolean,
     requested?: {preserveNativeSelection?: boolean}} | null = null
   #modifierClick = false
   #touchSelection = false
@@ -524,8 +524,13 @@ export class SelectionFeature extends EditorFeature {
   captureElement(element: Element, {preserveNativeSelection = false} = {}) {
     if(!this.editor.allows("select", element) || !element.isConnected || element === document.body || !document.body.contains(element)) return
     if(this.#captureClick?.element === element) {
-      this.#captureClick.requested = {preserveNativeSelection}
-      return
+      // Direct manipulation consumes the press before starting a drag or
+      // opening editing controls. Native interactions wait for their click.
+      if(!this.#captureClick.event.defaultPrevented) {
+        this.#captureClick.requested = {preserveNativeSelection}
+        return
+      }
+      this.#captureClick = null
     }
     if(element.matches("caption, figcaption, details > summary")) {
       this.selectElement(element)
@@ -1985,7 +1990,7 @@ export class SelectionFeature extends EditorFeature {
       const candidate = widgetHostForShadowInteraction(event, this.editor.schema)
         ?? (node ? mediaContainerForNode(node) ?? graphicContainerForNode(node) ?? mathRoot(node) : null)
       this.#captureClick = !event.defaultPrevented && candidate && !isAppendixInteraction(event) && !widgetCaptureSelectionDisabled(candidate, event)
-        ? {element: candidate, pointerId: event.pointerId, x: event.clientX, y: event.clientY, released: false, cancelled: event.button !== 0} : null
+        ? {element: candidate, event, pointerId: event.pointerId, x: event.clientX, y: event.clientY, released: false, cancelled: event.button !== 0} : null
       const edge = event.composedPath().find(node => node instanceof Element && node.classList.contains("◆capture-edge"))
       const captured = this.captureSelectedElement
       if(edge instanceof Element && edge.parentElement === this.selectionCaret && captured
@@ -2996,6 +3001,11 @@ export class SelectionFeature extends EditorFeature {
     if(this.editor.features.mark.isSVGTextSelection || $.isMultiElementSelection) return
     let selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode) return
+    // Explicit widget capture keeps an inert native boundary before the
+    // host. It is not a structural insertion gap to move into authored text.
+    const captured = this.captureSelectedElement
+    if(selection.isCollapsed && captured?.parentNode === selection.anchorNode
+      && selection.anchorNode.childNodes.item(selection.anchorOffset) === captured) return
     // An explicit extension owns its anchor, even when it spans exactly one
     // node. Live Range boundaries follow concurrent DOM mutations.
     const extended = this.#atomicExtension

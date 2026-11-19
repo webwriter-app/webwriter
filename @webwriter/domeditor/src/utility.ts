@@ -835,7 +835,7 @@ export class EditingSelection {
     }
     if(disclosureGap) return disclosureGap
     const captioned = pointerElement?.closest("figure, table") ?? caretElement?.closest("figure, table")
-    if(captioned && root.contains(captioned) && !isOutOfFlow(captioned)) {
+    if(captioned && root.contains(captioned) && !isOutOfFlow(captioned) && editingFlowRoot(captioned) === flow) {
       const rect = captioned.getBoundingClientRect()
       if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
         return {...gap(captioned, y < rect.top ? "before" : "after"), overrideNative: true}

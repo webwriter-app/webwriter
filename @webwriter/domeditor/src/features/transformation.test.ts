@@ -4118,6 +4118,11 @@ describe("drop, cancellation, and document ownership", () => {
     Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => x === 125 ? [target, document.body] : [child, target, document.body])})
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: child.firstChild!, offset: 0})
     selectNode(target)
+    const peer = document.body.appendChild(document.createElement("p"))
+    peer.textContent = "Other float anchor"
+    mockRect(peer)
+    // A projected lane may overlap the source's current rendered box.
+    vi.spyOn(editor.features.manipulation, "floatDropTarget").mockReturnValue(peer)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 150, clientY: 100}))
     feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: x, clientY: 125}))
     expect(target.style.float).toBe("left")
