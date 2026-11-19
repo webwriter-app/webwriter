@@ -1225,6 +1225,26 @@ describe("CSS-only Slides layout", () => {
     expect(editor.appendix.querySelector('[name="scroll-back"]')).toBeNull()
   })
 
+  it.each(["disabled", "reduced"])("scrolls slide tabs instantly when motion is %s", async preference => {
+    seed(); await settle()
+    const nav = document.querySelector<HTMLElement>("nav.ww-slides-navigation")!
+    vi.spyOn(nav, "clientWidth", "get").mockReturnValue(100)
+    vi.spyOn(nav, "scrollWidth", "get").mockReturnValue(300)
+    const scroll = vi.spyOn(nav, "scrollBy").mockImplementation(() => {})
+    if(preference === "disabled") nav.style.setProperty("--ww-ui-transition", "none")
+    else vi.spyOn(window, "matchMedia").mockImplementation(query => ({matches: query.includes("prefers-reduced-motion")} as MediaQueryList))
+    try {
+      nav.dispatchEvent(new Event("scroll")); await settle()
+      button("scroll-forward").click()
+      expect(scroll).toHaveBeenLastCalledWith({left: 100, behavior: "instant"})
+      nav.scrollLeft = 200
+      nav.dispatchEvent(new Event("scroll")); await settle()
+      button("scroll-back").click()
+      expect(scroll).toHaveBeenLastCalledWith({left: -100, behavior: "instant"})
+    }
+    finally { nav.style.removeProperty("--ww-ui-transition") }
+  })
+
   it("reuses the visible slide until scrolling or authored changes invalidate its geometry", () => {
     const [one, two] = seed()
     const viewport = one.parentElement!

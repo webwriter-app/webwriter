@@ -190,7 +190,7 @@ export const slidesStyles = `
 }
 body.ww-slides > .ww-slides-viewport {
   position: relative; display: flex; width: 100%; max-width: none; height: 100%; min-height: 0;
-  margin: auto; overflow-x: auto; overflow-y: auto; scrollbar-width: none; scroll-snap-type: x mandatory; scroll-behavior: smooth;
+  margin: auto; overflow-x: auto; overflow-y: auto; scrollbar-width: none; scroll-snap-type: x mandatory; scroll-behavior: auto;
 }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) {
   box-sizing: border-box; display: block; flex: 0 0 auto; width: ${slideWidth}px; min-width: ${slideWidth}px; height: ${slideHeight}px; min-height: ${slideHeight}px; aspect-ratio: 16 / 9; overflow: clip;
@@ -208,6 +208,15 @@ body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) > :not(style, 
 }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) > p:not([is]) { inline-size: max-content; min-inline-size: 25px; }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]):focus { outline: none; }
+@media screen and (prefers-reduced-motion: no-preference) {
+  body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]):target {
+    animation: var(--ww-ui-animation, ww-slide-arrive 120ms ease-out);
+  }
+}
+@keyframes ww-slide-arrive {
+  from { opacity: .85; }
+  to { opacity: 1; }
+}
 body.ww-slides > nav.ww-slides-navigation {
   box-sizing: border-box; position: absolute; top: 8px; bottom: auto; left: 24px;
   display: flex; gap: .25rem; width: max-content; max-width: max(0px, calc(100% - 380px)); overflow-x: auto; scrollbar-width: none;
@@ -252,9 +261,6 @@ body.ww-slides .ww-slide-directions > a:not([aria-disabled=true]):active { backg
 body.ww-slides > nav.ww-slides-navigation > a:target-current { background: #dbeafe; }
 body.ww-slides .ww-slide-directions > a[aria-disabled=true] { opacity: .35; cursor: not-allowed; }
 body.ww-slides .ww-slide-directions > a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) {
-  body.ww-slides > .ww-slides-viewport { scroll-behavior: auto; }
-}
 @media print {
   @page ww-slides { size: landscape; margin: 10mm; }
   html:has(> body.ww-slides) { height: auto; overflow: visible; background: none; }
