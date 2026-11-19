@@ -7087,51 +7087,70 @@ await check("font searches split installed and web results without scrolling", a
   finally { combo.remove() }
 })
 
-await check("font list previews only load the active web font", async () => {
+await check("font list previews load sprite chunks without loading web fonts", async () => {
   const {FontCombobox} = await import("../src/components/font-combobox")
+  const {default: metadata} = await import("../src/assets/font-previews/metadata.json")
+  const {fontPreview} = await import("../src/font-previews")
   const originalFetch = window.fetch
   let requests = 0
   window.fetch = async (input, options) => {
-    if(String(input).startsWith("https://fonts.bunny.net/css?")) {
-      requests++
-      return new Response(`@font-face {font-family: Preview; font-style: normal; font-weight: 400; src: url("${new URL(localFontURL, location.href).href}") format("woff2");}`)
-    }
+    if(String(input).startsWith("https://fonts.bunny.net/css?")) requests++
     return originalFetch(input, options)
   }
+  const faces = [...document.fonts]
   const field = new FontCombobox()
-  Object.assign(field, {loaded: true, fontAccess: {}, fonts: [
-    {familyName: "Web Preview One", category: "serif", weights: [400, 700], styles: ["normal", "italic"]},
-    {familyName: "Web Preview Two", category: "serif", weights: [400], styles: ["normal"]},
-  ], devices: [{family: "Device Preview", blob: () => { throw new Error("List preview must not read installed font bytes") }}]})
+  Object.assign(field.style, {position: "fixed", left: "80px", top: "100px", width: "90px"})
+  Object.assign(field, {loaded: true, fontAccess: {}, fonts: metadata.families.map(familyName => (
+    {familyName, category: "serif", weights: [400], styles: ["normal"]}
+  ))})
   document.body.append(field)
   try {
     await field.updateComplete
-    const input = field.shadowRoot!.querySelector<HTMLInputElement>('input[role="combobox"]')!
+    const root = field.shadowRoot!, input = root.querySelector<HTMLInputElement>('input[role="combobox"]')!
     input.click()
     await layoutFrame()
-    const root = field.shadowRoot!
-    const options = root.querySelectorAll<HTMLButtonElement>('[aria-label="Custom fonts"] [role="option"]')
-    const first = [...options].find(option => option.title === "Web Preview One")!
-    const second = [...options].find(option => option.title === "Web Preview Two")!
-    assert(requests === 0 && first.style.fontFamily === "" && second.style.fontFamily === "", "inactive web fonts load previews")
-    assert(getComputedStyle(root.querySelector('[title="Georgia"]')!).fontFamily === "Georgia, serif", "standard font item does not use its font")
-    assert(getComputedStyle(root.querySelector('[title="Device Preview"]')!).fontFamily.includes("Device Preview"), "installed font item does not use its font")
-    first.dispatchEvent(new PointerEvent("pointerenter"))
-    for(let count = 0; count < 120 && !first.style.fontFamily.includes("webwriter-font-preview-"); count++) await nextFrame()
-    const family = first.style.fontFamily.split(",")[0]
-    const loaded = await document.fonts.load(`12px ${family}`, "Web Preview One")
-    assert(requests === 1 && loaded.length > 0 && loaded.every(face => face.status === "loaded"), "active web preview did not load its font")
-    assert(second.style.fontFamily === "", "preview also styled an inactive web font")
+    const images = [...root.querySelectorAll<HTMLImageElement>(".font-preview img")]
+    assert(images.length > 1900, "catalog previews are missing before activation")
+    const first = images[0], last = images.at(-1)!
+    for(let count = 0; count < 120 && !first.hasAttribute("data-loaded"); count++) await nextFrame()
+    assert(first.naturalWidth === metadata.width / 2 && first.hasAttribute("data-loaded"), "first sprite did not load at twice the display density")
+    assert(!last.complete, "opening eagerly loads distant sprite chunks")
+    const loadedChunks = new Set(images.filter(image => image.complete && image.naturalWidth).map(image => image.currentSrc))
+    assert(loadedChunks.size < 5, `opening loaded too many chunks: ${loadedChunks.size}`)
+    const fallback = first.nextElementSibling!
+    assert(getComputedStyle(fallback).opacity === "0", "loaded image overlaps its fallback label")
+    const custom = root.querySelector<HTMLElement>('[aria-label="Custom fonts"]')!
+    custom.scrollTop = custom.scrollHeight
+    await layoutFrame()
+    for(let count = 0; count < 120 && !last.hasAttribute("data-loaded"); count++) await nextFrame()
+    assert(last.naturalWidth > 0, "scrolling did not load the last sprite chunk")
+    const label = last.closest("button")!.title
+    const coordinates = fontPreview(label)!
+    input.value = label
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    await field.updateComplete; await layoutFrame()
+    const result = root.querySelector<HTMLImageElement>(`[data-active] img`)!
+    assert(result.style.objectPosition === `left -${coordinates.offset}px`, "search changed the sprite coordinates")
+    const optionBox = result.closest("button")!.getBoundingClientRect(), imageBox = result.getBoundingClientRect()
+    assert(imageBox.top >= optionBox.top && imageBox.bottom <= optionBox.bottom, "sprite overflows its option row")
+    assert(imageBox.width <= custom.clientWidth, "sprite overflows the custom font column")
+    Object.assign(field, {devicePermissionGranted: true})
+    input.value = "Noto"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    await field.updateComplete; await layoutFrame(); await field.updateComplete
+    const panels = [...root.querySelectorAll<HTMLElement>(".search-section")]
+    assert(panels.length === 2, "installed and web search did not split")
+    for(const image of root.querySelectorAll<HTMLImageElement>(".search-section img")) {
+      const row = image.closest("button")!.getBoundingClientRect(), box = image.getBoundingClientRect()
+      assert(box.top >= row.top && box.bottom <= row.bottom && row.height === 28, "sprite overflows a split-search row")
+    }
+    result.closest("button")!.dispatchEvent(new PointerEvent("pointerenter"))
     input.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown"}))
-    for(let count = 0; count < 120 && !second.style.fontFamily.includes("webwriter-font-preview-"); count++) await nextFrame()
-    assert(requests === 2 && first.style.fontFamily === "" && second.style.fontFamily.includes("webwriter-font-preview-"),
-      `keyboard navigation did not move the font preview (${requests} requests, first ${first.style.fontFamily}, second ${second.style.fontFamily}, active ${root.querySelector('[data-active]')?.textContent})`)
-    assert(loaded.every(face => !document.fonts.has(face)), "previous preview faces remain registered")
-    const current = [...document.fonts].filter(face => face.family.includes("webwriter-font-preview-"))
+    await field.updateComplete
+    assert(requests === 0 && [...document.fonts].every(face => faces.includes(face)), "browsing loads web font files")
     field.close()
     await field.updateComplete
-    assert(current.length > 0 && current.every(face => !document.fonts.has(face)), "closing retains preview fonts")
-    assert(!document.head.querySelector('link[href^="https://fonts.bunny.net/css"]'), "list previews added a document stylesheet")
+    assert(!root.querySelector(".font-preview"), "closing retains font preview elements")
   }
   finally { field.remove(); window.fetch = originalFetch }
 })

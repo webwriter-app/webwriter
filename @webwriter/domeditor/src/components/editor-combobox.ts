@@ -693,6 +693,7 @@ export class EditorCombobox extends LitElement {
   protected renderBeforeOptions(_group: string): unknown { return nothing }
   protected renderBeforeOption(_option: ComboboxOption, _previous?: ComboboxOption): unknown { return nothing }
   protected optionStyle(_option: ComboboxOption, _index: number) { return "" }
+  protected renderOptionLabel(option: ComboboxOption): unknown { return html`<strong class="option-code">${option.label}</strong>` }
   protected activateOption(_option: ComboboxOption, _index: number) {}
 
   protected renderGroupOptions(group: string, entries: {option: ComboboxOption, index: number}[]): unknown {
@@ -724,7 +725,7 @@ export class EditorCombobox extends LitElement {
         @focus=${() => this.activateOption(option, index)}
         @click=${(event: MouseEvent) => this.select(option, event)}
       >
-        <strong class="option-code">${option.label}</strong>
+        ${this.renderOptionLabel(option)}
         ${this.showValue ? html`<span class="option-name option-value">${option.description ?? option.value}</span>`
           : option.description ? html`<span class="option-name">${option.description}</span>` : nothing}
         ${option.detail ? html`<span class="option-description">${option.detail}</span>` : nothing}

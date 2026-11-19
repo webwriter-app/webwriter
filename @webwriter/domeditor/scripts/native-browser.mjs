@@ -232,7 +232,7 @@ const expectedChecks = [
   "ribbon dropdowns join their triggers without gaps at viewport edges",
   "shape ribbon galleries scroll only when the viewport cannot fit their contents",
   "font dropdowns join their white controls at viewport edges",
-  "font list previews only load the active web font",
+  "font list previews load sprite chunks without loading web fonts",
   "font searches split installed and web results without scrolling",
   "local fonts embed selected bytes and load under the editor CSP",
   "custom fonts load and survive selection changes with the document theme",
