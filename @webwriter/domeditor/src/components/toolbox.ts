@@ -290,7 +290,7 @@ export class DomEditorToolbox extends EditingControls {
     .feedback-messages time {font-size: .62rem; color: #7b8795}
 
     :host([active-tool]) {
-      width: 216px;
+      width: 250px;
     }
 
     :host([ai-sidebar]) {grid-template-rows: 30px minmax(0, 1fr)}

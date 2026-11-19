@@ -1019,7 +1019,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(toolbox.activeTool).toBe("Edit")
     expect(toolbox.getAttribute("active-tool")).toBe("Edit")
-    expect(getComputedStyle(toolbox).width).toBe("216px")
+    expect(getComputedStyle(toolbox).width).toBe("250px")
     expect(edit.getAttribute("aria-selected")).toBe("true")
     expect(style.getAttribute("aria-selected")).toBe("false")
     expect(getComputedStyle(editTab).width).toBe("128px")
@@ -1054,7 +1054,7 @@ describe("toolbox", () => {
     expect(editClose.disabled).toBe(true)
 
     const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
-    expect(getComputedStyle(toolbox).width).toBe("216px")
+    expect(getComputedStyle(toolbox).width).toBe("250px")
     expect(getComputedStyle(pane).width).toBe("100%")
 
     styleTab.querySelector<HTMLButtonElement>(".toolbox-tab-close")!.click()

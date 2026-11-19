@@ -22,6 +22,7 @@ it("keeps template indentation out of message content while preserving reply lin
   expect(content.textContent).toBe(text)
   expect(getComputedStyle(message).whiteSpace).toBe("normal")
   expect(getComputedStyle(content).whiteSpace).toBe("pre-wrap")
+  expect(getComputedStyle(content).hyphens).toBe("auto")
 })
 
 it("shows replies beside the closed AI bar and dismisses them without losing the conversation", async () => {
@@ -31,6 +32,7 @@ it("shows replies beside the closed AI bar and dismisses them without losing the
   const bubble = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-bar-reply")!
   expect(bubble.getAttribute("popover")).toBe("manual")
   expect(bubble.querySelector(".ai-bar-reply-content")!.textContent).toBe("Here is the answer.\nA second line.")
+  expect(getComputedStyle(bubble.querySelector<HTMLElement>(".ai-bar-reply-content")!).hyphens).toBe("auto")
   expect(ribbon.aiChatOpen).toBe(false)
   bubble.querySelector<HTMLButtonElement>(".ai-bar-reply-close")!.click()
   await ribbon.updateComplete

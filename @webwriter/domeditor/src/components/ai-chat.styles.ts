@@ -359,6 +359,7 @@ export const aiChatStyles = css`
     }
 
     .ai-chat-message-content {white-space: pre-wrap;}
+    .ai-chat-message-content, .ai-bar-reply-content {hyphens: auto;}
 
     .ai-chat-message[data-role="user"] {
       align-self: flex-end;
