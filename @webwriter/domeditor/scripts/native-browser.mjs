@@ -38,6 +38,7 @@ const expectedChecks = [
   "widget-owned marks work through the ribbon and built-in font picker",
   "nested widget pages keep insertion, splitting and deletion inside their hosts",
   "Crossing graphic resize edges reflects shapes and preserves fixed anchors",
+  "Shift graphic resize preserves aspect ratios while snapping",
   "Drawing brush keys are temporary and inserted shapes keep their defaults",
   "Tab cycles captured graphic and formula keyboard tabs without changing content",
   "canvas starting view frames drag, resize and open without shifting",
