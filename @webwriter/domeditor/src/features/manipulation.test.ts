@@ -6000,6 +6000,61 @@ describe("setStyle()", () => {
     }
   })
 
+  describe("contentful widget preset scope", () => {
+    beforeEach(() => {
+      editor.schema.extendWidgets([
+        {tagName: "webwriter-pages", editingConfig: {content: "webwriter-page+"}},
+        {tagName: "webwriter-page", editingConfig: {content: "flow*"}},
+      ])
+      document.body.innerHTML = '<section><webwriter-pages><webwriter-page><h2>Heading</h2><!--keep--><p>Paragraph</p><p>Untouched</p></webwriter-page><webwriter-page><p>Other page</p></webwriter-page></webwriter-pages></section><p>Outside</p>'
+    })
+
+    it.each(["h2", "p"])("styles the authored %s at the caret without styling its widget ancestors", tag => {
+      const block = document.querySelector<HTMLElement>(tag)!
+      const text = block.firstChild!
+      $.move(text, 2)
+      const manipulation = editor.features.manipulation
+      expect(manipulation.topLevelStyleTarget).toBe(block)
+      expect(manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe(tag)
+      manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold", padding: "8px"}})
+      expect(block).toHaveStyle({backgroundColor: "gold", padding: "8px"})
+      expect(document.querySelectorAll("section[style], webwriter-pages[style], webwriter-page[style]")).toHaveLength(0)
+      expect(document.querySelectorAll("[style]")).toHaveLength(1)
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(2)
+    })
+
+    it.each([false, true])("styles only selected authored blocks inside a widget (backward: %s)", backward => {
+      const page = document.querySelector("webwriter-page")!
+      const heading = page.querySelector("h2")!, paragraph = page.querySelector("p")!
+      $.selectRange(backward ? paragraph.firstChild! : heading.firstChild!, 1,
+        backward ? heading.firstChild! : paragraph.firstChild!, 3)
+      const manipulation = editor.features.manipulation
+      manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold", padding: "8px"}})
+      expect(heading).toHaveStyle({backgroundColor: "gold", padding: "8px"})
+      expect(paragraph).toHaveStyle({backgroundColor: "gold", padding: "8px"})
+      expect(page.lastElementChild).not.toHaveAttribute("style")
+      expect(document.querySelectorAll("section[style], webwriter-pages[style], webwriter-page[style]")).toHaveLength(0)
+      expect(document.querySelectorAll("[style]")).toHaveLength(2)
+      manipulation.actions.resetStyle({type: "resetStyle", topLevel: true})
+      expect(heading).not.toHaveAttribute("style")
+      expect(paragraph).not.toHaveAttribute("style")
+      expect(page.innerHTML).toContain("<!--keep-->")
+    })
+
+    it.each(["webwriter-page", "webwriter-pages"])("styles an explicitly selected whole %s", tag => {
+      const widget = document.querySelector(tag)!
+      $.selectElement(widget)
+      const manipulation = editor.features.manipulation
+      expect(manipulation.topLevelStyleTarget).toBe(widget)
+      manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold", padding: "8px"}})
+      expect(widget).toHaveStyle({backgroundColor: "gold", padding: "8px"})
+      expect(document.querySelectorAll("[style]")).toHaveLength(1)
+      expect(widget.querySelector("h2, p")).not.toHaveAttribute("style")
+      expect(widget.parentElement).not.toHaveAttribute("style")
+    })
+  })
+
   it.each(["section", "div", "demo-widget"])("styles the top-level %s from nested content in the Edit toolbox", tag => {
     document.body.innerHTML = `<${tag}><div><p style="color: blue">hello</p></div></${tag}><p>other</p>`
     const outer = document.body.firstElementChild!

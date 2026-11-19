@@ -2950,10 +2950,10 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   /** Edit toolbox styles use the selected table/cell, board content, or the
-   * direct container below Document. */
+   * direct container below the nearest contentful widget or Document. */
   get topLevelStyleTarget(): Element | null {
-    const root = this.editor.features.slides.active
-      ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot()
+    const root = this.widgetEditingScope(this.styleTarget) ?? (this.editor.features.slides.active
+      ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot())
     if(!this.editor.features.selection.isCaptureSelection && $.isGapSelection && $.anchor === root) return null
     let target = this.styleTarget
     const figure = target.closest("figure:not([is])")
@@ -2994,8 +2994,8 @@ export class ManipulationFeature extends EditorFeature {
   private get topLevelStyleTargets(): Element[] {
     const target = this.topLevelStyleTarget
     if(!target) return []
-    const root = this.editor.features.slides.active
-      ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot()
+    const root = this.widgetEditingScope(this.styleTarget) ?? (this.editor.features.slides.active
+      ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot())
     if(target !== root || $.selectedElement === root || $.selectedElement === document.body || $.range.collapsed) return [target]
     const ranges = $.flowRanges.filter(range => root.contains(range.startContainer) && root.contains(range.endContainer))
     if(!ranges.length) return [target]
