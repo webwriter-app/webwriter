@@ -9,6 +9,7 @@ import "./media-source-info"
 import type {FloatInfo} from "./float-info"
 import {css, html, nothing, type TemplateResult} from "lit"
 import {guard} from "lit/directives/guard.js"
+import {ref} from "lit/directives/ref.js"
 import {live} from "lit/directives/live.js"
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 import {repeat} from "lit/directives/repeat.js"
@@ -84,6 +85,7 @@ export class DomEditorToolbox extends EditingControls {
     showStyleToolbox: {type: Boolean, attribute: "show-style-toolbox", reflect: true},
     activeTool: {type: String, attribute: "active-tool", reflect: true},
     collapsed: {type: Boolean, reflect: true},
+    tabsInRibbon: {type: Boolean, attribute: false},
     selectionPath: {attribute: false},
     documentSelected: {type: Boolean, attribute: "document-selected"},
     documentThemeStyles: {attribute: false},
@@ -833,6 +835,8 @@ export class DomEditorToolbox extends EditingControls {
       cursor: default;
     }
 
+    :host([popover]) {grid-template-rows: minmax(0, 1fr)}
+    :host([popover]) .toolbox-pane {grid-row: 1}
     :host([collapsed]) {grid-template-rows: 30px}
     :host([collapsed]) .toolbox-tabs-area {grid-row: 1}
     :host([collapsed]) .toolbox-tabs {padding-left: 4px}
@@ -857,6 +861,13 @@ export class DomEditorToolbox extends EditingControls {
   activeTool: ToolboxTool | null = null
   // Keep the current tool's state while a bottom panel occupies its space.
   collapsed = false
+  tabsInRibbon = false
+  private toolTabs: HTMLElement | null = null
+  private readonly captureToolTabs = (element?: Element) => {
+    if(!(element instanceof HTMLElement)) return
+    this.toolTabs = element
+    if(this.documentRecoveryNoticeOpen) queueMicrotask(() => this.positionDocumentRecoveryNotice())
+  }
   selectionPath: SelectionPathItem[] = []
   documentSelected = false
   documentThemeStyles: Record<string, unknown> = {}
@@ -1861,7 +1872,7 @@ export class DomEditorToolbox extends EditingControls {
   private readonly positionDocumentRecoveryNotice = () => {
     if(!this.documentRecoveryNoticeOpen) return
     const notice = this.renderRoot.querySelector<HTMLElement>(".document-recovery-popover")
-    const anchor = this.renderRoot.querySelector<HTMLElement>("#toolbox-tab-review .toolbox-tab-icon")
+    const anchor = (this.toolTabs ?? this.renderRoot).querySelector<HTMLElement>("#toolbox-tab-review .toolbox-tab-icon")
     if(!notice || !anchor) return
     const target = anchor.getBoundingClientRect()
     notice.hidden = !target.width || !target.height
@@ -1887,7 +1898,7 @@ export class DomEditorToolbox extends EditingControls {
     const emit = (name: string) => this.dispatchEvent(new CustomEvent(name, {detail: {id: record.id}, bubbles: true, composed: true}))
     const close = () => {
       emit("close-document-recovery")
-      this.renderRoot.querySelector<HTMLButtonElement>("#toolbox-tab-review")?.focus()
+      ;(this.toolTabs ?? this.renderRoot).querySelector<HTMLButtonElement>("#toolbox-tab-review")?.focus()
     }
     return html`<aside class="document-recovery-popover" popover="manual" role="region" aria-label="Recovered document"
       @keydown=${(event: KeyboardEvent) => {
@@ -1949,28 +1960,10 @@ export class DomEditorToolbox extends EditingControls {
     </section>`
   }
 
-  render() {
-    const distributionElement = this.elementAttributes ?? this.selectionPath.at(-1)
-    const distributionPresentation = distributionElement ?? {name: "element", icon: "Section", iconUrl: undefined}
-    const distributionIcon = distributionPresentation.icon ?? (this.elementAttributes ? getElementPresentation(this.elementAttributes.localName).icon : "Section")
-    const distributionSelected = this.elementSelected && Boolean(this.distribution)
-    const popupPartSelected = this.elementSelected && Boolean(this.elementAttributes
-      && (this.elementAttributes.name === "Popup" && (this.elementAttributes.localName === "button" || "popover" in this.elementAttributes.attributes)
-        || this.elementAttributes.name === "Popup Content"))
+  /** Render the existing tool actions in either the pane or fullscreen bar. */
+  renderToolTabs(compact = false) {
     return html`
-      <div
-        class="toolbox"
-        @ribbon-drawer-toggle=${this.rememberAdvancedState}
-        @pointerdown=${this.handleRibbonPointerDown}
-        @mousedown=${this.handleRibbonPointerDown}
-        @focusin=${this.handleRibbonInputFocusIn}
-        @focusout=${this.handleRibbonInputFocusOut}
-        @change=${this.handleRibbonInputChange}
-        @keydown=${this.handleRibbonInputKeydown}
-      >
-        ${this.renderDocumentRecoveryNotice()}
-        <div class="toolbox-tabs-area">
-          <div class="toolbox-tabs" role="tablist" aria-label="Toolbox">
+          <div class="toolbox-tabs" ${ref(this.captureToolTabs)} role=${compact ? "toolbar" : "tablist"} aria-label="Toolbox">
             ${toolboxTools.filter(tool => (tool.label === "Feedback") === this.preview
               && (tool.label !== "Style" || this.showStyleToolbox) && (tool.label !== "AI" || !this.disableAI)).map(tool => {
               const active = !this.collapsed && this.activeTool === tool.label
@@ -1999,7 +1992,7 @@ export class DomEditorToolbox extends EditingControls {
                     class="toolbox-tab-button"
                     data-tool=${tool.label}
                     type="button"
-                    role="tab"
+                    role=${compact ? nothing : "tab"}
                     aria-label=${tool.label === "Review" && this.proofreadingState.error
                       ? "Review. Issue checker unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
@@ -2007,11 +2000,12 @@ export class DomEditorToolbox extends EditingControls {
                       ? "Issue checker unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel, `toolbox:${tool.label}`)}
                     aria-description=${reviewDescription || nothing}
-                    aria-controls="toolbox-pane"
-                    aria-selected=${active}
+                    aria-controls=${compact ? nothing : "toolbox-pane"}
+                    aria-selected=${compact ? nothing : active}
+                    aria-pressed=${compact ? active : nothing}
                     ?disabled=${this.htmlPending && tool.label !== "Edit"}
                     @click=${() => {
-                      this.selectTool(tool.label, true)
+                      this.selectTool(compact && active ? null : tool.label, true)
                       if(tool.label === "Review" && this.recoveredDocument && !this.documentRecoveryNoticeOpen) {
                         this.dispatchEvent(new CustomEvent("open-document-recovery", {bubbles: true, composed: true}))
                       }
@@ -2029,7 +2023,7 @@ export class DomEditorToolbox extends EditingControls {
                       aria-hidden=${!active}
                     >${tool.label === "AI" ? html`<span class="ai-tab-label-prefix">Ask </span>AI` : label}</span>
                   </button>
-                  <button
+                  ${compact ? nothing : html`<button
                     class="toolbox-tab-close"
                     type="button"
                     aria-label=${`Close ${toolLabel}`}
@@ -2038,18 +2032,40 @@ export class DomEditorToolbox extends EditingControls {
                     tabindex=${active ? 0 : -1}
                     ?disabled=${!active || this.htmlPending}
                     @click=${() => this.selectTool(null)}
-                  >${ribbonIcon("Reject")}</button>
+                  >${ribbonIcon("Reject")}</button>`}
                 </div>
               `
             })}
-          </div>
-        </div>
+          </div>`
+  }
+
+  render() {
+    const distributionElement = this.elementAttributes ?? this.selectionPath.at(-1)
+    const distributionPresentation = distributionElement ?? {name: "element", icon: "Section", iconUrl: undefined}
+    const distributionIcon = distributionPresentation.icon ?? (this.elementAttributes ? getElementPresentation(this.elementAttributes.localName).icon : "Section")
+    const distributionSelected = this.elementSelected && Boolean(this.distribution)
+    const popupPartSelected = this.elementSelected && Boolean(this.elementAttributes
+      && (this.elementAttributes.name === "Popup" && (this.elementAttributes.localName === "button" || "popover" in this.elementAttributes.attributes)
+        || this.elementAttributes.name === "Popup Content"))
+    return html`
+      <div
+        class="toolbox"
+        @ribbon-drawer-toggle=${this.rememberAdvancedState}
+        @pointerdown=${this.handleRibbonPointerDown}
+        @mousedown=${this.handleRibbonPointerDown}
+        @focusin=${this.handleRibbonInputFocusIn}
+        @focusout=${this.handleRibbonInputFocusOut}
+        @change=${this.handleRibbonInputChange}
+        @keydown=${this.handleRibbonInputKeydown}
+      >
+        ${this.renderDocumentRecoveryNotice()}
+        ${this.tabsInRibbon ? nothing : html`<div class="toolbox-tabs-area">${this.renderToolTabs()}</div>`}
         <widget-grouping-dialog></widget-grouping-dialog>
         <aside
           id="toolbox-pane"
           class="toolbox-pane"
           role="tabpanel"
-          aria-labelledby=${this.activeTool ? `toolbox-tab-${this.activeTool.toLowerCase()}` : ""}
+          aria-labelledby=${!this.tabsInRibbon && this.activeTool ? `toolbox-tab-${this.activeTool.toLowerCase()}` : nothing}
           aria-label=${this.activeTool ? `${this.activeTool} tools` : "Toolbox"}
           ?hidden=${this.activeTool === null || this.collapsed}
         >

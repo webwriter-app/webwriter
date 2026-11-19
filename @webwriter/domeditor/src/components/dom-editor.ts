@@ -540,6 +540,8 @@ export class DomEditor extends LitElement {
     settings: {attribute: false, state: true},
     editingSnippetId: {state: true},
     breadcrumbVisible: {attribute: false, state: true},
+    fullscreenEditing: {state: true},
+    fullscreenToolboxOpen: {state: true},
     aiToolboxOpen: {state: true},
     narrowLayout: {state: true},
     guidedTourReady: {state: true},
@@ -877,6 +879,12 @@ export class DomEditor extends LitElement {
   private freshDocumentLayoutSnapshot: string | null = null
   private initialDocumentLayoutStarted = false
   private breadcrumbVisible = true
+  private fullscreenEditing = false
+  private fullscreenToolboxOpen = false
+  private fullscreenPaneResizeObserver: ResizeObserver | null = null
+  private fullscreenViewportStylesheet: {document: Document, sheet: CSSStyleSheet} | null = null
+  private fullscreenRibbonState: {expanded: boolean, breadcrumbVisible: boolean} | null = null
+  private restoringFullscreenRibbon = false
   private aiToolboxOpen = false
   private motionStylesheet: {document: Document, sheet: CSSStyleSheet} | null = null
   private backendState: "probing" | "connected" | "unavailable" = "probing"
@@ -1416,7 +1424,166 @@ export class DomEditor extends LitElement {
         height: 30px;
       }
     }
+
+    .fullscreen-scope { display: contents; }
+    .fullscreen-scope:modal {
+      display: block;
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100dvh;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      outline: none;
+      overflow: visible;
+      background: transparent;
+      pointer-events: none;
+    }
+    .fullscreen-scope:modal::backdrop { background: transparent; pointer-events: none; }
+    .fullscreen-scope:modal > :not(.app-bar),
+    .fullscreen-scope:modal .app-bar > :not(.ribbon-header) { visibility: hidden; }
+    .fullscreen-scope:modal .editor-frame,
+    .fullscreen-scope:modal :is(.ribbon-header, dom-editor-toolbox, .html-source-panel, .document-layouts-panel) {
+      visibility: visible;
+      pointer-events: auto;
+    }
+    .ribbon-header[popover] {
+      position: fixed;
+      inset: 1px 1px auto 1px;
+      box-sizing: border-box;
+      width: auto;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      overflow: visible;
+      background: transparent;
+      color: inherit;
+    }
+    .ribbon-header[popover] > :not(app-ribbon) { display: none; }
+    :is(.html-source-panel, .document-layouts-panel)[popover] {
+      position: fixed;
+      inset: auto 0 0;
+      box-sizing: border-box;
+      width: auto;
+      max-width: none;
+      max-height: max(0px, calc(100dvh - 41px));
+      margin: 0;
+      padding: 0;
+      border: 0;
+      overflow: hidden;
+      grid-template-rows: minmax(0, 1fr);
+      background: transparent;
+      color: inherit;
+    }
+    dom-editor-toolbox[popover] {
+      position: fixed;
+      inset: 41px 0 var(--fullscreen-bottom-pane-height, 0px) auto;
+      box-sizing: border-box;
+      width: min(250px, 100vw);
+      height: auto;
+      max-height: max(0px, calc(100dvh - 41px - var(--fullscreen-bottom-pane-height, 0px)));
+      margin: 0;
+      padding: 0;
+      border: 0;
+      overflow: hidden;
+      background: #ededed;
+      color: #2f3742;
+    }
+    .html-source-panel[popover] developer-console { height: min(300px, max(0px, calc(100dvh - 41px))); }
+    .document-layouts-panel[popover] > .document-layouts-clip { overflow: auto; }
+    :is(.ribbon-header, dom-editor-toolbox, .html-source-panel, .document-layouts-panel)[popover]:not(:popover-open) { display: none; }
   `
+
+  private handleFullscreenChange = () => {
+    const frame = this.editorIframe()
+    const active = Boolean(frame && this.shadowRoot?.fullscreenElement === frame
+      && typeof this.renderRoot.querySelector<HTMLElement>(".ribbon-header")?.showPopover === "function")
+    if(active === this.fullscreenEditing) return
+    if(!active) { this.clearFullscreenControls(); return }
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")!
+    this.fullscreenRibbonState = {expanded: ribbon.expanded, breadcrumbVisible: this.breadcrumbVisible}
+    this.fullscreenEditing = true
+    this.fullscreenToolboxOpen = false
+  }
+
+  private syncFullscreenControls() {
+    if(!this.fullscreenEditing) return
+    if(!this.fullscreenViewportStylesheet) {
+      const document = this.ownerDocument
+      const sheet = new (document.defaultView as Window & typeof globalThis).CSSStyleSheet()
+      sheet.replaceSync(":root { scrollbar-gutter: auto !important; }")
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
+      this.fullscreenViewportStylesheet = {document, sheet}
+    }
+    const scope = this.renderRoot.querySelector<HTMLDialogElement>(".fullscreen-scope")!
+    const header = this.renderRoot.querySelector<HTMLElement>(".ribbon-header")!
+    const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const show = (element: HTMLElement, visible: boolean) => {
+      element.setAttribute("popover", "manual")
+      if(element.matches(":popover-open") === visible) return false
+      if(visible) element.showPopover()
+      else element.hidePopover()
+      return visible
+    }
+    // Chromium makes everything outside the fullscreen iframe inert, including
+    // host popovers. A stable modal ancestor exempts both the iframe and its UI
+    // from that inertness without moving or reloading the authored document.
+    if(!scope.matches(":modal")) {
+      scope.close()
+      scope.showModal()
+    }
+    let paneOpened = show(toolbox, this.fullscreenToolboxOpen && Boolean(toolbox.activeTool) && !toolbox.hidden)
+    for(const pane of this.renderRoot.querySelectorAll<HTMLElement>(".html-source-panel, .document-layouts-panel")) {
+      paneOpened = show(pane, !pane.inert) || paneOpened
+      this.fullscreenPaneResizeObserver ??= new ResizeObserver(() => this.positionFullscreenToolbox())
+      this.fullscreenPaneResizeObserver.observe(pane)
+    }
+    this.positionFullscreenToolbox()
+    // App menus must still paint above a newly opened bottom pane.
+    if(paneOpened && header.matches(":popover-open")) header.hidePopover()
+    show(header, true)
+  }
+
+  private positionFullscreenToolbox() {
+    if(!this.fullscreenEditing) return
+    const height = Math.max(0, ...Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".html-source-panel, .document-layouts-panel"))
+      .map(pane => pane.matches(":popover-open") ? pane.getBoundingClientRect().height : 0))
+    this.renderRoot.querySelector<HTMLElement>("dom-editor-toolbox")?.style.setProperty("--fullscreen-bottom-pane-height", `${height}px`)
+  }
+
+  private clearFullscreenControls() {
+    this.fullscreenEditing = false
+    this.fullscreenPaneResizeObserver?.disconnect()
+    this.fullscreenPaneResizeObserver = null
+    this.renderRoot.querySelector<HTMLElement>("dom-editor-toolbox")?.style.removeProperty("--fullscreen-bottom-pane-height")
+    this.fullscreenToolboxOpen = false
+    if(this.fullscreenViewportStylesheet) {
+      const {document, sheet} = this.fullscreenViewportStylesheet
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter(candidate => candidate !== sheet)
+      this.fullscreenViewportStylesheet = null
+    }
+    for(const element of this.renderRoot.querySelectorAll<HTMLElement>(".ribbon-header, dom-editor-toolbox, .html-source-panel, .document-layouts-panel")) {
+      if(element.hasAttribute("popover") && typeof element.hidePopover === "function" && element.matches(":popover-open")) element.hidePopover()
+      element.removeAttribute("popover")
+    }
+    const scope = this.renderRoot.querySelector<HTMLDialogElement>(".fullscreen-scope")
+    if(scope?.matches(":modal")) { scope.close(); scope.show() }
+    const state = this.fullscreenRibbonState
+    this.fullscreenRibbonState = null
+    if(!state) return
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    this.breadcrumbVisible = state.breadcrumbVisible
+    if(ribbon) {
+      this.restoringFullscreenRibbon = true
+      ribbon.expanded = state.expanded
+      void ribbon.updateComplete.then(() => { this.restoringFullscreenRibbon = false })
+    }
+  }
 
   private get editorSrcdoc() {
     return this.editorSrcdocFromHTML(this.frameDocumentHTML)
@@ -3201,9 +3368,9 @@ export class DomEditor extends LitElement {
   }
 
   private async enterPreview() {
-    if(this.previewActive || this.previewTransition) return
+    if(this.previewActive || this.previewTransition || this.fullscreenEditing) return
     if(!this.settings.pinDeveloperConsole && this.localPackageDraft) {
-      if(!await this.resolvePendingPackageChanges() || !this.isConnected || this.previewActive || this.previewTransition) return
+      if(!await this.resolvePendingPackageChanges() || !this.isConnected || this.previewActive || this.previewTransition || this.fullscreenEditing) return
     }
     this.previewTransition = true
     const generation = ++this.previewGeneration
@@ -3238,6 +3405,12 @@ export class DomEditor extends LitElement {
         : this.currentPreviewHTML()
       if(generation !== this.previewGeneration) return
       if(frameRevision !== this.frameRevision) throw new Error("The editor document changed while opening preview")
+      if(this.fullscreenEditing) {
+        this.setPreviewEditingLocked(false)
+        this.savedEditorSelection = this.previewSelection
+        this.previewSelection = null
+        return
+      }
       this.previewFramePending = Boolean(ribbon && (!ribbon.expanded || ribbon.getAnimations?.().length))
       this.previewDocumentHTML = previewHTML
       this.previewFrameRevision++
@@ -6478,6 +6651,13 @@ export class DomEditor extends LitElement {
     }
     const currentPackages = this.installedPackages
     const revision = this.frameRevision
+    const frame = this.editorIframe()
+    if(frame && this.shadowRoot?.fullscreenElement === frame) {
+      // Removing a still-fullscreen frame can leave native fullscreen and the
+      // host's editing overlays out of step. Finish exiting before snapshotting.
+      await this.ownerDocument.exitFullscreen()
+      this.handleFullscreenChange()
+    }
     this.aiDocumentedPackages.clear()
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const documentRevision = this.documentChangeSequence
@@ -7606,7 +7786,7 @@ export class DomEditor extends LitElement {
   private handleToolboxChange = (event: Event) => {
     const tool = (event as CustomEvent<{tool?: unknown}>).detail?.tool
     if(tool === "Distribute") void this.loadDistributionItems()
-    const expandDockedToolbox = this.narrowLayout && this.bottomPanelOpen
+    const expandDockedToolbox = !this.fullscreenEditing && this.narrowLayout && this.bottomPanelOpen
     if(expandDockedToolbox) {
       if(this.textKeyboardDisplay === "open") this.textKeyboardDisplay = "closed"
       this.mathKeyboardHidden = true
@@ -7619,9 +7799,19 @@ export class DomEditor extends LitElement {
       if(expandDockedToolbox && tool === "Review") void this.clearHistoryPreview()
     }
     this.aiToolboxOpen = tool === "AI"
+    if(this.fullscreenEditing) {
+      this.fullscreenToolboxOpen = typeof tool === "string"
+      if(this.fullscreenToolboxOpen) this.breadcrumbVisible = true
+      const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
+      void toolbox?.updateComplete.then(() => {
+        if(!this.fullscreenEditing) return
+        this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.requestUpdate()
+        this.syncFullscreenControls()
+      })
+    }
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     if(ribbon) ribbon.aiChatOpen = this.aiToolboxOpen
-    if(!this.htmlPending && (expandDockedToolbox || tool !== "Edit" && !this.settings.pinDeveloperConsole)) {
+    if(!this.fullscreenEditing && !this.htmlPending && (expandDockedToolbox || tool !== "Edit" && !this.settings.pinDeveloperConsole)) {
       void this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: false}}))
     }
   }
@@ -7901,6 +8091,10 @@ export class DomEditor extends LitElement {
 
   protected updated(changed: PropertyValues) {
     super.updated(changed)
+    this.syncFullscreenControls()
+    // Fullscreen tabs read the sibling toolbox's live state, including fields
+    // such as pending HTML edits that do not otherwise update the ribbon.
+    if(this.fullscreenEditing) this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.requestUpdate()
     if((changed.has("shapeKeyboardHidden") && this.shapeKeyboardHidden) || changed.has("svgText") && this.svgText) {
       this.renderRoot.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")?.cancelInput()
     }
@@ -8186,6 +8380,7 @@ export class DomEditor extends LitElement {
   }
 
   private handleRibbonCollapse = async () => {
+    if(this.restoringFullscreenRibbon || this.fullscreenEditing) return
     if(!this.settings.pinDeveloperConsole && this.localPackageDraft && !await this.resolvePendingPackageChanges()) {
       const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
       if(ribbon) ribbon.expanded = true
@@ -8196,6 +8391,7 @@ export class DomEditor extends LitElement {
   }
 
   private handleRibbonExpand = () => {
+    if(this.restoringFullscreenRibbon) return
     this.breadcrumbVisible = true
   }
 
@@ -9440,6 +9636,7 @@ export class DomEditor extends LitElement {
 
   connectedCallback() {
     super.connectedCallback()
+    this.ownerDocument.addEventListener("fullscreenchange", this.handleFullscreenChange)
     this.addEventListener("focusin", this.handleHostInputFocus)
     if(!this.liveSessionIdFromURL()) {
       if(globalThis.indexedDB) void this.refreshDocumentRecoveries()
@@ -9516,6 +9713,8 @@ export class DomEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    this.ownerDocument.removeEventListener("fullscreenchange", this.handleFullscreenChange)
+    this.clearFullscreenControls()
     this.removeEventListener("focusin", this.handleHostInputFocus)
     clearInterval(this.documentRecoveryTimer)
     this.documentRecoveryTimer = undefined
@@ -9833,6 +10032,13 @@ export class DomEditor extends LitElement {
     const recentDocumentsDependencies = [this.recentDocuments, this.accessibleRecentDocumentIds,
       this.savedDocuments, this.backendClient, this.backendClient?.session]
     return html`
+      <dialog class="fullscreen-scope" open role=${this.fullscreenEditing ? "dialog" : "presentation"}
+        aria-label=${this.fullscreenEditing ? "WebWriter fullscreen editor" : nothing} @cancel=${(event: Event) => {
+          if(this.fullscreenEditing) {
+            event.preventDefault()
+            void this.ownerDocument.exitFullscreen()
+          }
+        }}>
       <app-update-notice .anchor=${() => this.renderRoot.querySelector("app-ribbon")?.shadowRoot?.querySelector<HTMLElement>(".brand-logo") ?? null}></app-update-notice>
       <header class="app-bar">
         <div class="ribbon-header">
@@ -9853,6 +10059,8 @@ export class DomEditor extends LitElement {
           </div>` : nothing}
         <app-ribbon
           ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
+          .fullscreenControls=${this.fullscreenEditing}
+          .fullscreenToolbox=${this.fullscreenEditing ? this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox") : null}
           ?inert=${this.htmlPending}
           logo-url=${appIconUrl}
           .breadcrumbVisible=${this.breadcrumbVisible}
@@ -10101,7 +10309,8 @@ export class DomEditor extends LitElement {
         ` : ""}
       </div>
       <dom-editor-toolbox
-        .collapsed=${this.narrowLayout && this.bottomPanelOpen}
+        .collapsed=${this.fullscreenEditing ? !this.fullscreenToolboxOpen : this.narrowLayout && this.bottomPanelOpen}
+        .tabsInRibbon=${this.fullscreenEditing}
         .preview=${this.previewActive}
         .feedbackActive=${this.liveSessionActive && !this.replayActive}
         .feedbackReplay=${this.replayActive}
@@ -10209,7 +10418,7 @@ export class DomEditor extends LitElement {
           </div>
         </div>
       `}
-
+      </dialog>
     `
   }
 }

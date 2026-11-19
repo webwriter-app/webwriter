@@ -27,7 +27,7 @@ import { HeadFeature } from "./features/head"
 import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
 import {floatSideFromStyles} from "./element-styles"
-import {clearEditorPresentation, clearPresentationState, hasPresentationState, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
+import {batchPresentationStates, clearEditorPresentation, clearPresentationState, hasPresentationState, setPresentationState, trackPresentationStyles} from "./presentation-state.js"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, atomicEditingContainer, clearEditorArtifacts, cloneInert, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, nodeAtPath, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
@@ -85,9 +85,41 @@ async function hasOfflineModuleImports(source: string) {
 const editorStylesheet = createStylesheet(editorStyleString + "\n" + listMarkerStyleString)
 trackPresentationStyles(document, editorStylesheet)
 const appendixStylesheet = createStylesheet(`
-  :where(:host > :not(slot)) {
+  :where(:host > :not(slot):not(.◆fullscreen-appendix), .◆fullscreen-appendix > :not(slot)) {
     user-select: none;
     -webkit-user-select: none;
+  }
+
+  .◆fullscreen-appendix:modal {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: visible;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    pointer-events: none;
+  }
+
+  .◆fullscreen-appendix::backdrop { background: transparent; pointer-events: none; }
+  :where(.◆fullscreen-appendix > *) { pointer-events: auto; }
+
+  /* Keep authored content in the modal's flat tree, without painting the rest
+     of the document above fullscreen. Native top-layer elements escape this
+     clip, including fullscreen targets inside widget shadow roots. */
+  .◆fullscreen-appendix:not(.◆fullscreen-document) > slot {
+    display: block;
+    position: fixed;
+    inset: 0;
+    clip-path: inset(50%);
+    visibility: hidden;
   }
 
   input, textarea, select,
@@ -167,7 +199,7 @@ const appendixStylesheet = createStylesheet(`
 
 `)
 const lockedAppendixStylesheet = createStylesheet(`
-  :host > :not(slot):not(.◆ai-review-toolbar) { display: none !important; }
+  :is(:host, .◆fullscreen-appendix) > :not(slot):not(.◆fullscreen-appendix):not(.◆ai-review-toolbar) { display: none !important; }
 `)
 
 /** DOMEditor
@@ -253,6 +285,10 @@ export class DOMEditor {
   )))
   readonly #appendixElements = new Set<WeakRef<Element>>()
   #createdDefaultSlot: HTMLSlotElement | null = null
+  #defaultAppendixSlotNode: HTMLSlotElement | null = null
+  #fullscreenAppendix: HTMLDialogElement | null = null
+  #fullscreenAppendixTarget: Element | null = null
+  #fullscreenAppendixObserver: MutationObserver | null = null
   #documentSession: DocumentEditorSession | null = null
   #bodySchemaObserver: MutationObserver | null = null
   #destroyed = false
@@ -626,9 +662,12 @@ export class DOMEditor {
       // Establish the default paragraph before enabling native editing.
       if(options.touchKeyboard) this.setTouchKeyboardPreference(true)
       if(!options.reader) document.designMode = "on"
+      // Run before feature listeners, including events retargeted from widgets.
+      window.addEventListener("fullscreenchange", this.#syncFullscreenAppendix, true)
       Object.entries(this.features)
         .filter(([name]) => !options.reader || !["dependency", "state", "head", "template", "distribution", "history", "placeholder", "comment", "attribution", "proofreading", "collaboration", "migration"].includes(name))
         .forEach(([, feat]) => feat.enable())
+      this.#syncFullscreenAppendix()
       document.addEventListener("input", this.#handleInput)
       document.addEventListener("selectionchange", this.handleSelectionChange)
       if(initialState?.selection) this.doc.restoreSelection(initialState.selection)
@@ -904,6 +943,8 @@ export class DOMEditor {
     document.removeEventListener("copy", this.#onCopy)
     window.removeEventListener("message", this.handleMessage)
     window.removeEventListener("resize", this.handleLayoutResize)
+    window.removeEventListener("fullscreenchange", this.#syncFullscreenAppendix, true)
+    attempt(() => this.#clearFullscreenAppendix())
     this.#bodySchemaObserver?.disconnect()
     this.#bodySchemaObserver = null
     if(this.doc) attempt(() => this.doc.destroy())
@@ -1434,21 +1475,155 @@ export class DOMEditor {
   }
 
   private ensureDefaultAppendixSlot(shadowRoot: ShadowRoot) {
-    const slot = Array.from(shadowRoot.children).find(element => (
+    // The same slot may be moving into or out of the fullscreen scope while
+    // focus callbacks revisit the appendix. Never create a competing slot.
+    if(this.#defaultAppendixSlotNode?.getRootNode() === shadowRoot) return this.#defaultAppendixSlotNode
+    const parent = this.#fullscreenAppendix ?? shadowRoot
+    const slot = Array.from(parent.children).find(element => (
       element.localName === "slot" && !element.hasAttribute("name")
     )) as HTMLSlotElement | undefined
-    if(slot) return slot
+    if(slot) return this.#defaultAppendixSlotNode = slot
     const created = document.createElement("slot")
+    this.#defaultAppendixSlotNode = created
     this.#createdDefaultSlot = created
     if(this.#documentSession && !this.#documentSession.createdDefaultSlot) {
       this.#documentSession.createdDefaultSlot = created
     }
-    shadowRoot.append(created)
+    parent.append(created)
     return created
   }
 
   private get defaultAppendixSlot() {
     return this.ensureDefaultAppendixSlot(this.appendix)
+  }
+
+  /** Preserve open native UI when an appendix subtree changes parents. */
+  #appendixLayers(root: ShadowRoot | Element): {element: HTMLElement, modal: boolean}[] {
+    const elements = [...(root instanceof HTMLElement ? [root] : []), ...root.querySelectorAll<HTMLElement>("*")]
+    return elements.flatMap(element => [
+      ...(element !== this.#fullscreenAppendix && element.matches(":modal, :popover-open")
+        ? [{element, modal: element.matches(":modal")}] : []),
+      ...(element.shadowRoot ? this.#appendixLayers(element.shadowRoot) : []),
+    ])
+  }
+
+  #restoreAppendixLayers(layers: {element: HTMLElement, modal: boolean}[]) {
+    for(const {element, modal} of layers) {
+      if(!element.isConnected) continue
+      if(modal && element instanceof HTMLDialogElement) {
+        // Reordering is not a user dismissal. Do not let a close callback tear
+        // down e.g. an active capture session when its dialog is re-promoted.
+        if(element.open) {
+          element.addEventListener("close", event => event.stopImmediatePropagation(), {capture: true, once: true})
+          element.close()
+        }
+        element.showModal()
+      }
+      else {
+        if(element.matches(":popover-open")) element.hidePopover()
+        element.showPopover()
+      }
+    }
+  }
+
+  #moveAppendixNode(parent: Element | ShadowRoot, node: Node, before: Node | null = null) {
+    const destination = parent as typeof parent & {moveBefore?: (node: Node, before: Node | null) => void}
+    // Chromium can stall when atomically reparenting UI around a fullscreen
+    // target in a widget shadow tree. Its retargeted host does not match
+    // :fullscreen. Use ordinary moves there and on exit, then restore native
+    // layers explicitly. Moving a slot never reparents authored BODY nodes.
+    const nativeFullscreen = this.#fullscreenAppendixTarget?.matches(":fullscreen") ?? true
+    if(destination.moveBefore && node.isConnected && nativeFullscreen && !(node instanceof HTMLSlotElement)) destination.moveBefore(node, before)
+    else parent.insertBefore(node, before)
+  }
+
+  #preserveAppendixFocus(operation: () => void) {
+    const focused = () => {
+      let element = document.activeElement
+      while(element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement
+      return element instanceof HTMLElement ? element : null
+    }
+    const active = focused()
+    const selection = document.getSelection()
+    const anchor = selection?.anchorNode, focus = selection?.focusNode
+    const anchorOffset = selection?.anchorOffset ?? 0, focusOffset = selection?.focusOffset ?? 0
+    try { operation() }
+    finally {
+      if(active?.isConnected && focused() !== active) active.focus({preventScroll: true})
+      if(anchor?.isConnected && focus?.isConnected && selection
+        && (selection.anchorNode !== anchor || selection.focusNode !== focus
+          || selection.anchorOffset !== anchorOffset || selection.focusOffset !== focusOffset)) {
+        selection.setBaseAndExtent(anchor, Math.min(anchorOffset, anchor instanceof Text ? anchor.length : anchor.childNodes.length),
+          focus, Math.min(focusOffset, focus instanceof Text ? focus.length : focus.childNodes.length))
+      }
+    }
+  }
+
+  #syncFullscreenAppendix = () => this.#preserveAppendixFocus(() => {
+    const fullscreen = document.fullscreenElement
+    if(this.#destroyed || !fullscreen?.isConnected) { this.#clearFullscreenAppendix(); return }
+    const appendix = this.appendix
+    const layers = this.#appendixLayers(appendix)
+    batchPresentationStates(document, () => {
+      if(this.#fullscreenAppendixTarget !== fullscreen) {
+        if(this.#fullscreenAppendixTarget) clearPresentationState(this.#fullscreenAppendixTarget, "appendix-fullscreen-target")
+        this.#fullscreenAppendixTarget = fullscreen
+        setPresentationState(fullscreen, "appendix-fullscreen-target")
+      }
+      setPresentationState(document.body, "appendix-fullscreen-active")
+    })
+    let scope = this.#fullscreenAppendix
+    if(!scope) {
+      scope = document.createElement("dialog")
+      scope.className = "◆fullscreen-appendix"
+      scope.setAttribute("aria-label", "Fullscreen editor")
+      // Escape belongs to native fullscreen; never leave an inert modal behind.
+      scope.addEventListener("cancel", event => event.preventDefault())
+      appendix.prepend(scope)
+      this.#fullscreenAppendix = scope
+      this.#fullscreenAppendixObserver = new MutationObserver(() => {
+        if(this.#fullscreenAppendix !== scope) return
+        const layers: {element: HTMLElement, modal: boolean}[] = []
+        for(const node of Array.from(appendix.childNodes)) {
+          if(node === scope) continue
+          if(node instanceof Element) layers.push(...this.#appendixLayers(node))
+          this.#moveAppendixNode(scope!, node)
+        }
+        this.#restoreAppendixLayers(layers)
+      })
+      this.#fullscreenAppendixObserver.observe(appendix, {childList: true})
+    }
+    for(const node of Array.from(appendix.childNodes)) {
+      if(node !== scope) this.#moveAppendixNode(scope, node)
+    }
+    scope.classList.toggle("◆fullscreen-document", fullscreen === document.body || fullscreen === document.documentElement)
+    if(scope.open) scope.close()
+    try { scope.showModal() }
+    catch(error) { this.#clearFullscreenAppendix(); throw error }
+    this.#restoreAppendixLayers(layers)
+  })
+
+  #clearFullscreenAppendix() {
+    const scope = this.#fullscreenAppendix
+    if(!scope) return
+    this.#fullscreenAppendixObserver?.disconnect()
+    this.#fullscreenAppendixObserver = null
+    const appendix = scope.parentNode
+    const layers = this.#destroyed ? [] : this.#appendixLayers(scope)
+    // New controls created by focus/disconnection callbacks belong in the
+    // restored appendix, rather than in a scope about to be removed.
+    this.#fullscreenAppendix = null
+    if(appendix instanceof ShadowRoot) {
+      for(const node of Array.from(scope.childNodes)) this.#moveAppendixNode(appendix, node, scope)
+    }
+    if(scope.open) scope.close()
+    scope.remove()
+    batchPresentationStates(document, () => {
+      clearPresentationState(document.body, "appendix-fullscreen-active")
+      if(this.#fullscreenAppendixTarget) clearPresentationState(this.#fullscreenAppendixTarget, "appendix-fullscreen-target")
+      this.#fullscreenAppendixTarget = null
+    })
+    this.#restoreAppendixLayers(layers)
   }
 
   /** Runs `hitTest` with editor UI transparent to hit testing, so caret and
@@ -1466,7 +1641,9 @@ export class DOMEditor {
       if(!element || element === el) this.#appendixElements.delete(reference)
     })
     this.#appendixElements.add(new WeakRef(el))
-    this.appendix.append(el)
+    const appendix = this.appendix
+    const parent = this.#fullscreenAppendix ?? appendix
+    parent.append(el)
   }
 
   /** Adds a rule to the document's constructed editor stylesheet. */

@@ -1882,6 +1882,10 @@ export class SelectionFeature extends EditorFeature {
   }
 
   captureListeners: DocumentListenerMap = {
+    fullscreenchange: () => {
+      this.#refreshGapCaretInlinePosition()
+      this.#atomicAnchors.refresh()
+    },
     resize: event => {
       // Docking the host keyboard shrinks the iframe after the tap has placed
       // the caret. Reuse input's post-layout reveal against the new viewport.

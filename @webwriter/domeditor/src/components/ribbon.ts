@@ -1,3 +1,4 @@
+import type {DomEditorToolbox} from "./toolbox"
 import {normalizeURLInput} from "../url-input.js"
 import {css, html, noChange, nothing, render} from "lit"
 import {guard} from "lit/directives/guard.js"
@@ -131,6 +132,8 @@ export class AppRibbon extends EditingControls {
   static properties = {
     ...EditingControls.properties,
     expanded: {type: Boolean, reflect: true},
+    fullscreenControls: {type: Boolean, attribute: "fullscreen-controls", reflect: true},
+    fullscreenToolbox: {attribute: false},
     heightConstrained: {state: true},
     menuOpen: {type: Boolean, reflect: true},
     documentDialog: {state: true},
@@ -236,6 +239,14 @@ export class AppRibbon extends EditingControls {
     :host(:not([expanded])) .ribbon {
       background: #f2f2f2;
     }
+
+    :host([fullscreen-controls]) {
+      height: 40px;
+      max-height: 40px;
+      background: rgb(242 242 242 / 50%);
+    }
+
+    :host([fullscreen-controls]) .ribbon { background: transparent; }
 
     .ribbon {
       box-sizing: border-box;
@@ -628,6 +639,20 @@ export class AppRibbon extends EditingControls {
       margin-left: auto;
     }
 
+    :host([fullscreen-controls]) .ribbon-top-actions { min-width: 0; max-width: calc(100% - 50px); overflow-x: auto; scrollbar-width: thin; }
+    .ribbon-top-actions .toolbox-tabs { display: flex; flex: 0 0 auto; align-items: center; height: 40px; gap: 1px; padding-inline: 3px; }
+    .ribbon-top-actions .toolbox-tab { flex: 0 0 auto; }
+    .ribbon-top-actions .toolbox-tab-button { display: grid; place-items: center; position: relative; width: 30px; height: 30px; padding: 6px; border: 0; border-radius: .2rem; background: transparent; color: #526b86; cursor: pointer; }
+    .ribbon-top-actions .toolbox-tab-button:is(:hover, [aria-pressed="true"]) { background: #dbe7f2; color: #243447; }
+    .ribbon-top-actions .toolbox-tab-button:focus-visible { outline: 2px solid #3977c7; outline-offset: -2px; }
+    .ribbon-top-actions .toolbox-tab-button:disabled { opacity: .4; cursor: default; }
+    .ribbon-top-actions .toolbox-tab-icon { display: block; position: relative; width: 17px; height: 17px; }
+    .ribbon-top-actions .toolbox-tab-icon svg { display: block; width: 100%; height: 100%; }
+    .ribbon-top-actions .toolbox-tab-label { display: none; }
+    .ribbon-top-actions :is(.toolbox-tab-accessibility-badge, .toolbox-tab-comment-count, .proofreading-error-badge) { position: absolute; inset: -5px -5px auto auto; display: grid; place-items: center; min-width: 12px; height: 12px; padding: 0 1px; border: 1px solid white; border-radius: 99px; background: #087f5b; color: white; font: 700 8px/1 system-ui; }
+    .ribbon-top-actions .toolbox-tab-comment-count { background: #b7791f; }
+    .ribbon-top-actions .proofreading-error-badge { background: #b42318; }
+
     .file-share-action:has(.presence-user + .presence-user) { width: 2.25rem; min-width: 2.25rem; flex-basis: 2.25rem; }
 
     .presence-users {
@@ -736,13 +761,19 @@ export class AppRibbon extends EditingControls {
     .recovery-popover button:disabled {opacity: .55; cursor: default}
     .recovery-popover button:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px}
 
-    .preview-button:hover {
+    .preview-button:hover:not(:disabled) {
       color: var(--ribbon-control-color, #243447);
       background: #e8eef5;
     }
 
-    .preview-button[active]:hover {
+    .preview-button[active]:hover:not(:disabled) {
       background: var(--ribbon-area-background);
+    }
+
+    :host([fullscreen-controls]) .preview-button:disabled {
+      color: #9ca3af;
+      opacity: .35;
+      cursor: default;
     }
 
     .preview-button:focus-visible {
@@ -1190,6 +1221,8 @@ export class AppRibbon extends EditingControls {
 `
 
   expanded = true
+  fullscreenControls = false
+  fullscreenToolbox: DomEditorToolbox | null = null
 
   menuOpen = false
 
@@ -1341,7 +1374,7 @@ export class AppRibbon extends EditingControls {
   private readonly coarsePointer = window.matchMedia("(pointer: coarse)")
 
   private updateHeightConstraint() {
-    const constrained = !this.coarsePointer.matches && window.innerHeight <= 600
+    const constrained = this.fullscreenControls || !this.coarsePointer.matches && window.innerHeight <= 600
     if(constrained === this.heightConstrained) return
     this.heightConstrained = constrained
     if(constrained) {
@@ -1428,8 +1461,14 @@ export class AppRibbon extends EditingControls {
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
     if(!this.menuOpen) return
 
+    const path = event.composedPath()
     const menu = this.renderRoot.querySelector("ribbon-menu")
-    if(menu && event.composedPath().includes(menu)) return
+    if(menu && path.includes(menu)) return
+    // Let the invoker's click toggle the menu. Closing it on pointerdown would
+    // make that click reopen it, so a real click could never close the menu.
+    const brand = this.renderRoot.querySelector(".brand")
+    const fileTab = this.renderRoot.querySelector('ribbon-tab[label="File"]')
+    if(brand && path.includes(brand) || fileTab && path.includes(fileTab)) return
 
     this.menuOpen = false
   }
@@ -1592,6 +1631,7 @@ export class AppRibbon extends EditingControls {
   }
 
   private handleTopButtonClick(action: "Preview" | "Undo" | "Redo") {
+    if(action === "Preview" && this.fullscreenControls) return
     this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
       detail: {label: action},
       bubbles: true,
@@ -2266,6 +2306,7 @@ export class AppRibbon extends EditingControls {
 
   protected willUpdate(changed: Map<string, unknown>) {
     super.willUpdate(changed)
+    if(changed.has("fullscreenControls")) this.updateHeightConstraint()
     if(changed.has("settings") && this.settings.disableAI) {
       this.closeAIChat()
       void this.cancelAIWork()
@@ -3959,6 +4000,7 @@ export class AppRibbon extends EditingControls {
                 </button>
               </div>
             `}
+            ${this.fullscreenControls ? this.fullscreenToolbox?.renderToolTabs(true) ?? nothing : html`
             <button
               class="preview-button"
               type="button"
@@ -3967,12 +4009,13 @@ export class AppRibbon extends EditingControls {
               title=${this.shortcutTitle(this.previewActive ? "Exit preview" : "Preview", "Preview")}
               aria-pressed=${this.previewActive}
               aria-description=${this.recoveredReplay ? "A recovered session recording is available" : nothing}
-              ?disabled=${aiReviewPending || historyPreviewPending}
+              ?disabled=${aiReviewPending || historyPreviewPending || this.fullscreenControls}
               @click=${() => this.handleTopButtonClick("Preview")}
             >
               <span class="preview-icon" aria-hidden="true">${ribbonIcon("Preview")}</span>
               ${this.recoveredReplay ? html`<span class="preview-recovery-alert" aria-hidden="true">!</span>` : nothing}
-            </button>
+            </button>`}
+
           </div>
         </div>
         ${guard(this.aiChatRenderDependencies, () => when(!this.settings.disableAI, () => this.renderAIChat(false)))}

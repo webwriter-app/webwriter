@@ -53,6 +53,158 @@ function el(tag = "p", text = "") {
   return element
 }
 
+describe("fullscreen selection caret", () => {
+  async function withFullscreenCaret(run: (context: {
+    outer: HTMLElement, inner: HTMLElement, first: HTMLElement, divider: HTMLElement,
+    fullscreen: (element: Element | null) => void,
+    scope: () => HTMLDialogElement | null, modal: Set<HTMLDialogElement>,
+  }) => void | Promise<void>) {
+    document.body.innerHTML = '<section id="fullscreen-outer"><section id="fullscreen-inner"><p>First</p><hr><p>Second</p></section></section><p>Outside</p>'
+    const outer = document.querySelector<HTMLElement>("#fullscreen-outer")!
+    const inner = document.querySelector<HTMLElement>("#fullscreen-inner")!
+    const first = inner.querySelector<HTMLElement>("p")!
+    const divider = inner.querySelector<HTMLElement>("hr")!
+    const previous = Object.getOwnPropertyDescriptor(document, "fullscreenElement")
+    let fullscreenElement: Element | null = null
+    Object.defineProperty(document, "fullscreenElement", {configurable: true, get: () => fullscreenElement})
+    const modal = new Set<HTMLDialogElement>()
+    const matches = HTMLDialogElement.prototype.matches
+    const match = vi.spyOn(HTMLDialogElement.prototype, "matches").mockImplementation(function(this: HTMLDialogElement, selector) {
+      return selector === ":modal" || selector === ":modal, :popover-open" ? modal.has(this) : matches.call(this, selector)
+    })
+    const show = vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function(this: HTMLDialogElement) {modal.add(this); this.open = true})
+    const close = vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function(this: HTMLDialogElement) {modal.delete(this); this.open = false})
+    const scope = () => editor.appendix.querySelector<HTMLDialogElement>("dialog.◆fullscreen-appendix")
+    const fullscreen = (element: Element | null) => {
+      fullscreenElement = element
+      ;(element?.isConnected ? element : document).dispatchEvent(new Event("fullscreenchange", {bubbles: true, composed: true}))
+    }
+    try { await run({outer, inner, first, divider, fullscreen, scope, modal}) }
+    finally {
+      fullscreen(null)
+      match.mockRestore()
+      show.mockRestore()
+      close.mockRestore()
+      if(previous) Object.defineProperty(document, "fullscreenElement", previous)
+      else Reflect.deleteProperty(document, "fullscreenElement")
+    }
+  }
+
+  it.each([
+    ["before", false], ["after", false], ["before", true], ["after", true],
+  ] as const)("promotes a gap %s its target when selected during fullscreen=%s", async (placement, duringFullscreen) => {
+    await withFullscreenCaret(({outer, divider, fullscreen, scope, modal}) => {
+      if(duringFullscreen) fullscreen(outer)
+      $.selectGap(divider, placement)
+      feature.processSelection()
+      const caret = feature.selectionCaret!
+      if(!duringFullscreen) fullscreen(outer)
+      expect(feature.selectionCaret).toBe(caret)
+      expect(caret.getRootNode()).toBe(editor.appendix)
+      expect(caret.hasAttribute("popover")).toBe(false)
+      expect(scope()!.contains(caret)).toBe(true)
+      expect(modal.has(scope()!)).toBe(true)
+      expect(caret.getAttribute("part")).toContain("gap-caret")
+      expect(caret.getAttribute("visibility")).not.toBe("hidden")
+      expect(hasPresentationState(divider, `gap-${placement}-selected`)).toBe(true)
+      fullscreen(null)
+      expect(feature.selectionCaret).toBe(caret)
+      expect(caret.hasAttribute("popover")).toBe(false)
+      expect(scope()).toBeNull()
+      expect(caret.getAttribute("visibility")).not.toBe("hidden")
+    })
+  })
+
+  it("promotes the same caret again above nested fullscreen targets", async () => {
+    await withFullscreenCaret(({outer, inner, divider, fullscreen, scope, modal}) => {
+      $.selectGap(divider, "after")
+      feature.processSelection()
+      const caret = feature.selectionCaret!
+      fullscreen(outer)
+      const layer = scope()!
+      const showed = vi.mocked(HTMLDialogElement.prototype.showModal).mock.calls.length
+      fullscreen(inner)
+      expect(feature.selectionCaret).toBe(caret)
+      expect(scope()).toBe(layer)
+      expect(layer.contains(caret)).toBe(true)
+      expect(modal.has(layer)).toBe(true)
+      expect(vi.mocked(HTMLDialogElement.prototype.showModal).mock.calls.length).toBeGreaterThan(showed)
+      expect(caret.hasAttribute("popover")).toBe(false)
+    })
+  })
+
+  it("cleans up top-layer presentation when returning from a gap to native text", async () => {
+    await withFullscreenCaret(({outer, first, divider, fullscreen, scope, modal}) => {
+      fullscreen(outer)
+      $.selectGap(divider, "before")
+      feature.processSelection()
+      const caret = feature.selectionCaret!
+      expect(scope()!.contains(caret)).toBe(true)
+      expect(modal.has(scope()!)).toBe(true)
+      $.move(first.firstChild!, 2)
+      feature.processSelection()
+      expect(feature.selectionCaret).toBe(caret)
+      expect(caret.getAttribute("visibility")).toBe("hidden")
+      expect(caret.hasAttribute("popover")).toBe(false)
+      expect(modal.has(scope()!)).toBe(true)
+      expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
+      expect(hasPresentationState(divider, "gap-before-selected")).toBe(false)
+    })
+  })
+
+  it("hides the caret safely when fullscreen content and selection endpoints are removed", async () => {
+    await withFullscreenCaret(({outer, divider, fullscreen, scope, modal}) => {
+      fullscreen(outer)
+      $.selectGap(divider, "after")
+      feature.processSelection()
+      const caret = feature.selectionCaret!
+      outer.remove()
+      $.move(document.body.querySelector("p")!.firstChild!, 0)
+      feature.processSelection()
+      fullscreen(null)
+      expect(caret.getAttribute("visibility")).toBe("hidden")
+      expect(caret.hasAttribute("popover")).toBe(false)
+      expect(scope()).toBeNull()
+      expect(hasPresentationState(divider, "gap-after-selected")).toBe(false)
+    })
+  })
+
+  it("closes and removes the promoted caret when the selection feature is disabled", async () => {
+    await withFullscreenCaret(({outer, divider, fullscreen, scope, modal}) => {
+      fullscreen(outer)
+      $.selectGap(divider, "before")
+      feature.processSelection()
+      const caret = feature.selectionCaret!
+      feature.disable()
+      expect(caret.isConnected).toBe(false)
+      expect(caret.hasAttribute("popover")).toBe(false)
+      expect(scope()!.contains(caret)).toBe(false)
+      fullscreen(outer)
+      expect(feature.selectionCaret).toBeNull()
+    })
+  })
+
+  it("keeps caret promotion out of authored attributes and shared or serialized HTML", async () => {
+    await withFullscreenCaret(({outer, divider, fullscreen, scope, modal}) => {
+      editor.doc.syncFromDOM()
+      const shared = sharedDOMBody(editor.doc.doc).toString()
+      const serialized = editor.toHTML(true)
+      const authored = document.body.innerHTML
+      fullscreen(outer)
+      $.selectGap(divider, "before")
+      feature.processSelection()
+      const caret = feature.selectionCaret!
+      expect(scope()!.contains(caret)).toBe(true)
+      expect(modal.has(scope()!)).toBe(true)
+      expect(document.body.innerHTML).toBe(authored)
+      editor.doc.syncFromDOM()
+      expect(sharedDOMBody(editor.doc.doc).toString()).toBe(shared)
+      expect(editor.toHTML(true)).toBe(serialized)
+      expect(document.body.querySelector("[popover]")).toBeNull()
+    })
+  })
+})
+
 describe("inline popup selection", () => {
   const mount = () => {
     document.body.innerHTML = '<p>Before <span class="ww-popup"><button type="button" popovertarget="note"><b>toggle</b></button><span id="note" popover="auto"><em>Popup text</em></span></span> after</p><p>Other</p>'
