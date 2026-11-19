@@ -11424,6 +11424,40 @@ describe("DomEditor.execute()", () => {
     expect((editor as any).captureSelection).toBe(false)
   })
 
+  it.each([true, false])("keeps block formula font controls and selection stable (capture: %s)", async capture => {
+    const {editor, editorWindow} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    const selection = {path: [{path: [], name: "Document"}, {path: [0], name: "Formula"}],
+      nodeSelected: true, capture, math: {active: true, display: "block"}}
+    const styles = {"font-family": '"Libertinus Math", math', "font-size": "24px"}
+    const post = async (type: string, detail: object) => {
+      window.dispatchEvent(new MessageEvent("message", {data: {type, detail}, source: editorWindow}))
+      await editor.updateComplete
+      await ribbon.updateComplete
+      await breadcrumb.updateComplete
+    }
+    await post(selectionChangeEvent, selection)
+    const keyboard = editor.shadowRoot!.querySelector("dom-editor-math-keyboard")
+    for(let update = 0; update < 3; update++) {
+      await post(markStateChangeEvent, {canMark: true, marks: [], styles})
+      expect(breadcrumb.nodeSelected).toBe(true)
+      expect(breadcrumb.capture).toBe(capture)
+      expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).toBe(keyboard)
+      await post(selectionChangeEvent, selection)
+      expect(ribbon.canMark).toBe(true)
+      expect(ribbon.markStyles).toEqual(styles)
+      for(const name of ["font-family", "font-size"]) {
+        const picker = ribbon.shadowRoot!.querySelector<RibbonCombobox>(`ribbon-combobox[name="${name}"]`)!
+        expect(picker.disabled).toBe(false)
+      }
+    }
+    await post(selectionChangeEvent, {path: [selection.path[0], {path: [1], name: "Image"}], capture: true})
+    expect(ribbon.canMark).toBe(false)
+    expect(ribbon.markStyles).toEqual({})
+    expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).toBeNull()
+  })
+
   it("never applies text and node or gap selection states together", async () => {
     const {editor, editorWindow} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!

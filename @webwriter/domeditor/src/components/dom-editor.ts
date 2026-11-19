@@ -9061,10 +9061,10 @@ export class DomEditor extends LitElement {
       this.canMark = event.data.detail.canMark
       this.spatialMarkSelection = event.data.detail.spatialSelection
       this.canRemoveMarks = event.data.detail.canRemoveMarks === true
-      // SVG label text remains inside a captured graphic. Keep its controls
-      // mounted while mark and selection messages arrive independently.
+      // SVG labels and block formulas retain their element selection while
+      // mark and selection messages arrive independently.
       this.widgetMarks = unlessSame(this.widgetMarks, event.data.detail.widgetMarks ?? null)
-      if(this.canMark && !this.svgText && !this.widgetMarks && !this.spatialMarkSelection) {
+      if(this.canMark && !this.svgText && !this.mathSelection?.active && !this.widgetMarks && !this.spatialMarkSelection) {
         this.nodeSelection = false
         this.captureSelection = false
         this.selectionGap = null
@@ -9187,10 +9187,10 @@ export class DomEditor extends LitElement {
       this.nodeSelection = event.data.detail.nodeSelected === true || event.data.detail.capture === true
       this.captureSelection = event.data.detail.capture === true
       this.selectionGap = selectionGap
-      // SVG text and spatial formatting can coexist with a node selection.
+      // Formula, SVG text and spatial formatting can coexist with a node selection.
       const graphicText = this.svgText && event.data.detail.graphic?.capture
       const spatialText = this.spatialMarkSelection && this.spatialMarkSelection === event.data.detail.spatialSelection
-      if(!graphicText && !spatialText && !this.widgetMarks && (this.spatialMarkSelection
+      if(!event.data.detail.math?.active && !graphicText && !spatialText && !this.widgetMarks && (this.spatialMarkSelection
         || this.nodeSelection || this.sectionSelected || this.selectionGap || event.data.detail.table?.cellSelection)) {
         this.spatialMarkSelection = undefined
         this.canMark = false
