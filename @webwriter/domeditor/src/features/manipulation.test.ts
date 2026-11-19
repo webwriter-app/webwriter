@@ -3435,6 +3435,69 @@ describe("figures", () => {
   })
 })
 
+describe("whole contentful widget range deletion", () => {
+  beforeEach(() => {
+    editor.schema.extendWidgets([
+      {tagName: "delete-pages", editingConfig: {content: "delete-page+", isolating: true}},
+      {tagName: "delete-page", editingConfig: {group: "", content: "flow+", isolating: true}},
+    ])
+    document.body.innerHTML = '<p>Before</p><delete-pages data-authored="keep"><delete-page><h2>First</h2><p>First body</p><picture style="float:right;width:180px"><img src="keep.png"></picture></delete-page><delete-page><p>Second body</p><video style="position:absolute" src="keep.webm"></video><!--keep--></delete-page></delete-pages><p></p><p>After</p>'
+  })
+
+  function select(backwards: boolean) {
+    const widget = document.querySelector("delete-pages")!, after = widget.nextElementSibling!
+    document.getSelection()!.setBaseAndExtent(backwards ? after : document.body, backwards ? 0 : 1,
+      backwards ? document.body : after, backwards ? 1 : 0)
+    editor.features.selection.processSelection(true)
+    expect(hasPresentationState(widget, "atomic-range-selected")).toBe(true)
+    return widget
+  }
+
+  describe.each([false, true])("backwards: %s", backwards => {
+    it.each(["Backspace", "Delete"])("%s removes the enclosed widget with its media and supports undo", key => {
+      const widget = select(backwards)
+      editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+      const original = editor.toHTML(true)
+      const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(widget.isConnected).toBe(false)
+      expect(document.querySelector("delete-pages,delete-page,picture,img,video")).toBeNull()
+      expect(document.body.textContent).toBe("BeforeAfter")
+      editor.doc.syncFromDOM()
+      const deleted = editor.toHTML(true)
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(original)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(deleted)
+    })
+
+    it("copies and cuts the enclosed widget with all internal flows", () => {
+      const widget = select(backwards), original = widget.outerHTML
+      const copied = $.copy()
+      expect(copied.querySelector("delete-pages")?.outerHTML).toBe(original)
+      expect(widget.isConnected).toBe(true)
+      const cut = $.cut()
+      expect(cut.querySelector("delete-pages")?.outerHTML).toBe(original)
+      expect(widget.isConnected).toBe(false)
+      expect(document.body.textContent).toBe("BeforeAfter")
+    })
+  })
+
+  it.each(["Backspace", "Delete"])("%s keeps a partially selected page and its local media", key => {
+    const widget = document.querySelector("delete-pages")!, page = widget.firstElementChild!
+    const paragraph = page.querySelector("p")!, media = page.querySelector("picture")!
+    $.selectRange(paragraph.firstChild!, 0, paragraph.firstChild!, 5)
+    editor.features.selection.processSelection(true)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+    expect(widget.isConnected).toBe(true)
+    expect(page.isConnected).toBe(true)
+    expect(media.isConnected).toBe(true)
+    expect(paragraph.textContent).toBe(" body")
+    expect(widget.lastElementChild!.textContent).toBe("Second body")
+  })
+})
+
 describe("partial contentful widget deletion", () => {
   beforeEach(() => {
     editor.schema.extendWidgets([

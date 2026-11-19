@@ -1432,6 +1432,14 @@ export class EditingSelection {
         excluded.push(element)
         return
       }
+      // A wholly selected widget owns all its internal flows. Splitting around
+      // those descendants would retain its shell on deletion and omit media
+      // from copying, even though the selection encloses the entire host.
+      if(element.namespaceURI === "http://www.w3.org/1999/xhtml"
+        && (element.localName.includes("-") || element.hasAttribute("is")) && element.parentNode) {
+        const index = Array.from(element.parentNode.childNodes).indexOf(element)
+        if(range.comparePoint(element.parentNode, index) === 0 && range.comparePoint(element.parentNode, index + 1) === 0) return
+      }
       const firstChild = rangeBoundaryChild(element, range.startContainer, range.startOffset, true)
       const lastChild = rangeBoundaryChild(element, range.endContainer, range.endOffset, false)
       if(!firstChild || !lastChild) return
