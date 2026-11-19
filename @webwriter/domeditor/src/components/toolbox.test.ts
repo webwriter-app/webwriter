@@ -933,7 +933,7 @@ describe("toolbox", () => {
 
   it.each([
     ["document", "Document", "Document"], ["canvas", "Canvas", "Canvas"],
-    ["slides", "Slides", "KeywordPresentation"], ["board", "Board", "Columns"],
+    ["slides", "Slides", "Presentation"], ["board", "Board", "Columns"],
   ] as const)("uses the %s layout name and icon for document distribution", async (mode, label, icon) => {
     const toolbox = await mountToolbox()
     toolbox.documentLayout = {mode, canConvert: true, zoom: 100}

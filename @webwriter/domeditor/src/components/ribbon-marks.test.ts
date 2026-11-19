@@ -4,6 +4,7 @@ import {formatShortcut} from "../app-settings"
 import {markStateChangeEvent} from "../editor-bridge"
 import {DomEditor} from "./dom-editor"
 import {AppRibbon} from "./ribbon"
+import {documentLayoutIcon} from "./layout-preview"
 import type {FileLabel} from "./file-label"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonCombobox} from "./ribbon-combobox"
@@ -722,9 +723,19 @@ describe("mark ribbon controls", () => {
     expect(fileButtons.find(button => button.label === "New")?.submenu).toEqual([
       {label: "Document", action: "new:document", icon: "Document"},
       {label: "Canvas", action: "new:canvas", icon: "Canvas"},
-      {label: "Slides", action: "new:slides", icon: "KeywordPresentation"},
-      {label: "Board", action: "new:board", icon: "BoardColumn"},
+      {label: "Slides", action: "new:slides", icon: "Presentation"},
+      {label: "Board", action: "new:board", icon: "Columns"},
     ])
+    const newButton = fileButtons.find(button => button.label === "New")!
+    await newButton.updateComplete
+    const newMenu = newButton.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await newMenu.updateComplete
+    for(const [mode, glyph] of [["slides", "presentation"], ["board", "columns-3"]] as const) {
+      expect(newButton.submenu).toContainEqual({
+        label: mode === "slides" ? "Slides" : "Board", action: `new:${mode}`, icon: documentLayoutIcon(mode),
+      })
+      expect(newMenu.shadowRoot!.querySelector(`[data-action="new:${mode}"] .icon-tabler-${glyph}`)).not.toBeNull()
+    }
     expect(fileButtons.find(button => button.label === "Save")?.submenu).toEqual([])
     expect(fileButtons.find(button => button.label === "Save as")?.submenu).toEqual([])
     expect(fileDrawer.querySelector('input[type="checkbox"]')).toBeNull()

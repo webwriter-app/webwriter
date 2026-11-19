@@ -229,7 +229,7 @@ export function getElementPresentation(elementOrTagName: ReadableElement | strin
       if(mode === "board") return {name: "Board", icon: "Columns"}
     }
     const role = slideLayoutRole(elementOrTagName)
-    if(role === "root") return {name: "Slides", icon: "KeywordPresentation"}
+    if(role === "root") return {name: "Slides", icon: "Presentation"}
     if(role === "slide") {
       const slides = Array.from(elementOrTagName.parentElement!.children).filter(isSlide)
       return {name: `Slide ${slides.indexOf(elementOrTagName) + 1}`, icon: "Rectangle"}

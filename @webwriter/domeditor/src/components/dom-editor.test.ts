@@ -11047,7 +11047,7 @@ describe("DomEditor.execute()", () => {
     body.className = "ww-slides"
     body.innerHTML = '<div class="ww-slides-viewport"><!--keep--><section class="ww-slide"><p>One</p></section><section class="ww-slide"><article><p>Two</p></article></section><section class="ww-slide"></section></div><nav class="ww-slides-navigation"><a>1</a><a>2</a><a>3</a></nav>'
     const slidesTree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
-    expect(slidesTree).toEqual({path: [], name: "Slides", icon: "KeywordPresentation", children: [
+    expect(slidesTree).toEqual({path: [], name: "Slides", icon: "Presentation", children: [
       {path: [0, 1], name: "Slide 1", icon: "Rectangle", children: [{path: [0, 1, 0], name: "Paragraph", icon: "Paragraph", children: []}]},
       {path: [0, 2], name: "Slide 2", icon: "Rectangle", children: [{path: [0, 2, 0, 0], name: "Paragraph", icon: "Paragraph", children: [], sections: [
         {path: [0, 2, 0], type: "article", name: "Article", icon: "Article"},

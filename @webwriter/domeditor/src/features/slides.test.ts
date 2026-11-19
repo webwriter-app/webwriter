@@ -614,7 +614,7 @@ describe("CSS-only Slides layout", () => {
     }
 
     expect(detail().path).toMatchObject([
-      {path: [], name: "Slides", icon: "KeywordPresentation"},
+      {path: [], name: "Slides", icon: "Presentation"},
       {path: [0, 3], name: "Slide 2", icon: "Rectangle"},
       {path: [0, 3, 0, 0], name: "Paragraph", icon: "Paragraph", sections: [
         {path: [0, 3, 0], type: "article", name: "Article", icon: "Article"},
@@ -823,7 +823,7 @@ describe("CSS-only Slides layout", () => {
     const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
     editor.postSelectionPath()
     expect(postMessage.mock.calls.filter(([message]) => message.type === selectionChangeEvent).at(-1)![0].detail.path).toEqual([
-      {path: [], name: "Slides", icon: "KeywordPresentation"},
+      {path: [], name: "Slides", icon: "Presentation"},
       {path: [0, 0], name: "Slide 1", icon: "Rectangle"},
     ])
   })
