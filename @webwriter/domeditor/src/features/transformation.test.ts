@@ -4584,6 +4584,85 @@ describe.each(["canvas", "slides"] as const)("%s movement grid and guides", mode
 })
 
 describe("queued pointer movement", () => {
+  it.each(["document", "canvas", "slides"].flatMap(mode => ["img", "figure", "demo-widget"].flatMap(tag =>
+    [false, true].map(pending => ({mode, tag, pending})))))("keeps a quick $tag resize in $mode after released capture (pending frame: $pending)", async ({mode, tag, pending}) => {
+    const target = targetElement(tag)
+    target.id = "quick-resize"
+    target.appendChild(document.createComment("keep"))
+    const content = target.innerHTML
+    if(mode !== "document") {
+      document.body.className = `ww-${mode}`
+      Object.assign(target.style, {position: "absolute", left: "0px", top: "0px"})
+    }
+    if(mode === "slides") {
+      const viewport = document.createElement("div"), slide = document.createElement("section")
+      viewport.className = "ww-slides-viewport"; slide.className = "ww-slide"
+      viewport.append(slide); document.body.append(viewport); slide.append(target)
+      flushAnimationFrame()
+      editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+    }
+    Object.assign(target.style, {width: "100px", height: "50px"})
+    mockRect(target)
+    if(tag === "demo-widget") captureNode(target)
+    else selectNode(target)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const initial = editor.toHTML(true)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 81, clientX: 200, clientY: 150}))
+    movePointer(pointer("pointermove", {pointerId: 81, buttons: 1, clientX: 180, clientY: 140}))
+    expect(target.getBoundingClientRect().width).toBeLessThan(100)
+    if(pending) queuePointer(pointer("pointermove", {pointerId: 81, buttons: 1, clientX: 160, clientY: 130}))
+    handle.dispatchEvent(pointer("lostpointercapture", {pointerId: 81, buttons: 0}))
+    const resized = target.getAttribute("style")
+    expect(target.getBoundingClientRect().width).toBe(pending ? 60 : 80)
+    expect(target.innerHTML).toBe(content)
+    expect(hasPresentationState(document.body, "transform-scaling-nwse")).toBe(false)
+    document.dispatchEvent(pointer("pointerup", {pointerId: 81}))
+    flushAnimationFrame()
+    expect(target.getAttribute("style")).toBe(resized)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const final = editor.toHTML(true)
+    expect(final).not.toMatch(/◆|transform-overlay/)
+    expect(editor.doc.body.toString()).not.toMatch(/◆|transform-overlay/)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(initial)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(final)
+  })
+
+  it.each(["held", "pointercancel", "changed", "removed", "replaced", "reparented", "other-pointer"])("handles %s during a quick resize without committing an invalid gesture", scenario => {
+    const target = targetElement("img")
+    Object.assign(target.style, {width: "100px", height: "50px"})
+    mockRect(target)
+    selectNode(target)
+    const initial = target.getAttribute("style")
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 82, clientX: 200, clientY: 150}))
+    movePointer(pointer("pointermove", {pointerId: 82, buttons: 1, clientX: 180, clientY: 140}))
+    queuePointer(pointer("pointermove", {pointerId: 82, buttons: 1, clientX: 160, clientY: 130}))
+    if(scenario === "changed") target.style.maxWidth = "777px"
+    else if(scenario === "removed") target.remove()
+    else if(scenario === "replaced") target.replaceWith(target.cloneNode(true))
+    else if(scenario === "reparented") append(document.createElement("section")).append(target)
+    handle.dispatchEvent(pointer(scenario === "pointercancel" ? "pointercancel" : "lostpointercapture", {
+      pointerId: scenario === "other-pointer" ? 99 : 82, buttons: scenario === "held" ? 1 : 0,
+    }))
+    if(scenario === "other-pointer") {
+      expect(target.getBoundingClientRect().width).toBe(80)
+      document.dispatchEvent(pointer("pointerup", {pointerId: 82}))
+      expect(target.getBoundingClientRect().width).toBe(60)
+    }
+    else if(scenario === "changed") {
+      expect(target.style.maxWidth).toBe("777px")
+      expect(target.style.height).toBe("50px")
+    }
+    else expect(target.getAttribute("style")).toBe(initial)
+    expect(hasPresentationState(document.body, "transform-scaling-nwse")).toBe(false)
+  })
+
   it.each(["move", "resize", "rotate"] as const)("applies only the latest %s input once per frame", mode => {
     const canvas = mode !== "resize"
     if(canvas) {

@@ -4378,6 +4378,28 @@ await check("images stretch independently of their intrinsic aspect ratio", asyn
           assert(Math.abs(content.width - after.width) < 1 && Math.abs(content.height - after.height) < 1, `${mode}/${tag}: Shift left the image outside its box`)
           assert(!target.style.scale, `${mode}/${tag}: Shift used CSS scale instead of maximum dimensions`)
         }
+        for(const pending of [false, true]) {
+          const before = target.getBoundingClientRect()
+          const handle = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+          const pointer = (type: string, buttons: number, x: number, y: number) => new view.PointerEvent(type, {
+            bubbles: true, composed: true, cancelable: true, isPrimary: true, pointerType: "mouse",
+            button: 0, buttons, pointerId: 91, clientX: x, clientY: y, altKey: true,
+          })
+          // Synthetic events do not create an active native pointer to capture.
+          Object.defineProperty(handle, "setPointerCapture", {configurable: true, value: () => {}})
+          try { handle.dispatchEvent(pointer("pointerdown", 1, before.right, before.bottom)) }
+          finally { Reflect.deleteProperty(handle, "setPointerCapture") }
+          doc.dispatchEvent(pointer("pointermove", 1, before.right - 10, before.bottom - 5))
+          if(!pending) await layoutFrame()
+          handle.dispatchEvent(pointer("lostpointercapture", 0, before.right - 10, before.bottom - 5))
+          const after = target.getBoundingClientRect(), style = target.getAttribute("style")
+          assert(Math.abs(after.width - before.width + (mode === "document" ? 20 : 10)) < 1
+            && Math.abs(after.height - before.height + 5) < 1, `${mode}/${tag}: released capture reverted a quick resize (pending: ${pending}, ${before.width}×${before.height} -> ${after.width}×${after.height}, ${style})`)
+          doc.dispatchEvent(pointer("pointerup", 0, before.right - 10, before.bottom - 5))
+          await layoutFrame()
+          assert(target.getAttribute("style") === style, `${mode}/${tag}: late pointerup changed the committed resize`)
+          assert(!hasPresentationState(doc.body, "transform-scaling-nwse"), "quick resize left active presentation state")
+        }
         target.remove()
         transform.clearTransform()
       }

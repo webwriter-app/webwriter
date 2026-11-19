@@ -2673,10 +2673,11 @@ export class TransformationFeature extends EditorFeature {
       const gesture = this.#gesture
       if(!gesture || gesture.pointerId !== event.pointerId) return
       // A fast release can lose capture before pointerup reaches this listener.
-      // Keep the last move when the pointer is already released; capture loss
+      // Keep the last resize or freeform move when the pointer is released; capture loss
       // while a button is held still cancels, as do invalidated DOM targets.
-      const releasedMove = event.buttons === 0 && gesture.mode === "move" && this.#isFreeformItem(gesture.target)
-      if(releasedMove && this.#validGesture()) this.#finish(false)
+      const releasedTransform = event.buttons === 0 && (gesture.mode === "scale"
+        || gesture.mode === "move" && this.#isFreeformItem(gesture.target))
+      if(releasedTransform && this.#validGesture()) this.#finish(false)
       else this.#finish(true)
     },
     click: event => {
