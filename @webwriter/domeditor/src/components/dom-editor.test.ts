@@ -4243,7 +4243,7 @@ describe("Develop local packages", () => {
     expect((editor as any).localPackages).toHaveLength(1)
     expect((editor as any).selectedLocalPackageName).toBe("@local/demo")
     expect(reload).toHaveBeenCalledWith([expect.objectContaining({name: "@local/demo"})])
-    expect(queryPermission).toHaveBeenCalledWith({mode: "readwrite"})
+    expect(queryPermission).toHaveBeenCalledWith({mode: "read"})
     expect(requestPermission).not.toHaveBeenCalled()
   })
 
