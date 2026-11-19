@@ -187,10 +187,10 @@ it("offers wrap, nowrap, and balance with a distinct balance icon", async () => 
   expect(change).toEqual({property: "text-wrap", mutation: {value: "balance", priority: ""}})
 })
 
-it("uses the same button height across dense paragraph choices while keeping regular text wrap icons", async () => {
+it("centers dense paragraph choices with the same button height while keeping regular text wrap icons", async () => {
   const definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
   const editor = await mount(definitions, state(), "compact")
-  editor.propertyNames = ["text-align-last", "text-wrap", "hyphens"]
+  editor.propertyNames = ["text-align", "text-align-last", "text-wrap", "hyphens"]
   editor.setAttribute("dense-choices", "")
   await editor.updateComplete
 
@@ -198,6 +198,11 @@ it("uses the same button height across dense paragraph choices while keeping reg
   const wrapIcon = editor.shadowRoot!.querySelector<SVGElement>('[data-property="text-wrap"] svg')!
   const hyphenIcon = editor.shadowRoot!.querySelector<SVGElement>('[data-property="hyphens"] svg')!
   const alignmentStyle = getComputedStyle(alignmentButton)
+  for(const button of editor.shadowRoot!.querySelectorAll(".specialized-choice-group button")) {
+    const style = getComputedStyle(button)
+    expect(style.display).toBe("grid")
+    expect(style.placeItems).toBe("center")
+  }
   for(const icon of [wrapIcon, hyphenIcon]) {
     const buttonStyle = getComputedStyle(icon.closest("button")!)
     expect(buttonStyle.height).toBe(alignmentStyle.height)

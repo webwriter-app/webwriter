@@ -1806,12 +1806,27 @@ await check("Toolbox choices distinguish defaults from explicit matching values"
   const controls = new ElementStyleEditor()
   controls.mode = "compact"
   controls.definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
-  controls.propertyNames = ["text-align"]
+  controls.propertyNames = ["text-align", "text-align-last", "text-wrap", "hyphens"]
+  controls.orientation = "vertical"
+  controls.setAttribute("dense-choices", "")
+  controls.style.width = "216px"
   const initial = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {"text-align": "start"}, context: {display: "block", parentDisplay: "block"}}
   controls.state = initial
   fixture.append(controls)
   try {
     await controls.updateComplete
+    await layoutFrame()
+    for(const property of controls.propertyNames) {
+      const buttons = controls.shadowRoot!.querySelectorAll<HTMLButtonElement>(`[data-property="${property}"] .specialized-choice-group button`)
+      assert(buttons.length > 0, `${property} choices are missing`)
+      for(const button of buttons) {
+        const icon = button.querySelector("svg")!.getBoundingClientRect()
+        const rect = button.getBoundingClientRect()
+        assert(icon.width > 0 && rect.width > 0, `${property} choice is not visible`)
+        assert(Math.abs(icon.left + icon.width / 2 - rect.left - rect.width / 2) < .5, `${property} icon is not horizontally centered`)
+        assert(Math.abs(icon.top + icon.height / 2 - rect.top - rect.height / 2) < .5, `${property} icon is not vertically centered`)
+      }
+    }
     const active = () => controls.shadowRoot!.querySelector<HTMLButtonElement>('.specialized-choice-group button[aria-pressed="true"]')!
     assert(getComputedStyle(active()).backgroundColor === "rgb(229, 229, 229)", "default choice is not light grey")
     controls.addEventListener("element-style-change", event => {
