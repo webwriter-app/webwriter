@@ -3246,6 +3246,73 @@ await check("nested widget pages keep insertion, splitting and deletion inside t
   finally { pageRoot.querySelector("input")!.blur(); organizer.remove(); editor.schema = originalSchema }
 })
 
+await check("isolating widget selections preserve whole-widget drags", async () => {
+  const originalSchema = editor.schema
+  editor.schema = new Schema()
+  editor.schema.extendWidgets([
+    {tagName: "native-selection-pages", editingConfig: {content: "native-selection-page+"}},
+    {tagName: "native-selection-page", editingConfig: {content: "flow*"}},
+  ])
+  const container = document.createElement("section")
+  container.innerHTML = '<p>Before isolated pages</p><native-selection-pages><native-selection-page><p>First isolated page</p></native-selection-page><native-selection-page><p>Second isolated page</p></native-selection-page></native-selection-pages><p>After isolated pages</p>'
+  const widget = container.querySelector<HTMLElement>("native-selection-pages")!
+  const [first, second] = Array.from(widget.children) as HTMLElement[]
+  widget.style.cssText = "display:block;padding:12px;border:1px solid gray"
+  for(const page of [first, second]) {
+    page.style.cssText = "display:block;padding:20px"
+    page.attachShadow({mode: "open"}).innerHTML = "<slot></slot>"
+  }
+  widget.attachShadow({mode: "open"}).innerHTML = "<slot></slot>"
+  const before = container.firstElementChild!.firstChild!, after = container.lastElementChild!.firstChild!
+  const start = first.querySelector("p")!.firstChild!, end = second.querySelector("p")!.firstChild!
+  fixture.append(container)
+  editor.features.widget.refresh()
+  const selection = document.getSelection()!
+  const point = (text: Node) => {
+    const range = document.createRange()
+    range.setStart(text, 2); range.setEnd(text, 3)
+    const rect = range.getBoundingClientRect()
+    return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2}
+  }
+  const pointer = (type: string, text: Node, target: EventTarget) => {
+    const {x, y} = point(text)
+    target.dispatchEvent(new PointerEvent(type, {bubbles: true, composed: true, cancelable: true,
+      pointerId: 288, pointerType: "mouse", button: 0, buttons: type === "pointerup" ? 0 : 1, clientX: x, clientY: y}))
+  }
+  try {
+    await layoutFrame()
+    for(const backwards of [false, true]) {
+      selection.setBaseAndExtent(backwards ? end : start, 2, backwards ? start : end, 4)
+      editor.features.selection.processSelection()
+      const page = backwards ? second : first
+      assert(page.contains(selection.anchorNode) && page.contains(selection.focusNode), "partial text range crossed pages")
+      selection.setBaseAndExtent(backwards ? after : before, 2, start, 4)
+      editor.features.selection.processSelection()
+      assert(!widget.contains(selection.focusNode), "outside range ended inside Pages")
+      selection.setBaseAndExtent(backwards ? after : before, 2, backwards ? before : after, 4)
+      editor.features.selection.processSelection(true)
+      assert(hasPresentationState(widget, "atomic-range-selected"), "enclosed isolated widget lost its range overlay")
+    }
+    $.move(start, 2)
+    editor.features.selection.processSelection()
+    pointer("pointerdown", start, first.querySelector("p")!)
+    pointer("pointermove", end, document.body)
+    pointer("pointerup", end, document.body)
+    assert(first.contains(selection.anchorNode) && first.contains(selection.focusNode), "pointer drag escaped its anchor page")
+    $.move(before, 2)
+    editor.features.selection.processSelection()
+    pointer("pointerdown", before, container.firstElementChild!)
+    pointer("pointermove", start, document.body)
+    assert(!widget.contains(selection.focusNode), "outside drag entered isolated text")
+    pointer("pointermove", after, document.body)
+    pointer("pointerup", after, document.body)
+    assert(hasPresentationState(widget, "atomic-range-selected"), "outside drag could not select the whole widget")
+    editor.features.selection.selectElement(widget)
+    assert($.selectedElement === widget, "whole widget selection was blocked")
+  }
+  finally { container.remove(); editor.schema = originalSchema }
+})
+
 await check("global directional shorthands preserve authored overrides in native CSSOM", () => {
   const target = document.createElement("aside")
   document.body.append(target)

@@ -40,6 +40,7 @@ const expectedChecks = [
   "contents subwidgets keep selection outlines and affordances around their rendered content",
   "widget-owned marks work through the ribbon and built-in font picker",
   "nested widget pages keep insertion, splitting and deletion inside their hosts",
+  "isolating widget selections preserve whole-widget drags",
   "Crossing graphic resize edges reflects shapes and preserves fixed anchors",
   "Shift graphic resize preserves aspect ratios while snapping",
   "Drawing brush keys are temporary and inserted shapes keep their defaults",

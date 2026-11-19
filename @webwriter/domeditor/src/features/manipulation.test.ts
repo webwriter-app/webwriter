@@ -3438,8 +3438,8 @@ describe("figures", () => {
 describe("partial contentful widget deletion", () => {
   beforeEach(() => {
     editor.schema.extendWidgets([
-      {tagName: "delete-timeline", editingConfig: {content: "delete-event*"}},
-      {tagName: "delete-event", editingConfig: {group: "", content: "h2 flow+"}},
+      {tagName: "delete-timeline", editingConfig: {content: "delete-event*", isolating: false}},
+      {tagName: "delete-event", editingConfig: {group: "", content: "h2 flow+", isolating: false}},
     ])
     document.body.innerHTML = '<p>Before</p><delete-timeline><delete-event date="1900"><h2 slot="title">First</h2><p>First body</p></delete-event><delete-event date="1950"><h2 slot="title">Second</h2><p>Second body</p></delete-event><delete-event date="2000"><h2 slot="title">Third</h2><p>Third body</p></delete-event></delete-timeline><p>After</p>'
   })

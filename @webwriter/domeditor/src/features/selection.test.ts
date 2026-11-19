@@ -2633,13 +2633,138 @@ describe("empty text range highlighting", () => {
   })
 })
 
+describe("isolating widget selections", () => {
+  const select = (anchor: Node, anchorOffset: number, focus: Node, focusOffset: number) => {
+    // Happy DOM emits selectionchange before setBaseAndExtent has assigned
+    // the range direction. Observe the completed write, as browsers do.
+    $.isSettingRanges = true
+    try { document.getSelection()!.setBaseAndExtent(anchor, anchorOffset, focus, focusOffset) }
+    finally { $.isSettingRanges = false }
+  }
+  function pages(isolating = true) {
+    editor.schema.extendWidgets([
+      {tagName: "selection-pages", editingConfig: {content: "selection-page+", isolating}},
+      {tagName: "selection-page", editingConfig: {content: "flow*", isolating}},
+    ])
+    document.body.innerHTML = '<p>Before pages</p><selection-pages><!--keep--><selection-page><h2>First title</h2><p>First body</p></selection-page><selection-page><p>Second body</p></selection-page></selection-pages><p>After pages</p>'
+    const widget = document.querySelector("selection-pages")!
+    const [first, second] = Array.from(widget.children)
+    return {widget, first, second, start: first.querySelector("h2")!.firstChild!, end: first.querySelector("p")!.firstChild!,
+      other: second.querySelector("p")!.firstChild!, before: document.body.firstElementChild!.firstChild!, after: document.body.lastElementChild!.firstChild!}
+  }
+
+  it.each([false, true])("keeps a page-to-page range inside its anchor page (backwards: %s)", backwards => {
+    const {first, second, start, other} = pages()
+    const anchor = backwards ? other : start, focus = backwards ? start : other, scope = backwards ? second : first
+    select(anchor, 2, focus, 4)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect($.anchor === anchor).toBe(true)
+    expect($.anchorOffset).toBe(2)
+    expect($.focus).toBe(scope)
+    expect($.focusOffset).toBe(backwards ? 0 : scope.childNodes.length)
+    expect(feature.isCaptureSelection).toBe(false)
+  })
+
+  it.each([false, true])("stops an outside partial range at the Pages boundary (backwards: %s)", backwards => {
+    const {widget, start, before, after} = pages()
+    const anchor = backwards ? after : before
+    select(anchor, 2, start, 4)
+    feature.processSelection()
+    expect($.anchor === anchor).toBe(true)
+    expect($.focus).toBe(document.body)
+    expect($.focusOffset).toBe(Array.from(document.body.childNodes).indexOf(widget) + (backwards ? 1 : 0))
+  })
+
+  it.each([false, true])("keeps a range starting inside a page from reaching document text (backwards: %s)", backwards => {
+    const {first, start, before, after} = pages()
+    select(start, 2, backwards ? before : after, 4)
+    feature.processSelection()
+    expect($.anchor === start).toBe(true)
+    expect($.focus).toBe(first)
+    expect($.focusOffset).toBe(backwards ? 0 : first.childNodes.length)
+  })
+
+  it.each([false, true])("allows an outside range to enclose the complete Pages widget (backwards: %s)", backwards => {
+    const {widget, before, after} = pages()
+    const anchor = backwards ? after : before, focus = backwards ? before : after
+    select(anchor, 2, focus, 4)
+    feature.processSelection(true)
+    expect($.anchor === anchor).toBe(true)
+    expect($.focus).toBe(focus)
+    expect(hasPresentationState(widget, "atomic-range-selected")).toBe(true)
+    feature.selectElement(widget)
+    expect($.selectedElement).toBe(widget)
+  })
+
+  it.each([false, true])("uses boundary offsets to preserve direction at ancestor gaps (backwards: %s)", backwards => {
+    const {widget, first, start} = pages()
+    select(start, 2, widget, backwards ? 0 : widget.childNodes.length)
+    feature.processSelection()
+    expect($.anchor === start).toBe(true)
+    expect($.focus).toBe(first)
+    expect($.focusOffset).toBe(backwards ? 0 : first.childNodes.length)
+    const index = Array.from(document.body.childNodes).indexOf(widget) + (backwards ? 1 : 0)
+    select(document.body, index, start, 2)
+    feature.processSelection()
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(index)
+    expect($.focus).toBe(document.body)
+    expect($.focusOffset).toBe(index)
+  })
+
+  it("allows ranges between blocks inside one page and confines Select all to that page", () => {
+    const {first, start, end} = pages()
+    select(start, 2, end, 4)
+    feature.processSelection()
+    expect($.anchor === start).toBe(true)
+    expect($.focus).toBe(end)
+    document.body.dispatchEvent(new KeyboardEvent("keydown", {key: "a", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true}))
+    expect($.anchor).toBe(first)
+    expect($.anchorOffset).toBe(0)
+    expect($.focus).toBe(first)
+    expect($.focusOffset).toBe(first.childNodes.length)
+  })
+
+  it("allows partial crossings when isolating is false, while nested isolated content keeps its own boundary", () => {
+    const {first, start, other, before} = pages(false)
+    select(before, 2, start, 4)
+    feature.processSelection()
+    expect($.anchor).toBe(before)
+    expect($.focus).toBe(start)
+    select(start, 2, other, 4)
+    feature.processSelection()
+    expect($.focus).toBe(other)
+    editor.schema.extendWidgets([{tagName: "selection-page", editingConfig: {content: "flow*", isolating: true}}])
+    feature.processSelection()
+    expect($.focus).toBe(first)
+    expect($.focusOffset).toBe(first.childNodes.length)
+  })
+
+  it("revalidates replaced endpoints and leaves authored content untouched", () => {
+    const {widget, first, start, other} = pages()
+    const authored = editor.toHTML(true)
+    select(start, 2, other, 4)
+    feature.processSelection()
+    expect(editor.toHTML(true)).toBe(authored)
+    const replacement = first.cloneNode(true) as Element
+    first.replaceWith(replacement)
+    const text = replacement.querySelector("h2")!.firstChild!
+    select(text, 1, other, 3)
+    feature.processSelection()
+    expect($.anchor).toBe(text)
+    expect($.focus).toBe(replacement)
+    expect(widget.contains($.focus)).toBe(true)
+    expect(editor.toHTML(true)).toBe(authored)
+  })
+})
+
 describe("contentful widgets", () => {
   const originalHitTest = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
   beforeEach(() => {
     Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, writable: true, value: () => null})
     editor.schema.extendWidgets([
       {tagName: "timeline-widget", editingConfig: {content: "timeline-item*"}},
-      {tagName: "timeline-item", editingConfig: {content: "flow*"}},
+      {tagName: "timeline-item", editingConfig: {content: "flow*", isolating: false}},
     ])
   })
 
@@ -7780,7 +7905,7 @@ describe("selection invariants", () => {
   })
 
   it.each(["selectionchange", "pointerup"])("retains the gap anchor when native %s collapses a drag into widget text", phase => {
-    editor.schema.extendWidgets([{tagName: "gap-range-widget", editingConfig: {content: "flow*"}}])
+    editor.schema.extendWidgets([{tagName: "gap-range-widget", editingConfig: {content: "flow*", isolating: false}}])
     document.body.innerHTML = '<p>Before</p><gap-range-widget><h2>Title</h2><p>Last paragraph</p></gap-range-widget>'
     const widget = document.querySelector("gap-range-widget")!, paragraph = widget.querySelector("p")!, text = paragraph.firstChild!
     vi.spyOn(widget, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 200, 200))
@@ -7810,7 +7935,7 @@ describe("selection invariants", () => {
   })
 
   it("does not reveal the top of a long widget while dragging or on release", () => {
-    editor.schema.extendWidgets([{tagName: "scroll-range-widget", editingConfig: {content: "flow*"}}])
+    editor.schema.extendWidgets([{tagName: "scroll-range-widget", editingConfig: {content: "flow*", isolating: false}}])
     document.body.innerHTML = '<scroll-range-widget><h2>Title</h2><p>Last paragraph</p></scroll-range-widget>'
     const widget = document.querySelector("scroll-range-widget")!, paragraph = widget.querySelector("p")!, text = paragraph.firstChild!
     vi.spyOn(widget, "getBoundingClientRect").mockReturnValue(new DOMRect(100, -1000, 300, 1400))

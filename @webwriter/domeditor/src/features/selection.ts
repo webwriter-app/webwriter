@@ -1171,6 +1171,53 @@ export class SelectionFeature extends EditorFeature {
     else selection.extend(flow, backwards ? 0 : flow.childNodes.length)
   }
 
+  /** Isolating content remains editable internally and selectable as a whole
+   * from outside. Only partial text endpoints may not cross its boundary. */
+  #isolatingSelectionRoot(node: Node | null) {
+    const root = getDocumentRoot()
+    for(let element = isElement(node) ? node : node?.parentElement;
+      element && element !== root; element = element.parentElement) {
+      if(isContentfulWidget(element, this.editor.schema) && this.editor.schema.get(element).inseperable) return element
+    }
+    return null
+  }
+
+  #constrainSelectionToIsolatingContent() {
+    const selection = document.getSelection()
+    if(!selection?.anchorNode || !selection.focusNode || selection.isCollapsed) return
+    const root = getDocumentRoot()
+    if(!root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) return
+    const scope = this.#isolatingSelectionRoot(selection.anchorNode)
+    const range = selection.getRangeAt(0)
+    const backwards = selection.anchorNode === range.endContainer && selection.anchorOffset === range.endOffset
+    let node = selection.focusNode, offset = selection.focusOffset
+    if(scope && !scope.contains(node)) {
+      node = scope
+      offset = backwards ? 0 : scope.childNodes.length
+    }
+    else {
+      // Snap to the near edge of the outermost foreign island. Passing its
+      // far edge still encloses the widget normally, without entering it.
+      let boundary: Element | null = null
+      for(let element = isElement(node) ? node : node.parentElement;
+        element && element !== root && element !== scope; element = element.parentElement) {
+        if(!element.contains(selection.anchorNode) && isContentfulWidget(element, this.editor.schema)
+          && this.editor.schema.get(element).inseperable) boundary = element
+      }
+      if(boundary?.parentNode) {
+        node = boundary.parentNode
+        offset = Array.from(node.childNodes).indexOf(boundary) + (backwards ? 1 : 0)
+      }
+    }
+    if(node === selection.focusNode && offset === selection.focusOffset) return
+    const anchor = document.createRange(), focus = document.createRange()
+    anchor.setStart(selection.anchorNode, selection.anchorOffset)
+    anchor.collapse(true)
+    focus.setStart(node, offset)
+    focus.collapse(true)
+    this.#applyDragRange(anchor, focus)
+  }
+
   enable() {
     if(this.isEnabled) return
     const first = document.body.firstElementChild
@@ -1423,11 +1470,14 @@ export class SelectionFeature extends EditorFeature {
       this.#endDrag()
       return
     }
+    this.#constrainSelectionToIsolatingContent()
     const flow = editingFlowRoot(selection.focusNode)
     const fromGap = !nativeClick && $.isGapSelection
     // A popup bubble is its own editing flow even in the document layout.
     const popupScope = popupElementRole(flow) === "content" && flow.contains(selection.anchorNode) ? flow : null
-    const scope = popupScope ?? this.#layoutSelectionItem(selection.focusNode, selection.focusNode)
+    const isolated = this.#isolatingSelectionRoot(selection.anchorNode)
+    const scope = isolated && (!popupScope || popupScope.contains(isolated)) ? isolated
+      : popupScope ?? this.#layoutSelectionItem(selection.focusNode, selection.focusNode)
     if(scope && !scope.contains(selection.anchorNode)) selection.collapse(selection.focusNode, selection.focusOffset)
     const anchor = document.createRange()
     anchor.setStart(selection.anchorNode, selection.anchorOffset)
@@ -1464,6 +1514,7 @@ export class SelectionFeature extends EditorFeature {
     // their current roots before using them after a concurrent DOM mutation.
     const root = drag.scope ?? getDocumentRoot()
     if(!root.isConnected || drag.scope && popupElementRole(drag.scope) !== "content"
+      && this.#isolatingSelectionRoot(drag.scope) !== drag.scope
       && this.#layoutSelectionItem(drag.scope, drag.scope) !== drag.scope
       || !root.contains(drag.anchor.startContainer) || !root.contains(drag.focus.startContainer)) {
       this.#endDrag()
@@ -3271,6 +3322,7 @@ export class SelectionFeature extends EditorFeature {
       this.#constrainSelectionToBody()
       this.#constrainSelectionToFlow()
       this.#constrainSelectionToAtomicContent()
+      this.#constrainSelectionToIsolatingContent()
       this.normalizePopupSelection()
       sel = document.getSelection()
       const root = getDocumentRoot()
@@ -3581,7 +3633,9 @@ export class SelectionFeature extends EditorFeature {
       if(ev.key.toLowerCase() === "a" && modifierKeyDown(ev)) {
         ev.preventDefault()
         const flow = editingFlowRoot($.selectedElement ?? $.anchor)
-        const root = popupElementRole(flow) === "content" ? flow : this.editor.features.canvas.editingRoot ?? getDocumentRoot()
+        const isolated = this.#isolatingSelectionRoot($.anchor)
+        const root = isolated && (popupElementRole(flow) !== "content" || flow.contains(isolated)) ? isolated
+          : popupElementRole(flow) === "content" ? flow : this.editor.features.canvas.editingRoot ?? getDocumentRoot()
         $.selectRange(root, 0, root, root.childNodes.length)
         this.processSelection()
       }

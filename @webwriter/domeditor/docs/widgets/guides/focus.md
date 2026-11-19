@@ -81,7 +81,9 @@ Test Tab, Shift+Tab, Enter, and Space in edit mode and in preview. Update the ex
 
 ## Ranges through authored content
 
-Declaring `content` opens the widget's authored children to ranges that cross titles, paragraphs, nested widgets and slots. A drag that starts at a gap retains that gap as its anchor and can end partway through text. Dragging along either side of the widget projects the endpoint onto authored content at the pointer's height. During document drag selection, the page scrolls near the viewport edges rather than revealing the start of the growing range.
+Declaring `content` opens the widget’s authored children to text selection across titles, paragraphs and slots. By default, `isolating: true` confines ranges started inside the widget to its content and prevents an outside range from ending partway inside it. Nested isolated widgets form their own boundaries. Select all inside an isolated widget selects that widget’s content.
+
+Set `isolating: false` in the [editing configuration](../reference/editing-configuration.md) to allow partial ranges across the widget boundary. This does not override isolation declared by a nested widget. A drag that starts at a gap retains that gap as its anchor and can end partway through text. Dragging along either side of the widget projects the endpoint onto authored content at the pointer's height. During document drag selection, the page scrolls near the viewport edges rather than revealing the start of the growing range.
 
 A fully enclosed widget receives the editor's blue range overlay, including widgets that expose editable content. Partial coverage keeps the authored text range. This also works for a `display: contents` host: selection geometry follows its rendered shadow and slotted boxes. Range highlighting does not acquire capture. Deleting a partial range removes the indicated content without promoting it to deletion of the enclosing widget.
 
