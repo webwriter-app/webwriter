@@ -13,7 +13,7 @@ import {SVG_NAMESPACE, graphicShapeDragType, readGraphicShapeDrag, isGraphicShap
 import {boardLayoutRole, documentLayoutMode, isBoardCard, isDocumentFlowChild, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, caretRect, fixedClientX, renderedClientRect, widgetHostForShadowInteraction, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
-import {isMarkElement} from "../marks"
+import {areEquivalentMarkElements, isMarkElement} from "../marks"
 import {isEmptyParagraph, isParagraphContent, isPointAtBoundary} from "../utility"
 import {childNodesInRange, createAnchorPositioner, cssZoomFactor, removeEditorMarker} from "../utility"
 import {
@@ -3781,6 +3781,31 @@ export class ManipulationFeature extends EditorFeature {
     return isParagraphContent(node)
   }
 
+  /** Reuse inherited marks on paste without normalizing authored nesting.
+   * Each destination wrapper replaces at most one source wrapper per run. */
+  private mergePastedMarks(fragment: DocumentFragment) {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || $.isElementSelection || $.isGapSelection || $.isEmptyDocumentSelection
+      || !Array.from(fragment.childNodes).every(node => this.isInlineClipboardNode(node))) return
+    const common = selection.getRangeAt(0).commonAncestorContainer
+    if(!common.isConnected || !document.body.contains(common)) return
+    const inherited: Element[] = []
+    let element = isElement(common) ? common : common.parentElement
+    while(element && isMarkElement(element) && !element.hasAttribute("is")) {
+      inherited.push(element)
+      element = element.parentElement
+    }
+    const merge = (parent: DocumentFragment | Element, available: Element[]) => {
+      for(const child of Array.from(parent.children)) {
+        if(!isMarkElement(child) || child.hasAttribute("is")) continue
+        const index = available.findIndex(mark => areEquivalentMarkElements(mark, child))
+        merge(child, index < 0 ? available : available.filter((_, position) => position !== index))
+        if(index >= 0) child.replaceWith(...child.childNodes)
+      }
+    }
+    if(inherited.length) merge(fragment, inherited)
+  }
+
   /** Groups top-level inline runs beside block clipboard content into normal
    * text blocks. Formatting whitespace between source blocks is discarded. */
   private normalizeClipboardTopLevel(nodes: ChildNode[]): ChildNode[] {
@@ -4124,6 +4149,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       else this.editor.features.math.adaptToPlacement(math, math.parentNode === fragment ? $.range.startContainer : math.parentNode!)
     }
+    if(paste) this.mergePastedMarks(fragment)
     const nodes = this.normalizeClipboardTopLevel(Array.from(fragment.childNodes))
     if(!nodes.length) return
     const isVirtualSelection = $.isGapSelection || $.isEmptyDocumentSelection

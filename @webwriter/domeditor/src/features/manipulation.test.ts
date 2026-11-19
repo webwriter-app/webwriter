@@ -4819,6 +4819,78 @@ describe("insertion beside a lone float", () => {
 })
 
 describe("paste()", () => {
+  it.each(["native", "beforeinput", "async"].flatMap(method =>
+    ["sub", "sup", "s", "code", "kbd"].flatMap(tag =>
+      ["caret", "range"].map(target => ({method, tag, target})),
+    ),
+  ))("merges copied $tag formatting into the destination ($method, $target)", async ({method, tag, target}) => {
+    document.body.innerHTML = `<p>before <${tag}>abcd</${tag}><!--keep--> after</p>`
+    const mark = document.querySelector(tag)!, text = mark.firstChild!
+    $.selectRange(text, 1, text, 3)
+    const data = new DataTransfer()
+    if(method === "async") await editor.features.manipulation.copy()
+    else document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true}))
+    if(target === "range") $.selectRange(text, 2, text, 3)
+    else $.move(text, 2)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+
+    if(method === "async") await editor.features.manipulation.actions.paste({type: "paste"})
+    else {
+      const event = method === "beforeinput"
+        ? new InputEvent("beforeinput", {inputType: "insertFromPaste", dataTransfer: data, bubbles: true, cancelable: true})
+        : new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+
+    expect(document.querySelector(tag)).toBe(mark)
+    expect(mark.innerHTML).toBe(target === "range" ? "abbcd" : "abbccd")
+    expect($.anchor).toBe(mark.firstChild)
+    expect($.anchorOffset).toBe(4)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    const changed = editor.toHTML(true)
+    expect(changed).toContain("<!--keep-->")
+    expect(changed).not.toContain("webwriter-clipboard")
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain(`<${tag}><${tag}>`)
+    editor.doc.undo()
+    expectBodyToBe(original)
+    editor.doc.redo()
+    expectBodyToBe(changed)
+  })
+
+  it.each([
+    {source: '<sub><b>X</b></sub>', expected: 'aXb'},
+    {source: '<i><sub><b>X</b></sub></i>', expected: 'a<i>X</i>b'},
+    {source: '<sub><sub>X</sub></sub>', expected: 'a<sub>X</sub>b'},
+    {source: '<sub title="different">X</sub>', expected: 'a<sub title="different">X</sub>b'},
+    {source: '<test-widget><sub>X</sub></test-widget>', expected: null},
+  ])("merges only matching inherited wrappers in $source", ({source, expected}) => {
+    document.body.innerHTML = '<p><sub><b>ab</b></sub><!--keep--></p>'
+    const sub = document.querySelector("sub")!, bold = document.querySelector("b")!
+    $.move(bold.firstChild!, 1)
+    const data = new DataTransfer()
+    data.setData("text/html", '<meta name="webwriter-clipboard" content="1">' + source)
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    expect(document.querySelector("sub")).toBe(sub)
+    expect(document.querySelector("b")).toBe(bold)
+    if(expected !== null) expect(bold.innerHTML).toBe(expected)
+    else expect(document.querySelector("test-widget")!.innerHTML).toBe("<sub>X</sub>")
+    expect(document.body.innerHTML).toContain("<!--keep-->")
+  })
+
+  it("does not remove formatting needed outside a partially selected mark", () => {
+    document.body.innerHTML = '<p><sub>ab</sub>cd</p>'
+    const sub = document.querySelector("sub")!, paragraph = document.querySelector("p")!
+    $.selectRange(sub.firstChild!, 1, paragraph.lastChild!, 1)
+    const data = new DataTransfer()
+    data.setData("text/html", '<sub>X</sub>')
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    expect(paragraph.innerHTML).toBe('<sub>aX</sub>d')
+  })
+
   it("keeps copied paragraphs separate when pasting at the end of a paragraph", () => {
     document.body.innerHTML = '<p>A</p><p>B</p><p>C</p>'
     const [target, second, third] = Array.from(document.querySelectorAll("p"))
