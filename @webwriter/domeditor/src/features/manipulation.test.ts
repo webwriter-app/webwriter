@@ -8110,6 +8110,110 @@ describe("unified content transfer", () => {
     expect(sourceRect).not.toHaveBeenCalled()
   })
 
+  it.each([false, true].flatMap(copy => ["before", "after"].map(edge => ({copy, edge}))))("returns floated content to a zero-margin flow gap from $edge (copy: $copy)", ({copy, edge}) => {
+    document.body.innerHTML = '<picture style="width:80px;margin:9px;color:teal" class="ww-float-right"><!--keep--><img alt="source"></picture><section><p>first</p><!--boundary--><p>second</p></section>'
+    const source = document.querySelector("picture")!, section = document.querySelector("section")!
+    const [first, second] = Array.from(section.children)
+    const child = source.querySelector("img")!
+    const comment = section.childNodes[1]
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 100, 80))
+    vi.spyOn(second, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 130, 100, 80))
+    const target = edge === "before" ? second : first
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: target.firstChild!, offset: 2})
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const {data} = beginDrag(source)
+    const point = {clientX: 150, clientY: edge === "before" ? 132 : 128, ctrlKey: copy}
+    target.dispatchEvent(transferEvent("dragover", data, point))
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).not.toBeNull()
+    target.dispatchEvent(transferEvent("drop", data, point))
+    const placed = section.children[1] as HTMLElement
+    expect(Array.from(section.children).map(element => element.localName)).toEqual(["p", "picture", "p"])
+    expect(placed).not.toHaveClass("ww-float-right")
+    expect(placed.style.margin).toBe("9px")
+    expect(placed.style.width).toBe("80px")
+    expect(placed.style.color).toBe("teal")
+    expect(placed === source).toBe(!copy)
+    if(!copy) expect(placed.querySelector("img")).toBe(child)
+    expect(section.contains(comment)).toBe(true)
+    expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).toBeNull()
+    editor.doc.syncFromDOM()
+    const changed = editor.toHTML(true)
+    expect(changed).not.toMatch(/◆|drop-range|float-drop-preview/)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
+
+  it.each([false, true])("uses one projected flow slot beside a sole float (empty paragraph first: %s)", paragraphFirst => {
+    const media = '<picture id="only-source" style="position:static;float:right;height:120px;margin:0" class="ww-float-right"><!--inside--><img alt="only"></picture>'
+    const paragraph = '<p id="empty"><br></p>'
+    document.body.innerHTML = paragraphFirst ? paragraph + '<!--keep-->' + media : media + '<!--keep-->' + paragraph
+    document.body.style.cssText = '--ww-float-width:280px;padding-left:200px;padding-right:480px'
+    const source = document.querySelector("picture")!, empty = document.querySelector("p")!
+    const children = Array.from(source.childNodes), authored = document.body.innerHTML
+    const rect = HTMLElement.prototype.getBoundingClientRect
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
+      if(this === document.body) return new DOMRect(0, 0, 1400, 700)
+      if(this === source) return new DOMRect(1100, 20, 140, 120)
+      if(this === empty) return new DOMRect(200, 20, 720, 28)
+      // Supply the layout engine's result for the isolated no-float projection.
+      if(this.getRootNode() instanceof ShadowRoot && parseFloat(this.style.blockSize) === 0) return new DOMRect(340, 20, 720, 0)
+      return rect.call(this)
+    })
+    const clone = vi.spyOn(source, "cloneNode")
+    const {data, surface} = beginDrag(source)
+    const reference = paragraphFirst ? empty : source
+    for(const y of [18, 34, 50, 100]) {
+      document.body.dispatchEvent(transferEvent("dragover", data, {clientX: 700, clientY:y}))
+      const marker = editor.appendix.querySelector<HTMLElement>('[part~="drop-range-gap"]')!
+      expect(marker).not.toBeNull()
+      expect(marker.style.left).toBe("340px")
+      expect(marker.style.top).toBe("20px")
+      expect(marker.style.width).toBe("720px")
+      const range = editor.features.manipulation.dropRange(new MouseEvent("mousemove", {clientX:700, clientY:y}), source)!
+      expect(range.startContainer).toBe(document.body)
+      expect(document.body.childNodes[range.startOffset]).toBe(reference)
+    }
+    expect(clone).not.toHaveBeenCalled()
+    expect(document.body.innerHTML).toBe(authored)
+    expect(Array.from(source.childNodes)).toEqual(children)
+    // Live edits invalidate the empty slot before the geometry cache rebuilds.
+    empty.textContent = "Now authored content"
+    expect(editor.features.manipulation.emptyFlowDropRange(new MouseEvent("mousemove", {clientX:700, clientY:100}), source)).toBeNull()
+    surface.dispatchEvent(transferEvent("dragend", data))
+    expect(editor.appendix.querySelector('[part~="drop-range-gap"]')).toBeNull()
+    expect(editor.appendix.querySelectorAll('div[style*="visibility: hidden"]')).toHaveLength(0)
+  })
+
+  it("keeps the visible content column available when a projected float would cover it", () => {
+    document.body.innerHTML = '<picture><img alt="first"></picture><picture><img alt="second"></picture><video class="ww-float-right" style="float:right;width:720px;height:300px"></video>'
+    document.body.style.cssText = '--ww-float-width:720px;padding-left:340px;padding-right:340px'
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
+    const [first, second, source] = Array.from(document.body.children)
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue(new DOMRect(340, 50, 720, 200))
+    vi.spyOn(second, "getBoundingClientRect").mockReturnValue(new DOMRect(340, 250, 720, 200))
+    vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(1100, 50, 720, 300))
+    // Native hit testing resolves atomic media to an outer boundary.
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 2})
+    const {data} = beginDrag(source)
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:700, clientY:350}), source)).toBeNull()
+    const point = {clientX: 700, clientY: 252}
+    second.dispatchEvent(transferEvent("dragover", data, point))
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    const marker = editor.appendix.querySelector<HTMLElement>('[part~="drop-range-gap"]')!
+    expect(marker.style.width).toBe("720px")
+    expect(marker.style.height).toBe("24px")
+    expect(marker.style.top).toBe("250px")
+    second.dispatchEvent(transferEvent("drop", data, point))
+    expect(Array.from(document.body.children)).toEqual([first, source, second])
+    expect(source).not.toHaveClass("ww-float-right")
+    expect(marker.isConnected).toBe(false)
+  })
+
   it("keeps float drop previews at the top when attribution reserves space below", () => {
     document.body.innerHTML = '<video style="width:40px;height:60px;--ww-float-attribution-before:18px"></video><p>target</p>'
     const source = document.querySelector("video")!, target = document.querySelector("p")!

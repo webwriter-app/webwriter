@@ -2257,6 +2257,12 @@ export class TransformationFeature extends EditorFeature {
       manipulation.showFloatDropPreview(floatElement, float, "transformation", target)
       return
     }
+    const empty = manipulation.emptyFlowDropRange(event, target)
+    if(empty) {
+      this.#normalDropRange = empty
+      manipulation.showDropRangePreview(empty)
+      return
+    }
     const hit = document.elementsFromPoint?.(event.clientX, event.clientY).find(element =>
       getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && !target.contains(element) && !element.contains(target))
     if(!hit) {
@@ -2284,6 +2290,7 @@ export class TransformationFeature extends EditorFeature {
 
   #clearDrop(keepFloatPreview = false) {
     const hadDrop = this.#drop || this.#normalDropRange
+    if(this.#normalDropRange) this.editor.features.manipulation.clearDropRangePreview()
     if(this.#drop) clearPresentationState(this.#drop.element, `drop-caret-${this.#drop.placement}`)
     this.#drop = null
     this.#normalDropRange = null
@@ -2384,8 +2391,10 @@ export class TransformationFeature extends EditorFeature {
     if(gesture.pointerId !== undefined && gesture.handle.hasPointerCapture?.(gesture.pointerId)) gesture.handle.releasePointerCapture(gesture.pointerId)
     clearPresentationState(document.body, "transform-moving", "transform-rotating", "transform-scaling-ew", "transform-scaling-ns", "transform-scaling-nwse", "transform-scaling-nesw")
     clearPresentationState(document.body, ...cropDirections.map(direction => `transform-cropping-${direction}`))
+    const dropped = !cancel && valid && gesture.moved && (this.#drop || this.#normalDropRange)
     this.#clearDrop()
     this.editor.features.manipulation.clearFloatDropTargets()
+    if(dropped) this.editor.features.layout.refresh()
     gesture.endUndoGroup()
     const stableTextTransform = valid && (gesture.mode === "scale" || gesture.mode === "move" && !this.#drop && !this.#normalDropRange)
       && !gesture.group && !gesture.captured

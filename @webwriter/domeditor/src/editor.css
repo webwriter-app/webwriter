@@ -1880,10 +1880,23 @@ body::part(drop-range-caret) {
 
 body::part(drop-range-gap) {
   position-anchor: auto;
+  position-area: none;
+  display: block;
+  box-sizing: border-box;
   color: var(--sl-color-primary-400, #0078d7);
+  border: 1px dashed currentColor;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 body::part(drop-range-gap)::after {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 2px;
+  background: currentColor;
   animation: none;
 }
 
