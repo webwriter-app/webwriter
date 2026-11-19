@@ -1,6 +1,6 @@
 import {clearPresentationState, setPresentationState} from "../presentation-state.js"
 import {EditorFeature, type DocumentListenerMap} from "."
-import {canvasControlsStyles, groupCanvasZoomPresets, updateCanvasZoomControls, type CanvasNavigation} from "../canvas-viewer.js"
+import {canvasControlsStyles, canvasIcons, groupCanvasZoomPresets, updateCanvasZoomControls, type CanvasNavigation} from "../canvas-viewer.js"
 import {$, clearInlinePlacement, createAnchorPositioner, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker, uiMotionDisabled} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {documentLayoutMode, resetEmptyLayoutContent, isSlide, slideLayoutRole, slidesClass, slidesStyles, slideWidth, slideHeight} from "../document-layout"
@@ -643,20 +643,20 @@ export class SlidesFeature extends EditorFeature {
     this.controls.setAttribute("role", "toolbar"); this.controls.setAttribute("aria-label", "Slide actions")
     this.editor.addAppendix(this.controls)
     this.zoomControls = document.createElement("div")
-    this.zoomControls.className = "◆canvas-controls"
+    this.zoomControls.className = "◆canvas-controls ◆canvas-toolbar"
     this.zoomControls.setAttribute("part", "slide-zoom-controls")
     this.zoomControls.contentEditable = "false"
     this.zoomControls.setAttribute("role", "toolbar"); this.zoomControls.setAttribute("aria-label", "Slide zoom")
-    const zoomButton = (operation: CanvasNavigation, label: string, text = "") => {
+    const zoomButton = (operation: CanvasNavigation, label: string, icon = "") => {
       const button = document.createElement("button")
-      button.type = "button"; button.name = operation; button.textContent = text
+      button.type = "button"; button.name = operation; button.innerHTML = icon
       button.title = label; button.setAttribute("aria-label", label)
       button.addEventListener("pointerdown", event => event.preventDefault())
       button.addEventListener("click", () => this.actions.navigateSlides({type: "navigateSlides", operation}))
       return button
     }
     this.zoomControls.append(
-      zoomButton("zoom-out", "Zoom out", "−"), document.createElement("output"), zoomButton("zoom-in", "Zoom in", "+"),
+      zoomButton("zoom-out", "Zoom out", canvasIcons.zoomOut), document.createElement("output"), zoomButton("zoom-in", "Zoom in", canvasIcons.zoomIn),
       groupCanvasZoomPresets(zoomButton("actual-size", "Reset zoom to 100%"), zoomButton("fit-content", "Fit slide")),
     )
     this.editor.addAppendix(this.zoomControls)

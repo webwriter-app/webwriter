@@ -362,6 +362,16 @@ describe("CSS-only Slides layout", () => {
     const feature = editor.features.slides
     const toolbar = editor.appendix.querySelector<HTMLElement>("[part=slide-zoom-controls]")!
     expect(toolbar.classList.contains("◆canvas-controls")).toBe(true)
+    for(const [name, label] of [["zoom-in", "Zoom in"], ["zoom-out", "Zoom out"]]) {
+      const button = toolbar.querySelector<HTMLButtonElement>(`[name="${name}"]`)!
+      expect(button.getAttribute("aria-label")).toBe(label)
+      expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+      const style = getComputedStyle(button)
+      expect(style.display).toBe("inline-flex")
+      expect(style.alignItems).toBe("center")
+      expect(style.justifyContent).toBe("center")
+      expect(style.paddingTop).toBe(style.paddingLeft)
+    }
     const presets = toolbar.querySelector('[role="group"]')!
     const reset = presets.querySelector<HTMLButtonElement>('[name="actual-size"]')!
     expect(reset.querySelector("svg")).not.toBeNull()

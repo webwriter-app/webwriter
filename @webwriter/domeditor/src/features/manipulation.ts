@@ -4091,7 +4091,8 @@ export class ManipulationFeature extends EditorFeature {
     const maxDepth = isContentfulWidget(container, this.editor.schema) ? 0 : splitDepth
 
     for(let depth = 0; depth <= maxDepth; depth++) {
-      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container)) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
+      if(isDocumentRoot(container) || (this.editor.features.canvas.active || this.editor.features.slides.active) && container.matches("ul, ol, dl, menu")
+        || isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container)) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
         || isOutOfFlow(container) && !(this.editor.features.canvas.active && container.parentElement?.matches("body.ww-canvas")
           || this.editor.features.slides.active && container.parentElement?.matches("section.ww-slide")) || container.nodeName === "HTML") break
       const parent = container.parentElement
@@ -4171,7 +4172,8 @@ export class ManipulationFeature extends EditorFeature {
     const maxDepth = isContentfulWidget(container, this.editor.schema) ? 0 : splitDepth
 
     for(let depth = 0; depth <= maxDepth; depth++) {
-      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container)) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
+      if(isDocumentRoot(container) || (this.editor.features.canvas.active || this.editor.features.slides.active) && container.matches("ul, ol, dl, menu")
+        || isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container)) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
         || isOutOfFlow(container) && !(this.editor.features.canvas.active && container.parentElement?.matches("body.ww-canvas")
           || this.editor.features.slides.active && container.parentElement?.matches("section.ww-slide")) || container.nodeName === "HTML") break
       const parent = container.parentElement
