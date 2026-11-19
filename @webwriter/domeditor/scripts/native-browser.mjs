@@ -10,6 +10,7 @@ import {createServer} from "vite"
 
 const expectedChecks = [
   "Panels animate without resizing document or drawer contents",
+  "Bottom panes slide without resizing document or pane contents",
   "table pictures keep their size in editing and preview",
   "full width resizing clears the float column",
   "captioned graphics retain their resized width and selection outline",

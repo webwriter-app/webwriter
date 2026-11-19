@@ -30,7 +30,7 @@ import {checkParagraphCut} from "./paragraph-cut"
 import {checkHistorySelection} from "./history-selection"
 import {checkListClipboard} from "./list-clipboard"
 import {checkHeadingClipboard} from "./heading-clipboard"
-import {checkPanelMotion} from "./panel-motion"
+import {checkBottomPanelMotion, checkPanelMotion} from "./panel-motion"
 import {checkParagraphClipboard} from "./paragraph-clipboard"
 import {checkFormulaPaste} from "./formula-paste"
 import {checkListDeletion} from "./list-deletion"
@@ -243,6 +243,7 @@ await check("interrupted live sessions recover committed data locally", checkLiv
 await check("document recovery checkpoints cache inline media", checkDocumentRecovery)
 await check("heading clipboard preserves gap headings and joins existing text", checkHeadingClipboard)
 await check("Panels animate without resizing document or drawer contents", checkPanelMotion)
+await check("Bottom panes slide without resizing document or pane contents", checkBottomPanelMotion)
 await check("paragraph clipboard preserves separate paragraphs at a text caret", checkParagraphClipboard)
 await check("formula paste avoids placeholder breaks", checkFormulaPaste)
 await check("list editing splits and indents selected items", checkListEditing)

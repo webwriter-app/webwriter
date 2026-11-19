@@ -1137,10 +1137,39 @@ export class DomEditor extends LitElement {
       grid-column: 1 / -1;
       display: grid;
       grid-template-rows: 1fr;
-      transition: var(--ww-ui-transition, grid-template-rows 180ms ease);
     }
     .html-source-panel[inert] { grid-template-rows: 0fr; }
-    .html-source-clip { min-width: 0; min-height: 0; overflow: hidden; }
+    .html-source-clip,
+    .document-layouts-clip { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+
+    .html-source-clip > developer-console,
+    .document-layouts-bar { transform: none; visibility: visible; }
+
+    /* Release the document's final height once, then slide the outgoing pane
+     * over that space without keeping its contents in the grid's sizing. */
+    :is(.html-source-panel, .document-layouts-panel)[inert] > :is(.html-source-clip, .document-layouts-clip) {
+      overflow: visible;
+    }
+    :is(.html-source-panel, .document-layouts-panel)[inert] > :is(.html-source-clip, .document-layouts-clip) > :is(developer-console, .document-layouts-bar) {
+      position: absolute;
+      inset: auto 0 0;
+      transform: translateY(100%);
+      visibility: hidden;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      .html-source-clip > developer-console,
+      .document-layouts-bar {
+        transition: var(--ww-ui-transition, transform 180ms ease, visibility 0s);
+      }
+      :is(.html-source-panel, .document-layouts-panel)[inert] > :is(.html-source-clip, .document-layouts-clip) > :is(developer-console, .document-layouts-bar) {
+        transition-delay: 0s, 180ms;
+      }
+      @starting-style {
+        .html-source-clip > developer-console,
+        .document-layouts-bar { transform: translateY(100%); }
+      }
+    }
 
     .html-source-editor {
       box-sizing: border-box;
@@ -1237,14 +1266,10 @@ export class DomEditor extends LitElement {
       grid-column: 1 / -1;
       display: grid;
       grid-template-rows: 1fr;
-      transition: var(--ww-ui-transition, grid-template-rows 180ms ease);
     }
     .document-layouts-panel[inert] { grid-template-rows: 0fr; }
-    .document-layouts-clip { min-height: 0; overflow: hidden; }
-    .document-layouts-panel[inert] .document-layouts-bar { transform: translateY(100%); }
     .document-layouts-bar {
       box-sizing: border-box;
-      transition: var(--ww-ui-transition, transform 180ms ease);
       min-width: 0;
       container: document-layouts / inline-size;
       padding: 0.55rem 0.8rem 0.65rem;

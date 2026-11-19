@@ -76,6 +76,20 @@ const mountRibbon = async () => {
   return ribbon
 }
 
+it("changes AI composer geometry once while retaining the prompt draft", async () => {
+  const ribbon = await mountRibbon()
+  const prompt = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+  prompt.value = "Keep this draft"
+  prompt.dispatchEvent(new Event("input", {bubbles: true}))
+  ribbon.aiChatOpen = true
+  await ribbon.updateComplete
+  const composer = ribbon.aiToolboxTarget!.querySelector<HTMLElement>(".ai-chat-composer")!
+  for(const element of [composer, composer.querySelector(".ai-prompt-input")!]) {
+    expect(getComputedStyle(element).transition).not.toMatch(/(?:height|padding)/)
+  }
+  expect(composer.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!.value).toBe("Keep this draft")
+})
+
 const configureProvider = async (ribbon: AppRibbon) => {
   ribbon.aiDocumentToolHandler = async () => ({html: "", text: "", target: "body"})
   const store = (ribbon as unknown as {aiProviderStore: AIProviderStore}).aiProviderStore

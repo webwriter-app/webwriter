@@ -6308,7 +6308,7 @@ describe("DomEditor.execute()", () => {
     expect(getComputedStyle(panel).gridColumn).toBe("1 / -1")
     expect(panel.inert).toBe(true)
     expect(getComputedStyle(panel).gridTemplateRows).toBe("0fr")
-    expect(getComputedStyle(panel).transition).toContain("grid-template-rows")
+    expect(getComputedStyle(panel).transition).not.toContain("grid-template-rows")
     expect(getComputedStyle(editor).overflow).toBe("clip")
     await (editor as any).setHTMLMode(true)
     await editor.updateComplete
@@ -10211,14 +10211,22 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     const bar = editor.shadowRoot!.querySelector(".document-layouts-bar")!
     expect(bar).not.toBeNull()
+    const panel = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-panel")!
+    expect(getComputedStyle(panel).transition).not.toContain("grid-template-rows")
     host.documentLayoutsDismissed = true
     await editor.updateComplete
+    expect(panel.inert).toBe(true)
+    expect(getComputedStyle(panel).gridTemplateRows).toBe("0fr")
+    expect(getComputedStyle(bar).position).toBe("absolute")
+    expect(getComputedStyle(bar).visibility).toBe("hidden")
     host.documentLayout = {mode: "canvas", canConvert: true, zoom: 100}
     await editor.updateComplete
     expect(bar.querySelector('[data-mode="canvas"]')!.getAttribute("aria-pressed")).toBe("false")
     host.documentLayoutsDismissed = false
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector(".document-layouts-bar")).toBe(bar)
+    expect(getComputedStyle(bar).position).not.toBe("absolute")
+    expect(getComputedStyle(bar).visibility).toBe("visible")
     expect(bar.querySelector('[data-mode="canvas"]')!.getAttribute("aria-pressed")).toBe("true")
     host.htmlPending = true
     await editor.updateComplete

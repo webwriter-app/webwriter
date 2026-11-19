@@ -21,8 +21,6 @@ export const aiChatStyles = css`
       overflow: hidden;
       resize: none;
       transition: var(--ww-ui-transition,
-        min-height 220ms ease,
-        padding 220ms ease,
         border-color 220ms ease,
         border-radius 220ms ease);
     }
@@ -586,8 +584,6 @@ export const aiChatStyles = css`
       visibility: visible;
       opacity: 1;
       transition: var(--ww-ui-transition,
-        height 220ms ease,
-        padding 220ms ease,
         border-color 220ms ease,
         background-color 220ms ease,
         visibility 120ms ease,
