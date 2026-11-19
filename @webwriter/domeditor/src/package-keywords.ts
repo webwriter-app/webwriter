@@ -42,6 +42,7 @@ const educationLevels: Record<string, Badge> = {
   "9": {label: "Misc. ed.", icon: "EducationOther"},
   "2-4": {label: "Secondary ed.", icon: "EducationSchool"},
   "5-8": {label: "Higher ed.", icon: "EducationHigher"},
+  "all": {label: "All levels", icon: "EducationSchool"},
 }
 
 const educationFields: Record<string, Badge> = {
@@ -184,6 +185,7 @@ export function packageKeywordPresentations(
   }
 
   const fieldCodes = coreFields.every(field => fields.has(field)) ? ["all"] : [...fields].sort()
+  const levelCodes = ["1", "2-4", "5-8"].every(level => levels.has(level)) ? ["all"] : [...levels].sort()
   const online = onlineKeywords.find(keyword => normalizedKeywords.has(keyword))
   const badges = [...types]
   if(languages.length || additionalLanguages.length) {
@@ -194,6 +196,6 @@ export function packageKeywordPresentations(
     const {kind, label, icon} = widgetBadges[online]
     badges.push({kind, label, icon})
   }
-  for(const level of [...levels].sort()) badges.push({kind: "level", ...educationLevels[level]})
+  for(const level of levelCodes) badges.push({kind: "level", ...educationLevels[level]})
   return badges.concat(features, missingPackageCapabilityBadges(normalizedKeywords), custom)
 }
