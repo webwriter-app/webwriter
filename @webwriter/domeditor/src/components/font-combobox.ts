@@ -17,6 +17,10 @@ const isLocalOption = (option: ComboboxOption): option is LocalFontOption => "so
 const standardFontOptions: readonly ComboboxOption[] = fontFamilyOptions.map(option => ({...option, group: "Standard fonts"}))
 const standardFamilies = new Set(fontFamilyOptions.flatMap(option => fontFamilies(option.value).slice(0, 1)))
 const isStandardFamily = (family: string) => standardFamilies.has(family.toLocaleLowerCase("en"))
+const mathPreviewFamily = (label: string) => `WebWriter preview ${label}`
+const mathFontURL = (label: string) => label === "Libertinus Math"
+  ? new URL("../assets/math-fonts/LibertinusMath-Regular.woff2", import.meta.url)
+  : new URL("../assets/math-fonts/NotoSansMath-Regular.woff2", import.meta.url)
 
 /** The font picker shares selection, keyboard navigation and popup behavior. */
 export class FontCombobox extends StyleCombobox {
@@ -84,8 +88,11 @@ export class FontCombobox extends StyleCombobox {
   private dropdownReady = false
   private searchLimits = [0, 0]
   private selectionRequest = 0
+  private mathPreviewFaces: FontFace[] = []
   private readonly fontAccess = window as FontAccessWindow
   protected optionStyle(option: ComboboxOption, _index: number) {
+    if(option.group === "Math fonts") return option.value
+      ? `font-family: ${cssFontString(mathPreviewFamily(option.label))}, math; font-size-adjust: from-font` : ""
     if(option.group === "Standard fonts") return option.value ? `font-family: ${option.value}` : ""
     if(isLocalOption(option)) return option.source === "installed" ? `font-family: ${cssFontString(option.label)}, sans-serif` : ""
     return ""
@@ -242,10 +249,7 @@ export class FontCombobox extends StyleCombobox {
     if(this.mathOnly && option.value) {
       const request = ++this.selectionRequest
       this.localError = ""
-      const url = option.label === "Libertinus Math"
-        ? new URL("../assets/math-fonts/LibertinusMath-Regular.woff2", import.meta.url)
-        : new URL("../assets/math-fonts/NotoSansMath-Regular.woff2", import.meta.url)
-      void embeddedMathFont(option, url).then(font => {
+      void embeddedMathFont(option, mathFontURL(option.label)).then(font => {
         if(request === this.selectionRequest && this.isConnected && this.mathOnly && !this.disabled) this.emitEmbedded(font)
       }).catch(error => { if(request === this.selectionRequest && this.mathOnly) this.showLocalError(error) })
       return
@@ -379,6 +383,7 @@ export class FontCombobox extends StyleCombobox {
   }
 
   close(reset = true) {
+    this.clearMathPreviews()
     this.dropdownReady = false
     this.query = ""
     this.hasInput = false
@@ -397,6 +402,7 @@ export class FontCombobox extends StyleCombobox {
   }
 
   disconnectedCallback() {
+    this.clearMathPreviews()
     this.selectionRequest++
     this.selecting = false
     super.disconnectedCallback()
@@ -431,6 +437,15 @@ export class FontCombobox extends StyleCombobox {
     const update = super.setOpen(open)
     void update.then(() => this.connectDropdown())
     if(this.open && !wasOpen) {
+      if(this.mathOnly) {
+        // Document font faces also render in nested shadow roots. Private family
+        // names keep these temporary previews separate from authored fonts.
+        this.mathPreviewFaces = mathFontOptions.filter(option => option.value).map(option => {
+          const face = new FontFace(mathPreviewFamily(option.label), `url("${mathFontURL(option.label)}")`, {display: "swap"})
+          this.ownerDocument.fonts.add(face)
+          return face
+        })
+      }
       const selectInput = !this.hasInput
       if(selectInput) { this.query = ""; this.activeIndex = -1 }
       if(!this.builtInOnly && !this.mathOnly) {
@@ -452,6 +467,11 @@ export class FontCombobox extends StyleCombobox {
     }
     else if(!this.open) this.options = standardFontOptions
     return update
+  }
+
+  private clearMathPreviews() {
+    for(const face of this.mathPreviewFaces) this.ownerDocument.fonts.delete(face)
+    this.mathPreviewFaces = []
   }
 
   protected willUpdate(changed: Map<string, unknown>) {

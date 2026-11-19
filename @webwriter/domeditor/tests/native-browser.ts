@@ -7156,6 +7156,43 @@ await check("font list previews load sprite chunks without loading web fonts", a
   finally { field.remove(); window.fetch = originalFetch }
 })
 
+await check("math font options render bundled fonts before selection", async () => {
+  const {FontCombobox} = await import("../src/components/font-combobox")
+  const field = new FontCombobox()
+  field.mathOnly = true
+  Object.assign(field.style, {position: "fixed", left: "80px", top: "100px", width: "90px"})
+  const before = [...document.fonts]
+  let changes = 0
+  field.addEventListener("font-change", () => changes++)
+  nativeRootEditor.addAppendix(field)
+  try {
+    await field.updateComplete
+    const root = field.shadowRoot!, input = root.querySelector<HTMLInputElement>('input[role="combobox"]')!
+    input.click()
+    await field.updateComplete; await layoutFrame()
+    const faces = [...document.fonts].filter(face => !before.includes(face))
+    assert(faces.length === 2, "math previews did not register both bundled fonts")
+    for(const label of ["Libertinus Math", "Noto Sans Math"]) {
+      const option = root.querySelector<HTMLButtonElement>(`[title="${label}"]`)!
+      const family = `"WebWriter preview ${label}"`
+      const loaded = await document.fonts.load(`16px ${family}`, label)
+      assert(loaded.length === 1 && faces.includes(loaded[0]) && loaded[0].status === "loaded", `${label}: bundled preview did not load`)
+      assert(getComputedStyle(option.querySelector(".option-code")!).fontFamily === `${family}, math`, `${label}: preview uses the wrong family`)
+      option.dispatchEvent(new PointerEvent("pointerenter"))
+      await field.updateComplete; await layoutFrame()
+      const row = option.getBoundingClientRect(), text = option.querySelector(".option-code")!.getBoundingClientRect()
+      assert(text.left >= row.left && text.right <= row.right && text.top >= row.top && text.bottom <= row.bottom,
+        `${label}: preview overflows its menu row`)
+      assert(option.hasAttribute("data-active") && changes === 0 && field.value === "", "hover applied a math font")
+    }
+    field.close()
+    await field.updateComplete
+    assert(faces.every(face => !document.fonts.has(face)), "closing retained preview font faces")
+    assert(before.every(face => document.fonts.has(face)), "closing removed an authored font")
+  }
+  finally { field.remove() }
+})
+
 await check("local fonts embed selected bytes and load under the editor CSP", async () => {
   const {FontCombobox} = await import("../src/components/font-combobox")
   const {embedFontFiles} = await import("../src/local-fonts")

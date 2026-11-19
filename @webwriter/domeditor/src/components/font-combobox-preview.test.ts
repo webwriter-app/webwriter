@@ -13,13 +13,15 @@ const settle = async (combo: FontCombobox) => { await combo.updateComplete; awai
 const search = (input: HTMLInputElement, value: string) => { input.value = value; input.dispatchEvent(new InputEvent("input")) }
 let fetcher: ReturnType<typeof vi.fn>, createFace: ReturnType<typeof vi.fn>
 beforeEach(() => {
-  createFace = vi.fn()
+  Object.defineProperty(document, "fonts", {value: new Set<FontFace>(), configurable: true})
+  createFace = vi.fn(function(this: {family: string, status: string}, family: string) { this.family = family; this.status = "unloaded" })
   vi.stubGlobal("FontFace", createFace)
   fetcher = vi.fn().mockResolvedValue(new Response(""))
   vi.stubGlobal("fetch", fetcher)
 })
 afterEach(() => {
   document.body.replaceChildren()
+  Reflect.deleteProperty(document, "fonts")
   vi.unstubAllGlobals()
   vi.clearAllMocks()
 })
@@ -55,6 +57,55 @@ describe("font option previews", () => {
       value: '"Libertinus Math", math',
       fontStylesheet: expect.stringMatching(/^data:text\/css;base64,/),
     })
+  })
+
+  it("previews bundled math fonts before selection and removes only its own faces on close", async () => {
+    const authoredFace = new FontFace("Authored font", 'url("authored.woff2")')
+    document.fonts.add(authoredFace)
+    createFace.mockClear()
+    const combo = new FontCombobox()
+    combo.mathOnly = true
+    const changed = vi.fn()
+    combo.addEventListener("font-change", changed)
+    document.body.append(combo)
+    await settle(combo)
+    expect(createFace).not.toHaveBeenCalled()
+    const input = combo.shadowRoot!.querySelector<HTMLInputElement>('input[role="combobox"]')!
+    input.click()
+    await settle(combo)
+    expect(createFace.mock.calls.map(call => call.slice(0, 2))).toEqual([
+      ["WebWriter preview Libertinus Math", expect.stringContaining("LibertinusMath-Regular.woff2")],
+      ["WebWriter preview Noto Sans Math", expect.stringContaining("NotoSansMath-Regular.woff2")],
+    ])
+    for(const label of ["Libertinus Math", "Noto Sans Math"]) {
+      const option = combo.shadowRoot!.querySelector<HTMLButtonElement>(`[title="${label}"]`)!
+      expect(option.style.fontFamily).toBe(`"WebWriter preview ${label}", math`)
+      option.dispatchEvent(new Event("pointerenter"))
+      await settle(combo)
+      expect(option.hasAttribute("data-active")).toBe(true)
+    }
+    expect(combo.shadowRoot!.querySelector<HTMLButtonElement>('[title="Default math"]')!.style.fontFamily).toBe("")
+    expect(changed).not.toHaveBeenCalled()
+    expect(fetcher).not.toHaveBeenCalled()
+    const faces = createFace.mock.instances as FontFace[]
+    expect(faces.every(face => document.fonts.has(face))).toBe(true)
+    combo.close()
+    await settle(combo)
+    expect(faces.every(face => !document.fonts.has(face))).toBe(true)
+    expect(document.fonts.has(authoredFace)).toBe(true)
+    input.click()
+    await settle(combo)
+    expect(createFace).toHaveBeenCalledTimes(4)
+    combo.mathOnly = false
+    await settle(combo)
+    expect((createFace.mock.instances as FontFace[]).every(face => !document.fonts.has(face))).toBe(true)
+    combo.mathOnly = true
+    await settle(combo)
+    input.click()
+    await settle(combo)
+    combo.remove()
+    expect((createFace.mock.instances as FontFace[]).every(face => !document.fonts.has(face))).toBe(true)
+    document.fonts.delete(authoredFace)
   })
 
   it("renders standard and installed options in their own fonts without reading local files", async () => {
