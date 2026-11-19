@@ -8046,6 +8046,74 @@ describe("block and contentful widget gaps", () => {
     return event
   }
 
+  const mountPages = (isolating = true) => {
+    editor.schema.extendWidgets([
+      {tagName: "gap-pages", editingConfig: {content: "gap-page+", isolating}},
+      {tagName: "gap-page", editingConfig: {content: "p | flow*"}},
+    ])
+    document.body.innerHTML = '<p>Before</p><gap-pages><gap-page style="display:none"><p>Hidden</p></gap-page>\n<!--keep--><gap-page><p>Visible</p></gap-page><gap-page style="display:none"><p>Hidden last</p></gap-page></gap-pages><p>After</p>'
+    editor.features.widget.refresh()
+    return {pages: document.querySelector("gap-pages")!, page: document.querySelectorAll("gap-page")[1], text: document.querySelectorAll("gap-page p")[1].firstChild!}
+  }
+
+  it("redirects external gaps between structural pages into the visible page", () => {
+    const {pages, page, text} = mountPages()
+    const before = pages.innerHTML
+    for(let offset = 0; offset <= pages.childNodes.length; offset++) {
+      document.getSelection()!.setPosition(pages, offset)
+      feature.processSelection()
+      expect($.isGapSelection).toBe(false)
+      expect(page.contains($.anchor)).toBe(true)
+      expect($.anchor).toBe(text)
+      expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
+    }
+    $.move(pages.childNodes[1], 1)
+    feature.processSelection()
+    expect($.anchor).toBe(text)
+    expect(pages.innerHTML).toBe(before)
+  })
+
+  it("keeps keyboard navigation from creating an inter-page gap after a whole-page selection", () => {
+    const {pages, page} = mountPages()
+    for(const key of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]) {
+      $.selectElement(page)
+      feature.processSelection()
+      press(key)
+      expect($.isGapSelection).toBe(false)
+      expect(page.contains($.anchor) || $.selectedElement === page).toBe(true)
+    }
+    $.selectElement(pages)
+    feature.processSelection()
+    expect($.selectedElement).toBe(pages)
+    $.selectGap(pages, "after")
+    feature.processSelection()
+    expect($.isGapSelection).toBe(true)
+    expect($.anchor).toBe(document.body)
+  })
+
+  it.each([10, 350])("redirects an internal page-boundary pointer click at y=%s into visible content", y => {
+    const {pages, page, text} = mountPages()
+    pages.attachShadow({mode: "open"}).append(document.createElement("slot"))
+    vi.spyOn(pages, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 800, 400))
+    vi.spyOn(page, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 760, 300))
+    const hit = $.widgetGapFromCoords(100, y, pages, editor.schema)
+    expect(hit?.node.nodeName).toBe(pages.nodeName)
+    pointerClick(pages, new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true,
+      button: 0, pointerId: 91, pointerType: "mouse", clientX: 100, clientY: y}))
+    expect($.anchor?.nodeName).toBe("#text")
+    expect($.anchor).toBe(text)
+    expect($.isGapSelection).toBe(false)
+    expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
+  })
+
+  it("retains intentional gaps in nonisolating structural widgets", () => {
+    const {pages, page} = mountPages(false)
+    $.selectGap(page, "before")
+    feature.processSelection()
+    expect($.isGapSelection).toBe(true)
+    expect($.anchor).toBe(pages)
+  })
+
   it.each(["before", "after"] as const)("moves a native gap %s an empty paragraph into it", placement => {
     document.body.innerHTML = '<section><p>First</p><!--keep--> <p><br></p> <!--keep--><p>Last</p></section>'
     const paragraph = document.querySelectorAll("p")[1], parent = paragraph.parentElement!

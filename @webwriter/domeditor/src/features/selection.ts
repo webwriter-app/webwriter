@@ -12,7 +12,7 @@ import {inlineMathRoot, mathOutsidePoint, mathRoot} from "../math"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {isTextFieldInteraction} from "../utility"
 import {createAnchorPositioner} from "../utility"
-import {childNodesInRange, nodeAtPath} from "../utility"
+import {childNodesInRange, getInertDocument, nodeAtPath} from "../utility"
 import {isParagraphContent, renderedClientRect, renderedParentElement, widgetSlotContentFromCoords} from "../utility"
 import {textKeyboardRequestEvent, type ElementSelectionType} from "../editor-bridge"
 import {elementAttributeTargetId} from "../element-attributes"
@@ -2947,6 +2947,31 @@ export class SelectionFeature extends EditorFeature {
     if(!retainedKind || !this.selectionCaret?.matches(`[part~="selection-caret-${retainedKind}"]`)) this.#hideSelectionCaret()
   }
 
+  /** Structural widget containers may only accept their own parts, not a
+   * new text block. Their inter-part boundaries are not insertion carets. */
+  #normalizeStructuralWidgetGap(selection: Selection) {
+    if(!selection.isCollapsed || !selection.anchorNode) return
+    const anchor = selection.anchorNode
+    if(anchor instanceof Text && anchor.data.trim()) return
+    const parent = isElement(anchor) ? anchor : anchor.parentElement
+    const schema = this.editor.schema
+    if(!parent || !getDocumentRoot().contains(parent) || !isContentfulWidget(parent, schema)
+      || !schema.get(parent).inseperable || !schema.isContentValid(parent)) return
+    const nodes = Array.from(parent.childNodes)
+    const offset = anchor === parent ? selection.anchorOffset
+      : nodes.indexOf(anchor as ChildNode) + Number(selection.anchorOffset > 0)
+    if(schema.canInsert(parent, schema.create(undefined, getInertDocument(parent)), offset)) return
+    const candidates = nodes.filter((node): node is Element => isElement(node) && !isOutOfFlow(node)
+      && !node.matches("[hidden], [inert]") && getComputedStyle(node).display !== "none")
+    const child = candidates.find(node => nodes.indexOf(node) >= offset) ?? candidates.at(-1)
+    if(!child) { $.selectElement(parent, false); return }
+    if(isAtomicEditingElement(child, schema)) { $.selectElement(child, false); return }
+    const end = nodes.indexOf(child) < offset
+    const edge = this.#disclosureEdge(child, end ? "forward" : "backward") ?? child
+    if(isAtomicEditingElement(edge, schema)) $.move(child, end ? -1 : 0)
+    else $.move(edge, end ? edge instanceof Text ? edge.length : -1 : 0)
+  }
+
   /** Replaces malformed or newly entered element selections with one
    * canonical forward range, preserving explicit Shift-arrow extensions.
    * This resets browser selection direction/state
@@ -2965,6 +2990,9 @@ export class SelectionFeature extends EditorFeature {
       && extended.range.endContainer === range.endContainer && extended.range.endOffset === range.endOffset) return
     this.#atomicExtension = null
     if(selection.isCollapsed) {
+      this.#normalizeStructuralWidgetGap(selection)
+      selection = document.getSelection()
+      if(!selection?.anchorNode || !selection.focusNode) return
       const summary = $.summaryAtLeadingBoundary(selection.anchorNode, selection.anchorOffset)
         ?? $.widgetFieldAtLeadingBoundary(selection.anchorNode, selection.anchorOffset, this.editor.schema)
       if(summary) $.move(summary)
@@ -3331,7 +3359,7 @@ export class SelectionFeature extends EditorFeature {
         if(!this.editor.features.slides.active) $.selectDocumentStart()
         sel = document.getSelection()
       }
-      if(!inDragSelection) this.#normalizeNativeSelection()
+      if(!inDragSelection || $.isEmpty) this.#normalizeNativeSelection()
       this.editor.features.slides.constrainSelection()
       this.editor.features.board.constrainSelection()
       sel = document.getSelection()
