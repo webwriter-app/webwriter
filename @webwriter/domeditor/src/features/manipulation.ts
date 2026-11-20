@@ -30,7 +30,7 @@ import {
 } from "../editor-bridge"
 import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStylePropertyNameSet, specializedElementStyle} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
-import {getDocumentRoot, isDocumentRoot} from "../document-template"
+import {getDocumentRoot, isDocumentRoot, isViewportDocument, viewportStyleDisabled} from "../document-template"
 import {authoredDetailsOpen, isAuthoredMutation, isHTMLDetailsElement} from "../editor-artifacts"
 import {imageMapPopupImage, imageMapPopups, popupContentAncestor, popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
 import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction, emptyElementHTML} from "../insertion"
@@ -699,6 +699,7 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Float placement is authored through the document theme's classes. */
   setFloat(element: Element, side: FloatSide, alignment?: "left" | "center" | "right") {
+    if(isViewportDocument(element)) return false
     if(this.editor.isEditingLocked || this.editor.features.canvas.active || this.editor.features.slides.active
       || !["left", "right", "none", "far-left", "far-right"].includes(side) || element === getDocumentRoot()
       || !getDocumentRoot().contains(element) || atomicEditingContainer(element.parentElement, this.editor.schema)
@@ -2551,6 +2552,7 @@ export class ManipulationFeature extends EditorFeature {
 
   private captionTarget() {
     let target = this.editor.features.selection.selectedSectionElement ?? this.styleTarget
+    if(isViewportDocument(target)) return null
     const {board, slides} = this.editor.features
     const root = board.active ? board.containingCard(target)
       : slides.active ? slides.containingSlide(target) : getDocumentRoot()
@@ -3360,6 +3362,7 @@ export class ManipulationFeature extends EditorFeature {
     if(includeSelection && (cells.length || $.isMultiElementSelection)) {
       return this.getElementsStyleState(properties, cells.length ? cells : $.selectedElements)
     }
+    const viewportTarget = target
     if(target) target = this.documentStyleTarget(target)
     const style = this.inlineStyleOf(target)
     if(!target || !style) {
@@ -3449,6 +3452,8 @@ export class ManipulationFeature extends EditorFeature {
     })
     return {
       target: {localName: target.localName, namespaceURI: target.namespaceURI,
+        fillViewport: Boolean(viewportTarget && isViewportDocument(viewportTarget)),
+        canFillViewport: Boolean(viewportTarget && this.editor.features.template.canFillViewport(viewportTarget)),
         ...(boardRole ? {boardRole} : {}),
         ...(["toggle", "content"].includes(popupElementRole(target) ?? "") ? {popupRole: popupElementRole(target) as "toggle" | "content"} : {}),
         placement: this.editor.features.layout.getPlacementState(target),
@@ -6105,6 +6110,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private allowedElementStyles(target: Element, entries: ValidatedStyleEntry[]) {
+    if(isViewportDocument(target)) entries = entries.filter(({name}) => !viewportStyleDisabled(name))
     if(!this.editor.features.canvas.active && !this.editor.features.slides.active) {
       entries = entries.filter(({name, value}) => name !== "position" || !value
         || !["relative", "absolute", "sticky"].includes(value.trim().toLowerCase()))

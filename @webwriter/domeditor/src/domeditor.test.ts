@@ -1250,6 +1250,19 @@ describe("breadcrumb positioning", () => {
     })
   })
 
+  it.each(["img", "figure", "div", "custom-widget"])("marks a filled %s without reporting viewport positioning as authored placement", tag => {
+    const content = tag === "figure" ? '<img>' : tag === "div" ? '<p>Inside</p>' : ''
+    withSelection(`<${tag} id="target" role="document" style="position:absolute;float:left">${content}</${tag}>`, (_editor, readPath) => {
+      const path = readPath()
+      expect(path.at(-1)).toMatchObject({path: [0], fillViewport: true})
+      expect(path.every(item => !item.position && !item.positionAnchor && !item.float)).toBe(true)
+      document.getElementById("target")!.removeAttribute("role")
+      const restored = readPath()
+      expect(restored.at(-1)?.fillViewport).toBeUndefined()
+      expect(restored.flatMap(item => [item, ...(item.sections ?? [])]).find(item => item.path.join() === "0")?.position).toBe("absolute")
+    })
+  })
+
   it.each(["left", "right"])("includes an authored %s float in the selection path", side => {
     withSelection(`<p id="target" style="float: ${side}">Text</p>`, (_editor, readPath) => {
       expect(readPath().at(-1)?.float).toBe(`far-${side}`)

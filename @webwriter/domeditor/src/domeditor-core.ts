@@ -67,7 +67,7 @@ import {offlineAssetsId, offlinePackageStyleAttribute, originalPackageEntriesAtt
 import type {DocumentHeadState} from "./document-head"
 import {upgradeBundledDocumentThemes} from "./document-themes"
 import {getSectionOption, isSectionElement} from "./sections"
-import {getDocumentRoot} from "./document-template"
+import {getDocumentRoot, isSoleDocumentContent, isViewportDocument} from "./document-template"
 import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
 import {elementAttributeState, elementAttributeTargetId} from "./element-attributes"
 import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
@@ -801,6 +801,9 @@ export class DOMEditor {
     if(documentLayoutMode() === "slides") return this.features.slides.ensureContent()
     if(documentLayoutMode() === "board") return this.features.board.ensureContent()
     if(documentLayoutMode() === "canvas") return null
+    // A viewport document supplies its own editing space, even though its
+    // authored layout takes it out of ordinary body flow.
+    if(Array.from(document.body.children).some(element => isViewportDocument(element) && isSoleDocumentContent(element))) return null
     const selection = document.getSelection()
     const moveSelection = !selection?.anchorNode || !selection.focusNode
       || selection.anchorNode === document.body || selection.focusNode === document.body
@@ -1251,6 +1254,7 @@ export class DOMEditor {
     const positions = new Map<Element, NonNullable<SelectionPathItem["position"]>>()
     const anchors = new Set<Element>()
     for(const currentElement of elements) {
+      if(isViewportDocument(currentElement)) continue
       if(slideLayoutRole(currentElement)) continue
       const popupRole = popupElementRole(currentElement)
       if(popupRole === "content" && hasPresentationState(currentElement, "popup-visible")
@@ -1270,22 +1274,24 @@ export class DOMEditor {
     }
     const positioning = (element: Element) => ({
       ...(this.features.media.hasImageMap(element) ? {imageMap: true} : {}),
-      ...(positions.has(element) ? {position: positions.get(element)!} : {}),
-      ...(anchors.has(element) ? {positionAnchor: true} : {}),
-      ...(() => {
-        const inline = (element as Element & {style?: CSSStyleDeclaration}).style
-        const computed = getComputedStyle(element)
-        const side = floatSideFromStyles(computed.float, {
-          getPropertyValue: name => inline?.getPropertyValue(name) ?? "",
-        }, element.classList)
-        return side === "none" ? {} : {float: side,
-          ...(side === "far-left" && computed.float === "right"
-            && computed.getPropertyValue("--ww-responsive-float").trim() === "right"
-            ? {floatForcedRight: true} : {}),
-          ...(side === "far-right" && computed.float === "none"
-            && computed.getPropertyValue("--ww-responsive-float").trim() === "none"
-            ? {floatRightInFlow: true} : {})}
-      })(),
+      ...(isViewportDocument(element) ? {fillViewport: true} : {
+        ...(positions.has(element) ? {position: positions.get(element)!} : {}),
+        ...(anchors.has(element) ? {positionAnchor: true} : {}),
+        ...(() => {
+          const inline = (element as Element & {style?: CSSStyleDeclaration}).style
+          const computed = getComputedStyle(element)
+          const side = floatSideFromStyles(computed.float, {
+            getPropertyValue: name => inline?.getPropertyValue(name) ?? "",
+          }, element.classList)
+          return side === "none" ? {} : {float: side,
+            ...(side === "far-left" && computed.float === "right"
+              && computed.getPropertyValue("--ww-responsive-float").trim() === "right"
+              ? {floatForcedRight: true} : {}),
+            ...(side === "far-right" && computed.float === "none"
+              && computed.getPropertyValue("--ww-responsive-float").trim() === "none"
+              ? {floatRightInFlow: true} : {})}
+        })(),
+      }),
     })
     const sectionPathItem = (section: Element): SelectionPathSection => ({
       path: this.pathToElement(section),
@@ -1302,10 +1308,10 @@ export class DOMEditor {
       if(formula && (formula !== currentElement || formula.getAttribute("display") !== "block")
         || currentElement.matches("caption, figcaption, details > summary")) return
       if(currentElement.localName === "figure") {
-        if(currentElement !== element) return
+        if(currentElement !== element && !isViewportDocument(currentElement)) return
         const content = Array.from(currentElement.children).find(child => child.localName !== "figcaption")
-        if(!content) return
-        path.push({path: this.pathToElement(currentElement), ...getElementPresentation(content),
+        if(!content && !isViewportDocument(currentElement)) return
+        path.push({path: this.pathToElement(currentElement), ...getElementPresentation(content ?? currentElement),
           ...(pendingSections.length ? {sections: pendingSections} : {}), ...positioning(currentElement)})
         pendingSections = []
         return
@@ -1321,7 +1327,7 @@ export class DOMEditor {
           pendingSections = []
         }
       }
-      if(currentElement !== root && slideLayoutRole(currentElement) !== "slide" && !boardLayoutRole(currentElement) && !popupElementRole(currentElement) && isSectionElement(currentElement)) {
+      if(currentElement !== root && !isViewportDocument(currentElement) && slideLayoutRole(currentElement) !== "slide" && !boardLayoutRole(currentElement) && !popupElementRole(currentElement) && isSectionElement(currentElement)) {
         pendingSections.push(sectionPathItem(currentElement))
         return
       }

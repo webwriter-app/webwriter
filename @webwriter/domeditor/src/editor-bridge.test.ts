@@ -553,6 +553,7 @@ describe("editor bridge message guards", () => {
             name: "Document",
             position,
             positionAnchor: true,
+            fillViewport: true,
             sections: [{
               path: [0],
               type: "article",
@@ -580,6 +581,7 @@ describe("editor bridge message guards", () => {
       {...valid, detail: {...valid.detail, path: [{...valid.detail.path[0], position: "static"}]}},
       {...valid, detail: {...valid.detail, path: [{...valid.detail.path[0], position: {value: "absolute"}}]}},
       {...valid, detail: {...valid.detail, path: [{...valid.detail.path[0], positionAnchor: "true"}]}},
+      {...valid, detail: {...valid.detail, path: [{...valid.detail.path[0], fillViewport: "true"}]}},
       {...valid, detail: {...valid.detail, path: [{
         ...valid.detail.path[0],
         sections: [{...valid.detail.path[0].sections![0], position: "static"}],

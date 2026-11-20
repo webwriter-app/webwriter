@@ -5,6 +5,7 @@ import {createFigureLayout} from "../figure-layout.js"
 import {createLayoutPrint} from "../document-layout-print.js"
 import {isDocumentFlowChild, slideLayoutRole} from "../document-layout"
 import {isAuthoredMutation} from "../editor-artifacts"
+import {isViewportDocument} from "../document-template"
 
 type PlacementDirection = "front" | "up" | "down" | "back"
 type PlacementItem = {element: HTMLElement | SVGSVGElement, z: number, order: number}
@@ -53,6 +54,7 @@ export class LayoutFeature extends EditorFeature {
 
   /** Wide placement is limited to blocks in the document's main flow. */
   canSetFullWidth(target: Element) {
+    if(isViewportDocument(target)) return false
     const parent = target.parentElement
     if(!target.isConnected || this.editor.isEditingLocked || !this.editor.allows("style", target) || this.editor.features.canvas.active || this.editor.features.slides.active
       || document.body.classList.contains("ww-board") || !(target instanceof HTMLElement || target instanceof SVGSVGElement)
@@ -336,7 +338,7 @@ export class LayoutFeature extends EditorFeature {
     setFloatSticky: ({enabled, topLevel}: {type: "setFloatSticky", enabled: boolean, topLevel?: boolean}) => {
       const manipulation = this.editor.features.manipulation
       const target = topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget
-      if(!target || this.editor.isEditingLocked || this.editor.features.canvas.active || this.editor.features.slides.active
+      if(!target || isViewportDocument(target) || this.editor.isEditingLocked || this.editor.features.canvas.active || this.editor.features.slides.active
         || typeof enabled !== "boolean") return false
       const style = (target as HTMLElement).style ?? getComputedStyle(target)
       const authoredSide = floatSideFromStyles(getComputedStyle(target).float, style, target.classList)

@@ -21,6 +21,7 @@ type BreadcrumbEntry = {
   kind: "item" | "separator"
   item: SelectionPathItem
   state: "visible" | "entering"
+  fillDocument?: boolean
 }
 
 type TreeIndex = {items: Map<string, DocumentTreeItem>, sections: Map<string, SelectionPathSection>}
@@ -54,6 +55,7 @@ function treeIndex(tree: DocumentTreeItem) {
 export class DomEditorBreadcrumb extends LitElement {
   static properties = {
     path: {attribute: false},
+    fillElement: {attribute: false},
     showPositionIcons: {attribute: false},
     nodeSelected: {type: Boolean, attribute: "node-selected", reflect: true},
     capture: {type: Boolean, reflect: true},
@@ -169,6 +171,13 @@ export class DomEditorBreadcrumb extends LitElement {
       width: 100%;
       height: 100%;
     }
+
+    .separator.fill-document { margin-inline: 0; }
+    .fill-document > .item { padding-inline: .125rem; }
+    .fill-document > .separator-trigger { width: 16px; }
+    .separator-equals { align-items: center; justify-content: center; font: 14px/1 system-ui; }
+    .separator-equals::before { content: "=" / ""; }
+    .separator-trigger[aria-expanded="true"] .separator-equals { transform: none; }
 
     .item {
       display: inline-flex;
@@ -358,6 +367,8 @@ export class DomEditorBreadcrumb extends LitElement {
   `
 
   path: SelectionPathItem[] = []
+  /** Keep the document's filled element reachable when only Document is selected. */
+  fillElement: SelectionPathItem | null = null
   showPositionIcons = true
   nodeSelected = false
   capture = false
@@ -386,9 +397,13 @@ export class DomEditorBreadcrumb extends LitElement {
   }
 
   private get displayPath() {
-    const path = this.path.length
+    const selected = this.path.length
       ? this.path
       : [{path: [], name: "Document", icon: "Document"}]
+    const source = selected.length === 1 && !selected[0].path.length && this.fillElement
+      ? [...selected, this.fillElement] : selected
+    const path = source[0]?.fillViewport && source[0].path.length
+      ? [{path: [], name: "Document", icon: "Document"}, ...source] : source
     return path.map(item => {
       const treeSections = this.pathTreeItem(item.path)?.sections ?? []
       if(!treeSections.length) return item
@@ -405,11 +420,13 @@ export class DomEditorBreadcrumb extends LitElement {
     const path = this.displayPath
     const entries: BreadcrumbEntry[] = []
     for(const [index, item] of path.entries()) {
+      const fillDocument = Boolean(item.fillViewport || index === 0 && path[index + 1]?.fillViewport)
       entries.push({
         key: `item:${this.pathKey(item.path)}`,
         kind: "item",
         item,
         state: "visible",
+        fillDocument,
       })
       if(index < path.length - 1 || this.itemHasChildren(item)) {
         entries.push({
@@ -417,6 +434,7 @@ export class DomEditorBreadcrumb extends LitElement {
           kind: "separator",
           item,
           state: "visible",
+          fillDocument: index === 0 && Boolean(path[index + 1]?.fillViewport),
         })
       }
     }
@@ -429,12 +447,14 @@ export class DomEditorBreadcrumb extends LitElement {
       return entry.key === other.key
         && entry.kind === other.kind
         && entry.state === other.state
+        && entry.fillDocument === other.fillDocument
         && entry.item.name === other.item.name
         && entry.item.targetId === other.item.targetId
         && entry.item.targetSelected === other.item.targetSelected
         && entry.item.icon === other.item.icon
         && entry.item.iconUrl === other.item.iconUrl
         && entry.item.imageMap === other.item.imageMap
+        && entry.item.fillViewport === other.item.fillViewport
         && entry.item.position === other.item.position
         && entry.item.positionAnchor === other.item.positionAnchor
         && entry.item.float === other.item.float
@@ -453,6 +473,7 @@ export class DomEditorBreadcrumb extends LitElement {
       return section.type === other.type
         && section.name === other.name
         && section.icon === other.icon
+        && section.fillViewport === other.fillViewport
         && section.position === other.position
         && section.positionAnchor === other.positionAnchor
         && section.float === other.float
@@ -523,7 +544,7 @@ export class DomEditorBreadcrumb extends LitElement {
   }
 
   protected willUpdate(changedProperties: Map<PropertyKey, unknown>) {
-    if(changedProperties.has("path") || changedProperties.has("tree") || changedProperties.has("pathItems") || changedProperties.has("treeOpen")) {
+    if(changedProperties.has("path") || changedProperties.has("fillElement") || changedProperties.has("tree") || changedProperties.has("pathItems") || changedProperties.has("treeOpen")) {
       this.syncBreadcrumbEntries()
     }
   }
@@ -750,7 +771,7 @@ export class DomEditorBreadcrumb extends LitElement {
     if(target && "section" in target && target.section) this.dispatchSectionHover(target.section)
   }
 
-  private renderTreeToggle(item: SelectionPathItem) {
+  private renderTreeToggle(item: SelectionPathItem, fillDocument = false) {
     const isSameTree = this.treeOpen && this.pathsEqual(this.treeRootPath, item.path)
     const label = isSameTree ? `Close ${item.name} tree` : `Show ${item.name} tree`
     return html`
@@ -764,7 +785,7 @@ export class DomEditorBreadcrumb extends LitElement {
         aria-haspopup="menu"
         @click=${(event: Event) => this.toggleTree(item, event.currentTarget as HTMLButtonElement)}
       >
-        <span class="separator-icon" aria-hidden="true">${ribbonIcon("ChevronRight")}</span>
+        <span class=${`separator-icon${fillDocument ? " separator-equals" : ""}`} aria-hidden="true">${fillDocument ? nothing : ribbonIcon("ChevronRight")}</span>
       </button>
     `
   }
@@ -796,6 +817,7 @@ export class DomEditorBreadcrumb extends LitElement {
     const current = this.path.find(candidate => this.pathsEqual(candidate.path, item.path))
       ?? this.path.flatMap(candidate => candidate.sections ?? []).find(section => this.pathsEqual(section.path, item.path))
       ?? item
+    if(current.fillViewport) return ""
     const {position, positionAnchor, float} = current
     const pinnedFloat = position === "sticky" && Boolean(float)
     const anchor = positionAnchor && !pinnedFloat
@@ -879,12 +901,13 @@ export class DomEditorBreadcrumb extends LitElement {
 
   private renderBreadcrumbEntry(entry: BreadcrumbEntry) {
     const transitionClass = entry.state === "entering" ? "breadcrumb-fade-in" : ""
+    const fillClass = entry.fillDocument ? " fill-document" : ""
     if(entry.kind === "separator") {
       return html`
-        <li class=${`breadcrumb-entry separator tree-toggle-separator ${transitionClass}`}>
+        <li class=${`breadcrumb-entry separator tree-toggle-separator ${transitionClass}${fillClass}`}>
           ${this.itemHasChildren(entry.item)
-            ? this.renderTreeToggle(entry.item)
-            : html`<span class="separator-icon" aria-hidden="true">${ribbonIcon("ChevronRight")}</span>`}
+            ? this.renderTreeToggle(entry.item, entry.fillDocument)
+            : html`<span class=${`separator-icon${entry.fillDocument ? " separator-equals" : ""}`} aria-hidden="true">${entry.fillDocument ? nothing : ribbonIcon("ChevronRight")}</span>`}
         </li>
       `
     }
@@ -894,7 +917,7 @@ export class DomEditorBreadcrumb extends LitElement {
     const label = `Select ${item.name}`
     const targetId = this.isSelected(item) ? item.targetId : undefined
     return html`
-      <li class=${`breadcrumb-entry ${transitionClass}`}>
+      <li class=${`breadcrumb-entry ${transitionClass}${fillClass}`}>
         <button
           class=${itemClass}
           type="button"
