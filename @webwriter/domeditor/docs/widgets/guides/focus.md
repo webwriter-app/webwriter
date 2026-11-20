@@ -55,6 +55,8 @@ When returning focus to a capture-selected widget, including after inserting a s
 
 The authoring tool ignores input events from the widget's shadow DOM by default. List the required event types in `propagateEvents`, for example `["keydown"]`. Test the keyboard shortcuts in widget inputs. Make sure that typing causes only the intended actions.
 
+Forwarding `keydown` also lets the editor handle undo and redo from captured shadow controls, including text inputs. The matching native `beforeinput` commands (`historyUndo` and `historyRedo`, such as from a browser editing menu) use the same editor history. Other native text input stays private unless its event type is listed separately. Each history command runs once and keeps the control's native focus and caret while the command is handled.
+
 ## Capture selection and completed clicks
 
 Capture selection lets a widget's own controls receive input. Ordinary element selection addresses the widget as document content, for example through the breadcrumb or transformation frame.
