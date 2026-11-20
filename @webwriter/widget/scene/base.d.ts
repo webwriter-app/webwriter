@@ -84,7 +84,7 @@ export type ReconnectDetail = {
     target: HTMLElement;
     pointer: PointerPoint | null;
 };
-/** `detail` of `ww-disconnect`: an end of an attached `rewire` path was dropped where no port is. `from` and `to` are the ends it has, `end` the one that was pulled off. */
+/** `detail` of `ww-disconnect`: an end of an attached `rewire` path was dropped where no port is, or put down by a click on empty scene background. `from` and `to` are the ends it has, `end` the one that was pulled off. */
 export type DisconnectDetail = {
     path: ScenePath;
     end: "from" | "to";
