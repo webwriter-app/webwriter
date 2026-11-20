@@ -223,10 +223,10 @@ class ScenePath extends SceneItem {
   get attached() {
     return this.hasAttribute("from") && this.hasAttribute("to");
   }
-  /** `route`: straight (the default), step, curve, arc or orthogonal. */
+  /** `route`: straight (the default), step, curve, arc, orthogonal or avoid. */
   get route() {
     const value = this.getAttribute("route");
-    return value === "step" || value === "curve" || value === "arc" || value === "orthogonal" ? value : "straight";
+    return value === "step" || value === "curve" || value === "arc" || value === "orthogonal" || value === "avoid" ? value : "straight";
   }
   set route(value) {
     this.reflect("route", value);

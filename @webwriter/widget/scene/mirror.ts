@@ -24,6 +24,7 @@ import {
 } from "./elements.js"
 import {
   apply,
+  avoidRoute,
   arcControl,
   bounds,
   clipCurve,
@@ -323,8 +324,8 @@ function naturalSize(picture: CanvasImageSource): {width: number; height: number
 export abstract class SceneMirror extends HTMLElement implements SceneLike {
   static observedAttributes = ["class", "style", "data-ww-viewport", "background", "background-spacing", "grid"]
 
-  /** Counters, for checks and measurements: flushes, computed styles read, shapes drawn, nodes whose ports were measured. */
-  readonly stats = {flushes: 0, styled: 0, drawn: 0, measured: 0}
+  /** Counters, for checks and measurements: flushes, computed styles read, shapes drawn, nodes whose ports were measured, avoiding routes searched. */
+  readonly stats = {flushes: 0, styled: 0, drawn: 0, measured: 0, routed: 0}
 
   /** The scene's own box. The renderer puts its drawing in here, below the layer that holds the nodes, the stand-ins and the overlay. */
   protected readonly surface: HTMLElement
@@ -347,6 +348,7 @@ export abstract class SceneMirror extends HTMLElement implements SceneLike {
   #probe: HTMLElement
   /** The paths that go around nodes: they are laid out again when a node moves. */
   #orthogonal = new Set<ScenePath>()
+  #avoidCache = new WeakMap<ScenePath, {key: string; points: Point[]}>()
   /** The boxes of the nodes in scene coordinates, until the flush ends. */
   #boxes: {node: SceneNode; box: Rect}[] | null = null
   #standInItems = new WeakMap<EventTarget, SceneItem>()
@@ -578,13 +580,21 @@ export abstract class SceneMirror extends HTMLElement implements SceneLike {
     }
     // A path that goes around nodes may have to take another way when any node moved.
     if(moved) for(const path of this.#orthogonal) if(this.#records.has(path)) dirty.add(path)
+    // Avoiding connectors reserve lanes in template order. Rebuild that batch
+    // together so a changed/removed earlier route cannot leave stale reservations.
+    if(moved || all || [...dirty].some(item => item instanceof ScenePath)) {
+      for(const item of this.#order) if(item instanceof ScenePath && item.route === "avoid") dirty.add(item)
+    }
     // All writes of positions first, so that measuring ports lays out once.
     for(const item of dirty) if(item instanceof SceneNode || item instanceof SceneGroup) item.place()
     // Read everything (computed styles, port positions), then write everything: the SVG
     // renderer writes into the DOM, and a read after a write would lay out again.
     const draw: [SceneItem, ItemRecord][] = []
     const outlined = new Set<SceneItem>()
-    for(const item of all ? this.#records.keys() : dirty) {
+    const pending = [...(all ? this.#records.keys() : dirty)]
+    const items = [...pending.filter(item => !(item instanceof ScenePath && item.route === "avoid")),
+      ...this.#order.filter(item => item instanceof ScenePath && item.route === "avoid" && (all || dirty.has(item)))]
+    for(const item of items) {
       const record = this.#records.get(item)
       if(!record) continue
       for(let group = record.parent; group && !outlined.has(group); group = this.#records.get(group)?.parent ?? null) outlined.add(group)
@@ -744,6 +754,7 @@ export abstract class SceneMirror extends HTMLElement implements SceneLike {
     if(item instanceof ScenePath) {
       this.#attach(item, record, [])
       this.#orthogonal.delete(item)
+      this.#avoidCache.delete(item)
     }
     if(item instanceof SceneNode) {
       this.#sizes!.unobserve(item)
@@ -947,6 +958,21 @@ export abstract class SceneMirror extends HTMLElement implements SceneLike {
     return this.#boxes
   }
 
+  /** Earlier avoiding connectors, and every fixed connector, in this path's coordinates. */
+  #previousRoutes(item: ScenePath, local: Transform): Point[][] {
+    const paths: Point[][] = []
+    let before = true
+    for(const other of this.#order) {
+      if(other === item) { before = false; continue }
+      if(!(other instanceof ScenePath) || (!before && other.route === "avoid")) continue
+      const record = this.#records.get(other)!
+      if(record.drawing?.type !== "path" || record.refused) continue
+      const world = this.#transform(record.parent)
+      paths.push(record.drawing.points.map(point => invert(local, apply(world, point))))
+    }
+    return paths
+  }
+
   /**
    * The line of a path between two ends, in the coordinates of the path's group.
    * An end that is a whole node with an outline is met on that outline.
@@ -966,7 +992,7 @@ export abstract class SceneMirror extends HTMLElement implements SceneLike {
     const loop = item.loop
     const bend = item.bend
     const waypoints = item.waypoints
-    let curve: Curve
+    let curve: Curve | null
     if(loop !== null && from.node === to.node) {
       const box = toLocal(this.#outlineOf(from.node))!
       const centred = from.centre && to.centre
@@ -981,7 +1007,7 @@ export abstract class SceneMirror extends HTMLElement implements SceneLike {
       curve = {type: "poly", points}
     } else if((kind === "arc" || kind === "straight") && (bend ?? (kind === "arc" ? 0.25 : 0)) !== 0) {
       curve = {type: "quad", a, c: arcControl(a, b, bend ?? 0.25), b}
-    } else if(kind === "step" || kind === "curve" || kind === "orthogonal") {
+    } else if(kind === "step" || kind === "curve" || kind === "orthogonal" || kind === "avoid") {
       let [pa, pb, da, db] = [a, b, from.side, to.side]
       // An end on an outline leaves from the middle of the side that faces the other end.
       if(oa) {
@@ -994,16 +1020,29 @@ export abstract class SceneMirror extends HTMLElement implements SceneLike {
         pb = outlineEdge(ob, db)
         clip = [clip[0], null]
       }
-      if(kind === "orthogonal") {
+      if(kind === "orthogonal" || kind === "avoid") {
         const boxes = this.#nodeBoxes()
-          .filter(({node}) => node !== from.node && node !== to.node)
+          .filter(({node}) => kind === "avoid" || (node !== from.node && node !== to.node))
           .map(({box}) => {
             const corner = invert(local, box)
             return {x: corner.x, y: corner.y, width: box.width / local.k, height: box.height / local.k}
           })
-        curve = {type: "poly", points: orthogonalRoute(pa, da, pb, db, boxes, ORTHOGONAL_GAP)}
+        let points: Point[]
+        if(kind === "avoid") {
+          const paths = this.#previousRoutes(item, local)
+          const key = JSON.stringify([pa, da, pb, db, boxes, paths])
+          const cached = this.#avoidCache.get(item)
+          if(cached?.key === key) points = cached.points
+          else {
+            this.stats.routed++
+            points = avoidRoute(pa, da, pb, db, boxes, ORTHOGONAL_GAP, paths)
+            this.#avoidCache.set(item, {key, points})
+          }
+        } else points = orthogonalRoute(pa, da, pb, db, boxes, ORTHOGONAL_GAP)
+        curve = points.length ? {type: "poly", points} : null
       } else curve = routeCurve(pa, pb, kind, da, db)
     } else curve = lineCurve(a, b)
+    if(!curve) return null
     return clip[0] || clip[1] ? clipCurve(curve, clip[0] && (p => outlineContains(clip[0]!, p)), clip[1] && (p => outlineContains(clip[1]!, p))) : curve
   }
 

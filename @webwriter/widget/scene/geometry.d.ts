@@ -14,9 +14,10 @@ export type Rect = {
  * How a `ww-path` between two ends is laid out: a straight line, a step (two
  * turns, in the middle), a cubic curve that leaves and arrives along the sides
  * of its ends, an `arc` (a quadratic curve bent by the path's `bend`) or an
- * `orthogonal` line that goes around the other nodes of the scene.
+ * `orthogonal` line that goes around other nodes, or `avoid`, which searches
+ * around all nodes and separates connectors into clear lanes.
  */
-export type Route = "straight" | "step" | "curve" | "arc" | "orthogonal";
+export type Route = "straight" | "step" | "curve" | "arc" | "orthogonal" | "avoid";
 /** Translation and uniform scale: what a `ww-group` and the view of a viewport apply. */
 export type Transform = {
     x: number;
@@ -137,6 +138,13 @@ export declare function loopCurve(a: Point, b: Point, angle: number, reach: numb
  * with `gap` between; if there is none, the middle again.
  */
 export declare function orthogonalRoute(a: Point, da: Point, b: Point, db: Point, boxes: readonly Rect[], gap: number): Point[];
+/**
+ * An orthogonal visibility-grid search around padded node boxes. Routes already
+ * drawn are soft obstacles: sharing their lanes costs more than a short detour,
+ * and crossing them costs more than a bend. Common port stubs may still meet.
+ * Returns no points if the ports are trapped; never falls back through a node.
+ */
+export declare function avoidRoute(a: Point, da: Point, b: Point, db: Point, boxes: readonly Rect[], gap: number, paths?: readonly (readonly Point[])[]): Point[];
 /** What can sit at an end of a path. */
 export type MarkerKind = "none" | "arrow" | "open-arrow" | "triangle" | "triangle-filled" | "diamond" | "diamond-filled" | "circle" | "circle-open";
 export declare const MARKERS: readonly MarkerKind[];

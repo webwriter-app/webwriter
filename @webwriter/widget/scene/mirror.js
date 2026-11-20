@@ -13,6 +13,7 @@ import {
 } from "./elements.js";
 import {
   apply,
+  avoidRoute,
   arcControl,
   bounds,
   clipCurve,
@@ -149,8 +150,8 @@ function naturalSize(picture) {
 }
 class SceneMirror extends HTMLElement {
   static observedAttributes = ["class", "style", "data-ww-viewport", "background", "background-spacing", "grid"];
-  /** Counters, for checks and measurements: flushes, computed styles read, shapes drawn, nodes whose ports were measured. */
-  stats = { flushes: 0, styled: 0, drawn: 0, measured: 0 };
+  /** Counters, for checks and measurements: flushes, computed styles read, shapes drawn, nodes whose ports were measured, avoiding routes searched. */
+  stats = { flushes: 0, styled: 0, drawn: 0, measured: 0, routed: 0 };
   /** The scene's own box. The renderer puts its drawing in here, below the layer that holds the nodes, the stand-ins and the overlay. */
   surface;
   /** The marquee and the wire in progress, in scene coordinates. */
@@ -171,6 +172,7 @@ class SceneMirror extends HTMLElement {
   #probe;
   /** The paths that go around nodes: they are laid out again when a node moves. */
   #orthogonal = /* @__PURE__ */ new Set();
+  #avoidCache = /* @__PURE__ */ new WeakMap();
   /** The boxes of the nodes in scene coordinates, until the flush ends. */
   #boxes = null;
   #standInItems = /* @__PURE__ */ new WeakMap();
@@ -383,10 +385,18 @@ class SceneMirror extends HTMLElement {
     if (moved) {
       for (const path of this.#orthogonal) if (this.#records.has(path)) dirty.add(path);
     }
+    if (moved || all || [...dirty].some((item) => item instanceof ScenePath)) {
+      for (const item of this.#order) if (item instanceof ScenePath && item.route === "avoid") dirty.add(item);
+    }
     for (const item of dirty) if (item instanceof SceneNode || item instanceof SceneGroup) item.place();
     const draw = [];
     const outlined = /* @__PURE__ */ new Set();
-    for (const item of all ? this.#records.keys() : dirty) {
+    const pending = [...all ? this.#records.keys() : dirty];
+    const items = [
+      ...pending.filter((item) => !(item instanceof ScenePath && item.route === "avoid")),
+      ...this.#order.filter((item) => item instanceof ScenePath && item.route === "avoid" && (all || dirty.has(item)))
+    ];
+    for (const item of items) {
       const record = this.#records.get(item);
       if (!record) continue;
       for (let group = record.parent; group && !outlined.has(group); group = this.#records.get(group)?.parent ?? null) outlined.add(group);
@@ -533,6 +543,7 @@ class SceneMirror extends HTMLElement {
     if (item instanceof ScenePath) {
       this.#attach(item, record, []);
       this.#orthogonal.delete(item);
+      this.#avoidCache.delete(item);
     }
     if (item instanceof SceneNode) {
       this.#sizes.unobserve(item);
@@ -717,6 +728,23 @@ class SceneMirror extends HTMLElement {
     }
     return this.#boxes;
   }
+  /** Earlier avoiding connectors, and every fixed connector, in this path's coordinates. */
+  #previousRoutes(item, local) {
+    const paths = [];
+    let before = true;
+    for (const other of this.#order) {
+      if (other === item) {
+        before = false;
+        continue;
+      }
+      if (!(other instanceof ScenePath) || !before && other.route === "avoid") continue;
+      const record = this.#records.get(other);
+      if (record.drawing?.type !== "path" || record.refused) continue;
+      const world = this.#transform(record.parent);
+      paths.push(record.drawing.points.map((point) => invert(local, apply(world, point))));
+    }
+    return paths;
+  }
   /**
    * The line of a path between two ends, in the coordinates of the path's group.
    * An end that is a whole node with an outline is met on that outline.
@@ -749,7 +777,7 @@ class SceneMirror extends HTMLElement {
       curve = { type: "poly", points };
     } else if ((kind === "arc" || kind === "straight") && (bend ?? (kind === "arc" ? 0.25 : 0)) !== 0) {
       curve = { type: "quad", a, c: arcControl(a, b, bend ?? 0.25), b };
-    } else if (kind === "step" || kind === "curve" || kind === "orthogonal") {
+    } else if (kind === "step" || kind === "curve" || kind === "orthogonal" || kind === "avoid") {
       let [pa, pb, da, db] = [a, b, from.side, to.side];
       if (oa) {
         da = dominantSide(sub(b, a));
@@ -761,14 +789,27 @@ class SceneMirror extends HTMLElement {
         pb = outlineEdge(ob, db);
         clip = [clip[0], null];
       }
-      if (kind === "orthogonal") {
-        const boxes = this.#nodeBoxes().filter(({ node }) => node !== from.node && node !== to.node).map(({ box }) => {
+      if (kind === "orthogonal" || kind === "avoid") {
+        const boxes = this.#nodeBoxes().filter(({ node }) => kind === "avoid" || node !== from.node && node !== to.node).map(({ box }) => {
           const corner = invert(local, box);
           return { x: corner.x, y: corner.y, width: box.width / local.k, height: box.height / local.k };
         });
-        curve = { type: "poly", points: orthogonalRoute(pa, da, pb, db, boxes, ORTHOGONAL_GAP) };
+        let points;
+        if (kind === "avoid") {
+          const paths = this.#previousRoutes(item, local);
+          const key = JSON.stringify([pa, da, pb, db, boxes, paths]);
+          const cached = this.#avoidCache.get(item);
+          if (cached?.key === key) points = cached.points;
+          else {
+            this.stats.routed++;
+            points = avoidRoute(pa, da, pb, db, boxes, ORTHOGONAL_GAP, paths);
+            this.#avoidCache.set(item, { key, points });
+          }
+        } else points = orthogonalRoute(pa, da, pb, db, boxes, ORTHOGONAL_GAP);
+        curve = points.length ? { type: "poly", points } : null;
       } else curve = routeCurve(pa, pb, kind, da, db);
     } else curve = lineCurve(a, b);
+    if (!curve) return null;
     return clip[0] || clip[1] ? clipCurve(curve, clip[0] && ((p) => outlineContains(clip[0], p)), clip[1] && ((p) => outlineContains(clip[1], p))) : curve;
   }
   /** A path: its line, trimmed to the markers at its ends, the markers and the labels. */

@@ -321,13 +321,19 @@ const pathSheet = sheet(`::slotted(ww-text) { display: none; fill: currentColor;
  * A line between two ends, written `node:port` or only `node` (`from` / `to`),
  * or along `.points`, which are relative to x, y.
  *
- * - `route`: `straight` (the default), `step`, `curve`, `arc` or `orthogonal`.
+ * - `route`: `straight` (the default), `step`, `curve`, `arc`, `orthogonal` or `avoid`.
  *   `step` and `curve` leave a whole node on the side that faces the other end.
  *   `orthogonal` has horizontal and vertical segments. Each end leaves at its side. The
  *   middle segment is halfway between the ends if no other node is there; otherwise it is
  *   at the nearest free place beside the nodes in the way, with 12 pixels between; if there
  *   is none, the path goes out, across above or below, and in. It does not avoid other
  *   paths, and is laid out again when any node moves: it is meant for tens of nodes.
+ *   `avoid` searches an orthogonal visibility grid around all node boxes, including
+ *   the end nodes, with 12 pixels of clearance. Earlier connectors in template
+ *   order reserve lanes; shared segments and crossings carry a routing penalty.
+ *   Shared port stubs and unavoidable crossings may remain. A trapped port draws
+ *   no line. Routes update together when a node or connector changes. Intended
+ *   for tens of nodes; explicit `waypoints` and `loop` still take precedence.
  *   `bend` (a number, positive to the left of the way from start to end) makes a straight path an arc:
  *   two paths between the same nodes, one each way and with the same `bend`, stay apart.
  *   `loop` (an angle in degrees, 0 up, clockwise) turns a path from a node to itself into a loop.
@@ -370,10 +376,10 @@ export class ScenePath extends SceneItem {
     return this.hasAttribute("from") && this.hasAttribute("to")
   }
 
-  /** `route`: straight (the default), step, curve, arc or orthogonal. */
+  /** `route`: straight (the default), step, curve, arc, orthogonal or avoid. */
   get route(): Route {
     const value = this.getAttribute("route")
-    return value === "step" || value === "curve" || value === "arc" || value === "orthogonal" ? value : "straight"
+    return value === "step" || value === "curve" || value === "arc" || value === "orthogonal" || value === "avoid" ? value : "straight"
   }
   set route(value: Route | string | null | undefined) {
     this.reflect("route", value)
