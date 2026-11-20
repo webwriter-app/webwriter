@@ -101,6 +101,11 @@ describe("history shortcut modifiers", () => {
       const typing = new InputEvent("beforeinput", {inputType: "insertText", data: "x", bubbles: true, composed: true, cancelable: true})
       input.dispatchEvent(typing)
       expect(typing.defaultPrevented).toBe(false)
+      for(const key of ["x", "Backspace", "Delete", "Enter"]) {
+        const native = new KeyboardEvent("keydown", {key, bubbles: true, composed: true, cancelable: true})
+        input.dispatchEvent(native)
+        expect(native.defaultPrevented, `native ${key} remains available in the forwarded control`).toBe(false)
+      }
     }
     finally { platform.mockRestore(); undo.mockRestore(); redo.mockRestore() }
   })

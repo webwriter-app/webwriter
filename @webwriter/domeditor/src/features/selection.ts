@@ -2203,7 +2203,7 @@ export class SelectionFeature extends EditorFeature {
   #preventCapturedDocumentInput(event: Event) {
     const captured = this.captureSelectedElement
     if(!captured || isAppendixInteraction(event) || isFormControlInteraction(event)
-      || isWidgetShadowInteraction(event, this.editor.schema) || this.editor.features.graphic.textEditingRange) return
+      || isWidgetShadowInteraction(event) || this.editor.features.graphic.textEditingRange) return
     if(captured instanceof HTMLMediaElement && captured.controls && event instanceof KeyboardEvent
       && (event.key === " " || event.key === "Enter") && event.composedPath().includes(captured)) return
     const selection = document.getSelection()
