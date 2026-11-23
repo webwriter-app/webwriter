@@ -1,5 +1,10 @@
 import {Document, Element, HTMLElement, Node, Range, PropertySymbol} from "happy-dom"
 
+// Vitest resolves Lit's "development" export so tests keep Lit's runtime
+// checks. Silence only the generic dev-mode notice; other Lit warnings stay.
+// `vite build` uses the production export, so deployed bundles are unaffected.
+;(globalThis.litIssuedWarnings ??= new Set()).add("dev-mode")
+
 // Happy DOM creates MathML as generic Elements without MathMLElement.style.
 // Reuse its native CSS declaration implementation for namespaced math elements.
 const htmlStyle = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "style")
