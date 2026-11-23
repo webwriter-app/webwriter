@@ -7393,6 +7393,20 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({type: "getStyleState", topLevel: true}))
   })
 
+  it("preserves Fill viewport state across the frame bridge and forwards its toggle", async () => {
+    const {editor} = await mountEditor()
+    const style = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", fillViewport: true, canFillViewport: true}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => action.type === "getStyleState" ? style : undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    await (editor as any).refreshElementStyleState()
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.elementStyle.target).toMatchObject({fillViewport: true, canFillViewport: true})
+    toolbox.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "setFillViewport", enabled: false}}))
+    expect(execute).toHaveBeenCalledWith({type: "setFillViewport", enabled: false})
+  })
+
   it("routes media crop fields to the selected media instead of its top-level container", async () => {
     const {editor} = await mountEditor()
     const style = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
@@ -11332,6 +11346,26 @@ describe("DomEditor.execute()", () => {
       mode: "canvas",
       expectedMode: "document",
     })
+  })
+
+  it("keeps the filled Pages breadcrumb clickable while Document is selected", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = '<!--keep--><webwriter-pages role="document"></webwriter-pages>'
+    await Promise.resolve()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
+      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document", icon: "Document"}], nodeSelected: true}},
+    }))
+    await editor.updateComplete
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+    expect(breadcrumb.fillElement).toMatchObject({path: [1], fillViewport: true})
+    expect(breadcrumb.shadowRoot!.querySelector('.item[data-path=""]')?.classList.contains("node-selected")).toBe(true)
+    const pages = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.item[data-path="1"]')!
+    expect(pages).not.toBeNull()
+    pages.click()
+    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [1]})
+    expect(editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!.documentSelected).toBe(true)
   })
 
   it("uses a document layout as the breadcrumb tree root and exposes the Document toolbox", async () => {

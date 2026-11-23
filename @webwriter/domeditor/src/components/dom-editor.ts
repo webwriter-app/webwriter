@@ -270,7 +270,7 @@ import {
   toolboxTools,
   type AppSettings,
 } from "../app-settings"
-import {getDocumentRoot} from "../document-template"
+import {getDocumentRoot, isSoleDocumentContent, isViewportDocument} from "../document-template"
 import {boardLayoutRole, documentLayoutMode, normalizePristineDocumentLayout, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type LocalFileHandle = RecentFileHandle
@@ -7492,11 +7492,11 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "setFloatSticky" | "setFullWidth", enabled: boolean} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"} | {type: "openAttribution"} | {type: "setBoardGrouping", mode: "none" | "new" | "left" | "right"} | {type: "setSpatialGrouping", mode: "group" | "ungroup"}>).detail
-    if(!action || !["setFloat", "setFloatSticky", "setFullWidth", "moveFloat", "movePlacement", "setCaption", "openAttribution", "setBoardGrouping", "setSpatialGrouping"].includes(action.type)) return
+    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "setFloatSticky" | "setFullWidth" | "setFillViewport", enabled: boolean} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"} | {type: "openAttribution"} | {type: "setBoardGrouping", mode: "none" | "new" | "left" | "right"} | {type: "setSpatialGrouping", mode: "group" | "ungroup"}>).detail
+    if(!action || !["setFloat", "setFloatSticky", "setFullWidth", "setFillViewport", "moveFloat", "movePlacement", "setCaption", "openAttribution", "setBoardGrouping", "setSpatialGrouping"].includes(action.type)) return
     this.layoutError = ""
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
-    const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setCaption" && action.type !== "openAttribution" && action.type !== "setBoardGrouping" && action.type !== "setSpatialGrouping"
+    const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setFillViewport" && action.type !== "setCaption" && action.type !== "openAttribution" && action.type !== "setBoardGrouping" && action.type !== "setSpatialGrouping"
     void this.execute(topLevel ? {...action, topLevel: true} : action).then(changed => {
       if(changed === false && action.type === "setFloat") this.layoutError = "The selection changed or floating is unavailable. Select the element again."
     }).catch(error => { this.layoutError = error instanceof Error ? error.message : String(error) })
@@ -8518,6 +8518,17 @@ export class DomEditor extends LitElement {
     return this.breadcrumbItems.items
   }
 
+  private get breadcrumbFillElement(): SelectionPathItem | null {
+    if(this.selectionPath.length > 1 || this.selectionPath[0]?.path.length) return null
+    const body = this.editorBody
+    if(!body) return null
+    const element = Array.from(body.children).find(element => isViewportDocument(element) && isSoleDocumentContent(element))
+    if(!element) return null
+    const content = element.localName === "figure" ? Array.from(element.children).find(child => child.localName !== "figcaption") : null
+    return {path: [Array.from(body.childNodes).indexOf(element)], fillViewport: true,
+      ...getElementPresentation(content ?? element, packageInsertionItems(this.installedPackages, true))}
+  }
+
   /** Builds the outline of the authored document. With `targets`, only the
    * items at those paths are complete: the walk follows the ancestors of each
    * target and reads no other subtree, so the result answers what sections a
@@ -8720,6 +8731,8 @@ export class DomEditor extends LitElement {
           ...(typeof value.target.fullWidth === "boolean" ? {fullWidth: value.target.fullWidth} : {}),
           ...(typeof value.target.floatSticky === "boolean" ? {floatSticky: value.target.floatSticky} : {}),
           ...(typeof value.target.canFullWidth === "boolean" ? {canFullWidth: value.target.canFullWidth} : {}),
+          ...(typeof value.target.fillViewport === "boolean" ? {fillViewport: value.target.fillViewport} : {}),
+          ...(typeof value.target.canFillViewport === "boolean" ? {canFillViewport: value.target.canFillViewport} : {}),
           ...(isRecord(value.target.placement) && typeof value.target.placement.canMoveUp === "boolean" && typeof value.target.placement.canMoveDown === "boolean"
             ? {placement: {canMoveUp: value.target.placement.canMoveUp, canMoveDown: value.target.placement.canMoveDown}} : {}),
           ...(grouping && typeof grouping.grouped === "boolean" && typeof grouping.canCreate === "boolean"
@@ -10160,6 +10173,7 @@ export class DomEditor extends LitElement {
           <dom-editor-breadcrumb
             ?inert=${this.htmlPending}
             .path=${this.selectionPath}
+            .fillElement=${this.breadcrumbFillElement}
             .showPositionIcons=${this.documentLayout.mode === "document"}
             .nodeSelected=${this.nodeSelection}
             .capture=${this.captureSelection}

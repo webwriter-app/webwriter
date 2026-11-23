@@ -1547,3 +1547,22 @@ it("limits document positioning choices while retaining canvas and slide choices
   await editor.updateComplete
   expect(choices()).toEqual(expect.arrayContaining(["relative", "absolute", "sticky"]))
 })
+
+
+it("disables viewport dimensions and decoration while keeping padding, colors and filters editable", async () => {
+  const editor = new ElementStyleEditor()
+  editor.mode = "compact"
+  editor.propertyNames = ["border-width", "border-radius", "width", "height", "margin", "box-shadow", "padding", "color", "filter"]
+  editor.state = {...state(), target: {...state().target!, fillViewport: true}}
+  document.body.append(editor)
+  await editor.updateComplete
+  for(const name of ["border-width", "border-radius", "width", "height", "margin", "box-shadow"]) {
+    expect(editor.shadowRoot!.querySelector(`[data-property="${name}"]`)!.hasAttribute("inert")).toBe(true)
+  }
+  for(const name of ["padding", "color", "filter"]) {
+    expect(editor.shadowRoot!.querySelector(`[data-property="${name}"]`)!.hasAttribute("inert")).toBe(false)
+  }
+  editor.state = state()
+  await editor.updateComplete
+  expect(editor.shadowRoot!.querySelector('[data-property="width"]')!.hasAttribute("inert")).toBe(false)
+})

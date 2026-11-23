@@ -231,20 +231,27 @@ class SceneBase extends SceneMirror {
   };
   /**
    * A press on a port or on a node that starts wires: a wire is drawn from it. It is a wire end that is grabbed instead
-   * where the port starts none (it has no `data-ww-link`, or it is full) and a path with `rewire` ends there.
+   * where a selected path with `rewire` ends there, or the port starts none (it has no `data-ww-link`, or it is full).
    * True if the press was taken.
    */
   #wired(event, node, within, control) {
+    const held = within.find((other) => other.hasAttribute("data-ww-port")) ?? (!control && (node.hasAttribute("data-ww-link") || node.hasAttribute("data-ww-accept")) ? node : null);
+    const reference = held ? bare(this.#refOf(node, held)) : null;
+    const wires = reference === null ? [] : this.wiresAt(reference).reverse();
+    for (const path of wires) {
+      const end = path.hasAttribute("selected") && path.rewire.find((name) => bare(path.getAttribute(name)) === reference);
+      if (!end) continue;
+      void this.#rewire(event, path, end);
+      return true;
+    }
     const port = within.find((element2) => element2.hasAttribute("data-ww-link"));
     const element = port ?? (!control && node.hasAttribute("data-ww-link") ? node : null);
     if (element && !this.#full(node, element)) {
       void this.#connect(event, node, element);
       return true;
     }
-    const held = within.find((other) => other.hasAttribute("data-ww-port")) ?? (!control && (node.hasAttribute("data-ww-link") || node.hasAttribute("data-ww-accept")) ? node : null);
     if (!held) return false;
-    const reference = bare(this.#refOf(node, held));
-    for (const path of this.wiresAt(reference).reverse()) {
+    for (const path of wires) {
       const end = path.rewire.find((name) => bare(path.getAttribute(name)) === reference);
       if (!end) continue;
       void this.#rewire(event, path, end);
@@ -954,6 +961,10 @@ class SceneBase extends SceneMirror {
     signal.addEventListener("abort", () => {
       if (this.#armed === armed) this.#armed = null;
       this.#unwire(wire, null, "click");
+      if (wire.path) {
+        wire.path.setState("rewiring", false);
+        wire.path.changed();
+      }
     });
     aim(at);
     window.addEventListener("pointermove", (move) => aim(scene(move)), { signal });
@@ -964,9 +975,17 @@ class SceneBase extends SceneMirror {
         down.preventDefault();
         down.stopPropagation();
         const pointer = scene(down);
-        const target = this.#over(wire, pointer);
+        const inside = down.composedPath().includes(this);
+        const hit = inside ? this.#target(down) : null;
+        let target = this.#over(wire, pointer);
+        if (wire.path) {
+          const port = hit?.inside.find((element) => element.hasAttribute("data-ww-port"));
+          if (!hit || hit.control && (!target || !hit.inside.includes(target.element)) || port && port !== target?.element) target = null;
+        }
+        const background = wire.path && hit && !hit.hit && !hit.control && !this.itemAt(pointer) && !hit.inside.some((element) => this.#handleItems.has(element));
         stop.abort();
         if (target) void this.#join(wire, target, pointer);
+        else if (wire.path && background) void this.#detach(wire, pointer);
       },
       { signal, capture: true }
     );
@@ -989,7 +1008,11 @@ class SceneBase extends SceneMirror {
   #disarm() {
     this.#armed?.stop.abort();
   }
-  /** An end of a path is taken: it can be put on another port (`ww-reconnect`) or let go in the open (`ww-disconnect`). */
+  /**
+   * An end of a path is taken: it can be put on another port (`ww-reconnect`) or let go in the open (`ww-disconnect`).
+   * With `connect-click`, a click on an already selected path's end holds it until the next click: an accepting port
+   * reconnects, empty scene background disconnects, and Escape, a control or a click outside the scene cancels.
+   */
   async #rewire(event, path, end) {
     const fixed = this.resolve(path.getAttribute(end === "to" ? "from" : "to"));
     if (!fixed || !this.#allowed("connect", fixed.node, fixed.element)) return;
@@ -997,6 +1020,7 @@ class SceneBase extends SceneMirror {
     if (!wire) return;
     event.preventDefault();
     this.#disarm();
+    const selected = path.hasAttribute("selected");
     path.setState("rewiring", true);
     path.changed();
     const gesture = this.#gesture = new PointerGesture(this, event, { threshold: 2, convert: this.#convert });
@@ -1013,6 +1037,10 @@ class SceneBase extends SceneMirror {
       }
       this.#gesture = null;
       const pointer = this.#sampled(gesture.last);
+      if (!gesture.cancelled && !gesture.moved && selected && this.hasAttribute("connect-click") && !(event.shiftKey || event.ctrlKey || event.metaKey)) {
+        this.#arm(wire, pointer);
+        return;
+      }
       this.#unwire(wire, pointer);
       if (gesture.cancelled) return;
       if (!gesture.moved) {
@@ -1027,8 +1055,10 @@ class SceneBase extends SceneMirror {
       else await this.#detach(wire, pointer);
     } finally {
       this.#gesture = null;
-      path.setState("rewiring", false);
-      path.changed();
+      if (this.#armed?.wire !== wire) {
+        path.setState("rewiring", false);
+        path.changed();
+      }
     }
   }
   /** The port a key event started at, if a wire can start there. */
@@ -1107,6 +1137,7 @@ class SceneBase extends SceneMirror {
     this.#prepare([...this.#prepared.keys()], false);
   }
   dropped(item) {
+    if (this.#armed && (this.#armed.wire.path === item || this.#armed.wire.node === item)) this.#disarm();
     if (item instanceof SceneNode) this.#unprepare(item);
   }
   /**

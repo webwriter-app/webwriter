@@ -9,7 +9,7 @@ import {
   type VersionHistoryUser,
   type UndoState,
 } from "../editor-bridge"
-import {authoredClassValue, isAppendixInteraction, isEditorOwnedAttribute, isEditorOwnedClass, isFormControlInteraction, isOnApple, isWidgetShadowInteraction, modifierKeyDown} from "../utility"
+import {authoredClassValue, isAppendixInteraction, isEditorOwnedAttribute, isEditorOwnedClass, isFormControlInteraction, isOnApple, isWidgetShadowInteraction, modifierKeyDown, widgetHostForShadowInteraction} from "../utility"
 import {userInitials} from "../user-identity"
 import {hydrateWidgetGroupings} from "../widget-grouping-dom"
 import {safeCssColor} from "../css-color"
@@ -72,6 +72,7 @@ const isEditorOnlyHistoryNode = (node: Node) => isInsideEditorOnlyNode(node inst
 
 /** Collaborative document checkpoints, previews, comments, undo, and redo. */
 export class HistoryFeature extends EditorFeature {
+  protected handlesCapturedElementInteractions = true
   #checkpoints!: Y.Array<StoredCheckpoint>
   #comments!: Y.Array<StoredComment>
   #versions!: Y.Array<StoredVersion>
@@ -146,6 +147,42 @@ export class HistoryFeature extends EditorFeature {
       this.#addComment(checkpointId, text),
   } as const
 
+  /** Explicitly forwarded history commands retain widget capture and native control focus. */
+  readonly #forwardedHistory = (event: KeyboardEvent | InputEvent) => {
+    const widget = widgetHostForShadowInteraction(event, this.editor.schema)
+    if(!widget) return
+    const forwarded = this.editor.schema.get(widget)?.propagateEvents ?? []
+    // Native history input is the menu/touch counterpart of the forwarded history keys.
+    if(!forwarded.includes(event.type) && !(event instanceof InputEvent && forwarded.includes("keydown"))) return
+    if(event instanceof KeyboardEvent) this.#historyKey(event)
+    else this.#historyInput(event)
+  }
+
+  readonly #historyInput = (event: InputEvent) => {
+    if(event.defaultPrevented || !["historyUndo", "historyRedo"].includes(event.inputType)) return
+    event.preventDefault()
+    if(event.inputType === "historyUndo") this.editor.doc.undo()
+    else this.editor.doc.redo()
+  }
+
+  readonly #historyKey = (ev: KeyboardEvent) => {
+    if(ev.defaultPrevented) return
+    const key = ev.key.toLowerCase()
+    if(ev.altKey || ev.getModifierState("AltGraph") || (isOnApple() ? ev.ctrlKey : ev.metaKey)) return
+    const isUndo = key === "z" && modifierKeyDown(ev) && !ev.shiftKey
+    const isMacRedo = isOnApple() && key === "z" && modifierKeyDown(ev) && ev.shiftKey
+    const isWinLinuxRedo = !isOnApple() && modifierKeyDown(ev)
+      && (key === "y" && !ev.shiftKey || key === "z" && ev.shiftKey)
+    if(isUndo) {
+      ev.preventDefault()
+      this.editor.doc.undo()
+    }
+    else if(isMacRedo || isWinLinuxRedo) {
+      ev.preventDefault()
+      this.editor.doc.redo()
+    }
+  }
+
   // Capture before native defaults and command handlers can mutate live ranges.
   readonly #rememberSelection = (event: Event) => {
     if(isAppendixInteraction(event) || isFormControlInteraction(event)
@@ -154,8 +191,8 @@ export class HistoryFeature extends EditorFeature {
   }
 
   captureListeners: DocumentListenerMap = {
-    beforeinput: this.#rememberSelection,
-    keydown: this.#rememberSelection,
+    beforeinput: event => { this.#rememberSelection(event); this.#forwardedHistory(event) },
+    keydown: event => { this.#rememberSelection(event); this.#forwardedHistory(event) },
     cut: this.#rememberSelection,
     paste: this.#rememberSelection,
     drop: this.#rememberSelection,
@@ -173,28 +210,8 @@ export class HistoryFeature extends EditorFeature {
   }
 
   activeListeners: DocumentListenerMap = {
-    beforeinput: event => {
-      if(event.defaultPrevented || !["historyUndo", "historyRedo"].includes(event.inputType)) return
-      event.preventDefault()
-      if(event.inputType === "historyUndo") this.editor.doc.undo()
-      else this.editor.doc.redo()
-    },
-    "keydown": ev => {
-      const key = ev.key.toLowerCase()
-      if(ev.altKey || ev.getModifierState("AltGraph") || (isOnApple() ? ev.ctrlKey : ev.metaKey)) return
-      const isUndo = key === "z" && modifierKeyDown(ev) && !ev.shiftKey
-      const isMacRedo = isOnApple() && key === "z" && modifierKeyDown(ev) && ev.shiftKey
-      const isWinLinuxRedo = !isOnApple() && modifierKeyDown(ev)
-        && (key === "y" && !ev.shiftKey || key === "z" && ev.shiftKey)
-      if(isUndo) {
-        ev.preventDefault()
-        this.editor.doc.undo()
-      }
-      else if(isMacRedo || isWinLinuxRedo) {
-        ev.preventDefault()
-        this.editor.doc.redo()
-      }
-    },
+    beforeinput: this.#historyInput,
+    keydown: this.#historyKey,
   }
 
   readonly #handleHistoryChange = () => {

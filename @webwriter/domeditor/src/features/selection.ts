@@ -2203,7 +2203,7 @@ export class SelectionFeature extends EditorFeature {
   #preventCapturedDocumentInput(event: Event) {
     const captured = this.captureSelectedElement
     if(!captured || isAppendixInteraction(event) || isFormControlInteraction(event)
-      || isWidgetShadowInteraction(event, this.editor.schema) || this.editor.features.graphic.textEditingRange) return
+      || isWidgetShadowInteraction(event) || this.editor.features.graphic.textEditingRange) return
     if(captured instanceof HTMLMediaElement && captured.controls && event instanceof KeyboardEvent
       && (event.key === " " || event.key === "Enter") && event.composedPath().includes(captured)) return
     const selection = document.getSelection()
@@ -2239,7 +2239,6 @@ export class SelectionFeature extends EditorFeature {
       this.#releaseCaptureSelection()
       this.editor.features.table.finishResize()
       this.editor.features.table.clearCellSelection(false)
-      if(this.editor.features.table.selectCellAtPoint(widget ?? event.target, event.clientX, event.clientY)) return true
       const target = this.#modifierSelectionTarget(widget ?? event.target)
       if(target && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
         const elements = $.selectedElements

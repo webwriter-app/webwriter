@@ -373,6 +373,8 @@ export type SelectionPathItem = {
   iconUrl?: string
   /** Whether this image currently resolves to an authored image map. */
   imageMap?: boolean
+  /** This top-level element occupies the document viewport. */
+  fillViewport?: boolean
   /** The element's computed non-static positioning mode, omitting relative positioning without an offset. */
   position?: "absolute" | "fixed" | "relative" | "sticky"
   /** The element's authored left or right float, including floats hidden by responsive styles. */
@@ -387,7 +389,7 @@ export type SelectionPathItem = {
   sections?: SelectionPathSection[]
 }
 
-export type SelectionPathSection = Pick<SelectionPathItem, "position" | "positionAnchor" | "float" | "floatForcedRight" | "floatRightInFlow"> & {
+export type SelectionPathSection = Pick<SelectionPathItem, "fillViewport" | "position" | "positionAnchor" | "float" | "floatForcedRight" | "floatRightInFlow"> & {
   /** The child-node path from BODY to the section wrapper. */
   path: number[]
   /** The wrapper's semantic HTML element type. */
@@ -441,6 +443,8 @@ export function isBlockFormatTag(value: string): value is BlockFormatTag {
 export type ElementStyleState = {
   target: {
     documentRoot?: true
+    fillViewport?: boolean
+    canFillViewport?: boolean
     boardRole?: "group" | "column" | "card"
     popupRole?: "toggle" | "content"
     float?: "none" | "far-left" | "far-right"
@@ -878,6 +882,7 @@ const isStringRecord = (value: unknown): value is Record<string, string> => isRe
 const isOptional = (value: unknown, predicate: (value: unknown) => boolean) => value === undefined || predicate(value)
 const isOptionalBoolean = (value: unknown) => value === undefined || isBoolean(value)
 const isSelectionPosition = (value: UnknownRecord) => isOptional(value.position, position => ["absolute", "fixed", "relative", "sticky"].includes(position as string))
+  && isOptional(value.fillViewport, isBoolean)
   && isOptional(value.positionAnchor, isBoolean)
   && isOptional(value.float, float => float === "far-left" || float === "far-right")
   && isOptional(value.floatForcedRight, isBoolean)

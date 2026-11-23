@@ -782,7 +782,7 @@ The core has `marquee` in its snapshot and the methods `extent()`, `measureText(
 | `ww-node` | `x`, `y`, `width`, `height`, `resizable`, `keep-ratio`, `outline="rect\|rounded\|circle\|ellipse"`, `radius` | The HTML content of the node at a scene position. `outline` is the shape where a path ends at the whole node. The selection outline follows it. |
 | `ww-group` | `x`, `y`, `scale`, `frame`, `padding`, `label`, `radius` | Its children, moved and scaled together. With `frame` it is also drawn as a box around its members. |
 | `ww-shape` | `kind="rect\|circle\|polygon"`, `x`, `y`, `width`, `height`, `r`, `points`, `radius`, `rotate`, `resizable` | A shape. A circle is placed by its center. `radius` rounds the corners of a rect. `rotate` turns a rect about its center and a polygon about `x`, `y`. A rect that is `resizable` has handles while it is selected. |
-| `ww-path` | `from`, `to`, `route="straight\|step\|curve\|arc\|orthogonal"`, `bend`, `loop`, `waypoints`, `marker-start`, `marker-end`, `hit-width`, `rewire` | A line between two ends, each written `node:port` or `node`. A path without `from` and `to` follows its `points` property, relative to its `x` and `y`. |
+| `ww-path` | `from`, `to`, `route="straight\|step\|curve\|arc\|orthogonal\|avoid"`, `bend`, `loop`, `waypoints`, `marker-start`, `marker-end`, `hit-width`, `rewire` | A line between two ends, each written `node:port` or `node`. A path without `from` and `to` follows its `points` property, relative to its `x` and `y`. |
 | `ww-text` | `x`, `y`, `rotate`; as a label also `at`, `along`, `side`, `gap`, `follow` | Its text content. Inside a `ww-path` it is a label of the path. |
 | `ww-image` | `x`, `y`, `width`, `height`, `href`, `resizable` | A picture. The `source` property takes an image source such as a canvas. |
 | `ww-sprites` | `texture` | A batch of sprites from its `items` property. Pixi renderer only. |
@@ -898,7 +898,7 @@ A path ends at a port (`from="a:out"`) or at a whole node (`from="a"`). A node t
 
 | Attribute of a `ww-path` | Meaning |
 |---|---|
-| `route` | `straight` (the default), `step`, `curve`, `arc`, or `orthogonal`. `step` and `curve` leave a whole node on the side that faces the other end. |
+| `route` | `straight` (the default), `step`, `curve`, `arc`, `orthogonal`, or `avoid`. `step` and `curve` leave a whole node on the side that faces the other end. |
 | `bend` | A number. The path becomes an arc. The control point of the arc is `bend` times the length of the line between the ends away from its middle, to the left of the way from start to end when `bend` is positive. Two paths between the same nodes, one each way, with the same `bend` stay apart. `route="arc"` without `bend` has 0.25, and `bend="0"` is a line. |
 | `loop` | An angle in degrees, 0 up and clockwise. A path from a node to itself becomes a loop that leaves and returns where the outline of the node lets it out. An empty value is 45. |
 | `waypoints` | The widget's own route: `x,y` pairs, each from the start end, or from the end with `e:` in front, as in `waypoints="20,0 20,-60 e:-20,-60 e:-20,0"`. The route follows its nodes because the points are relative to the ends. |
@@ -907,6 +907,8 @@ A path ends at a port (`from="a:out"`) or at a whole node (`from="a"`). A node t
 | `rewire` | Lets the reader take an end to another port. See [Wires](#wires). |
 
 `route="orthogonal"` draws horizontal and vertical segments. Each end leaves at its side. The middle segment runs halfway between the ends if no other node is in the way. Otherwise it runs at the nearest free place beside the nodes in the way, 12 pixels clear, and if there is none, the path goes out, across above or below, and in. The route does not avoid other paths and is laid out again whenever a node moves, so use it for scenes of tens of nodes. For more nodes, compute the route in the widget and pass `waypoints`.
+
+`route="avoid"` searches an orthogonal visibility grid around all node boxes, including its own endpoints, with 12 pixels of clearance. Earlier connectors in template order reserve lanes: the search penalizes shared segments, crossings, and extra bends. It reroutes the batch when any node or connector changes, and uses the same geometry for SVG, Pixi, hit tests, markers, labels, and snapshots. Common port stubs and unavoidable crossings can remain; a trapped port draws no line. This mode is intended for tens of nodes. Explicit `waypoints` and `loop` take precedence.
 
 A marker has the stroke color of the path and is 8 pixels plus twice the stroke width long. `--ww-scene-marker-size` sets another length. A hollow marker (`triangle`, `diamond`, and `circle-open`) is filled with `--ww-scene-marker-fill`, which is none by default. The path ends at the base of the marker, and an open arrow ends at its tip. A marker shrinks on a path that is too short for it and is never dashed. Markers and labels take the pointer with their path and are part of its selection outline.
 

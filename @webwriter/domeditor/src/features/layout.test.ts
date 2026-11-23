@@ -22,6 +22,71 @@ afterEach(() => { editor.destroy(); floatStylesheet.remove(); vi.restoreAllMocks
 
 const setFloat = (side: "far-left" | "none" | "far-right" | "left" | "right") => editor.features.layout.actions.setFloat({type: "setFloat", side})
 
+describe("table layout from cell selections", () => {
+  it.each(["caret", "cell", "rectangle"])("arranges the table and preserves cell styles from a %s", selection => {
+    document.body.innerHTML = '<p>Before</p><table style="color:red"><tbody><tr><th>A</th><td>B</td></tr></tbody></table><p>After</p>'
+    const table = document.querySelector("table")!, cells = Array.from(table.querySelectorAll("td, th")) as HTMLTableCellElement[]
+    if(selection === "caret") $.move(cells[0].firstChild!, 1)
+    else if(selection === "cell") $.selectElement(cells[0])
+    else editor.features.table.selectCells(cells[0], cells[1])
+    const contents = table.innerHTML
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const state = () => editor.features.table.getState()!.layout!
+    expect(state().target).toMatchObject({localName: "table", canFullWidth: true})
+    expect(editor.features.layout.actions.setFullWidth({type: "setFullWidth", enabled: true, topLevel: true})).toBe(true)
+    expect(table.classList.contains("ww-full-width")).toBe(true)
+    expect(state().target?.fullWidth).toBe(true)
+    expect(editor.features.layout.actions.setFloat({type: "setFloat", side: "far-right", topLevel: true})).toBe(true)
+    expect(table.classList.contains("ww-float-right")).toBe(true)
+    expect(state().target?.float).toBe("far-right")
+    expect(editor.features.layout.actions.setFloatSticky({type: "setFloatSticky", enabled: true, topLevel: true})).toBe(true)
+    expect(table.classList.contains("ww-float-sticky")).toBe(true)
+    expect(editor.features.layout.actions.moveFloat({type: "moveFloat", direction: "up", topLevel: true})).toBe(true)
+    expect(document.body.firstElementChild).toBe(table)
+    expect(table.innerHTML).toBe(contents)
+    expect(editor.features.manipulation.styleTarget).toBe(cells[selection === "rectangle" ? 1 : 0])
+    expect(editor.features.table.hasCellSelection).toBe(selection === "rectangle")
+  })
+
+  it("targets the innermost table and re-reads a replaced cell selection", () => {
+    document.body.innerHTML = '<table><tbody><tr><td><table><tbody><tr><td>Nested</td></tr></tbody></table></td></tr></tbody></table>'
+    const [outer, inner] = Array.from(document.querySelectorAll("table"))
+    $.move(inner.querySelector("td")!.firstChild!, 1)
+    expect(editor.features.layout.actions.setFloat({type: "setFloat", side: "far-right", topLevel: true})).toBe(true)
+    expect(inner.classList.contains("ww-float-right")).toBe(true)
+    expect(outer.hasAttribute("class")).toBe(false)
+    expect(editor.features.table.getState()!.layout!.target?.float).toBe("far-right")
+    const cell = inner.querySelector("td")!
+    const replacement = cell.cloneNode(true) as HTMLTableCellElement
+    editor.features.table.selectCells(cell)
+    cell.replaceWith(replacement)
+    $.move(replacement.firstChild!, 1)
+    expect(editor.features.layout.actions.setFloat({type: "setFloat", side: "none", alignment: "center", topLevel: true})).toBe(true)
+    expect(inner.classList.contains("ww-float-right")).toBe(false)
+    expect(inner.style.marginLeft).toBe("auto")
+    expect(replacement.hasAttribute("style")).toBe(false)
+  })
+
+  it("undoes and synchronizes table placement without adding cell artifacts", () => {
+    document.body.innerHTML = '<table><tbody><tr><td style="color:red">Cell</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    editor.features.table.selectCells(table.querySelector("td")!)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    editor.features.layout.actions.setFloat({type: "setFloat", side: "far-right", topLevel: true})
+    editor.doc.syncFromDOM()
+    const floated = editor.toHTML(true)
+    expect(floated).toContain("ww-float-right")
+    expect(floated).toContain('<td style="color:red">Cell</td>')
+    expect(floated).not.toContain("◆")
+    expect(sharedDOMBody(editor.doc.doc).toString()).toContain("ww-float-right")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(floated)
+  })
+})
+
 it("sets full width on eligible main-flow blocks and preserves authored content", () => {
   const target = document.querySelector<HTMLElement>("custom-card")!
   target.style.cssText = "display:block;max-width:200px;color:red"

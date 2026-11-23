@@ -1938,3 +1938,40 @@ it("shows four board Grouping icons above Caption, with live neighbor availabili
   toolbox.htmlPending = true; await toolbox.updateComplete
   expect([...grouping.querySelectorAll<HTMLButtonElement>("button")].every(button => button.disabled)).toBe(true)
 })
+
+
+it("toggles Fill viewport beside Attribution and disables conflicting controls", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.selectTool("Edit")
+  toolbox.elementSelected = true
+  toolbox.elementStyle = {target: {localName: "custom-widget", namespaceURI: "http://www.w3.org/1999/xhtml", canFillViewport: true}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+  const actions = vi.fn(); toolbox.addEventListener("layout-action", actions)
+  await toolbox.updateComplete
+  const toggle = () => toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Fill page"]')!
+  expect(toggle().parentElement).toBe(toolbox.shadowRoot!.querySelector(".attribution-field"))
+  expect(toggle().disabled).toBe(false)
+  toolbox.elementSelected = false
+  await toolbox.updateComplete
+  expect(toggle().disabled).toBe(true)
+  toggle().click()
+  expect(actions).not.toHaveBeenCalled()
+  toolbox.elementSelected = true
+  await toolbox.updateComplete
+  expect(toggle().disabled).toBe(false)
+  toggle().click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setFillViewport", enabled: true})
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, fillViewport: true, documentRoot: true}}
+  await toolbox.updateComplete
+  expect(toggle().getAttribute("aria-pressed")).toBe("true")
+  expect(toolbox.shadowRoot!.querySelector<HTMLFieldSetElement>(".viewport-placement")!.disabled).toBe(true)
+  expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="No caption"]')!.disabled).toBe(true)
+  toggle().click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setFillViewport", enabled: false})
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, canFillViewport: false}}
+  await toolbox.updateComplete
+  expect(toggle().disabled).toBe(true)
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, canFillViewport: true}}
+  toolbox.documentLayout = {...toolbox.documentLayout, mode: "canvas"}
+  await toolbox.updateComplete
+  expect(toggle().disabled).toBe(true)
+})

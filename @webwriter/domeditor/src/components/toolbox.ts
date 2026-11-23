@@ -203,7 +203,11 @@ export class DomEditorToolbox extends EditingControls {
     .caption-label-row {display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .35rem; margin-top: .4rem}
     :is(.caption-top, .float-pin, .float-full-width) {display: inline-flex; align-items: center; gap: .2rem; font: inherit; color: inherit; white-space: nowrap}
     :is(.caption-top, .float-pin, .float-full-width) input {width: .7rem; height: .7rem; margin: 0}
-    .attribution-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center; margin-top: .4rem}
+    .attribution-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr) minmax(0, 1fr); gap: .35rem; align-items: center; margin-top: .4rem}
+    .viewport-placement {border: 0; padding: 0; margin: 0; min-width: 0}
+    .viewport-placement:disabled {opacity: .5}
+    .attribution-field:not(:has([aria-label="Edit attribution"])) .fill-page {grid-column: 2 / -1}
+    .attribution-field > button[aria-pressed="true"] {background: #e7f0fa; border-color: #8eb6df}
     .attribution-field > button {min-width: 0; min-height: 1.7rem; background: #f7f7f7; border-color: #c5ccd5; font: .68rem/1.2 system-ui, sans-serif}
     .float-button-group {display: flex; width: 100%; gap: 0}
     .float-button-group button {position: relative; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-width: var(--editor-control-border-width, .5px); border-radius: 0}
@@ -960,7 +964,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   private get resettableStyles() {
-    const documentTarget = this.documentSelected || !this.selectedElementTypes.length && (this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body")
+    const documentTarget = !this.elementStyle.target?.fillViewport && (this.documentSelected || !this.selectedElementTypes.length && (this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"))
     const properties = documentTarget ? documentThemeProperties : [
       "background-color", "color", "border-width", "border-style", "border-color", "padding",
       "width", "height", "margin", "border-radius", "opacity", "box-shadow", "filter",
@@ -1003,7 +1007,7 @@ export class DomEditorToolbox extends EditingControls {
   private renderUniversalStyleDrawer() {
     const style = this.elementStyle
     const disabled = !style.target
-    const documentTarget = this.documentSelected || !this.selectedElementTypes.length && (this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body")
+    const documentTarget = !this.elementStyle.target?.fillViewport && (this.documentSelected || !this.selectedElementTypes.length && (this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"))
     const advancedProperties = ["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "opacity", "box-shadow", "filter"]
     const selectionKey = JSON.stringify([this.elementAttributes?.path, style.target])
     const setProperties = this.resettableStyles
@@ -1596,19 +1600,21 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   private renderElementLayoutControls() {
-    const target = this.elementStyle.target
-    if(this.activeTool !== "Edit" || this.documentSelected) return nothing
+    const style = ["td", "th"].includes(this.elementStyle.target?.localName ?? "")
+      ? this.table?.layout ?? this.elementStyle : this.elementStyle
+    const target = style.target
+    if(this.activeTool !== "Edit" || this.documentSelected && !target?.fillViewport) return nothing
     if(target?.popupRole) return nothing
-    if(target?.documentRoot || target?.localName === "body") return this.selectedElementTypes.length
+    if(!target?.fillViewport && (target?.documentRoot || target?.localName === "body")) return this.selectedElementTypes.length
       ? html`<div class="layout-action-controls float-action-controls">${this.renderAttributionField()}</div>` : nothing
     if(["td", "th"].includes(target?.localName ?? "")) return nothing
-    const float = target?.float ?? floatSideFromStyles(this.elementStyle.computed.float || "none", {
-      getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
+    const float = target?.float ?? floatSideFromStyles(style.computed.float || "none", {
+      getPropertyValue: name => style.inline[name]?.value ?? "",
     })
     const canPin = float === "far-left" || float === "far-right"
     const captionPosition = this.captionPosition ?? (this.documentLayout.mode === "board" || this.documentLayout.mode === "slides"
       ? null : this.table?.hasCaption ? "above" : this.figure?.hasCaption ? "below" : "none")
-    const captionDisabled = captionPosition === null || this.historyState.preview !== null || this.htmlPending
+    const captionDisabled = Boolean(target?.fillViewport) || captionPosition === null || this.historyState.preview !== null || this.htmlPending
     const hasCaption = captionPosition === "above" || captionPosition === "below"
     const captionPlacement = captionPosition === "above" ? "above" : "below"
     const alignment = target?.alignment ?? "center"
@@ -1620,6 +1626,7 @@ export class DomEditorToolbox extends EditingControls {
     return html`
         <div class="layout-action-controls float-action-controls">
           ${this.documentLayout.mode === "document" ? html`
+          <fieldset class="viewport-placement" ?disabled=${Boolean(target?.fillViewport)}>
           <span class="float-placement-label caption-label-row">Placement
             <label class="float-full-width"><input type="checkbox" .checked=${live(Boolean(target?.fullWidth))}
               ?disabled=${!target?.canFullWidth && !target?.fullWidth || this.historyState.preview !== null || this.htmlPending}
@@ -1649,8 +1656,8 @@ export class DomEditorToolbox extends EditingControls {
                 const info = (event.currentTarget as HTMLElement).querySelector<FloatInfo>("float-info")
                 info?.showBriefly()
               }}>${placement.alignment ? unsafeSVG(floatNoneIconSource(placement.alignment)) : ribbonIcon(placement.side === "far-left" ? "Float left" : "Float right")}
-                ${(placement.side === "far-left" && this.elementStyle.context.floatLeftForcedRight)
-                  || (placement.side === "far-right" && this.elementStyle.context.floatRightInFlow)
+                ${(placement.side === "far-left" && style.context.floatLeftForcedRight)
+                  || (placement.side === "far-right" && style.context.floatRightInFlow)
                   ? html`<float-info .side=${placement.side === "far-right" ? "right" : "left"} .badge=${float === placement.side}></float-info>` : nothing}
               </button>`)}
             <button type="button" class="float-move" aria-label="Move up" title="Move up"
@@ -1658,6 +1665,7 @@ export class DomEditorToolbox extends EditingControls {
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "moveFloat", direction: "up"}, bubbles: true, composed: true}))}>${ribbonIcon("ArrowUp")}</button>
           </div>
+          </fieldset>
           ` : nothing}
           ${["canvas", "slides"].includes(this.documentLayout.mode) ? html`
           <span class="float-placement-label">Placement</span>
@@ -1730,21 +1738,28 @@ export class DomEditorToolbox extends EditingControls {
                 detail: {type: "setCaption", position: captionPlacement, alignment}, bubbles: true, composed: true,
               }))}>${this.captionIcon(captionPlacement, alignment)}</button>`)}
           </div>` : nothing}
-          ${!["hr", "h1", "h2", "h3", "h4", "h5", "h6"].includes(target?.localName ?? "") ? this.renderAttributionField() : nothing}
+          ${!["hr", "h1", "h2", "h3", "h4", "h5", "h6"].includes(target?.localName ?? "") ? this.renderAttributionField() : this.renderAttributionField(false)}
           ${this.layoutError ? html`<p class="document-layout-error" role="alert">${this.layoutError}</p>` : ""}
         </div>
     `
   }
 
-  private renderAttributionField() {
+  private renderAttributionField(attribution = true) {
     return html`<div class="attribution-field">
-      <span id="attribution-label" class="float-placement-label">Attribution</span>
+      ${attribution ? html`<span id="attribution-label" class="float-placement-label">Attribution</span>
       <button type="button" aria-label="Edit attribution" aria-describedby="attribution-label" aria-haspopup="dialog"
         ?disabled=${this.historyState.preview !== null || this.htmlPending}
         @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
         @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
           detail: {type: "openAttribution"}, bubbles: true, composed: true,
-        }))}>Edit…</button>
+        }))}>Edit…</button>` : html`<span class="float-placement-label">Page</span>`}
+      <button type="button" class="fill-page" aria-label="Fill page" title="Give this element the whole page. Available when this is the only content."
+        aria-pressed=${Boolean(this.elementStyle.target?.fillViewport)}
+        ?disabled=${!this.elementSelected || this.documentLayout.mode !== "document" || !this.elementStyle.target?.canFillViewport || this.historyState.preview !== null || this.htmlPending}
+        @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+        @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
+          detail: {type: "setFillViewport", enabled: !this.elementStyle.target?.fillViewport}, bubbles: true, composed: true,
+        }))}>Fill page</button>
     </div>`
   }
 

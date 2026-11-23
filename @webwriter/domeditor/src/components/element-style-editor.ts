@@ -1,3 +1,4 @@
+import {viewportStyleDisabled} from "../document-template"
 import {normalizeURLInput} from "../url-input.js"
 import {LitElement, css, html, nothing} from "lit"
 import {tokenize} from "@csstools/css-tokenizer"
@@ -486,6 +487,8 @@ export class ElementStyleEditor extends LitElement {
       padding: 0;
     }
 
+    [inert][aria-disabled="true"] {opacity: .5}
+
     .property {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -921,6 +924,12 @@ export class ElementStyleEditor extends LitElement {
   }
 
   protected updated(changed: Map<PropertyKey, unknown>) {
+    if(changed.has("state") && this.state.target?.fillViewport) {
+      if(this.compactMenu && viewportStyleDisabled(this.compactMenu)) this.compactMenu = null
+      if(this.directionalProperty && viewportStyleDisabled(this.directionalProperty)) {
+        this.renderRoot.querySelector<HTMLDialogElement>(".directional-dialog")?.close()
+      }
+    }
     if(changed.has("selectionKey") && this.selectionKey !== this.directionalSelectionKey) {
       this.renderRoot.querySelector<HTMLDialogElement>(".directional-dialog")?.close()
     }
@@ -977,6 +986,7 @@ export class ElementStyleEditor extends LitElement {
   }
 
   private dispatchChange(property: string, mutation: ElementStyleMutation) {
+    if(this.state.target?.fillViewport && viewportStyleDisabled(property)) return
     if(this.documentRootTarget && property !== "background" && !property.startsWith("background-")) return
     this.dispatchEvent(new CustomEvent<ElementStyleChangeDetail>("element-style-change", {
       detail: {property, mutation},
@@ -1233,7 +1243,7 @@ export class ElementStyleEditor extends LitElement {
   private renderProperty(definition: ElementStylePropertyDefinition) {
     const declaration = this.declaration(definition.name)
     return html`
-      <div class="property" data-property=${definition.name}>
+      <div class="property" data-property=${definition.name} ?inert=${this.state.target?.fillViewport && viewportStyleDisabled(definition.name)} aria-disabled=${Boolean(this.state.target?.fillViewport && viewportStyleDisabled(definition.name))}>
         ${this.renderLabel(definition)}
         ${this.renderInput(definition, declaration)}
         ${declaration ? html`
@@ -1381,7 +1391,7 @@ export class ElementStyleEditor extends LitElement {
   }
 
   private get documentRootTarget() {
-    return this.state.target?.documentRoot === true || this.state.target?.localName === "body"
+    return !this.state.target?.fillViewport && (this.state.target?.documentRoot === true || this.state.target?.localName === "body")
   }
 
   private refreshFilterPresets = (event: Event) => {
@@ -1489,7 +1499,7 @@ export class ElementStyleEditor extends LitElement {
     const current = this.currentEffectValue(name)
     const stack = current === "none" ? "" : current
     const open = this.compactMenu === name
-    return html`<div class="compact-row effect-control" data-property=${name}>
+    return html`<div class="compact-row effect-control" data-property=${name} ?inert=${this.state.target?.fillViewport && viewportStyleDisabled(name)} aria-disabled=${Boolean(this.state.target?.fillViewport && viewportStyleDisabled(name))}>
       ${this.renderCompactLabel(name, label, `label-${name}`)}
       <div class="compact-controls"><div class=${`compact-value ${open ? "open" : ""}`}
         @focusout=${(event: FocusEvent) => {
@@ -1961,7 +1971,7 @@ export class ElementStyleEditor extends LitElement {
 
   private renderCompactProperty(definition: ElementStylePropertyDefinition) {
     const mediaCrop = definition.name === "object-view-box" && definition.label === "Crop"
-    return html`<div class="compact-row" data-property=${definition.name}>
+    return html`<div class="compact-row" data-property=${definition.name} ?inert=${this.state.target?.fillViewport && viewportStyleDisabled(definition.name)} aria-disabled=${Boolean(this.state.target?.fillViewport && viewportStyleDisabled(definition.name))}>
       ${this.renderCompactLabel(definition.name, mediaCrop ? "Crop" : definition.label)}
       <div class="compact-controls specialized-input">
         ${mediaCrop ? this.renderMediaCrop(definition) : definition.name === "list-style-type" && definition.control === "select" && definition.values?.length
@@ -2004,7 +2014,7 @@ export class ElementStyleEditor extends LitElement {
             ...(!preserveSpacing ? {padding: "8px"} : {}), "color": saturated ? "#ffffff" : "#2f3742",
             ...(!cellTarget ? {...(!popupPartTarget ? {"border-radius": "4px"} : {}), "box-shadow": shadow} : {}),
           })
-          const styles = Object.fromEntries(Object.entries(values).map(([property, value]) => [property, {
+          const styles = Object.fromEntries(Object.entries(values).filter(([property]) => !this.state.target?.fillViewport || !viewportStyleDisabled(property)).map(([property, value]) => [property, {
             value, priority: this.declaration(property)?.priority ?? "",
           }]))
           this.dispatchEvent(new CustomEvent("element-style-change", {detail: {styles}, bubbles: true, composed: true}))
@@ -2049,12 +2059,12 @@ export class ElementStyleEditor extends LitElement {
           const effects = (this.propertyNames ?? []).filter(property => property === "box-shadow" || property === "filter") as ("box-shadow" | "filter")[]
           return name === effects[0] ? html`<div class="effect-fields">${effects.map(property => this.renderCompactEffect(property))}</div>` : nothing
         }
-        if(name === "background-color" || name === "color") return html`<div class="compact-row" data-property=${name}>
+        if(name === "background-color" || name === "color") return html`<div class="compact-row" data-property=${name} ?inert=${this.state.target?.fillViewport && viewportStyleDisabled(name)} aria-disabled=${Boolean(this.state.target?.fillViewport && viewportStyleDisabled(name))}>
           ${this.renderCompactLabel(name, name === "color" ? "Text color" : "Background")}
           <div class="compact-controls background-control">${this.renderCompactColorPicker(name, name === "color" ? "Text color" : "Background color")}</div>
         </div>`
         const label = name === "border-width" ? "Border" : name === "border-radius" ? "Rounding" : name[0].toUpperCase() + name.slice(1)
-        return html`<div class="compact-row" data-property=${name}>
+        return html`<div class="compact-row" data-property=${name} ?inert=${this.state.target?.fillViewport && viewportStyleDisabled(name)} aria-disabled=${Boolean(this.state.target?.fillViewport && viewportStyleDisabled(name))}>
           ${this.renderCompactLabel(name, label)}
           <div class="compact-controls">
           ${name === "border-width" ? this.renderBorderGroup() : nothing}

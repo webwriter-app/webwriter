@@ -19,7 +19,7 @@ function routeCurve(a, b, kind, da, db) {
   return lineCurve(a, b);
 }
 function route(a, b, kind, da, db) {
-  const curve = routeCurve(a, b, kind === "step" || kind === "curve" ? kind : "straight", da, db);
+  const curve = kind === "avoid" ? { type: "poly", points: avoidRoute(a, da, b, db, [], 12) } : routeCurve(a, b, kind === "step" || kind === "curve" ? kind : "straight", da, db);
   return { d: curveD(curve), points: curveSamples(curve) };
 }
 const lerp = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
@@ -227,6 +227,130 @@ const simple = (points) => {
   const apart = points.filter((p, i, all) => i === 0 || p.x !== all[i - 1].x || p.y !== all[i - 1].y);
   return apart.filter((p, i, all) => i === 0 || i === all.length - 1 || !(p.x === all[i - 1].x && p.x === all[i + 1].x || p.y === all[i - 1].y && p.y === all[i + 1].y));
 };
+function avoidRoute(a, da, b, db, boxes, gap, paths = []) {
+  gap = Math.max(1, gap);
+  const padded = boxes.map((box) => ({ x: box.x - gap, y: box.y - gap, width: box.width + 2 * gap, height: box.height + 2 * gap }));
+  const contains = (box, p) => p.x > box.x && p.x < box.x + box.width && p.y > box.y && p.y < box.y + box.height;
+  const axis = (direction, towards) => direction.x || direction.y ? dominantSide(direction) : dominantSide(towards);
+  da = axis(da, { x: b.x - a.x, y: b.y - a.y });
+  db = axis(db, { x: a.x - b.x, y: a.y - b.y });
+  const escape = (p, direction) => {
+    let reach = gap;
+    const owner = boxes.findIndex((box) => p.x >= box.x && p.x <= box.x + box.width && p.y >= box.y && p.y <= box.y + box.height);
+    for (const box of owner < 0 ? [] : [padded[owner]]) if (contains(box, p)) {
+      reach = Math.max(reach, direction.x > 0 ? box.x + box.width - p.x : direction.x < 0 ? p.x - box.x : direction.y > 0 ? box.y + box.height - p.y : p.y - box.y);
+    }
+    const point = { x: p.x + direction.x * reach, y: p.y + direction.y * reach };
+    return padded.some((box, index) => index !== owner && segmentHits(p, point, box)) ? null : point;
+  };
+  const [start, end] = [escape(a, da), escape(b, db)];
+  if (!start || !end) return [];
+  const xs = /* @__PURE__ */ new Set([start.x - gap, start.x, start.x + gap, end.x - gap, end.x, end.x + gap]);
+  const ys = /* @__PURE__ */ new Set([start.y - gap, start.y, start.y + gap, end.y - gap, end.y, end.y + gap]);
+  for (const box of padded) {
+    xs.add(box.x).add(box.x + box.width);
+    ys.add(box.y).add(box.y + box.height);
+  }
+  for (const path of paths) {
+    const box = bounds(path);
+    if (box) {
+      xs.add(box.x - gap).add(box.x + box.width + gap);
+      ys.add(box.y - gap).add(box.y + box.height + gap);
+    }
+    for (let i = 1; i < path.length; i++) {
+      if (path[i].x === path[i - 1].x) xs.add(path[i].x - gap).add(path[i].x + gap);
+      if (path[i].y === path[i - 1].y) ys.add(path[i].y - gap).add(path[i].y + gap);
+    }
+  }
+  const xx = [...xs].sort((p, q) => p - q), yy = [...ys].sort((p, q) => p - q);
+  const width = xx.length, count = width * yy.length;
+  const at = (index) => ({ x: xx[index % width], y: yy[Math.floor(index / width)] });
+  const indexOf = (p) => yy.indexOf(p.y) * width + xx.indexOf(p.x);
+  const [first, last] = [indexOf(start), indexOf(end)];
+  if (padded.some((box) => contains(box, start) || contains(box, end))) return [];
+  const edges = /* @__PURE__ */ new Map();
+  const cost = (from, to, vertical) => {
+    const key = Math.min(from, to) * 2 + Number(vertical);
+    const cached = edges.get(key);
+    if (cached !== void 0) return cached;
+    const [p, q] = [at(from), at(to)];
+    let value = Math.abs(q.x - p.x) + Math.abs(q.y - p.y);
+    if (padded.some((box) => segmentHits(p, q, box))) value = Infinity;
+    else for (const path of paths) for (let i = 1; i < path.length; i++) {
+      const [r, s] = [path[i - 1], path[i]];
+      if (vertical ? r.x === s.x : r.y === s.y) {
+        const separation = Math.abs(vertical ? p.x - r.x : p.y - r.y);
+        const overlap = vertical ? Math.min(Math.max(p.y, q.y), Math.max(r.y, s.y)) - Math.max(Math.min(p.y, q.y), Math.min(r.y, s.y)) : Math.min(Math.max(p.x, q.x), Math.max(r.x, s.x)) - Math.max(Math.min(p.x, q.x), Math.min(r.x, s.x));
+        if (separation < gap && overlap > 0) value += 40 * overlap * (1 - separation / gap);
+      } else {
+        const dx = q.x - p.x, dy = q.y - p.y, ex = s.x - r.x, ey = s.y - r.y;
+        const cross = dx * ey - dy * ex;
+        if (cross) {
+          const t = ((r.x - p.x) * ey - (r.y - p.y) * ex) / cross;
+          const u = ((r.x - p.x) * dy - (r.y - p.y) * dx) / cross;
+          if (t >= 0 && t <= 1 && u >= 0 && u <= 1) value += gap * 16 * (t === 0 || t === 1 ? 0.5 : 1);
+        }
+      }
+    }
+    edges.set(key, value);
+    return value;
+  };
+  const distance = new Float64Array(count * 2).fill(Infinity);
+  const previous = new Int32Array(count * 2).fill(-1);
+  const heap = [];
+  const push = (entry) => {
+    let i = heap.length;
+    heap.push(entry);
+    while (i > 0) {
+      const parent = i - 1 >> 1;
+      if (heap[parent].score <= entry.score) break;
+      heap[i] = heap[parent];
+      i = parent;
+    }
+    heap[i] = entry;
+  };
+  const pop = () => {
+    const entry = heap[0], tail = heap.pop();
+    if (heap.length) {
+      let i = 0;
+      while (i * 2 + 1 < heap.length) {
+        let child = i * 2 + 1;
+        if (child + 1 < heap.length && heap[child + 1].score < heap[child].score) child++;
+        if (heap[child].score >= tail.score) break;
+        heap[i] = heap[child];
+        i = child;
+      }
+      heap[i] = tail;
+    }
+    return entry;
+  };
+  const initial = first * 2 + Number(da.y !== 0);
+  distance[initial] = 0;
+  push({ state: initial, cost: 0, score: Math.abs(start.x - end.x) + Math.abs(start.y - end.y) });
+  while (heap.length) {
+    const current = pop(), node = current.state >> 1, direction = current.state & 1;
+    if (current.cost !== distance[current.state]) continue;
+    if (node === last) {
+      const points = [];
+      for (let state = current.state; state !== -1; state = previous[state]) points.push(at(state >> 1));
+      return simple([a, ...points.reverse(), b]);
+    }
+    const p = at(node), x = node % width, y = Math.floor(node / width);
+    for (const next of [x > 0 ? node - 1 : -1, x + 1 < width ? node + 1 : -1, y > 0 ? node - width : -1, y + 1 < yy.length ? node + width : -1]) {
+      if (next < 0) continue;
+      const q = at(next), vertical = q.y !== p.y;
+      if (node === first && (q.x - p.x) * da.x + (q.y - p.y) * da.y < 0) continue;
+      if (next === last && (q.x - p.x) * db.x + (q.y - p.y) * db.y > 0) continue;
+      const nextState = next * 2 + Number(vertical);
+      const nextCost = current.cost + cost(node, next, vertical) + (Number(vertical) === direction ? 0 : gap * 2);
+      if (nextCost >= distance[nextState]) continue;
+      distance[nextState] = nextCost;
+      previous[nextState] = current.state;
+      push({ state: nextState, cost: nextCost, score: nextCost + Math.abs(q.x - end.x) + Math.abs(q.y - end.y) });
+    }
+  }
+  return [];
+}
 const MARKERS = ["none", "arrow", "open-arrow", "triangle", "triangle-filled", "diamond", "diamond-filled", "circle", "circle-open"];
 const markerSize = (strokeWidth) => 8 + 2 * strokeWidth;
 function markerInset(kind, size) {
@@ -361,6 +485,7 @@ export {
   MARKERS,
   apply,
   arcControl,
+  avoidRoute,
   bounds,
   clipCurve,
   compose,

@@ -53,6 +53,80 @@ afterEach(() => {
 })
 
 describe("history shortcut modifiers", () => {
+  it("keeps history keys working after undo restores focus outside a captured widget", () => {
+    const widget = document.createElement("captured-history")
+    document.body.append(widget)
+    editor.features.selection.captureElement(widget)
+    const redo = vi.spyOn(editor.doc, "redo").mockImplementation(() => {})
+    const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel")
+    try {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", {key: "z", metaKey: true, shiftKey: true, bubbles: true, cancelable: true}))
+      expect(redo).toHaveBeenCalledOnce()
+    }
+    finally { platform.mockRestore(); redo.mockRestore() }
+  })
+
+  it.each([false, true])("handles forwarded shadow history once while preserving control focus (captured: %s)", captured => {
+    editor.schema.extendWidgets([{tagName: "history-controls", editingConfig: {content: "flow*", propagateEvents: ["keydown"]}}])
+    const widget = document.createElement("history-controls")
+    widget.innerHTML = "<p>Authored page</p>"
+    document.body.append(widget)
+    const shadow = widget.attachShadow({mode: "open"})
+    const input = document.createElement("input")
+    input.value = "Page label"
+    shadow.append(input)
+    input.focus()
+    input.setSelectionRange(1, 4)
+    if(captured) editor.features.selection.captureElement(widget)
+    const undo = vi.spyOn(editor.doc, "undo").mockImplementation(() => {})
+    const redo = vi.spyOn(editor.doc, "redo").mockImplementation(() => {})
+    const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel")
+    try {
+      for(const [key, shiftKey] of [["z", false], ["z", true]] as const) {
+        const event = new KeyboardEvent("keydown", {key, metaKey: true, shiftKey, bubbles: true, composed: true, cancelable: true})
+        input.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+      }
+      expect(undo).toHaveBeenCalledOnce()
+      expect(redo).toHaveBeenCalledOnce()
+      for(const inputType of ["historyUndo", "historyRedo"]) {
+        const event = new InputEvent("beforeinput", {inputType, bubbles: true, composed: true, cancelable: true})
+        input.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+      }
+      expect(undo).toHaveBeenCalledTimes(2)
+      expect(redo).toHaveBeenCalledTimes(2)
+      expect(shadow.activeElement).toBe(input)
+      expect([input.selectionStart, input.selectionEnd]).toEqual([1, 4])
+      const typing = new InputEvent("beforeinput", {inputType: "insertText", data: "x", bubbles: true, composed: true, cancelable: true})
+      input.dispatchEvent(typing)
+      expect(typing.defaultPrevented).toBe(false)
+      for(const key of ["x", "Backspace", "Delete", "Enter"]) {
+        const native = new KeyboardEvent("keydown", {key, bubbles: true, composed: true, cancelable: true})
+        input.dispatchEvent(native)
+        expect(native.defaultPrevented, `native ${key} remains available in the forwarded control`).toBe(false)
+      }
+    }
+    finally { platform.mockRestore(); undo.mockRestore(); redo.mockRestore() }
+  })
+
+  it("leaves unforwarded shadow undo browser-managed", () => {
+    editor.schema.extendWidgets([{tagName: "private-history", editingConfig: {content: "flow*"}}])
+    const widget = document.createElement("private-history")
+    document.body.append(widget)
+    const input = document.createElement("input")
+    widget.attachShadow({mode: "open"}).append(input)
+    input.focus()
+    const undo = vi.spyOn(editor.doc, "undo").mockImplementation(() => {})
+    try {
+      const event = new InputEvent("beforeinput", {inputType: "historyUndo", bubbles: true, composed: true, cancelable: true})
+      input.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(undo).not.toHaveBeenCalled()
+    }
+    finally { undo.mockRestore() }
+  })
+
   it.each([true, false])("requires exact primary modifiers and supports standard redo (Apple: %s)", apple => {
     const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue(apple ? "MacIntel" : "Win32")
     const undo = vi.spyOn(editor.doc, "undo").mockImplementation(() => {})

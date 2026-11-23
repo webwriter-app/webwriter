@@ -117,6 +117,66 @@ describe("breadcrumb path separators", () => {
   })
 })
 
+describe("filled document breadcrumbs", () => {
+  it("keeps Pages visible and selectable while Document remains active", async () => {
+    const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+    breadcrumb.path = [{path: [], name: "Document"}]
+    breadcrumb.fillElement = {path: [2], name: "Pages", fillViewport: true}
+    breadcrumb.nodeSelected = true
+    document.body.append(breadcrumb)
+    await breadcrumb.updateComplete
+    const root = breadcrumb.shadowRoot!
+    expect(root.querySelector('.item[data-path=""]')?.classList.contains("node-selected")).toBe(true)
+    const pages = root.querySelector<HTMLButtonElement>('.item[data-path="2"]')!
+    expect(pages.textContent).toContain("Pages")
+    expect(pages.classList.contains("node-selected")).toBe(false)
+    const select = vi.fn()
+    breadcrumb.addEventListener("breadcrumb-item-select", select)
+    pages.click()
+    expect(select.mock.calls[0][0].detail).toMatchObject({path: [2], name: "Pages"})
+    breadcrumb.fillElement = null
+    await breadcrumb.updateComplete
+    expect(root.querySelector('.item[data-path="2"]')).toBeNull()
+    expect(root.querySelector(".separator-equals")).toBeNull()
+  })
+
+  it("uses a compact decorative equals separator, preserves the tree control, and clears it when filling ends", async () => {
+    const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+    const root = {path: [], name: "Document"}
+    const filled = {path: [0], name: "Image", fillViewport: true, position: "absolute" as const, float: "far-left" as const}
+    breadcrumb.path = [root, filled]
+    breadcrumb.tree = {...root, children: [{...filled, children: []}]}
+    document.body.append(breadcrumb)
+    await breadcrumb.updateComplete
+    const shadow = breadcrumb.shadowRoot!
+    const equals = shadow.querySelector(".separator-equals")!
+    expect(equals.getAttribute("aria-hidden")).toBe("true")
+    expect(equals.closest(".separator-trigger")?.getAttribute("aria-label")).toBe("Show Document tree")
+    expect(shadow.querySelectorAll(".fill-document")).toHaveLength(3)
+    expect(shadow.querySelector(".position-icons")).toBeNull()
+    ;(equals.closest("button") as HTMLButtonElement).click()
+    expect(breadcrumb.treeOpen).toBe(true)
+
+    breadcrumb.path = [root, {...filled, fillViewport: false}]
+    await breadcrumb.updateComplete
+    expect(shadow.querySelector(".separator-equals")).toBeNull()
+    expect(shadow.querySelector(".fill-document")).toBeNull()
+    expect(shadow.querySelector(".position-float")).not.toBeNull()
+  })
+
+  it("shows Document = Widget when the filled widget is the editing root, retaining descendant chevrons", async () => {
+    const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+    breadcrumb.path = [{path: [2], name: "Widget", fillViewport: true}, {path: [2, 0], name: "Image"}]
+    document.body.append(breadcrumb)
+    await breadcrumb.updateComplete
+    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".item-label"), item => item.textContent)).toEqual(["Document", "Widget", "Image"])
+    const separators = breadcrumb.shadowRoot!.querySelectorAll(".separator")
+    expect(separators[0].querySelector(".separator-equals")).not.toBeNull()
+    expect(separators[1].querySelector(".separator-equals")).toBeNull()
+    expect(separators[1].querySelector("svg")).not.toBeNull()
+  })
+})
+
 describe("breadcrumb outline lookups", () => {
   const mount = async (configure: (breadcrumb: DomEditorBreadcrumb) => void) => {
     const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb

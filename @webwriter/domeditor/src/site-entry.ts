@@ -4,6 +4,16 @@ import {openFrameLinksInNewTabs} from "./frame-links"
 
 openFrameLinksInNewTabs(window, {externalPagesOnly: true})
 
+let editorPreload: Promise<unknown> | undefined
+function preloadEditor(event: Event) {
+  const link = event.composedPath().find(target => target instanceof HTMLAnchorElement)
+  if(!(link instanceof HTMLAnchorElement) || link.origin !== location.origin || link.pathname !== "/editor/") return
+  // Warm the same lazy UI as editor-page without mounting an editor or opening a session.
+  editorPreload ??= import("./components/dom-editor").catch(() => {editorPreload = undefined})
+}
+document.addEventListener("pointerover", preloadEditor)
+document.addEventListener("focusin", preloadEditor)
+
 class SiteLanguageSwitcher extends LitElement {
   private locale = new SiteLanguageController(this)
   static styles = css`

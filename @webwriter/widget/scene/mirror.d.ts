@@ -202,12 +202,13 @@ export type TextSize = {
 export declare abstract class SceneMirror extends HTMLElement implements SceneLike {
     #private;
     static observedAttributes: string[];
-    /** Counters, for checks and measurements: flushes, computed styles read, shapes drawn, nodes whose ports were measured. */
+    /** Counters, for checks and measurements: flushes, computed styles read, shapes drawn, nodes whose ports were measured, avoiding routes searched. */
     readonly stats: {
         flushes: number;
         styled: number;
         drawn: number;
         measured: number;
+        routed: number;
     };
     /** The scene's own box. The renderer puts its drawing in here, below the layer that holds the nodes, the stand-ins and the overlay. */
     protected readonly surface: HTMLElement;

@@ -5,6 +5,8 @@ import {createFigureLayout} from "../figure-layout.js"
 import {createLayoutPrint} from "../document-layout-print.js"
 import {isDocumentFlowChild, slideLayoutRole} from "../document-layout"
 import {isAuthoredMutation} from "../editor-artifacts"
+import {isViewportDocument} from "../document-template"
+import {tableForNode} from "../table"
 
 type PlacementDirection = "front" | "up" | "down" | "back"
 type PlacementItem = {element: HTMLElement | SVGSVGElement, z: number, order: number}
@@ -51,8 +53,16 @@ export class LayoutFeature extends EditorFeature {
   refresh() { this.refreshFigureLayout(); this.syncColumnWidth() }
   getState() { return null }
 
+  /** Placement controls arrange the containing table while cells keep their own styles. */
+  private layoutTarget(topLevel: boolean) {
+    const manipulation = this.editor.features.manipulation
+    const target = topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget
+    return topLevel && target?.matches("td, th") ? tableForNode(target) : target
+  }
+
   /** Wide placement is limited to blocks in the document's main flow. */
   canSetFullWidth(target: Element) {
+    if(isViewportDocument(target)) return false
     const parent = target.parentElement
     if(!target.isConnected || this.editor.isEditingLocked || !this.editor.allows("style", target) || this.editor.features.canvas.active || this.editor.features.slides.active
       || document.body.classList.contains("ww-board") || !(target instanceof HTMLElement || target instanceof SVGSVGElement)
@@ -208,8 +218,7 @@ export class LayoutFeature extends EditorFeature {
   }
 
   movePlacement(direction: PlacementDirection, topLevel = false) {
-    const manipulation = this.editor.features.manipulation
-    const target = topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget
+    const target = this.layoutTarget(topLevel)
     return target ? this.placeElement(target, direction) : false
   }
 
@@ -288,7 +297,7 @@ export class LayoutFeature extends EditorFeature {
   }
 
   moveFloat(direction: "up" | "down", topLevel = false) {
-    const manipulation = this.editor.features.manipulation, element = topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget
+    const manipulation = this.editor.features.manipulation, element = this.layoutTarget(topLevel)
     if(!element || this.editor.isEditingLocked || !["up", "down"].includes(direction)
       || manipulation.floatContainer(element) !== element) return false
     const sibling = direction === "up" ? element.previousElementSibling : element.nextElementSibling
@@ -319,8 +328,7 @@ export class LayoutFeature extends EditorFeature {
 
   actions = {
     setFullWidth: ({enabled, topLevel}: {type: "setFullWidth", enabled: boolean, topLevel?: boolean}) => {
-      const manipulation = this.editor.features.manipulation
-      const target = topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget
+      const target = this.layoutTarget(Boolean(topLevel))
       if(!target || !target.isConnected || !document.body.contains(target) || this.editor.isEditingLocked
         || !this.editor.allows("style", target) || typeof enabled !== "boolean" || enabled && !this.canSetFullWidth(target)) return false
       const end = this.editor.doc.beginUndoGroup()
@@ -335,8 +343,8 @@ export class LayoutFeature extends EditorFeature {
     },
     setFloatSticky: ({enabled, topLevel}: {type: "setFloatSticky", enabled: boolean, topLevel?: boolean}) => {
       const manipulation = this.editor.features.manipulation
-      const target = topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget
-      if(!target || this.editor.isEditingLocked || this.editor.features.canvas.active || this.editor.features.slides.active
+      const target = this.layoutTarget(Boolean(topLevel))
+      if(!target || isViewportDocument(target) || this.editor.isEditingLocked || this.editor.features.canvas.active || this.editor.features.slides.active
         || typeof enabled !== "boolean") return false
       const style = (target as HTMLElement).style ?? getComputedStyle(target)
       const authoredSide = floatSideFromStyles(getComputedStyle(target).float, style, target.classList)
@@ -356,7 +364,7 @@ export class LayoutFeature extends EditorFeature {
     },
     setFloat: ({side, alignment, topLevel}: {type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right", topLevel?: boolean}) => {
       const manipulation = this.editor.features.manipulation
-      const target = topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget
+      const target = this.layoutTarget(Boolean(topLevel))
       if(!target) return false
       const end = this.editor.doc.beginUndoGroup()
       try {
