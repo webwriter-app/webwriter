@@ -1,16 +1,9 @@
-# GitLab-Pipeline für WebWriter (edumix/products/webwriter).
-# MR: Typecheck, Unit-Tests und Image-Build-Prüfung. dev: Image bauen, nach
-# registry.team.edumix.eu pushen und den Digest an edumix-cluster übergeben; Flux rollt ihn auf
-# Staging aus. Production wird in edumix-cluster je App manuell freigegeben (release:apply).
-# Die Pipeline hat keinen Cluster-Zugang und keinen Schreib-Token für edumix-cluster.
-include:
-  - project: edumix/infrastructure/edumix-cluster
-    ref: main
-    file: ci/templates/app.gitlab-ci.yml
-    inputs:
-      app: webwriter
-
-stages: [check, test, build, gitops]
+# GitLab-Pipeline für WebWriter (edumix/products/webwriter): prüft jeden Merge Request und die
+# Branches dev, staging und main (Typecheck, Unit-Tests).
+# Deploy ist davon getrennt: Nur auf staging und nur wenn die Prüfungen grün sind, startet
+# deploy:staging die eigenständige Child-Pipeline .gitlab/ci/deploy.yml (Image bauen, Digest an
+# edumix-cluster übergeben). Die Prüfungen hängen nicht von edumix-cluster ab.
+stages: [check, test, deploy]
 
 workflow:
   rules:
@@ -22,13 +15,6 @@ default:
   interruptible: true
   tags:
     - node4-ci
-
-variables:
-  # Origins werden derzeit beim Build eingebrannt (Dockerfile ARG). Als Projektvariablen in
-  # GitLab setzen. Solange das so ist, ist das Image Staging-spezifisch und darf nicht nach
-  # Production freigegeben werden (edumix-cluster docs/APPS.md): Origins zur Laufzeit lesen.
-  WEBWRITER_APP_ORIGIN: https://webwriter.dev.edumix.eu
-  WEBWRITER_EDITOR_ORIGIN: ""
 
 # Wie im Dockerfile: Vite läuft unter Node, Abhängigkeiten über bun.
 .domeditor:
@@ -65,10 +51,16 @@ unit:
   # Erst blockierend machen, wenn die Suite in CI stabil grün ist.
   allow_failure: true
 
-# Blockierend: der Image-Build enthält den vollständigen Vite-Build.
-image:webwriter:
-  extends: .edumix:image
+# ---------------------------------------------------------------------------
+# Deploy nach Staging: eigene Pipeline, startet erst nach grünen Prüfungen auf staging.
+# dev ist der gemeinsame Stand, der Merge dev → staging gibt ihn für die Tester frei.
+# Fehler im Deploy machen die Prüf-Pipeline nicht rot.
+# ---------------------------------------------------------------------------
+deploy:staging:
+  stage: deploy
   variables:
-    IMAGE_NAME: ""
-    IMAGE_CONTEXT: .
-    IMAGE_BUILD_ARGS: VITE_APP_ORIGIN=$WEBWRITER_APP_ORIGIN VITE_EDITOR_ORIGIN=$WEBWRITER_EDITOR_ORIGIN
+    GITOPS_APP: webwriter
+  trigger:
+    include: .gitlab/ci/deploy.yml
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "staging" && $CI_COMMIT_REF_PROTECTED == "true"'

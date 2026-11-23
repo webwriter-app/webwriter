@@ -31,4 +31,4 @@ ENTRYPOINT ["/bin/sh", "/usr/local/bin/caddy-entrypoint.sh"]
 # Checks the app shell too, so a broken /srv fails the check, not just a running Caddy.
 # The app shell is checked on the internal listener, which bypasses basic auth.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -q --spider http://127.0.0.1/health && wget -q --spider http://127.0.0.1:8099/index.html || exit 1
+  CMD wget -q --spider "http://127.0.0.1:${HTTP_PORT:-80}/health" && wget -q --spider http://127.0.0.1:8099/index.html || exit 1
