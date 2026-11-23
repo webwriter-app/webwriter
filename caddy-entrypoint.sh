@@ -3,7 +3,9 @@
 # if only one of them is set, startup fails instead of silently serving without a login.
 set -eu
 
-AUTH_FILE=/etc/caddy/auth.caddy
+# Same default as the Caddyfile; Kubernetes sets CADDY_AUTH_FILE under /tmp (read-only root).
+AUTH_FILE=${CADDY_AUTH_FILE:-/etc/caddy/auth.caddy}
+mkdir -p "$(dirname "$AUTH_FILE")"
 
 if [ -n "${BASIC_USER:-}" ] && [ -n "${BASIC_PASS:-}" ]; then
   HASH=$(caddy hash-password --plaintext "$BASIC_PASS")
