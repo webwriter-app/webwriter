@@ -1,4 +1,5 @@
 import {clearEditorMarkerClasses} from "./utility"
+import type {ElementStyleState} from "./editor-bridge"
 
 export const tableCellSelector = "td, th"
 export const tableInternalSelector = "caption, colgroup, col, thead, tbody, tfoot, tr, td, th"
@@ -22,6 +23,7 @@ export type TableMap = {
 
 export type TableSelectionState = {
   active: boolean
+  layout?: ElementStyleState
   cellSelection: boolean
   rows: number
   columns: number

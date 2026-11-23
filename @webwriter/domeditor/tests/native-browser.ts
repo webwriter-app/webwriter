@@ -6303,7 +6303,7 @@ await check("touch caret and ranges use shared pointer selection", async () => {
   finally {paragraph.remove()}
 })
 
-await check("modifier clicks select table cells and outer borders", async () => {
+await check("modifier clicks select whole tables from cells and borders", async () => {
   const table = document.createElement("table")
   table.innerHTML = '<tbody><tr><th rowspan="2"><button>Run</button></th><td>B</td></tr><tr><td>C</td></tr></tbody>'
   table.style.cssText = "width:320px;border:2px solid black"
@@ -6337,17 +6337,17 @@ await check("modifier clicks select table cells and outer borders", async () => 
       const top = captionSide === "top" ? table.caption!.getBoundingClientRect().bottom : rect.top
       const bottom = captionSide === "bottom" ? table.caption!.getBoundingClientRect().top : rect.bottom
       click(button, box.left + box.width / 2, box.top + box.height / 2)
-      assert(editor.features.table.selectedCells.length === 1 && editor.features.table.selectedCells[0] === cell, `${collapse}: cell interior did not select its cell`)
+      assert($.selectedElement === table && !editor.features.table.hasCellSelection, `${collapse}: cell interior did not select the table`)
       const next = table.querySelector("td")!.getBoundingClientRect()
       click(table, (box.right + next.left) / 2, next.top + next.height / 2)
-      assert(editor.features.table.hasCellSelection, `${collapse}: inner border selected the table`)
+      assert($.selectedElement === table && !editor.features.table.hasCellSelection, `${collapse}: inner border did not select the table`)
       for(const [x, y] of [[rect.left + 1, (top + bottom) / 2], [rect.right - 1, (top + bottom) / 2],
         [rect.left + rect.width / 2, top + 1], [rect.left + rect.width / 2, bottom - 1]]) {
         click(table, x, y)
         assert($.selectedElement === table && !editor.features.table.hasCellSelection, `${collapse}: outer border did not select the table`)
       }
       click(button, box.left + box.width / 2, box.top + box.height / 2)
-      assert(editor.features.table.selectedCells[0] === cell, `${collapse}: table selection prevented cell selection`)
+      assert($.selectedElement === table && !editor.features.table.hasCellSelection, `${collapse}: repeated modifier-click lost table selection`)
     }
     assert(!activations, "modifier-click activated a cell control")
     assert(!editor.toHTML(true).includes("◆"), "cell selection markers leaked into serialization")

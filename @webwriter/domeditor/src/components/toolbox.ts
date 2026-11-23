@@ -1600,14 +1600,16 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   private renderElementLayoutControls() {
-    const target = this.elementStyle.target
+    const style = ["td", "th"].includes(this.elementStyle.target?.localName ?? "")
+      ? this.table?.layout ?? this.elementStyle : this.elementStyle
+    const target = style.target
     if(this.activeTool !== "Edit" || this.documentSelected && !target?.fillViewport) return nothing
     if(target?.popupRole) return nothing
     if(!target?.fillViewport && (target?.documentRoot || target?.localName === "body")) return this.selectedElementTypes.length
       ? html`<div class="layout-action-controls float-action-controls">${this.renderAttributionField()}</div>` : nothing
     if(["td", "th"].includes(target?.localName ?? "")) return nothing
-    const float = target?.float ?? floatSideFromStyles(this.elementStyle.computed.float || "none", {
-      getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
+    const float = target?.float ?? floatSideFromStyles(style.computed.float || "none", {
+      getPropertyValue: name => style.inline[name]?.value ?? "",
     })
     const canPin = float === "far-left" || float === "far-right"
     const captionPosition = this.captionPosition ?? (this.documentLayout.mode === "board" || this.documentLayout.mode === "slides"
@@ -1654,8 +1656,8 @@ export class DomEditorToolbox extends EditingControls {
                 const info = (event.currentTarget as HTMLElement).querySelector<FloatInfo>("float-info")
                 info?.showBriefly()
               }}>${placement.alignment ? unsafeSVG(floatNoneIconSource(placement.alignment)) : ribbonIcon(placement.side === "far-left" ? "Float left" : "Float right")}
-                ${(placement.side === "far-left" && this.elementStyle.context.floatLeftForcedRight)
-                  || (placement.side === "far-right" && this.elementStyle.context.floatRightInFlow)
+                ${(placement.side === "far-left" && style.context.floatLeftForcedRight)
+                  || (placement.side === "far-right" && style.context.floatRightInFlow)
                   ? html`<float-info .side=${placement.side === "far-right" ? "right" : "left"} .badge=${float === placement.side}></float-info>` : nothing}
               </button>`)}
             <button type="button" class="float-move" aria-label="Move up" title="Move up"

@@ -14,6 +14,31 @@ const semanticTableState = {
 }
 
 describe("table controls", () => {
+  it.each(["td", "th"])("shows the containing table's layout controls for a selected %s", async localName => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.elementStyle = {target: {localName, namespaceURI: "http://www.w3.org/1999/xhtml"},
+      inline: {}, computed: {}, context: {display: "table-cell", parentDisplay: "table-row"}}
+    toolbox.table = {...semanticTableState, active: true, cellSelection: true, rows: 2, columns: 2,
+      selectedCells: 1, canMerge: false, canSplit: false, hasCaption: false,
+      layout: {target: {localName: "table", namespaceURI: "http://www.w3.org/1999/xhtml",
+        float: "far-right", floatSticky: true, canMoveDown: true}, inline: {}, computed: {},
+        context: {display: "table", parentDisplay: "block"}}}
+    const listener = vi.fn()
+    toolbox.addEventListener("layout-action", listener)
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+
+    const root = toolbox.shadowRoot!
+    const right = root.querySelector<HTMLButtonElement>('button[aria-label="Float right"]')!
+    expect(right).not.toBeNull()
+    expect(right.getAttribute("aria-pressed")).toBe("true")
+    expect(root.querySelector<HTMLInputElement>(".float-pin input")!.checked).toBe(true)
+    expect(root.querySelector<HTMLButtonElement>('button[aria-label="Move down"]')!.disabled).toBe(false)
+    root.querySelector<HTMLButtonElement>('button[aria-label="No float, align center"]')!.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "setFloat", side: "none", alignment: "center"}}))
+  })
+
   it("keeps the table controls in one specialized Edit toolbox drawer", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
