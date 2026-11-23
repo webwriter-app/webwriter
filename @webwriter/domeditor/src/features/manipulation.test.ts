@@ -6824,6 +6824,45 @@ describe("setStyle()", () => {
     editor.doc.redo()
     expect(document.querySelector("table")?.style.backgroundColor).toBe("gold")
   })
+  describe.each(["element", "capture"])("embedded image styles with %s selection", selection => {
+    it.each([
+      {name: "image in td", content: '<td><img src="small.png" alt="Image"></td>'},
+      {name: "responsive picture in th", content: '<th><a href="#keep"><picture><!--keep--><source srcset="large.png 2x"><img src="small.png" alt="Image"></picture></a></th>'},
+      {name: "image in nested table", content: '<td><table><tbody><tr><td><p><img src="small.png" alt="Image"></p></td></tr></tbody></table></td>'},
+      {name: "captioned image in td", content: '<td><figure><picture><img src="small.png" alt="Image"></picture><figcaption>Caption</figcaption></figure></td>'},
+    ])("styles only the $name and preserves its surrounding cells", ({content}) => {
+      document.body.innerHTML = `<section><table><tbody><tr>${content}<td>Other cell</td></tr></tbody></table></section>`
+      const image = document.querySelector<HTMLElement>("picture, img")!
+      const target = image.closest<HTMLElement>("figure") ?? image
+      if(selection === "capture") editor.features.selection.captureElement(image)
+      else $.selectElement(image)
+      const surrounding = Array.from(document.querySelectorAll("section, table, td, th, p, a, figcaption, source"))
+        .map(element => ({element, html: element.getAttribute("style")}))
+      editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+      const before = editor.toHTML(true)
+      const {actions} = editor.features.manipulation
+      const styles = {"box-shadow": "0 2px 4px black", filter: "grayscale(1)", "border-width": "2px", "border-style": "solid", "border-color": "red"}
+      const state = () => actions.getStyleState({type: "getStyleState", topLevel: true, properties: Object.keys(styles)})
+      expect(editor.features.manipulation.topLevelStyleTarget).toBe(target)
+      expect(state().target?.localName).toBe(target.localName)
+      actions.setStyle({type: "setStyle", topLevel: true, styles})
+      for(const [name, value] of Object.entries(styles)) {
+        expect(target.style.getPropertyValue(name)).toBe(value)
+        expect(state().inline[name]?.value).toBe(value)
+      }
+      for(const {element, html} of surrounding) expect(element.getAttribute("style")).toBe(html)
+      if(target !== image) expect(image).not.toHaveAttribute("style")
+      editor.doc.syncFromDOM()
+      const changed = editor.toHTML(true)
+      expect(changed).not.toContain("◆")
+      expect(sharedDOMBody(editor.doc.doc).toString()).toContain("grayscale(1)")
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(before)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(changed)
+    })
+  })
+
   it("styles the current cell from a caret inside nested cell content", () => {
     document.body.innerHTML = '<section><table><tbody><tr><td><p><b>one</b></p></td><td>two</td></tr></tbody></table></section>'
     $.move(document.querySelector("b")!.firstChild!, 1)

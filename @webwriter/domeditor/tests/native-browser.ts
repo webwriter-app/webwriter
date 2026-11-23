@@ -6303,6 +6303,38 @@ await check("touch caret and ranges use shared pointer selection", async () => {
   finally {paragraph.remove()}
 })
 
+await check("selected images inside table cells keep their own effects", async () => {
+  const table = document.createElement("table")
+  table.innerHTML = '<tbody><tr><td><picture><img alt="Image" width="120" height="80"></picture><p>Cell text</p></td><td>Other cell</td></tr></tbody>'
+  fixture.append(table)
+  const picture = table.querySelector("picture")!, image = picture.querySelector("img")!
+  const cell = table.querySelector("td")!, paragraph = table.querySelector("p")!
+  try {
+    image.src = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect width="120" height="80" fill="orange"/></svg>')
+    await image.decode()
+    editor.features.selection.captureElement(picture)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {
+      filter: "grayscale(1)", "box-shadow": "0 2px 4px black", border: "2px solid red",
+    }})
+    await layoutFrame()
+    assert(getComputedStyle(picture).filter === "grayscale(1)", "image filter did not reach the picture")
+    assert(getComputedStyle(picture).boxShadow !== "none", "image shadow did not reach the picture")
+    assert(getComputedStyle(picture).borderTopWidth === "2px", "image border did not reach the picture")
+    assert(!cell.hasAttribute("style") && !table.hasAttribute("style") && !paragraph.hasAttribute("style"),
+      "image effects decorated the surrounding table or text")
+    editor.features.selection.selectElement(cell)
+    $.move(paragraph.firstChild!, 1)
+    editor.features.selection.processSelection()
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold"}})
+    assert(cell.style.backgroundColor === "gold", "returning to text did not restore cell styling")
+  }
+  finally {
+    table.remove()
+    $.selectDocumentStart()
+    editor.features.selection.processSelection()
+  }
+})
+
 await check("modifier clicks select whole tables from cells and borders", async () => {
   const table = document.createElement("table")
   table.innerHTML = '<tbody><tr><th rowspan="2"><button>Run</button></th><td>B</td></tr><tr><td>C</td></tr></tbody>'

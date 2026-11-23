@@ -3153,10 +3153,10 @@ export class ManipulationFeature extends EditorFeature {
     if(figure && root.contains(figure)) return figure
     if(["toggle", "content"].includes(popupElementRole(target) ?? "")) return target
     if(target.matches("details:not([is])")) return target
-    // A selected image inside a disclosure has its own effects. Styling
-    // the containing block would also filter the summary and other content.
+    // A selected image inside a disclosure or table cell has its own effects.
+    // Styling its container would also filter or decorate the surrounding content.
     const selected = this.editor.features.selection.captureSelectedElement ?? $.selectedElement ?? null
-    const image = selected?.closest("details:not([is])") && atomicEditingContainer(selected, this.editor.schema)
+    const image = selected?.closest("details:not([is]), td, th") && atomicEditingContainer(selected, this.editor.schema)
     if(image?.matches(":is(img, picture):not([is])") && root.contains(image)) return image
     // Table and cell selections keep their scope inside sections and templates.
     const cell = cellForNode(target)
