@@ -43,7 +43,11 @@ unit:
   extends: .domeditor
   stage: test
   script:
-    - npx vitest run --reporter=default --reporter=junit --outputFile.junit=junit.xml
+    # dev-server/git-packages.test.js ruft echtes git auf; node:22-slim bringt es nicht mit.
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates > /dev/null
+    # Ein Worker: die großen DOM-Testdateien brauchen je bis ~6,5 GB RSS (live, kein GC-Spielraum).
+    # Zwei parallel sprengen das Container-Limit des Runners -> "Worker exited unexpectedly".
+    - npx vitest run --maxWorkers=1 --reporter=default --reporter=junit --outputFile.junit=junit.xml
   artifacts:
     when: always
     reports:
