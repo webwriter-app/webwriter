@@ -4137,7 +4137,7 @@ describe("drop, cancellation, and document ownership", () => {
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
   })
 
-  it.each([[310, "left"], [390, "right"]] as const)("floats media before a paragraph at x=%i", (x, side) => {
+  it.each([[280, "left"], [420, "right"]] as const)("floats media before a paragraph at x=%i", (x, side) => {
     const target = append(document.createElement("img"))
     const paragraph = targetElement()
     paragraph.textContent = "keep text"
@@ -4186,7 +4186,7 @@ describe("drop, cancellation, and document ownership", () => {
     const far = paragraphs[70]
     Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [far])})
     const top = 100 + 70 * 120
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 390, clientY: top + 10, ctrlKey: true}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 420, clientY: top + 10, ctrlKey: true}))
     const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
     expect(preview.getAttribute("part")).toContain("float-drop-preview-right")
     expect(parseFloat(preview.style.top)).toBe(top)
@@ -4202,14 +4202,14 @@ describe("drop, cancellation, and document ownership", () => {
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
     expect(targets()).not.toBeNull()
     target.remove()
-    expect(() => feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 390, clientY: 110, ctrlKey: true}))).not.toThrow()
+    expect(() => feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 420, clientY: 110, ctrlKey: true}))).not.toThrow()
     feature.handleMoveEnd()
     expect(targets()).toBeNull()
     expect(paragraphs.every(paragraph => paragraph.parentElement === document.body)).toBe(true)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
-  it("moves the float preview between target halves and removes it on cancellation", () => {
+  it("moves the float preview between full side margins and removes it on cancellation", () => {
     const target = append(document.createElement("img"))
     const paragraph = targetElement()
     target.style.width = "40px"
@@ -4219,9 +4219,9 @@ describe("drop, cancellation, and document ownership", () => {
     selectNode(target)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
 
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 110, ctrlKey: true}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 280, clientY: 110, ctrlKey: true}))
     expect(editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!.style.left).toBe("300px")
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 390, clientY: 110, ctrlKey: true}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 420, clientY: 110, ctrlKey: true}))
     const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
     expect(editor.appendix.querySelectorAll("#◆float-drop-preview")).toHaveLength(1)
     expect(parseFloat(preview.style.left)).toBeCloseTo(360)
@@ -4232,7 +4232,7 @@ describe("drop, cancellation, and document ownership", () => {
     expect(target.parentElement).toBe(document.body)
   })
 
-  it.each([[110, "before"], [190, "after"]] as const)("uses ordinary %s placement outside the target rectangle", (y, placement) => {
+  it.each([[110, "before"], [190, "after"]] as const)("uses ordinary %s placement at the target block edges", (y, placement) => {
     const target = append(document.createElement("img"))
     Object.assign(target.style, {float: "right", margin: "5px", maxWidth: "50%", marginBlockStart: "8px", color: "red"})
     const paragraph = targetElement()
@@ -4243,7 +4243,7 @@ describe("drop, cancellation, and document ownership", () => {
     Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [paragraph])})
     selectNode(target)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 250, clientY: y, ctrlKey: true}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 350, clientY: y, ctrlKey: true}))
 
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
     expect(hasPresentationState(paragraph, `drop-caret-${placement}`)).toBe(true)
@@ -4318,7 +4318,7 @@ describe("drop, cancellation, and document ownership", () => {
     const startingHTML = editor.toHTML(true)
 
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 120, ctrlKey: true}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 280, clientY: 120, ctrlKey: true}))
     feature.handleMoveEnd()
     await mutationsDelivered()
     editor.doc.syncFromDOM()

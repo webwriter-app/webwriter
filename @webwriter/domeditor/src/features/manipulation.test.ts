@@ -7243,10 +7243,10 @@ describe("unified content transfer", () => {
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: first.firstChild!, offset: 3})
     const data = ribbonData("h2")
     const read = vi.spyOn(data, "getData").mockReturnValue("")
-    document.body.dispatchEvent(transferEvent("dragover", data, {clientX: 150, clientY: 20}))
+    document.body.dispatchEvent(transferEvent("dragover", data, {clientX: 50, clientY: 10}))
     read.mockRestore()
     expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
-    document.body.dispatchEvent(transferEvent("drop", data, {clientX: 150, clientY: 20}))
+    document.body.dispatchEvent(transferEvent("drop", data, {clientX: 50, clientY: 10}))
     expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "h2", "p", "p"])
     expect(Array.from(document.body.children).map(child => child.textContent)).toEqual(["bef", "", "ore", "after"])
     expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
@@ -7265,16 +7265,16 @@ describe("unified content transfer", () => {
       vi.spyOn(document, "elementFromPoint").mockReturnValue(first)
       vi.spyOn($, "pointFromCoords").mockReturnValue({node: first.firstChild!, offset: 3})
       const data = {[elementDragType]: "h2", [`${elementDragType}-h2`]: "h2", "text/html": "<h2></h2>"}
-      expect(replayHostDrag({event: "dragover", x: 150, y: 20, data})).toBe(true)
+      expect(replayHostDrag({event: "dragover", x: 50, y: 10, data})).toBe(true)
       expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
       expect(replayHostDrag({event: "dragleave", x: 0, y: 0, data})).toBe(false)
       expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
-      replayHostDrag({event: "dragover", x: 150, y: 20, data})
-      expect(replayHostDrag({event: "drop", x: 150, y: 20, data})).toBe(true)
+      replayHostDrag({event: "dragover", x: 50, y: 10, data})
+      expect(replayHostDrag({event: "drop", x: 50, y: 10, data})).toBe(true)
       expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "h2", "p", "p"])
       expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
       expect(replayHostDrag({event: "drop", x: Number.NaN, y: 20, data})).toBe(false)
-      expect(replayHostDrag({event: "click" as "drop", x: 150, y: 20, data})).toBe(false)
+      expect(replayHostDrag({event: "click" as "drop", x: 50, y: 10, data})).toBe(false)
       expect(document.body.children).toHaveLength(4)
     }
     finally { vi.unstubAllGlobals() }
@@ -7685,6 +7685,143 @@ describe("unified content transfer", () => {
     return {data, surface}
   }
 
+  it.each(["img", "picture", "audio", "video", "iframe", "embed", "object"])("replaces a %s on a direct media drop and supports undo and redo", tag => {
+    const html = (label: string) => tag === "picture" ? `<picture><source srcset="${label}.webp"><img alt="${label}"></picture>`
+      : tag === "img" || tag === "embed" ? `<${tag} src="${label}.test">` : `<${tag} src="${label}.test"><!--${label}--></${tag}>`
+    document.body.innerHTML = `${html("source")}<figure id="kept-figure">${html("target")}<!--keep--><figcaption>Keep caption</figcaption></figure><p>After</p>`
+    const source = document.body.firstElementChild!, figure = document.querySelector("figure")!, target = figure.firstElementChild!
+    const caption = figure.querySelector("figcaption"), children = Array.from(source.childNodes)
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 240, 160))
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const {data} = beginDrag(source)
+    const hit = target.querySelector("img") ?? target
+    expect(editor.features.manipulation.draggedElement).toBe(source)
+    hit.dispatchEvent(transferEvent("dragover", data, {clientX: 220, clientY: 180}))
+    const preview = editor.appendix.querySelector<HTMLElement>('[part~="media-drop-preview"]')!
+    expect(preview.style.width).toBe("240px")
+    expect(preview.style.height).toBe("160px")
+    expect(preview.getRootNode()).toBe(editor.appendix)
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    hit.dispatchEvent(transferEvent("drop", data, {clientX: 220, clientY: 180}))
+    expect(figure.firstElementChild).toBe(source)
+    expect(target.isConnected).toBe(false)
+    expect(Array.from(source.childNodes)).toEqual(children)
+    expect(figure.querySelector("figcaption")).toBe(caption)
+    expect(figure.childNodes[1].nodeType).toBe(Node.COMMENT_NODE)
+    expect(figure.id).toBe("kept-figure")
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).toBeNull()
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
+    editor.doc.syncFromDOM()
+    const after = editor.toHTML(true)
+    expect(after).not.toMatch(/◆|media-drop-preview/)
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("media-drop-preview")
+    editor.doc.undo(); expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo(); expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it.each([false, true])("replaces pictures with images while retaining target placement (copy: %s)", copy => {
+    document.body.innerHTML = '<img id="source" src="new.png"><p>Between</p><picture class="ww-float-right" style="--ww-float-size:180px"><img src="old.png"></picture>'
+    const source = document.querySelector("img")!, target = document.querySelector("picture")!
+    const {data} = beginDrag(source)
+    target.firstElementChild!.dispatchEvent(transferEvent("drop", data, {ctrlKey: copy}))
+    const result = document.body.lastElementChild!
+    expect(result.localName).toBe("img")
+    expect(result).toHaveAttribute("src", "new.png")
+    expect(result).toHaveClass("ww-float-right")
+    expect((result as HTMLElement).style.getPropertyValue("--ww-float-size")).toBe("180px")
+    expect(result === source).toBe(!copy)
+    if(!copy) expect(result.id).toBe("source")
+    if(copy) expect(source.parentElement).toBe(document.body)
+  })
+
+  it("rechecks a remotely replaced media target at drop and cleans up cancelled previews", () => {
+    document.body.innerHTML = '<video></video><audio></audio><p>Keep</p>'
+    const source = document.querySelector("video")!, old = document.querySelector("audio")!
+    const {data} = beginDrag(source)
+    old.dispatchEvent(transferEvent("dragover", data))
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).not.toBeNull()
+    const current = document.createElement("audio")
+    old.replaceWith(current)
+    current.dispatchEvent(transferEvent("drop", data))
+    expect(source.nextElementSibling?.localName).toBe("p")
+    expect(document.querySelector("audio")).toBeNull()
+    const next = beginDrag(source)
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: source, offset: 0})
+    source.dispatchEvent(transferEvent("dragover", next.data))
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).toBeNull()
+    next.surface.dispatchEvent(transferEvent("dragend", next.data))
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
+  })
+
+  it("replaces media from sanitized external HTML and ribbon media", () => {
+    document.body.innerHTML = '<picture><img alt="old"></picture><p>Keep</p>'
+    const target = document.querySelector("picture")!, data = new DataTransfer()
+    data.setData("text/html", '<picture><source srcset="new.webp"><img src="new.png" onerror="bad()"></picture>')
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 0})
+    target.dispatchEvent(transferEvent("drop", data))
+    expect(document.querySelectorAll("picture")).toHaveLength(1)
+    expect(document.querySelector("img")).toHaveAttribute("src", "new.png")
+    expect(document.querySelector("img")).not.toHaveAttribute("onerror")
+    document.querySelector("picture")!.dispatchEvent(transferEvent("drop", ribbonData("video")))
+    expect(document.querySelector("picture")).toBeNull()
+    expect(document.querySelector("video")).not.toBeNull()
+    expect(document.querySelector("p")).toHaveTextContent("Keep")
+  })
+
+  it("copies a captioned media unit with a fresh authored ID", () => {
+    document.body.innerHTML = '<figure id="source-figure"><picture><img alt="source"></picture><figcaption>Source caption</figcaption></figure><picture><img alt="target"></picture>'
+    const source = document.querySelector("figure")!, target = document.body.lastElementChild!
+    const {data} = beginDrag(source)
+    target.dispatchEvent(transferEvent("drop", data, {altKey: true}))
+    const copy = document.body.lastElementChild!
+    expect(copy.localName).toBe("figure")
+    expect(copy.id).not.toBe(source.id)
+    expect(document.querySelectorAll("#source-figure")).toHaveLength(1)
+    expect(copy.querySelector("figcaption")).toHaveTextContent("Source caption")
+    expect(copy.querySelector("img")).toHaveAttribute("alt", "source")
+    expect(source.isConnected).toBe(true)
+  })
+
+  it("cleans up replacement previews on cancellation, mode changes and destruction", () => {
+    document.body.innerHTML = '<picture><img></picture><picture><img></picture><p>Text</p>'
+    const source = document.body.firstElementChild!, target = source.nextElementSibling!, paragraph = document.querySelector("p")!
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: paragraph.firstChild!, offset: 1})
+    const {data, surface} = beginDrag(source)
+    target.dispatchEvent(transferEvent("dragover", data))
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).not.toBeNull()
+    paragraph.dispatchEvent(transferEvent("dragover", data))
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).toBeNull()
+    target.dispatchEvent(transferEvent("dragover", data))
+    surface.dispatchEvent(transferEvent("dragend", data))
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).toBeNull()
+    const next = beginDrag(source)
+    target.dispatchEvent(transferEvent("dragover", next.data))
+    editor.features.manipulation.disable()
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).toBeNull()
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
+    expect(source.isConnected && target.isConnected).toBe(true)
+  })
+
+  it("extends side targets from the element edges to the viewport with 8px spacing", () => {
+    document.body.innerHTML = '<p>Anchor</p><video></video>'
+    document.body.style.cssText = '--ww-float-width:280px;padding-left:100px;padding-right:100px'
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 800, 600))
+    const anchor = document.querySelector("p")!, source = document.querySelector("video")!
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: anchor.firstChild!, offset: 1})
+    vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 20, 200, 200))
+    const {data} = beginDrag(source)
+    for(const x of [292, 299, 300, 400, 499, 500, 507]) {
+      expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:x, clientY:100}), source)).toBeNull()
+      anchor.dispatchEvent(transferEvent("dragover", data, {clientX:x, clientY:100}))
+      expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    }
+    for(const [x, side] of [[0, "left"], [100, "left"], [291, "left"], [508, "right"], [700, "right"], [799, "right"]] as const) {
+      expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:x, clientY:100}), source)).toBe(anchor)
+      expect(editor.features.manipulation.floatSide(anchor, x)).toBe(side)
+    }
+  })
+
   it.each((["canvas", "slides"] as const).flatMap(mode => [false, true].map(copy => ({mode, copy}))))("preserves a $mode item's layer on native move and raises only a new copy (copy: $copy)", ({mode, copy}) => {
     document.body.innerHTML = '<article style="z-index:1">Background</article><p style="z-index:40">Front</p>'
     expect(editor.setDocumentLayout(mode, "document")).toBe(true)
@@ -8030,7 +8167,7 @@ describe("unified content transfer", () => {
     expect(editor.toHTML(true)).not.toMatch(/◆|transform-overlay|node-drag-surface/)
   })
 
-  it.each([[125, "left"], [150, "right"], [175, "right"]] as const)("floats dragged content at x=%i with native CSS", (x, side) => {
+  it.each([[80, "left"], [220, "right"], [500, "right"]] as const)("floats dragged content at x=%i with native CSS", (x, side) => {
     document.body.innerHTML = '<pre>source</pre><article><p>nested</p></article>'
     const source = document.querySelector("pre") as HTMLPreElement, target = document.querySelector("article")!
     const nested = target.querySelector("p")!
@@ -8107,7 +8244,7 @@ describe("unified content transfer", () => {
     }
   })
 
-  it.each([[120, "left"], [180, "right"]] as const)("uses the projected %s float box beyond the target's height", (x, side) => {
+  it.each([[80, "left"], [220, "right"]] as const)("extends the %s margin target beyond the preview footprint", (x, side) => {
     document.body.innerHTML = '<video style="width:40px;min-width:0;height:60px"></video><p>target</p><p>displaced content</p>'
     const source = document.querySelector("video")!, target = document.querySelector("p")!
     vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 200, 40, 60))
@@ -8121,7 +8258,7 @@ describe("unified content transfer", () => {
     expect(parseFloat(preview.style.top)).toBe(50)
     expect(parseFloat(preview.style.height)).toBe(60)
     expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:150, clientY:100}), source)).toBeNull()
-    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:x, clientY:116}), source)).toBeNull()
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:x, clientY:500}), source)).toBe(target)
     document.body.dispatchEvent(transferEvent("drop", data, {clientX:x, clientY:100}))
     expect(source.nextElementSibling).toBe(target)
     expectClassFloat(source, side)
@@ -8148,6 +8285,8 @@ describe("unified content transfer", () => {
     document.body.innerHTML = '<table><tbody>' + Array.from({length: 8}, (_, row) =>
       `<tr><td><p>cell ${row}a</p></td><td><p>cell ${row}b</p></td></tr>`).join("") + '</tbody></table><video controls style="width:40px;height:120px"></video>'
     const source = document.querySelector("video")!
+    vi.spyOn(document.querySelector("table")!, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 400, 320))
+    document.body.style.cssText = 'padding-left:100px;padding-right:100px'
     vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 600, 900))
     vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 800, 40, 120))
     for(const [index, cell] of Array.from(document.querySelectorAll("td")).entries()) {
@@ -8170,7 +8309,7 @@ describe("unified content transfer", () => {
     for(const paragraph of Array.from(document.querySelectorAll("td > p")).slice(0, 4)) {
       const rect = paragraph.getBoundingClientRect()
       const event = new MouseEvent("mousemove", {clientX: rect.right - 4, clientY: rect.top + 10})
-      expect(editor.features.manipulation.floatDropTarget(event, source)).toBe(paragraph)
+      expect(editor.features.manipulation.floatDropTarget(event, source)).toBeNull()
     }
   })
 
@@ -8178,6 +8317,8 @@ describe("unified content transfer", () => {
     document.body.innerHTML = '<aside class="ww-float-right" style="width:120px">note</aside><table><tbody>' + Array.from({length: 8}, (_, row) =>
       `<tr><td><p>cell ${row}a</p></td><td><p>cell ${row}b</p></td></tr>`).join("") + '</tbody></table><video controls style="width:40px;height:120px"></video>'
     const source = document.querySelector("video")!
+    vi.spyOn(document.querySelector("table")!, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 400, 320))
+    document.body.style.cssText = 'padding-left:100px;padding-right:100px'
     vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 600, 900))
     vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 800, 40, 120))
     for(const [index, cell] of Array.from(document.querySelectorAll("td")).entries()) {
@@ -8190,7 +8331,7 @@ describe("unified content transfer", () => {
     expect(floatQueries()).toBe(1)
     const paragraph = document.querySelector("td > p")!, rect = paragraph.getBoundingClientRect()
     const event = new MouseEvent("mousemove", {clientX: rect.right - 4, clientY: rect.top + 10})
-    expect(editor.features.manipulation.floatDropTarget(event, source)).toBe(paragraph)
+    expect(editor.features.manipulation.floatDropTarget(event, source)).toBeNull()
     expect(floatQueries()).toBe(1)
 
     // A float that appears later belongs to the next measurement, which the
@@ -8214,14 +8355,14 @@ describe("unified content transfer", () => {
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     const {data} = beginDrag(source)
-    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX: 120, clientY: 100}), source)).toBe(target)
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX: 80, clientY: 100}), source)).toBe(target)
     await new Promise(resolve => setTimeout(resolve))
     let changes = 0, tokens: string | null = null
     const count = (transaction: {changed: Map<unknown, unknown>}) => { if(transaction.changed.size) changes++ }
     editor.doc.doc.on("afterTransaction", count)
     const process = vi.spyOn(editor.features.selection, "processSelection")
     try {
-      document.body.dispatchEvent(transferEvent("drop", data, {clientX: 120, clientY: 100}))
+      document.body.dispatchEvent(transferEvent("drop", data, {clientX: 80, clientY: 100}))
       // The tokens are authored state: written with the drop, not by a later refresh.
       tokens = document.body.getAttribute("style")
       expect(document.body.style.getPropertyValue("--ww-left-column-default-width")).not.toBe("")
@@ -8251,6 +8392,7 @@ describe("unified content transfer", () => {
   it("previews every successive paragraph in both drag directions without remeasurement", () => {
     document.body.innerHTML = '<p>first</p><p>second</p><p>third</p><video controls style="width:40px;height:120px"></video>'
     const source = document.querySelector("video")!, paragraphs = Array.from(document.querySelectorAll("p"))
+    document.body.style.cssText = 'padding-left:100px;padding-right:100px'
     vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 600, 500))
     const sourceRect = vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 200, 40, 120))
     for(const [index, paragraph] of paragraphs.entries()) vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(100, index * 40, 400, 30))
@@ -8406,7 +8548,7 @@ describe("unified content transfer", () => {
 
   it.each([[5, "left"], [1395, "right"]] as const)("floats gutter drops at x=%i below a mostly empty document", (x, side) => {
     document.body.innerHTML = '<p>Only paragraph</p>'
-    document.body.style.setProperty("--ww-float-width", "280px")
+    document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
     Object.defineProperty(document.documentElement, "clientWidth", {configurable: true, value: 1400})
     try {
       const paragraph = document.querySelector("p")!
@@ -8513,14 +8655,14 @@ describe("unified content transfer", () => {
     expect(editor.doc.body.toString()).not.toContain("◆")
   })
 
-  it("keeps space beside a narrow nested container inside the document column out of gutter targeting", () => {
+  it("extends a narrow nested element's side targets through the full viewport margins", () => {
     document.body.innerHTML = '<div><p>nested</p></div>'
     document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
     vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
     vi.spyOn(document.querySelector("div")!, "getBoundingClientRect").mockReturnValue(new DOMRect(500, 20, 200, 30))
     vi.spyOn(document.querySelector("p")!, "getBoundingClientRect").mockReturnValue(new DOMRect(500, 20, 200, 30))
     const source = document.createElement("p")
-    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:1000, clientY:690}), source)).toBeNull()
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:1000, clientY:690}), source)).toBe(document.querySelector("p"))
     expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:1395, clientY:690}), source)).toBe(document.querySelector("p"))
   })
 
@@ -8718,7 +8860,7 @@ describe("unified content transfer", () => {
   })
 
   it.each([false, true])("floats a dragged media element beside the target paragraph in reading order (copy: %s)", copy => {
-    for(const [x, side] of [[125, "left"], [175, "right"]] as const) {
+    for(const [x, side] of [[80, "left"], [220, "right"]] as const) {
       document.body.innerHTML = '<picture style="position: absolute; width: 40px"><img alt="dragged"></picture><p>target</p>'
       const source = document.querySelector("picture") as HTMLElement
       const paragraph = document.querySelector("p")!
@@ -8749,7 +8891,7 @@ describe("unified content transfer", () => {
     }
   })
 
-  it.each([[125, "left"], [150, "right"], [175, "right"]] as const)("floats externally dropped media at x=%i using native CSS", (x, side) => {
+  it.each([[80, "left"], [220, "right"], [500, "right"]] as const)("floats externally dropped media at x=%i using native CSS", (x, side) => {
     document.body.innerHTML = "<p>target</p>"
     const paragraph = document.querySelector("p")!
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
@@ -8766,7 +8908,7 @@ describe("unified content transfer", () => {
     expect(paragraph.querySelector("img")).toBeNull()
   })
 
-  it.each([[90, 50], [210, 50], [150, -10], [150, 110]])("does not float a drop outside the target box at (%i, %i)", (x, y) => {
+  it.each([[95, 50], [205, 50], [150, -10], [150, 110]])("keeps spacing beside the target free of float drops at (%i, %i)", (x, y) => {
     document.body.innerHTML = '<picture style="color: red; float: left; margin: 8px"><source srcset="wide.webp"><img src="fallback.png" alt="media"></picture><p>target</p>'
     const media = document.querySelector("picture") as HTMLElement
     const target = document.querySelector("p")!

@@ -595,6 +595,20 @@ export class ManipulationFeature extends EditorFeature {
     event.preventDefault()
     const shapeDetail = graphicShape ? readGraphicShapeDrag(event.dataTransfer!) : null
     const source = this.nodeDrag?.element ?? (graphicShape || ribbonShape ? this.editor.features.graphic.createGraphic(shapeDetail?.shape ?? ribbonShape ?? "rectangle", shapeDetail?.paint) : ribbonTag ? this.ribbonElement(ribbonTag) : ribbonInsertion ? this.insertionPreviewSource ?? document.createElement("div") : null)
+    const media = source && this.mediaReplacementTarget(event, source)
+    if(media) {
+      this.clearFloatDropPreview("transfer")
+      const rect = media.getBoundingClientRect(), overlay = this.dropRangeCaret ?? document.createElement("div")
+      overlay.setAttribute("part", "float-drop-preview media-drop-preview")
+      overlay.setAttribute("aria-hidden", "true")
+      Object.assign(overlay.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+      if(!this.dropRangeCaret) this.editor.addAppendix(overlay)
+      this.dropRangeCaret = overlay
+      setPresentationState(document.body, "drop-selection-active")
+      this.markDropCaretHosts()
+      event.dataTransfer!.dropEffect = this.nodeDrag && !event.ctrlKey && !event.altKey ? "move" : "copy"
+      return
+    }
     const point = this.dropPointResolver(event)
     const floatContainer = source && this.floatDropTarget(event, source, point)
     if(floatContainer) {
@@ -845,8 +859,6 @@ export class ManipulationFeature extends EditorFeature {
     }
     const root = getDocumentRoot()
     const key = source.isConnected ? source : source.outerHTML
-    const contains = (rect: DOMRect) => event.clientX >= rect.left && event.clientX < rect.right
-      && event.clientY >= rect.top && event.clientY < rect.bottom
     const valid = (container: Element) => root.contains(container) && container.parentElement
       && (container === source && source.parentElement === root && root.children.length === 1
         || this.floatContainer(container, source) === container)
@@ -857,21 +869,23 @@ export class ManipulationFeature extends EditorFeature {
     const targets = this.floatDropTargets
     if(!targets) return null
     const dx = targets.scrollX - targets.currentScrollX, dy = targets.scrollY - targets.currentScrollY
-    // Projecting a new float can move its lane over today's prose column.
-    // Keep that visible column available for returning content to normal flow.
-    if(this.emptyFlowDropRange(event, source)
-      || targets.flowColumn && event.clientX >= targets.flowColumn.left + dx && event.clientX < targets.flowColumn.right + dx
-      || this.flowEdgeDropPoint(event, source)) return null
+    // Keep the empty flow slot and block edges available for ordinary insertion.
+    if(this.emptyFlowDropRange(event, source) || this.flowEdgeDropPoint(event, source)) return null
     // Hover only checks stored rectangles. It never measures a template or
     // changes a measurement element's styles.
-    const hit = (zone: FloatDropZone) => zone.container !== source && event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
+    const sideMatches = (zone: FloatDropZone) => zone.column
+      && (zone.side === "left" ? event.clientX < zone.column.left + dx : event.clientX >= zone.column.right + dx)
+    const hit = (zone: FloatDropZone) => sideMatches(zone) && zone.container !== source && event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
       && event.clientY >= zone.rect.top + dy && event.clientY < zone.rect.bottom + dy
     const preferred = (zone: FloatDropZone) => preview?.container === zone.container ? preview.side
       : event.clientX < zone.center + dx ? "left" : "right"
     // Empty space in a document gutter still expresses float placement. Use
     // the nearest existing anchor, even below the last preview footprint.
-    const gutter = (zone: FloatDropZone) => zone.column && event.clientX >= 0 && event.clientY >= 0
-      && (zone.side === "left" ? event.clientX < zone.column.left + dx : event.clientX >= zone.column.right + dx)
+    const gutter = (zone: FloatDropZone) => {
+      const column = zone.column
+      return column && event.clientX >= 0 && event.clientY >= 0
+        && (zone.side === "left" ? event.clientX < column.left + dx : event.clientX >= column.right + dx)
+    }
     const distance = (zone: FloatDropZone) => Math.abs(zone.rect.top + dy - event.clientY)
     // Ties keep the zones' measured order, as a stable sort of all zones would.
     const byHit = (a: FloatDropZone, b: FloatDropZone) => b.rect.top - a.rect.top
@@ -925,13 +939,6 @@ export class ManipulationFeature extends EditorFeature {
       this.floatDropHit = {container: zone.container, side: zone.side, rect}
       return zone.container
     }
-    // An explicitly shown insertion preview can also cover a projected area
-    // whose anchor has no current layout box. It is a fallback, never a latch
-    // that masks newer anchors while moving down the page.
-    if(preview && preview.container !== source && contains(preview.rect) && valid(preview.container)) {
-      this.floatDropHit = preview
-      return preview.container
-    }
     return null
   }
 
@@ -962,6 +969,7 @@ export class ManipulationFeature extends EditorFeature {
     // appendix: that insertion invalidates style, and the boxes of authored
     // content do not depend on a hidden fixed element in the shadow tree.
     const boxes = candidates.map(container => container.getBoundingClientRect())
+    const tableBounds = new Map(candidates.flatMap((container, index) => container.matches("table:not([is])") ? [[container, boxes[index]] as const] : []))
     const body = document.body.getBoundingClientRect(), bodyStyle = getComputedStyle(document.body)
     const flowColumn = body.width && bodyStyle.getPropertyValue("--ww-float-width")
       && ((parseFloat(bodyStyle.paddingLeft) || 0) + (parseFloat(bodyStyle.paddingRight) || 0) > 0)
@@ -989,13 +997,18 @@ export class ManipulationFeature extends EditorFeature {
         const bounds = boxes[index]
         if(!container.parentElement || !bounds.width || !bounds.height) continue
         const parent = container.parentElement
+        // Internal cell edges are not document margins.
+        const table = container.closest("table:not([is])")
+        const margin = table && tableBounds.get(table)?.width ? tableBounds.get(table)! : bounds
         // Schema permission is resolved on first hover (floatDropTarget's
         // valid()), so only anchors the pointer actually reaches pay for it.
         const allowed = source.parentElement === parent ? true : undefined
         for(const side of ["left", "right"] as const) {
           const rect = this.floatPreviewRect(container, side, measurement, source, measurements, bounds)
           zones.push({container, parent, side, center: bounds.left + bounds.width / 2, allowed, rect,
-            column: measurements.geometry.get(parent)?.[side]?.column, order: zones.length})
+            // The full visible margin remains a target, independently of the
+            // projected float's width. Leave a small gap beside authored content.
+            column: {left: margin.left - 8, right: margin.right + 8}, order: zones.length})
         }
       }
       emptyFlow = this.measureEmptyFlowDrop(source, measurement)
@@ -2406,6 +2419,11 @@ export class ManipulationFeature extends EditorFeature {
       }
       if(Array.from(data.types).includes(ribbonInsertionDragType)) {
         const action = data.getData(ribbonInsertionDragType)
+        const tag = this.ribbonDragTag(data)
+        if(tag && this.replaceDroppedMedia(this.ribbonElement(tag), event)) {
+          dropped = true
+          return
+        }
         const position = (ribbonInsertionAction(action) || ribbonElementInsertionAction(action))
           && this.ribbonDropPosition(event)
         if(!position) return
@@ -2424,6 +2442,10 @@ export class ManipulationFeature extends EditorFeature {
       }
       const ribbonTag = this.ribbonDragTag(data)
       if(ribbonTag) {
+        if(this.replaceDroppedMedia(this.ribbonElement(ribbonTag), event)) {
+          dropped = true
+          return
+        }
         const position = this.ribbonDropPosition(event)
         if(position) dropped = this.insertAtRibbonDrop(position, () => this.createRibbonElement(ribbonTag))
         return
@@ -2431,6 +2453,10 @@ export class ManipulationFeature extends EditorFeature {
       // Only this live drag session can bypass import processing. An external
       // application cannot grant trust merely by supplying our MIME type.
       const source = this.nodeDrag?.token === data.getData(this.dragType) ? this.nodeDrag.element : null
+      if(source && this.replaceDroppedMedia(source, event, event.ctrlKey || event.altKey)) {
+        dropped = true
+        return
+      }
       const range = this.dropRange(event, source)
       if(!range) return
       if(source) {
@@ -2513,6 +2539,8 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private insertDroppedFragment(fragment: DocumentFragment, event: MouseEvent, range: Range) {
+    const media = fragment.childNodes.length === 1 ? fragment.firstElementChild : null
+    if(media && this.replaceDroppedMedia(media, event)) return
     const slide = this.editor.features.slides.active ? this.editor.features.slides.containingSlide(range.startContainer) : null
     if(slide) {
       // Reuse freeform import and placement, preserving each imported subtree.
@@ -2534,6 +2562,52 @@ export class ManipulationFeature extends EditorFeature {
       this.insertClipboardFragment(fragment)
       for(const element of elements) if(element.isConnected) this.clearDropFloat(element)
     }
+  }
+
+  private mediaReplacementTarget(event: MouseEvent, source: Element) {
+    const content = source.matches(mediaElementSelector) ? source : captionedFigureContent(source)
+    if(!content?.matches(mediaElementSelector) || source.hasAttribute("is")
+      || source.isConnected && (!getDocumentRoot().contains(source) || atomicEditingContainer(source.parentElement, this.editor.schema))) return null
+    let target = this.editor.features.media.mediaDropTarget(event as DragEvent)
+    if(!target?.matches(mediaElementSelector) || !getDocumentRoot().contains(target) || target.hasAttribute("is")) return null
+    const rect = target.getBoundingClientRect(), edge = Math.min(12, rect.height / 4)
+    // Keep the existing before/after gap targets at the media's block edges.
+    if(rect.width > 0 && rect.height > 0 && (event.clientX < rect.left || event.clientX >= rect.right
+      || event.clientY < rect.top + edge || event.clientY >= rect.bottom - edge)) return null
+    if(source !== content) {
+      const figure = target.closest("figure")
+      if(figure && captionedFigureContent(figure) === target) target = figure
+    }
+    const parent = target.parentElement
+    if(!parent || source.contains(target) || target.contains(source)) return null
+    const copy = event.ctrlKey || event.altKey || !source.isConnected
+    const children = Array.from(parent.childNodes).filter(node => copy || node !== source)
+    children.splice(children.indexOf(target), 1, source)
+    // Native media share HTML's phrasing/flow placement. Keep authored IMG,
+    // EMBED and OBJECT nodes intact instead of requiring schema conversion.
+    if(!this.editor.schema.allowsPlacement(parent, [source])
+      || (source !== content || isContentfulWidget(parent, this.editor.schema)) && !this.editor.schema.isContentValid(parent, children)) return null
+    const sourceParent = source.parentElement
+    if(!copy && sourceParent && sourceParent !== parent && isContentfulWidget(sourceParent, this.editor.schema)
+      && !this.editor.schema.isContentValid(sourceParent, Array.from(sourceParent.childNodes).filter(node => node !== source))) return null
+    return target
+  }
+
+  private replaceDroppedMedia(source: Element, event: MouseEvent, copy = false) {
+    const target = this.mediaReplacementTarget(event, source)
+    if(!target) return false
+    const sourceParent = source.parentElement
+    const inserted = copy ? cloneWithoutEditorMarkers(source, true) : source
+    if(!inserted.isConnected) remapPastedAuthoredIds(inserted, document, target, this.editor.features.widget.isWidget)
+    const parent = target.parentElement! as Element & {moveBefore?: (node: Node, before: Node | null) => void}
+    if(inserted.isConnected && typeof parent.moveBefore === "function") parent.moveBefore(inserted, target)
+    else parent.insertBefore(inserted, target)
+    this.clearDropFloat(inserted)
+    this.transferFigurePlacement(target, inserted)
+    target.remove()
+    $.selectElement(inserted)
+    if(!copy && sourceParent?.matches("figure:not([is])") && source.parentElement !== sourceParent) this.editor.normalizeSurroundingElements(sourceParent)
+    return true
   }
 
   private activeFigure() {
