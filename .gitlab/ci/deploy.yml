@@ -85,16 +85,17 @@ gitops:staging:
   resource_group: edumix-gitops-$GITOPS_APP
 
 # ---------------------------------------------------------------------------
-# Origins werden derzeit beim Build eingebrannt (Dockerfile ARG); als Projektvariablen in
-# GitLab setzen. Solange das so ist, ist das Image Staging-spezifisch und darf nicht nach
-# Production freigegeben werden (edumix-cluster docs/APPS.md): Origins zur Laufzeit lesen.
+# Origins werden derzeit beim Build eingebrannt (Dockerfile ARG). Solange das so ist, ist das
+# Image Staging-spezifisch und darf nicht nach Production freigegeben werden (edumix-cluster
+# docs/APPS.md): Origins zur Laufzeit lesen.
 # ---------------------------------------------------------------------------
 image:webwriter:
   extends: .edumix:image
   variables:
     IMAGE_NAME: ""
     IMAGE_CONTEXT: .
-    # Standardwerte; gleichnamige Projektvariablen in GitLab haben Vorrang.
-    WEBWRITER_APP_ORIGIN: https://webwriter.dev.edumix.eu
-    WEBWRITER_EDITOR_ORIGIN: ""
+    # Standardwerte; gleichnamige Projektvariablen in GitLab haben Vorrang. Beide Hosts liegen
+    # unter *.staging.edumix.eu (node2, nur VPN); die Editor-Frames brauchen eine eigene Origin.
+    WEBWRITER_APP_ORIGIN: https://webwriter.staging.edumix.eu
+    WEBWRITER_EDITOR_ORIGIN: https://webwriter-frame.staging.edumix.eu
     IMAGE_BUILD_ARGS: VITE_APP_ORIGIN=$WEBWRITER_APP_ORIGIN VITE_EDITOR_ORIGIN=$WEBWRITER_EDITOR_ORIGIN
