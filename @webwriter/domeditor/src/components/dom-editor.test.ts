@@ -3480,13 +3480,15 @@ describe("Develop local packages", () => {
     const updateDocument = vi.fn()
     host.backendClient = {updateDocument}
     vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
-    let serialize!: (source: string) => void
+    let serialize!: (snapshot: {source: string, checkpointId: string}) => void
     const execute = vi.spyOn(editor, "execute").mockReturnValue(new Promise(resolve => {serialize = resolve}))
+    const reportFileError = vi.spyOn(host, "reportFileError")
     const installation = host.localPackageManager.options.install(demoPackage, demoPackage.name)
     await vi.waitFor(() => expect(execute).toHaveBeenCalled())
     host.backendDocumentId = "replacement"
-    serialize("<html><body>Original</body></html>")
+    serialize({source: "<html><body>Original</body></html>", checkpointId: "original-checkpoint"})
     await installation
+    expect(reportFileError).not.toHaveBeenCalled()
     expect(updateDocument).not.toHaveBeenCalled()
     expect(host.backendDocumentId).toBe("replacement")
   })
