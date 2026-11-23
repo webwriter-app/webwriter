@@ -48,6 +48,16 @@ declare module '#fetch' {
   export function clearCache(): void
 }
 
+// @webwriter/widget's declarations are emitted with a newer DOM lib than the
+// TypeScript version used here; these merge with the lib once it has them.
+interface ShowPopoverOptions {
+  source?: HTMLElement
+}
+
+interface TogglePopoverOptions extends ShowPopoverOptions {
+  force?: boolean
+}
+
 interface ImportMetaEnv {
   readonly BASE_URL: string;
   readonly DEV: boolean;
