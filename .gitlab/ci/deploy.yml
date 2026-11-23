@@ -1,4 +1,6 @@
-# Deploy-Pipeline von WebWriter (Child-Pipeline von deploy:staging, nur auf dev).
+# Deploy-Pipeline von WebWriter (Child-Pipeline von deploy:staging, nur auf staging).
+# gitops:staging triggert edumix-cluster auf dessen Branch dev; von dort promotet edumix-cluster
+# selbst nach seinem staging, aus dem Flux liest.
 # Kopie von edumix-cluster ci/templates/deploy.gitlab-ci.yml (Version 1); Image-Job am Ende.
 # Kubernetes-Manifeste und erlaubte Images: edumix-cluster apps/webwriter.
 stages: [build, gitops]
@@ -15,6 +17,10 @@ variables:
 .edumix:image:
   stage: build
   image: $BUILDAH_IMAGE
+  # Eigener, geschützter Runner: buildah braucht CAP_SYS_ADMIN und AppArmor unconfined,
+  # das bekommen nur Pipelines geschützter Branches (Runner-Option „Protected“).
+  tags:
+    - node4-build
   variables:
     IMAGE_NAME: ""
     IMAGE_CONTEXT: .
@@ -25,11 +31,16 @@ variables:
   script:
     - |
       set -eu
+      # Kurznamen in FROM (z. B. oven/bun) ohne TTY-Rückfrage auflösen: nur Docker Hub.
+      mkdir -p /etc/containers/registries.conf.d
+      printf '%s\n' 'unqualified-search-registries = ["docker.io"]' 'short-name-mode = "permissive"' \
+        > /etc/containers/registries.conf.d/99-edumix.conf
       image="$CI_REGISTRY_IMAGE${IMAGE_NAME:+/$IMAGE_NAME}"
       args=""
       for a in $IMAGE_BUILD_ARGS; do args="$args --build-arg $a"; done
       # shellcheck disable=SC2086
-      buildah build --pull --layers=false \
+      # Der Job-Container erlaubt nofile nur bis 524288; buildahs Standard 1048576 scheitert.
+      buildah build --pull --layers=false --ulimit nofile=65536:65536 \
         --label "org.opencontainers.image.source=$CI_PROJECT_URL" \
         --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" \
         -f "$IMAGE_CONTEXT/$IMAGE_DOCKERFILE" -t "$image:$CI_COMMIT_SHA" $args "$IMAGE_CONTEXT"

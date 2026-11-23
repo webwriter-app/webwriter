@@ -1,6 +1,6 @@
 # GitLab-Pipeline für WebWriter (edumix/products/webwriter): prüft jeden Merge Request und die
 # Branches dev, staging und main (Typecheck, Unit-Tests).
-# Deploy ist davon getrennt: Nur auf dev und nur wenn die Prüfungen grün sind, startet
+# Deploy ist davon getrennt: Nur auf staging und nur wenn die Prüfungen grün sind, startet
 # deploy:staging die eigenständige Child-Pipeline .gitlab/ci/deploy.yml (Image bauen, Digest an
 # edumix-cluster übergeben). Die Prüfungen hängen nicht von edumix-cluster ab.
 stages: [check, test, deploy]
@@ -52,7 +52,8 @@ unit:
   allow_failure: true
 
 # ---------------------------------------------------------------------------
-# Deploy nach Staging: eigene Pipeline, startet erst nach grünen Prüfungen auf dev.
+# Deploy nach Staging: eigene Pipeline, startet erst nach grünen Prüfungen auf staging.
+# dev ist der gemeinsame Stand, der Merge dev → staging gibt ihn für die Tester frei.
 # Fehler im Deploy machen die Prüf-Pipeline nicht rot.
 # ---------------------------------------------------------------------------
 deploy:staging:
@@ -62,4 +63,4 @@ deploy:staging:
   trigger:
     include: .gitlab/ci/deploy.yml
   rules:
-    - if: '$CI_COMMIT_BRANCH == "dev" && $CI_COMMIT_REF_PROTECTED == "true"'
+    - if: '$CI_COMMIT_BRANCH == "staging" && $CI_COMMIT_REF_PROTECTED == "true"'
