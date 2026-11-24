@@ -1101,7 +1101,9 @@ it.each([
   editor.selectionKey = "first"
   await editor.updateComplete
   const trigger = editor.shadowRoot!.querySelector<HTMLButtonElement>(".directional-label")!
-  expect(trigger.textContent).toBe(label)
+  expect(trigger.textContent).toBe(`${label}…`)
+  expect(trigger.querySelector('[aria-hidden="true"]')?.textContent).toBe("…")
+  expect(trigger.getAttribute("aria-label")).toBe(`${label}: individual ${property === "border-radius" ? "corners" : "sides"}`)
   expect(trigger.hasAttribute("data-set")).toBe(true)
   expect(trigger.getAttribute("aria-haspopup")).toBe("dialog")
   trigger.click()

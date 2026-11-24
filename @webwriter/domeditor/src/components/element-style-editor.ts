@@ -1857,14 +1857,15 @@ export class ElementStyleEditor extends LitElement {
     const hasBorder = name === "border-width" && Object.keys(this.state.inline)
       .some(property => /^border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?$/.test(property))
     return html`<span class="field-label">${directional ? html`<button type="button" id=${id} class="directional-label" ?data-set=${hasDirections}
-      aria-haspopup="dialog" title=${`Set individual ${label.toLowerCase()} directions`}
+      aria-haspopup="dialog" aria-label=${`${label}: individual ${name === "border-radius" ? "corners" : "sides"}`}
+      title=${`Set individual ${label.toLowerCase()} ${name === "border-radius" ? "corners" : "sides"}`}
       @click=${async () => {
         this.directionalProperty = name
         this.directionalSelectionKey = this.selectionKey
         await this.updateComplete
         if(!this.isConnected || this.selectionKey !== this.directionalSelectionKey) return
         this.renderRoot.querySelector<HTMLDialogElement>(".directional-dialog")!.showModal()
-      }}>${label}</button>` : html`<span id=${id}>${label}</span>`}
+      }}>${label}<span aria-hidden="true">…</span></button>` : html`<span id=${id}>${label}</span>`}
       <button type="button" class="property-action" style=${properties.some(property => this.declaration(property)) || imageMarker || hasBorder ? "" : "visibility: hidden"}
         title=${`Clear ${label}`} aria-label=${`Clear ${label}`}
         @click=${() => name === "border-width" ? this.dispatchEvent(new CustomEvent("element-style-change", {

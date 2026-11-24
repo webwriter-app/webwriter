@@ -22,6 +22,7 @@ const minifiedFloats = (source: string) => transformSync(source, {loader: "css",
 const beforeWidgetFloatBoundary = (source: string) => source
   .replace(currentFloatSource, previousFloatSource)
   .replace(minifiedFloats(currentFloatSource), minifiedFloats(previousFloatSource))
+const beforeDefaultTableBorders = (source: string) => source.slice(0, source.lastIndexOf("\n@layer webwriter-theme-options {"))
 
 const ruleHeaders = (source: string) => Array.from(
   source.replaceAll(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{/g),
@@ -90,7 +91,7 @@ describe("document themes", () => {
 
   it("upgrades stock themes with the former widget-leaking float rules while preserving customizations", () => {
     for(const theme of bundledThemes) {
-      for(const source of [theme.source, originalThemes[theme.value].source]) {
+      for(const source of [beforeDefaultTableBorders(theme.source), originalThemes[theme.value].source]) {
         const previous = beforeWidgetFloatBoundary(source)
         const root = document.implementation.createHTMLDocument()
         const stock = root.createElement("style"), customized = root.createElement("style")
@@ -286,6 +287,25 @@ describe("document themes", () => {
   it("defaults native tables to equal-width columns in bundled themes", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toMatch(/:where\(table:not\(\[is\]\)\)\s*\{\s*width: 100%;\s*table-layout: var\(--ww-table-default-layout, fixed\);/)
+    }
+  })
+
+  it("adds borders to every cell edge when upgrading stock table styles", () => {
+    for(const theme of bundledThemes) {
+      const root = document.implementation.createHTMLDocument()
+      const stock = root.createElement("style"), customized = root.createElement("style")
+      const previous = beforeDefaultTableBorders(theme.source)
+      stock.setAttribute("data-ww-theme", theme.value)
+      customized.setAttribute("data-ww-theme", theme.value)
+      stock.textContent = previous
+      customized.textContent = previous + "\ntd {border: none}"
+      root.head.append(stock, customized)
+
+      upgradeBundledDocumentThemes(root)
+
+      expect(stock.textContent).toBe(theme.source)
+      expect(stock.textContent).toMatch(/:where\(td:not\(\[is\]\), th:not\(\[is\]\)\)\s*\{\s*border: 1px solid var\(--ww-border-color\)/)
+      expect(customized.textContent).toBe(previous + "\ntd {border: none}")
     }
   })
 

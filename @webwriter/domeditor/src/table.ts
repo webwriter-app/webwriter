@@ -99,8 +99,7 @@ function effectiveRowSpan(cell: HTMLTableCellElement, available: number) {
 }
 
 /** Builds a fresh visual occupancy map without changing the authored table. */
-export function buildTableMap(table: HTMLTableElement): TableMap {
-  const rows = tableRows(table)
+export function buildTableMap(table: HTMLTableElement, rows = tableRows(table)): TableMap {
   const emptyMap = (): TableMap => ({table, rows: [], matrix: [], placements: [], width: 0, limited: true})
   if(rows.length > maximumTableMapSlots) return emptyMap()
   const matrix: Array<Array<TableCellPlacement | undefined>> = rows.map(() => [])

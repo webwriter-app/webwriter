@@ -34,7 +34,7 @@ import {getDocumentRoot, isDocumentRoot, isViewportDocument, viewportStyleDisabl
 import {authoredDetailsOpen, isAuthoredMutation, isHTMLDetailsElement} from "../editor-artifacts"
 import {imageMapPopupImage, imageMapPopups, popupContentAncestor, popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
 import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction, emptyElementHTML} from "../insertion"
-import {cellForNode, createTable, tableForNode} from "../table"
+import {buildTableMap, cellForNode, createTable, tableForNode} from "../table"
 import {
   elementAttributeState,
   elementAttributeTargetId,
@@ -77,6 +77,10 @@ type ValidatedStyleEntry = {
   value: string | null
   priority: "" | "important"
 }
+
+const borderSides = ["top", "right", "bottom", "left"] as const
+const borderParts = ["width", "style", "color"] as const
+const cellBorderProperty = /^border(?:-(top|right|bottom|left))?(?:-(width|style|color))?$/
 
 const websiteDimensions = [
   {size: "width", sides: ["left", "right"]},
@@ -173,7 +177,7 @@ const styleDeclarationSegments = (cssText: string) => {
   return segments
 }
 
-const applyRawStyleEntries = (target: Element, entries: ValidatedStyleEntry[]) => {
+const applyRawStyleEntries = (target: Element, entries: ValidatedStyleEntry[], append = false) => {
   const source = target.getAttribute("style") ?? ""
   const segments = styleDeclarationSegments(source)
   const keyFor = (name: string) => name.startsWith("--") ? name : name.toLowerCase()
@@ -192,6 +196,7 @@ const applyRawStyleEntries = (target: Element, entries: ValidatedStyleEntry[]) =
     }
     // Keep the last duplicate declaration, matching CSSStyleDeclaration.setProperty.
     if(lastIndexByKey.get(key!) !== index) continue
+    if(append) continue
     remaining.delete(key!)
     if(entry.value !== null) {
       const leading = segment.text.match(/^\s*/)?.[0] ?? ""
@@ -3702,14 +3707,7 @@ export class ManipulationFeature extends EditorFeature {
     const entries = this.validateElementStyles(styles)
     const elements = this.selectedElementsOfType(type)
     if(!elements.length) return false
-    const end = this.editor.doc.beginUndoGroup()
-    try {
-      for(const element of elements) {
-        if(!this.selectedElementsOfType(type).includes(element)) continue
-        this.applyElementStyleEntries(element, entries)
-      }
-    }
-    finally { end() }
+    this.applyStyleToElements(elements, entries)
     return true
   }
 
@@ -4935,11 +4933,7 @@ export class ManipulationFeature extends EditorFeature {
         const targets = this.topLevelStyleTargets
         if(!targets.length) return
         const entries = this.validateElementStyles(styles)
-        const end = this.editor.doc.beginUndoGroup()
-        try {
-          for(const target of targets) this.applyElementStyleEntries(this.documentStyleTarget(target), entries, true)
-        }
-        finally { end() }
+        this.applyStyleToElements(targets.map(target => this.documentStyleTarget(target)), entries, true)
       }
       else this.setStyle(styles)
     },
@@ -6041,9 +6035,13 @@ export class ManipulationFeature extends EditorFeature {
         : style.getPropertyValue("inline-size") || style.getPropertyValue("width")
       additional.push({name: "--ww-float-size", value: width && width !== "auto" ? width : null, priority: ""})
     }
-    if(entries.some(({name, value}) => value && ["border-width", "border-style", "border-color"].includes(name))) {
+    const borderPrefixes = new Set(supported.flatMap(({name, value}) => {
+      const match = value && name.match(/^border(-(?:top|right|bottom|left|block(?:-start|-end)?|inline(?:-start|-end)?))?-(?:width|style|color)$/)
+      return match ? [`border${match[1] ?? ""}`] : []
+    }))
+    for(const prefix of borderPrefixes) {
       for(const [part, fallback] of [["width", "1px"], ["style", "solid"], ["color", "black"]]) {
-        const property = `border-${part}`
+        const property = `${prefix}-${part}`
         if(!style.getPropertyValue(property)) additional.push({name: property, value: fallback, priority: ""})
       }
     }
@@ -6104,16 +6102,91 @@ export class ManipulationFeature extends EditorFeature {
     const target = this.documentStyleTarget(this.styleTarget)
     if(cells.length || $.isMultiElementSelection || target.matches("table, td, th")) {
       const elements = cells.length ? cells : $.isMultiElementSelection ? $.selectedElements : [target]
-      const end = this.editor.doc.beginUndoGroup()
-      try {
-        return elements.reduce((changed, element) => (
-          this.applyElementStyleEntries(element, entries) || changed
-        ), false)
-      }
-      finally { end() }
+      return this.applyStyleToElements(elements, entries)
     }
     if(!this.allowedElementStyles(target, entries).length) return false
     return this.withNormalization(() => this.applyElementStyleEntries(target, entries))
+  }
+
+  private applyStyleToElements(elements: Element[], entries: ValidatedStyleEntry[], wholeFigure = false) {
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      const styled = elements.filter(element => this.applyElementStyleEntries(element, entries, wholeFigure))
+      this.mirrorCellBorders(styled, entries)
+      return styled.length > 0
+    }
+    finally { end() }
+  }
+
+  private mirrorCellBorders(elements: Element[], entries: ValidatedStyleEntry[]) {
+    const edits = [...entries].reverse().flatMap(entry => {
+      const match = entry.name.match(cellBorderProperty)
+      if(!match || entry.value !== null && !CSS.supports(entry.name, entry.value)) return []
+      const [, side, part] = match
+      return [{side, part, clear: entry.value === null}]
+    })
+    if(!edits.length) return
+    const tables = new Map<HTMLTableElement, HTMLTableCellElement[]>()
+    for(const cell of elements) {
+      if(!(cell instanceof HTMLTableCellElement) || atomicEditingContainer(cell, this.editor.schema)) continue
+      const table = tableForNode(cell)
+      if(!table) continue
+      if(!tables.has(table)) tables.set(table, [])
+      tables.get(table)!.push(cell)
+    }
+    for(const [table, cells] of tables) {
+      const {borderCollapse, direction, writingMode} = getComputedStyle(table)
+      if(borderCollapse !== "collapse") continue
+      const {matrix, placements} = buildTableMap(table, Array.from(table.rows))
+      const selected = new Set(cells)
+      // Rows and columns follow the table's block and inline axes.
+      const rtl = direction === "rtl"
+      const vertical = /^(vertical|sideways)-/.test(writingMode)
+      const reverseInline = rtl !== (writingMode === "sideways-lr")
+      const before = vertical ? (writingMode.endsWith("-rl") ? "right" : "left") : "top"
+      const after = vertical ? (before === "right" ? "left" : "right") : "bottom"
+      const start = vertical ? (reverseInline ? "bottom" : "top") : (rtl ? "right" : "left")
+      const end = vertical ? (reverseInline ? "top" : "bottom") : (rtl ? "left" : "right")
+      const pending = new Map<HTMLTableCellElement, Map<string, ValidatedStyleEntry>>()
+      for(const {cell, row, column, rowSpan, columnSpan} of placements) {
+        if(!selected.has(cell)) continue
+        const rows = matrix.slice(row, row + rowSpan)
+        const neighbors = {
+          [before]: matrix[row - 1]?.slice(column, column + columnSpan) ?? [],
+          [after]: matrix[row + rowSpan]?.slice(column, column + columnSpan) ?? [],
+          [start]: rows.map(row => row[column - 1]),
+          [end]: rows.map(row => row[column + columnSpan]),
+        }
+        for(const [index, side] of borderSides.entries()) {
+          const sideEdits = edits.filter(edit => !edit.side || edit.side === side)
+          if(!sideEdits.length) continue
+          const opposite = borderSides[(index + 2) % borderSides.length]
+          for(const neighbor of new Set(neighbors[side])) {
+            if(!neighbor || atomicEditingContainer(neighbor.cell, this.editor.schema)
+              || !this.editor.allows("style", neighbor.cell)) continue
+            if(!pending.has(neighbor.cell)) pending.set(neighbor.cell, new Map())
+            const changes = pending.get(neighbor.cell)!
+            for(const part of borderParts) {
+              // An explicit edit of both sides takes precedence over mirroring.
+              if(selected.has(neighbor.cell) && edits.some(edit => (!edit.side || edit.side === opposite)
+                && (!edit.part || edit.part === part))) continue
+              const source = `border-${side}-${part}`
+              const name = `border-${opposite}-${part}`
+              const edit = sideEdits.find(edit => !edit.part || edit.part === part)
+              const value = edit?.clear ? null : cell.style.getPropertyValue(source)
+              if(value === "" || !edit && sideEdits.every(edit => edit.clear)) continue
+              const priority = cell.style.getPropertyPriority(source) || neighbor.cell.style.getPropertyPriority(name)
+              changes.set(name, {name, value, priority: priority === "important" ? "important" : ""})
+            }
+          }
+        }
+      }
+      for(const [cell, changes] of pending) {
+        if(!cell.isConnected || tableForNode(cell) !== table || !changes.size) continue
+        applyRawStyleEntries(cell, [...changes.values()], true)
+        if(!cell.style.length) cell.removeAttribute("style")
+      }
+    }
   }
 
   private applyElementStyleEntries(element: Element, entries: ValidatedStyleEntry[], wholeFigure = false) {
@@ -6196,7 +6269,15 @@ export class ManipulationFeature extends EditorFeature {
 
   setElementStyles(target: Element, styles: Record<string, ElementStyleMutation>) {
     if(!target.isConnected || !getDocumentRoot().contains(target) || this.editor.isEditingLocked) return false
-    return this.applyElementStyleEntries(target, this.validateElementStyles(styles))
+    const entries = this.validateElementStyles(styles)
+    if(target instanceof HTMLTableCellElement && entries.some(({name}) => cellBorderProperty.test(name))) {
+      return this.applyStyleToElements([target], entries)
+    }
+    return this.applyElementStyleEntries(target, entries)
+  }
+
+  setTableCellStyles(cells: HTMLTableCellElement[], styles: Record<string, ElementStyleMutation>) {
+    return this.applyStyleToElements(cells, this.validatedStyleEntries(styles))
   }
 
   /** Applies paragraph declarations independently to every selected text

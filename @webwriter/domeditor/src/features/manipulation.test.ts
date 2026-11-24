@@ -5992,6 +5992,97 @@ describe("setStyle()", () => {
       expect(paragraph.style.getPropertyValue(`border-${side}-color`)).toBe(color)
     }
   })
+  it.each(["td", "th"])("completes only the chosen border on selected %s cells", localName => {
+    document.body.innerHTML = `<table><tbody><tr><${localName}>A<!--keep--><test-widget></test-widget></${localName}><${localName}>B</${localName}><${localName}>C</${localName}></tr></tbody></table>`
+    const cells = Array.from(document.querySelectorAll<HTMLTableCellElement>(localName))
+    const contents = cells[0].innerHTML
+    editor.features.table.selectCells(cells[0], cells[1])
+    editor.features.manipulation.setStyle({"border-top-width": "4px"})
+    for(const cell of cells.slice(0, 2)) {
+      expect(cell.style.borderTopWidth).toBe("4px")
+      expect(cell.style.borderTopStyle).toBe("solid")
+      expect(cell.style.borderTopColor).toBe("black")
+      for(const side of ["right", "bottom", "left"]) {
+        for(const part of ["width", "style", "color"]) expect(cell.style.getPropertyValue(`border-${side}-${part}`)).toBe("")
+      }
+    }
+    expect(cells[2].hasAttribute("style")).toBe(false)
+    expect(cells[0].innerHTML).toBe(contents)
+    editor.features.manipulation.setStyle({"border-top-width": null, "border-top-style": null, "border-top-color": null})
+    expect(cells.every(cell => !cell.hasAttribute("style"))).toBe(true)
+  })
+
+  it.each([
+    ["border-top-style", "dashed", "1px", "dashed", "black"],
+    ["border-top-color", "red", "1px", "solid", "red"],
+  ])("completes a single border when %s is set", (property, value, width, line, color) => {
+    document.body.innerHTML = '<p style="border-bottom: 3px dotted green !important">Text</p>'
+    const target = document.querySelector("p")!
+    editor.features.manipulation.setElementStyles(target, {[property]: value})
+    expect(target.style.borderTopWidth).toBe(width)
+    expect(target.style.borderTopStyle).toBe(line)
+    expect(target.style.borderTopColor).toBe(color)
+    expect(target.style.borderBottomWidth).toBe("3px")
+    expect(target.style.borderBottomStyle).toBe("dotted")
+    expect(target.style.getPropertyPriority("border-bottom-width")).toBe("important")
+    expect(target.style.borderLeftStyle).toBe("")
+  })
+
+  it("updates a shared border across row groups and undoes both cell changes together", () => {
+    document.body.innerHTML = `<table style="border-collapse: collapse">
+      <thead><tr><th id="heading" colspan="2" style="border-bottom: 4px dashed red">Heading</th></tr></thead>
+      <tbody><tr><td id="first" style="border-top: 8px solid blue !important; border-left: 3px dotted green">A</td><td id="second">B</td></tr></tbody>
+    </table>`
+    const heading = () => document.querySelector<HTMLTableCellElement>("#heading")!
+    const first = () => document.querySelector<HTMLTableCellElement>("#first")!
+    const second = () => document.querySelector<HTMLTableCellElement>("#second")!
+    editor.features.table.selectCells(heading())
+    const before = editor.toHTML(true)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"border-bottom-width": "2px"}})
+    expect(heading().style.borderBottomWidth).toBe("2px")
+    for(const cell of [first(), second()]) {
+      expect(cell.style.borderTopWidth).toBe("2px")
+      expect(cell.style.borderTopStyle).toBe("dashed")
+      expect(cell.style.borderTopColor).toBe("red")
+    }
+    expect(first().style.borderLeftWidth).toBe("3px")
+    expect(first().style.getPropertyPriority("border-top-width")).toBe("important")
+    expect(second().style.borderBottomWidth).toBe("")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(second().style.borderTopWidth).toBe("2px")
+  })
+
+  it.each(["ltr", "rtl"])("mirrors the physical side of a spanning cell in a %s table", direction => {
+    document.body.innerHTML = `<table style="border-collapse: collapse; direction: ${direction}"><tbody>
+      <tr><td id="source" rowspan="0">A</td><td id="first">B</td><td>C</td></tr>
+      <tr><td id="second">D</td><td>E</td></tr>
+    </tbody></table>`
+    const source = document.querySelector<HTMLTableCellElement>("#source")!
+    const side = direction === "ltr" ? "right" : "left"
+    const opposite = direction === "ltr" ? "left" : "right"
+    editor.features.manipulation.setElementStyles(source, {[`border-${side}-color`]: "red"})
+    for(const cell of document.querySelectorAll<HTMLTableCellElement>("#first, #second")) {
+      expect(cell.style.getPropertyValue(`border-${opposite}-color`)).toBe("red")
+      expect(cell.style.getPropertyValue(`border-${side}-color`)).toBe("")
+    }
+    expect(document.querySelectorAll("td[style]")).toHaveLength(3)
+    editor.features.manipulation.setElementStyles(source, {
+      [`border-${side}-width`]: null, [`border-${side}-style`]: null, [`border-${side}-color`]: null,
+    })
+    expect(document.querySelectorAll("td[style]")).toHaveLength(0)
+  })
+
+  it("keeps cell borders independent when table borders are separate", () => {
+    document.body.innerHTML = '<table style="border-collapse: separate"><tr><td>A</td></tr><tr><td>B</td></tr></table>'
+    const [first, second] = document.querySelectorAll("td")
+    editor.features.table.selectCells(first)
+    editor.features.manipulation.setStyle({"border-bottom-style": "dashed"})
+    expect(first.style.borderBottomStyle).toBe("dashed")
+    expect(second.hasAttribute("style")).toBe(false)
+  })
+
   it("preserves existing border sides and priority while filling missing parts", () => {
     document.body.innerHTML = '<p style="border-top: 3px dotted green !important; border-bottom-width: 7px">Text</p>'
     const paragraph = document.body.firstElementChild as HTMLElement
@@ -6734,7 +6825,7 @@ describe("setStyle()", () => {
 
     expect(table).toHaveStyle({borderCollapse: "collapse"})
   })
-  it.each([false, true])("styles only the selected cells (Edit toolbox: %s)", topLevel => {
+  it.each([false, true])("styles selected cells and mirrors their shared borders (Edit toolbox: %s)", topLevel => {
     document.body.innerHTML = '<section><!--keep--><table><thead><tr><th colspan="2">Heading</th><th>Other</th></tr></thead><tbody><tr><td><p>one</p></td><td><demo-widget></demo-widget></td><td>three</td></tr></tbody></table></section>'
     const table = document.querySelector("table")!
     const [heading, other, first, second, third] = Array.from(table.querySelectorAll("td, th")) as HTMLTableCellElement[]
@@ -6751,7 +6842,14 @@ describe("setStyle()", () => {
       expect(cell).toHaveStyle({backgroundColor: "gold", borderColor: "red", padding: "8px", color: "blue"})
       expect(cell.style.getPropertyPriority("color")).toBe("important")
     }
-    for(const element of [table, other, third, document.querySelector("section"), first.firstElementChild, second.firstElementChild]) {
+    for(const neighbor of [other, third]) {
+      expect(neighbor).toHaveStyle({borderLeftWidth: "1px", borderLeftStyle: "solid", borderLeftColor: "red"})
+      expect(neighbor.style.borderRightWidth).toBe("")
+      expect(neighbor.style.backgroundColor).toBe("")
+      expect(neighbor.style.padding).toBe("")
+      expect(neighbor.style.color).toBe("")
+    }
+    for(const element of [table, document.querySelector("section"), first.firstElementChild, second.firstElementChild]) {
       expect(element).not.toHaveAttribute("style")
     }
     expect(Array.from(table.querySelectorAll("*"))).toEqual(children)

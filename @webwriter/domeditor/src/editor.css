@@ -141,11 +141,6 @@ body > :last-child:not(:where(:state(ww-gap-after-selected))) {
   }
 }
 
-/* Show cell boundaries without changing the table's reading-mode geometry. */
-:where(td, th) {
-  outline: 1px solid #aeb8c4;
-}
-
 /* Forms have little useful authoring presentation without a site stylesheet.
  * These zero-specificity editor defaults keep controls legible and make
  * structural containers easy to address while authored CSS remains able to

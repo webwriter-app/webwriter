@@ -861,9 +861,7 @@ export class TableFeature extends EditorFeature {
     const table = this.selectedTable
     if(!table) return
     const map = buildTableMap(table)
-    this.actionCells(map).forEach(cell => value
-      ? cell.style.setProperty(property, value)
-      : cell.style.removeProperty(property))
+    this.editor.features.manipulation.setTableCellStyles(this.actionCells(map), {[property]: value})
     this.editor.postSelectionPath()
   }
 
