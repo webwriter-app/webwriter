@@ -22,7 +22,7 @@ import {appIconUrl, ribbonIcon} from "../ribbon-icons"
 import {documentLayoutLabel, documentLayoutModes} from "./layout-preview"
 import {cloudServiceURL, EDUMIX_URL, cloudServiceExpired, type CloudService} from "../cloud-services"
 import {CloudProviderSignIn, connectCloudService} from "../backend-client"
-import {forgetCloudSignIn, startCloudSignIn} from "../cloud-sign-in"
+import {forgetCloudSignIn, openCloudSignInWindow, startCloudSignIn} from "../cloud-sign-in"
 import {normalizeProofreadingDictionary} from "../proofreading"
 import componentLicenses from "virtual:component-licenses"
 import {editorInteractionStyles} from "./editing-controls.styles"
@@ -522,6 +522,8 @@ export class SettingsPanel extends LitElement {
     if(this.signingIn) return
     const form = event.currentTarget as HTMLFormElement
     const password = form.querySelector<HTMLInputElement>('input[type="password"]')
+    // Opened inside the click, before any request, so the browser does not block the window.
+    const closeSignInWindow = this.signsInWithProvider(service) ? openCloudSignInWindow() : () => {}
     const controller = new AbortController()
     this.signInController = controller
     this.signingIn = service.id
@@ -532,16 +534,21 @@ export class SettingsPanel extends LitElement {
         return
       }
       const result = await connectCloudService(service, {password: password?.value ?? "", signal: controller.signal})
+      closeSignInWindow()
       if(controller.signal.aborted || !this.isConnected
         || this.settings.cloudServices.find(value => value.id === service.id) !== service) return
       this.changeCloudServices(this.settings.cloudServices.map(value => value.id === service.id ? result.service : value), service.id)
     }
     catch(error) {
+      if(!(error instanceof CloudProviderSignIn)) closeSignInWindow()
       if(controller.signal.aborted) return
       // The session names an identity provider: sign in there instead of with a password.
       if(error instanceof CloudProviderSignIn && this.isConnected) {
         try {await this.signInOnProvider(service, error.oidc)}
-        catch(providerError) {this.cloudError = providerError instanceof Error ? providerError.message : String(providerError)}
+        catch(providerError) {
+          closeSignInWindow()
+          this.cloudError = providerError instanceof Error ? providerError.message : String(providerError)
+        }
         return
       }
       this.cloudError = error instanceof Error ? error.message : String(error)
@@ -555,11 +562,23 @@ export class SettingsPanel extends LitElement {
     }
   }
 
-  /** Remembers the provider, selects the service and leaves for the provider's login page. */
+  /** Signs in on the provider's login window and keeps its token on the selected service. */
   private async signInOnProvider(service: CloudService, oidc: NonNullable<CloudService["oidc"]>) {
     const withProvider = {...service, oidc}
     this.changeCloudServices(this.settings.cloudServices.map(value => value.id === service.id ? withProvider : value), service.id)
-    await startCloudSignIn(withProvider)
+    let signedIn
+    try {
+      signedIn = await startCloudSignIn(withProvider)
+    }
+    catch(error) {
+      // Closing the window is a change of mind, not an error.
+      if(error instanceof Error && /closed/i.test(error.message)) return
+      throw error
+    }
+    const current = this.settings.cloudServices.find(value => value.id === service.id)
+    if(!current || !this.isConnected) return
+    this.changeCloudServices(this.settings.cloudServices.map(value => value.id === service.id
+      ? {...current, oidc, accessToken: signedIn.accessToken, expiresAt: signedIn.expiresAt} : value), service.id)
   }
 
   private removeCloudService(service: CloudService) {

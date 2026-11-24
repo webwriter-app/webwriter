@@ -39,10 +39,10 @@ Instead of `signInUrl`, a service may advertise an OpenID Connect provider:
 "oidc": { "issuer": "https://auth.example/realms/edumix", "clientId": "webwriter" }
 ```
 
-WebWriter then never asks for a password. "Sign in" leaves for the provider's login
-page (Authorization Code + PKCE with `oidc-client-ts`, public client, redirect URI
-`<app origin>/editor/`) and returns with an access token, which it sends as the
-bearer token like a password sign-in's. The issuer must be HTTPS (HTTP on loopback).
+WebWriter then never asks for a password. "Sign in" opens the provider's login page
+in a separate window (Authorization Code + PKCE with `oidc-client-ts`, public client,
+redirect URI `<app origin>/sign-in-callback.html`); the editor stays open and receives
+an access token, which it sends as the bearer token like a password sign-in's. The issuer must be HTTPS (HTTP on loopback).
 The service validates that token (signature, issuer, its own audience, the client
 as `azp`). Access tokens are short-lived; WebWriter renews them shortly before
 expiry with the provider's refresh token and signs out when that fails. The Edumix

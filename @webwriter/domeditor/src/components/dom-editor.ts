@@ -227,13 +227,7 @@ import {
   type BackendSession,
   type BackendDocumentSummary,
 } from "../backend-client"
-import {
-  cloudSignInRedirectURL,
-  completeCloudSignIn,
-  forgetCloudSignIn,
-  isCloudSignInCallback,
-  renewCloudSignIn,
-} from "../cloud-sign-in"
+import {forgetCloudSignIn, renewCloudSignIn} from "../cloud-sign-in"
 import {
   WEBWRITER_GENERATOR,
   emptyDocumentHeadState,
@@ -1861,25 +1855,6 @@ export class DomEditor extends LitElement {
       this.cloudRenewals.delete(service.id)
       this.updateCloudExpiry()
     }
-  }
-
-  /** The identity provider returned from a sign-in: keep the token, tidy the URL, connect. */
-  private async finishCloudSignIn() {
-    try {
-      const result = await completeCloudSignIn(this.settings.cloudServices)
-      history.replaceState(history.state, "", result.returnTo)
-      if(this.settings.cloudServices.some(value => value.id === result.serviceId)) {
-        this.settings = {...this.settings, activeCloudServiceId: result.serviceId, cloudServicesConfigured: true,
-          cloudServices: this.settings.cloudServices.map(value => value.id === result.serviceId
-            ? {...value, accessToken: result.accessToken, expiresAt: result.expiresAt} : value)}
-        persistAppSettings(this.settings)
-      }
-    }
-    catch(error) {
-      history.replaceState(history.state, "", cloudSignInRedirectURL())
-      this.reportFileError(error)
-    }
-    await this.loginToBackend(undefined, true)
   }
 
   private get cloudSessionWarning() {
@@ -9340,8 +9315,7 @@ export class DomEditor extends LitElement {
     const openingLinkedDocument = !liveSessionId && open !== null
     const exampleId = new URL(location.href).searchParams.get("example")
     const openingExample = !liveSessionId && !openingLinkedDocument && exampleId !== null
-    if(!liveSessionId && import.meta.env.MODE !== "test" && isCloudSignInCallback()) void this.finishCloudSignIn()
-    else if(!liveSessionId && reference?.kind !== "backend" && reference?.kind !== "shared" && import.meta.env.MODE !== "test") void this.loginToBackend(undefined, true)
+    if(!liveSessionId && reference?.kind !== "backend" && reference?.kind !== "shared" && import.meta.env.MODE !== "test") void this.loginToBackend(undefined, true)
     if(liveSessionId) void this.joinLiveSession(liveSessionId)
     this.restoreInstalledPackages()
     const catalog = this.loadPackageCatalog()
