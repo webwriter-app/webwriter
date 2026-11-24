@@ -396,6 +396,9 @@ describe("development server", () => {
   it("leaves Vite's restart probe out of collaboration", async () => {
     const {dataDirectory} = developmentServer
     await developmentServer.close()
+    // Only the WebSocket probe matters; without a dependency scan, closing the server cannot
+    // interrupt one ("Failed to run dependency scan ... server is being restarted or closed").
+    vi.stubEnv("WEBWRITER_TEST_STATIC_ROUTES", "1")
     developmentServer = await createDevServer({port: 0, dataDirectory})
     baseUrl = (await developmentServer.listen()).url
     const collaboration = vi.fn()
