@@ -8,8 +8,11 @@ WORKDIR /app
 # Leave empty for local testing: the app then pairs 127.0.0.1 <-> localhost automatically.
 ARG VITE_APP_ORIGIN=""
 ARG VITE_EDITOR_ORIGIN=""
+# The Edumix cloud preset (sign-in via Edumix's Keycloak); empty means https://edumix.eu.
+ARG VITE_EDUMIX_URL=""
 ENV VITE_APP_ORIGIN=$VITE_APP_ORIGIN \
-    VITE_EDITOR_ORIGIN=$VITE_EDITOR_ORIGIN
+    VITE_EDITOR_ORIGIN=$VITE_EDITOR_ORIGIN \
+    VITE_EDUMIX_URL=$VITE_EDUMIX_URL
 
 COPY . .
 RUN bun install
