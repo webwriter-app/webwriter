@@ -23,6 +23,7 @@ A key identifies an export with or without its extension. The key `.` supplies p
 | `resize` | `"inline" \| "block" \| "both" \| "none"` | Existing element behavior. | Declares the logical axes the editor may resize. The frame filters handles and enforces the rule during resizing, including groups. For a content-height widget, use `"inline"` and CSS `block-size: auto`. |
 | `inline` | `boolean` | `false` | Makes a [phrasing](https://developer.mozilla.org/en-US/docs/Web/HTML/Guides/Content_categories#phrasing_content) widget in `widgetinline`, without automatically adding `flow`. |
 | `content` | `string` | None. The authoring tool treats the widget as one unit. | [Content expression](content-expressions.md) for editable light DOM children. |
+| `excludedDescendants` | `string[]` | The widget's own tag name. | Lowercase HTML tag names the editor disallows anywhere in the widget's editable content. An explicit list replaces the default. |
 | `isolating` | `boolean` | `true` | Prevents splitting, joining, and partial text selections across the widget boundary. The widget remains selectable as a whole from outside. Use `false` to allow text ranges to cross its authored content. |
 | `marks` | `string` | `"_"` | Permitted formatting marks. Use names separated by spaces, `""` for none, or `"_"` for all. |
 | `propagateEvents` | `string[]` | `[]` | Types of shadow DOM events that the authoring tool can handle, for example `["keydown"]`. |
@@ -38,7 +39,9 @@ Marks use element names such as `b`, `i`, `a`, and `span` for text styles. The c
 
 Constrain placement through the receiving element's `content` expression and the child's `group` membership. For a structural child, use an explicit `group: ""` to remove the default `flow` membership, and name the child type in the parent's content expression. The document body and other `flow` containers then reject that child.
 
-The editor still adds the `widget` group. A container declaring `widget*` deliberately accepts all block widget types, including structural children. Use `flow*` for general document content and explicit types or custom groups for structured content. `uninsertable` only hides an insertion-menu entry; it does not impose a structural restriction.
+The editor adds every block widget type to the `widget` group, including structural children. A `widget*` content expression accepts any member of that group, subject to descendant exclusions. Use `flow*` for general document content and explicit types or custom groups for structured content. Set `uninsertable` to hide the member in the insertion menu.
+
+`excludedDescendants` adds a placement rule throughout editable light DOM. By default, a quiz cannot contain another quiz, even through a prompt widget that accepts `flow*`. To also exclude tables, set `"excludedDescendants": ["ww-quiz", "table"]` on the quiz export. Use `"excludedDescendants": []` to allow recursive nesting wherever the `content` expression permits it. The editor applies these rules to new placements and preserves existing document content during normalization.
 
 Set `movable: false` when the editor must not move or drag that element. This disables its native editor drag handle and the transformation frame's Move affordance. It does not lock the authored content or prevent moving the containing widget. Other editing permissions remain independent.
 

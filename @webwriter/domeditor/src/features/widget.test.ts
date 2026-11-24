@@ -340,6 +340,19 @@ describe("WidgetFeature", () => {
     expect(choice.children).toHaveLength(1)
   })
 
+  it("checks exclusions after prefilling a detached child widget", () => {
+    editor.schema.extendWidgets([
+      {tagName: "demo-choice", editingConfig: {content: "demo-choice-item", excludedDescendants: ["table"]}},
+      {tagName: "demo-choice-item", editingConfig: {content: "table"}},
+    ])
+    document.body.innerHTML = "<demo-choice><!--keep--></demo-choice>"
+    const choice = document.querySelector("demo-choice")!
+
+    editor.features.widget.refresh()
+
+    expect(choice.innerHTML).toBe("<!--keep-->")
+  })
+
   it("preserves comments, data, and authored irregular content when prefilling", () => {
     document.body.innerHTML = '<demo-note><!--keep--><script type="application/json" slot="data">{}</script></demo-note><demo-note><unknown-node title="keep"><!--inside--></unknown-node></demo-note><demo-note contenteditable="false"></demo-note>'
     const [empty, authored, locked] = Array.from(document.querySelectorAll("demo-note"))

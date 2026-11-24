@@ -35,6 +35,26 @@ afterAll(() => editor.destroy())
 
 const sync = () => editor.doc.syncFromDOM()
 
+describe("widget descendant placement", () => {
+  it("rejects inserting, pasting and dropping an organizer into one of its own pages", () => {
+    document.body.innerHTML = '<webwriter-advance-organizer><webwriter-advance-organizer-page><div><p>Keep this</p></div></webwriter-advance-organizer-page></webwriter-advance-organizer>'
+    editor.features.widget.refresh()
+    const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 0, text, 4)
+    const original = editor.toHTML(true)
+    const html = "<webwriter-advance-organizer></webwriter-advance-organizer>"
+
+    editor.features.manipulation.actions.insert({type: "insert", html})
+    const transfer = new DataTransfer()
+    transfer.setData("text/html", `<section>${html}</section>`)
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: transfer, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertFromDrop", dataTransfer: transfer, bubbles: true, cancelable: true}))
+
+    expect(editor.toHTML(true)).toBe(original)
+    expect($.range.toString()).toBe("Keep")
+  })
+})
+
 describe("flat timeline event content", () => {
   it.each(["Enter", "a"])("edits the existing title from its leading boundary on %s", key => {
     document.body.innerHTML = '<webwriter-timeline><webwriter-timeline-event>\n<!--keep--><h2 slot="title">Title</h2>\n<p>Body</p>\n</webwriter-timeline-event></webwriter-timeline>'

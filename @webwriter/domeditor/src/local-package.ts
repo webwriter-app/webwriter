@@ -1,4 +1,4 @@
-import {widgetDefinitionErrors} from "./schema"
+import {isExcludedDescendantList, widgetDefinitionErrors} from "./schema"
 import {isWidgetFileFormat} from "./widget-options"
 import {
   editingConfigKey,
@@ -325,6 +325,7 @@ const optionChecks: Record<string, (value: unknown) => boolean> = {
   group: value => typeof value === "string",
   inline: value => typeof value === "boolean",
   content: value => typeof value === "string",
+  excludedDescendants: isExcludedDescendantList,
   isolating: value => typeof value === "boolean",
   marks: value => typeof value === "string",
   propagateEvents: value => Array.isArray(value) && value.every(type => typeof type === "string" && type.length > 0),

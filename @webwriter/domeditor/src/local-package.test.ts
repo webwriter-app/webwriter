@@ -190,6 +190,28 @@ describe("local package checks", () => {
     })])
   })
 
+  it.each([
+    {excludedDescendants: ["demo-widget", "table"], valid: true},
+    {excludedDescendants: [], valid: true},
+    {excludedDescendants: "demo-widget", valid: false},
+    {excludedDescendants: ["div > table"], valid: false},
+  ])("validates descendant exclusions $excludedDescendants", async ({excludedDescendants, valid}) => {
+    const result = await loadLocalPackage(nestedDirectory({
+      files: {"package.json": JSON.stringify({
+        name: "@local/demo",
+        version: "0.1.0",
+        exports: {"./widgets/demo-widget.js": "./dist/demo.js"},
+        editingConfig: {"./widgets/demo-widget": {excludedDescendants}},
+      })},
+      directories: {dist: {files: {"demo.js": "bundle"}}},
+    }), {urlFor})
+
+    expect(result.warnings).toEqual(valid ? [] : [expect.objectContaining({
+      code: "invalid-editing-option", message: expect.stringContaining("excludedDescendants"),
+    })])
+    if(valid) expect(result.package.members[0].editingConfig?.excludedDescendants).toEqual(excludedDescendants)
+  })
+
   it("reports editing config the editor would ignore or reject", async () => {
     const result = await loadLocalPackage(nestedDirectory({
       files: {"package.json": JSON.stringify({

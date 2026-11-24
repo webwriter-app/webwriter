@@ -235,6 +235,8 @@ export class WidgetFeature extends EditorFeature {
     const preserved = content.filter(child => existing.has(child))
     if(preserved.length !== original.length || preserved.some((child, index) => child !== original[index])) return
     for(const child of added) if(child instanceof Element) this.#prefillContent(child, nextAncestors)
+    // Detached children inherit the enclosing widget's restrictions when attached.
+    if(!this.editor.schema.allowsPlacement(element, added)) throw new Error("Cannot prefill widget content")
     // Constructors may deliberately mutate their owner document while filling.
     const current = this.#contentNodes(element)
     if(current.length !== original.length || current.some((child, index) => child !== original[index])) return
