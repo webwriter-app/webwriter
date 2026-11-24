@@ -389,6 +389,7 @@ type LiveSessionIdentity = {
 export class DomEditor extends LitElement {
   static properties = {
     selectionPath: {attribute: false, state: true},
+    unavailableInsertions: {state: true},
     documentRootHovered: {state: true},
     distributionSelection: {attribute: false, state: true},
     distributionGeneral: {attribute: false, state: true},
@@ -579,6 +580,9 @@ export class DomEditor extends LitElement {
   private distributionPendingConfigs = new Map<string, {revision: number, config: DistributionConfig | null}>()
   private distributionAcceptedStates = new Map<string, DistributionSelection>()
   private selectionPath: SelectionPathItem[] = []
+  private unavailableInsertions: ReadonlySet<string> = new Set()
+  private ribbonSnippetGeneration = 0
+  private ribbonSnippetFrame: Window | null = null
   private nodeSelection = false
   private captureSelection = false
   private selectionGap: SelectionGap | null = null
@@ -2715,6 +2719,7 @@ export class DomEditor extends LitElement {
           }
           this.updateUserIdentity()
           editorReadyResolve?.(editorWindow)
+          if(this.editorWindow === editorWindow) void this.updateRibbonSnippets()
           if(this.frameRevision === 0 && this.frameDocumentHTML === null && !this.initialDocumentLayoutStarted
             && !new URL(location.href).searchParams.has("open") && this.settings.defaultLayout !== "document") {
             this.initialDocumentLayoutStarted = true
@@ -6539,6 +6544,23 @@ export class DomEditor extends LitElement {
     return this.documentHead.language || navigator.language || "en"
   }
 
+  private async updateRibbonSnippets() {
+    const frame = this.editorWindow
+    if(!frame || !this.isConnected) return
+    const generation = ++this.ribbonSnippetGeneration
+    const language = this.documentLanguage
+    const saved = this.settings.userSnippets.map(({id, html}) => ({id: `user-snippet:${id}`, html}))
+    const installed = this.installedPackages.flatMap(pkg => pkg.members.filter(member => member.insertable && member.kind === "snippet"))
+    const results = await Promise.allSettled(installed.map(async member => ({
+      id: packageMemberAction(member), html: await this.packageRegistry.fetchSnippet(member, language),
+    })))
+    if(generation !== this.ribbonSnippetGeneration || frame !== this.editorWindow || !this.isConnected) return
+    const snippets = [...saved, ...results.flatMap(result => result.status === "fulfilled" ? [result.value] : [])]
+    if(!snippets.length && this.ribbonSnippetFrame !== frame) return
+    this.ribbonSnippetFrame = snippets.length ? frame : null
+    await this.execute({type: "setInsertionSnippets", snippets}).catch(() => {})
+  }
+
   private async insertPackageMember(member: PackageMember, position?: RibbonDropPosition) {
     this.packageError = ""
     try {
@@ -6692,6 +6714,7 @@ export class DomEditor extends LitElement {
   /** Drop requests bound to a replaced child realm while preserving the live
    * document snapshot and host-owned document/file metadata. */
   private resetEditorFrame(reloadError = new Error("The editor iframe was reloaded")) {
+    this.ribbonSnippetFrame = null
     this.editorReadyPromise?.catch(() => {})
     this.editorReadyReject?.(reloadError)
     this.editorReadyPromise = null
@@ -8091,6 +8114,8 @@ export class DomEditor extends LitElement {
 
   protected updated(changed: PropertyValues) {
     super.updated(changed)
+    if(changed.has("installedPackages") || changed.has("documentHead") && changed.get("documentHead")?.language !== this.documentHead.language
+      || changed.has("settings") && changed.get("settings")?.userSnippets !== this.settings.userSnippets) void this.updateRibbonSnippets()
     this.syncFullscreenControls()
     // Fullscreen tabs read the sibling toolbox's live state, including fields
     // such as pending HTML edits that do not otherwise update the ribbon.
@@ -9381,6 +9406,10 @@ export class DomEditor extends LitElement {
       this.textKeyboardEligible = event.data.detail.textKeyboard === true
       if(!this.textKeyboardEligible) this.textKeyboardDisplay = "inactive"
       this.selectionPath = path
+      const unavailable = event.data.detail.unavailableInsertions ?? []
+      if(unavailable.length !== this.unavailableInsertions.size || unavailable.some(id => !this.unavailableInsertions.has(id))) {
+        this.unavailableInsertions = new Set(unavailable)
+      }
       const selectedSection = event.data.detail.section
       const activeSection = path.flatMap(item => item.sections ?? []).at(-1)
       this.sectionSelected = selectedSection !== undefined
@@ -9453,6 +9482,7 @@ export class DomEditor extends LitElement {
       this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
         detail: {
           path,
+          unavailableInsertions: unavailable,
           ...(event.data.detail.canSection === true ? {canSection: true} : {}),
           ...(event.data.detail.inserted === true ? {inserted: true} : {}),
           ...(this.nodeSelection ? {nodeSelected: true} : {}),
@@ -9841,6 +9871,8 @@ export class DomEditor extends LitElement {
     this.textKeyboardEligible = false
     this.textKeyboardDisplay = "inactive"
     this.selectionPath = []
+    this.unavailableInsertions = new Set()
+    this.ribbonSnippetFrame = null
     this.nodeSelection = false
     this.captureSelection = false
     this.selectedElementTypes = []
@@ -10089,6 +10121,7 @@ export class DomEditor extends LitElement {
           .documentLanguage=${this.documentLanguage}
           .localPackages=${this.localPackages}
           .installedPackages=${this.installedPackages}
+          .unavailableInsertions=${this.unavailableInsertions}
           .consoleOpen=${this.consoleOpen}
           .recentDocuments=${guard(recentDocumentsDependencies, () => this.visibleRecentDocuments.map(({id, title}) => ({id, title})))}
           @recent-documents-refresh=${this.handleRecentDocumentsRefresh}

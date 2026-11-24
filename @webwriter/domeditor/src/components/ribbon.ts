@@ -26,7 +26,7 @@ import {isAIReadTool} from "../ai-tools"
 import {persistAppSettings, type AppSettings} from "../app-settings"
 import type {BackendClient} from "../backend-client"
 import {type PresenceUser, type UndoState} from "../editor-bridge"
-import {mediaCaptureOptions, type MediaType} from "../media"
+import {isMediaCaptureMode, mediaCaptureModes, mediaCaptureOptions, type MediaType} from "../media"
 import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames, type StyleMarkName} from "../marks"
 import {packageKeywordPresentations} from "../package-keywords"
 import type {PackageMember, WebWriterPackage} from "../packages"
@@ -2467,6 +2467,10 @@ export class AppRibbon extends EditingControls {
       && this.installedPackages.some(candidate => candidate.name === pkg.name)) return this.widgetConversionAction(member.tagName)
   }
 
+  private packageInsertionDisabled(member: PackageMember | undefined) {
+    return !!member && this.unavailableInsertions.has(member.kind === "widget" ? `widget:${member.tagName}` : packageMemberAction(member))
+  }
+
   private packageButton({pkg, members, match}: PackageSearchResult) {
     const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)
     const busy = this.busyPackageNames.includes(pkg.name)
@@ -2475,17 +2479,22 @@ export class AppRibbon extends EditingControls {
     // Clicking an available package installs it. Dragging inserts the displayed member.
     return {
       installed, busy, conversion,
+      insertionDisabled: installed && !busy && !conversion && this.packageInsertionDisabled(members[0]),
       label: match?.label ?? pkg.label,
       action: conversion ?? (installed && !busy && matchAction ? matchAction : packageAction(pkg)),
       dragAction: conversion ? undefined : matchAction,
       dragHTML: this.packageDragHTML(pkg, members[0]),
-      submenu: !installed || busy ? this.emptyPackageSubmenu : members.slice(1).map(member => ({
-        label: member.label,
-        action: this.packageConversion(pkg, member) ?? packageMemberAction(member),
-        dragHTML: this.packageDragHTML(pkg, member),
-        icon: "Packages",
-        iconUrl: pkg.iconUrl,
-      })),
+      submenu: !installed || busy ? this.emptyPackageSubmenu : members.slice(1).map(member => {
+        const memberConversion = this.packageConversion(pkg, member)
+        return {
+          label: member.label,
+          action: memberConversion ?? packageMemberAction(member),
+          insertionDisabled: !memberConversion && this.packageInsertionDisabled(member),
+          dragHTML: this.packageDragHTML(pkg, member),
+          icon: "Packages",
+          iconUrl: pkg.iconUrl,
+        }
+      }),
     }
   }
 
@@ -2500,7 +2509,7 @@ export class AppRibbon extends EditingControls {
 
   private renderPackageButton(result: PackageSearchResult, slot = "") {
     const {pkg, members} = result
-    const {installed, busy, conversion, label, action, dragAction, dragHTML, submenu} = this.packageButton(result)
+    const {installed, busy, conversion, insertionDisabled, label, action, dragAction, dragHTML, submenu} = this.packageButton(result)
     const management = this.packageManagementMode
     return html`
       <ribbon-button
@@ -2525,6 +2534,7 @@ export class AppRibbon extends EditingControls {
         ?muted=${!installed}
         .loading=${busy}
         ?disabled=${!busy && !management && !members.length}
+        .insertionDisabled=${insertionDisabled}
         ?keep-drawer-open=${!conversion && (management || !installed || busy)}
       ></ribbon-button>
     `
@@ -2614,6 +2624,7 @@ export class AppRibbon extends EditingControls {
     return [{label: "Add snippet", action: "pin-snippet", icon: "Plus"}, ...this.userSnippets.map(snippet => ({
       label: snippet.label,
       action: `user-snippet:${snippet.id}`,
+      insertionDisabled: this.unavailableInsertions.has(`user-snippet:${snippet.id}`),
       dragHTML: snippet.html,
       icon: "FileHorizontal",
       removeAction: `remove-user-snippet:${snippet.id}`,
@@ -2648,12 +2659,14 @@ export class AppRibbon extends EditingControls {
   }
 
   private setTableGridSize(rows: number, columns: number) {
+    if(this.unavailableInsertions.has("element:table")) return
     this.tableGridRows = rows
     this.tableGridColumns = columns
     this.requestUpdate()
   }
 
   private insertTableSize(rows: number, columns: number) {
+    if(this.unavailableInsertions.has("element:table")) return
     this.dismissCollapsedMenu()
     this.dispatchEvent(new CustomEvent("table-insert", {
       detail: {rows, columns},
@@ -2664,6 +2677,7 @@ export class AppRibbon extends EditingControls {
 
   private renderTableSizePicker() {
     const size = 10
+    const disabled = this.unavailableInsertions.has("element:table")
     return html`
       <div
         class="table-size-picker"
@@ -2682,7 +2696,8 @@ export class AppRibbon extends EditingControls {
                 type="button"
                 aria-label=${`Insert ${column} by ${row} table`}
                 title=${`${column} × ${row}`}
-                ?data-selected=${row <= this.tableGridRows && column <= this.tableGridColumns}
+                ?disabled=${disabled}
+                ?data-selected=${!disabled && row <= this.tableGridRows && column <= this.tableGridColumns}
                 @pointerenter=${() => this.setTableGridSize(row, column)}
                 @focus=${() => this.setTableGridSize(row, column)}
                 @click=${() => this.insertTableSize(row, column)}
@@ -2696,13 +2711,19 @@ export class AppRibbon extends EditingControls {
 
   private markElementConversion(button: RibbonMenuButton) {
     const item = typeof button === "string" ? {label: button} : button
-    if(!this.widgetConversion) return item
-    const tag = ribbonElementTag(item.label, item.action)
-    return {...item, action: this.widgetConversionAction(tag ?? undefined) ?? item.action}
+    const action = item.action ?? item.label
+    const mode = action.startsWith("media-capture:") ? action.slice("media-capture:".length) : null
+    const tag = ribbonElementTag(item.label, action)
+      ?? /^list-style:(ul|ol):/.exec(action)?.[1]
+      ?? (action.startsWith("insert-math:") ? "math" : action.startsWith("insert-graphic-shape:") || action === "import-graphic" ? "svg" : null)
+      ?? (action.startsWith("media-file:") ? action.slice("media-file:".length) : isMediaCaptureMode(mode) ? mediaCaptureModes[mode].media : null)
+    const conversion = this.widgetConversionAction(ribbonElementTag(item.label, action) ?? undefined)
+    return {...item, action: conversion ?? item.action,
+      insertionDisabled: !conversion && !!tag && this.unavailableInsertions.has(`element:${tag}`)}
   }
 
   private markElementConversions(buttons: RibbonMenuButton[]): RibbonMenuButton[] {
-    if(!this.widgetConversion) return buttons
+    if(!this.widgetConversion && !this.unavailableInsertions.size) return buttons
     return buttons.map(button => {
       const item = this.markElementConversion(button)
       return item.submenu ? {...item, submenu: this.markElementConversions(item.submenu)} : item
@@ -2767,16 +2788,17 @@ export class AppRibbon extends EditingControls {
         ? this.mediaSelectionMatches(type)
         : item.label === "List" && this.listType !== null
       const tableDropdown = item.label === "Table" ? this.renderTableSizePicker() : null
-      const action = this.markElementConversion(button).action ?? item.label
+      const {action = item.label, insertionDisabled} = this.markElementConversion(button)
       return html`
         <ribbon-button
           slot=${slot}
           variant="insertion"
           label=${item.label}
           .action=${action}
+          .insertionDisabled=${insertionDisabled ?? false}
           shortcut=${this.commandShortcut(action)}
           .icon=${item.icon ?? item.label}
-          .submenu=${type ? sourceSubmenu : tableDropdown ? [] : this.markElementConversions(submenu)}
+          .submenu=${this.markElementConversions(type ? sourceSubmenu : tableDropdown ? [] : submenu)}
           .dropdown=${tableDropdown}
           ?toggle=${item.label === "List"}
           ?active=${active}
@@ -2985,10 +3007,10 @@ export class AppRibbon extends EditingControls {
     const results = this.packageSearchResults
     packages.push(...results.map((result): RibbonMenuButton => {
       const {pkg} = result
-      const {installed, label, action, dragAction, dragHTML, submenu} = this.packageButton(result)
+      const {installed, label, action, dragAction, dragHTML, submenu, insertionDisabled} = this.packageButton(result)
       return {
         label, italic: this.isDeveloperPackage(pkg), selected: this.isConsoleSelectedPackage(pkg), icon: "Packages", iconUrl: pkg.iconUrl,
-        action, dragAction, dragHTML, submenu,
+        action, dragAction, dragHTML, submenu, insertionDisabled,
         removeAction: installed ? packageToggleAction(pkg) : undefined,
         removeLabel: `Remove ${pkg.label}`,
         packageUpdate: this.packageUpdate(pkg),

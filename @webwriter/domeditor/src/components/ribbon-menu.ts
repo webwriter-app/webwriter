@@ -38,6 +38,7 @@ export type RibbonMenuButton = string | {
   submenuHeader?: TemplateResult
   menuOnly?: boolean
   disabled?: boolean
+  insertionDisabled?: boolean
   warning?: string
   removeAction?: string
   removeLabel?: string
@@ -82,7 +83,7 @@ export class RibbonMenu extends LitElement {
       text-underline-offset: 0.2em;
     }
     .warning-bubble { margin-left: auto; border-radius: 50%; padding: 0 .35rem; color: #78350f; background: #fcd34d; font-weight: 700; }
-    .item:disabled, .submenu-toggle:disabled { opacity: 0.5; cursor: default; }
+    .item:disabled, .item[aria-disabled="true"], .submenu-toggle:disabled { opacity: 0.5; cursor: default; }
     .remove, .label-confirm { flex: 0 0 1.5rem; width: 1.5rem; padding: 0.2rem; }
     .submenu-header { position: sticky; top: -0.35rem; background: white; z-index: 2; padding-bottom: 0.35rem; }
 
@@ -684,6 +685,7 @@ export class RibbonMenu extends LitElement {
   }
 
   private startDrag(event: DragEvent, button: RibbonMenuButton) {
+    if(typeof button !== "string" && (button.disabled || button.insertionDisabled)) { event.preventDefault(); return }
     this.clearInsertionHover()
     const tag = this.dragTag(button)
     const action = this.packageInsertionAction(button)
@@ -742,6 +744,7 @@ export class RibbonMenu extends LitElement {
   }
 
   private handleClick(button: RibbonMenuButton, preserveSubmenu = false) {
+    if(typeof button !== "string" && button.insertionDisabled) return
     const label = this.buttonAction(button)
     preserveSubmenu ||= label === "pin-snippet" || label.startsWith("remove-user-snippet:")
     if(!preserveSubmenu) {
@@ -777,7 +780,7 @@ export class RibbonMenu extends LitElement {
     const action = this.buttonAction(button)
     const eligible = !action.startsWith("insert-math:") && !action.startsWith("list-style:") && action !== "element:math"
       && (Boolean(this.dragTag(button)) || Boolean(this.packageInsertionAction(button)))
-      && !(typeof button !== "string" && button.disabled)
+      && !(typeof button !== "string" && (button.disabled || button.insertionDisabled))
     const active = eligible && (state.pointer || state.focus)
     if(active === state.active) return
     if(active && this.activeInsertionHoverTarget && this.activeInsertionHoverTarget !== target) {
@@ -923,7 +926,8 @@ export class RibbonMenu extends LitElement {
             <button
               class=${`item${typeof submenuButton !== "string" && submenuButton.selected ? " selected" : ""}${gallery ? " gallery-item" : ""}${typeof submenuButton !== "string" && submenuButton.galleryRowStart ? " gallery-row-start" : ""}${typeof submenuButton !== "string" && submenuButton.galleryColumns === 3 ? " gallery-wide" : ""}`}
               type="button"
-              draggable=${String(Boolean(this.dragTag(submenuButton) || this.packageInsertionAction(submenuButton)) && !(typeof submenuButton !== "string" && submenuButton.disabled))}
+              draggable=${String(Boolean(this.dragTag(submenuButton) || this.packageInsertionAction(submenuButton)) && !(typeof submenuButton !== "string" && (submenuButton.disabled || submenuButton.insertionDisabled)))}
+              aria-disabled=${typeof submenuButton !== "string" && submenuButton.insertionDisabled ? "true" : nothing}
               role="menuitem"
               aria-label=${this.buttonLabel(submenuButton)}
               data-action=${this.buttonAction(submenuButton)}
@@ -1019,7 +1023,8 @@ export class RibbonMenu extends LitElement {
                     ` : html`<button
                       class="item"
                       type="button"
-                      draggable=${String(Boolean(this.dragTag(button) || this.packageInsertionAction(button)) && !item.disabled && !item.menuOnly)}
+                      draggable=${String(Boolean(this.dragTag(button) || this.packageInsertionAction(button)) && !item.disabled && !item.insertionDisabled && !item.menuOnly)}
+                      aria-disabled=${item.insertionDisabled ? "true" : nothing}
                       role="menuitem"
                       tabindex=${groupIndex === 0 && buttonIndex === 0 ? "0" : "-1"}
                       title=${this.buttonAction(button).startsWith("widget-conversion:") ? `Convert to ${label}` : item.shortcut ? `${label} (${item.shortcut})` : label}

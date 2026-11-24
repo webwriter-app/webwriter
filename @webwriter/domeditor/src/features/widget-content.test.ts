@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterAll, beforeEach, describe, expect, it} from "vitest"
+import {afterAll, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
@@ -36,6 +36,49 @@ afterAll(() => editor.destroy())
 const sync = () => editor.doc.syncFromDOM()
 
 describe("widget descendant placement", () => {
+  it("updates availability as the caret moves and reuses parsed snippet content", () => {
+    editor.schema.extendWidgets([
+      {tagName: "nested-quiz", editingConfig: {content: "prompt-widget", excludedDescendants: ["nested-quiz", "table"]}},
+    ])
+    document.body.innerHTML = '<nested-quiz><prompt-widget><div><p>Prompt</p></div></prompt-widget></nested-quiz><p>Outside</p>'
+    const manipulation = editor.features.manipulation
+    const snippets = [{id: "package-member:quiz", html: "<div><nested-quiz></nested-quiz></div>"},
+      {id: "user-snippet:text", html: "<p>Prose</p>"}]
+    const parse = vi.spyOn(editor, "parseHTMLFragment")
+    try {
+      manipulation.actions.setInsertionSnippets({type: "setInsertionSnippets", snippets})
+      $.move(document.querySelector("prompt-widget p")!.firstChild!, 1)
+      expect(manipulation.unavailableInsertions()).toEqual(expect.arrayContaining(["element:table", "widget:nested-quiz", "package-member:quiz"]))
+      expect(manipulation.unavailableInsertions()).not.toContain("user-snippet:text")
+
+      $.move(document.body.lastElementChild!.firstChild!, 1)
+      const outside = manipulation.unavailableInsertions()
+      expect(outside).not.toContain("element:table")
+      expect(outside).not.toContain("widget:nested-quiz")
+      expect(outside).not.toContain("package-member:quiz")
+      manipulation.actions.setInsertionSnippets({type: "setInsertionSnippets", snippets})
+      expect(parse).toHaveBeenCalledTimes(snippets.length)
+    }
+    finally {
+      parse.mockRestore()
+      manipulation.actions.setInsertionSnippets({type: "setInsertionSnippets", snippets: []})
+    }
+  })
+
+  it("respects structural content at a widget gap and keeps valid text conversions available", () => {
+    editor.schema.extendWidgets([{tagName: "two-prompt-widget", editingConfig: {content: "p{2}", isolating: false}}])
+    document.body.innerHTML = '<two-prompt-widget><p>First</p><p>Second</p></two-prompt-widget>'
+    const widget = document.querySelector("two-prompt-widget")!
+    const manipulation = editor.features.manipulation
+    $.move(widget.firstElementChild!.firstChild!, 1)
+    expect(manipulation.unavailableInsertions()).not.toContain("element:p")
+    expect(manipulation.unavailableInsertions()).toContain("element:h2")
+    $.selectGap(widget.lastElementChild!, "before")
+    expect($.range.startContainer === widget).toBe(true)
+    expect(editor.schema.canInsert(widget, document.createElement("p"), 1)).toBe(false)
+    expect(manipulation.unavailableInsertions()).toContain("element:p")
+  })
+
   it("rejects inserting, pasting and dropping an organizer into one of its own pages", () => {
     document.body.innerHTML = '<webwriter-advance-organizer><webwriter-advance-organizer-page><div><p>Keep this</p></div></webwriter-advance-organizer-page></webwriter-advance-organizer>'
     editor.features.widget.refresh()

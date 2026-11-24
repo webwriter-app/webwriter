@@ -288,6 +288,23 @@ function frameUpdate(host: any, source: Document | string, textNodeRuns?: unknow
 }
 
 describe("incremental frame replica", () => {
+  it("passes the frame's insertion availability to the ribbon", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const select = async (unavailableInsertions: string[]) => {
+      window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type: selectionChangeEvent,
+        detail: {path: [], unavailableInsertions}}}))
+      await editor.updateComplete
+    }
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await select(["element:table"])
+    const unavailable = ribbon.unavailableInsertions
+    expect(unavailable.has("element:table")).toBe(true)
+    await select(["element:table"])
+    expect(ribbon.unavailableInsertions).toBe(unavailable)
+    await select([])
+    expect(ribbon.unavailableInsertions.size).toBe(0)
+  })
+
   it("keeps deeper widget chevrons and outline actions aligned with adjacent text-node paths", async () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any

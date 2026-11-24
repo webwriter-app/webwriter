@@ -35,6 +35,7 @@ import {authoredDetailsOpen, isAuthoredMutation, isHTMLDetailsElement} from "../
 import {imageMapPopupImage, imageMapPopups, popupContentAncestor, popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
 import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction, emptyElementHTML} from "../insertion"
 import {buildTableMap, cellForNode, createTable, tableForNode} from "../table"
+import type {Schema} from "../schema"
 import {
   elementAttributeState,
   elementAttributeTargetId,
@@ -4634,14 +4635,109 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Check contextual schema and caption rules before mutating the document. */
   allowsInsertionAt(nodes: Node[], container: Node | null = $.ranges[0]?.startContainer ?? null) {
-    if(!this.editor.schema.allowsPlacement(container, nodes)) return false
+    return this.insertionPlacementCheck(container)(nodes)
+  }
+
+  private insertionPlacementCheck(container: Node | null, checkNewSubtree = true) {
+    const schema = this.editor.schema
+    const allowsPlacement = schema.placementCheck(container, checkNewSubtree)
     const parent = container instanceof Element ? container : container?.parentElement
-    if(nodes.some(node => node instanceof Element && node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("figure:not([is]):has(> figcaption)") && !this.editor.schema.hasFigureContent(Array.from(node.childNodes)))) return false
-    const captions = nodes.filter((node): node is Element => node instanceof Element && node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("caption:not([is]), figcaption:not([is])"))
-    if(captions.length && (captions.some(node => parent?.localName !== (node.localName === "caption" ? "table" : "figure"))
-      || !this.editor.schema.isContentValid(parent!, [...Array.from(parent!.childNodes).filter(node => !nodes.includes(node)), ...nodes]))) return false
     const caption = parent?.closest("caption:not([is]), figcaption:not([is])")
-    return !caption || this.editor.schema.isContentValid(caption, nodes)
+    return (nodes: Node[]) => {
+      if(!allowsPlacement(nodes)) return false
+      if(nodes.some(node => node instanceof Element && node.localName === "figure" && node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("figure:not([is]):has(> figcaption)") && !schema.hasFigureContent(Array.from(node.childNodes)))) return false
+      const captions = nodes.filter((node): node is Element => node instanceof Element && (node.localName === "caption" || node.localName === "figcaption")
+        && node.namespaceURI === "http://www.w3.org/1999/xhtml" && !node.hasAttribute("is"))
+      if(captions.length && (captions.some(node => parent?.localName !== (node.localName === "caption" ? "table" : "figure"))
+        || !schema.isContentValid(parent!, [...Array.from(parent!.childNodes).filter(node => !nodes.includes(node)), ...nodes]))) return false
+      return !caption || schema.isContentValid(caption, nodes)
+    }
+  }
+
+  private readonly insertionElements = new Map<string, Node[]>()
+  private insertionSnippets = new Map<string, {html: string, nodes: Node[], hasPopup: boolean}>()
+  private insertionSchema?: Schema
+
+  private prepareInsertionSnippets(snippets: {id: string, html: string}[]) {
+    const schema = this.editor.schema
+    const previous = this.insertionSchema === schema ? this.insertionSnippets : null
+    if(!previous) this.insertionElements.clear()
+    this.insertionSchema = schema
+    this.insertionSnippets = new Map(snippets.map(({id, html}) => {
+      const cached = previous?.get(id)
+      if(cached?.html === html) return [id, cached]
+      const fragment = html.trim() ? this.editor.parseHTMLFragment(html).fragment : document.createDocumentFragment()
+      const nodes = Array.from(fragment.childNodes).filter(node => !(node instanceof Text) || Boolean(node.data.trim()))
+      return [id, {html, nodes: schema.allowsPlacement(null, nodes) ? nodes : [],
+        hasPopup: !!fragment.querySelector(".ww-popup, .ww-popup-content[popover]")}]
+    }))
+  }
+
+  /** Project toolbar availability from the live selection without running insertion commands. */
+  unavailableInsertions() {
+    const {features, schema} = this.editor
+    if(this.insertionSchema !== schema) this.prepareInsertionSnippets(Array.from(this.insertionSnippets, ([id, {html}]) => ({id, html})))
+    const selection = document.getSelection()
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+    const root = getDocumentRoot()
+    // Canvas and slide commands create a new root item at the viewport center.
+    const spatial = features.canvas.active || features.slides.active ? document.body : null
+    const selected = features.selection.captureSelectedElement ?? $.selectedElement
+    const point = spatial ?? selected?.parentElement ?? range?.startContainer ?? root
+    const placement = this.insertionPlacementCheck(point, false)
+    const locked = this.editor.isEditingLocked || !root.contains(point) && !spatial || !features.board.allowsSelection(range)
+      || !spatial && Boolean(atomicEditingContainer(point, schema))
+    const inList = !spatial && [range?.startContainer, range?.endContainer].some(node => node && getContainer(node).closest("li, dt, dd"))
+    const inPopup = !spatial && Boolean(popupContentAncestor(selected ?? point) || popupContentAncestor(range?.endContainer ?? null))
+    const parent = getContainer(point) ?? root
+    const scope = this.widgetEditingScope(parent)
+    const direct = parent === scope
+    const textBlock = scope && parent.parentElement === scope && this.isTextBlock(parent) ? parent : null
+    const rule = scope && (direct || textBlock) ? schema.get(scope).content : undefined
+    const flow = rule && "expression" in rule && /^flow[*+]$/.test(rule.source.trim())
+    const children = scope && rule && !flow ? Array.from(scope.childNodes) : []
+    const selectedIndex = selected && selected.parentElement === scope ? children.indexOf(selected) : -1
+    const at = selectedIndex >= 0 ? selectedIndex : range?.startContainer === scope ? range.startOffset
+      : textBlock ? children.indexOf(textBlock) + 1 : children.length
+    const remove = selectedIndex >= 0 ? 1 : range?.startContainer === scope && range.endContainer === scope ? range.endOffset - at : 0
+    const replaceBlock = textBlock && this.insertionReplacement() === textBlock
+    const significant = (node: Node) => node.nodeType !== Node.COMMENT_NODE && !(node instanceof Text && !node.data.trim())
+    const allowedTypes = new Map<number, Set<string>>()
+    const allows = (nodes: Node[], tag?: string, widget = false) => {
+      if(locked || !nodes.length || !placement(nodes) || !widget && tag && /^h[1-6]$/.test(tag) && inList) return false
+      if(!scope || !rule || textBlock && nodes.every(isParagraphContent)) return true
+      if(flow) return nodes.every(node => schema.get(node).group?.includes("flow") || isParagraphContent(node))
+      const replacesBlock = textBlock && (replaceBlock || !widget && tag && /^(p|h[1-6])$/.test(tag))
+      const index = replacesBlock ? at - 1 : at
+      if(tag) {
+        let types = allowedTypes.get(index)
+        if(!types) {
+          types = new Set(schema.findValidContentTypes(scope, undefined, children.slice(0, index).filter(significant)))
+          allowedTypes.set(index, types)
+        }
+        if(!types.has(tag)) return false
+      }
+      const proposed = [...children.slice(0, index), ...nodes, ...children.slice(index + (replacesBlock ? 1 : remove))]
+      return schema.isContentValid(scope, proposed.filter(significant))
+    }
+    const unavailable: string[] = []
+    const checkElement = (tag: string, widget: boolean) => {
+      let nodes = this.insertionElements.get(tag)
+      if(!nodes) {
+        nodes = [widget ? schema.create(tag, getInertDocument()) : this.ribbonElement(tag)]
+        this.insertionElements.set(tag, nodes)
+      }
+      if(!allows(nodes, tag, widget)
+        || widget && !scope && !schema.get(tag).group?.includes("flow") && !schema.isPhrasing(tag)) {
+        unavailable.push(`${widget ? "widget" : "element"}:${tag}`)
+      }
+    }
+    for(const {tag} of insertionMenuItems) if(tag) checkElement(tag, false)
+    for(const tag of new Set([...schema.getGroupMembers("widget"), ...schema.getGroupMembers("widgetinline")])) checkElement(tag, true)
+    for(const [id, {nodes, hasPopup}] of this.insertionSnippets) {
+      if(inPopup && hasPopup || !allows(nodes)) unavailable.push(id)
+    }
+    return unavailable
   }
 
   /** Inserts a break only when it is valid at the current selection. */
@@ -4841,6 +4937,9 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   actions = {
+    setInsertionSnippets: ({snippets}: {type: "setInsertionSnippets", snippets: {id: string, html: string}[]}) => {
+      this.prepareInsertionSnippets(snippets)
+    },
     textKeyboardInput: ({command, text}: {type: "textKeyboardInput", command: "insert" | "backspace" | "enter", text?: string}) => this.textKeyboardInput(command, text),
     hoverInsertion: ({hovered, tag}: {type: "hoverInsertion", hovered: boolean, tag?: string}) => this.hoverInsertion(hovered, tag),
     insertElement: ({tag}: {type: "insertElement", tag: string}) => {

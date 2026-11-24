@@ -65,6 +65,7 @@ Do these checks for each widget.
 - Save the document. Open it again. Make sure that the widget keeps the settings and authored content.
 - Change an attribute from outside the widget. Check the display.
 - Use undo and redo. Check the authored content.
+- Move the caret between valid and restricted locations. Check that the ribbon enables or disables the corresponding element, widget, and snippet controls. For example, in the quiz with descendant exclusions, try **Table**, the quiz widget, and a snippet containing a quiz from inside the prompt and again from an ordinary paragraph. Package snippets are checked once their HTML loads. [Nest content](content.md#exclude-descendants)
 - Test keyboard input, narrow layouts, preview, and printing.
 - Wait for shared data before you write to it. Check that updates from other participants appear.
 

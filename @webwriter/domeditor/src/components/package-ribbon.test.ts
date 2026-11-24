@@ -2,6 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {html} from "lit"
 import type {WebWriterPackage} from "../packages"
+import {packageMemberAction} from "../packages"
 import {AppRibbon} from "./ribbon"
 import {RibbonButton} from "./ribbon-button"
 import {RibbonMenu} from "./ribbon-menu"
@@ -62,6 +63,28 @@ function dragData(target: Element) {
 }
 
 describe("package ribbon controls", () => {
+  it("disables installed members at the selection while keeping package management available", async () => {
+    const ribbon = new AppRibbon()
+    const installed = packageFixture()
+    ribbon.installedPackages = [installed]
+    ribbon.packages = [packageFixture("other")]
+    ribbon.unavailableInsertions = new Set(["widget:webwriter-demo", packageMemberAction(installed.members[1])])
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    expect(button.insertionDisabled).toBe(true)
+    expect(button.submenu[0]).toMatchObject({insertionDisabled: true})
+    expect(ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Other"]')!.insertionDisabled).toBe(false)
+
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    drawer.dispatchEvent(new CustomEvent("ribbon-drawer-state-change", {detail: {label: "Packages", open: true}}))
+    await ribbon.updateComplete
+    await button.updateComplete
+    expect(button.shadowRoot!.querySelector<HTMLButtonElement>(".corner-trigger")!.disabled).toBe(false)
+    expect(button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.disabled).toBe(false)
+  })
+
   it("shows a separate update action only for outdated packages in management mode", async () => {
     const ribbon = new AppRibbon()
     const installed = packageFixture()

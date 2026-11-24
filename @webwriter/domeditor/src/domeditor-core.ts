@@ -1385,6 +1385,7 @@ export class DOMEditor {
     this.#postedSpatialSelection = spatialSelection
     const detail: SelectionChangeDetail = {
       path,
+      unavailableInsertions: this.features.manipulation.unavailableInsertions(),
       ...(this.options.touchKeyboard && this.features.manipulation.canTypeWithTextKeyboard ? {textKeyboard: true} : {}),
       distribution: this.features.distribution.getState(attributeElement),
       distributionGeneral: this.features.distribution.getState(document.documentElement),

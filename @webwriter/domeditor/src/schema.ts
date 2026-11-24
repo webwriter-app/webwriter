@@ -790,8 +790,14 @@ export class Schema {
 
   /** Checks descendant restrictions at the live destination and inside newly inserted subtrees. */
   allowsPlacement(container: Node | string | null, content: readonly Node[]) {
+    return this.placementCheck(container)(content)
+  }
+
+  /** Shares the destination's ancestor checks across a batch of candidates. */
+  placementCheck(container: Node | string | null, checkNewSubtree = true) {
     const excluded = this.#excludedDescendants(container)
-    return content.every(node => this.#allowsDescendants(node, excluded, true))
+    return (content: readonly Node[]) => (!excluded.length && !checkNewSubtree)
+      || content.every(node => this.#allowsDescendants(node, excluded, checkNewSubtree))
   }
 
   /** Whether `content` (default: the node's current children) is valid for the node (given as node or type key). Each node is validated against a shared cloned rule (see isNodeValid), and the rule's minimum must be satisfied. Non-element nodes are always valid.. */

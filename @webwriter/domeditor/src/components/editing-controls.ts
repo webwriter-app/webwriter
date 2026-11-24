@@ -166,6 +166,7 @@ export abstract class EditingControls extends LitElement {
     commentDraft: {type: String, state: true},
     newCommentDraft: {type: String, state: true},
     localPackages: {attribute: false},
+    unavailableInsertions: {attribute: false},
     localPackageRefreshingNames: {attribute: false},
     localPackagesLoading: {type: Boolean, attribute: "local-packages-loading"},
     localPackageError: {type: String, attribute: "local-package-error"},
@@ -253,6 +254,7 @@ export abstract class EditingControls extends LitElement {
   private commentEditDrafts = new Map<string, string>()
 
   localPackages: WebWriterPackage[] = []
+  unavailableInsertions: ReadonlySet<string> = new Set()
 
   localPackagesLoading = false
   localPackageRefreshingNames: string[] = []
@@ -565,6 +567,7 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected renderFormulaButton() {
+    const insertionDisabled = this.unavailableInsertions.has("element:math")
     return html`
       <ribbon-button
         class="mark-formula"
@@ -573,7 +576,8 @@ export abstract class EditingControls extends LitElement {
         action="Formula"
         icon="Formula"
         shortcut=${this.commandShortcut("Formula")}
-        .submenu=${insertMathStructureButtons}
+        .insertionDisabled=${insertionDisabled}
+        .submenu=${insertionDisabled ? insertMathStructureButtons.map(button => typeof button === "string" ? button : {...button, insertionDisabled}) : insertMathStructureButtons}
         ?disabled=${!!this.widgetMarks}
       ></ribbon-button>
     `
