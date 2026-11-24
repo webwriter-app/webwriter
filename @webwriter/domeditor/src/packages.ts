@@ -27,6 +27,7 @@ export const webWriterPackageExportTypes = [
   {value: "snippet", label: "Snippet"},
   {value: "theme", label: "Theme"},
   {value: "icon", label: "Package icon"},
+  {value: "widget-icon", label: "Widget icon"},
   {value: "editing-config", label: "Editing config"},
   {value: "custom-elements", label: "Custom elements manifest"},
   {value: "other", label: "Other"},
@@ -41,6 +42,9 @@ export type WebWriterPackageExportDescriptor = {
 }
 
 const exportNameWithoutExtension = (value: string) => value.replace(/\.\*$/, "").replace(/\.(?:html?|m?js|css|ts|json)$/i, "")
+const widgetExportPrefix = "./widgets/"
+const widgetIconSuffix = ".icon.svg"
+const isWidgetIconExport = (name: string) => name.startsWith(widgetExportPrefix) && name.endsWith(widgetIconSuffix)
 
 /** Presents package export keys as the fields used by the Develop toolbox. */
 export function describePackageExport(exportName: string, target: PackageExportTarget): WebWriterPackageExportDescriptor {
@@ -48,6 +52,7 @@ export function describePackageExport(exportName: string, target: PackageExportT
   let name = exportName
   if(exportName === "./migrate.js") [type, name] = ["migration", "migrate"]
   else if(exportName === "./icon") [type, name] = ["icon", "icon"]
+  else if(isWidgetIconExport(exportName)) [type, name] = ["widget-icon", exportName.slice(widgetExportPrefix.length, -widgetIconSuffix.length)]
   else if(exportName === "./editing-config.json") [type, name] = ["editing-config", "editing-config"]
   else if(exportName === "./custom-elements.json") [type, name] = ["custom-elements", "custom-elements"]
   else if(exportName.startsWith("./widgets/")) [type, name] = ["widget", exportNameWithoutExtension(exportName.slice(10))]
@@ -66,6 +71,7 @@ export function webWriterPackageExportName(type: WebWriterPackageExportType, nam
   const trimmed = name.trim().replace(/^\.\//, "")
   if(type === "migration") return "./migrate.js"
   if(type === "icon") return "./icon"
+  if(type === "widget-icon") return `${widgetExportPrefix}${trimmed.replace(/^widgets\//, "").replace(/\.icon\.svg$/, "")}${widgetIconSuffix}`
   if(type === "editing-config") return "./editing-config.json"
   if(type === "custom-elements") return "./custom-elements.json"
   if(type === "widget") return `./widgets/${exportNameWithoutExtension(trimmed)}.*`
@@ -82,6 +88,7 @@ export function defaultPackageExportSource(type: WebWriterPackageExportType, nam
   if(type === "snippet") return `./src/snippets/${name}.html`
   if(type === "theme") return `./src/themes/${name}.css`
   if(type === "icon") return "./src/icon.svg"
+  if(type === "widget-icon") return `./src/widgets/${name}${widgetIconSuffix}`
   if(type === "editing-config") return "./editing-config.json"
   if(type === "custom-elements") return "./custom-elements.json"
   if(type === "other") return `./src/${name}`
@@ -314,6 +321,12 @@ export function packageUpdateKind(current: string, candidate: string): "compatib
   if(from[4]) return "compatible"
 }
 
+export function packageMemberIcon(pkg: WebWriterPackage, member?: PackageMember) {
+  if(member?.kind === "widget" && member.tagName
+    && !pkg.manifest?.exports?.[webWriterPackageExportName("widget-icon", member.tagName)]) return pkg.iconUrl ?? member.iconUrl
+  return member?.iconUrl ?? pkg.iconUrl
+}
+
 export function packageInsertionItems(packages: WebWriterPackage[], includeUninsertable = false): PackageInsertionItem[] {
   return packages.flatMap(pkg => pkg.members
     .filter(member => member.insertable || includeUninsertable)
@@ -324,7 +337,7 @@ export function packageInsertionItems(packages: WebWriterPackage[], includeUnins
       packageName: member.packageName,
       kind: member.kind,
       description: member.description,
-      iconUrl: member.kind === "widget" ? pkg.iconUrl ?? member.iconUrl : member.iconUrl ?? pkg.iconUrl,
+      iconUrl: packageMemberIcon(pkg, member),
       ...(member.tagName ? {tag: member.tagName} : {}),
       ...(member.htmlUrl ? {htmlUrl: member.htmlUrl} : {}),
       ...(!member.insertable ? {insertable: false} : {}),
@@ -412,6 +425,13 @@ export function resolvePackageExport(target: PackageExportTarget | undefined): s
     const resolved = resolvePackageExport(target[condition])
     if(resolved) return resolved
   }
+}
+
+function packageMemberIconPath(manifest: WebWriterPackageManifest, tagName: string) {
+  const target = resolvePackageExport(manifest.exports?.[webWriterPackageExportName("widget-icon", tagName)])
+  if(!target || !/^\.\/[^*?#\\]+\.svg$/i.test(target)) return
+  try { return packagePath(target).join("/") }
+  catch { return undefined }
 }
 
 /** Builds a pinned jsDelivr URL while retaining the slash in scoped names. */
@@ -613,6 +633,8 @@ export type PackageMemberSource = {
   requiredPaths: string[]
   /** Stylesheet inferred from a wildcard export; it may be absent. */
   inferredStylePath?: string
+  /** Optional member icon. Its absence never makes a member unusable. */
+  iconPath?: string
 }
 
 export type PackageContents = {
@@ -636,6 +658,7 @@ export function packageContents(
   const tests = new Map<string, PackageContents["tests"][number]>()
   let migrationPath: string | undefined
   for(const [exportName, exportTarget] of Object.entries(manifest.exports ?? {})) {
+    if(isWidgetIconExport(exportName)) continue
     const target = resolvePackageExport(exportTarget)
     if(!target) continue
     const key = configKey(exportName)
@@ -657,6 +680,7 @@ export function packageContents(
     if(!isWidget && !isSnippet) continue
     const config = editingConfig[key] ?? {}
     const tagName = key.split("/").at(-1)!
+    const iconPath = isWidget ? packageMemberIconPath(manifest, tagName) : undefined
     const base = {
       id: `${manifest.name}@${manifest.version}:${key}`,
       packageName: manifest.name,
@@ -665,7 +689,7 @@ export function packageContents(
       label: localized(config.label, locale) ?? (isWidget ? widgetNameLabel(tagName) : titleCase(key)),
       description: localized(config.description, locale),
       insertable: config.uninsertable !== true,
-      iconUrl,
+      iconUrl: iconPath ? urlFor(iconPath) : iconUrl,
       editingConfig: config,
     }
     if(isSnippet) {
@@ -675,7 +699,7 @@ export function packageContents(
     }
     let widget = widgets.get(key)
     if(!widget) {
-      widget = {source: {member: {...base, kind: "widget", tagName}, requiredPaths: []}}
+      widget = {source: {member: {...base, kind: "widget", tagName}, requiredPaths: [], iconPath}}
       widgets.set(key, widget)
       members.push(widget.source)
     }
@@ -934,7 +958,7 @@ export class WebWriterPackageRegistry {
       }
     })()
     const hasWildcardWidget = Object.entries(exports).some(([exportName, exportTarget]) => (
-      exportName.startsWith("./widgets/") && resolvePackageExport(exportTarget)?.endsWith(".*")
+      exportName.startsWith(widgetExportPrefix) && !isWidgetIconExport(exportName) && resolvePackageExport(exportTarget)?.endsWith(".*")
     ))
     const packageFilesRequest = hasWildcardWidget
       ? this.fetchPackageFiles(manifest.name, manifest.version)

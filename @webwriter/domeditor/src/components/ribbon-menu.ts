@@ -1,6 +1,7 @@
 import {dropdownContentStyles} from "./dropdown-content.styles"
 import {SNIPPET_LABEL_MAX_LENGTH} from "../app-settings"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
+import {keyed} from "lit/directives/keyed.js"
 import {editorInteractionStyles, packageUpdateStyles} from "./editing-controls.styles"
 import { ribbonIcon } from "../ribbon-icons"
 import {ribbonElementInsertionAction, ribbonElementTag, ribbonInsertionAction, startElementDrag, startRibbonInsertionDrag} from "./insertion-menu"
@@ -735,12 +736,12 @@ export class RibbonMenu extends LitElement {
       return html`<span class="item-icon text-icon" aria-hidden="true">${iconText}</span>`
     }
     const icon = hover ? this.buttonHoverIcon(button) : this.buttonIcon(button)
-    return html`
+    return keyed(iconUrl, html`
       <span class=${`item-icon${iconUrl ? " image-icon" : ""}`} aria-hidden="true">
         ${ribbonIcon(icon)}
         ${iconUrl ? html`<img src=${iconUrl} alt="" draggable="false" @error=${this.handleIconError} />` : ""}
       </span>
-    `
+    `)
   }
 
   private handleClick(button: RibbonMenuButton, preserveSubmenu = false) {

@@ -430,6 +430,28 @@ describe("package contents", () => {
   const manifest = (exports: Record<string, string>) => ({name: "@webwriter/demo", version: "1.0.0", exports})
   const urlFor = (path: string) => `https://cdn.test/${path}`
 
+  it("resolves widget icons by the exact tag and uses the package icon as a fallback", () => {
+    const definition = {name: "@webwriter/demo", version: "1.0.0", exports: {
+      "./widgets/webwriter-quiz.js": "./dist/quiz.js",
+      "./widgets/webwriter-prompt.js": "./dist/prompt.js",
+      "./widgets/webwriter-results.js": "./dist/results.js",
+      "./widgets/webwriter-quiz.icon.svg": {browser: "./assets/quiz.svg", default: "./assets/default-quiz.svg"},
+      "./widgets/webwriter-prompt.icon.svg": "./assets/prompt.js",
+    }}
+    const iconUrl = urlFor("assets/package.svg")
+    const {members} = packageContents(definition, {}, urlFor, iconUrl, "en")
+    const pkg: WebWriterPackage = {...definition, manifest: definition, iconUrl, members: members.map(({member}) => member),
+      label: "Demo", authors: [], keywords: [], links: {}, scripts: [], styles: []}
+
+    expect(packageInsertionItems([pkg]).map(item => [item.tag, item.iconUrl])).toEqual([
+      ["webwriter-quiz", urlFor("assets/quiz.svg")], ["webwriter-prompt", iconUrl], ["webwriter-results", iconUrl],
+    ])
+    expect(describePackageExport("./widgets/webwriter-quiz.icon.svg", "./assets/quiz.svg")).toEqual({
+      type: "widget-icon", name: "webwriter-quiz", source: "./assets/quiz.svg",
+    })
+    expect(webWriterPackageExportName("widget-icon", "webwriter-quiz")).toBe("./widgets/webwriter-quiz.icon.svg")
+  })
+
   it("includes non-insertable widgets for presentation with their package icon and readable names", () => {
     const contents = packageContents(manifest({
       "./widgets/webwriter-quiz.js": "./dist/quiz.js",

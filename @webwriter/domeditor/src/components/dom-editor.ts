@@ -6206,8 +6206,13 @@ export class DomEditor extends LitElement {
           if(!name.trim()) throw new Error("Export name cannot be empty")
           const nextName = webWriterPackageExportName(type, name)
           if(nextName !== exportName && nextName in exports) throw new Error(`Export '${nextName}' already exists`)
+          let nextTarget = target
+          if(type === "widget-icon" && descriptor.type !== "widget-icon") {
+            nextTarget = /\.svg$/i.test(descriptor.source) ? descriptor.source
+              : defaultPackageExportSource(type, describePackageExport(nextName, target).name)
+          }
           delete exports[exportName]
-          exports[nextName] = target
+          exports[nextName] = nextTarget
           renamedExport = nextName
           this.moveLocalPackageEditingConfig(manifest, exportName, nextName)
           if(descriptor.type === "custom-elements" && type !== "custom-elements") delete manifest.customElements

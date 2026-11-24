@@ -134,7 +134,7 @@ const packagePersonText = (value: unknown) => value === undefined
 
 const packageExportIcons: Record<WebWriterPackageExportType, string> = {
   widget: "Extensions", test: "Accept", migration: "Migration", snippet: "Code",
-  theme: "Theme", icon: "Image", "editing-config": "Preferences",
+  theme: "Theme", icon: "Image", "widget-icon": "Image", "editing-config": "Preferences",
   "custom-elements": "Document", other: "More",
 }
 
@@ -1425,7 +1425,7 @@ export abstract class EditingControls extends LitElement {
                             >${ribbonIcon("Open")}</button>
                           </span>
                         </label>
-                        ${this.renderPackageEditingFields(editingConfigKey(exportName), editingConfig[editingConfigKey(exportName)])}
+                        ${descriptor.type === "widget-icon" ? nothing : this.renderPackageEditingFields(editingConfigKey(exportName), editingConfig[editingConfigKey(exportName)])}
                       </div>
                     </details>
                     <button
@@ -1457,7 +1457,7 @@ export abstract class EditingControls extends LitElement {
     const checks: {label: string, codes: LocalPackageWarning["code"][], checked: boolean}[] = [
       {label: "Package metadata loaded", codes: [], checked: loaded},
       {label: "Widget or snippet bundle available", codes: ["missing-bundle"], checked: loaded},
-      {label: "Configured exports available", codes: ["missing-export"], checked: loaded},
+      {label: "Configured exports available", codes: ["missing-export", "invalid-export"], checked: loaded},
       {label: "Editing configuration readable", codes: ["editing-config-unavailable", "invalid-editing-config"], checked: loaded},
       {label: "Editing options valid", codes: ["unknown-editing-option", "invalid-editing-option"], checked: loaded},
       {label: "Editing entries match exports", codes: ["unmatched-editing-config"], checked: loaded},

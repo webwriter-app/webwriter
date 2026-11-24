@@ -21,13 +21,15 @@ export async function document() {
   await generateReadme()
 }
 
+export const isWidgetExport = name => name.startsWith("./widgets/") && !name.endsWith(".icon.svg")
+
 /**
  * The source file of each widget export, from the `source` condition or, for a browser-ready
  * export, from the file itself. A wildcard key (`./widgets/ww-x.*`) has one source file.
  */
 export function widgetSources(pkgExports) {
   return Object.entries(pkgExports)
-    .filter(([key]) => key.startsWith("./widgets/") && !key.endsWith(".css"))
+    .filter(([key]) => isWidgetExport(key) && !key.endsWith(".css"))
     .map(([, target]) => typeof target === "string" ? target : target?.source ?? (typeof target?.default === "string" ? target.default : undefined))
     .filter(path => typeof path === "string" && !path.includes("*") && /\.[cm]?[jt]sx?$/.test(path))
     .map(path => path.replace(/^\.\//, ""))
@@ -262,7 +264,7 @@ catch(err) {
 }
 
 const memberIDs = Object.keys(pkgExports)
-const widgetIDs = memberIDs.filter(id => id.startsWith("./widgets/"))
+const widgetIDs = memberIDs.filter(isWidgetExport)
 const snippetIDs = memberIDs.filter(id => id.startsWith("./snippets/"))
 const themeIDs = memberIDs.filter(id => id.startsWith("./themes/"))
 

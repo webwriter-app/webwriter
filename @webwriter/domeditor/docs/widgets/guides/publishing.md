@@ -71,6 +71,25 @@ An origami viewer, for example, can export `./widgets/ww-origami-viewer.*` and i
 
 For each update, increase the package version. Add a [migration](migrations.md) if the saved content must change. See the [package manifest reference](../reference/distribution.md) for the export format and discovery keywords.
 
+### Add a widget icon
+
+Place the SVG beside the widget source and export it as `./widgets/<tag>.icon.svg`. The editor matches the full widget tag and uses the image in the ribbon and when identifying the widget in the document.
+
+```json
+{
+  "exports": {
+    "./widgets/ww-origami-viewer.*": {
+      "source": "./src/widgets/ww-origami-viewer.ts",
+      "default": "./dist/widgets/ww-origami-viewer.*"
+    },
+    "./widgets/ww-origami-viewer.icon.svg": "./src/widgets/ww-origami-viewer.icon.svg",
+    "./icon": "./assets/package.svg"
+  }
+}
+```
+
+Use `./icon` as the package-wide fallback. Before publishing, check that `npm pack --dry-run` lists the SVG files and that the ribbon shows the widget's icon after loading the local package. [Package manifest reference](../reference/distribution.md)
+
 ## Embed on another site
 
 Load the widget's browser-ready module on the host page. Insert the custom element. In this example, a field journal stores a note in a JSON data block. The `WidgetDrawer` can save the note in the browser or send it to an HTTP endpoint. Give each embedded widget a stable, unique `id`. Browser storage uses this ID to find the result when the page loads again.

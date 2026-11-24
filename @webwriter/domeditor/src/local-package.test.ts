@@ -108,6 +108,20 @@ describe("loadLocalPackage", () => {
     expect(result.package.scripts).toEqual(["http://local.test/pkg/dist/browser.js"])
   })
 
+  it.each([true, false])("keeps a widget loadable with a present or missing icon (present=%s)", async present => {
+    const result = await loadLocalPackage(nestedDirectory({
+      files: {"package.json": manifest({"./widgets/demo-widget.icon.svg": "./assets/demo.svg"}), "icon.svg": "package icon"},
+      directories: {
+        assets: {files: present ? {"demo.svg": "widget icon"} : {}},
+        dist: {files: {"demo.js": "bundle"}},
+        snippets: {files: {"example.html": "<p>Example</p>"}},
+      },
+    }), {urlFor})
+    expect(result.package.members.find(member => member.tagName === "demo-widget")?.iconUrl)
+      .toBe(urlFor(present ? "assets/demo.svg" : "icon.svg"))
+    expect(result.warnings).toEqual(present ? [] : [expect.objectContaining({code: "missing-export", path: "assets/demo.svg"})])
+  })
+
   it("reports a missing configured bundle while returning usable metadata", async () => {
     const result = await loadLocalPackage(directory({files: {"package.json": manifest(), "icon.svg": "icon"}}), {urlFor})
     expect(result.package.members).toEqual([])

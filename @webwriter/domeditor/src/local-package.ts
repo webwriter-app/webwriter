@@ -13,6 +13,7 @@ import {
   personLabel,
   repositoryUrl,
   resolvePackageExport,
+  webWriterPackageExportName,
   type PackageContents,
   type PackageEditingConfig,
   type PackageDocumentationReadOptions,
@@ -33,6 +34,7 @@ export type LocalResourceUrlBuilder = (path: string) => string
 export type LocalPackageWarningCode =
   | "missing-bundle"
   | "missing-export"
+  | "invalid-export"
   | "editing-config-unavailable"
   | "invalid-editing-config"
   | "unknown-editing-option"
@@ -419,7 +421,7 @@ export async function loadLocalPackage(directory: LocalPackageDirectory, options
   const contents = packageContents(manifest, editingConfig, urlFor, iconUrl, locale)
   warnings.push(...editingConfigWarnings(editingConfig, contents))
   const members: PackageMember[] = []
-  for(const {member, requiredPaths, inferredStylePath} of contents.members) {
+  for(const {member, requiredPaths, inferredStylePath, iconPath} of contents.members) {
     const available = await Promise.all(requiredPaths.map(path => fileExists(directory, path)))
     const missing = requiredPaths.filter((_, index) => !available[index])
     if(missing.length) {
@@ -427,6 +429,14 @@ export async function loadLocalPackage(directory: LocalPackageDirectory, options
       continue
     }
     if(inferredStylePath && !await fileExists(directory, inferredStylePath)) member.styleUrl = undefined
+    if(iconPath && !await fileExists(directory, iconPath)) {
+      member.iconUrl = iconUrl
+      warnings.push({code: "missing-export", path: iconPath, message: `Member icon is missing: ${iconPath}`})
+    }
+    else if(!iconPath && member.kind === "widget" && member.tagName) {
+      const name = webWriterPackageExportName("widget-icon", member.tagName)
+      if(Object.hasOwn(exports, name)) warnings.push({code: "invalid-export", path: name, message: "The widget icon must target an SVG file in the package."})
+    }
     members.push(member)
   }
   if(!members.length) warnings.push({code: "missing-bundle", message: "The package does not contain a usable widget or snippet bundle yet."})

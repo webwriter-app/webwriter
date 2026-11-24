@@ -25,8 +25,9 @@ A `README.md`, `.markdown`, or `.txt` file supplies package documentation.
 | `./widgets/<tag>.*` | Matching `<path>.js` and optional `<path>.css`. |
 | `./widgets/<tag>.js`, `./widgets/<tag>` | Widget script. |
 | `./widgets/<tag>.css` | Widget stylesheet. It has priority over the wildcard stylesheet. |
+| `./widgets/<tag>.icon.svg` | SVG icon for the widget with that exact tag name. |
 | `./snippets/<name>.html` | HTML that the author can insert. The authoring tool removes active scripts, handlers, and styles. It keeps inert widget data blocks. |
-| `./icon` | Package and member icon. |
+| `./icon` | Package icon and default icon for its widgets and snippets. |
 | `./editing-config.json` | External editing configuration. |
 | `./migrate.js` | Script for [content migration](../guides/migrations.md) in a sandbox. |
 | `./tests/<name>.*`, `./tests/<name>.js` | Test module with optional stylesheet. |
@@ -41,12 +42,16 @@ An export target can be a string or a condition object. The authoring tool check
     "./widgets/ww-quiz.*": {
       "source": "./src/widgets/ww-quiz.ts",
       "default": "./dist/widgets/ww-quiz.*"
-    }
+    },
+    "./icon": "./assets/package.svg",
+    "./widgets/ww-quiz.icon.svg": "./src/widgets/ww-quiz.icon.svg"
   }
 }
 ```
 
 Exports with the same tag form one widget. Include each referenced file in the package. Use a separate export for a stylesheet that a dependency needs. Import maps resolve only JavaScript modules.
+
+The authoring tool uses a widget's icon in insertion controls and when identifying the widget in the document. The export key uses the full widget tag, such as `./widgets/ww-quiz.icon.svg`. The default comes from `./icon` or the editor's generic widget icon.
 
 ## Discovery keywords
 

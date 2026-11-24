@@ -1411,11 +1411,11 @@ export class RibbonButton extends LitElement {
     if(this.iconPath) return html`<span class="button-icon shape-preview" aria-hidden="true">
       <svg viewBox="-10 -10 120 120" focusable="false"><path d=${this.iconPath} fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
     </span>`
-    return html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
+    return keyed(this.iconUrl, html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
       <slot name="icon">${this.hoverIcon ? html`<span class="button-icon-default">${ribbonIcon(icon)}</span>` : ribbonIcon(icon)}
       ${this.hoverIcon ? html`<span class="button-icon-hover">${ribbonIcon(this.hoverIcon)}</span>` : nothing}</slot>
       ${this.renderIconImage()}
-    </span>`
+    </span>`)
   }
 
   private renderIconImage() {

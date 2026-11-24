@@ -4440,6 +4440,11 @@ describe("Develop local packages", () => {
       detail: {exportName: "./tests/secondary.*"},
     }))
     expect(((editor as any).localPackageDraft.manifest.exports as Record<string, unknown>)["./tests/secondary.*"]).toBeUndefined()
+    await (editor as any).handleLocalPackageExportAdd()
+    await (editor as any).handleLocalPackageExportChange(new CustomEvent("local-package-export-change", {
+      detail: {exportName: "./widgets/new-widget.*", field: "type", value: "widget-icon"},
+    }))
+    expect((editor as any).localPackageDraft.manifest.exports["./widgets/new-widget.icon.svg"]).toBe("./src/widgets/new-widget.icon.svg")
     expect(await (editor as any).confirmLocalPackageChanges()).toBe(true)
     expect((editable.manifest().exports as Record<string, unknown>)["./tests/secondary.*"]).toBeUndefined()
   })

@@ -63,6 +63,35 @@ function dragData(target: Element) {
 }
 
 describe("package ribbon controls", () => {
+  it("uses each installed widget's image in its insertion control", async () => {
+    const ribbon = new AppRibbon()
+    const pkg = packageFixture()
+    const main = {...pkg.members[0], iconUrl: "https://example.com/demo.svg"}
+    const alternate = {...main, id: "alternate", label: "Alternate Widget", tagName: "webwriter-alternate", iconUrl: "https://example.com/alternate.svg"}
+    pkg.manifest = {name: pkg.name, version: pkg.version, exports: {
+      "./widgets/webwriter-demo.icon.svg": "./demo.svg", "./widgets/webwriter-alternate.icon.svg": "./alternate.svg",
+    }}
+    pkg.members = [main, alternate, pkg.members[1]]
+    ribbon.installedPackages = [pkg]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    const image = button.shadowRoot!.querySelector<HTMLImageElement>(".main-button img")!
+    expect(image.getAttribute("src")).toBe(main.iconUrl)
+    expect(image.alt).toBe("")
+    expect(button.submenu).toEqual([
+      expect.objectContaining({label: alternate.label, iconUrl: alternate.iconUrl}),
+      expect.objectContaining({iconUrl: pkg.iconUrl}),
+    ])
+    image.dispatchEvent(new Event("error"))
+    expect(button.shadowRoot!.querySelector(".main-button img")).toBeNull()
+    ribbon.shadowRoot!.querySelector("package-search")!.dispatchEvent(new CustomEvent("package-search-change", {detail: {query: "alternate"}}))
+    await ribbon.updateComplete
+    await button.updateComplete
+    expect(button.shadowRoot!.querySelector(".main-button img")?.getAttribute("src")).toBe(alternate.iconUrl)
+  })
+
   it("disables installed members at the selection while keeping package management available", async () => {
     const ribbon = new AppRibbon()
     const installed = packageFixture()

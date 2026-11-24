@@ -30,7 +30,7 @@ import {isMediaCaptureMode, mediaCaptureModes, mediaCaptureOptions, type MediaTy
 import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames, type StyleMarkName} from "../marks"
 import {packageKeywordPresentations} from "../package-keywords"
 import type {PackageMember, WebWriterPackage} from "../packages"
-import {packageAction, packageMemberAction, packageToggleAction, packageUpdateAction, packageUpdateKind} from "../packages"
+import {packageAction, packageMemberAction, packageMemberIcon, packageToggleAction, packageUpdateAction, packageUpdateKind} from "../packages"
 import {safeCssColor} from "../css-color"
 import {ribbonIcon} from "../ribbon-icons"
 import {uiMotionDisabled} from "../utility"
@@ -2481,6 +2481,7 @@ export class AppRibbon extends EditingControls {
       installed, busy, conversion,
       insertionDisabled: installed && !busy && !conversion && this.packageInsertionDisabled(members[0]),
       label: match?.label ?? pkg.label,
+      iconUrl: packageMemberIcon(pkg, installed || match ? members[0] : undefined),
       action: conversion ?? (installed && !busy && matchAction ? matchAction : packageAction(pkg)),
       dragAction: conversion ? undefined : matchAction,
       dragHTML: this.packageDragHTML(pkg, members[0]),
@@ -2492,7 +2493,7 @@ export class AppRibbon extends EditingControls {
           insertionDisabled: !memberConversion && this.packageInsertionDisabled(member),
           dragHTML: this.packageDragHTML(pkg, member),
           icon: "Packages",
-          iconUrl: pkg.iconUrl,
+          iconUrl: packageMemberIcon(pkg, member),
         }
       }),
     }
@@ -2509,7 +2510,7 @@ export class AppRibbon extends EditingControls {
 
   private renderPackageButton(result: PackageSearchResult, slot = "") {
     const {pkg, members} = result
-    const {installed, busy, conversion, insertionDisabled, label, action, dragAction, dragHTML, submenu} = this.packageButton(result)
+    const {installed, busy, conversion, insertionDisabled, label, iconUrl, action, dragAction, dragHTML, submenu} = this.packageButton(result)
     const management = this.packageManagementMode
     return html`
       <ribbon-button
@@ -2519,7 +2520,7 @@ export class AppRibbon extends EditingControls {
         ?console-selected=${this.isConsoleSelectedPackage(pkg)}
         label=${label}
         icon="Packages"
-        icon-url=${pkg.iconUrl ?? ""}
+        icon-url=${iconUrl ?? ""}
         .action=${action}
         .dragAction=${dragAction}
         .dragHTML=${dragHTML}
@@ -3007,9 +3008,9 @@ export class AppRibbon extends EditingControls {
     const results = this.packageSearchResults
     packages.push(...results.map((result): RibbonMenuButton => {
       const {pkg} = result
-      const {installed, label, action, dragAction, dragHTML, submenu, insertionDisabled} = this.packageButton(result)
+      const {installed, label, iconUrl, action, dragAction, dragHTML, submenu, insertionDisabled} = this.packageButton(result)
       return {
-        label, italic: this.isDeveloperPackage(pkg), selected: this.isConsoleSelectedPackage(pkg), icon: "Packages", iconUrl: pkg.iconUrl,
+        label, italic: this.isDeveloperPackage(pkg), selected: this.isConsoleSelectedPackage(pkg), icon: "Packages", iconUrl,
         action, dragAction, dragHTML, submenu, insertionDisabled,
         removeAction: installed ? packageToggleAction(pkg) : undefined,
         removeLabel: `Remove ${pkg.label}`,
