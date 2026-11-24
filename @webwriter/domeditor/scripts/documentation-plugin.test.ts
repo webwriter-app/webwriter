@@ -31,7 +31,7 @@ async function fixture() {
   const fence = String.fromCharCode(96).repeat(3)
   const firstPage = [
     "---", "draft: true", "---", "# First page", "", "## A heading!", "",
-    "<!-- library:vanilla -->", "Vanilla-only instructions.", "",
+    "<!-- library:vanilla -->", "Vanilla-only instructions.", "", "## `Vanilla` setup", "",
     '<iframe src="./example.html" title="Example" loading="lazy"></iframe>', "<!-- /library -->", "",
     "<!-- library:lit -->", "Lit-only instructions.", "",
     '<iframe src="./lit-example.html" title="Lit example" loading="lazy"></iframe>', "<!-- /library -->", "",
@@ -112,6 +112,36 @@ function adapterReferenceFixture() {
   ].join("\n"))
   writeFileSync(join(reference, "lit.md"), "# C2. @webwriter/lit\n\n## Standalone widget drawer\n")
 }
+
+it("serves a library-specific search index with the rendered heading anchors", async () => {
+  const {base} = await fixture()
+  adapterReferenceFixture()
+  writeFileSync(join(directory, "docs/widgets/examples/example.md"), "# Example source notes\n")
+  const page = await get(base, "/docs/widgets/basics/first.md?library=vanilla")
+  expect(page.body).toContain('data-search-index="/docs/search-index.json?library=vanilla"')
+  expect(page.body).toContain('aria-label="Search docs" placeholder="Search..."')
+  expect(page.body).toContain('<span class="docs-search-icon" aria-hidden="true"><svg')
+  expect(page.body).toContain('<div class="docs-search-panel" popover="auto" hidden>')
+  expect(page.body).toContain('id="docs-search-results" class="docs-search-results" role="listbox"')
+  expect(page.body).toContain('id="vanilla-setup"')
+
+  const index = await get(base, "/docs/search-index.json?library=vanilla")
+  expect(index.status).toBe(200)
+  expect(index.headers.get("content-type")).toContain("application/json")
+  expect(JSON.parse(index.body)).toContainEqual({
+    title: "First page", href: "/docs/widgets/basics/first.md?library=vanilla",
+    headings: [{title: "A heading!", hash: "#a-heading"}, {title: "Vanilla setup", hash: "#vanilla-setup"}],
+  })
+  expect(index.body).not.toContain("Example source notes")
+
+  const lit = JSON.parse((await get(base, "/docs/search-index.json?library=lit")).body)
+  expect(lit).toContainEqual({
+    title: "C2. @webwriter/lit", href: "/docs/widgets/reference/adapters.md?library=lit",
+    headings: [{title: "Standalone widget drawer", hash: "#standalone-widget-drawer"}],
+  })
+  expect(lit.some(page => page.href.includes("/reference/lit.md"))).toBe(false)
+  expect(lit.find(page => page.title === "First page").headings).toEqual([{title: "A heading!", hash: "#a-heading"}])
+})
 
 it("shows one C2 reference for the selected library and keeps Lit deep links", async () => {
   const {base} = await fixture()
@@ -271,7 +301,7 @@ it("links the library picker label and orders Library, Overview, and Quick start
         const current = path === libraryPage ? ' aria-current="page"' : ""
         expect(menu).toContain(`<a href="${libraryPage + query}" id="library-label"${current}>Library</a>`)
         expect(menu).toContain('<select id="library" name="library" aria-labelledby="library-label">')
-        expect(menu).toMatch(/<form class="library-switch"[\s\S]*?<\/form>\s*<ul class="nav-intro-row"><li><a[^>]*>Overview<\/a><\/li><li><a[^>]*>Quick start<\/a><\/li><\/ul>/)
+        expect(menu).toMatch(/<form class="library-switch"[\s\S]*?<\/form>\s*<search class="docs-search"[\s\S]*?<\/search>\s*<ul class="nav-intro-row"><li><a[^>]*>Overview<\/a><\/li><li><a[^>]*>Quick start<\/a><\/li><\/ul>/)
         expect(menu).toMatch(/<div class="documentation-sections"[^>]*><a[^>]*>What is a widget\?<\/a>/)
       }
       else expect(menu).not.toMatch(/nav-intro-row|library-switch/)
@@ -1071,6 +1101,13 @@ it("emits static documentation variants, navigation, assets, and original exampl
     expect(page).toContain('<title>First page · Widget documentation</title>')
     expect(page).toContain('<h1 id="first-page" class="docs-heading">First page</h1>')
     expect(page).toContain('href="#a-heading" aria-label="Copy link to A heading!"')
+    const searchAsset = `assets/docs/search-index.${library}.json`
+    expect(page).toContain(`data-search-index="/${searchAsset}"`)
+    expect(JSON.parse(emitted.get(searchAsset))).toContainEqual({
+      title: "First page", href: `/docs/widgets/basics/first${suffix}.html?library=${library}`,
+      headings: library === "lit" ? [{title: "A heading!", hash: "#a-heading"}]
+        : [{title: "A heading!", hash: "#a-heading"}, {title: "Vanilla setup", hash: "#vanilla-setup"}],
+    })
     expect(page).toContain(`href="/docs/widgets/basics/second${suffix}.html?step=2&library=${library}#setup"`)
     expect(page).toContain(`data-href="/docs/widgets/basics/first.react.html?library=react"`)
     const breadcrumb = page.match(/<nav class="breadcrumb"[^>]*>([\s\S]*?)<\/nav>/)?.[1]

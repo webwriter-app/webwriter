@@ -89,6 +89,71 @@ it("opens the requested static library variant from an existing query link", asy
   finally { vi.unstubAllGlobals() }
 })
 
+it("loads search on demand and links titles and sections in the active library", async () => {
+  const indexPath = "/assets/docs/search-index.vue.json"
+  document.body.innerHTML = `<search class="docs-search" data-search-index="${indexPath}" hidden>
+    <input role="combobox" aria-expanded="false">
+    <div class="docs-search-panel" popover="auto" hidden><p role="status"></p><ul role="listbox"></ul></div>
+  </search><button>Outside</button>`
+  const index = [{title: "Widget styling", href: "/docs/widgets/reference/styling.vue.html?library=vue",
+    headings: [{title: "Shadow styles", hash: "#shadow-styles"}]}]
+  const fetchIndex = vi.fn(async () => ({ok: true, json: async () => index}))
+  vi.stubGlobal("fetch", fetchIndex)
+  vi.spyOn(CSS, "supports").mockReturnValue(false)
+  await import("./documentation.js")
+
+  const search = document.querySelector<HTMLElement>("search")!
+  const panel = search.querySelector<HTMLElement>(".docs-search-panel")!
+  const input = search.querySelector("input")!
+  const status = search.querySelector('[role="status"]')!
+  const type = value => {
+    input.value = value
+    input.dispatchEvent(new Event("input"))
+  }
+  expect(search.hidden).toBe(false)
+  expect(panel.hidden).toBe(true)
+  expect(fetchIndex).not.toHaveBeenCalled()
+  type(" wi ")
+  expect(fetchIndex).not.toHaveBeenCalled()
+  expect(status.textContent).toBe("")
+  type("widget styling")
+  await vi.waitFor(() => expect(search.querySelector("a")?.getAttribute("href")).toBe(index[0].href))
+  type("WIDGET shadow")
+  await vi.waitFor(() => expect(search.querySelector("a")?.getAttribute("href")).toBe(`${index[0].href}#shadow-styles`))
+  expect(search.querySelector("a small")?.textContent).toBe("Widget styling")
+  expect(fetchIndex).toHaveBeenCalledExactlyOnceWith(indexPath)
+  expect(panel.hidden).toBe(false)
+  expect(input.getAttribute("aria-expanded")).toBe("true")
+  input.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown"}))
+  const option = search.querySelector("a")!
+  expect(input.getAttribute("aria-activedescendant")).toBe(option.id)
+  expect(option.getAttribute("aria-selected")).toBe("true")
+  const activate = vi.fn(event => event.preventDefault())
+  option.addEventListener("click", activate)
+  input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", isComposing: true}))
+  expect(activate).not.toHaveBeenCalled()
+  input.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape"}))
+  expect(panel.hidden).toBe(true)
+  expect(input.value).toBe("WIDGET shadow")
+  expect(input.hasAttribute("aria-activedescendant")).toBe(false)
+  input.click()
+  expect(panel.hidden).toBe(false)
+  document.querySelector("button")!.dispatchEvent(new Event("pointerdown", {bubbles: true}))
+  expect(panel.hidden).toBe(true)
+  type("wi")
+  expect(search.querySelector("a")).toBeNull()
+  expect(status.textContent).toBe("")
+
+  type("unknown")
+  await vi.waitFor(() => expect(status.textContent).toBe("No matching titles or headings."))
+  expect(search.querySelector("a")).toBeNull()
+  type("widget")
+  type("")
+  await Promise.resolve()
+  expect(search.querySelector("a")).toBeNull()
+  expect(status.textContent).toBe("")
+})
+
 it("shows ten sample lines and reveals the full source and companion files together", async () => {
   const lines = Array.from({length: 12}, (_, index) => `line ${index + 1}`)
   const source = lines.map(line => `<span class="line">${line}</span>`).join("\n")

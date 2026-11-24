@@ -16,6 +16,10 @@ const adapterReference = "/docs/widgets/reference/adapters.md"
 const litReference = "/docs/widgets/reference/lit.md"
 const sandboxPage = "/docs/widgets/sandbox.md"
 const keywordReference = "/docs/widgets/reference/keywords.md"
+const searchIndexPath = "/docs/search-index.json"
+const searchIndexAsset = library => `assets/docs/search-index.${library}.json`
+const isSearchPage = path => path.startsWith("/docs/widgets/") && !path.startsWith("/docs/widgets/examples/")
+  && path.endsWith(".md") && path !== litReference
 const keywordStyles = new URL("../src/package-keywords.css", import.meta.url)
 const guideSprite = "/docs/images/widgets/capability-icons.svg"
 const packageIcon = readFileSync(new URL(import.meta.resolve("@tabler/icons/outline/package.svg")), "utf8")
@@ -23,6 +27,7 @@ const maximizeIcon = readFileSync(new URL(import.meta.resolve("@tabler/icons/out
 const minimizeIcon = readFileSync(new URL(import.meta.resolve("@tabler/icons/outline/minimize.svg")), "utf8")
 const uploadIcon = readFileSync(new URL(import.meta.resolve("@tabler/icons/outline/upload.svg")), "utf8")
 const saveIcon = readFileSync(new URL(import.meta.resolve("@tabler/icons/outline/device-floppy.svg")), "utf8")
+const searchIcon = readFileSync(new URL(import.meta.resolve("@tabler/icons/outline/search.svg")), "utf8")
 const guideIconId = name => `widget-guide-icon-${name}`
 const guideName = path => /^\/docs\/widgets\/guides\/([\w-]+)\.md$/.exec(path)?.[1]
 const guideIcon = (name, icons) => icons.ids.has(name)
@@ -232,6 +237,10 @@ async function includeLiveExamples(source, options) {
   return includeLiveSources(source.replace(links, () => linked[linkIndex++]), options)
 }
 
+async function prepareDocumentation(source, options) {
+  return embedExamples(await includeLiveExamples(source, options), options)
+}
+
 async function includeLiveSources(source, {root, path, library}) {
   const packageLinks = /^<!-- live-package: ([^\r\n]+?) -->$/gm
   const manifests = await Promise.all([...source.matchAll(packageLinks)].map(async ([, paths]) => {
@@ -293,7 +302,7 @@ async function sandboxExamples(root, files) {
   }))).flat()
 }
 
-function renderMarkdown(source, {path, library, highlighter, staticBuild, guideIcons, guide, capabilities, sandbox}) {
+function renderMarkdown(source, {path, library, highlighter, staticBuild, guideIcons, guide, capabilities, sandbox, searchPage}) {
   const headingIds = new Set()
   const tutorialStep = /^\/docs\/widgets\/tutorial\/(\d+)-[^/]+\.md$/.exec(path)?.[1]
   const subsectionNumbers = []
@@ -312,9 +321,12 @@ function renderMarkdown(source, {path, library, highlighter, staticBuild, guideI
     headingIds.add(id)
     if(depth === 1 && !hasPageHeading) {
       hasPageHeading = true
+      if(searchPage) searchPage.title = nodeText(parseFragment(content)).trim() || searchPage.title
       return `<h1 id="${escapeHTML(id)}" class="docs-heading">${content}</h1>\n`
     }
-    const title = escapeHTML(nodeText(parseFragment(content)).trim())
+    const headingTitle = nodeText(parseFragment(content)).trim()
+    if(searchPage && headingTitle) searchPage.headings.push({title: headingTitle, hash: `#${encodeURIComponent(id)}`})
+    const title = escapeHTML(headingTitle)
     const label = title ? ` aria-label="${title}"` : ""
     const linkLabel = title ? `Copy link to ${title}` : "Copy link to this heading"
     return `<h${depth} id="${escapeHTML(id)}" class="docs-heading"${label}><span class="docs-heading-link-status" role="status"></span><a class="docs-heading-link" href="#${encodeURIComponent(id)}" aria-label="${linkLabel}">#</a>${content}</h${depth}>\n`
@@ -654,7 +666,7 @@ async function readGuideIcons(root) {
   return {markup: serializeOuter(svg), ids}
 }
 
-function renderPage({source, path, sections, library, highlighter, guideIcons, capabilities, sandbox, missing = false, staticBuild = false,
+function renderPage({source, path, sections, library, highlighter, guideIcons, capabilities, sandbox, searchIndex, missing = false, staticBuild = false,
   siteEntryURL = "/src/site-entry.ts", documentationURL = "/dev-server/documentation.js"}) {
   const title = new Marked().lexer(source).find(token => token.type === "heading" && token.depth === 1)?.text ?? "Documentation"
   const titleSuffix = path.startsWith("/docs/widgets/") ? "Widget documentation" : "WebWriter documentation"
@@ -708,7 +720,11 @@ function renderPage({source, path, sections, library, highlighter, guideIcons, c
   const introNotice = [home, quickStart, libraryPagePath, "/docs/widgets/tutorial/index.md", guideIndex, referenceIndex].includes(path)
     ? '<div class="docs-intro-note" role="note">This documentation is for developers. It is available only in English.</div>' : ""
   const guide = activeSection?.path === guideIndex && path !== guideIndex && !missing
-  const {intro, body} = renderMarkdown(source, {path, library, highlighter, staticBuild, guideIcons, guide, capabilities, sandbox})
+  const searchPage = searchIndex && isSearchPage(path)
+    ? {title, href: libraryURL(path, path, library, staticBuild), headings: []} : undefined
+  const {intro, body} = renderMarkdown(source, {path, library, highlighter, staticBuild, guideIcons, guide, capabilities, sandbox, searchPage})
+  if(searchPage) searchIndex.push(searchPage)
+  const searchURL = staticBuild ? `/${searchIndexAsset(library)}` : `${searchIndexPath}?library=${library}`
   const guideIntro = intro
     ? `<header class="guide-intro"><div class="guide-intro-meta">${breadcrumb}${renderGuideKeywords(path, href)}</div><div class="guide-intro-content"><div class="guide-intro-text">${intro.title}${intro.text}</div>${intro.illustration}</div></header>` : ""
   return `<!doctype html>
@@ -752,6 +768,16 @@ function renderPage({source, path, sections, library, highlighter, guideIcons, c
               </select>
               <noscript>${staticBuild ? libraries.map(({value, label}) => `<a href="${escapeHTML(libraryURL(path, path, value, true))}">${label}</a>`).join(" ") : '<button type="submit">Apply</button>'}</noscript>
             </form>
+            <search class="docs-search" data-search-index="${searchURL}" hidden>
+              <div class="docs-search-field">
+                <span class="docs-search-icon" aria-hidden="true">${searchIcon}</span>
+                <input id="docs-search" type="text" role="combobox" aria-label="Search docs" placeholder="Search..." aria-autocomplete="list" aria-expanded="false" aria-controls="docs-search-results" inputmode="search" enterkeyhint="search" autocorrect="off" autocapitalize="none" spellcheck="false">
+              </div>
+              <div class="docs-search-panel" popover="auto" hidden>
+                <p class="docs-search-status" role="status"></p>
+                <ul id="docs-search-results" class="docs-search-results" role="listbox" aria-label="Search results" hidden></ul>
+              </div>
+            </search>
             ${shortcuts}
           </div>
           <div class="documentation-sections" style="--nav-heading-count:${headingCount}">${menu}</div>
@@ -831,6 +857,25 @@ export function documentationPlugin() {
           response.writeHead(302, {Location: `/docs/widgets/${url.search}`}).end()
           return
         }
+        if(path === searchIndexPath) {
+          try {
+            const headers = {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"}
+            if(request.method === "HEAD") return response.writeHead(200, headers).end()
+            const [files, docsNav, codeHighlighter, guideIcons] = await Promise.all([
+              filesIn(resolve(root, "docs/widgets")), navigation(root, true), highlighter(), readGuideIcons(root),
+            ])
+            const searchIndex = []
+            for(const file of files.sort()) {
+              const path = `/${relative(root, file)}`
+              if(!isSearchPage(path)) continue
+              const source = await prepareDocumentation(await documentationSource(root, path, library), {root, path, library, highlighter: codeHighlighter})
+              renderPage({source, path, ...docsNav, library, highlighter: codeHighlighter, guideIcons, searchIndex})
+            }
+            response.writeHead(200, headers).end(JSON.stringify(searchIndex))
+          }
+          catch(error) { next(error) }
+          return
+        }
         const inDocs = path.startsWith("/docs/")
         if(!inDocs && !["/README.md", "/packages.md"].includes(path)) return next()
         if(path.startsWith("/docs/widgets/examples/") && url.searchParams.get("download") === "1") {
@@ -878,8 +923,7 @@ export function documentationPlugin() {
           const [codeHighlighter, docsNav, guideIcons, catalog] = await Promise.all([
             highlighter(), navigation(root, [home, guideIndex].includes(path)), readGuideIcons(root), path === sandboxPage && sandboxExamples(root),
           ])
-          source = await includeLiveExamples(source, {root, path, library})
-          source = await embedExamples(source, {root, path, library, highlighter: codeHighlighter})
+          source = await prepareDocumentation(source, {root, path, library, highlighter: codeHighlighter})
           const html = renderPage({source, path, ...docsNav, library, highlighter: codeHighlighter, guideIcons, missing,
             sandbox: catalog ? await catalog(library) : undefined})
           const body = await server.transformIndexHtml(url.pathname, html)
@@ -903,19 +947,20 @@ export function documentationPlugin() {
       ])
       const catalog = await sandboxExamples(root, files)
       const emit = (fileName, source) => this.emitFile({type: "asset", fileName, source})
+      const searchIndexes = new Map(libraries.map(({value}) => [value, []]))
       for(const file of [...files.filter(file => file.endsWith(".md")), resolve(root, "README.md"), resolve(root, "packages.md")]) {
         const path = `/${relative(root, file)}`
         const content = await readFile(file, "utf8")
         for(const {value: library} of libraries) {
-          const expanded = await includeLiveExamples(await documentationSource(root, path, library, content), {root, path, library})
-          const source = await embedExamples(expanded, {root, path, library, highlighter: codeHighlighter})
+          const source = await prepareDocumentation(await documentationSource(root, path, library, content), {root, path, library, highlighter: codeHighlighter})
           const html = renderPage({source, path, ...docsNav, library, highlighter: codeHighlighter, guideIcons, staticBuild: true,
-            siteEntryURL, documentationURL, sandbox: path === sandboxPage ? await catalog(library) : undefined})
+            siteEntryURL, documentationURL, searchIndex: searchIndexes.get(library), sandbox: path === sandboxPage ? await catalog(library) : undefined})
           const output = new URL(libraryURL(path, path, library, true), "http://docs.local").pathname.slice(1)
           emit(output, html)
           if(path === home) emit(`docs/index${library === "lit" ? "" : `.${library}`}.html`, html)
         }
       }
+      for(const [library, searchIndex] of searchIndexes) emit(searchIndexAsset(library), JSON.stringify(searchIndex))
       // Downloads retain their original source; executable previews are Vite HTML entries.
       for(const file of files.filter(file => !file.endsWith(".md")
         && !["docs/widgets/examples/preview.html", "docs/widgets/examples/hello.html"].includes(relative(root, file)))) {
