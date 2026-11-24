@@ -822,23 +822,41 @@ describe("selectCoords()", () => {
     Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => null})
     expect($.pointFromCoords(50, 160)).toEqual({node: document.body, offset: 1, overrideNative: true})
   })
+
+  it("keeps disclosure gaps inside a popup nested in another disclosure", () => {
+    setBody('<details open><summary>Outer</summary><p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><details open><summary>Inner</summary><p>Body</p></details></div></details>')
+    const outer = document.querySelector("details")!, content = document.querySelector("[popover]")!
+    const inner = content.querySelector("details")!, paragraph = inner.querySelector("p")!
+    outer.getBoundingClientRect = () => new DOMRect(20, 100, 200, 100)
+    content.getBoundingClientRect = () => new DOMRect(20, 220, 200, 180)
+    inner.getBoundingClientRect = () => new DOMRect(30, 230, 180, 100)
+    inner.querySelector("summary")!.getBoundingClientRect = () => new DOMRect(40, 240, 160, 20)
+    paragraph.getBoundingClientRect = () => new DOMRect(40, 280, 160, 30)
+    mockHitTest(paragraph.firstChild as Text, 2, paragraph)
+    expect($.pointFromCoords(50, 340, paragraph)).toEqual({node: content, offset: 1})
+  })
 })
 
 describe("captioned element hit testing", () => {
-  it.each(["figure", "table"])("keeps popup text hits in their own flow outside an ancestor %s", tag => {
+  it.each(["figure", "table", "details"])("keeps popup text hits in their own flow outside an ancestor %s", tag => {
     const popup = '<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><p>Popup text</p></div>'
     setBody(tag === "figure" ? `<figure><p>Content</p>${popup}<figcaption>Label</figcaption></figure>`
+      : tag === "details" ? `<details open><summary>Heading</summary>${popup}</details>`
       : `<table><tbody><tr><td>${popup}</td></tr></tbody></table>`)
     const target = document.querySelector(tag)!, content = document.querySelector("[popover]")!, paragraph = content.querySelector("p")!
     const text = paragraph.firstChild!
     target.getBoundingClientRect = () => new DOMRect(20, 100, 200, 100)
-    content.getBoundingClientRect = () => new DOMRect(20, 220, 200, 80)
-    paragraph.getBoundingClientRect = () => new DOMRect(30, 230, 180, 30)
     const caret = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
     const hits = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
     Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => ({offsetNode: text, offset: 3})})
     Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [paragraph, content, target, document.body]})
-    try { expect($.pointFromCoords(50, 240, paragraph)).toMatchObject({node: text, offset: 3}) }
+    try {
+      for(const top of [20, 120, 220]) {
+        content.getBoundingClientRect = () => new DOMRect(20, top, 200, 80)
+        paragraph.getBoundingClientRect = () => new DOMRect(30, top + 10, 180, 30)
+        expect($.pointFromCoords(50, top + 20, paragraph)).toMatchObject({node: text, offset: 3})
+      }
+    }
     finally {
       if(caret) Object.defineProperty(document, "caretPositionFromPoint", caret)
       else Reflect.deleteProperty(document, "caretPositionFromPoint")

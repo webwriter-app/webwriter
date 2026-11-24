@@ -817,11 +817,13 @@ export class EditingSelection {
     }
     if(listGap) return listGap
     let disclosure = pointerElement?.closest("details") ?? caretElement?.closest("details") ?? null
-    const insideDisclosure = disclosure?.open && root.contains(disclosure)
+    const insideDisclosure = disclosure?.open && root.contains(disclosure) && editingFlowRoot(disclosure) === flow
       && x >= disclosure.getBoundingClientRect().left && x <= disclosure.getBoundingClientRect().right
       && y >= disclosure.getBoundingClientRect().top && y <= disclosure.getBoundingClientRect().bottom ? disclosure : null
     let disclosureGap: ReturnType<typeof gap> | null = null
-    while(disclosure && root.contains(disclosure)) {
+    // Positioned popup content has its own flow, even when it overflows a
+    // disclosure. Only disclosures in that flow can supply its outer gaps.
+    while(disclosure && root.contains(disclosure) && editingFlowRoot(disclosure) === flow) {
       const rect = disclosure.getBoundingClientRect()
       if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
         disclosureGap = gap(disclosure, y < rect.top ? "before" : "after")

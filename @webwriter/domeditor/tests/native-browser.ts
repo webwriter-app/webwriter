@@ -3425,44 +3425,58 @@ await check("popup content drags stay inside the bubble", async () => {
   finally { view.editor?.destroy(); frame.remove() }
 })
 
-await check("popup table content clicks keep the bubble open", async () => {
-  const frame = document.createElement("iframe")
-  frame.style.cssText = "width:800px!important;max-width:none;height:400px"
-  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
-  nativeRootEditor.addAppendix(frame)
-  const view = frame.contentWindow as Window & {editor?: DOMEditor, PointerEvent: typeof PointerEvent, MouseEvent: typeof MouseEvent}
-  try {
-    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
-    assert(view.editor, "popup table fixture did not initialize")
-    const doc = frame.contentDocument!, selection = view.getSelection()!, editor = view.editor!
-    doc.body.innerHTML = '<table><tbody><tr><td><p>Before <span class="ww-popup"><button popovertarget="note">Toggle</button></span> after</p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Bubble words here</p></div></td><td><p>Other</p></td></tr></tbody></table>'
-    const content = doc.querySelector<HTMLElement>("[popover]")!, text = content.querySelector("p")!.firstChild!
-    selection.setPosition(text, 3)
-    editor.features.selection.processSelection()
-    editor.features.dialog.refresh()
-    await layoutFrame()
-    assert(hasPresentationState(content, "popup-visible"), "popup did not open in the table cell")
-    const range = doc.createRange()
-    range.setStart(text, 3); range.collapse(true)
-    const rect = range.getBoundingClientRect(), bubble = content.getBoundingClientRect()
-    for(const [x, y] of [[rect.left + 1, rect.top + rect.height / 2], [bubble.right - 5, bubble.bottom - 5]]) {
-      const hit = doc.elementFromPoint(x, y)
-      if(!hit || !content.contains(hit)) throw new Error("popup content is not hittable inside the table")
-      hit.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerType: "mouse", pointerId: 89,
-        button: 0, buttons: 1, clientX: x, clientY: y}))
-      hit.dispatchEvent(new view.MouseEvent("mousedown", {bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y}))
-      doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerType: "mouse", pointerId: 89,
-        button: 0, clientX: x, clientY: y}))
-      doc.dispatchEvent(new Event("selectionchange"))
-      await layoutFrame()
+await check("popup table and Details content clicks keep the bubble open", async () => {
+  const popup = '<p>Before <span class="ww-popup"><button popovertarget="note">Toggle</button></span> after</p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Bubble words here</p></div>'
+  for(const html of [
+    `<table><tbody><tr><td>${popup}</td><td><p>Other</p></td></tr></tbody></table>`,
+    `<details open><summary>Heading</summary>${popup}</details>`,
+    `<details open><summary>Outer</summary><details open><summary>Inner</summary>${popup}</details></details>`,
+  ]) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:800px!important;max-width:none;height:400px"
+    frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
+    nativeRootEditor.addAppendix(frame)
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, PointerEvent: typeof PointerEvent, MouseEvent: typeof MouseEvent}
+    try {
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor, "popup container fixture did not initialize")
+      const doc = frame.contentDocument!, selection = view.getSelection()!, editor = view.editor!
+      doc.body.innerHTML = html
+      const content = doc.querySelector<HTMLElement>("[popover]")!, text = content.querySelector("p")!.firstChild!
+      selection.setPosition(text, 3)
+      editor.features.selection.processSelection()
       editor.features.dialog.refresh()
-      assert(content.contains(selection.anchorNode) && content.contains(selection.focusNode),
-        `clicking popup content in a table moved the selection out of the bubble: ${selection.anchorNode?.nodeName}@${selection.anchorOffset}, hit ${hit.localName}`)
-      assert(hasPresentationState(content, "popup-visible"), "clicking popup content in a table closed the bubble")
-      assert(!editor.features.table.hasCellSelection, "clicking popup content selected the table cell")
+      await layoutFrame()
+      assert(hasPresentationState(content, "popup-visible"), "popup did not open in its container")
+      const range = doc.createRange()
+      range.setStart(text, 3); range.collapse(true)
+      const rect = range.getBoundingClientRect(), bubble = content.getBoundingClientRect()
+      for(const [x, y] of [[rect.left + 1, rect.top + rect.height / 2], [bubble.right - 5, bubble.bottom - 5],
+        [rect.left + 1, rect.top + rect.height / 2]]) {
+        const hit = doc.elementFromPoint(x, y)
+        if(!hit || !content.contains(hit)) throw new Error("popup content is not hittable inside its container")
+        hit.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerType: "mouse", pointerId: 89,
+          button: 0, buttons: 1, clientX: x, clientY: y}))
+        hit.dispatchEvent(new view.MouseEvent("mousedown", {bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y}))
+        doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerType: "mouse", pointerId: 89,
+          button: 0, clientX: x, clientY: y}))
+        hit.dispatchEvent(new view.MouseEvent("click", {bubbles: true, cancelable: true, detail: 1,
+          button: 0, clientX: x, clientY: y}))
+        doc.dispatchEvent(new Event("selectionchange"))
+        await layoutFrame()
+        editor.features.dialog.refresh()
+        assert(content.contains(selection.anchorNode) && content.contains(selection.focusNode),
+          `clicking popup content moved the selection out of the bubble: ${selection.anchorNode?.nodeName}@${selection.anchorOffset}, hit ${hit.localName}, container ${content.parentElement?.localName}`)
+        assert(hasPresentationState(content, "popup-visible"), "clicking popup content closed the bubble")
+        assert(!editor.features.table.hasCellSelection, "clicking popup content selected the table cell")
+      }
+      assert(doc.execCommand("insertText", false, "edited"), "popup did not accept native typing")
+      assert(content.textContent?.includes("edited") && content.textContent.replace("edited", "") === "Bubble words here",
+        "native typing did not edit the popup content")
+      assert(Array.from(doc.querySelectorAll("details")).every(details => details.open), "editing the popup closed its disclosure")
     }
+    finally { view.editor?.destroy(); frame.remove() }
   }
-  finally { view.editor?.destroy(); frame.remove() }
 })
 
 await check("popup table trailing gap accepts Enter", async () => {

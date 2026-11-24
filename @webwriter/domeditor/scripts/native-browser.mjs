@@ -82,7 +82,7 @@ const expectedChecks = [
   "leaving a gap restores the native text caret",
   "gap carets track their authored boundary",
   "popup content drags stay inside the bubble",
-  "popup table content clicks keep the bubble open",
+  "popup table and Details content clicks keep the bubble open",
   "popup table trailing gap accepts Enter",
   "popup toggle text selection contrasts with its button",
   "popup parts receive scoped styles without changing their layout",
