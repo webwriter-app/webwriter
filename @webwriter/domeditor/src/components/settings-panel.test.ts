@@ -18,6 +18,10 @@ import {excludedMarkNames} from "../marks"
 import {AppRibbon} from "./ribbon"
 import {SettingsPanel} from "./settings-panel"
 import type {RibbonMenu} from "./ribbon-menu"
+import {startCloudSignIn} from "../cloud-sign-in"
+
+// Provider sign-in leaves the page; the tests only check what is handed over.
+vi.mock("../cloud-sign-in", async importOriginal => ({...await importOriginal<typeof import("../cloud-sign-in")>(), startCloudSignIn: vi.fn()}))
 
 const shortcutEvent = (shortcut: string) => {
   const parts = shortcut.split("+")
@@ -802,8 +806,11 @@ describe("identity and cloud settings", () => {
     const click = (label: string) => [...root.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === label)!.click()
     const submitProvider = async () => {
       const form = root.querySelector<HTMLFormElement>(".new-provider")!
-      form.querySelector<HTMLInputElement>('[name="username"]')!.value = "ada"
-      form.querySelector<HTMLInputElement>('[name="password"]')!.value = "transient-password"
+      // Edumix signs in on its identity provider; only custom providers ask for credentials here.
+      const username = form.querySelector<HTMLInputElement>('[name="username"]')
+      const password = form.querySelector<HTMLInputElement>('[name="password"]')
+      if(username) username.value = "ada"
+      if(password) password.value = "transient-password"
       form.dispatchEvent(new Event("submit", {cancelable: true}))
       await vi.waitFor(() => expect(panel.settings.cloudServices.at(-1)?.accessToken).toBe("access-token"))
       await panel.updateComplete
@@ -845,6 +852,29 @@ describe("identity and cloud settings", () => {
     expect(password.value).toBe("")
     expect(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)).not.toContain("never-store-this")
     expect(panel.shadowRoot!.textContent).toContain("Signed in")
+  })
+
+  it("sends an Edumix sign-in to the advertised identity provider without asking for a password", async () => {
+    const oidc = {issuer: "https://auth.example/realms/edumix", clientId: "webwriter"}
+    vi.stubGlobal("fetch", vi.fn(async () => cloudResponse({...sessionMetadata, signInUrl: undefined, oidc, user: null})))
+    const panel = await mountPanel()
+    panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+    const root = panel.shadowRoot!
+    ;[...root.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "edumix.eu")!.click()
+    await panel.updateComplete
+    const form = root.querySelector<HTMLFormElement>(".new-provider")!
+    expect(form.querySelector('[name="password"]')).toBeNull()
+    expect(form.querySelector('[name="username"]')).toBeNull()
+    form.requestSubmit()
+    await vi.waitFor(() => expect(startCloudSignIn).toHaveBeenCalledOnce())
+    const [service] = loadAppSettings().cloudServices
+    expect(vi.mocked(startCloudSignIn).mock.calls[0][0]).toEqual({...service, oidc})
+    expect(service).toMatchObject({type: "edumix", oidc})
+    expect(service.accessToken).toBeUndefined()
+    expect(loadAppSettings().activeCloudServiceId).toBe(service.id)
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(vi.mocked(fetch).mock.calls[0][1]?.body).toBeUndefined()
+    expect(root.querySelector('[role="alert"]')).toBeNull()
   })
 
   it.each(["", "unused-password"])("adds a no-auth local provider through its loopback alias without requiring credentials (%s)", async suppliedPassword => {
@@ -942,7 +972,8 @@ it("reveals the selected provider form, clears credentials when switching or can
   expect(choices[0].getAttribute("aria-pressed")).toBe("true")
   expect(root.querySelector('.new-provider [name="url"]')).toBeNull()
   expect(root.textContent).not.toContain("Passwords are never saved")
-  root.querySelector<HTMLInputElement>('.new-provider [name="password"]')!.value = "discard-on-switch"
+  expect(root.querySelector('.new-provider [name="password"]')).toBeNull()
+  expect(root.querySelector(".new-provider")!.textContent).toContain("WebWriter never sees your password")
   choices[1].click()
   await panel.updateComplete
   expect(choices[0].getAttribute("aria-pressed")).toBe("false")

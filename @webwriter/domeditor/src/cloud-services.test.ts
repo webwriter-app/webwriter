@@ -2,6 +2,7 @@
 import {describe, expect, it} from "vitest"
 import {
   EDUMIX_URL,
+  cloudOIDC,
   cloudServiceExpired,
   cloudServiceURL,
   storedCloudServices,
@@ -101,5 +102,31 @@ describe("cloud service token expiry", () => {
     expect(cloudServiceExpired({id: "one", type: "url", url: "https://x.example", username: "u", accessToken: token}, 100_000)).toBe(true)
     expect(cloudServiceExpired({id: "one", type: "url", url: "https://x.example", username: "u", accessToken: token, expiresAt: 200_000}, 100_000)).toBe(false)
     expect(cloudServiceExpired({id: "one", type: "url", url: "https://x.example", username: "u", accessToken: "opaque"}, 100_000)).toBe(false)
+  })
+})
+
+describe("identity providers", () => {
+  it("accepts an HTTPS issuer (HTTP only on loopback) with a client ID", () => {
+    expect(cloudOIDC({issuer: "https://auth.example/realms/edumix/", clientId: "webwriter"}))
+      .toEqual({issuer: "https://auth.example/realms/edumix", clientId: "webwriter"})
+    expect(cloudOIDC({issuer: "http://localhost:8080/realms/edumix", clientId: "webwriter"})?.issuer)
+      .toBe("http://localhost:8080/realms/edumix")
+  })
+
+  it.each([
+    undefined, null, "https://auth.example", {issuer: "https://auth.example"}, {clientId: "webwriter"},
+    {issuer: "http://auth.example/realms/edumix", clientId: "webwriter"}, {issuer: "https://auth.example", clientId: ""},
+  ])("rejects %j", value => {
+    expect(cloudOIDC(value)).toBeUndefined()
+  })
+
+  it("keeps a valid provider with a saved service and drops an invalid one", () => {
+    const oidc = {issuer: "https://auth.example/realms/edumix", clientId: "webwriter"}
+    const [kept, dropped] = storedCloudServices([
+      {id: "a", type: "url", url: "https://cloud.example", username: "", oidc},
+      {id: "b", type: "url", url: "https://cloud.example", username: "", oidc: {issuer: "javascript:alert(1)", clientId: "x"}},
+    ])
+    expect(kept.oidc).toEqual(oidc)
+    expect(dropped).not.toHaveProperty("oidc")
   })
 })

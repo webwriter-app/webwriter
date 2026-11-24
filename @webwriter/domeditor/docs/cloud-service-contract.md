@@ -31,6 +31,23 @@ Alternatively return `expiresAt` as Unix epoch **milliseconds**; it takes
 precedence over `expiresIn` (seconds). JWT `exp` is the fallback expiry hint.
 No refresh token is required; expiry requires signing in again.
 
+### Sign-in on an identity provider
+
+Instead of `signInUrl`, a service may advertise an OpenID Connect provider:
+
+```json
+"oidc": { "issuer": "https://auth.example/realms/edumix", "clientId": "webwriter" }
+```
+
+WebWriter then never asks for a password. "Sign in" leaves for the provider's login
+page (Authorization Code + PKCE with `oidc-client-ts`, public client, redirect URI
+`<app origin>/editor/`) and returns with an access token, which it sends as the
+bearer token like a password sign-in's. The issuer must be HTTPS (HTTP on loopback).
+The service validates that token (signature, issuer, its own audience, the client
+as `azp`). Access tokens are short-lived; WebWriter renews them shortly before
+expiry with the provider's refresh token and signs out when that fails. The Edumix
+preset is `VITE_EDUMIX_URL` at build time, `https://edumix.eu` by default.
+
 Authenticated `GET /api/session` accepts `Authorization: Bearer <accessToken>`
 and returns the session with its user, validating a saved token on reload.
 Use HTTP 401 for expired/revoked tokens. Other failures may return
