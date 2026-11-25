@@ -125,7 +125,7 @@ import {
 import type {DialogSelectionState} from "../dialog"
 import type {MathSelectionState} from "../math"
 import type {ElementAttributeState} from "../element-attributes"
-import {matchesWidgetFileFormat, widgetOptionValue, type WidgetOptionsState} from "../widget-options"
+import {defaultMediaAccept, matchesWidgetFileFormat, readMediaFileAsDataUrl, widgetOptionValue, type WidgetOptionsState} from "../widget-options"
 import {groupWidgetFileFormats} from "../widget-file-formats"
 import {
   aiEditReviewEvent,
@@ -10181,6 +10181,16 @@ export class DomEditor extends LitElement {
       "element-attribute-change": this.handleElementAttributeChange.bind(this),
       "widget-option-change": this.handleWidgetOptionChange.bind(this),
       "widget-action": this.handleWidgetAction.bind(this),
+      "ww-request-media": (event: Event) => {
+        const detail = (event as CustomEvent<{media?: "image" | "audio" | "video", accept?: string, resolve?: (url: string | null) => void}>).detail
+        if(event.defaultPrevented || typeof detail?.resolve !== "function") return
+        event.preventDefault()
+        const resolve = detail.resolve
+        const accept = detail.accept?.trim() || defaultMediaAccept(detail.media)
+        void this.pickFileInput(accept)
+          .then(file => file ? readMediaFileAsDataUrl(file) : null)
+          .then(resolve, () => resolve(null))
+      },
       "widget-sharing-change": this.handleWidgetSharingChange,
       "link-sharing-change": this.handleLinkSharingChange,
       "collaboration-menu-open": () => {if(!this.linkSharingBusy) void this.refreshDocumentSharing()},

@@ -1,1 +1,1 @@
-export declare const widgetOptionControlStyles: import("lit").CSSResult;
+export { widgetOptionControlStyles } from "@webwriter/widget/widget-option-controls";

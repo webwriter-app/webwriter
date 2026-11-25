@@ -70,6 +70,8 @@ export function isWidgetOptionsState(value: unknown): value is WidgetOptionsStat
       && ["min", "max", "step", "minlength", "maxlength"].every(key => option[key] === undefined
         || typeof option[key] === "number" && Number.isFinite(option[key]))
       && ["multiline", "multiple"].every(key => option[key] === undefined || typeof option[key] === "boolean")
+      && (option.media === undefined || option.media === "image" || option.media === "audio" || option.media === "video")
+      && (option.accept === undefined || typeof option.accept === "string")
       && (option.swatches === undefined || Array.isArray(option.swatches) && option.swatches.every(swatch => typeof swatch === "string"))
       && (option.choices === undefined || Array.isArray(option.choices) && option.choices.every(choice => isRecord(choice)
         && typeof choice.value === "string" && typeof choice.label === "string" && strings(choice, ["description"]))))
@@ -80,4 +82,44 @@ export function isWidgetOptionsState(value: unknown): value is WidgetOptionsStat
         && strings(action.input, ["accept"]) && booleans(action.input, ["multiple"]))
       && (action.intent === undefined || action.intent === "default" || action.intent === "danger")
       && (action.description === undefined || typeof action.description === "string"))
+}
+
+export const defaultMediaAccept = (media?: "image" | "audio" | "video") =>
+  media === "image" || media === "audio" || media === "video" ? `${media}/*` : "image/*,audio/*,video/*"
+
+function rasterizeSvgDataUrl(dataUrl: string): Promise<string | null> {
+  return new Promise(resolve => {
+    const img = new Image()
+    img.onload = () => {
+      const width = img.naturalWidth || 800
+      const height = img.naturalHeight || 600
+      const canvas = document.createElement("canvas")
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext("2d")
+      if(!ctx) { resolve(null); return }
+      ctx.drawImage(img, 0, 0, width, height)
+      try { resolve(canvas.toDataURL("image/png")) }
+      catch { resolve(null) }
+    }
+    img.onerror = () => resolve(null)
+    img.src = dataUrl
+  })
+}
+
+export function readMediaFileAsDataUrl(file: File): Promise<string | null> {
+  return new Promise(resolve => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : null
+      if(!result) { resolve(null); return }
+      if(result.startsWith("data:image/svg+xml")) {
+        void rasterizeSvgDataUrl(result).then(resolve)
+        return
+      }
+      resolve(result)
+    }
+    reader.onerror = () => resolve(null)
+    reader.readAsDataURL(file)
+  })
 }

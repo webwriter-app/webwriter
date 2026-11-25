@@ -2613,6 +2613,16 @@ export abstract class EditingControls extends LitElement {
     return renderWidgetOptionField(option, dispatch, fieldScope, {
       label: this.renderWidgetOptionLabel(option, dispatch, fieldScope),
       safeColor: value => safeCssColor(value, ""),
+      pickMedia: targetOption => new Promise<string | null>(resolve => {
+        const event = new CustomEvent("ww-request-media", {
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+          detail: {media: targetOption.media, accept: targetOption.accept, resolve},
+        })
+        this.dispatchEvent(event)
+        if(!event.defaultPrevented) resolve(null)
+      }),
     })
   }
 

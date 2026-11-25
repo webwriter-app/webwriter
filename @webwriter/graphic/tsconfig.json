@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "esModuleInterop": true,
+    "moduleResolution": "Bundler",
+    "customConditions": ["source"],
+    "module": "ES2022",
+    "types": [],
+    "strict": true,
+    "strictPropertyInitialization": false
+  },
+  "files": [
+    "index.ts",
+    "graphic.ts",
+    "shapes.ts",
+    "presets.ts",
+    "canvas.ts"
+  ]
+}

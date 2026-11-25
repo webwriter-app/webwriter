@@ -1,7 +1,7 @@
 import { LitElement, type PropertyDeclaration } from "lit";
 import type * as WidgetOptions from "@webwriter/widget";
 import { WidgetRuntime, type WidgetDataContext, type Declared, type LocalizedText, type ActionDeclaration, type OptionGroupDeclaration, type PermissionDeclaration, type ConvertFromDeclarations, type ConvertToDeclarations } from "@webwriter/widget";
-export { isDataBlockType, resolveDeclarations, type Declared, type DeclaredFlag, type DeclaredText, type WidgetDataContext, type WidgetDataMode, type LocalizedText, type OptionAvailability, type OptionGroupDeclaration, type PermissionDeclaration, type SelectOptionChoice, type ActionDeclaration, type ConvertFromDeclarations, type ConvertToDeclarations, type FileExtensionKey, type MediaTypeKey, type FileFormatKey, type ElementImportHandler, type FileImportHandler, type FileImportResult, type ElementExportHandler, type FileExportHandler } from "@webwriter/widget";
+export { isDataBlockType, requestMedia, resolveDeclarations, type Declared, type DeclaredFlag, type DeclaredText, type WidgetDataContext, type WidgetDataMode, type LocalizedText, type OptionAvailability, type OptionGroupDeclaration, type PermissionDeclaration, type SelectOptionChoice, type ActionDeclaration, type MediaOptionKind, type RequestMediaDetail, type ConvertFromDeclarations, type ConvertToDeclarations, type FileExtensionKey, type MediaTypeKey, type FileFormatKey, type ElementImportHandler, type FileImportHandler, type FileImportResult, type ElementExportHandler, type FileExportHandler } from "@webwriter/widget";
 export * from "@lit-labs/signals";
 export { isNumber, isString, isBoolean, isSeries, isTable, hasShape, effectAccepts, type Table, type Series, type SignalShape, type SignalShapes, type SignalValue, type SignalDeclaration, type EffectDeclaration, type ReadableSignal } from "@webwriter/widget";
 export { WidgetDrawer, type WidgetStorageDestination } from "./widget-drawer";
@@ -38,11 +38,13 @@ export interface ObjectOptionDeclaration extends LitOption<WidgetOptions.ObjectO
 }
 export interface ColorOptionDeclaration extends LitOption<WidgetOptions.ColorOptionDeclaration> {
 }
+export interface MediaOptionDeclaration extends LitOption<WidgetOptions.MediaOptionDeclaration> {
+}
 export interface ReferenceOptionDeclaration extends LitOption<WidgetOptions.ReferenceOptionDeclaration> {
 }
 export interface SelectOptionDeclaration extends LitOption<WidgetOptions.SelectOptionDeclaration> {
 }
-export type OptionDeclaration = BooleanOptionDeclaration | StringOptionDeclaration | NumberOptionDeclaration | DateOptionDeclaration | DatetimeLocalOptionDeclaration | EmailOptionDeclaration | PasswordOptionDeclaration | TelOptionDeclaration | TimeOptionDeclaration | UrlOptionDeclaration | ObjectOptionDeclaration | ColorOptionDeclaration | SelectOptionDeclaration | ReferenceOptionDeclaration;
+export type OptionDeclaration = BooleanOptionDeclaration | StringOptionDeclaration | NumberOptionDeclaration | DateOptionDeclaration | DatetimeLocalOptionDeclaration | EmailOptionDeclaration | PasswordOptionDeclaration | TelOptionDeclaration | TimeOptionDeclaration | UrlOptionDeclaration | ObjectOptionDeclaration | ColorOptionDeclaration | MediaOptionDeclaration | SelectOptionDeclaration | ReferenceOptionDeclaration;
 export interface LitElementWw {
     get options(): Record<string, OptionDeclaration> | undefined;
     get actions(): Record<string, ActionDeclaration> | undefined;

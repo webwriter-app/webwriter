@@ -40,6 +40,8 @@ interface InputOptionDeclaration<TypeHint = any> extends BaseOptionDeclaration<T
     inputmode?: "none" | "text" | "decimal" | "numeric" | "tel" | "search" | "email" | "url";
 }
 export interface StringOptionDeclaration extends InputOptionDeclaration<StringConstructor | "string"> {
+    /** Show a language picker for a BCP 47 tag. */
+    control?: "language";
     multiline?: boolean;
 }
 export interface NumberOptionDeclaration extends InputOptionDeclaration<NumberConstructor | "number"> {
@@ -71,6 +73,21 @@ export interface UrlOptionDeclaration extends InputOptionDeclaration<"url"> {
 }
 export interface ObjectOptionDeclaration extends BaseOptionDeclaration<ObjectConstructor | "object" | ArrayConstructor | "array"> {
 }
+export type MediaOptionKind = "image" | "audio" | "video";
+export interface MediaOptionDeclaration extends BaseOptionDeclaration<"media"> {
+    media?: MediaOptionKind;
+    accept?: string;
+}
+export type RequestMediaDetail = {
+    media?: MediaOptionKind;
+    accept?: string;
+    resolve: (value: string | null) => void;
+};
+/** Asks an enclosing WebWriter editor to pick or supply a media URL for a widget. */
+export declare function requestMedia(host: Element, options?: {
+    media?: MediaOptionKind;
+    accept?: string;
+}): Promise<string | null>;
 export interface ColorOptionDeclaration extends BaseOptionDeclaration<"color"> {
     swatches?: string[];
 }
@@ -93,7 +110,7 @@ export interface SelectOptionDeclaration extends BaseOptionDeclaration<"select">
     multiple?: boolean;
     options?: SelectOptionChoice[];
 }
-export type OptionDeclaration = BooleanOptionDeclaration | StringOptionDeclaration | NumberOptionDeclaration | DateOptionDeclaration | DatetimeLocalOptionDeclaration | EmailOptionDeclaration | PasswordOptionDeclaration | TelOptionDeclaration | TimeOptionDeclaration | UrlOptionDeclaration | ObjectOptionDeclaration | ColorOptionDeclaration | SelectOptionDeclaration | ReferenceOptionDeclaration;
+export type OptionDeclaration = BooleanOptionDeclaration | StringOptionDeclaration | NumberOptionDeclaration | DateOptionDeclaration | DatetimeLocalOptionDeclaration | EmailOptionDeclaration | PasswordOptionDeclaration | TelOptionDeclaration | TimeOptionDeclaration | UrlOptionDeclaration | ObjectOptionDeclaration | ColorOptionDeclaration | MediaOptionDeclaration | SelectOptionDeclaration | ReferenceOptionDeclaration;
 export interface ActionDeclaration extends OptionAvailability {
     /** Native chooser input; the action method receives transient File[]. */
     input?: {

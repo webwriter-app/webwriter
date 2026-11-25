@@ -24,6 +24,7 @@
     "@webwriter/domeditor",
     "@webwriter/guidance",
     "@webwriter/lit",
+    "@webwriter/graphic",
     "@webwriter/widget",
     "@webwriter/react",
     "@webwriter/vue",
