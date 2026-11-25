@@ -7781,6 +7781,58 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "insertRibbonDrop", html: '<p>Package snippet</p>', position})
   })
 
+  it("loads missing snippet dependencies in one reload before inserting at the original drop", async () => {
+    const host = new DomEditor() as any
+    vi.spyOn(host, "focusEditor").mockImplementation(() => {})
+    const extra = {...demoPackage, name: "@webwriter/extra", version: "2.3.0", members: []}
+    const installed = {...demoPackage, name: "@webwriter/reuse", version: "1.4.0", members: []}
+    const snippet = {...demoPackage.members[1], editingConfig: {dependencies: [installed.name, extra.name]}}
+    const pkg = {...demoPackage, members: [snippet], manifest: {
+      name: demoPackage.name, version: demoPackage.version,
+      optionalDependencies: {[extra.name]: "^2.1.0", [installed.name]: "^1.0.0", "@webwriter/unused": "*"},
+    }}
+    host.installedPackages = [installed]
+    host.packages = [pkg]
+    const resolve = vi.spyOn(host.packageRegistry, "getPackageForRange").mockResolvedValue(extra)
+    vi.spyOn(host.packageRegistry, "fetchSnippet").mockResolvedValue("<p>Example</p>")
+    const execute = vi.spyOn(host, "execute").mockResolvedValue(true)
+    let loaded!: () => void
+    const barrier = new Promise<void>(done => { loaded = done })
+    const reload = vi.spyOn(host, "reloadEditor").mockImplementation(async packages => {
+      host.installedPackages = packages
+      host.frameRevision++
+      await barrier
+    })
+    const position = {anchor: {tname: "root"}, layout: "document"}
+    const insertion = host.insertRibbonDropAction(`package-member:${snippet.id}`, position)
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledWith([installed, pkg, extra]))
+    expect(execute).not.toHaveBeenCalled()
+    expect(resolve).toHaveBeenCalledExactlyOnceWith(extra.name, "^2.1.0")
+    loaded()
+    await insertion
+    expect(execute).toHaveBeenCalledExactlyOnceWith({type: "insertRibbonDrop", html: "<p>Example</p>", position, packageSnippet: true})
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(["mismatch", "unavailable"])("keeps the document intact when a snippet dependency is %s", async failure => {
+    const host = new DomEditor() as any
+    vi.spyOn(host, "focusEditor").mockImplementation(() => {})
+    const name = "@webwriter/extra"
+    const snippet = {...demoPackage.members[1], editingConfig: {dependencies: [name]}}
+    const pkg = {...demoPackage, members: [snippet], manifest: {
+      name: demoPackage.name, version: demoPackage.version, optionalDependencies: {[name]: "^2.0.0"},
+    }}
+    host.installedPackages = failure === "mismatch" ? [pkg, {...demoPackage, name, members: []}] : [pkg]
+    vi.spyOn(host.packageRegistry, "getPackageForRange").mockRejectedValue(new Error("Dependency download failed"))
+    vi.spyOn(host.packageRegistry, "fetchSnippet").mockResolvedValue("<p>Example</p>")
+    const execute = vi.spyOn(host, "execute").mockResolvedValue(true)
+    const reload = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    await host.installAndInsertPackage(pkg, snippet, {start: {}, end: {}, html: null})
+    expect(host.packageError).toContain(failure === "mismatch" ? "Version 1.0.0 is installed" : "Dependency download failed")
+    expect(reload).not.toHaveBeenCalled()
+    expect(execute).not.toHaveBeenCalled()
+  })
+
   it("renders Packages as ribbon buttons with a prefixed search bar", async () => {
     vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
     const {editor} = await mountEditor()

@@ -2,6 +2,9 @@ import {isExcludedDescendantList, widgetDefinitionErrors} from "./schema"
 import {isWidgetFileFormat} from "./widget-options"
 import {
   editingConfigKey,
+  isCompatibleSnippetsConfig,
+  isPackageName,
+  parsePackageWidgetReference,
   localizedText,
   mergeEditingConfig,
   PACKAGE_DOCUMENTATION_MAX_BYTES,
@@ -9,6 +12,7 @@ import {
   packageContents,
   packageDocumentationExcerpt,
   packageEditingConfigOptions,
+  packageOptionalDependencyRange,
   packageNameLabel,
   personLabel,
   repositoryUrl,
@@ -319,6 +323,8 @@ const isLocalizedText = (value: unknown) => typeof value === "string"
   || !!value && typeof value === "object" && !Array.isArray(value) && Object.values(value).every(text => typeof text === "string")
 
 const isFileFormatList = (value: unknown) => Array.isArray(value) && value.every(isWidgetFileFormat)
+const isWidgetReferenceList = (value: unknown) =>
+  Array.isArray(value) && value.every(reference => !!parsePackageWidgetReference(reference))
 
 const optionChecks: Record<string, (value: unknown) => boolean> = {
   label: isLocalizedText,
@@ -335,16 +341,21 @@ const optionChecks: Record<string, (value: unknown) => boolean> = {
   sharedData: value => typeof value === "boolean",
   importFormats: isFileFormatList,
   exportFormats: isFileFormatList,
+  dependencies: value => Array.isArray(value) && value.every(isPackageName),
+  compatibleHosts: isWidgetReferenceList,
+  equivalentTo: isWidgetReferenceList,
+  compatibleSnippets: isCompatibleSnippetsConfig,
 }
 
 /** Checks the editing config against the options the editor reads and the
  * package's exports, so mistakes surface in the Develop toolbox instead of
  * being silently ignored. */
-export function editingConfigWarnings(editingConfig: PackageEditingConfig, contents: PackageContents): LocalPackageWarning[] {
+export function editingConfigWarnings(editingConfig: PackageEditingConfig, contents: PackageContents, manifest?: WebWriterPackageManifest): LocalPackageWarning[] {
   const warnings: LocalPackageWarning[] = []
-  const memberKeys = new Set(contents.members.map(({member}) => editingConfigKey(member.exportName)))
+  const members = new Map(contents.members.map(({member}) => [editingConfigKey(member.exportName), member]))
   for(const [key, entry] of Object.entries(editingConfig)) {
-    if(key !== "." && !memberKeys.has(key)) {
+    const member = members.get(key)
+    if(key !== "." && !member) {
       warnings.push({code: "unmatched-editing-config", path: key, message: `Editing config '${key}' matches no widget or snippet export.`})
     }
     if(!entry || typeof entry !== "object" || Array.isArray(entry)) {
@@ -357,6 +368,22 @@ export function editingConfigWarnings(editingConfig: PackageEditingConfig, conte
       }
       else if(!optionChecks[option](value)) {
         warnings.push({code: "invalid-editing-option", path: key, message: `Editing config '${key}' has an invalid value for '${option}'.`})
+      }
+      else if(option === "dependencies" || option === "compatibleHosts" || option === "equivalentTo" || option === "compatibleSnippets") {
+        const allowed = option === "dependencies" ? member?.kind === "snippet"
+          : option === "compatibleHosts" ? !!member : member?.kind === "widget"
+        if(!allowed) {
+          warnings.push({code: "invalid-editing-option", path: key, message: `Editing config '${key}' cannot declare '${option}' on this export.`})
+          continue
+        }
+        if(!manifest || option === "compatibleSnippets") continue
+        const names = option === "dependencies" ? value as string[] : (value as string[]).flatMap(reference => {
+          const target = parsePackageWidgetReference(reference)
+          return target && target.name !== manifest.name ? [target.name] : []
+        })
+        for(const name of new Set(names)) if(!packageOptionalDependencyRange(manifest, name)) {
+          warnings.push({code: "invalid-editing-option", path: key, message: `Editing config '${key}' requires a version range for ${name} in optionalDependencies.`})
+        }
       }
     }
   }
@@ -420,7 +447,7 @@ export async function loadLocalPackage(directory: LocalPackageDirectory, options
   const editingConfig = mergeEditingConfig(externalConfig, manifest.editingConfig)
   const urlFor = (path: string) => options.urlFor(normalizePath(path))
   const contents = packageContents(manifest, editingConfig, urlFor, iconUrl, locale)
-  warnings.push(...editingConfigWarnings(editingConfig, contents))
+  warnings.push(...editingConfigWarnings(editingConfig, contents, manifest))
   const members: PackageMember[] = []
   for(const {member, requiredPaths, inferredStylePath, iconPath} of contents.members) {
     const available = await Promise.all(requiredPaths.map(path => fileExists(directory, path)))

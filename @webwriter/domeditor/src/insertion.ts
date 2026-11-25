@@ -21,6 +21,7 @@ export type InsertionMenuItem = {
   icon?: string
   iconUrl?: string
   htmlUrl?: string
+  packageAction?: string
 }
 
 type InsertionEntry<Item> = {item: Item} | {category: string, items: Item[]}

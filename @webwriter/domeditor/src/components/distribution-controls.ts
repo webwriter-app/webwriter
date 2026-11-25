@@ -286,9 +286,14 @@ export class DistributionControls extends LitElement {
       : shape ? `insert-graphic-shape:${shape.shape}` : "")
     const token = data.getData(nodeDragType)
     if(!action && !token) return
+    this.requestInsertion(token ? {token} : {action})
+  }
+
+  private requestInsertion(item: {token: string} | {action: string}) {
+    if(!this.state) return
     this.dispatchEvent(new CustomEvent<DistributionInsertDrop>("distribution-insert-drop", {
       bubbles: true, composed: true,
-      detail: {target: this.state.identity, general: this.general, ...(token ? {token} : {action})},
+      detail: {target: this.state.identity, general: this.general, ...item},
     }))
   }
 
@@ -453,7 +458,8 @@ export class DistributionControls extends LitElement {
       this.toggleAllElements(true)
     } else if (item.id) {
       const available = this.items.find((entry) => entry.id === item.id)
-      if (available) this.toggleItem(available, true)
+      if(available?.html) this.toggleItem(available, true)
+      else if(available) this.requestInsertion({action: available.id})
     }
     this.closePicker()
   }

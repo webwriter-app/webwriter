@@ -1,6 +1,9 @@
 import type {WidgetEditingConfig, WidgetSchemaDefinition} from "./schema"
 import {stripActiveContent} from "./active-content"
 import {fetchNpmFile, JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT, npmPublishedVersions} from "./npm-files"
+import {intersects, maxSatisfying, satisfies, valid, validRange} from "semver"
+import {toHexString} from "lib0/buffer"
+import {digest} from "lib0/hash/sha256"
 
 export {JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT}
 export const NPM_SEARCH_ENDPOINT = "https://registry.npmjs.org/-/v1/search"
@@ -106,6 +109,11 @@ export type PackageEditingConfigEntry = WidgetEditingConfig & {
   /** Groups this insertable in a second-level insertion menu. */
   category?: string
   uninsertable?: boolean
+  /** Optional package names required when inserting this snippet. */
+  dependencies?: string[]
+  compatibleHosts?: string[]
+  equivalentTo?: string[]
+  compatibleSnippets?: {category?: string}
   /** File format keys advertised by the widget's convertFrom handlers. */
   importFormats?: string[]
   /** File format keys advertised by the widget's convertTo handlers. */
@@ -116,7 +124,8 @@ export type PackageEditingConfigEntry = WidgetEditingConfig & {
 /** Options the editor reads from an editing-config entry. */
 export const packageEditingConfigOptions = [
   "label", "description", "category", "uninsertable", "group", "inline", "content", "isolating", "marks", "propagateEvents", "sharedData",
-  "excludedDescendants", "importFormats", "exportFormats",
+  "excludedDescendants", "importFormats", "exportFormats", "dependencies",
+  "compatibleHosts", "equivalentTo", "compatibleSnippets",
 ] as const
 
 export type PackageEditingConfig = Record<string, PackageEditingConfigEntry>
@@ -126,6 +135,7 @@ export type WebWriterPackageManifest = {
   version: string
   dependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
+  optionalDependencies?: Record<string, string>
   description?: string
   keywords?: string[]
   author?: PersonMetadata
@@ -199,6 +209,7 @@ export type PackageInsertionItem = {
   iconUrl?: string
   tag?: string
   htmlUrl?: string
+  packageAction?: string
   /** Non-insertable members still provide names and icons for existing widgets. */
   insertable?: boolean
 }
@@ -227,6 +238,11 @@ export type WebWriterPackage = {
   tests?: PackageTest[]
   editingConfig?: PackageEditingConfig
   manifest?: WebWriterPackageManifest
+}
+
+export type CompatibleSnippet = PackageMember & {
+  host: PackageMember & {tagName: string}
+  source: PackageMember
 }
 
 export const PACKAGE_DOCUMENTATION_MAX_BYTES = 1_000_000
@@ -336,8 +352,139 @@ export function packageMemberCategory(member: PackageMember) {
   return typeof category === "string" ? category.trim() || undefined : undefined
 }
 
+export const isPackageName = (value: unknown): value is string =>
+  typeof value === "string" && /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/.test(value)
+
+const isWidgetTag = (value: unknown): value is string =>
+  typeof value === "string" && /^[a-z][a-z0-9._-]*-[a-z0-9._-]*$/.test(value)
+
+export function parsePackageWidgetReference(value: unknown) {
+  if(typeof value !== "string") return
+  const separator = value.lastIndexOf("/widgets/")
+  if(separator === -1) return
+  const name = value.slice(0, separator)
+  const tag = value.slice(separator + "/widgets/".length)
+  if(isPackageName(name) && isWidgetTag(tag)) return {name, tag}
+}
+
+export const isCompatibleSnippetsConfig = (value: unknown): value is NonNullable<PackageEditingConfigEntry["compatibleSnippets"]> =>
+  isRecord(value) && (value.category === undefined || typeof value.category === "string")
+
+export function packageOptionalDependencyRange(manifest: WebWriterPackageManifest | undefined, name: string) {
+  const dependencies = manifest?.optionalDependencies
+  const range = isRecord(dependencies) && Object.hasOwn(dependencies, name) && dependencies[name]
+  return typeof range === "string" && range.trim() && validRange(range) ? range : undefined
+}
+
+export function packageMemberConfig(pkg: WebWriterPackage, member: PackageMember) {
+  const key = editingConfigKey(member.exportName)
+  return member.editingConfig ?? pkg.editingConfig?.[key] ?? pkg.manifest?.editingConfig?.[key]
+}
+
+export function packageSnippetDependencies(pkg: WebWriterPackage, member: PackageMember) {
+  const dependencies = packageMemberConfig(pkg, member)?.dependencies
+  if(member.kind !== "snippet" || dependencies === undefined) return []
+  if(!Array.isArray(dependencies) || !dependencies.every(isPackageName)) {
+    throw new TypeError(`Snippet '${member.label}' requires a list of package names in dependencies`)
+  }
+  return [...new Set(dependencies)].map(name => {
+    const range = packageOptionalDependencyRange(pkg.manifest, name)
+    if(!range) throw new Error(`Snippet '${member.label}' requires a version range for ${name} in optionalDependencies`)
+    return {name, range}
+  })
+}
+
+export function packageMemberNeedsPreparation(pkg: WebWriterPackage, member: PackageMember) {
+  if(isCompatibleSnippet(member)) return true
+  if(member.kind !== "snippet") return false
+  const value = packageMemberConfig(pkg, member)?.dependencies
+  return value !== undefined && (!Array.isArray(value) || value.length > 0)
+}
+
+export const isCompatibleSnippet = (member: PackageMember): member is CompatibleSnippet => "host" in member
+
+type WidgetEndpoint = {key: string, range: string}
+type WidgetEquivalence = {a: WidgetEndpoint, b: WidgetEndpoint}
+const widgetKey = (pkg: string, tag: string) => `${pkg}#${tag}`
+const packageActionEncoder = new TextEncoder()
+
+const versionRangesOverlap = (a: string, b: string) =>
+  valid(a) ? satisfies(a, b) : valid(b) ? satisfies(b, a) : intersects(a, b)
+
+function widgetEndpoints(pkg: WebWriterPackage, references: unknown): WidgetEndpoint[] {
+  if(!Array.isArray(references)) return []
+  return references.flatMap(value => {
+    const reference = parsePackageWidgetReference(value)
+    if(!reference) return []
+    const range = reference.name === pkg.name ? valid(pkg.version) : packageOptionalDependencyRange(pkg.manifest, reference.name)
+    return range ? [{key: widgetKey(reference.name, reference.tag), range}] : []
+  })
+}
+
+/** Builds the insertable variants from the installed package set. An equivalent
+ * widget may refer to a canonical widget whose package has yet to be installed. */
+export function packageCompatibleSnippets(packages: readonly WebWriterPackage[]) {
+  const hosts = new Map<string, {member: CompatibleSnippet["host"], category?: string}>()
+  const graph = new Map<string, WidgetEquivalence[]>()
+  for(const pkg of packages) for(const member of pkg.members) {
+    if(member.kind !== "widget" || !isWidgetTag(member.tagName) || !valid(pkg.version)) continue
+    const key = widgetKey(pkg.name, member.tagName)
+    const config = packageMemberConfig(pkg, member)
+    if(isCompatibleSnippetsConfig(config?.compatibleSnippets)) {
+      hosts.set(key, {member: {...member, tagName: member.tagName}, category: config.compatibleSnippets.category})
+    }
+    for(const target of widgetEndpoints(pkg, config?.equivalentTo)) {
+      if(key === target.key) continue
+      const edge = {a: {key, range: pkg.version}, b: target}
+      for(const endpoint of [edge.a, edge.b]) {
+        const edges = graph.get(endpoint.key)
+        if(edges) edges.push(edge)
+        else graph.set(endpoint.key, [edge])
+      }
+    }
+  }
+  const variants: CompatibleSnippet[] = []
+  if(!hosts.size) return variants
+  for(const pkg of packages) for(const source of pkg.members) {
+    if(!source.insertable) continue
+    const pending: {point: WidgetEndpoint, previous?: WidgetEquivalence}[] =
+      widgetEndpoints(pkg, packageMemberConfig(pkg, source)?.compatibleHosts).map(point => ({point}))
+    const visited = new Set<WidgetEndpoint>()
+    const matched = new Set<string>()
+    for(const {point, previous} of pending) {
+      if(visited.has(point)) continue
+      visited.add(point)
+      const host = hosts.get(point.key)
+      if(host && source.id !== host.member.id && !matched.has(point.key) && satisfies(host.member.packageVersion, point.range)) {
+        matched.add(point.key)
+        variants.push({
+          id: `compatible:${toHexString(digest(packageActionEncoder.encode(JSON.stringify([host.member.id, source.id]))))}`,
+          packageName: host.member.packageName,
+          packageVersion: host.member.packageVersion,
+          exportName: host.member.exportName,
+          kind: "snippet",
+          label: source.label,
+          description: source.description,
+          iconUrl: packageMemberIcon(pkg, source),
+          insertable: true,
+          editingConfig: {category: host.category},
+          host: host.member,
+          source,
+        })
+      }
+      for(const edge of graph.get(point.key) ?? []) {
+        if(edge === previous) continue
+        const [from, to] = edge.a.key === point.key ? [edge.a, edge.b] : [edge.b, edge.a]
+        if(versionRangesOverlap(point.range, from.range)) pending.push({point: to, previous: edge})
+      }
+    }
+  }
+  return variants
+}
+
 export function packageInsertionItems(packages: WebWriterPackage[], includeUninsertable = false): PackageInsertionItem[] {
-  return packages.flatMap(pkg => pkg.members
+  const compatible = packageCompatibleSnippets(packages)
+  return packages.flatMap(pkg => [...pkg.members, ...compatible.filter(member => member.packageName === pkg.name)]
     .filter(member => member.insertable || includeUninsertable)
     .map(member => {
       const category = packageMemberCategory(member)
@@ -352,6 +499,7 @@ export function packageInsertionItems(packages: WebWriterPackage[], includeUnins
         iconUrl: packageMemberIcon(pkg, member),
         ...(member.tagName ? {tag: member.tagName} : {}),
         ...(member.htmlUrl ? {htmlUrl: member.htmlUrl} : {}),
+        ...(packageMemberNeedsPreparation(pkg, member) ? {packageAction: packageMemberAction(member)} : {}),
         ...(!member.insertable ? {insertable: false} : {}),
       }
     }))
@@ -806,6 +954,14 @@ export class WebWriterPackageRegistry {
     const versions = await npmPublishedVersions(name, this.fetcher)
     return versions.reduce((latest, candidate) => packageUpdateKind(latest, candidate) === "compatible"
       ? candidate : latest, version)
+  }
+
+  async getPackageForRange(name: string, range: string) {
+    const version = maxSatisfying(await npmPublishedVersions(name, this.fetcher), range)
+    if(!version) throw new Error(`No published version of ${name} matches ${range}`)
+    const pkg = await this.getPackage({name, version})
+    if(pkg.name !== name || pkg.version !== version) throw new Error(`Invalid package metadata for ${name}@${version}`)
+    return pkg
   }
 
   /** Fetch a directly linked package without waiting for catalog search. */

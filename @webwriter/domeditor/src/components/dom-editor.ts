@@ -53,6 +53,7 @@ import {guard} from "lit/directives/guard.js"
 import {cache} from "lit/directives/cache.js"
 import {keyed} from "lit/directives/keyed.js"
 import {when} from "lit/directives/when.js"
+import {satisfies} from "semver"
 import {bindEditingUI, type EditingUIProperties, type EditingUIListeners} from "./editing-ui-bindings"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
@@ -68,11 +69,15 @@ import {
   defaultPackageExportSource,
   describePackageExport,
   editingConfigKey,
+  isCompatibleSnippet,
   normalizeEditingConfig,
   packageEditingConfigOptions,
   INSTALLED_PACKAGES_STORAGE_KEY,
   INSTALLED_PACKAGE_IMPORT_MAP_STORAGE_KEY,
   packageMemberAction,
+  packageMemberNeedsPreparation,
+  packageCompatibleSnippets,
+  packageSnippetDependencies,
   packageUpdateKind,
   packageVersionMajor,
   refreshPackageLabels,
@@ -174,6 +179,8 @@ import {
   type AIEditReviewMessage,
   type CommentState,
   type RibbonDropPosition,
+  type PackageInsertionSelection,
+  isPackageInsertionSelection,
   type HostDragDetail,
   type HostPointerDetail,
   type WidgetConversionState,
@@ -5602,10 +5609,8 @@ export class DomEditor extends LitElement {
       return
     }
     if(label?.startsWith("package-member:")) {
-      const pkg = [...this.installedPackages, ...this.localPackages, ...this.packages]
-        .find(candidate => candidate.members.some(member => packageMemberAction(member) === label))
-      const member = pkg?.members.find(candidate => packageMemberAction(candidate) === label)
-      if(pkg && member) void this.installAndInsertPackage(pkg, member)
+      const choice = this.packageInsertionChoice(label)
+      if(choice) void this.installAndInsertPackage(choice.pkg, choice.member)
       else this.focusEditor()
       return
     }
@@ -6555,7 +6560,8 @@ export class DomEditor extends LitElement {
     const generation = ++this.ribbonSnippetGeneration
     const language = this.documentLanguage
     const saved = this.settings.userSnippets.map(({id, html}) => ({id: `user-snippet:${id}`, html}))
-    const installed = this.installedPackages.flatMap(pkg => pkg.members.filter(member => member.insertable && member.kind === "snippet"))
+    const installed = this.installedPackages.flatMap(pkg => pkg.members.filter(member =>
+      member.insertable && member.kind === "snippet" && !packageMemberNeedsPreparation(pkg, member)))
     const results = await Promise.allSettled(installed.map(async member => ({
       id: packageMemberAction(member), html: await this.packageRegistry.fetchSnippet(member, language),
     })))
@@ -6569,9 +6575,7 @@ export class DomEditor extends LitElement {
   private async insertPackageMember(member: PackageMember, position?: RibbonDropPosition) {
     this.packageError = ""
     try {
-      const html = member.kind === "snippet"
-        ? await this.packageRegistry.fetchSnippet(member, this.documentLanguage)
-        : member.tagName ? `<${member.tagName}></${member.tagName}>` : ""
+      const html = await this.packageMemberHTML(member)
       if(!html) throw new Error(`Package member '${member.label}' has no insertable content`)
       await this.execute(position ? {type: "insertRibbonDrop", html, position} : {type: "insert", html})
     }
@@ -6581,6 +6585,96 @@ export class DomEditor extends LitElement {
     finally {
       this.focusEditor()
     }
+  }
+
+  private packageInsertionChoice(action: string) {
+    if(action.startsWith("package-member:compatible:")) {
+      const member = packageCompatibleSnippets(this.installedPackages).find(candidate => packageMemberAction(candidate) === action)
+      const pkg = member && this.installedPackages.find(candidate => candidate.name === member.packageName && candidate.version === member.packageVersion)
+      return pkg && member ? {pkg, member} : undefined
+    }
+    for(const pkg of [...this.installedPackages, ...this.localPackages, ...this.packages]) {
+      if(action === `package:${pkg.name}`) return {pkg, member: undefined}
+      const member = pkg.members.find(candidate => candidate.insertable && packageMemberAction(candidate) === action)
+      if(member) return {pkg, member}
+    }
+  }
+
+  private async packageMemberHTML(member: PackageMember): Promise<string> {
+    if(isCompatibleSnippet(member)) {
+      const template = this.ownerDocument.createElement("template")
+      template.innerHTML = await this.packageMemberHTML(member.source)
+      const host = template.content.ownerDocument.createElement(member.host.tagName)
+      host.append(template.content)
+      return host.outerHTML
+    }
+    if(member.kind === "snippet") return this.packageRegistry.fetchSnippet(member, this.documentLanguage)
+    return member.tagName ? `<${member.tagName}></${member.tagName}>` : ""
+  }
+
+  /** Resolve the entire package set before changing the editor frame. */
+  private async resolveSnippetPackages(pkg: WebWriterPackage, member: PackageMember, installed: WebWriterPackage[]) {
+    const source = isCompatibleSnippet(member) ? member.source : member
+    const sourcePackage = source.packageName === pkg.name ? pkg
+      : installed.find(candidate => candidate.name === source.packageName && candidate.version === source.packageVersion)
+    if(!sourcePackage) throw new Error(`Package '${source.packageName}' is no longer installed`)
+    const required = packageSnippetDependencies(sourcePackage, source)
+    const current = new Map(installed.map(candidate => [candidate.name, candidate]))
+    const missing = !current.has(pkg.name)
+    if(missing) current.set(pkg.name, pkg)
+    const unresolved = required.filter(({name, range}) => {
+      const existing = current.get(name)
+      if(existing && !satisfies(existing.version, range)) {
+        throw new Error(`Snippet '${source.label}' requires ${name}@${range}. Version ${existing.version} is installed.`)
+      }
+      return !existing
+    })
+    const additions = await Promise.all(unresolved.map(({name, range}) => this.packageRegistry.getPackageForRange(name, range)))
+    return missing || additions.length ? [...current.values(), ...additions] : installed
+  }
+
+  private async loadSnippetPackages(previous: WebWriterPackage[], next: WebWriterPackage[]) {
+    if(next === previous) return
+    try { await this.reloadEditor(next) }
+    catch(error) {
+      if(this.isConnected && this.installedPackages === next) {
+        try { await this.reloadEditor(previous) }
+        catch(rollbackError) { console.warn("Could not reload the previous widgets", rollbackError) }
+      }
+      throw error
+    }
+    if(this.installedPackages === next) {
+      for(const record of this.localPackageManager.records.values()) {
+        if(next.includes(record.package)) record.enabled = true
+      }
+    }
+  }
+
+  private async insertPreparedPackageSnippet(pkg: WebWriterPackage, member: PackageMember, target?: RibbonDropPosition | PackageInsertionSelection) {
+    this.packageError = ""
+    const installed = this.installedPackages
+    const revision = this.frameRevision
+    try {
+      const insertion = target ?? await this.execute({type: "capturePackageInsertion"})
+      if(!isPackageInsertionSelection(insertion) && !(target && "layout" in target)) {
+        throw new Error("The snippet insertion target is no longer available.")
+      }
+      const [packages, html] = await Promise.all([
+        this.resolveSnippetPackages(pkg, member, installed), this.packageMemberHTML(member),
+      ])
+      if(!html) throw new Error(`Package member '${member.label}' has no insertable content`)
+      if(installed !== this.installedPackages || revision !== this.frameRevision) throw new Error("The editor changed while preparing the snippet. Try again.")
+      await this.loadSnippetPackages(installed, packages)
+      if(this.frameRevision !== revision + Number(packages !== installed) || this.installedPackages !== packages) {
+        throw new Error("The editor changed while loading snippet packages. Try again.")
+      }
+      const result = target && "layout" in target
+        ? await this.execute({type: "insertRibbonDrop", html, position: target, packageSnippet: true})
+        : await this.execute({type: "insertPackageSnippet", html, selection: insertion as PackageInsertionSelection})
+      if(result === false) throw new Error("The snippet no longer fits its insertion target.")
+    }
+    catch(error) { this.packageError = error instanceof Error ? error.message : String(error) }
+    finally { this.focusEditor() }
   }
 
   private async setPackageInstalled(pkg: WebWriterPackage, installed: boolean) {
@@ -6632,23 +6726,33 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private async installAndInsertPackage(pkg: WebWriterPackage, requestedMember?: PackageMember, position?: RibbonDropPosition) {
-    const activePackage = this.installedPackages.find(candidate => candidate.name === pkg.name) ??
-      await this.setPackageInstalled(pkg, true)
+  private async installAndInsertPackage(pkg: WebWriterPackage, requestedMember?: PackageMember, position?: RibbonDropPosition | PackageInsertionSelection) {
+    const installed = this.installedPackages.find(candidate => candidate.name === pkg.name)
+    const candidate = installed ?? this.localPackages.find(candidate => candidate.name === pkg.name) ?? pkg
+    const findMember = (resolved: WebWriterPackage) => requestedMember
+      ? resolved.members.find(member => member.id === requestedMember.id || member.exportName === requestedMember.exportName)
+      : resolved.members.find(member => member.insertable)
+    const member = requestedMember && isCompatibleSnippet(requestedMember) ? requestedMember : findMember(candidate)
+    if(member?.insertable && packageMemberNeedsPreparation(candidate, member)) {
+      await this.insertPreparedPackageSnippet(candidate, member, position)
+      return
+    }
+    const activePackage = installed ?? await this.setPackageInstalled(pkg, true)
     if(!activePackage) {
       this.focusEditor()
       return
     }
-    const member = requestedMember
-      ? activePackage.members.find(candidate => candidate.id === requestedMember.id || candidate.exportName === requestedMember.exportName)
-      : activePackage.members.find(candidate => candidate.insertable)
-    if(!member?.insertable) {
+    const activeMember = findMember(activePackage)
+    if(!activeMember?.insertable) {
       this.packageError = `Package '${activePackage.label}' has no insertable members`
       this.focusEditor()
       return
     }
-    if(position) await this.insertPackageMember(member, position)
-    else await this.insertPackageMember(member)
+    if(packageMemberNeedsPreparation(activePackage, activeMember) || position && "start" in position) {
+      await this.insertPreparedPackageSnippet(activePackage, activeMember, position)
+    }
+    else if(position) await this.insertPackageMember(activeMember, position)
+    else await this.insertPackageMember(activeMember)
   }
 
   private async insertRibbonDropAction(action: string, position: RibbonDropPosition) {
@@ -6658,13 +6762,8 @@ export class DomEditor extends LitElement {
         if(snippet) await this.execute({type: "insertRibbonDrop", html: snippet.html, position})
         return
       }
-      const packages = [...this.installedPackages, ...this.localPackages, ...this.packages]
-      const pkg = packages.find(candidate => action.startsWith("package-member:")
-        ? candidate.members.some(member => packageMemberAction(member) === action && member.insertable)
-        : `package:${candidate.name}` === action)
-      if(!pkg) return
-      const member = action.startsWith("package-member:") ? pkg.members.find(candidate => packageMemberAction(candidate) === action) : undefined
-      await this.installAndInsertPackage(pkg, member, position)
+      const choice = this.packageInsertionChoice(action)
+      if(choice) await this.installAndInsertPackage(choice.pkg, choice.member, position)
     }
     catch(error) { this.packageError = error instanceof Error ? error.message : String(error) }
     finally { this.focusEditor() }
@@ -7675,13 +7774,17 @@ export class DomEditor extends LitElement {
     this.distributionPending = true
     try {
       const builtins = await this.execute({type: "getDistributionInsertionItems"}) as DistributionItem[]
-      const members = await Promise.all(this.installedPackages.flatMap(pkg => pkg.members.filter(member => member.insertable).map(async member => ({
-        id: packageMemberAction(member), label: member.label,
-        html: member.kind === "snippet" ? await this.packageRegistry.fetchSnippet(member, this.documentLanguage)
-          : member.tagName ? `<${member.tagName}></${member.tagName}>` : "",
-      }))))
-      if(generation !== this.distributionGeneration) return
-      this.distributionItems = [...builtins, ...members.filter(item => item.html),
+      const installed = this.installedPackages
+      const members = await Promise.all(installed.flatMap(pkg => pkg.members.filter(member => member.insertable).map(async member => {
+        const deferred = packageMemberNeedsPreparation(pkg, member)
+        const html = deferred ? "" : await this.packageMemberHTML(member)
+        return deferred || html ? {id: packageMemberAction(member), label: member.label, html} : null
+      })))
+      const compatible = packageCompatibleSnippets(installed).map(member => ({
+        id: packageMemberAction(member), label: member.label, html: "",
+      }))
+      if(generation !== this.distributionGeneration || installed !== this.installedPackages) return
+      this.distributionItems = [...builtins, ...members.filter(member => member !== null), ...compatible,
         ...this.settings.userSnippets.map(snippet => ({id: `user-snippet:${snippet.id}`, label: snippet.label, html: snippet.html}))]
     }
     catch(error) {
@@ -7756,14 +7859,17 @@ export class DomEditor extends LitElement {
 
   private handleDistributionInsertDrop = async (event: CustomEvent<DistributionInsertDrop>) => {
     const {general, target, action, token} = event.detail
-    const initial = general ? this.distributionGeneral : this.distributionSelection
-    if(!initial || initial.identity !== target || this.htmlPending || this.historyState.preview !== null) return
+    const activeTarget = () => general ? this.distributionGeneral : this.distributionSelection
+    const initial = activeTarget()
+    if(!initial || initial.identity !== target || this.htmlPending || this.historyState.preview !== null
+      || !general && (initial.hiddenByAncestor || (initial.local ?? initial.effective)?.view === false)) return
     this.handleRibbonDragEnd()
-    const frame = this.frameRevision
+    let frame = this.frameRevision
     try {
       let item: DistributionItem | undefined
       let snippet: {id: string, html: string, label: string} | undefined
       let install: WebWriterPackage | undefined
+      let restoredTarget: DistributionSelection | null = null
       if(token) {
         const captured = await this.execute({type: "getDraggedSnippet", token})
         if(!captured || typeof captured !== "object" || !("html" in captured) || typeof captured.html !== "string" || !captured.html
@@ -7777,17 +7883,34 @@ export class DomEditor extends LitElement {
           const builtins = await this.execute({type: "getDistributionInsertionItems"}) as DistributionItem[]
           item = builtins.find(candidate => candidate.id === action)
         }
-        if(!item && ribbonInsertionAction(action)) {
+        const choice = ribbonInsertionAction(action) ? this.packageInsertionChoice(action) : undefined
+        const pkg = choice?.pkg
+        const member = choice?.member ?? pkg?.members.find(candidate => candidate.insertable)
+        if(pkg && member && packageMemberNeedsPreparation(pkg, member)) {
+          const installed = this.installedPackages
+          const [packages, html] = await Promise.all([
+            this.resolveSnippetPackages(pkg, member, installed), this.packageMemberHTML(member),
+          ])
+          if(!html || frame !== this.frameRevision || installed !== this.installedPackages || activeTarget()?.identity !== initial.identity) return
+          if(packages !== installed) {
+            await this.distributionWriteQueue
+            const current = activeTarget()
+            if(current?.identity !== initial.identity || frame !== this.frameRevision || installed !== this.installedPackages) return
+            const anchor = await this.execute({type: "captureDistributionTarget", path: current.path, identity: current.identity})
+            if(anchor === undefined || frame !== this.frameRevision || installed !== this.installedPackages || activeTarget()?.identity !== initial.identity) return
+            await this.loadSnippetPackages(installed, packages)
+            if(++frame !== this.frameRevision || this.installedPackages !== packages) return
+            restoredTarget = await this.execute({type: "readDistributionTarget", anchor}) as DistributionSelection | null
+            if(!restoredTarget) return
+          }
+          item = {id: packageMemberAction(member), label: member.label, html}
+        }
+        else if(!item?.html && ribbonInsertionAction(action)) {
           const saved = this.settings.userSnippets.find(candidate => `user-snippet:${candidate.id}` === action)
           if(saved) item = {id: action, label: saved.label, html: saved.html}
           else {
-            const packages = [...this.installedPackages, ...this.localPackages, ...this.packages]
-            const pkg = packages.find(candidate => action === `package:${candidate.name}`
-              || candidate.members.some(member => packageMemberAction(member) === action && member.insertable))
-            const member = pkg?.members.find(member => member.insertable && (action === `package:${pkg.name}` || packageMemberAction(member) === action))
             if(!pkg || !member) return
-            const html = member.kind === "snippet" ? await this.packageRegistry.fetchSnippet(member, this.documentLanguage)
-              : member.tagName ? `<${member.tagName}></${member.tagName}>` : ""
+            const html = await this.packageMemberHTML(member)
             if(!html) return
             item = {id: packageMemberAction(member), label: member.label, html}
             if(!this.installedPackages.some(candidate => candidate.name === pkg.name)) install = pkg
@@ -7795,8 +7918,8 @@ export class DomEditor extends LitElement {
         }
       }
       // Resolve against the latest projected policy without applying an asynchronous drop to a new selection.
-      const current = general ? this.distributionGeneral : this.distributionSelection
-      if(!item || !current || current.identity !== initial.identity || frame !== this.frameRevision) return
+      const current = restoredTarget ?? activeTarget()
+      if(!item?.html || !current || !restoredTarget && current.identity !== initial.identity || frame !== this.frameRevision) return
       const config = current.local ?? current.effective ?? emptyDistributionConfig()
       if(!general && (current.hiddenByAncestor || config.view === false)) return
       const next: DistributionConfig = {...config, permissions: config.permissions.includes("insert") ? [...config.permissions] : [...config.permissions, "insert"],
@@ -8138,6 +8261,7 @@ export class DomEditor extends LitElement {
       && !(changed.get("graphicSelection") as GraphicSelectionState | null)?.capture) this.shapeKeyboardHidden = false
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
+    if(changed.has("installedPackages") && toolbox?.activeTool === "Distribute") void this.loadDistributionItems()
     if(ribbon && toolbox) void toolbox.updateComplete.then(() => {
       if(this.isConnected) ribbon.aiToolboxTarget = toolbox.renderRoot.querySelector<HTMLElement>(".ai-toolbox-content")
     })
@@ -9017,6 +9141,14 @@ export class DomEditor extends LitElement {
   }
 
   private handleEditorMessage = (event: MessageEvent) => {
+    if(event.data?.type === "editor-package-insert") {
+      const {action, selection} = event.data
+      if(!this.isEditorMessage(event) || typeof action !== "string" || !action.startsWith("package-member:")
+        || !isPackageInsertionSelection(selection)) return
+      const choice = this.packageInsertionChoice(action)
+      if(choice?.member && this.installedPackages.includes(choice.pkg)) void this.installAndInsertPackage(choice.pkg, choice.member, selection)
+      return
+    }
     if(event.data?.type === "editor-ribbon-drop") {
       if(!this.isEditorMessage(event) || typeof event.data.action !== "string" || !ribbonInsertionAction(event.data.action)) return
       const position = event.data.position as RibbonDropPosition | undefined

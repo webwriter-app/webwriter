@@ -5,6 +5,8 @@ import "@testing-library/jest-dom/vitest"
 import { DOMEditor } from "../domeditor"
 import {insertSubmenuClickGrace, insertSubmenuHoverDelay} from "../insertion"
 import { $ } from "../utility"
+import type {PackageInsertionSelection} from "../editor-bridge"
+import {Schema} from "../schema"
 
 const editor = new DOMEditor()
 
@@ -32,6 +34,41 @@ beforeEach(() => {
 })
 
 describe("insertion menu", () => {
+  it("keeps the command text while preparing a package snippet and replaces it in one undo step", async () => {
+    const previousSchema = editor.schema
+    const post = vi.spyOn(editor, "postHostMessage").mockImplementation(() => {})
+    editor.schema = new Schema()
+    editor.schema.extendWidgets([{tagName: "webwriter-task", editingConfig: {content: "flow*"}}])
+    try {
+      $.move(document.querySelector("p")!)
+      typeCommand()
+      typeText("scale")
+      const menu = editor.features.insertion.menu
+      const action = "package-member:compatible:scale"
+      menu.dispatchEvent(new CustomEvent("insertion-menu-select", {detail: {packageAction: action}}))
+      expect(document.querySelector("p")?.textContent).toBe("++scale")
+      const request = post.mock.calls.map(([message]) => message).find(message => "selection" in message && "action" in message) as
+        {type: string, action: string, selection: PackageInsertionSelection}
+      expect(request).toMatchObject({type: "editor-package-insert", action})
+      const insert = {type: "insertPackageSnippet" as const, selection: request.selection,
+        html: "<webwriter-task><!-- authored --><p>Scale</p></webwriter-task>"}
+      expect(await editor.features.manipulation.actions.insertPackageSnippet(insert)).toBe(true)
+      expect(document.querySelector("webwriter-task")?.innerHTML).toContain("<!-- authored --><p>Scale</p>")
+      editor.doc.undo()
+      expect(document.querySelector("webwriter-task")).toBeNull()
+      expect(document.querySelector("p")?.textContent).toBe("++scale")
+
+      document.querySelector("p")!.replaceWith(document.createElement("p"))
+      editor.doc.syncFromDOM()
+      expect(await editor.features.manipulation.actions.insertPackageSnippet(insert)).toBe(false)
+      expect(document.querySelector("webwriter-task")).toBeNull()
+    }
+    finally {
+      editor.schema = previousSchema
+      post.mockRestore()
+    }
+  })
+
   it("keeps the typed command when table insertion is rejected inside a cell", async () => {
     document.body.innerHTML = "<table><tbody><tr><td><div><p></p></div></td></tr></tbody></table>"
     const paragraph = document.querySelector("td p")!

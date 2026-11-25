@@ -30,7 +30,7 @@ import {isMediaCaptureMode, mediaCaptureModes, mediaCaptureOptions, type MediaTy
 import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames, type StyleMarkName} from "../marks"
 import {packageKeywordPresentations} from "../package-keywords"
 import type {PackageMember, WebWriterPackage} from "../packages"
-import {packageAction, packageMemberAction, packageMemberCategory, packageMemberIcon, packageToggleAction, packageUpdateAction, packageUpdateKind} from "../packages"
+import {isCompatibleSnippet, packageAction, packageCompatibleSnippets, packageMemberAction, packageMemberCategory, packageMemberIcon, packageToggleAction, packageUpdateAction, packageUpdateKind} from "../packages"
 import {groupInsertablesByCategory} from "../insertion"
 import {safeCssColor} from "../css-color"
 import {ribbonIcon} from "../ribbon-icons"
@@ -2399,8 +2399,10 @@ export class AppRibbon extends EditingControls {
   private get packageSearchResults(): PackageSearchResult[] {
     const query = this.packageSearchQuery.trim().toLowerCase().replace(/\s+/g, " ")
     const words = query.split(" ")
+    const compatible = packageCompatibleSnippets(this.installedPackages)
     return this.availablePackages.flatMap((pkg): PackageSearchResult[] => {
-      const members = pkg.members.filter(member => member.insertable)
+      const members = [...pkg.members.filter(member => member.insertable),
+        ...compatible.filter(member => member.packageName === pkg.name && member.packageVersion === pkg.version)]
       if(!query) return [{pkg, members}]
       const packageText = [pkg.name, pkg.label, pkg.description, ...pkg.keywords].join(" ").toLowerCase()
       const packageMatches = words.map(word => packageText.includes(word))
@@ -2475,7 +2477,7 @@ export class AppRibbon extends EditingControls {
   private packageMemberButtons(pkg: WebWriterPackage, members: PackageMember[]): RibbonMenuButton[] {
     const primary = members[0]
     const menuMembers = members.some(packageMemberCategory)
-      ? pkg.members
+      ? [...pkg.members, ...members.filter(isCompatibleSnippet)]
         .filter(member => member.insertable && (member !== primary || packageMemberCategory(member)))
       : members.slice(1)
     const memberButton = (member: PackageMember): RibbonMenuButton => {
@@ -2505,7 +2507,7 @@ export class AppRibbon extends EditingControls {
     const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)
     const busy = this.busyPackageNames.includes(pkg.name)
     const conversion = this.packageConversion(pkg, members[0])
-    const matchAction = match && packageMemberAction(match)
+    const matchAction = match ? packageMemberAction(match) : members[0] && isCompatibleSnippet(members[0]) ? packageMemberAction(members[0]) : undefined
     // Clicking an available package installs it. Dragging inserts the displayed member.
     return {
       installed, busy, conversion,
@@ -3625,15 +3627,15 @@ export class AppRibbon extends EditingControls {
       return this.activeMenu === "Edit" && this.widgetConversion && !groups.some(group => group.label === "Widget")
         ? [...groups, {label: "Widget", buttons: []}] : groups
     }
-    const packageButtons: RibbonMenuButton[] = this.availablePackages.map(pkg => {
-      const members = pkg.members.filter(member => member.insertable)
+    const packageButtons: RibbonMenuButton[] = this.packageSearchResults.map(({pkg, members}) => {
+      const member = members[0]
       return {
         label: pkg.label,
         italic: this.isDeveloperPackage(pkg),
         selected: this.isConsoleSelectedPackage(pkg),
-        action: packageAction(pkg),
-        dragHTML: this.packageDragHTML(pkg, pkg.members.find(member => member.insertable)),
-        submenu: members.slice(1).map(member => ({label: member.label, action: packageMemberAction(member), dragHTML: this.packageDragHTML(pkg, member)})),
+        action: member && isCompatibleSnippet(member) ? packageMemberAction(member) : packageAction(pkg),
+        dragHTML: this.packageDragHTML(pkg, member),
+        submenu: this.packageMemberButtons(pkg, members),
       }
     })
     return contextDrawerPolicy({

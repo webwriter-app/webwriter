@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {PACKAGE_DOCUMENTATION_MAX_BYTES, PACKAGE_DOCUMENTATION_MAX_CHARS} from "./packages"
+import {PACKAGE_DOCUMENTATION_MAX_BYTES, PACKAGE_DOCUMENTATION_MAX_CHARS, packageContents, type PackageEditingConfig} from "./packages"
 import {
+  editingConfigWarnings,
   isLocalPackageExportTarget,
   loadLocalPackage,
   localPackageWatchPaths,
@@ -323,5 +324,25 @@ describe("readLocalPackageReadme", () => {
     await expect(readLocalPackageReadme(directory({files: {"README.md": "x".repeat(PACKAGE_DOCUMENTATION_MAX_CHARS + 1)}}), {
       packageName: "@local/demo", version: "0.1.0",
     })).resolves.toMatchObject({status: "unavailable", reason: "too-large"})
+  })
+
+  it("validates snippet dependencies and full compatible host export names", () => {
+    const editingConfig: PackageEditingConfig = {
+      "./widgets/demo-widget": {compatibleSnippets: {category: "Interact"}, equivalentTo: ["@webwriter/tasks/widgets/webwriter-task"]},
+      "./snippets/demo": {dependencies: ["@webwriter/scale"], compatibleHosts: ["@webwriter/tasks/widgets/webwriter-task"]},
+    }
+    const metadata = {name: "@local/demo", version: "0.1.0", optionalDependencies: {
+      "@webwriter/tasks": "^1.0.0", "@webwriter/scale": "^2.0.0",
+    }, exports: {"./widgets/demo-widget.js": "./widget.js", "./snippets/demo.html": "./demo.html"}}
+    const contents = packageContents(metadata, editingConfig, urlFor, undefined, "en")
+    expect(editingConfigWarnings(editingConfig, contents, metadata)).toEqual([])
+    expect(editingConfigWarnings({
+      "./widgets/demo-widget": {dependencies: ["@webwriter/scale"]},
+      "./snippets/demo": {dependencies: ["@webwriter/missing"], compatibleHosts: ["@webwriter/tasks"]},
+    }, contents, metadata).map(({message}) => message)).toEqual([
+      expect.stringContaining("cannot declare 'dependencies'"),
+      expect.stringContaining("@webwriter/missing in optionalDependencies"),
+      expect.stringContaining("invalid value for 'compatibleHosts'"),
+    ])
   })
 })

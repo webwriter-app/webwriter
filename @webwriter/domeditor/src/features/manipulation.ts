@@ -26,6 +26,7 @@ import {
   type ElementSelectionType,
   type FigureSelectionState,
   type HeadingGroupSelectionState,
+  type PackageInsertionSelection,
   type RibbonDropPosition,
 } from "../editor-bridge"
 import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStylePropertyNameSet, specializedElementStyle} from "../element-styles"
@@ -1931,7 +1932,7 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Drop placement changes the insertion point and geometry; the existing
    * commands retain ownership of their element-specific editing selection. */
-  private insertAtRibbonDrop(position: RibbonDropPosition, insert: () => void) {
+  private insertAtRibbonDrop(position: RibbonDropPosition, insert: () => void | boolean) {
     if(!this.isEnabled || this.editor.isEditingLocked) return false
     let point: ReturnType<typeof this.editor.doc.domPointFromRelativePosition>
     try { point = this.editor.doc.domPointFromRelativePosition(createRelativePositionFromJSON(position.anchor as Parameters<typeof createRelativePositionFromJSON>[0])) }
@@ -1954,7 +1955,7 @@ export class ManipulationFeature extends EditorFeature {
         const previousPlacement = this.commandPlacement
         this.commandPlacement = Boolean(position.float)
         this.ribbonDropInsertion = true
-        try { insert() }
+        try { if(insert() === false) return false }
         finally { this.ribbonDropInsertion = false; this.commandPlacement = previousPlacement }
         if(floatParent && floatTarget instanceof Element && floatTarget.parentElement === floatParent) {
           const added = Array.from(floatParent.children).filter(element => !before.includes(element))
@@ -1975,20 +1976,67 @@ export class ManipulationFeature extends EditorFeature {
     })
   }
 
-  private async insertRibbonDrop(html: string, position: RibbonDropPosition) {
+  private async insertRibbonDrop(html: string, position: RibbonDropPosition, packageSnippet = false) {
     if(this.editor.isEditingLocked || position.layout === "graphic") return false
     const generation = this.insertionGeneration
     const migrated = this.editor.features.migration.needsMigration(html) ? await this.editor.features.migration.migrate(html) : html
     if(migrated === null || generation !== this.insertionGeneration || this.editor.isEditingLocked) return false
     return this.insertAtRibbonDrop(position, () => {
-      if(position.layout === "document") this.insertHTML(migrated, false, false)
+      if(position.layout === "document" && !packageSnippet) this.insertHTML(migrated, false, false)
       else {
         // Freeform roots have no flow content model to repair. Keep saved
         // valid nesting and comments intact while applying import sanitization.
-        const {fragment} = this.editor.parseHTMLFragment(migrated, false, false)
-        this.insertClipboardFragment(fragment)
+        const {fragment} = this.editor.parseHTMLFragment(migrated, false, position.layout === "document")
+        if(packageSnippet) remapPastedAuthoredIds(fragment, document, undefined, this.editor.features.widget.isWidget)
+        return this.insertClipboardFragment(fragment)
       }
     })
+  }
+
+  capturePackageInsertion(commandRange?: Range): PackageInsertionSelection | null {
+    const selection = document.getSelection()
+    const range = commandRange ?? (selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null)
+    if(!range || !this.isEnabled || this.editor.isEditingLocked) return null
+    const owned = this.editor.features.selection.captureSelectedElement ?? this.editor.features.selection.selectedSectionElement
+    if(!commandRange && owned?.isConnected) range.selectNode(owned)
+    this.editor.doc.syncFromDOM()
+    const start = this.editor.doc.relativePositionFromDOMPoint(range.startContainer, range.startOffset)
+    const end = this.editor.doc.relativePositionFromDOMPoint(range.endContainer, range.endOffset)
+    if(!start || !end) return null
+    const html = range.collapsed ? null : this.editor.serializeClipboardFragment(cloneRangeContents(range)).html
+    return {start: relativePositionToJSON(start), end: relativePositionToJSON(end), html, ...(commandRange ? {command: true} : {})}
+  }
+
+  private async insertPackageSnippet(html: string, selection: PackageInsertionSelection) {
+    if(!this.isEnabled || this.editor.isEditingLocked) return false
+    const generation = this.insertionGeneration
+    const migrated = this.editor.features.migration.needsMigration(html) ? await this.editor.features.migration.migrate(html) : html
+    if(migrated === null || generation !== this.insertionGeneration || this.editor.isEditingLocked) return false
+    const resolve = (point: unknown) => this.editor.doc.domPointFromRelativePosition(
+      createRelativePositionFromJSON(point as Parameters<typeof createRelativePositionFromJSON>[0]),
+    )
+    const range = document.createRange()
+    try {
+      const start = resolve(selection.start), end = resolve(selection.end)
+      if(!start || !end) return false
+      range.setStart(start.node, start.offset)
+      range.setEnd(end.node, end.offset)
+    }
+    catch { return false }
+    if(range.collapsed ? selection.html !== null
+      : this.editor.serializeClipboardFragment(cloneRangeContents(range)).html !== selection.html) return false
+
+    const {fragment} = this.editor.parseHTMLFragment(migrated)
+    if(!fragment.childNodes.length || !this.allowsInsertionAt(Array.from(fragment.childNodes), range.startContainer)) return false
+    remapPastedAuthoredIds(fragment, document, undefined, this.editor.features.widget.isWidget)
+    const finish = this.editor.doc.beginUndoGroup()
+    try {
+      this.editor.features.selection.selectDropRange(range, {scrollIntoView: false})
+      $.selectRange(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+      if(selection.command) return this.editor.features.insertion.insertCommandFragment(fragment, range)
+      return this.editor.features.canvas.insertCentered(() => this.insertClipboardFragment(fragment, true)) !== false
+    }
+    finally { finish() }
   }
 
   /** Create an independent text root before applying text formatting,
@@ -4954,7 +5002,11 @@ export class ManipulationFeature extends EditorFeature {
       try { this.editor.features.canvas.insertCentered(() => this.createRibbonElement(tag)) }
       finally { this.commandPlacement = previous }
     },
-    insertRibbonDrop: ({html, position}: {type: "insertRibbonDrop", html: string, position: RibbonDropPosition}) => this.insertRibbonDrop(html, position),
+    insertRibbonDrop: ({html, position, packageSnippet}: {type: "insertRibbonDrop", html: string, position: RibbonDropPosition, packageSnippet?: boolean}) =>
+      this.insertRibbonDrop(html, position, packageSnippet),
+    capturePackageInsertion: ({}: {type: "capturePackageInsertion"}) => this.capturePackageInsertion(),
+    insertPackageSnippet: ({html, selection}: {type: "insertPackageSnippet", html: string, selection: PackageInsertionSelection}) =>
+      this.insertPackageSnippet(html, selection),
     insert: ({html, strict}: {type: "insert", html: string, strict?: boolean}) => (
       this.editor.features.migration.needsMigration(html)
         ? this.#insertMigratedHTML(html, strict)

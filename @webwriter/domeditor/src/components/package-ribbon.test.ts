@@ -2,7 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {html} from "lit"
 import type {WebWriterPackage} from "../packages"
-import {packageMemberAction} from "../packages"
+import {packageCompatibleSnippets, packageMemberAction} from "../packages"
 import {AppRibbon} from "./ribbon"
 import {RibbonButton} from "./ribbon-button"
 import {RibbonMenu} from "./ribbon-menu"
@@ -64,6 +64,29 @@ function dragData(target: Element) {
 }
 
 describe("package ribbon controls", () => {
+  it("adds compatible snippets to the named host package category as action-only drags", async () => {
+    const ribbon = new AppRibbon()
+    const tasks = packageFixture("task")
+    tasks.members[0].editingConfig = {compatibleSnippets: {category: "Interact"}}
+    const scale = packageFixture("scale")
+    scale.members[1].editingConfig = {compatibleHosts: ["@webwriter/task/widgets/webwriter-task"]}
+    scale.manifest = {name: scale.name, version: scale.version, optionalDependencies: {[tasks.name]: "^1.0.0"}}
+    ribbon.installedPackages = [tasks, scale]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Task"]')!
+    await button.updateComplete
+    const [variant] = packageCompatibleSnippets([tasks, scale])
+    expect(button.submenu).toContainEqual(expect.objectContaining({
+      label: "Interact", menuOnly: true, submenu: [expect.objectContaining({
+        label: scale.members[1].label, action: packageMemberAction(variant), dragHTML: undefined,
+      })],
+    }))
+    ribbon.installedPackages = [tasks]
+    await ribbon.updateComplete
+    expect(button.submenu).not.toContainEqual(expect.objectContaining({label: "Interact"}))
+  })
+
   it("opens the package dropdown by click and its category submenu on hover", async () => {
     const ribbon = new AppRibbon()
     const pkg = packageFixture()

@@ -11,6 +11,7 @@ An [npm package](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/) c
 | [`exports`](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/#exports) | Exports for widgets and related files. |
 | `editingConfig` | Inline [editing configuration](editing-configuration.md). |
 | `dependencies`, `peerDependencies` | The document's [import map](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script/type/importmap) resolves bare imports for these dependencies. |
+| `optionalDependencies` | Optional package dependencies, declared as a map from package name to SemVer range. Snippet editing configuration may name these dependencies for loading on insertion. |
 | `prebuiltDependencies` | `@webwriter/build` bundles these dependencies. |
 | `sideEffects` | Standard module side-effect metadata. `false` permits loading only the modules in use. |
 | `description`, `author`, `contributors`, `license`, `homepage`, `repository` | Package card metadata. |
@@ -52,6 +53,35 @@ An export target can be a string or a condition object. The authoring tool check
 Exports with the same tag form one widget. Include each referenced file in the package. Use a separate export for a stylesheet that a dependency needs. Import maps resolve only JavaScript modules.
 
 The authoring tool uses a widget's icon in insertion controls and when identifying the widget in the document. The export key uses the full widget tag, such as `./widgets/ww-quiz.icon.svg`. The default comes from `./icon` or the editor's generic widget icon.
+
+## Widget and snippet relationships
+
+Widget exports and snippet exports can declare `compatibleHosts` as an array of full widget export names. A reference uses the package name followed by `/widgets/` and the widget tag, such as `@webwriter/tasks/widgets/webwriter-task`. A widget export can declare `equivalentTo` as an array of the same references when it can host the same content as those widgets. References may point to exports in the same package or to external packages.
+
+For external references, declare the referenced package in `optionalDependencies` with the SemVer range of compatible versions.
+
+A package can supply both an alternate task wrapper and an activity compatible with the original wrapper.
+
+```json
+{
+  "optionalDependencies": {
+    "@webwriter/tasks": "^1.0.0",
+    "@example/number-line": "^2.0.0"
+  },
+  "editingConfig": {
+    "./widgets/ww-quiz-task": {
+      "equivalentTo": ["@webwriter/tasks/widgets/webwriter-task"],
+      "compatibleSnippets": {"category": "Interact"}
+    },
+    "./snippets/number-line-exercise": {
+      "compatibleHosts": ["@webwriter/tasks/widgets/webwriter-task"],
+      "dependencies": ["@example/number-line"]
+    }
+  }
+}
+```
+
+Compatibility lookup follows one `compatibleHosts` relationship, then zero or more `equivalentTo` relationships. It deduplicates matches and checks `optionalDependencies` ranges for external references. Choosing the number-line exercise loads the number-line package and puts the exercise inside the selected task wrapper.
 
 ## Discovery keywords
 

@@ -8,6 +8,7 @@ import {elementAttributeTargetId} from "../element-attributes"
 import {observePrivateDistributionRegions} from "../distribution-presentation"
 import {nodeAtPath, pathFromNode} from "../utility"
 import type {WidgetPermissionState} from "../widget-options"
+import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
 
 export type DistributionSelection = ReturnType<typeof getDistributionSelection> & {
   path: number[] | null
@@ -47,6 +48,23 @@ export class DistributionFeature extends EditorFeature {
   }
 
   actions = {
+    captureDistributionTarget: ({path, identity}: {type: "captureDistributionTarget", path: number[] | null, identity: string}) => {
+      const element = path === null ? document.documentElement : nodeAtPath(document.body, path)
+      if(!(element instanceof Element) || !element.isConnected || elementAttributeTargetId(element) !== identity) return
+      if(path === null) return null
+      this.editor.doc.syncFromDOM()
+      const anchor = this.editor.doc.relativePositionFromDOMPoint(element)
+      if(anchor) return relativePositionToJSON(anchor)
+    },
+    readDistributionTarget: ({anchor}: {type: "readDistributionTarget", anchor: unknown}) => {
+      if(anchor === null) return this.getState(document.documentElement)
+      try {
+        const position = createRelativePositionFromJSON(anchor as Parameters<typeof createRelativePositionFromJSON>[0])
+        const node = this.editor.doc.domPointFromRelativePosition(position)?.node
+        return node instanceof Element ? this.getState(node) : null
+      }
+      catch { return null }
+    },
     setWidgetPermission: ({path, identity, name, value}: {
       type: "setWidgetPermission", path: number[], identity: string, name: string, value: boolean,
     }) => {

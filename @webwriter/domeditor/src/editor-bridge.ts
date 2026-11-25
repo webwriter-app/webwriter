@@ -149,6 +149,20 @@ export type RibbonDropPosition = {
   float?: "left" | "right"
 }
 
+/** Authored selection captured before preparing a package insertion. */
+export type PackageInsertionSelection = {
+  start: unknown
+  end: unknown
+  html: string | null
+  command?: true
+}
+
+export function isPackageInsertionSelection(value: unknown): value is PackageInsertionSelection {
+  return isRecord(value) && isRecord(value.start) && isRecord(value.end)
+    && (value.html === null || typeof value.html === "string")
+    && (value.command === undefined || value.command === true)
+}
+
 /** Chromium withholds drag events from a frame of another site than the one
  * that started the drag, so the host relays its ribbon drags over the editor
  * frame. Coordinates are relative to the frame's viewport. */
