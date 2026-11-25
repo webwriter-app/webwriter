@@ -303,7 +303,7 @@ button { font: inherit; padding: .375rem .75rem; }
 output { display: block; margin-block-start: .75rem; }
 ```
 
-Save your changes. If setup used a build command, run it again. Refresh the local package. In the result, edit the invitation in **Editing** and switch to **Reading** to reveal the buttons.
+Save your changes. If setup used a build command, run it again. Use the existing refresh control in widget search to reload the local package. In the result, edit the invitation in **Editing** and switch to **Reading** to reveal the buttons.
 
 ## Results
 

@@ -43,6 +43,7 @@ import {
   platformEmbedURL,
   platformMediaURL,
   timedMediaResourceAttributeOptions,
+  webVttFileAccept,
   websiteSourceError,
   websiteTypes,
   type MediaSelectionState,
@@ -50,6 +51,7 @@ import {
   type MediaCaptureMode,
   type ImageMapAreaState,
   type ImageMapHotspotShape,
+  type TimedMediaFileTarget,
   type TimedMediaResourceState,
   type TimedMediaResourceType,
   type WebsiteType,
@@ -1732,16 +1734,17 @@ export class MediaFeature extends EditorFeature {
     this.scheduleRefresh()
   }
 
-  private handleVideoPlaybackChange = (event: Event) => {
+  private handleMediaPlaybackChange = (event: Event) => {
     // Media events do not bubble. Inspect their authored origin before routing
-    // captured events, including failures on a direct child SOURCE.
+    // captured events, including loads and failures on direct child resources.
     const target = event.target
-    const video = target instanceof HTMLSourceElement ? target.parentElement : target
-    if(!(video instanceof HTMLVideoElement) || !document.body.contains(video)
-      || isWidgetShadowInteraction(event, this.editor.schema) || sourceEditingBlocked(video, this.editor.schema)) return
+    const track = target instanceof HTMLTrackElement
+    const media = track || target instanceof HTMLSourceElement ? target.parentElement : target
+    if(!(media instanceof HTMLMediaElement) || !track && !(media instanceof HTMLVideoElement) || !document.body.contains(media)
+      || isWidgetShadowInteraction(event, this.editor.schema) || sourceEditingBlocked(media, this.editor.schema)) return
     const post = () => {
-      if(this.isEnabled && document.body.contains(video) && !sourceEditingBlocked(video, this.editor.schema)
-        && this.selectedMedia() === video) this.editor.postSelectionPath()
+      if(this.isEnabled && document.body.contains(media) && !sourceEditingBlocked(media, this.editor.schema)
+        && this.selectedMedia() === media) this.editor.postSelectionPath()
     }
     // The browser finishes advancing through SOURCE candidates after firing
     // their error event, before NETWORK_NO_SOURCE becomes observable.
@@ -1802,8 +1805,13 @@ export class MediaFeature extends EditorFeature {
 
   private setResourceFile(media: Element, target: Element, file: Blob) {
     if(!this.isEnabled || this.editor.isEditingLocked || !document.body.contains(media)
-      || target.parentElement !== media || !isTimedResourceElement(target, "source")
+      || target.parentElement !== media || !isTimedResourceElement(target)
       || sourceEditingBlocked(media, this.editor.schema)) return false
+    // File pickers may leave WebVTT untyped. Preserve its MIME type in portable exports.
+    if(target instanceof HTMLTrackElement && file.type !== "text/vtt") {
+      file = file instanceof File ? new File([file], file.name, {type: "text/vtt", lastModified: file.lastModified})
+        : new Blob([file], {type: "text/vtt"})
+    }
     const source = this.editor.createMediaURL(file)
     this.rememberSource(media, source, file instanceof File ? file.name : "Media file", "file")
     this.editor.doc.stopCapturing()
@@ -1815,19 +1823,20 @@ export class MediaFeature extends EditorFeature {
 
   captureListeners = {
     load: (event: Event) => {
+      if(event.target instanceof HTMLTrackElement) this.handleMediaPlaybackChange(event)
       if(event.target instanceof HTMLImageElement && document.body.contains(event.target)
         && !isWidgetShadowInteraction(event, this.editor.schema)
         && !sourceEditingBlocked(mediaContainerForNode(event.target) ?? event.target, this.editor.schema)) this.scheduleRefresh()
     },
-    loadedmetadata: this.handleVideoPlaybackChange,
-    loadeddata: this.handleVideoPlaybackChange,
-    resize: this.handleVideoPlaybackChange,
-    error: this.handleVideoPlaybackChange,
-    emptied: this.handleVideoPlaybackChange,
+    loadedmetadata: this.handleMediaPlaybackChange,
+    loadeddata: this.handleMediaPlaybackChange,
+    resize: this.handleMediaPlaybackChange,
+    error: this.handleMediaPlaybackChange,
+    emptied: this.handleMediaPlaybackChange,
     loadstart: (event: Event) => {
       // Source changes and load() reset the native can-autoplay flag.
       if(event.target instanceof Node) this.suppressAutoplay(event.target)
-      this.handleVideoPlaybackChange(event)
+      this.handleMediaPlaybackChange(event)
     },
     pointerdown: (event: PointerEvent) => {
       this.pointerDown = event.button === 0
@@ -1866,14 +1875,14 @@ export class MediaFeature extends EditorFeature {
 
   actions = {
     setMediaFile: ({file, attribute, pickerId, resource}: {type: "setMediaFile", file: Blob | null, attribute?: "poster", pickerId?: string,
-      resource?: {index: number, expected: Record<string, string>}}) => {
+      resource?: TimedMediaFileTarget}) => {
       if(pickerId !== undefined) {
         return this.pendingFile?.pickerId === pickerId ? this.pendingFile.apply(file) : false
       }
       const element = this.selectedMedia()
       if(!element || !(file instanceof Blob)) return false
       if(resource) {
-        const target = this.timedMediaResource("source", resource.index, resource.expected)
+        const target = this.timedMediaResource(resource.type ?? "source", resource.index, resource.expected)
         return target ? this.setResourceFile(element, target, file) : false
       }
       return this.setFile(element, file, attribute)
@@ -1888,9 +1897,10 @@ export class MediaFeature extends EditorFeature {
       return changed
     },
     selectMediaFile: ({attribute, pickerId, resource}: {type: "selectMediaFile", attribute?: "poster", pickerId?: string,
-      resource?: {index: number, expected: Record<string, string>}}) => {
+      resource?: TimedMediaFileTarget}) => {
       const element = this.selectedMedia()
-      const row = resource ? this.timedMediaResource("source", resource.index, resource.expected) : null
+      const resourceType = resource?.type ?? "source"
+      const row = resource ? this.timedMediaResource(resourceType, resource.index, resource.expected) : null
       if(!this.isEnabled || !element || attribute && !element.matches("video") || resource && !row
         || sourceEditingBlocked(element, this.editor.schema)) return false
       this.cancelSourceFile()
@@ -1899,7 +1909,8 @@ export class MediaFeature extends EditorFeature {
       const picker = document.createElement("input")
       picker.type = "file"
       picker.hidden = true
-      picker.accept = attribute === "poster" || element.matches("picture, img") ? "image/*" : element.matches("audio") ? "audio/*"
+      picker.accept = resourceType === "track" ? webVttFileAccept
+        : attribute === "poster" || element.matches("picture, img") ? "image/*" : element.matches("audio") ? "audio/*"
         : element.matches("video") ? "video/*" : ".html,.htm,text/html"
       const pending = {picker, pickerId, apply: (file: Blob | null): boolean => {
         if(!valid() || !(file instanceof Blob)) { if(this.pendingFile === pending) this.cancelSourceFile(); return false }
@@ -1910,7 +1921,7 @@ export class MediaFeature extends EditorFeature {
       const valid = () => this.pendingFile === pending && this.isEnabled && document.body.contains(element)
         && !sourceEditingBlocked(element, this.editor.schema) && snapshot === this.sourceSnapshot(element)
         && sourceTarget === mediaSourceTarget(element, false)
-        && (!resource || this.resourceIn(element, "source", resource.index, resource.expected) === row)
+        && (!resource || this.resourceIn(element, resourceType, resource.index, resource.expected) === row)
       // The host opens its own picker while its click still has user activation.
       // Retain the same DOM guards used by the in-document picker.
       if(pickerId !== undefined) return true
@@ -1987,8 +1998,23 @@ export class MediaFeature extends EditorFeature {
       if(element.matches("picture, img") && (name === "src" || name === "srcset")
         && this.changeImageMapSource(element, target, change)) return true
       if(element.matches("iframe") && name === "src") applyIframeSandboxPolicy(element, [this.editor.options.bridgeOrigin ?? ""], value)
+      const crossOriginChanged = name === "crossorigin" && target instanceof HTMLMediaElement
+        && target.getAttribute(name) !== value
       change(element, target)
       if(name === "muted") syncMutedProperty(target)
+      if(crossOriginChanged) {
+        // Browsers can cache a failed text-track load for the same URL. Restart
+        // only failed tracks, keeping the media element and its playback intact.
+        for(const track of this.directResources(target, "track")) {
+          if(!(track instanceof HTMLTrackElement) || track.readyState !== HTMLTrackElement.ERROR || !track.src || track.hasAttribute("is")) continue
+          const replacement = track.cloneNode(true) as HTMLTrackElement
+          const mode = track.track.mode
+          track.replaceWith(replacement)
+          replacement.track.mode = mode
+        }
+        this.finishTimedMediaChange()
+        return
+      }
       this.refresh()
     },
     addTimedMediaResource: ({resource}: {type: "addTimedMediaResource", resource: TimedMediaResourceType}) => {
@@ -2592,11 +2618,21 @@ export class MediaFeature extends EditorFeature {
   private resourceState(media: Element, resource: TimedMediaResourceType): TimedMediaResourceState[] {
     return Array.from(media.childNodes).flatMap((node, index) => {
       if(!isTimedResourceElement(node, resource)) return []
-      const source = resource === "source" ? this.sourceLabels.get(media)?.get(node.getAttribute("src") ?? "") : undefined
-      return [{index, attributes: stateAttributes(node), ...(source ? {
+      const attributes = stateAttributes(node)
+      const source = this.sourceLabels.get(media)?.get(attributes.src ?? "")
+      const state: TimedMediaResourceState = {index, attributes, ...(source ? {
         sourceLabel: source.label || (source.kind === "capture" ? "Capture" : source.kind === "recording" ? "Recording" : "Media file"),
         sourceKind: source.kind,
-      } : {})}]
+      } : {})}
+      if(node instanceof HTMLTrackElement && attributes.src?.trim()) {
+        try {
+          const url = new URL(attributes.src, node.baseURI)
+          if(/^https?:$/.test(url.protocol) && url.origin !== window.origin) state.crossOrigin = true
+        }
+        catch { /* The native load status covers malformed URLs. */ }
+        if(node.readyState === HTMLTrackElement.ERROR) state.loadError = true
+      }
+      return [state]
     })
   }
 

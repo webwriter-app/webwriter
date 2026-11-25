@@ -1,3 +1,27 @@
+// options.ts
+function requestMedia(host, options) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const event = new CustomEvent("ww-request-media", {
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+      detail: {
+        media: options?.media,
+        accept: options?.accept,
+        resolve: finish
+      }
+    });
+    host.dispatchEvent(event);
+    if (!event.defaultPrevented) finish(null);
+  });
+}
+
 // shapes.ts
 var isNumber = (value) => typeof value === "number" && Number.isFinite(value);
 var isString = (value) => typeof value === "string";
@@ -391,6 +415,7 @@ export {
   isSeries,
   isString,
   isTable,
+  requestMedia,
   resolveDeclarations,
   widgetLanguage,
   widgetRuntimeAttributes,

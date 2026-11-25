@@ -861,9 +861,7 @@ export class TableFeature extends EditorFeature {
     const table = this.selectedTable
     if(!table) return
     const map = buildTableMap(table)
-    this.actionCells(map).forEach(cell => value
-      ? cell.style.setProperty(property, value)
-      : cell.style.removeProperty(property))
+    this.editor.features.manipulation.setTableCellStyles(this.actionCells(map), {[property]: value})
     this.editor.postSelectionPath()
   }
 
@@ -1698,8 +1696,6 @@ export class TableFeature extends EditorFeature {
       }
       if(isAppendixInteraction(event)) return
       const cell = cellForNode(event.target instanceof Node ? event.target : null)
-      // The selection capture handler owns modifier-click; leave no cell drag or
-      // column resize pending for subsequent pointer movement.
       if(!cell || modifierKeyDown(event)) {
         this.setResizeHover(null)
         this.clearCellSelection()

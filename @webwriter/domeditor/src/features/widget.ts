@@ -17,9 +17,11 @@ import type {Schema} from "../schema"
 import type {OfflineImportRule} from "../offline-module-bundler"
 import {inspectWidgetEffects, mountWidgetEffects, parseWidgetEffectReference, validateWidgetEffect, widgetEffectDeclarations, widgetEffectReference} from "../widget-effects"
 import {
+  defaultMediaAccept,
   isWidgetFileFormat,
   isRecord as isDeclarationMap,
   matchesWidgetFileFormat,
+  readMediaFileAsDataUrl,
   widgetActionState,
   widgetOptionAttributeValue,
   widgetOptionState,
@@ -75,6 +77,7 @@ export class WidgetFeature extends EditorFeature {
   #observingEffects = false
   readonly #rejectedEffects = new WeakMap<Element, Map<string, string>>()
   #pendingFileAction?: {widget: Element, cancel: () => void}
+  readonly #pendingMediaCancels = new Set<() => void>()
   #legacyOptions?: {widget: Element, panel: HTMLElement, popover: string | null}
   readonly #transactions = new Map<Element, () => void>()
   readonly #propertyUpdates = new Set<() => void>()
@@ -113,6 +116,15 @@ export class WidgetFeature extends EditorFeature {
     },
     optionschange: (event: Event) => {
       if(this.hostEventTarget(event)) this.#queueOptionsRefresh()
+    },
+    "ww-request-media": (event: Event) => {
+      const detail = (event as CustomEvent<{media?: "image" | "audio" | "video", accept?: string, resolve?: (url: string | null) => void}>).detail
+      const host = this.hostEventTarget(event)
+      if(!host || event.defaultPrevented || typeof detail?.resolve !== "function") return
+      if(!this.isEnabled || this.editor.isEditingLocked || !this.editor.allows("edit", host)) return
+      event.preventDefault()
+      const resolve = detail.resolve
+      void this.pickMediaURL({media: detail.media, accept: detail.accept}, host).then(resolve, () => resolve(null))
     },
   }
 
@@ -235,6 +247,8 @@ export class WidgetFeature extends EditorFeature {
     const preserved = content.filter(child => existing.has(child))
     if(preserved.length !== original.length || preserved.some((child, index) => child !== original[index])) return
     for(const child of added) if(child instanceof Element) this.#prefillContent(child, nextAncestors)
+    // Detached children inherit the enclosing widget's restrictions when attached.
+    if(!this.editor.schema.allowsPlacement(element, added)) throw new Error("Cannot prefill widget content")
     // Constructors may deliberately mutate their owner document while filling.
     const current = this.#contentNodes(element)
     if(current.length !== original.length || current.some((child, index) => child !== original[index])) return
@@ -981,6 +995,44 @@ export class WidgetFeature extends EditorFeature {
     return true
   }
 
+  /** Opens a file picker filtered for `media` / `accept` and returns a data URL, or `null` if cancelled or unreadable. */
+  pickMediaURL(options: {media?: "image" | "audio" | "video", accept?: string} = {}, host?: Element): Promise<string | null> {
+    if(!this.isEnabled || this.editor.isEditingLocked) return Promise.resolve(null)
+    if(host && !this.editor.allows("edit", host)) return Promise.resolve(null)
+    const accept = options.accept?.trim() || defaultMediaAccept(options.media)
+    return new Promise<string | null>(resolve => {
+      const picker = document.createElement("input")
+      picker.type = "file"
+      picker.hidden = true
+      if(accept) picker.accept = accept
+      let settled = false
+      const finish = (value: string | null) => {
+        if(settled) return
+        settled = true
+        this.#pendingMediaCancels.delete(onCancel)
+        picker.removeEventListener("change", onChange)
+        picker.removeEventListener("cancel", onCancel)
+        picker.remove()
+        resolve(value)
+      }
+      const onCancel = () => finish(null)
+      const onChange = () => {
+        const file = picker.files?.[0]
+        if(!file) {
+          finish(null)
+          return
+        }
+        void readMediaFileAsDataUrl(file).then(finish, () => finish(null))
+      }
+      this.#pendingMediaCancels.add(onCancel)
+      picker.addEventListener("change", onChange)
+      picker.addEventListener("cancel", onCancel)
+      this.editor.addAppendix(picker)
+      try { picker.click() }
+      catch { finish(null) }
+    })
+  }
+
   /** Finish local initialization and minimum-content repairs before sharing
    * the DOM batch. Remote deletions and undo use the same additive repair. */
   flushMutations(prefill = true) {
@@ -1059,6 +1111,7 @@ export class WidgetFeature extends EditorFeature {
     this.#effects?.destroy()
     this.#effects = undefined
     this.#pendingFileAction?.cancel()
+    for(const cancel of [...this.#pendingMediaCancels]) cancel()
     document.body.querySelectorAll('[contenteditable=""]').forEach(element => this.#clearEditable(element))
     super.disable()
   }

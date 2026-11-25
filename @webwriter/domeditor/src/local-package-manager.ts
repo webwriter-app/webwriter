@@ -1,18 +1,12 @@
 import {loadLocalPackage, localPackageWatchPaths, readLocalPackageReadme, type LocalPackageDirectory, type LocalPackageWarning} from "./local-package"
-import {fetchGitPackageSource, gitPackageDirectory, gitPackageUrl, readGitPackageSources, saveGitPackageSources, type GitPackageSnapshot, type GitPackageSource} from "./git-package"
 import {LocalPackageMonitor} from "./local-package-monitor"
 import {localPackageUrl, type LocalPackageDirectoryHandle} from "./local-package-worker"
 import {LocalPackageWorkerClient} from "./local-package-worker-client"
 import type {PackageDocumentationReadOptions, PackageDocumentationResult, WebWriterPackage} from "./packages"
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object" && !Array.isArray(value)
-
 export type LocalPackageRecord = {
   id: string
   directory: FileSystemDirectoryHandle | LocalPackageDirectory
-  gitSource?: GitPackageSource
-  gitSnapshot?: GitPackageSnapshot
   package: WebWriterPackage
   warnings: LocalPackageWarning[]
   revision: number
@@ -44,9 +38,7 @@ const isPermissionError = (error: unknown) => Boolean(error && typeof error === 
     || (error instanceof Error && /permission to read this package folder was denied/i.test(error.message))))
 
 type LocalPackageManagerOptions = {
-  gitApiUrl?: () => string | Promise<string>
   changed: (packages: WebWriterPackage[]) => void
-  refreshing?: (names: string[]) => void
   error: (message: string) => void
   loaded: (record: LocalPackageRecord) => void
   install: (pkg: WebWriterPackage, previousName?: string) => Promise<void>
@@ -57,12 +49,11 @@ type LocalPackageManagerOptions = {
 export class LocalPackageManager {
   autoReload = true
   readonly records = new Map<string, LocalPackageRecord>()
-  private readonly reloads = new Set<string>()
+  private readonly reloads = new Map<string, Promise<void>>()
   private readonly reloadPending = new Set<string>()
   private readonly forcedReloads = new Set<string>()
   private readonly worker = new LocalPackageWorkerClient()
   private active = true
-  private readonly gitSources = new Map(readGitPackageSources().map(entry => [entry.id, entry.source]))
 
   constructor(private readonly options: LocalPackageManagerOptions) {}
 
@@ -87,12 +78,9 @@ export class LocalPackageManager {
     this.records.delete(id)
     this.reloadPending.delete(id)
     this.forcedReloads.delete(id)
-    if(this.gitSources.delete(id)) this.persistGitSources()
     this.publishList()
-    if(!record.gitSource) {
-      try { await this.worker.unregister(id) }
-      catch(error) { this.options.error(error instanceof Error ? error.message : String(error)) }
-    }
+    try { await this.worker.unregister(id) }
+    catch(error) { this.options.error(error instanceof Error ? error.message : String(error)) }
   }
 
   private async matching(directory: FileSystemDirectoryHandle) {
@@ -101,7 +89,6 @@ export class LocalPackageManager {
     }
     if(typeof candidate.isSameEntry !== "function") return undefined
     for(const record of this.records.values()) {
-      if(record.gitSource) continue
       try {
         if(await candidate.isSameEntry(record.directory as FileSystemDirectoryHandle)) return record
       }
@@ -114,14 +101,6 @@ export class LocalPackageManager {
 
   private publishList() {
     this.options.changed([...this.records.values()].map(record => record.package))
-    this.publishRefreshing()
-  }
-
-  private publishRefreshing() {
-    this.options.refreshing?.([...this.reloads].flatMap(id => {
-      const record = this.records.get(id)
-      return record ? [record.package.name] : []
-    }))
   }
 
   private replaceName(id: string, name: string) {
@@ -129,9 +108,7 @@ export class LocalPackageManager {
       if(otherId === id || other.package.name !== name) continue
       other.monitor?.dispose()
       this.records.delete(otherId)
-      this.gitSources.delete(otherId)
-      this.persistGitSources()
-      if(!other.gitSource) void this.worker.unregister(otherId).catch(() => {
+      void this.worker.unregister(otherId).catch(() => {
         // The newly selected folder is already registered; stale worker state
         // does not prevent it from becoming the active package with this name.
       })
@@ -147,7 +124,7 @@ export class LocalPackageManager {
   }
 
   async watch(record: LocalPackageRecord) {
-    if(!this.active || record.gitSource || this.records.get(record.id) !== record) return
+    if(!this.active || this.records.get(record.id) !== record) return
     const paths = localPackageWatchPaths(record.package.manifest)
     if(record.monitor) {
       await record.monitor.setPaths(paths)
@@ -160,43 +137,66 @@ export class LocalPackageManager {
     await monitor.start(paths)
   }
 
-  async refresh(id: string, forceInstall = false) {
-    const record = this.records.get(id)
-    const directory = record?.directory as LocalPackageDirectoryHandle | undefined
-    if(forceInstall && directory && typeof directory.requestPermission === "function") {
-      // Invoke permission renewal before the first await so the browser can
-      // associate it with the user's Refresh click.
-      try {
-        if(await directory.requestPermission({mode: "readwrite"}) !== "granted") throw new Error(folderPermissionMessage)
-      }
-      catch(error) {
-        if(this.records.get(id) === record && record) {
-          record.error = folderPermissionMessage
-          this.options.error(`${record.package.label}: ${folderPermissionMessage}`)
-          this.publishList()
-        }
-        return
-      }
+  async refreshAll() {
+    // Request each folder's permission before the click's user activation expires.
+    const sources = [...this.records.values()].map(record => ({
+      id: record.id,
+      permission: this.requestRefreshPermission(record),
+    }))
+    const issues: string[] = []
+    for(const {id, permission} of sources) {
+      if(await permission) await this.queueRefresh(id, true)
+      const record = this.records.get(id)
+      if(record?.error) issues.push(`${record.package.label}: ${record.error}`)
     }
-    if(forceInstall) this.forcedReloads.add(id)
-    if(this.reloads.has(id)) {
-      this.reloadPending.add(id)
-      return
-    }
-    this.reloads.add(id)
-    this.publishRefreshing()
+    this.options.error(issues.join("\n"))
+  }
+
+  private async requestRefreshPermission(record: LocalPackageRecord) {
+    const directory = record.directory as LocalPackageDirectoryHandle
+    if(typeof directory.requestPermission !== "function") return true
     try {
-      do {
+      if(await directory.requestPermission({mode: "readwrite"}) === "granted") return true
+    }
+    catch {
+      // Browsers can deny a stale handle or a dismissed permission prompt.
+    }
+    if(this.records.get(record.id) === record) {
+      record.error = folderPermissionMessage
+      this.options.error(`${record.package.label}: ${folderPermissionMessage}`)
+      this.publishList()
+    }
+    return false
+  }
+
+  async refresh(id: string) {
+    await this.queueRefresh(id, false)
+  }
+
+  private async queueRefresh(id: string, forceInstall: boolean) {
+    if(!this.records.has(id)) return
+    if(forceInstall) this.forcedReloads.add(id)
+    const existing = this.reloads.get(id)
+    if(existing) {
+      this.reloadPending.add(id)
+      return existing
+    }
+    // Defer work until the shared promise is registered for this folder.
+    const reload = Promise.resolve().then(async () => {
+      try {
+        do {
+          this.reloadPending.delete(id)
+          await this.performRefresh(id, this.forcedReloads.has(id))
+        } while(this.reloadPending.has(id))
+      }
+      finally {
         this.reloadPending.delete(id)
-        await this.performRefresh(id, this.forcedReloads.has(id))
-      } while(this.reloadPending.has(id))
-    }
-    finally {
-      this.reloadPending.delete(id)
-      this.reloads.delete(id)
-      this.forcedReloads.delete(id)
-      this.publishRefreshing()
-    }
+        this.reloads.delete(id)
+        this.forcedReloads.delete(id)
+      }
+    })
+    this.reloads.set(id, reload)
+    return reload
   }
 
   /** Reads the current README from an already-granted local package directory.
@@ -229,10 +229,6 @@ export class LocalPackageManager {
     const previous = this.records.get(id)
     if(!previous) return
     try {
-      if(previous.gitSource) {
-        await this.loadGit(previous.gitSource, id, forceInstall)
-        return
-      }
       // A restored folder remains available for recovery even if its worker
       // failed to start. A manual refresh must retry that setup as well.
       if(forceInstall) await this.worker.start()
@@ -283,7 +279,9 @@ export class LocalPackageManager {
       }
     }
     catch(error) {
-      this.options.error(error instanceof Error ? error.message : String(error))
+      const record = this.records.get(id)
+      if(record) record.error = error instanceof Error ? error.message : String(error)
+      if(record) this.options.error(`${record.package.label}: ${record.error}`)
     }
   }
 
@@ -344,10 +342,6 @@ export class LocalPackageManager {
     return record
   }
 
-  private persistGitSources() {
-    saveGitPackageSources([...this.gitSources].map(([id, source]) => ({id, source})))
-  }
-
   private async readRestoredPackage(id: string, directory: LocalPackageDirectoryHandle) {
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
@@ -368,55 +362,11 @@ export class LocalPackageManager {
     finally { clearTimeout(timer) }
   }
 
-  async loadGit(source: GitPackageSource, existingId?: string, forceInstall = true, install = true) {
-    const previous = existingId ? this.records.get(existingId) : [...this.records.values()].find(record => {
-      const saved = record.gitSource
-      return saved && saved.repository === source.repository && saved.ref === source.ref && saved.path === source.path
-    })
-    const id = existingId ?? previous?.id ?? localPackageId()
-    const snapshot = await fetchGitPackageSource(source, await this.options.gitApiUrl?.() ?? new URL("/api/developer-packages/git", location.href).href)
-    const directory = gitPackageDirectory(snapshot)
-    const loaded = await loadLocalPackage(directory, {
-      urlFor: path => gitPackageUrl(snapshot, path),
-      locale: document.documentElement.lang || navigator.language || "en",
-    })
-    loaded.package.developerSource = {kind: "git", ...snapshot.source, commit: snapshot.commit}
-    if(previous && this.records.get(id) !== previous) return previous
-    const record: LocalPackageRecord = {id, directory, gitSource: snapshot.source, gitSnapshot: snapshot, package: loaded.package,
-      warnings: loaded.warnings, revision: (previous?.revision ?? -1) + 1, enabled: previous?.enabled ?? true}
-    previous?.monitor?.dispose()
-    this.replaceName(id, record.package.name)
-    this.records.set(id, record)
-    this.gitSources.set(id, snapshot.source)
-    this.persistGitSources()
-    this.publishList()
-    if(!existingId) this.options.loaded(record)
-    this.options.error(this.warning(record.package, record.warnings))
-    if(install && this.active && record.enabled && (forceInstall || this.autoReload) && record.package.members.length) {
-      await this.options.install(record.package, previous?.package.name)
-    }
-    return record
-  }
-
   async restore() {
-    const restoredGit: WebWriterPackage[] = []
-    for(const [id, source] of this.gitSources) {
-      if(this.records.has(id)) continue
-      try {restoredGit.push((await this.loadGit(source, id, false, false)).package)}
-      catch(error) {
-        const name = new URL(source.repository).pathname.split("/").filter(Boolean).at(-1)?.replace(/\.git$/, "") || id
-        const pkg = {...localPackagePlaceholder({name}, id), developerSource: {kind: "git" as const, ...source, commit: ""}}
-        const message = error instanceof Error ? error.message : String(error)
-        this.records.set(id, {id, gitSource: source, directory: {async getFileHandle() {throw new Error(message)}},
-          package: pkg, warnings: [], revision: 0, enabled: true, error: message})
-        this.options.error(message)
-      }
-    }
-    this.publishList()
     const worker = this.worker as LocalPackageWorkerClient & {
       storedDirectories?: () => Promise<Array<{id: string, handle: LocalPackageDirectoryHandle}>>
     }
-    if(!worker.storedDirectories) return restoredGit
+    if(!worker.storedDirectories) return []
     try {
       const stored = await worker.storedDirectories()
       let workerError: Error | undefined
@@ -424,7 +374,7 @@ export class LocalPackageManager {
         try { await worker.start() }
         catch(error) { workerError = error instanceof Error ? error : new Error(String(error)) }
       }
-      const restored = new Map(restoredGit.map(pkg => [pkg.name, pkg]))
+      const restored = new Map<string, WebWriterPackage>()
       // Stale handles can leave Chrome's permission or file reads pending.
       // Restore sources independently so one folder cannot hide every package.
       await Promise.all(stored.map(async entry => {
@@ -470,25 +420,6 @@ export class LocalPackageManager {
     catch(error) {
       this.options.error(error instanceof Error ? error.message : String(error))
     }
-    return restoredGit
-  }
-
-  async updateManifest(
-    record: LocalPackageRecord,
-    update: (manifest: Record<string, unknown>) => void,
-  ) {
-    if(record.gitSource) throw new Error("Git package contents are read-only. Edit the repository and refresh the package.")
-    const directory = record.directory as FileSystemDirectoryHandle & {getFileHandle(name: string, options?: {create?: boolean}): Promise<any>}
-    const handle = await directory.getFileHandle("package.json")
-    const file = await handle.getFile()
-    const parsed: unknown = JSON.parse(await file.text())
-    if(!isRecord(parsed)) throw new Error("The local package.json must contain a JSON object")
-    const manifest = {...parsed}
-    update(manifest)
-    const writable = await handle.createWritable()
-    await writable.write(JSON.stringify(manifest, null, 2) + "\n")
-    await writable.close()
-    await this.refresh(record.id)
-    return this.records.get(record.id)
+    return []
   }
 }

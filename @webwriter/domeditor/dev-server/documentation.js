@@ -63,6 +63,159 @@ if(requestedOption?.dataset.href && requestedOption.value !== library.value) {
   location.replace(url)
 }
 
+const docsSearch = document.querySelector(".docs-search")
+if(docsSearch) {
+  const input = docsSearch.querySelector("input")
+  const panel = docsSearch.querySelector(".docs-search-panel")
+  const status = panel.querySelector("[role=status]")
+  const results = panel.querySelector("ul")
+  const nativePopover = typeof panel.showPopover === "function"
+    && CSS.supports("(position-area: block-end) and (inline-size: anchor-size(inline))")
+  const normalize = text => text.toLowerCase().trim().replace(/\s+/g, " ")
+  const limit = 8
+  let indexRequest, pages, activeOption
+  let revision = 0
+
+  const isOpen = () => nativePopover ? panel.matches(":popover-open") : !panel.hidden
+  const selectOption = option => {
+    activeOption?.setAttribute("aria-selected", "false")
+    activeOption = option
+    if(option) {
+      option.setAttribute("aria-selected", "true")
+      input.setAttribute("aria-activedescendant", option.id)
+      option.scrollIntoView({block: "nearest"})
+    }
+    else input.removeAttribute("aria-activedescendant")
+  }
+  const onClose = () => {
+    revision++
+    selectOption(undefined)
+    input.setAttribute("aria-expanded", "false")
+  }
+  const close = () => {
+    if(!isOpen()) return
+    if(nativePopover) panel.hidePopover()
+    else {
+      panel.hidden = true
+      onClose()
+    }
+  }
+  if(nativePopover) {
+    panel.hidden = false
+    panel.addEventListener("beforetoggle", event => {
+      if(event.newState === "closed") onClose()
+    })
+  }
+  else {
+    panel.removeAttribute("popover")
+    document.addEventListener("pointerdown", event => {
+      if(!docsSearch.contains(event.target)) close()
+    })
+  }
+
+  const updateSearch = async () => {
+    const current = ++revision
+    const query = normalize(input.value)
+    selectOption(undefined)
+    input.setAttribute("aria-expanded", "false")
+    results.hidden = true
+    results.replaceChildren()
+    status.textContent = ""
+    if([...query].length < 3) {
+      close()
+      return
+    }
+
+    if(!isOpen()) {
+      if(nativePopover) panel.showPopover({source: input})
+      else panel.hidden = false
+    }
+    if(!pages) {
+      status.textContent = "Loading search…"
+      indexRequest ??= fetch(docsSearch.dataset.searchIndex).then(response => {
+        if(!response.ok) throw new Error("Could not load the documentation index")
+        return response.json()
+      })
+    }
+    try { pages ??= await indexRequest }
+    catch {
+      indexRequest = undefined
+      if(current === revision) status.textContent = "Couldn’t load search. Edit your query to retry."
+      return
+    }
+    if(current !== revision) return
+
+    const words = query.split(" ")
+    const matches = []
+    for(const page of pages) {
+      const pageTitle = normalize(page.title)
+      for(const {title, hash} of [page, ...page.headings]) {
+        const text = normalize(title)
+        if(!words.some(word => text.includes(word)) || !words.every(word => `${text} ${pageTitle}`.includes(word))) continue
+        const rank = text === query ? 0 : text.startsWith(query) ? 1 : text.includes(query) ? 2 : 3
+        matches.push({title, href: page.href + (hash ?? ""), context: hash ? page.title : "", rank})
+      }
+    }
+    matches.sort((a, b) => a.rank - b.rank || Number(!!a.context) - Number(!!b.context) || a.title.localeCompare(b.title))
+    status.textContent = matches.length === 0 ? "No matching titles or headings."
+      : matches.length === 1 ? "1 result"
+        : matches.length > limit ? `Showing ${limit} of ${matches.length} results` : `${matches.length} results`
+    for(const [index, {title, href, context}] of matches.slice(0, limit).entries()) {
+      const item = document.createElement("li")
+      item.setAttribute("role", "presentation")
+      const link = document.createElement("a")
+      link.id = `docs-search-option-${index}`
+      link.setAttribute("role", "option")
+      link.setAttribute("aria-selected", "false")
+      link.tabIndex = -1
+      link.href = href
+      link.textContent = title
+      if(context) {
+        const page = document.createElement("small")
+        page.textContent = context
+        link.append(page)
+      }
+      item.append(link)
+      results.append(item)
+    }
+    results.hidden = matches.length === 0
+    input.setAttribute("aria-expanded", String(matches.length > 0))
+  }
+
+  input.addEventListener("input", updateSearch)
+  input.addEventListener("click", () => { if(!isOpen()) updateSearch() })
+  input.addEventListener("keydown", event => {
+    if(event.isComposing || event.keyCode === 229 || event.altKey || event.ctrlKey || event.metaKey) return
+    if(event.key === "Escape" && isOpen()) {
+      event.preventDefault()
+      close()
+    }
+    else if(event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if(!isOpen() && [...normalize(input.value)].length < 3) return
+      event.preventDefault()
+      if(!isOpen()) updateSearch()
+      const options = [...results.querySelectorAll("a")]
+      const current = options.indexOf(activeOption)
+      const next = event.key === "ArrowDown" ? Math.min(current + 1, options.length - 1)
+        : current === -1 ? options.length - 1 : Math.max(current - 1, 0)
+      selectOption(options[next])
+    }
+    else if(event.key === "Enter" && isOpen()) {
+      const option = activeOption ?? results.querySelector("a")
+      if(!option) return
+      event.preventDefault()
+      option.click()
+    }
+  })
+  docsSearch.addEventListener("focusout", event => {
+    if(event.relatedTarget && !docsSearch.contains(event.relatedTarget)) close()
+  })
+  results.addEventListener("click", event => {
+    if(event.target.closest("a")) close()
+  })
+  docsSearch.hidden = false
+}
+
 // Keep the full source in one code block so it can still be copied after expansion.
 const samplePreviewLines = 10
 const canRevealSearchMatches = "onbeforematch" in HTMLElement.prototype

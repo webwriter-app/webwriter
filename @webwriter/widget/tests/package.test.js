@@ -18,7 +18,7 @@ const isCatalog = file => /^messages\/[a-z]+\/(?!index\.js$|catalogs\.js$)[^/]+\
 async function graph(subpath) {
   const {metafile} = await build({
     absWorkingDir: root, entryPoints: [manifest.exports[`./${subpath}`].default], bundle: true, write: false, metafile: true,
-    format: "esm", outdir: "out", external: ["pixi.js", "signal-polyfill"], logLevel: "silent",
+    format: "esm", outdir: "out", external: ["pixi.js", "signal-polyfill", "lit"], logLevel: "silent",
   })
   const files = Object.keys(metafile.inputs)
   const imports = Object.values(metafile.inputs).flatMap(input => input.imports)
@@ -54,10 +54,11 @@ test("the declarations reach only declarations that are there, and no catalog", 
   assert.equal([...seen].some(file => /^messages\/[a-z]+\/(?!index\.d\.ts$)[^/]+\.d\.ts$/.test(file)), false, "a catalog is declared")
 })
 
-// Only two modules have a dependency of their own: scene/pixi imports pixi.js, signals imports signal-polyfill.
-const dependencies = {"scene/pixi": ["pixi.js"], "signals": ["signal-polyfill"]}
+// Optional modules declare their external imports explicitly.
+const dependencies = {"scene/pixi": ["pixi.js"], "signals": ["signal-polyfill"],
+  "widget-option-controls": ["lit", "lit/directives/repeat.js"], "widget-option-elements": ["lit", "lit/directives/repeat.js"]}
 
-test("a module does not pull in another module, and only scene/pixi and signals import a dependency", async () => {
+test("each module uses only its declared external dependencies", async () => {
   for(const subpath of subpaths) {
     const {files, external} = await graph(subpath)
     const own = subpath.split("/")[0]

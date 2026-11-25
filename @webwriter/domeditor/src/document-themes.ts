@@ -47,12 +47,18 @@ const tokenCSS = `
     --ww-warning: light-dark(#8a5a00, #f0c05a);
   }
 }`
+const tableBorderCSS = `
+@layer webwriter-theme-options {
+  :where(table:not([is]) > tr, table:not([is]) > :is(thead, tbody, tfoot) > tr) > :where(td:not([is]), th:not([is])) {
+    border: 1px solid var(--ww-border-color);
+  }
+}`
 export const documentThemes = (Object.keys(themeSources) as DocumentThemeName[]).map(value => {
   const {source, disclosure} = themeSources[value]
   return {
     value,
     label: value[0].toUpperCase() + value.slice(1),
-    source: source + (disclosure ? disclosureCSS : "") + sharedThemeCSS + attachmentCSS + tokenCSS,
+    source: source + (disclosure ? disclosureCSS : "") + sharedThemeCSS + attachmentCSS + tokenCSS + tableBorderCSS,
   }
 })
 
@@ -78,9 +84,10 @@ export function upgradeBundledDocumentThemes(root: Pick<Document, "head">) {
     const source = style.textContent
     if(!theme || !source || source === theme.source) continue
     const fingerprint = toHexString(digest(themeEncoder.encode(source.replace(/\r\n?/g, "\n"))).subarray(0, 16))
-    const beforeTokens = theme.source.slice(0, -tokenCSS.length)
+    const beforeTableBorders = theme.source.slice(0, -tableBorderCSS.length)
+    const beforeTokens = beforeTableBorders.slice(0, -tokenCSS.length)
     const beforeAttachments = beforeTokens.slice(0, -attachmentCSS.length)
-    if(source === beforeAttachments || source === beforeAttachments + previousAttachmentCSS || source === beforeTokens
+    if(source === beforeAttachments || source === beforeAttachments + previousAttachmentCSS || source === beforeTokens || source === beforeTableBorders
       || fingerprint === themeSources[theme.value].originalFingerprint
       || legacyDocumentThemeFingerprints[theme.value].includes(fingerprint)) style.textContent = theme.source
     // The table picture migration replaces only the generated rule, keeping

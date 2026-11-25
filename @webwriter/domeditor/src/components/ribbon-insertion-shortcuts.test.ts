@@ -47,6 +47,38 @@ async function mountRibbon(settings = defaultAppSettings(false)) {
 }
 
 describe("insertion ribbon shortcuts", () => {
+  it("disables a ribbon insertion and leaves the alternate heading choice reachable", async () => {
+    const ribbon = await mountRibbon()
+    const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Heading"]')!
+    ribbon.unavailableInsertions = new Set(["element:h1", "element:h3"])
+    await ribbon.updateComplete
+    await heading.updateComplete
+    const main = heading.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    const command = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", command)
+    expect(main.getAttribute("aria-disabled")).toBe("true")
+    expect(main.getAttribute("draggable")).toBe("false")
+    main.click()
+    expect(command).not.toHaveBeenCalled()
+
+    heading.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await heading.updateComplete
+    const menu = heading.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    const item = (tag: string) => menu.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-action="element:${tag}"]`)!
+    expect(item("h3").getAttribute("aria-disabled")).toBe("true")
+    item("h3").click()
+    expect(command).not.toHaveBeenCalled()
+    item("h2").click()
+    expect(command.mock.calls[0][0].detail.label).toBe("element:h2")
+
+    ribbon.unavailableInsertions = new Set()
+    await ribbon.updateComplete
+    await heading.updateComplete
+    expect(main.hasAttribute("aria-disabled")).toBe(false)
+    expect(main.getAttribute("draggable")).toBe("true")
+  })
+
   it("offers Heading 1 before the other heading levels and dispatches its insertion command", async () => {
     const ribbon = await mountRibbon()
     const command = vi.fn()

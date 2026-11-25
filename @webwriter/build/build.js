@@ -6,7 +6,7 @@ import * as fs from "fs"
 import * as path from "path"
 import * as process from "process"
 import {confirm, localize} from "./localize.js"
-import {document} from "./document.js"
+import {document, isWidgetExport} from "./document.js"
 import 'dotenv/config'
 import esbuildPluginInlineImport from "esbuild-plugin-inline-import"
 import { inlineWorkerPlugin } from "@aidenlx/esbuild-plugin-inline-worker"
@@ -386,7 +386,7 @@ Standalone previews are always fully bundled.`)
 
   // Build with WebWriter's default options for building. Builds every `package.exports` entry of the form `"./widgets/my-widget.*": {"source": "./src/my-widget.ts", "default": "./dist/my-widget.*"} -> this should build `my-widget.js` and `my-widget.css` from the specified source into the dist directory.
   const pkg = JSON.parse(fs.readFileSync("./package.json", "utf8"))
-  const buildableKeys = Object.keys(pkg?.exports ?? {}).filter(k => k.startsWith("./widgets/"))
+  const buildableKeys = Object.keys(pkg?.exports ?? {}).filter(isWidgetExport)
   const testKeys = Object.keys(pkg?.exports ?? {}).filter(k => k.startsWith("./tests/"))
 
   const baseConfig = {

@@ -85,6 +85,12 @@ export class InsertionFeature extends EditorFeature {
           this.menu.moveActive(-1)
           return
         }
+        if((ev.key === "ArrowRight" && this.menu.openActiveCategory())
+          || (ev.key === "ArrowLeft" && this.menu.closeCategory())) {
+          ev.preventDefault()
+          ev.stopImmediatePropagation()
+          return
+        }
         if(ev.key === "Tab") {
           ev.preventDefault()
           ev.stopImmediatePropagation()
@@ -95,19 +101,18 @@ export class InsertionFeature extends EditorFeature {
           return
         }
         if(ev.key === "Enter") {
-          if(!this.menu.activeItem) {
+          if(!this.menu.selectActive()) {
             this.close()
             return
           }
           ev.preventDefault()
           ev.stopImmediatePropagation()
-          this.menu.selectActive()
           return
         }
         if(ev.key === "Escape") {
           ev.preventDefault()
           ev.stopImmediatePropagation()
-          this.close()
+          if(!this.menu.closeCategory()) this.close()
           return
         }
         // Backspace/Delete are handled by the editor's manipulation feature,
@@ -402,6 +407,13 @@ export class InsertionFeature extends EditorFeature {
   }
 
   private async insert(item: InsertionMenuItem) {
+    if(item.packageAction) {
+      const range = this.commandInsertionRange()
+      const selection = range && this.editor.features.manipulation.capturePackageInsertion(range)
+      this.close(false)
+      if(selection) this.editor.postHostMessage({type: "editor-package-insert", action: item.packageAction, selection})
+      return
+    }
     const generation = this.commandGeneration
     const isCurrentCommand = () => generation === this.commandGeneration && this.menu.open
     let html = item.html ?? (item.tag === "table"
@@ -431,15 +443,7 @@ export class InsertionFeature extends EditorFeature {
       return
     }
 
-    let range = this.commandRange
-    const selection = document.getSelection()
-    const point = this.commandStartPoint()
-    if(point && selection?.anchorNode) {
-      range = document.createRange()
-      range.setStart(...point)
-      range.setEnd(selection.anchorNode, selection.anchorOffset)
-      this.commandRange = range
-    }
+    const range = this.commandInsertionRange()
     if(!range?.startContainer.isConnected) {
       this.close()
       return
@@ -459,29 +463,27 @@ export class InsertionFeature extends EditorFeature {
       this.close(false)
       return
     }
+    const restoreSelection = !fragment.childNodes.length
+    this.insertCommandFragment(fragment, range, item, this.emptyTextBlock)
+    this.close(restoreSelection)
+  }
+
+  /** Commits the same command-range edit after either a local choice or a package reload. */
+  insertCommandFragment(fragment: DocumentFragment, range: Range, item?: InsertionMenuItem, emptyTextBlock?: Element | null) {
     const nodes = Array.from(fragment.childNodes)
-    if(!nodes.length) {
-      this.close()
-      return
-    }
-    if(!this.editor.features.manipulation.allowsInsertionAt(nodes, range.startContainer)) {
-      this.close(false)
-      return
-    }
+    if(!nodes.length || !this.editor.features.manipulation.allowsInsertionAt(nodes, range.startContainer)) return false
     range.deleteContents()
-    if(!item.html && !item.htmlUrl && item.tag) {
+    if(item?.tag && !item.html && !item.htmlUrl) {
       $.move(range.startContainer, range.startOffset)
-      if(this.editor.features.manipulation.convertInsertion(item.tag)) {
-        this.close(false)
-        return
-      }
+      if(this.editor.features.manipulation.convertInsertion(item.tag)) return true
     }
-    const replacement = this.emptyTextBlock?.isConnected && !isDocumentRoot(this.emptyTextBlock) && !this.emptyTextBlock.matches("caption, figcaption") && !this.emptyTextBlock.textContent && this.emptyTextBlock
-    if((item.kind === "widget" || isMediaType(item.tag) && !replacement) && nodes.length === 1 && isElement(nodes[0])) {
+    const block = emptyTextBlock === undefined ? this.findEmptyTextBlock(range.startContainer) : emptyTextBlock
+    const replacement = block?.isConnected && !isDocumentRoot(block) && !block.matches("caption, figcaption") && !block.textContent && block
+    if(nodes.length === 1 && isElement(nodes[0]) && (item?.kind === "widget"
+      || !item && this.editor.features.widget.isWidget(nodes[0]) || isMediaType(item?.tag) && !replacement)) {
       $.move(range.startContainer, range.startOffset)
       this.editor.features.manipulation.insert(nodes[0])
-      this.close(false)
-      return
+      return true
     }
     if(replacement) {
       replacement.replaceWith(...nodes)
@@ -522,7 +524,19 @@ export class InsertionFeature extends EditorFeature {
     if(isElement(last) && last.isConnected && last.matches("table, svg, math")) {
       this.editor.postSelectionPath(true)
     }
-    this.close(false)
+    return true
+  }
+
+  private commandInsertionRange() {
+    const selection = document.getSelection()
+    const point = this.commandStartPoint()
+    if(point && selection?.anchorNode) {
+      const range = document.createRange()
+      range.setStart(...point)
+      range.setEnd(selection.anchorNode, selection.anchorOffset)
+      this.commandRange = range
+    }
+    return this.commandRange
   }
 
   private close(restoreSelection=true) {

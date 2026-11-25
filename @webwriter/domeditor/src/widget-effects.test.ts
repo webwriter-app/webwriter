@@ -230,3 +230,31 @@ it("reads shape declarations from the static signals map and ignores malformed o
   expect(effectAccepts({accepts: []}, undefined)).toBe(true)
   expect(effectAccepts({accepts: ["table"]}, undefined)).toBe(false)
 })
+
+it("discovers and connects signals from widgets nested inside container widgets", async () => {
+  if(!customElements.get("outer-pages")) customElements.define("outer-pages", class extends HTMLElement {})
+  if(!customElements.get("inner-page")) customElements.define("inner-page", class extends HTMLElement {})
+  document.body.innerHTML = `
+    <outer-pages id="pages">
+      <inner-page>
+        <reactive-source id="nested"></reactive-source>
+      </inner-page>
+      <inner-page>
+        <reactive-display id="nested-display" effect="#nested[value]"></reactive-display>
+      </inner-page>
+    </outer-pages>
+    <reactive-display id="outer-display" effect="#nested[value]"></reactive-display>`
+  const source = document.getElementById("nested") as ReactiveSource
+  const nestedDisplay = document.getElementById("nested-display") as ReactiveDisplay
+  const outerDisplay = document.getElementById("outer-display") as ReactiveDisplay
+  runtime = mountWidgetEffects(document.body)
+  await settle()
+  expect(nestedDisplay.values).toEqual([2])
+  expect(outerDisplay.values).toEqual([2])
+  source.value.set(7)
+  await settle()
+  expect(nestedDisplay.values).toEqual([2, 7])
+  expect(outerDisplay.values).toEqual([2, 7])
+  expect(inspectWidgetEffects(document.body, outerDisplay, isWidgetHost)?.choices().map(c => c.value)).toContain("#nested[value]")
+  expect(validateWidgetEffect(document.body, outerDisplay, "effect", "#nested[value]", isWidgetHost)).toBeUndefined()
+})

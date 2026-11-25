@@ -34,6 +34,7 @@ for(const mode of ['build', 'dev']) test(`${mode} bundles independent entries by
     const manifest = JSON.stringify({name: 'build-fixture', type: 'module', dependencies: {tiny: '1.0.0'},
       prebuiltDependencies: [], exports: {
         './widgets/first.*': {source: './src/first.js', default: './dist/widgets/first.*'},
+        './widgets/first.icon.svg': './src/first.icon.svg',
         './widgets/second.*': {source: './src/second.js', default: './dist/widgets/second.*'},
         './tests/example.*': {source: './src/test.js', default: './dist/tests/example.*'},
       }})
@@ -43,6 +44,7 @@ for(const mode of ['build', 'dev']) test(`${mode} bundles independent entries by
     await writeFile(join(directory, 'src/shared.js'), 'export const extra = 1;')
     const source = 'import {value} from "tiny"; import {extra} from "./shared.js"; export const result = value + extra;'
     for(const entry of ['first', 'second', 'test']) await writeFile(join(directory, 'src', `${entry}.js`), source)
+    await writeFile(join(directory, 'src/first.icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>')
     if(mode === 'build') await run(process.execPath, [buildScript], {cwd: directory})
     else {
       watcher = spawn(process.execPath, [buildScript, 'dev'], {cwd: directory, stdio: ['ignore', 'ignore', 'pipe']})
@@ -175,6 +177,7 @@ test('the documentation analyzer reads only the folders of the widget sources', 
     './widgets/ww-a.*': {source: './src/widgets/ww-a.ts', default: './dist/widgets/ww-a.*'},
     './widgets/ww-b.js': './widgets/ww-b.js',
     './widgets/ww-b.css': './widgets/ww-b.css',
+    './widgets/ww-b.icon.svg': './widgets/ww-b.icon.svg',
     './widgets/ww-c.*': {source: './ww-c.ts', default: './dist/ww-c.*'},
     './widgets/ww-d.*': './widgets/ww-d.*',
     './tests/t.*': {source: './src/tests/t.ts', default: './dist/tests/t.*'},

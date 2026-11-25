@@ -16,7 +16,7 @@ The server listens on `http://127.0.0.1:1234` and refuses non-loopback bind addr
 
 Editor and preview iframes use the paired `localhost` origin in development. The app at `127.0.0.1` and the frames at `localhost` share the port but have different origins. Opening the landing page or editor through another loopback alias redirects to the application origin, preserving document-link parameters. For a deployed build, serve the same static files at a dedicated editor origin and set `VITE_APP_ORIGIN` and `VITE_EDITOR_ORIGIN` to the two exact HTTPS origins when building. The frame origin must serve `frame-shell.html`, `local-package-service-worker.js`, and the generated `assets/` files. Collaboration servers and widget asset hosts must also accept requests from the editor origin. Keep it separate from the application origin; the frames require both `allow-scripts` and `allow-same-origin` for native editing and widget support.
 
-Document, provider, and administration APIs accept browser requests only from the application origin. Frames retain access to widget-data resolution, grouping context, and immutable Git package resources. When running a separate frontend with `npm run start:frontend`, set `VITE_APP_ORIGIN` and `VITE_EDITOR_ORIGIN` to its exact loopback origins in both processes; for example `http://localhost:5173` and `http://127.0.0.1:5173`. The backend data directory is excluded from Vite file serving.
+Document, provider, and administration APIs accept browser requests only from the application origin. Frames retain access to widget-data resolution and grouping context. When running a separate frontend with `npm run start:frontend`, set `VITE_APP_ORIGIN` and `VITE_EDITOR_ORIGIN` to its exact loopback origins in both processes; for example `http://localhost:5173` and `http://127.0.0.1:5173`. The backend data directory is excluded from Vite file serving.
 
 Data is stored in the ignored `.webwriter-dev/` directory. Provider files have owner-only permissions, but API keys are still stored as plaintext development secrets. `OPENAI_API_KEY` can instead be set in `.env.local`; it creates an OpenAI provider whose key stays in the environment.
 
@@ -129,9 +129,7 @@ With `npm start`, browse [Widget documentation](http://127.0.0.1:1234/docs/) for
 
 ## Developer packages
 
-Open the developer console, then use **Add package → Add from local folder** for a local folder or **Add package → Add from Git repository** for an anonymous public Git remote (HTTP, HTTPS, or `git://`, including GitHub and GitLab). Enter a branch or tag, or leave it empty for the default branch. An optional package folder supports repositories containing multiple packages. The selected ref must contain `package.json` and the package's built exports; the editor does not run repository build scripts.
-
-Git packages require the development backend and Git installed on its host. Their contents are read-only. Git fetches into a temporary bare repository which is deleted after the transfer, including on failure. Runtime files are served from immutable snapshots in server memory with `Cache-Control: no-store`; no package checkout or persistent content cache is created. Only the repository/ref/folder descriptor is saved in browser settings, and reopening the app fetches it again. The refresh button at the bottom right of each package item refetches its source and reloads it even when Auto-reload is off. Hover or focus the source badge over the package icon to see the repository URL or local folder name.
+To add a local package, open the vertical-dots menu at the right of the **Search widgets** bar and choose **Add from local folder**. Choose the folder containing `package.json` and the package's built exports. Use **Add from parent folder** to load packages from its immediate subfolders. After rebuilding a package, click the refresh control in widget search. The **Auto-reload packages** setting can also reload changes automatically. With local packages loaded, **Checks & Tests** appears on the right side of the Review footer, beside **Versions**.
 
 ## Example lessons
 
@@ -144,8 +142,6 @@ The [Mozilla MathML Test](examples/mozilla-mathml-test.html) and [Kitchen Sink](
 ## APIs
 
 - `GET /api/session` — backend probe and no-auth login metadata
-- `POST /api/developer-packages/git` — fetch a public Git ref into an in-memory package snapshot
-- `GET|HEAD /api/developer-packages/git/:snapshot/:path` — read an immutable package file
 - `GET|POST /api/documents` and `GET|PUT|PATCH|DELETE /api/documents/:id` — document CRUD
 - `GET|POST /api/providers` and `GET|PUT|PATCH|DELETE /api/providers/:id` — AI provider CRUD
 - `PUT /api/providers/:id/active` — select the default provider

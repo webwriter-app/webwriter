@@ -16,8 +16,7 @@ log=$state/tunnel.log
 case $mode in ssh|usb) ;; *) echo 'Tunnel mode must be ssh or usb.'; exit 2 ;; esac
 
 owner() {
-  [ -r "$lock/pid" ] || return 1
-  read -r pid < "$lock/pid"
+  read -r pid 2>/dev/null < "$lock/pid" || return 1
   case $pid in ''|*[!0-9]*) return 1 ;; esac
   [ "$pid" -gt 1 ] && kill -0 "$pid" 2>/dev/null || return 1
   # A stale PID must never make stop signal an unrelated process.
@@ -27,6 +26,18 @@ owner() {
     command_line=$(ps -p "$pid" -o command= 2>/dev/null) || return 1
   fi
   case $command_line in *"$script run"*) return 0 ;; *) return 1 ;; esac
+}
+
+retire_lock() {
+  retired=$(mktemp -d "$state/retired-lock.XXXXXX") || return 1
+  # Detach this generation before another launcher can create a new lock.
+  if ! mv "$lock" "$retired/lock"; then
+    rmdir "$retired"
+    return 1
+  fi
+  rm -f "$retired/lock/pid"
+  rmdir "$retired/lock/recover" 2>/dev/null || :
+  rmdir "$retired/lock" "$retired" || :
 }
 
 case ${1:-start} in
@@ -71,15 +82,21 @@ case ${1:-start} in
     case $retry in ''|*[!0-9]*|0) echo 'Retry delay must be a positive integer.'; exit 1 ;; esac
     mkdir -p "$state"
     if ! mkdir "$lock" 2>/dev/null; then
+      # An unwritten PID belongs to a launcher that is still starting.
+      read -r stale_pid 2>/dev/null < "$lock/pid" || exit 1
       if owner; then exit 0; fi
-      # Another launcher may be between mkdir and writing its PID.
-      [ -f "$lock/pid" ] || exit 1
-      rm -f "$lock/pid"
-      rmdir "$lock" 2>/dev/null && mkdir "$lock" 2>/dev/null || exit 1
+      mkdir "$lock/recover" 2>/dev/null || exit 1
+      # The lock could have been replaced while claiming recovery.
+      if ! read -r current_pid 2>/dev/null < "$lock/pid" || [ "$current_pid" != "$stale_pid" ] || owner; then
+        rmdir "$lock/recover" 2>/dev/null || :
+        exit 1
+      fi
+      if ! retire_lock; then
+        rmdir "$lock/recover" 2>/dev/null || :
+        exit 1
+      fi
+      mkdir "$lock" 2>/dev/null || exit 1
     fi
-    printf '%s\n' "$$" > "$lock/pid"
-    # A bounded log is kept for the current session; previous sessions are discarded.
-    : > "$log"
     location_pid=
     child_pid=
     cleanup() {
@@ -90,11 +107,13 @@ case ${1:-start} in
         wait "$child_pid" 2>/dev/null || :
       fi
       if [ -n "$location_pid" ]; then kill "$location_pid" 2>/dev/null || :; wait "$location_pid" 2>/dev/null || :; fi
-      rm -f "$lock/pid"
-      rmdir "$lock" 2>/dev/null || :
+      retire_lock
     }
     trap cleanup EXIT
     trap 'exit 0' HUP INT TERM
+    # A bounded log is kept for the current session; previous sessions are discarded.
+    : > "$log"
+    printf '%s\n' "$$" > "$lock/pid" || exit 1
     cat "$location" > /dev/null &
     location_pid=$!
     while :; do

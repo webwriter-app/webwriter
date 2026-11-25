@@ -27,6 +27,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.native-browser.json"
   },
   "dependencies": {
+    "@webwriter/graphic": "^0.1.0",
     "axe-core": "^4.14.0",
     "@citation-js/core": "^0.8.2",
     "@citation-js/plugin-csl": "^0.8.2",
@@ -55,10 +56,12 @@
     "openai": "^4.104.0",
     "ws": "^8.21.0",
     "onnxruntime-web": "1.29.0",
+    "semver": "^7.7.4",
     "temml": "^0.11.11"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",
+    "@types/semver": "^7.7.1",
     "@types/ws": "^8.18.1",
     "@vitest/expect": "4.1.11",
     "@wagnerflo/cc-icons": "^1.2.1",

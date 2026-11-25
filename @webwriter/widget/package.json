@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/widget",
-  "version": "1.4.0",
+  "version": "1.6.0",
   "description": "DOM-backed runtime for WebWriter widgets",
   "license": "MIT",
   "repository": {
@@ -138,6 +138,31 @@
       "source": "./sandbox.ts",
       "types": "./sandbox.d.ts",
       "default": "./sandbox.js"
+    },
+    "./graphic": {
+      "source": "./graphic.ts",
+      "types": "./graphic.d.ts",
+      "default": "./graphic.js"
+    },
+    "./widget-options": {
+      "source": "./widget-options.ts",
+      "types": "./widget-options.d.ts",
+      "default": "./widget-options.js"
+    },
+    "./widget-option-controls": {
+      "source": "./widget-option-controls.ts",
+      "types": "./widget-option-controls.d.ts",
+      "default": "./widget-option-controls.js"
+    },
+    "./language-picker": {
+      "source": "./language-picker.ts",
+      "types": "./language-picker.d.ts",
+      "default": "./language-picker.js"
+    },
+    "./widget-option-elements": {
+      "source": "./widget-option-elements.ts",
+      "types": "./widget-option-elements.d.ts",
+      "default": "./widget-option-elements.js"
     }
   },
   "files": [
@@ -160,10 +185,14 @@
     "prepack": "npm run build"
   },
   "peerDependencies": {
-    "pixi.js": "^8.0.0"
+    "pixi.js": "^8.0.0",
+    "lit": "^3.3.0"
   },
   "peerDependenciesMeta": {
     "pixi.js": {
+      "optional": true
+    },
+    "lit": {
       "optional": true
     }
   },
@@ -174,6 +203,7 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@webwriter/graphic": "^0.1.0",
     "signal-polyfill": "^0.2.2"
   }
 }

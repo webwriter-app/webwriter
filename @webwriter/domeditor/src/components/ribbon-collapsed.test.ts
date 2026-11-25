@@ -4,6 +4,7 @@ import {AppRibbon} from "./ribbon"
 import {RibbonMenu} from "./ribbon-menu"
 import {primaryDrawerMarkNames} from "../marks"
 import {formatShortcut} from "../app-settings"
+import {insertSubmenuHoverDelay} from "../insertion"
 
 afterEach(() => document.body.replaceChildren())
 
@@ -240,7 +241,11 @@ describe("collapsed ribbon file menu", () => {
   it("shows editing menus only while collapsed and outside preview", async () => {
     const {ribbon, menu} = await mount()
     expect(menu.groups.flatMap(group => group.buttons).map(button => typeof button === "string" ? button : button.label))
-      .toEqual(["New", "Open", "Save", "Save as", "Print", "Format", "Insert", "Packages", "Developer console", "Settings", "About WebWriter..."])
+      .toEqual(["New", "Open", "Save", "Save as", "Print", "Format", "Insert", "Packages", "Settings", "About WebWriter..."])
+    const settings = menu.shadowRoot!.querySelector('button[title="Settings"]')!
+    const about = menu.shadowRoot!.querySelector('button[title="About WebWriter..."]')!
+    expect(settings.closest("section")).toBe(about.closest("section"))
+    expect(menu.shadowRoot!.querySelector(".menu")!.lastElementChild).toBe(about.closest("section"))
     ribbon.expanded = true
     await ribbon.updateComplete
     await menu.updateComplete
@@ -253,11 +258,6 @@ describe("collapsed ribbon file menu", () => {
     await menu.updateComplete
     expect(menu.shadowRoot!.querySelector('[title="Insert"]')).toBeNull()
     expect(menu.shadowRoot!.querySelector('[title="Hide breadcrumb"]')).toBeNull()
-    expect(menu.shadowRoot!.querySelector('[title="Developer console"]')).toBeNull()
-    ribbon.settings = {...ribbon.settings, pinDeveloperConsole: true}
-    await ribbon.updateComplete
-    await menu.updateComplete
-    expect(menu.shadowRoot!.querySelector('[title="Developer console"]')).not.toBeNull()
   })
 
   it("places Print immediately after Download in the File menu", async () => {
@@ -363,5 +363,26 @@ describe("collapsed ribbon file menu", () => {
     ribbon.addEventListener("ribbon-button-click", commands)
     insert.shadowRoot!.querySelector<HTMLButtonElement>('.submenu button')!.click()
     expect(commands).toHaveBeenCalledOnce()
+  })
+
+  it("waits for explicit activation of top-level insertion menus before enabling submenu hover", async () => {
+    const {menu} = await mount()
+    const hover = (trigger: HTMLButtonElement) => trigger.closest(".item-row")!
+      .dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+    vi.useFakeTimers()
+    try {
+      for(const label of ["Insert", "Packages"]) {
+        const trigger = menu.shadowRoot!.querySelector<HTMLButtonElement>(`button[title="${label}"]`)!
+        hover(trigger)
+        await vi.advanceTimersByTimeAsync(insertSubmenuHoverDelay)
+        expect(trigger.getAttribute("aria-expanded")).toBe("false")
+      }
+      const insert = await open(menu, "Insert")
+      const heading = insert.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show more Heading options"]')!
+      hover(heading)
+      await vi.advanceTimersByTimeAsync(insertSubmenuHoverDelay)
+      expect(heading.getAttribute("aria-expanded")).toBe("true")
+    }
+    finally { vi.useRealTimers() }
   })
 })

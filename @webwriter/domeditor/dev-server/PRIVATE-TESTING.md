@@ -138,7 +138,7 @@ The following sections describe running the same setup without Docker Compose.
 
 Use a separate VM or container host with no personal development data or
 credentials. Install Node.js with `process.loadEnvFile` support (Node 22+), npm,
-and nginx. Install Git too if testing Git packages. Run Node as an unprivileged
+and nginx. Run Node as an unprivileged
 service user. This is a single-instance deployment: collaboration and live
 sessions use process-local state.
 
@@ -261,6 +261,5 @@ cannot be validated in this mode. Live-session host/learner capability checks
 remain active, but the environment itself is trusted and shared.
 
 Every learner or link recipient needs VPN access. Document and widget files
-persist, while live sessions, ordinary collaboration rooms, and Git snapshots
-are temporary. This mode is for functional testing and is not a production
+persist. Live sessions and ordinary collaboration rooms are temporary. This mode is for functional testing and is not a production
 multi-user service.

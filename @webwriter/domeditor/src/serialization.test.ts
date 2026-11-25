@@ -35,6 +35,20 @@ it.each(["canvas", "board"])("embeds portable %s print support once and removes 
   expect(root.querySelector("#webwriter-layout-print")).toBeNull()
 })
 
+it("adds fragment snap margins to existing Slides exports without scripting", () => {
+  const root = new DOMParser().parseFromString('<body class="ww-slides"><div class="ww-slides-viewport"><section class="ww-slide"><p id="target">Target</p></section></div></body>', "text/html")
+  const content = root.body.innerHTML
+  appendSerializedAssets(root, []); appendSerializedAssets(root, [])
+  const styles = root.querySelectorAll("style#webwriter-slide-fragment-styles")
+  expect(styles).toHaveLength(1)
+  expect(styles[0].textContent).toContain(":target")
+  expect(root.querySelector("script")).toBeNull()
+  expect(root.body.innerHTML).toBe(content)
+  root.body.className = "ww-board"
+  appendSerializedAssets(root, [])
+  expect(root.querySelector("style#webwriter-slide-fragment-styles")).toBeNull()
+})
+
 it.each(["", "ww-canvas", "ww-slides", "ww-board"])("embeds attribution reading controls once for layout '%s' without authored UI", layout => {
   const root = new DOMParser().parseFromString(`<body class="${layout}"><div data-ww-attribution-name="Ada" data-ww-license="CC-BY-4.0"><custom-widget></custom-widget></div></body>`, "text/html")
   const body = root.body.innerHTML

@@ -422,6 +422,30 @@ describe("saved snippet capture", () => {
     }
     finally { document.head.innerHTML = headHTML }
   })
+
+  it.each(["canvas", "slides"] as const)("saves disjoint %s items as one snippet in document order", mode => {
+    const headHTML = document.head.innerHTML
+    try {
+      document.body.innerHTML = '<svg viewBox="0 0 16 16"><rect width="16" height="16"/></svg>'
+        + '<p>Unselected</p><table><tbody><tr><td>Cell<!--keep--></td></tr></tbody></table><h2>Heading</h2>'
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      const [graphic, table, heading] = Array.from(document.querySelectorAll("svg, table, h2"))
+      heading.classList.add("authored", "◆text-selected")
+      $.selectElements([heading, graphic, table])
+      const before = document.body.innerHTML
+
+      const snippet = editor.features.manipulation.actions.getSnippet({type: "getSnippet"})!
+      expect(snippet?.label).toBe("Cell Heading")
+      const saved = fragmentFromHTML(snippet.html)
+      expect(Array.from(saved.children, element => element.localName)).toEqual(["svg", "table", "h2"])
+      expect(saved.querySelector("rect")?.namespaceURI).toBe(graphic.namespaceURI)
+      expect(saved.querySelector("td")?.innerHTML).toBe("Cell<!--keep-->")
+      expect(saved.querySelector("h2")?.className).toBe("authored")
+      expect(document.body.innerHTML).toBe(before)
+      expect($.selectedElements).toEqual([graphic, table, heading])
+    }
+    finally { document.head.innerHTML = headHTML }
+  })
 })
 
 describe("captions", () => {
@@ -5825,6 +5849,34 @@ describe("setBlockType()", () => {
 })
 describe("setStyle()", () => {
   it.each([
+    ["<p>Text</p>", "8px"],
+    ...["h1", "h2", "h3", "h4", "h5", "h6"].map(tag => [`<${tag}>Heading</${tag}>`, "8px"]),
+    ["<ul><li>Item</li></ul>", "8px", "inside"],
+    ['<ol style="list-style-position: outside !important"><li>Item</li></ol>', "8px", "inside"],
+    ["<dl><dt>Term</dt><dd>Definition</dd></dl>", "8px"],
+    ["<menu><li>Item</li></menu>", "8px", "inside"],
+    ['<p is="demo-widget">Widget</p>', "13px"],
+    ["<p popover>Popup</p>", "13px"],
+    ["<blockquote>Quote</blockquote>", "13px"],
+    ["<demo-widget>Widget</demo-widget>", "13px"],
+  ])("sets eligible preset spacing for %s", (html, padding, markerPosition = "") => {
+    document.body.innerHTML = `${html}<p>Unselected</p>`
+    const element = document.body.firstElementChild as HTMLElement
+    element.style.setProperty("padding", "13px", "important")
+    const markerPriority = element.style.getPropertyPriority("list-style-position")
+    $.selectElement(element)
+
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, boxPreset: true, styles: {"background-color": "gold"}})
+
+    expect(element).toHaveStyle({backgroundColor: "gold", padding})
+    expect(element.style.getPropertyPriority("padding")).toBe("important")
+    expect(element.style.getPropertyValue("list-style-position")).toBe(markerPosition)
+    expect(element.style.getPropertyPriority("list-style-position")).toBe(markerPriority)
+    expect(element.querySelector("[style]")).toBeNull()
+    expect(element.nextElementSibling).not.toHaveAttribute("style")
+  })
+
+  it.each([
     '<audio controls></audio>',
     '<video controls></video>',
     '<picture><img src="photo.png"></picture>',
@@ -5992,6 +6044,97 @@ describe("setStyle()", () => {
       expect(paragraph.style.getPropertyValue(`border-${side}-color`)).toBe(color)
     }
   })
+  it.each(["td", "th"])("completes only the chosen border on selected %s cells", localName => {
+    document.body.innerHTML = `<table><tbody><tr><${localName}>A<!--keep--><test-widget></test-widget></${localName}><${localName}>B</${localName}><${localName}>C</${localName}></tr></tbody></table>`
+    const cells = Array.from(document.querySelectorAll<HTMLTableCellElement>(localName))
+    const contents = cells[0].innerHTML
+    editor.features.table.selectCells(cells[0], cells[1])
+    editor.features.manipulation.setStyle({"border-top-width": "4px"})
+    for(const cell of cells.slice(0, 2)) {
+      expect(cell.style.borderTopWidth).toBe("4px")
+      expect(cell.style.borderTopStyle).toBe("solid")
+      expect(cell.style.borderTopColor).toBe("black")
+      for(const side of ["right", "bottom", "left"]) {
+        for(const part of ["width", "style", "color"]) expect(cell.style.getPropertyValue(`border-${side}-${part}`)).toBe("")
+      }
+    }
+    expect(cells[2].hasAttribute("style")).toBe(false)
+    expect(cells[0].innerHTML).toBe(contents)
+    editor.features.manipulation.setStyle({"border-top-width": null, "border-top-style": null, "border-top-color": null})
+    expect(cells.every(cell => !cell.hasAttribute("style"))).toBe(true)
+  })
+
+  it.each([
+    ["border-top-style", "dashed", "1px", "dashed", "black"],
+    ["border-top-color", "red", "1px", "solid", "red"],
+  ])("completes a single border when %s is set", (property, value, width, line, color) => {
+    document.body.innerHTML = '<p style="border-bottom: 3px dotted green !important">Text</p>'
+    const target = document.querySelector("p")!
+    editor.features.manipulation.setElementStyles(target, {[property]: value})
+    expect(target.style.borderTopWidth).toBe(width)
+    expect(target.style.borderTopStyle).toBe(line)
+    expect(target.style.borderTopColor).toBe(color)
+    expect(target.style.borderBottomWidth).toBe("3px")
+    expect(target.style.borderBottomStyle).toBe("dotted")
+    expect(target.style.getPropertyPriority("border-bottom-width")).toBe("important")
+    expect(target.style.borderLeftStyle).toBe("")
+  })
+
+  it("updates a shared border across row groups and undoes both cell changes together", () => {
+    document.body.innerHTML = `<table style="border-collapse: collapse">
+      <thead><tr><th id="heading" colspan="2" style="border-bottom: 4px dashed red">Heading</th></tr></thead>
+      <tbody><tr><td id="first" style="border-top: 8px solid blue !important; border-left: 3px dotted green">A</td><td id="second">B</td></tr></tbody>
+    </table>`
+    const heading = () => document.querySelector<HTMLTableCellElement>("#heading")!
+    const first = () => document.querySelector<HTMLTableCellElement>("#first")!
+    const second = () => document.querySelector<HTMLTableCellElement>("#second")!
+    editor.features.table.selectCells(heading())
+    const before = editor.toHTML(true)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"border-bottom-width": "2px"}})
+    expect(heading().style.borderBottomWidth).toBe("2px")
+    for(const cell of [first(), second()]) {
+      expect(cell.style.borderTopWidth).toBe("2px")
+      expect(cell.style.borderTopStyle).toBe("dashed")
+      expect(cell.style.borderTopColor).toBe("red")
+    }
+    expect(first().style.borderLeftWidth).toBe("3px")
+    expect(first().style.getPropertyPriority("border-top-width")).toBe("important")
+    expect(second().style.borderBottomWidth).toBe("")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(second().style.borderTopWidth).toBe("2px")
+  })
+
+  it.each(["ltr", "rtl"])("mirrors the physical side of a spanning cell in a %s table", direction => {
+    document.body.innerHTML = `<table style="border-collapse: collapse; direction: ${direction}"><tbody>
+      <tr><td id="source" rowspan="0">A</td><td id="first">B</td><td>C</td></tr>
+      <tr><td id="second">D</td><td>E</td></tr>
+    </tbody></table>`
+    const source = document.querySelector<HTMLTableCellElement>("#source")!
+    const side = direction === "ltr" ? "right" : "left"
+    const opposite = direction === "ltr" ? "left" : "right"
+    editor.features.manipulation.setElementStyles(source, {[`border-${side}-color`]: "red"})
+    for(const cell of document.querySelectorAll<HTMLTableCellElement>("#first, #second")) {
+      expect(cell.style.getPropertyValue(`border-${opposite}-color`)).toBe("red")
+      expect(cell.style.getPropertyValue(`border-${side}-color`)).toBe("")
+    }
+    expect(document.querySelectorAll("td[style]")).toHaveLength(3)
+    editor.features.manipulation.setElementStyles(source, {
+      [`border-${side}-width`]: null, [`border-${side}-style`]: null, [`border-${side}-color`]: null,
+    })
+    expect(document.querySelectorAll("td[style]")).toHaveLength(0)
+  })
+
+  it("keeps cell borders independent when table borders are separate", () => {
+    document.body.innerHTML = '<table style="border-collapse: separate"><tr><td>A</td></tr><tr><td>B</td></tr></table>'
+    const [first, second] = document.querySelectorAll("td")
+    editor.features.table.selectCells(first)
+    editor.features.manipulation.setStyle({"border-bottom-style": "dashed"})
+    expect(first.style.borderBottomStyle).toBe("dashed")
+    expect(second.hasAttribute("style")).toBe(false)
+  })
+
   it("preserves existing border sides and priority while filling missing parts", () => {
     document.body.innerHTML = '<p style="border-top: 3px dotted green !important; border-bottom-width: 7px">Text</p>'
     const paragraph = document.body.firstElementChild as HTMLElement
@@ -6734,7 +6877,7 @@ describe("setStyle()", () => {
 
     expect(table).toHaveStyle({borderCollapse: "collapse"})
   })
-  it.each([false, true])("styles only the selected cells (Edit toolbox: %s)", topLevel => {
+  it.each([false, true])("styles selected cells and mirrors their shared borders (Edit toolbox: %s)", topLevel => {
     document.body.innerHTML = '<section><!--keep--><table><thead><tr><th colspan="2">Heading</th><th>Other</th></tr></thead><tbody><tr><td><p>one</p></td><td><demo-widget></demo-widget></td><td>three</td></tr></tbody></table></section>'
     const table = document.querySelector("table")!
     const [heading, other, first, second, third] = Array.from(table.querySelectorAll("td, th")) as HTMLTableCellElement[]
@@ -6751,7 +6894,14 @@ describe("setStyle()", () => {
       expect(cell).toHaveStyle({backgroundColor: "gold", borderColor: "red", padding: "8px", color: "blue"})
       expect(cell.style.getPropertyPriority("color")).toBe("important")
     }
-    for(const element of [table, other, third, document.querySelector("section"), first.firstElementChild, second.firstElementChild]) {
+    for(const neighbor of [other, third]) {
+      expect(neighbor).toHaveStyle({borderLeftWidth: "1px", borderLeftStyle: "solid", borderLeftColor: "red"})
+      expect(neighbor.style.borderRightWidth).toBe("")
+      expect(neighbor.style.backgroundColor).toBe("")
+      expect(neighbor.style.padding).toBe("")
+      expect(neighbor.style.color).toBe("")
+    }
+    for(const element of [table, document.querySelector("section"), first.firstElementChild, second.firstElementChild]) {
       expect(element).not.toHaveAttribute("style")
     }
     expect(Array.from(table.querySelectorAll("*"))).toEqual(children)
@@ -7243,10 +7393,10 @@ describe("unified content transfer", () => {
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: first.firstChild!, offset: 3})
     const data = ribbonData("h2")
     const read = vi.spyOn(data, "getData").mockReturnValue("")
-    document.body.dispatchEvent(transferEvent("dragover", data, {clientX: 150, clientY: 20}))
+    document.body.dispatchEvent(transferEvent("dragover", data, {clientX: 50, clientY: 10}))
     read.mockRestore()
     expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
-    document.body.dispatchEvent(transferEvent("drop", data, {clientX: 150, clientY: 20}))
+    document.body.dispatchEvent(transferEvent("drop", data, {clientX: 50, clientY: 10}))
     expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "h2", "p", "p"])
     expect(Array.from(document.body.children).map(child => child.textContent)).toEqual(["bef", "", "ore", "after"])
     expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
@@ -7265,16 +7415,16 @@ describe("unified content transfer", () => {
       vi.spyOn(document, "elementFromPoint").mockReturnValue(first)
       vi.spyOn($, "pointFromCoords").mockReturnValue({node: first.firstChild!, offset: 3})
       const data = {[elementDragType]: "h2", [`${elementDragType}-h2`]: "h2", "text/html": "<h2></h2>"}
-      expect(replayHostDrag({event: "dragover", x: 150, y: 20, data})).toBe(true)
+      expect(replayHostDrag({event: "dragover", x: 50, y: 10, data})).toBe(true)
       expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
       expect(replayHostDrag({event: "dragleave", x: 0, y: 0, data})).toBe(false)
       expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
-      replayHostDrag({event: "dragover", x: 150, y: 20, data})
-      expect(replayHostDrag({event: "drop", x: 150, y: 20, data})).toBe(true)
+      replayHostDrag({event: "dragover", x: 50, y: 10, data})
+      expect(replayHostDrag({event: "drop", x: 50, y: 10, data})).toBe(true)
       expect(Array.from(document.body.children).map(child => child.localName)).toEqual(["p", "h2", "p", "p"])
       expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
       expect(replayHostDrag({event: "drop", x: Number.NaN, y: 20, data})).toBe(false)
-      expect(replayHostDrag({event: "click" as "drop", x: 150, y: 20, data})).toBe(false)
+      expect(replayHostDrag({event: "click" as "drop", x: 50, y: 10, data})).toBe(false)
       expect(document.body.children).toHaveLength(4)
     }
     finally { vi.unstubAllGlobals() }
@@ -7685,6 +7835,143 @@ describe("unified content transfer", () => {
     return {data, surface}
   }
 
+  it.each(["img", "picture", "audio", "video", "iframe", "embed", "object"])("replaces a %s on a direct media drop and supports undo and redo", tag => {
+    const html = (label: string) => tag === "picture" ? `<picture><source srcset="${label}.webp"><img alt="${label}"></picture>`
+      : tag === "img" || tag === "embed" ? `<${tag} src="${label}.test">` : `<${tag} src="${label}.test"><!--${label}--></${tag}>`
+    document.body.innerHTML = `${html("source")}<figure id="kept-figure">${html("target")}<!--keep--><figcaption>Keep caption</figcaption></figure><p>After</p>`
+    const source = document.body.firstElementChild!, figure = document.querySelector("figure")!, target = figure.firstElementChild!
+    const caption = figure.querySelector("figcaption"), children = Array.from(source.childNodes)
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 240, 160))
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const {data} = beginDrag(source)
+    const hit = target.querySelector("img") ?? target
+    expect(editor.features.manipulation.draggedElement).toBe(source)
+    hit.dispatchEvent(transferEvent("dragover", data, {clientX: 220, clientY: 180}))
+    const preview = editor.appendix.querySelector<HTMLElement>('[part~="media-drop-preview"]')!
+    expect(preview.style.width).toBe("240px")
+    expect(preview.style.height).toBe("160px")
+    expect(preview.getRootNode()).toBe(editor.appendix)
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    hit.dispatchEvent(transferEvent("drop", data, {clientX: 220, clientY: 180}))
+    expect(figure.firstElementChild).toBe(source)
+    expect(target.isConnected).toBe(false)
+    expect(Array.from(source.childNodes)).toEqual(children)
+    expect(figure.querySelector("figcaption")).toBe(caption)
+    expect(figure.childNodes[1].nodeType).toBe(Node.COMMENT_NODE)
+    expect(figure.id).toBe("kept-figure")
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).toBeNull()
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
+    editor.doc.syncFromDOM()
+    const after = editor.toHTML(true)
+    expect(after).not.toMatch(/◆|media-drop-preview/)
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("media-drop-preview")
+    editor.doc.undo(); expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo(); expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it.each([false, true])("replaces pictures with images while retaining target placement (copy: %s)", copy => {
+    document.body.innerHTML = '<img id="source" src="new.png"><p>Between</p><picture class="ww-float-right" style="--ww-float-size:180px"><img src="old.png"></picture>'
+    const source = document.querySelector("img")!, target = document.querySelector("picture")!
+    const {data} = beginDrag(source)
+    target.firstElementChild!.dispatchEvent(transferEvent("drop", data, {ctrlKey: copy}))
+    const result = document.body.lastElementChild!
+    expect(result.localName).toBe("img")
+    expect(result).toHaveAttribute("src", "new.png")
+    expect(result).toHaveClass("ww-float-right")
+    expect((result as HTMLElement).style.getPropertyValue("--ww-float-size")).toBe("180px")
+    expect(result === source).toBe(!copy)
+    if(!copy) expect(result.id).toBe("source")
+    if(copy) expect(source.parentElement).toBe(document.body)
+  })
+
+  it("rechecks a remotely replaced media target at drop and cleans up cancelled previews", () => {
+    document.body.innerHTML = '<video></video><audio></audio><p>Keep</p>'
+    const source = document.querySelector("video")!, old = document.querySelector("audio")!
+    const {data} = beginDrag(source)
+    old.dispatchEvent(transferEvent("dragover", data))
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).not.toBeNull()
+    const current = document.createElement("audio")
+    old.replaceWith(current)
+    current.dispatchEvent(transferEvent("drop", data))
+    expect(source.nextElementSibling?.localName).toBe("p")
+    expect(document.querySelector("audio")).toBeNull()
+    const next = beginDrag(source)
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: source, offset: 0})
+    source.dispatchEvent(transferEvent("dragover", next.data))
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).toBeNull()
+    next.surface.dispatchEvent(transferEvent("dragend", next.data))
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
+  })
+
+  it("replaces media from sanitized external HTML and ribbon media", () => {
+    document.body.innerHTML = '<picture><img alt="old"></picture><p>Keep</p>'
+    const target = document.querySelector("picture")!, data = new DataTransfer()
+    data.setData("text/html", '<picture><source srcset="new.webp"><img src="new.png" onerror="bad()"></picture>')
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 0})
+    target.dispatchEvent(transferEvent("drop", data))
+    expect(document.querySelectorAll("picture")).toHaveLength(1)
+    expect(document.querySelector("img")).toHaveAttribute("src", "new.png")
+    expect(document.querySelector("img")).not.toHaveAttribute("onerror")
+    document.querySelector("picture")!.dispatchEvent(transferEvent("drop", ribbonData("video")))
+    expect(document.querySelector("picture")).toBeNull()
+    expect(document.querySelector("video")).not.toBeNull()
+    expect(document.querySelector("p")).toHaveTextContent("Keep")
+  })
+
+  it("copies a captioned media unit with a fresh authored ID", () => {
+    document.body.innerHTML = '<figure id="source-figure"><picture><img alt="source"></picture><figcaption>Source caption</figcaption></figure><picture><img alt="target"></picture>'
+    const source = document.querySelector("figure")!, target = document.body.lastElementChild!
+    const {data} = beginDrag(source)
+    target.dispatchEvent(transferEvent("drop", data, {altKey: true}))
+    const copy = document.body.lastElementChild!
+    expect(copy.localName).toBe("figure")
+    expect(copy.id).not.toBe(source.id)
+    expect(document.querySelectorAll("#source-figure")).toHaveLength(1)
+    expect(copy.querySelector("figcaption")).toHaveTextContent("Source caption")
+    expect(copy.querySelector("img")).toHaveAttribute("alt", "source")
+    expect(source.isConnected).toBe(true)
+  })
+
+  it("cleans up replacement previews on cancellation, mode changes and destruction", () => {
+    document.body.innerHTML = '<picture><img></picture><picture><img></picture><p>Text</p>'
+    const source = document.body.firstElementChild!, target = source.nextElementSibling!, paragraph = document.querySelector("p")!
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: paragraph.firstChild!, offset: 1})
+    const {data, surface} = beginDrag(source)
+    target.dispatchEvent(transferEvent("dragover", data))
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).not.toBeNull()
+    paragraph.dispatchEvent(transferEvent("dragover", data))
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).toBeNull()
+    target.dispatchEvent(transferEvent("dragover", data))
+    surface.dispatchEvent(transferEvent("dragend", data))
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).toBeNull()
+    const next = beginDrag(source)
+    target.dispatchEvent(transferEvent("dragover", next.data))
+    editor.features.manipulation.disable()
+    expect(editor.appendix.querySelector('[part~="media-drop-preview"]')).toBeNull()
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
+    expect(source.isConnected && target.isConnected).toBe(true)
+  })
+
+  it("extends side targets from the element edges to the viewport with 8px spacing", () => {
+    document.body.innerHTML = '<p>Anchor</p><video></video>'
+    document.body.style.cssText = '--ww-float-width:280px;padding-left:100px;padding-right:100px'
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 800, 600))
+    const anchor = document.querySelector("p")!, source = document.querySelector("video")!
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: anchor.firstChild!, offset: 1})
+    vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 20, 200, 200))
+    const {data} = beginDrag(source)
+    for(const x of [292, 299, 300, 400, 499, 500, 507]) {
+      expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:x, clientY:100}), source)).toBeNull()
+      anchor.dispatchEvent(transferEvent("dragover", data, {clientX:x, clientY:100}))
+      expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    }
+    for(const [x, side] of [[0, "left"], [100, "left"], [291, "left"], [508, "right"], [700, "right"], [799, "right"]] as const) {
+      expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:x, clientY:100}), source)).toBe(anchor)
+      expect(editor.features.manipulation.floatSide(anchor, x)).toBe(side)
+    }
+  })
+
   it.each((["canvas", "slides"] as const).flatMap(mode => [false, true].map(copy => ({mode, copy}))))("preserves a $mode item's layer on native move and raises only a new copy (copy: $copy)", ({mode, copy}) => {
     document.body.innerHTML = '<article style="z-index:1">Background</article><p style="z-index:40">Front</p>'
     expect(editor.setDocumentLayout(mode, "document")).toBe(true)
@@ -8030,7 +8317,7 @@ describe("unified content transfer", () => {
     expect(editor.toHTML(true)).not.toMatch(/◆|transform-overlay|node-drag-surface/)
   })
 
-  it.each([[125, "left"], [150, "right"], [175, "right"]] as const)("floats dragged content at x=%i with native CSS", (x, side) => {
+  it.each([[80, "left"], [220, "right"], [500, "right"]] as const)("floats dragged content at x=%i with native CSS", (x, side) => {
     document.body.innerHTML = '<pre>source</pre><article><p>nested</p></article>'
     const source = document.querySelector("pre") as HTMLPreElement, target = document.querySelector("article")!
     const nested = target.querySelector("p")!
@@ -8107,7 +8394,7 @@ describe("unified content transfer", () => {
     }
   })
 
-  it.each([[120, "left"], [180, "right"]] as const)("uses the projected %s float box beyond the target's height", (x, side) => {
+  it.each([[80, "left"], [220, "right"]] as const)("extends the %s margin target beyond the preview footprint", (x, side) => {
     document.body.innerHTML = '<video style="width:40px;min-width:0;height:60px"></video><p>target</p><p>displaced content</p>'
     const source = document.querySelector("video")!, target = document.querySelector("p")!
     vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 200, 40, 60))
@@ -8121,7 +8408,7 @@ describe("unified content transfer", () => {
     expect(parseFloat(preview.style.top)).toBe(50)
     expect(parseFloat(preview.style.height)).toBe(60)
     expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:150, clientY:100}), source)).toBeNull()
-    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:x, clientY:116}), source)).toBeNull()
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:x, clientY:500}), source)).toBe(target)
     document.body.dispatchEvent(transferEvent("drop", data, {clientX:x, clientY:100}))
     expect(source.nextElementSibling).toBe(target)
     expectClassFloat(source, side)
@@ -8148,6 +8435,8 @@ describe("unified content transfer", () => {
     document.body.innerHTML = '<table><tbody>' + Array.from({length: 8}, (_, row) =>
       `<tr><td><p>cell ${row}a</p></td><td><p>cell ${row}b</p></td></tr>`).join("") + '</tbody></table><video controls style="width:40px;height:120px"></video>'
     const source = document.querySelector("video")!
+    vi.spyOn(document.querySelector("table")!, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 400, 320))
+    document.body.style.cssText = 'padding-left:100px;padding-right:100px'
     vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 600, 900))
     vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 800, 40, 120))
     for(const [index, cell] of Array.from(document.querySelectorAll("td")).entries()) {
@@ -8170,7 +8459,7 @@ describe("unified content transfer", () => {
     for(const paragraph of Array.from(document.querySelectorAll("td > p")).slice(0, 4)) {
       const rect = paragraph.getBoundingClientRect()
       const event = new MouseEvent("mousemove", {clientX: rect.right - 4, clientY: rect.top + 10})
-      expect(editor.features.manipulation.floatDropTarget(event, source)).toBe(paragraph)
+      expect(editor.features.manipulation.floatDropTarget(event, source)).toBeNull()
     }
   })
 
@@ -8178,6 +8467,8 @@ describe("unified content transfer", () => {
     document.body.innerHTML = '<aside class="ww-float-right" style="width:120px">note</aside><table><tbody>' + Array.from({length: 8}, (_, row) =>
       `<tr><td><p>cell ${row}a</p></td><td><p>cell ${row}b</p></td></tr>`).join("") + '</tbody></table><video controls style="width:40px;height:120px"></video>'
     const source = document.querySelector("video")!
+    vi.spyOn(document.querySelector("table")!, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 400, 320))
+    document.body.style.cssText = 'padding-left:100px;padding-right:100px'
     vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 600, 900))
     vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 800, 40, 120))
     for(const [index, cell] of Array.from(document.querySelectorAll("td")).entries()) {
@@ -8190,7 +8481,7 @@ describe("unified content transfer", () => {
     expect(floatQueries()).toBe(1)
     const paragraph = document.querySelector("td > p")!, rect = paragraph.getBoundingClientRect()
     const event = new MouseEvent("mousemove", {clientX: rect.right - 4, clientY: rect.top + 10})
-    expect(editor.features.manipulation.floatDropTarget(event, source)).toBe(paragraph)
+    expect(editor.features.manipulation.floatDropTarget(event, source)).toBeNull()
     expect(floatQueries()).toBe(1)
 
     // A float that appears later belongs to the next measurement, which the
@@ -8214,14 +8505,14 @@ describe("unified content transfer", () => {
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     const {data} = beginDrag(source)
-    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX: 120, clientY: 100}), source)).toBe(target)
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX: 80, clientY: 100}), source)).toBe(target)
     await new Promise(resolve => setTimeout(resolve))
     let changes = 0, tokens: string | null = null
     const count = (transaction: {changed: Map<unknown, unknown>}) => { if(transaction.changed.size) changes++ }
     editor.doc.doc.on("afterTransaction", count)
     const process = vi.spyOn(editor.features.selection, "processSelection")
     try {
-      document.body.dispatchEvent(transferEvent("drop", data, {clientX: 120, clientY: 100}))
+      document.body.dispatchEvent(transferEvent("drop", data, {clientX: 80, clientY: 100}))
       // The tokens are authored state: written with the drop, not by a later refresh.
       tokens = document.body.getAttribute("style")
       expect(document.body.style.getPropertyValue("--ww-left-column-default-width")).not.toBe("")
@@ -8251,6 +8542,7 @@ describe("unified content transfer", () => {
   it("previews every successive paragraph in both drag directions without remeasurement", () => {
     document.body.innerHTML = '<p>first</p><p>second</p><p>third</p><video controls style="width:40px;height:120px"></video>'
     const source = document.querySelector("video")!, paragraphs = Array.from(document.querySelectorAll("p"))
+    document.body.style.cssText = 'padding-left:100px;padding-right:100px'
     vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 600, 500))
     const sourceRect = vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 200, 40, 120))
     for(const [index, paragraph] of paragraphs.entries()) vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(100, index * 40, 400, 30))
@@ -8406,7 +8698,7 @@ describe("unified content transfer", () => {
 
   it.each([[5, "left"], [1395, "right"]] as const)("floats gutter drops at x=%i below a mostly empty document", (x, side) => {
     document.body.innerHTML = '<p>Only paragraph</p>'
-    document.body.style.setProperty("--ww-float-width", "280px")
+    document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
     Object.defineProperty(document.documentElement, "clientWidth", {configurable: true, value: 1400})
     try {
       const paragraph = document.querySelector("p")!
@@ -8513,14 +8805,14 @@ describe("unified content transfer", () => {
     expect(editor.doc.body.toString()).not.toContain("◆")
   })
 
-  it("keeps space beside a narrow nested container inside the document column out of gutter targeting", () => {
+  it("extends a narrow nested element's side targets through the full viewport margins", () => {
     document.body.innerHTML = '<div><p>nested</p></div>'
     document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
     vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
     vi.spyOn(document.querySelector("div")!, "getBoundingClientRect").mockReturnValue(new DOMRect(500, 20, 200, 30))
     vi.spyOn(document.querySelector("p")!, "getBoundingClientRect").mockReturnValue(new DOMRect(500, 20, 200, 30))
     const source = document.createElement("p")
-    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:1000, clientY:690}), source)).toBeNull()
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:1000, clientY:690}), source)).toBe(document.querySelector("p"))
     expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:1395, clientY:690}), source)).toBe(document.querySelector("p"))
   })
 
@@ -8718,7 +9010,7 @@ describe("unified content transfer", () => {
   })
 
   it.each([false, true])("floats a dragged media element beside the target paragraph in reading order (copy: %s)", copy => {
-    for(const [x, side] of [[125, "left"], [175, "right"]] as const) {
+    for(const [x, side] of [[80, "left"], [220, "right"]] as const) {
       document.body.innerHTML = '<picture style="position: absolute; width: 40px"><img alt="dragged"></picture><p>target</p>'
       const source = document.querySelector("picture") as HTMLElement
       const paragraph = document.querySelector("p")!
@@ -8749,7 +9041,7 @@ describe("unified content transfer", () => {
     }
   })
 
-  it.each([[125, "left"], [150, "right"], [175, "right"]] as const)("floats externally dropped media at x=%i using native CSS", (x, side) => {
+  it.each([[80, "left"], [220, "right"], [500, "right"]] as const)("floats externally dropped media at x=%i using native CSS", (x, side) => {
     document.body.innerHTML = "<p>target</p>"
     const paragraph = document.querySelector("p")!
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
@@ -8766,7 +9058,7 @@ describe("unified content transfer", () => {
     expect(paragraph.querySelector("img")).toBeNull()
   })
 
-  it.each([[90, 50], [210, 50], [150, -10], [150, 110]])("does not float a drop outside the target box at (%i, %i)", (x, y) => {
+  it.each([[95, 50], [205, 50], [150, -10], [150, 110]])("keeps spacing beside the target free of float drops at (%i, %i)", (x, y) => {
     document.body.innerHTML = '<picture style="color: red; float: left; margin: 8px"><source srcset="wide.webp"><img src="fallback.png" alt="media"></picture><p>target</p>'
     const media = document.querySelector("picture") as HTMLElement
     const target = document.querySelector("p")!

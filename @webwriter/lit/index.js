@@ -1,16 +1,57 @@
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __reExport = (target, mod, secondTarget) => (__copyProps(target, mod, "default"), secondTarget && __copyProps(secondTarget, mod, "default"));
+
 // index.ts
+var index_exports = {};
+__export(index_exports, {
+  BrowserWidgetResultStorage: () => BrowserWidgetResultStorage,
+  HttpWidgetResultStorage: () => HttpWidgetResultStorage,
+  LitElementWw: () => LitElementWw,
+  WidgetDrawer: () => WidgetDrawer,
+  WidgetResultConflict: () => WidgetResultConflict,
+  effectAccepts: () => effectAccepts,
+  hasShape: () => hasShape,
+  isBoolean: () => isBoolean,
+  isDataBlockType: () => isDataBlockType,
+  isNumber: () => isNumber,
+  isSeries: () => isSeries,
+  isString: () => isString,
+  isTable: () => isTable,
+  renderWidgetOptionField: () => renderWidgetOptionField,
+  renderWidgetOptions: () => renderWidgetOptions,
+  requestMedia: () => requestMedia2,
+  resolveDeclarations: () => resolveDeclarations2,
+  widgetOptionControlStyles: () => widgetOptionControlStyles,
+  widgetResultEndpoint: () => widgetResultEndpoint
+});
 import { LitElement as LitElement2, adoptStyles } from "lit";
 import { SignalWatcher } from "@lit-labs/signals";
 import {
   WidgetRuntime,
   hasComputedDeclarations,
-  resolveDeclarations as resolveDeclarations2,
+  resolveDeclarations,
   widgetLanguage,
   widgetRuntimeAttributes
 } from "@webwriter/widget";
 import {
   isDataBlockType,
-  resolveDeclarations as resolveDeclarations3
+  requestMedia as requestMedia2,
+  resolveDeclarations as resolveDeclarations2
 } from "@webwriter/widget";
 export * from "@lit-labs/signals";
 import {
@@ -24,621 +65,19 @@ import {
 } from "@webwriter/widget";
 
 // widget-drawer.ts
-import { LitElement, css as css2, html as html2, nothing as nothing2 } from "lit";
+import { LitElement, css, html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
 
 // widget-option-controls.ts
-import { html, nothing } from "lit";
-import { repeat } from "lit/directives/repeat.js";
-
-// widget-options.ts
-import { resolveDeclarations } from "@webwriter/widget";
-var widgetOptionTypes = [
-  "boolean",
-  "string",
-  "number",
-  "date",
-  "datetime-local",
-  "email",
-  "password",
-  "tel",
-  "time",
-  "url",
-  "object",
-  "array",
-  "color",
-  "select",
-  "reference"
-];
-var widgetOptionControls = ["input", "range", "duration", "checkbox", "switch", "select", "radio", "segmented", "tree"];
-var fileExtension = /^\.[a-z0-9][a-z0-9_-]*(?:\.[a-z0-9][a-z0-9_-]*)*$/i;
-var mediaType = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$/i;
-function isWidgetFileFormat(value) {
-  return typeof value === "string" && (fileExtension.test(value) || mediaType.test(value));
-}
-function matchesWidgetFileFormat(file, format) {
-  const key = format.toLowerCase();
-  return key.startsWith(".") ? file.name.toLowerCase().endsWith(key) : file.type.split(";", 1)[0].trim().toLowerCase() === key;
-}
-function formatWidgetDuration(value) {
-  if (!Number.isFinite(value) || value < 0) return "";
-  const [whole, fraction = ""] = value.toFixed(9).split(".");
-  const seconds = Number(whole);
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor(seconds / 60) % 60;
-  const suffix = fraction.replace(/0+$/, "");
-  return `${hours ? `${hours}:${String(minutes).padStart(2, "0")}` : minutes}:${String(seconds % 60).padStart(2, "0")}${suffix ? `.${suffix}` : ""}`;
-}
-function parseWidgetDuration(text2) {
-  const parts = text2.trim().split(":");
-  if (parts.length > 3 || !parts.every((part, index) => (index === parts.length - 1 ? /^\d+(?:\.\d+)?$/ : /^\d+$/).test(part))) return void 0;
-  const numbers = parts.map(Number);
-  if (numbers.slice(1).some((value2) => value2 >= 60)) return void 0;
-  const value = numbers.reduce((total, part) => total * 60 + part, 0);
-  return Number.isFinite(value) ? value : void 0;
-}
-var isRecord = (value) => !!value && typeof value === "object" && !Array.isArray(value);
-var optionalNumber = (value) => typeof value === "number" && Number.isFinite(value) ? value : void 0;
-var optionalString = (value) => typeof value === "string" ? value : void 0;
-var text = (value, locale) => {
-  if (typeof value === "string") return value;
-  if (!isRecord(value)) return void 0;
-  const entries = Object.entries(value).filter((entry) => typeof entry[1] === "string");
-  return localizedText(Object.fromEntries(entries), locale);
-};
-var titleCase = (name) => name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replaceAll(/[-_]+/g, " ").replace(/^\w/, (letter) => letter.toUpperCase());
-function widgetOptionType(type) {
-  if (type === Boolean) return "boolean";
-  if (type === Number) return "number";
-  if (type === Array) return "array";
-  if (type === Object) return "object";
-  if (type === String || type === void 0) return "string";
-  return widgetOptionTypes.includes(type) ? type : "string";
-}
-function widgetOptionAttribute(name, declaration) {
-  if (declaration.attribute === false) return null;
-  if (typeof declaration.attribute === "string") return declaration.attribute;
-  return name.toLowerCase();
-}
-function widgetOptionValue(value, depth = 0) {
-  if (value === null || value === void 0 || depth > 8) return null;
-  if (typeof value === "string" || typeof value === "boolean") return value;
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (Array.isArray(value)) return value.slice(0, 1e3).map((item) => widgetOptionValue(item, depth + 1));
-  if (isRecord(value) && Object.getPrototypeOf(value) === Object.prototype || isRecord(value) && Object.getPrototypeOf(value) === null) {
-    return Object.fromEntries(Object.entries(value).slice(0, 1e3).map(([key, item]) => [key, widgetOptionValue(item, depth + 1)]));
-  }
-  return null;
-}
-var availability = (decl, locale) => ({
-  ...decl.hidden === true ? { hidden: true } : {},
-  ...decl.disabled === true ? { disabled: true } : {},
-  ...text(decl.disabledReason, locale) ? { disabledReason: text(decl.disabledReason, locale) } : {}
-});
-function widgetOptionGroupState(name, declaration, locale) {
-  const decl = isRecord(declaration) ? declaration : {};
-  return {
-    name,
-    label: text(decl.label, locale) ?? titleCase(name),
-    ...text(decl.description, locale) ? { description: text(decl.description, locale) } : {},
-    ...decl.collapsible === true ? { collapsible: true } : {},
-    ...decl.collapsed === true ? { collapsed: true } : {},
-    ...decl.advanced === true ? { advanced: true } : {}
-  };
-}
-var compatibleControl = (type, control, multiple) => type === "boolean" ? control === "checkbox" || control === "switch" : type === "number" ? control === "input" || control === "range" || control === "duration" : type === "select" ? control === "select" || multiple === true && control === "tree" || !multiple && (control === "radio" || control === "segmented") : false;
-function optionTree(entries, locale) {
-  const values = /* @__PURE__ */ new Set();
-  let remaining = 1e3;
-  const visit = (entries2, depth = 0) => depth > 8 ? [] : entries2.slice(0, Math.max(0, remaining)).flatMap((entry) => {
-    if (remaining-- <= 0 || !isRecord(entry)) return [];
-    const label = text(entry.label, locale) ?? optionalString(entry.value) ?? "Group";
-    const description = text(entry.description, locale);
-    const common = { label, ...description ? { description } : {} };
-    if (Array.isArray(entry.children)) {
-      const children = visit(entry.children, depth + 1);
-      return children.length ? [{ ...common, children }] : [];
-    }
-    if (typeof entry.value !== "string" || values.has(entry.value)) return [];
-    values.add(entry.value);
-    return [{ ...common, value: entry.value }];
-  });
-  return visit(entries);
-}
-function widgetTreeLeaves(nodes) {
-  return nodes.flatMap((node) => node.children ? widgetTreeLeaves(node.children) : typeof node.value === "string" ? [{ value: node.value, label: node.label, ...node.description ? { description: node.description } : {} }] : []);
-}
-function widgetOptionState(name, declaration, value, locale) {
-  const decl = isRecord(declaration) ? declaration : {};
-  const type = widgetOptionType(decl.type);
-  const tree = type === "select" && decl.multiple === true && decl.control === "tree" ? optionTree(Array.isArray(decl.options) ? decl.options : [], locale) : void 0;
-  const choices = tree ? widgetTreeLeaves(tree) : Array.isArray(decl.options) ? decl.options.flatMap((choice) => isRecord(choice) && typeof choice.value === "string" ? [{
-    value: choice.value,
-    label: text(choice.label, locale) ?? choice.value,
-    ...text(choice.description, locale) ? { description: text(choice.description, locale) } : {}
-  }] : []) : void 0;
-  const state = {
-    ...availability(decl, locale),
-    name,
-    type,
-    label: text(decl.label, locale) ?? titleCase(name),
-    attribute: widgetOptionAttribute(name, decl),
-    value: widgetOptionValue(value),
-    ...type === "boolean" && decl.attribute !== false && decl.inverted === true ? { inverted: true } : {},
-    description: text(decl.description, locale),
-    placeholder: text(decl.placeholder, locale),
-    multiline: decl.multiline === true || void 0,
-    min: optionalNumber(decl.min),
-    max: optionalNumber(decl.max),
-    step: optionalNumber(decl.step),
-    pattern: optionalString(decl.pattern),
-    minlength: optionalNumber(decl.minlength),
-    maxlength: optionalNumber(decl.maxlength),
-    swatches: Array.isArray(decl.swatches) ? decl.swatches.filter((swatch) => typeof swatch === "string") : void 0,
-    multiple: decl.multiple === true || void 0,
-    choices,
-    tree,
-    selector: type === "reference" ? optionalString(decl.selector) : void 0,
-    excludeSelf: type === "reference" && typeof decl.excludeSelf === "boolean" ? decl.excludeSelf : void 0,
-    group: optionalString(decl.group),
-    control: compatibleControl(type, decl.control, decl.multiple) ? decl.control : void 0,
-    unit: optionalString(decl.unit),
-    steps: type === "number" && Array.isArray(decl.steps) ? [...new Set(decl.steps.filter((step) => optionalNumber(step) !== void 0))].sort((a, b) => a - b) : void 0,
-    readOnly: decl.readOnly === true || void 0
-  };
-  return Object.fromEntries(Object.entries(state).filter(([, item]) => item !== void 0));
-}
-function widgetActionState(name, declaration, locale) {
-  const decl = isRecord(declaration) ? declaration : {};
-  const description = text(decl.description, locale);
-  return {
-    name,
-    label: text(decl.label, locale) ?? titleCase(name),
-    ...description ? { description } : {},
-    ...availability(decl, locale),
-    ...typeof decl.group === "string" ? { group: decl.group } : {},
-    ...typeof decl.buttonGroup === "string" ? { buttonGroup: decl.buttonGroup } : {},
-    ...typeof decl.icon === "string" ? { icon: decl.icon } : {},
-    ...decl.intent === "default" || decl.intent === "danger" ? { intent: decl.intent } : {},
-    ...text(decl.confirm, locale) ? { confirm: text(decl.confirm, locale) } : {},
-    ...isRecord(decl.input) && decl.input.type === "file" ? { input: {
-      type: "file",
-      ...typeof decl.input.accept === "string" ? { accept: decl.input.accept } : {},
-      ...decl.input.multiple === true ? { multiple: true } : {}
-    } } : {}
-  };
-}
-function widgetOptionAttributeValue(type, value, multiple = false, inverted = false) {
-  if (type === "boolean") return value === !inverted ? "" : null;
-  if (value === null || value === "") return null;
-  if (type === "object" || type === "array" || type === "select" && multiple) return JSON.stringify(value);
-  return String(value);
-}
-function localizedText(value, locale) {
-  if (typeof value === "string") return value;
-  if (!value) return;
-  const normalizedLocale = locale.toLowerCase();
-  const exactKey = Object.keys(value).find((key) => key.toLowerCase() === normalizedLocale);
-  const language = normalizedLocale.split("-")[0];
-  const languageKey = Object.keys(value).find((key) => key.toLowerCase() === language);
-  return exactKey && value[exactKey] || languageKey && value[languageKey] || value._;
-}
-function widgetDeclarations(widget, kind) {
-  const read = (name) => {
-    try {
-      const own = widget[name];
-      const map = isRecord(own) ? own : widget.constructor[name];
-      if (!isRecord(map)) return {};
-      return name === "convertFrom" || name === "convertTo" ? map : resolveDeclarations(widget, map) ?? {};
-    } catch {
-      return {};
-    }
-  };
-  return kind === "options" ? { ...read("dynamicOptions"), ...read(kind) } : read(kind);
-}
-function widgetOptionDeclaration(widget, name, declaration) {
-  if (!isRecord(declaration) || typeof declaration.attribute === "string" || declaration.attribute === false) return declaration;
-  let properties;
-  try {
-    properties = widget.constructor.elementProperties;
-  } catch {
-    return declaration;
-  }
-  const property = properties instanceof Map ? properties.get(name) : void 0;
-  if (!isRecord(property)) return declaration;
-  if (typeof property.attribute === "string" || property.attribute === false) return { ...declaration, attribute: property.attribute };
-  return property.state === true ? { ...declaration, attribute: false } : declaration;
-}
-function readWidgetOption(widget, name, raw, locale) {
-  const declaration = widgetOptionDeclaration(widget, name, raw);
-  let value = null;
-  try {
-    value = widget[name];
-  } catch {
-  }
-  const option = widgetOptionState(name, declaration, value, locale);
-  if (option.inverted && option.attribute !== null) return { ...option, value: !widget.hasAttribute(option.attribute) };
-  if (value !== void 0 || option.attribute === null) return option;
-  const attribute = widget.getAttribute(option.attribute);
-  const parsed = option.type === "boolean" ? attribute !== null : option.type === "number" && attribute !== null ? Number(attribute) : attribute;
-  return { ...option, value: widgetOptionValue(parsed) };
-}
-function validWidgetOptionValue(option, value, widget) {
-  if (value === null || value === "") return true;
-  if (option.type === "boolean") return typeof value === "boolean";
-  if (option.type === "number") return typeof value === "number" && Number.isFinite(value) && (option.control !== "duration" || value >= 0) && (option.min === void 0 || value >= option.min) && (option.max === void 0 || value <= option.max) && (!option.steps?.length || option.steps.includes(value)) && (option.control !== "duration" || !option.step || option.step <= 0 || Math.abs((value - (option.min ?? 0)) / option.step - Math.round((value - (option.min ?? 0)) / option.step)) < 1e-7);
-  if (option.type === "reference") return typeof value === "string" && Boolean(option.choices?.some((choice) => choice.value === value));
-  if (option.type === "select") {
-    let retained = null;
-    if (option.control === "tree") {
-      try {
-        retained = widget[option.name];
-      } catch {
-        return false;
-      }
-    }
-    const valid = (item) => typeof item === "string" && (option.control === "tree" ? Boolean(option.choices?.some((choice) => choice.value === item)) || Array.isArray(retained) && retained.includes(item) : !option.choices?.length || option.choices.some((choice) => choice.value === item));
-    return option.multiple ? Array.isArray(value) && value.every(valid) : valid(value);
-  }
-  return true;
-}
-function widgetReferenceOption(widget, option, root, isWidget, identityRoot = root) {
-  if (option.type !== "reference") return option;
-  const ids = /* @__PURE__ */ new Map();
-  identityRoot.querySelectorAll("[id]").forEach((element) => {
-    if (element.id) ids.set(element.id, (ids.get(element.id) ?? 0) + 1);
-  });
-  try {
-    const choices = Array.from(root.querySelectorAll(option.selector ?? "*")).flatMap((element) => {
-      if (!isWidget(element) || !element.id || ids.get(element.id) !== 1 || option.excludeSelf !== false && element === widget) return [];
-      const title = element.getAttribute("aria-label") || element.getAttribute("title") || element.localName;
-      return [{ value: element.id, label: `${title} #${element.id}` }];
-    });
-    return { ...option, choices, ...typeof option.value === "string" && option.value && !choices.some((choice) => choice.value === option.value) ? { referenceMissing: true } : {} };
-  } catch {
-    return { ...option, choices: [], disabled: true, disabledReason: "Invalid reference selector" };
-  }
-}
-function widgetActionRows(actions) {
-  const rows = [];
-  for (const action of actions) {
-    const row = rows.at(-1);
-    if (action.buttonGroup && row?.[0].buttonGroup === action.buttonGroup) row.push(action);
-    else rows.push([action]);
-  }
-  return rows;
-}
-function widgetConversionMethod(widget, declaration) {
-  try {
-    const method = typeof declaration === "string" ? widget[declaration] : declaration;
-    return typeof method === "function" ? method : void 0;
-  } catch {
-    return void 0;
-  }
-}
-
-// widget-option-controls.ts
-function widgetOptionInputValue(option, target) {
-  if (option.type === "boolean") return target.checked;
-  if (option.type === "select" && option.multiple) {
-    return Array.from(target.selectedOptions, (choice) => choice.value);
-  }
-  if (option.type === "number") {
-    if (!target.value.trim()) return null;
-    if (option.control !== "duration") return Number(target.value);
-    const value = parseWidgetDuration(target.value);
-    const increments = option.step && option.step > 0 ? (value - (option.min ?? 0)) / option.step : 0;
-    if (value === void 0 || option.min !== void 0 && value < option.min || option.max !== void 0 && value > option.max || Math.abs(increments - Math.round(increments)) > 1e-7) {
-      target.setCustomValidity("Enter a duration in seconds, m:ss, or h:mm:ss within the allowed range and step");
-      target.reportValidity();
-      return void 0;
-    }
-    return value;
-  }
-  if (option.type === "object" || option.type === "array") {
-    if (!target.value.trim()) return null;
-    try {
-      return widgetOptionValue(JSON.parse(target.value));
-    } catch {
-      target.setCustomValidity("Enter valid JSON");
-      target.reportValidity();
-      return void 0;
-    }
-  }
-  return target.value;
-}
-function renderWidgetOptionField(option, dispatch, fieldScope = "", editor) {
-  if (option.hidden) return nothing;
-  const locked = Boolean(option.disabled || option.readOnly);
-  const commit = (value) => {
-    if (!locked) dispatch(option.name, value);
-  };
-  const change = (event) => {
-    if (locked) return;
-    const target = event.currentTarget;
-    if ("setCustomValidity" in target) target.setCustomValidity("");
-    if ("checkValidity" in target && !target.checkValidity()) {
-      target.reportValidity();
-      return;
-    }
-    const value = widgetOptionInputValue(option, target);
-    if (value !== void 0) commit(value);
-  };
-  const help = html`${option.description ? html`<span class="develop-field-help">${option.description}</span>` : nothing}
-    ${option.disabledReason && locked ? html`<span class="develop-field-help">${option.disabledReason}</span>` : nothing}`;
-  const unit = option.unit ? html`<span class="widget-option-unit">${option.unit}</span>` : nothing;
-  const label = editor?.label ?? html`<span class="develop-field-label" id=${`widget-${fieldScope}${option.name}`}>${option.label}</span>`;
-  if (option.type === "boolean") return html`
-    <label class="develop-field widget-option-checkbox" title=${option.disabledReason ?? option.description ?? ""}>
-      <input type="checkbox" class=${option.control === "switch" ? "editor-switch" : nothing} role=${option.control === "switch" ? "switch" : nothing}
-        .checked=${option.value === true} ?disabled=${locked} @change=${change} />
-      <span class="develop-field-label">${option.label}</span>${unit}
-    </label>${help}
-  `;
-  const text2 = option.value === null ? "" : typeof option.value === "object" ? JSON.stringify(option.value, void 0, 2) : String(option.value);
-  if (option.type === "select" && option.control === "tree") {
-    const selected = new Set(Array.isArray(option.value) ? option.value.filter((value) => typeof value === "string") : []);
-    const toggle = (values, checked) => {
-      const next = new Set(selected);
-      for (const value of values) checked ? next.add(value) : next.delete(value);
-      commit([...next]);
-    };
-    const checkbox = (nodes, label2, group) => {
-      const values = widgetTreeLeaves(nodes).map((node) => node.value);
-      const count = values.filter((value) => selected.has(value)).length;
-      return html`<label><input type="checkbox" data-tree-group=${group ?? nothing} ?data-tree-select-all=${group === void 0}
-        .checked=${values.length > 0 && count === values.length} .indeterminate=${count > 0 && count < values.length}
-        ?disabled=${locked || !values.length} @click=${(event) => event.stopPropagation()}
-        @change=${(event) => toggle(values, event.currentTarget.checked)} />${label2}</label>`;
-    };
-    const renderNodes = (nodes) => html`<ul>${nodes.map((node) => html`<li>
-      ${node.children ? html`<details><summary>${checkbox(node.children, node.label, node.label)}</summary>
-        ${renderNodes(node.children)}</details>` : html`<label title=${node.description ?? ""}>
-        <input type="checkbox" data-value=${node.value} .checked=${selected.has(node.value)} ?disabled=${locked}
-          @change=${(event) => toggle([node.value], event.currentTarget.checked)} />${node.label}</label>`}
-    </li>`)}</ul>`;
-    return html`<div class="develop-field widget-option-field">${label}
-      <div class="widget-option-tree" role="group" aria-label=${option.label}>
-        ${checkbox(option.tree ?? [], "Select all")}${renderNodes(option.tree ?? [])}
-      </div>${help}</div>`;
-  }
-  if (option.type === "select" && (option.control === "radio" || option.control === "segmented")) {
-    const labelId = `widget-${fieldScope}${option.name}`;
-    return html`<div class="develop-field widget-option-field">
-      ${label}
-      <div class=${option.control === "segmented" ? "choice-group widget-option-segmented" : "widget-option-radios"}
-        style=${option.control === "segmented" ? `--choice-columns: ${Math.max(1, Math.min(4, option.choices?.length ?? 1))}` : nothing}
-        role="group" aria-labelledby=${labelId}>
-        ${(option.choices ?? []).map((choice) => option.control === "radio" ? html`
-          <label><input type="radio" name=${labelId} value=${choice.value} .checked=${option.value === choice.value}
-            ?disabled=${locked} @change=${() => commit(choice.value)} />${choice.label}</label>` : html`
-          <button type="button" aria-pressed=${option.value === choice.value} title=${choice.description ?? choice.label}
-            ?disabled=${locked} @click=${() => commit(choice.value)}>${choice.label}</button>`)}
-      </div>${unit}${help}
-    </div>`;
-  }
-  let field;
-  if (option.type === "number" && option.control === "duration") {
-    field = html`<input type="text" data-duration aria-label=${option.label} inputmode="decimal" .value=${typeof option.value === "number" ? formatWidgetDuration(option.value) : ""}
-      placeholder=${option.placeholder ?? "m:ss"} min=${option.min ?? 0} max=${option.max ?? nothing} step=${option.step ?? nothing}
-      ?disabled=${option.disabled} ?readonly=${option.readOnly} @change=${change} />`;
-  } else if (option.type === "reference" || option.type === "select") {
-    const choices = option.choices ?? [];
-    const missing = Boolean(text2 && !choices.some((choice) => choice.value === text2));
-    field = editor ? html`<style-combobox .label=${option.label} .editable=${false} .disabled=${locked}
-      .multiple=${Boolean(option.multiple)} .values=${Array.isArray(option.value) ? option.value.map(String) : []}
-      .value=${text2} .placeholder=${option.placeholder ?? "Default"}
-      .options=${[
-      ...!option.multiple ? [{ value: "", label: "Default" }] : [],
-      ...!option.multiple && missing ? [{
-        value: text2,
-        label: option.type === "reference" ? `Missing reference: #${text2}` : text2,
-        disabled: option.type === "reference"
-      }] : [],
-      ...choices
-    ]}
-      @combobox-change=${(event) => {
-      event.stopPropagation();
-      if (option.type === "reference" && event.detail.value && !choices.some((choice) => choice.value === event.detail.value)) return;
-      const values = event.detail.values ?? [];
-      if (option.multiple) commit(choices.length ? values.filter((value) => choices.some((choice) => choice.value === value)) : values);
-      else commit(event.detail.value || null);
-    }}></style-combobox>` : html`<select aria-label=${option.label} ?multiple=${option.multiple} ?disabled=${locked} @change=${change}>
-      ${option.multiple ? nothing : html`<option value="" .selected=${!text2}>${option.placeholder ?? "Default"}</option>`}
-      ${!option.multiple && missing ? html`<option .value=${text2} .selected=${true} ?disabled=${option.type === "reference"}>${option.type === "reference" ? `Missing reference: #${text2}` : text2}</option>` : nothing}
-      ${choices.map((choice) => html`<option .value=${choice.value}
-        .selected=${Array.isArray(option.value) ? option.value.includes(choice.value) : choice.value === text2}>${choice.label}</option>`)}
-    </select>`;
-  } else if (option.type === "number" && option.control === "range") {
-    const steps = [...new Set(option.steps ?? [])].sort((a, b) => a - b).filter((value2) => (option.min === void 0 || value2 >= option.min) && (option.max === void 0 || value2 <= option.max));
-    const discrete = steps.length > 0;
-    const value = typeof option.value === "number" ? option.value : option.min ?? steps[0] ?? 0;
-    field = html`<input type="range" aria-label=${option.label} min=${discrete ? 0 : option.min ?? 0} max=${discrete ? steps.length - 1 : option.max ?? 100}
-      step=${discrete ? 1 : option.step ?? 1} .value=${String(discrete ? Math.max(0, steps.indexOf(value)) : value)}
-      aria-valuetext=${`${text2}${option.unit ? ` ${option.unit}` : ""}`} ?disabled=${locked}
-      @input=${(event) => {
-      const input = event.currentTarget;
-      commit(discrete ? steps[Number(input.value)] : Number(input.value));
-    }} /><output>${text2}</output>`;
-  } else if (editor && option.type === "number" && option.control !== "input") {
-    const candidates = option.steps?.length ? option.steps : [
-      option.min ?? 0,
-      (option.min ?? 0) + (option.step ?? 1),
-      option.max ?? (option.min ?? 0) + 10 * (option.step ?? 1)
-    ];
-    const presets = [...new Set(candidates)].filter((value) => (option.min === void 0 || value >= option.min) && (option.max === void 0 || value <= option.max));
-    field = html`<style-combobox .showValue=${true} .label=${`${option.label}${option.unit ? ` (${option.unit})` : ""}`} .value=${text2}
-      .unit=${option.unit ?? ""} .disabled=${locked} .placeholder=${option.placeholder ?? "Default"}
-      .options=${presets.map((value, index) => ({ value: String(value), label: option.steps?.length ? "Value" : ["Low", "Medium", "High"][index] }))}
-      @combobox-change=${(event) => {
-      event.stopPropagation();
-      const draft = event.detail.value.trim();
-      const value = Number(draft);
-      const input = document.createElement("input");
-      input.type = "number";
-      input.required = true;
-      if (option.min !== void 0) input.min = String(option.min);
-      if (option.max !== void 0) input.max = String(option.max);
-      input.step = option.step === void 0 ? "any" : String(option.step);
-      input.value = draft;
-      if (!draft || Number.isFinite(value) && input.checkValidity() && (!option.steps?.length || option.steps.includes(value))) {
-        commit(draft ? value : null);
-      } else {
-        const combo = event.currentTarget;
-        combo.value = text2;
-        combo.close(true);
-      }
-    }}></style-combobox>`;
-  } else if (option.type === "color") {
-    field = editor ? html`<ribbon-combobox variant="color" .name=${`widget-${fieldScope}${option.name}`} .label=${option.label}
-      .value=${editor.safeColor(text2)} .swatches=${option.swatches ?? []} .disabled=${locked}
-      @ribbon-combobox-change=${(event) => {
-      event.stopPropagation();
-      commit(event.detail.value || null);
-    }}></ribbon-combobox>` : html`<input type="color" aria-label=${option.label} .value=${text2}
-      ?disabled=${locked} @change=${change} />
-      ${option.swatches?.length ? html`<select aria-label=${`${option.label} presets`} ?disabled=${locked} @change=${change}>
-        <option value="" .selected=${!option.swatches.includes(text2)}>Custom</option>
-        ${option.swatches.map((color) => html`<option .value=${color} .selected=${color === text2}>${color}</option>`)}
-      </select>` : nothing}`;
-  } else if (option.type === "object" || option.type === "array") {
-    field = html`<textarea data-json aria-label=${option.label} spellcheck="false" .value=${text2} placeholder=${option.placeholder ?? ""}
-      ?disabled=${option.disabled} ?readonly=${option.readOnly} @change=${change}></textarea>`;
-  } else if (option.type === "string" && option.multiline) {
-    field = html`<textarea aria-label=${option.label} .value=${text2} placeholder=${option.placeholder ?? ""}
-      ?disabled=${option.disabled} ?readonly=${option.readOnly}
-      minlength=${option.minlength ?? nothing} maxlength=${option.maxlength ?? nothing} @change=${change}></textarea>`;
-  } else {
-    field = html`<input type=${option.type === "string" ? "text" : option.type} aria-label=${option.label} .value=${text2} placeholder=${option.placeholder ?? ""}
-      ?disabled=${option.disabled} ?readonly=${option.readOnly}
-      min=${option.min ?? nothing} max=${option.max ?? nothing} step=${option.step ?? (!editor && option.type === "number" ? "any" : nothing)}
-      pattern=${option.pattern ?? nothing} minlength=${option.minlength ?? nothing} maxlength=${option.maxlength ?? nothing}
-      @change=${change} />`;
-  }
-  return html`<div class="develop-field widget-option-field">${label}
-    <span class="widget-option-value">${field}${editor && option.type === "number" && !option.control ? nothing : unit}</span>${help}</div>`;
-}
-function renderWidgetOptions(options, actions, groups, renderField, renderActions) {
-  const visibleOptions = options.filter((option) => !option.hidden);
-  const visibleActions = actions.filter((action) => !action.hidden);
-  if (!visibleOptions.length && !visibleActions.length) return nothing;
-  const fields = (group) => html`
-    ${visibleOptions.filter((option) => (option.group || void 0) === group).map(renderField)}
-    ${renderActions(visibleActions.filter((action) => (action.group || void 0) === group))}`;
-  const usedGroups = [...groups];
-  for (const item of [...visibleOptions, ...visibleActions]) {
-    if (item.group && !usedGroups.some((group) => group.name === item.group)) usedGroups.push({ name: item.group, label: item.group });
-  }
-  return html`<div class="widget-options">${fields()}
-    ${repeat(usedGroups.filter((group) => [...visibleOptions, ...visibleActions].some((item) => item.group === group.name)), (group) => group.name, (group) => html`
-      <section class="widget-option-group" data-group=${group.name}>
-        ${group.collapsible || group.advanced ? html`<details .open=${!group.collapsed && !group.advanced}>
-          <summary>${group.label}</summary>
-          ${group.description ? html`<p class="develop-field-help">${group.description}</p>` : nothing}
-          <div class="widget-option-group-fields">${fields(group.name)}</div>
-        </details>` : html`<strong>${group.label}</strong>
-          ${group.description ? html`<p class="develop-field-help">${group.description}</p>` : nothing}
-          <div class="widget-option-group-fields">${fields(group.name)}</div>`}
-      </section>`)}
-  </div>`;
-}
+import { renderWidgetOptionField, renderWidgetOptions } from "@webwriter/widget/widget-option-controls";
 
 // widget-option-controls.styles.ts
-import { css } from "lit";
-var widgetOptionControlStyles = css`
-  .widget-options {
-    display: grid;
-    gap: 0.45rem;
-    min-width: 12rem;
-  }
+import { widgetOptionControlStyles } from "@webwriter/widget/widget-option-controls";
 
-  .widget-options .widget-option-field :is(input:not([type="checkbox"], [type="radio"], [type="range"]), textarea) {
-    box-sizing: border-box;
-    width: 100%;
-    min-width: 0;
-    padding: .2rem;
-    border: var(--editor-control-border-width, .5px) solid #c5ccd5;
-    border-radius: 4px;
-    color: #2f3742;
-    background: transparent;
-    font: inherit;
-    font-size: .68rem;
-  }
-  .widget-options .widget-option-field input:not([type="checkbox"], [type="radio"], [type="range"]) {
-    height: 1.7rem;
-    min-height: 1.7rem;
-  }
-  .widget-options .widget-option-field :is(input, textarea):focus-visible {
-    border-color: #c5ccd5;
-    outline: 2px solid #b9d7f5;
-    outline-offset: 0;
-  }
-  .widget-options .widget-option-field :is(input, textarea):invalid {border-color: #c2413a;}
-  .widget-options :is(input, textarea):disabled {opacity: .55; cursor: default;}
-  .widget-options input:is([type="checkbox"], [type="radio"]) {accent-color: #3977c7;}
-  .widget-options input.editor-switch {--switch-width: 1.9rem; --switch-height: 1.05rem;}
-
-  .develop-field.widget-option-checkbox {
-    flex-direction: row;
-    align-items: center;
-    gap: 0.35rem;
-  }
-
-  .widget-option-group, .widget-option-group-fields {
-    display: grid;
-    gap: 0.45rem;
-    min-width: 0;
-  }
-
-  .widget-option-group {
-    border-top: 1px solid #dce3ec;
-    padding-top: 0.45rem;
-    font-size: 0.7rem;
-    color: #526b86;
-  }
-
-  .widget-option-group > details > summary { cursor: pointer; font-weight: 600; }
-  .widget-option-group > details[open] > summary { margin-bottom: 0.45rem; }
-  .widget-option-group p { margin: 0; }
-  .widget-option-value { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
-  .widget-option-value > style-combobox {flex: 1; min-width: 0;}
-  .widget-option-value > ribbon-combobox {flex: 0 0 auto;}
-  .widget-option-value:has(> .widget-option-unit):not(:has(input[type="range"])) {gap: 0;}
-  .widget-option-value:has(> .widget-option-unit) > input {border-top-right-radius: 0; border-bottom-right-radius: 0;}
-  .widget-option-value > .widget-option-unit {display: flex; align-items: center; align-self: stretch; padding: 0 .3rem; border: var(--editor-control-border-width, .5px) solid #c5ccd5; border-left: 0; border-radius: 0 4px 4px 0; font-size: .55rem;}
-  .widget-option-value:has(input[type="range"]) > .widget-option-unit {border: 0; padding: 0;}
-  .widget-option-value input[type="range"] {width: 100%; min-width: 0; height: 1.2rem; min-height: 0; padding: 0; border: 0; box-shadow: none; background: transparent; accent-color: #3977c7;}
-  .widget-option-value > input, .widget-option-value > select, .widget-option-value > textarea { flex: 1; min-width: 0; }
-  .widget-option-value output, .widget-option-unit { flex: 0 0 auto; }
-  .widget-option-field > .develop-field-help { grid-column: 1 / -1; }
-  .widget-option-tree { min-width: 0; overflow-wrap: anywhere; }
-  .widget-option-tree ul { list-style: none; padding: 0; padding-inline-start: 0.8rem; margin: 0.25rem 0 0; }
-  .widget-option-tree li { margin: 0.25rem 0; }
-  .widget-option-tree label { display: inline-flex; align-items: flex-start; gap: 0.3rem; max-width: 100%; }
-  .widget-option-tree input { flex: 0 0 auto; margin: .05rem 0 0; }
-  .widget-option-tree :is(summary, li > label) { box-sizing: border-box; padding-inline-start: 0.8rem; }
-  .widget-option-tree summary {cursor: pointer; list-style-position: outside;}
-  .widget-option-tree summary > label {vertical-align: top;}
-  .widget-option-unit { color: #526b86; font-size: 0.65rem; }
-  .widget-option-radios { display: grid; gap: 0.3rem; }
-  .widget-option-radios label { display: flex; align-items: center; gap: 0.3rem; }
-  .widget-option-segmented button {min-height: 1.7rem; padding: .15rem .2rem; font: .68rem/1.2 system-ui, sans-serif; overflow-wrap: anywhere;}
-  .widget-option-segmented button:disabled {opacity: .55; cursor: default;}
-  .widget-action-item { display: grid; gap: 0.2rem; min-width: 0; }
-  .widget-action-error { color: #b0342c; font-size: 0.65rem; overflow-wrap: anywhere; }
-  .widget-action[data-intent="danger"] {--ribbon-control-color: #a72c25;}
-  .widget-actions {display: grid; gap: .3rem; min-width: 0;}
-  .choice-group.widget-action-group {
-    display: flex;
-    flex-wrap: wrap;
-    background: #c5ccd5;
-    --widget-action-border-width: 0;
-    --widget-action-border-radius: 0;
-  }
-  .widget-action-group > .widget-action-item {flex: 1 1 5rem; background: #f7f7f7;}
-  .widget-action-group > .widget-action-item > :is(.develop-field-help, .widget-action-error) {padding: 0 .3rem .2rem;}
-
-`;
+// widget-options.ts
+var widget_options_exports = {};
+__reExport(widget_options_exports, widget_options_star);
+import * as widget_options_star from "@webwriter/widget/widget-options";
 
 // widget-result-storage.ts
 var WidgetResultConflict = class extends Error {
@@ -813,8 +252,8 @@ var WidgetResultBinding = class {
       if (stored && stored.type !== this.type) throw new Error("The saved result uses a different format.");
       if (stored) validateWidgetResult(stored);
       this.revision = stored?.revision ?? null;
-      const text2 = stored?.text ?? this.defaults;
-      this.saved = this.type === "application/json" ? text2.replace(/</g, "\\u003c") : text2;
+      const text = stored?.text ?? this.defaults;
+      this.saved = this.type === "application/json" ? text.replace(/</g, "\\u003c") : text;
       const changedDuringLoad = this.block.textContent !== this.loadBase;
       if (!changedDuringLoad && this.block.textContent !== this.saved) this.block.textContent = this.saved;
       this.observed = this.block.textContent ?? "";
@@ -831,9 +270,9 @@ var WidgetResultBinding = class {
   }
   changed() {
     if (!this.ready || this.controller.signal.aborted) return;
-    const text2 = this.block.textContent ?? "";
-    if (text2 === this.observed) return;
-    this.observed = text2;
+    const text = this.block.textContent ?? "";
+    if (text === this.observed) return;
+    this.observed = text;
     this.notify("datachange");
     if (this.status.state === "error") this.report("ready");
     void this.flush();
@@ -881,7 +320,7 @@ var WidgetDrawer = class extends LitElement {
     widget: { attribute: false },
     storageFor: { attribute: false }
   };
-  static styles = [widgetOptionControlStyles, css2`
+  static styles = [widgetOptionControlStyles, css`
     :host { display: block; min-inline-size: 0; font: 0.875rem/1.4 system-ui, sans-serif; color: #263548; }
     details { min-inline-size: 0; }
     .drawer { border: 1px solid #c5ccd5; border-radius: .4rem; background: #fff; }
@@ -1111,15 +550,15 @@ var WidgetDrawer = class extends LitElement {
     const message = error instanceof Error ? error.message : String(error ?? "");
     return message.trim() ? message : "The action could not be completed.";
   }
-  confirm(text2) {
-    return this.ownerDocument.defaultView?.confirm?.(text2) === true;
+  confirm(text) {
+    return this.ownerDocument.defaultView?.confirm?.(text) === true;
   }
   locale(widget) {
     return widget.closest("[lang]")?.getAttribute("lang") ?? widget.ownerDocument.documentElement.lang ?? "en";
   }
   option(widget, name, declaration) {
-    const option = readWidgetOption(widget, name, declaration, this.locale(widget));
-    return widgetReferenceOption(
+    const option = (0, widget_options_exports.readWidgetOption)(widget, name, declaration, this.locale(widget));
+    return (0, widget_options_exports.widgetReferenceOption)(
       widget,
       option,
       widget.getRootNode(),
@@ -1129,10 +568,10 @@ var WidgetDrawer = class extends LitElement {
   setOption = (name, value) => {
     const widget = this.target;
     if (!this.active(widget)) return;
-    const declarations = widgetDeclarations(widget, "options");
+    const declarations = (0, widget_options_exports.widgetDeclarations)(widget, "options");
     if (!Object.hasOwn(declarations, name)) return;
     const option = this.option(widget, name, declarations[name]);
-    if (option.hidden || option.disabled || option.readOnly || !validWidgetOptionValue(option, value, widget)) {
+    if (option.hidden || option.disabled || option.readOnly || !(0, widget_options_exports.validWidgetOptionValue)(option, value, widget)) {
       this.requestUpdate();
       return;
     }
@@ -1143,12 +582,12 @@ var WidgetDrawer = class extends LitElement {
         if (attribute.startsWith("on") || ["srcdoc", "style", "class", "is", "contenteditable", "spellcheck", "data-webwriter-editor-only", "standalone"].includes(attribute)) {
           throw new TypeError(`The ${attribute} attribute cannot be set as an option.`);
         }
-        const text2 = widgetOptionAttributeValue(option.type, value, option.multiple, option.inverted);
-        if (text2 === null) widget.removeAttribute(option.attribute);
+        const text = (0, widget_options_exports.widgetOptionAttributeValue)(option.type, value, option.multiple, option.inverted);
+        if (text === null) widget.removeAttribute(option.attribute);
         else {
-          const url = text2.toLowerCase().replace(/[\u0000-\u0020]/g, "");
+          const url = text.toLowerCase().replace(/[\u0000-\u0020]/g, "");
           if (["href", "src", "xlink:href", "action", "formaction", "poster", "cite", "data"].includes(attribute) && /^(?:javascript:|vbscript:|data:(?:text\/html|image\/svg\+xml))/.test(url)) throw new TypeError("The option contains an unsafe URL.");
-          widget.setAttribute(option.attribute, text2);
+          widget.setAttribute(option.attribute, text);
         }
       }
       this.actionError = void 0;
@@ -1158,9 +597,9 @@ var WidgetDrawer = class extends LitElement {
     this.requestUpdate();
   };
   action(widget, name) {
-    const declarations = widgetDeclarations(widget, "actions");
-    const method = Object.hasOwn(declarations, name) ? widgetConversionMethod(widget, name) : void 0;
-    return method ? { method, state: widgetActionState(name, declarations[name], this.locale(widget)) } : void 0;
+    const declarations = (0, widget_options_exports.widgetDeclarations)(widget, "actions");
+    const method = Object.hasOwn(declarations, name) ? (0, widget_options_exports.widgetConversionMethod)(widget, name) : void 0;
+    return method ? { method, state: (0, widget_options_exports.widgetActionState)(name, declarations[name], this.locale(widget)) } : void 0;
   }
   async run(name, operation) {
     if (this.running) return;
@@ -1219,20 +658,20 @@ var WidgetDrawer = class extends LitElement {
     if (files.length) void selection.select(files);
   };
   formats(widget, direction) {
-    return Object.entries(widgetDeclarations(widget, direction)).filter(([format, declaration]) => isWidgetFileFormat(format) && widgetConversionMethod(widget, declaration)).map(([format]) => format);
+    return Object.entries((0, widget_options_exports.widgetDeclarations)(widget, direction)).filter(([format, declaration]) => (0, widget_options_exports.isWidgetFileFormat)(format) && (0, widget_options_exports.widgetConversionMethod)(widget, declaration)).map(([format]) => format);
   }
   convert(widget, direction, format) {
     if (!this.active(widget) || this.running || this.fileSelection) return;
     const lookup = () => {
-      const declarations = widgetDeclarations(widget, direction);
-      return Object.hasOwn(declarations, format) ? widgetConversionMethod(widget, declarations[format]) : void 0;
+      const declarations = (0, widget_options_exports.widgetDeclarations)(widget, direction);
+      return Object.hasOwn(declarations, format) ? (0, widget_options_exports.widgetConversionMethod)(widget, declarations[format]) : void 0;
     };
     const method = lookup();
     if (!method) return;
     const execute = async (files) => this.run(`${direction}:${format}`, async () => {
       if (!this.active(widget) || lookup() !== method) return;
       const file = files?.[0];
-      if (direction === "convertFrom" && (!file || !matchesWidgetFileFormat(file, format))) {
+      if (direction === "convertFrom" && (!file || !(0, widget_options_exports.matchesWidgetFileFormat)(file, format))) {
         throw new TypeError(`Choose a ${format} file to import.`);
       }
       const snapshot = file ? widget.outerHTML : null;
@@ -1248,7 +687,7 @@ var WidgetDrawer = class extends LitElement {
         result.call(widget);
       } else {
         const view = widget.ownerDocument.defaultView;
-        if (!(result instanceof view.File) || !result.name || !matchesWidgetFileFormat(result, format)) {
+        if (!(result instanceof view.File) || !result.name || !(0, widget_options_exports.matchesWidgetFileFormat)(result, format)) {
           throw new TypeError(`The widget must return a ${format} file.`);
         }
         const url = view.URL.createObjectURL(result);
@@ -1263,35 +702,35 @@ var WidgetDrawer = class extends LitElement {
     else void execute();
   }
   renderActions(actions) {
-    const button = (action) => html2`<div class="widget-action-item">
-      <button type="button" class="widget-action" data-intent=${action.intent ?? nothing2}
+    const button = (action) => html`<div class="widget-action-item">
+      <button type="button" class="widget-action" data-intent=${action.intent ?? nothing}
         ?disabled=${action.disabled || this.running || this.fileSelection} @click=${() => this.invoke(action.name)}>${action.label}</button>
-      ${action.description ? html2`<span class="develop-field-help">${action.description}</span>` : nothing2}
-      ${action.disabled && action.disabledReason ? html2`<span class="develop-field-help">${action.disabledReason}</span>` : nothing2}
-      ${this.actionError?.name === action.name ? html2`<span class="widget-action-error" role="alert">${this.actionError.message}</span>` : nothing2}
+      ${action.description ? html`<span class="develop-field-help">${action.description}</span>` : nothing}
+      ${action.disabled && action.disabledReason ? html`<span class="develop-field-help">${action.disabledReason}</span>` : nothing}
+      ${this.actionError?.name === action.name ? html`<span class="widget-action-error" role="alert">${this.actionError.message}</span>` : nothing}
     </div>`;
-    return html2`<div class="widget-actions">${widgetActionRows(actions).map((row) => row.length === 1 ? button(row[0]) : html2`<div class="choice-group widget-action-group" role="group">${row.map(button)}</div>`)}</div>`;
+    return html`<div class="widget-actions">${(0, widget_options_exports.widgetActionRows)(actions).map((row) => row.length === 1 ? button(row[0]) : html`<div class="choice-group widget-action-group" role="group">${row.map(button)}</div>`)}</div>`;
   }
   renderConversions(widget) {
     const imports = this.formats(widget, "convertFrom");
     const exports = this.formats(widget, "convertTo");
-    if (!imports.length && !exports.length) return nothing2;
-    const buttons = (formats, direction, label) => formats.map((format) => html2`
+    if (!imports.length && !exports.length) return nothing;
+    const buttons = (formats, direction, label) => formats.map((format) => html`
       <button type="button" ?disabled=${this.running || this.fileSelection}
         @click=${() => this.convert(widget, direction, format)}>${label} ${format}</button>
     `);
-    return html2`<div class="conversion-group" role="group" aria-label="Import and export">
+    return html`<div class="conversion-group" role="group" aria-label="Import and export">
       ${buttons(imports, "convertFrom", "Import")}${buttons(exports, "convertTo", "Export")}
     </div>`;
   }
   renderStorage() {
     const saving = this.status?.state === "saving";
-    return html2`<form class="storage-controls" @submit=${this.applyStorage}>
+    return html`<form class="storage-controls" @submit=${this.applyStorage}>
       <label for="storage-kind">Autosave to</label>
       <select id="storage-kind" .value=${live(this.draftKind)} ?disabled=${saving} @change=${this.chooseStorage}>
         <option value="browser">This browser</option><option value="http">Remote endpoint</option>
       </select>
-      ${this.draftKind === "http" ? html2`<div class="storage-endpoint">
+      ${this.draftKind === "http" ? html`<div class="storage-endpoint">
         <input id="storage-url" type="text" inputmode="url" spellcheck="false" required
           aria-label="Endpoint URL" placeholder="Endpoint URL" .value=${live(this.draftUrl)} @input=${(event) => {
       const input = event.currentTarget;
@@ -1299,18 +738,18 @@ var WidgetDrawer = class extends LitElement {
       this.draftUrl = input.value;
     }}>
         <button type="submit" ?disabled=${saving}>Apply</button>
-      </div>` : nothing2}
+      </div>` : nothing}
     </form>`;
   }
   render() {
     const widget = this.target;
-    if (!this.active(widget)) return nothing2;
-    const options = Object.entries(widgetDeclarations(widget, "options")).map(([name, declaration]) => this.option(widget, name, declaration));
-    const actions = Object.keys(widgetDeclarations(widget, "actions")).flatMap((name) => {
+    if (!this.active(widget)) return nothing;
+    const options = Object.entries((0, widget_options_exports.widgetDeclarations)(widget, "options")).map(([name, declaration]) => this.option(widget, name, declaration));
+    const actions = Object.keys((0, widget_options_exports.widgetDeclarations)(widget, "actions")).flatMap((name) => {
       const action = this.action(widget, name);
       return action ? [action.state] : [];
     });
-    const groups = Object.entries(widgetDeclarations(widget, "optionGroups")).map(([name, declaration]) => widgetOptionGroupState(name, declaration, this.locale(widget)));
+    const groups = Object.entries((0, widget_options_exports.widgetDeclarations)(widget, "optionGroups")).map(([name, declaration]) => (0, widget_options_exports.widgetOptionGroupState)(name, declaration, this.locale(widget)));
     const controls = renderWidgetOptions(
       options,
       actions,
@@ -1319,14 +758,14 @@ var WidgetDrawer = class extends LitElement {
       (actions2) => this.renderActions(actions2)
     );
     const conversions = this.renderConversions(widget);
-    if (controls === nothing2 && conversions === nothing2 && !this.defaults) return nothing2;
-    return html2`<details class="drawer" part="drawer">
+    if (controls === nothing && conversions === nothing && !this.defaults) return nothing;
+    return html`<details class="drawer" part="drawer">
       <summary part="summary">Widget settings</summary>
       <div class="contents">
         ${controls}${conversions}
-        ${this.running ? html2`<span role="status">Working…</span>` : nothing2}
-        ${this.actionError && !actions.some((action) => action.name === this.actionError?.name) ? html2`<p class="error" role="alert">${this.actionError.message}</p>` : nothing2}
-        ${this.defaults ? this.renderStorage() : nothing2}
+        ${this.running ? html`<span role="status">Working…</span>` : nothing}
+        ${this.actionError && !actions.some((action) => action.name === this.actionError?.name) ? html`<p class="error" role="alert">${this.actionError.message}</p>` : nothing}
+        ${this.defaults ? this.renderStorage() : nothing}
       </div>
     </details>
     <input type="file" hidden @change=${this.filePicked} @cancel=${this.filePicked}>`;
@@ -1334,6 +773,7 @@ var WidgetDrawer = class extends LitElement {
 };
 
 // index.ts
+__reExport(index_exports, widget_options_exports);
 var registries = /* @__PURE__ */ new WeakMap();
 var warnedDeclarations = /* @__PURE__ */ new WeakMap();
 function warnForDeclarationClashes(widget) {
@@ -1380,7 +820,7 @@ var LitElementWw = class extends SignalWatcher(LitElement2) {
       if (kind in this || !hasComputedDeclarations(declared[kind])) continue;
       Object.defineProperty(this, kind, {
         configurable: true,
-        get: () => resolveDeclarations2(this, declared[kind]),
+        get: () => resolveDeclarations(this, declared[kind]),
         set: (value) => Object.defineProperty(this, kind, { value, writable: true, configurable: true, enumerable: true })
       });
     }
@@ -1502,41 +942,18 @@ export {
   LitElementWw,
   WidgetDrawer,
   WidgetResultConflict,
-  compatibleControl,
   effectAccepts,
-  formatWidgetDuration,
   hasShape,
   isBoolean,
   isDataBlockType,
   isNumber,
-  isRecord,
   isSeries,
   isString,
   isTable,
-  isWidgetFileFormat,
-  localizedText,
-  matchesWidgetFileFormat,
-  parseWidgetDuration,
-  readWidgetOption,
   renderWidgetOptionField,
   renderWidgetOptions,
-  resolveDeclarations3 as resolveDeclarations,
-  validWidgetOptionValue,
-  widgetActionRows,
-  widgetActionState,
-  widgetConversionMethod,
-  widgetDeclarations,
-  widgetOptionAttribute,
-  widgetOptionAttributeValue,
+  requestMedia2 as requestMedia,
+  resolveDeclarations2 as resolveDeclarations,
   widgetOptionControlStyles,
-  widgetOptionControls,
-  widgetOptionDeclaration,
-  widgetOptionGroupState,
-  widgetOptionState,
-  widgetOptionType,
-  widgetOptionTypes,
-  widgetOptionValue,
-  widgetReferenceOption,
-  widgetResultEndpoint,
-  widgetTreeLeaves
+  widgetResultEndpoint
 };

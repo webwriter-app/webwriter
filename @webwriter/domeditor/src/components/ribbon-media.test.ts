@@ -306,14 +306,14 @@ describe("media ribbon drawer", () => {
     const placement = toolbox.shadowRoot!.querySelector('[aria-label="Placement"]')!
     const caption = toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Caption"]')!
     expect(caption.classList.contains("float-button-group")).toBe(true)
-    const captionLabel = placement.nextElementSibling!
+    const captionLabel = placement.closest("fieldset")!.nextElementSibling!
     expect(captionLabel.classList.contains("caption-label-row")).toBe(true)
     expect(captionLabel.textContent).toContain("Caption")
     const top = captionLabel.querySelector<HTMLInputElement>('input[type="checkbox"]')!
     expect(top.closest("label")?.textContent).toBe("Top")
     expect(top.checked).toBe(false)
     expect(top.disabled).toBe(true)
-    expect(placement.nextElementSibling?.nextElementSibling).toBe(caption)
+    expect(captionLabel.nextElementSibling).toBe(caption)
     const buttons = Array.from(caption.querySelectorAll<HTMLButtonElement>("button"))
     expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["No caption", "Caption below, align left", "Caption below, align center", "Caption below, align right"])
     expect(buttons[0].getAttribute("aria-pressed")).toBe("true")
@@ -407,6 +407,45 @@ describe("media ribbon drawer", () => {
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
       type: "video", action: "add", resource: "track",
     }}))
+  })
+
+  it("offers cross-origin access and a WebVTT file picker for a linked track", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    const attributes = {kind: "subtitles", src: "https://tracks.example/captions.vtt", srclang: "en"}
+    toolbox.media = {type: "video", attributes: {}, tracks: [{index: 2, attributes, crossOrigin: true}]}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const root = toolbox.shadowRoot!
+    const mediaChange = vi.fn()
+    const resourceAction = vi.fn()
+    toolbox.addEventListener("media-attribute-change", mediaChange)
+    toolbox.addEventListener("media-resource-action", resourceAction)
+
+    const access = root.querySelector<HTMLSelectElement>('select[aria-label="Cross-origin access"]')!
+    expect(access.value).toBe("")
+    expect(root.querySelector(".media-track-status")?.textContent).toContain("both")
+    access.value = "anonymous"
+    access.dispatchEvent(new Event("change"))
+    expect(mediaChange).toHaveBeenCalledWith(expect.objectContaining({
+      detail: {type: "video", attribute: "crossorigin", value: "anonymous"},
+    }))
+    root.querySelector<HTMLButtonElement>('button[aria-label="Choose WebVTT file for track 1"]')!.click()
+    expect(resourceAction).toHaveBeenCalledWith(expect.objectContaining({
+      detail: {type: "video", action: "pick-file", resource: "track", index: 2, expected: attributes},
+    }))
+
+    toolbox.media = {type: "video", attributes: {crossorigin: ""}, tracks: [{index: 2, attributes, crossOrigin: true, loadError: true}]}
+    await toolbox.updateComplete
+    expect(access.value).toBe("anonymous")
+    expect(root.querySelector(".media-track-status")?.textContent).toContain("couldn’t load")
+
+    toolbox.media = {type: "video", attributes: {}, tracks: [{index: 2, attributes: {...attributes, src: "blob:http://localhost/subtitles"},
+      sourceKind: "file", sourceLabel: "captions.vtt"}]}
+    await toolbox.updateComplete
+    expect(root.querySelector<HTMLInputElement>('input[aria-label="Track: Track URL"]')!.value).toBe("captions.vtt")
+    expect(root.querySelector(".media-track-status")).toBeNull()
   })
 
   it.each(["audio", "video"] as const)("offers file, capture, record, and URL inputs for a %s fallback source", async type => {

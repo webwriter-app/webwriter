@@ -149,6 +149,20 @@ export type RibbonDropPosition = {
   float?: "left" | "right"
 }
 
+/** Authored selection captured before preparing a package insertion. */
+export type PackageInsertionSelection = {
+  start: unknown
+  end: unknown
+  html: string | null
+  command?: true
+}
+
+export function isPackageInsertionSelection(value: unknown): value is PackageInsertionSelection {
+  return isRecord(value) && isRecord(value.start) && isRecord(value.end)
+    && (value.html === null || typeof value.html === "string")
+    && (value.command === undefined || value.command === true)
+}
+
 /** Chromium withholds drag events from a frame of another site than the one
  * that started the drag, so the host relays its ribbon drags over the editor
  * frame. Coordinates are relative to the frame's viewport. */
@@ -541,6 +555,8 @@ export type SelectionChangeDetail = {
   distribution?: DistributionSelection | null
   distributionGeneral?: DistributionSelection | null
   path: SelectionPathItem[]
+  /** Insertion actions and widget types unavailable at the live selection. */
+  unavailableInsertions?: string[]
   /** The live document selection accepts ordinary text keyboard input. */
   textKeyboard?: boolean
   /** True when a structural selection can be wrapped even if its common path is BODY. */
@@ -1025,6 +1041,7 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
   if(!isRecord(value) || value.type !== selectionChangeEvent || !isRecord(value.detail)) return false
   const detail = value.detail
   return Array.isArray(detail.path) && detail.path.every(isSelectionPathItem)
+    && isOptional(detail.unavailableInsertions, items => Array.isArray(items) && items.every(isString))
     && [detail.nodeSelected, detail.capture, detail.inserted, detail.canSection, detail.textKeyboard].every(isOptionalBoolean)
     && isOptional(detail.spatialSelection, isString)
     && (detail.distribution === undefined || detail.distribution === null || isDistributionSelection(detail.distribution))

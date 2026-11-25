@@ -63,12 +63,22 @@ export const timedMediaResourceTypes = ["source", "track"] as const
 
 export type TimedMediaResourceType = typeof timedMediaResourceTypes[number]
 
+export type TimedMediaFileTarget = {
+  type?: TimedMediaResourceType
+  index: number
+  expected: Record<string, string>
+}
+
+export const webVttFileAccept = ".vtt,text/vtt"
+
 export type TimedMediaResourceState = {
   /** Current direct child-node offset. Commands fail safely if it is stale. */
   index: number
   attributes: Record<string, string>
   sourceLabel?: string
   sourceKind?: "file" | "capture" | "recording"
+  crossOrigin?: true
+  loadError?: true
 }
 
 export const imageMapHotspotShapes = ["rect", "circle", "poly"] as const
@@ -174,6 +184,14 @@ const imageAttributes: MediaAttributeOption[] = [
   {name: "srcset", label: "Source set", placeholder: "image-2x.png 2x"},
 ]
 
+export const timedMediaCrossOriginOption: MediaAttributeOption = {
+  name: "crossorigin", label: "Cross-origin access", kind: "select", options: [
+    {label: "Not set", value: ""},
+    {label: "Anonymous", value: "anonymous"},
+    {label: "Use credentials", value: "use-credentials"},
+  ],
+}
+
 const timedMediaAttributes: MediaAttributeOption[] = [
   {name: "src", label: "Source URL", kind: "url", placeholder: "https://…"},
   {name: "autoplay", label: "Autoplay", kind: "boolean"},
@@ -185,11 +203,7 @@ const timedMediaAttributes: MediaAttributeOption[] = [
     {label: "Metadata", value: "metadata"},
     {label: "Auto", value: "auto"},
   ]},
-  {name: "crossorigin", label: "Cross-origin", kind: "select", options: [
-    {label: "Not set", value: ""},
-    {label: "Anonymous", value: "anonymous"},
-    {label: "Use credentials", value: "use-credentials"},
-  ]},
+  timedMediaCrossOriginOption,
 ]
 
 export const mediaAttributeOptions: Record<MediaType, MediaAttributeOption[]> = {

@@ -1,12 +1,13 @@
 import {LitElement, adoptStyles, type PropertyDeclaration} from "lit"
 import {SignalWatcher} from "@lit-labs/signals"
 import type * as WidgetOptions from "@webwriter/widget"
-import {WidgetRuntime, hasComputedDeclarations, resolveDeclarations, widgetLanguage, widgetRuntimeAttributes, type WidgetDataContext,
+import {WidgetRuntime, hasComputedDeclarations, requestMedia, resolveDeclarations, widgetLanguage, widgetRuntimeAttributes, type WidgetDataContext,
   type Declared, type LocalizedText, type ActionDeclaration, type OptionGroupDeclaration, type PermissionDeclaration,
   type ConvertFromDeclarations, type ConvertToDeclarations} from "@webwriter/widget"
 
-export {isDataBlockType, resolveDeclarations, type Declared, type DeclaredFlag, type DeclaredText, type WidgetDataContext, type WidgetDataMode, type LocalizedText,
+export {isDataBlockType, requestMedia, resolveDeclarations, type Declared, type DeclaredFlag, type DeclaredText, type WidgetDataContext, type WidgetDataMode, type LocalizedText,
   type OptionAvailability, type OptionGroupDeclaration, type PermissionDeclaration, type SelectOptionChoice, type ActionDeclaration,
+  type MediaOptionKind, type RequestMediaDetail,
   type ConvertFromDeclarations, type ConvertToDeclarations, type FileExtensionKey, type MediaTypeKey, type FileFormatKey,
   type ElementImportHandler, type FileImportHandler, type FileImportResult, type ElementExportHandler, type FileExportHandler} from "@webwriter/widget"
 
@@ -36,6 +37,7 @@ export interface TimeOptionDeclaration extends LitOption<WidgetOptions.TimeOptio
 export interface UrlOptionDeclaration extends LitOption<WidgetOptions.UrlOptionDeclaration> {}
 export interface ObjectOptionDeclaration extends LitOption<WidgetOptions.ObjectOptionDeclaration> {}
 export interface ColorOptionDeclaration extends LitOption<WidgetOptions.ColorOptionDeclaration> {}
+export interface MediaOptionDeclaration extends LitOption<WidgetOptions.MediaOptionDeclaration> {}
 export interface ReferenceOptionDeclaration extends LitOption<WidgetOptions.ReferenceOptionDeclaration> {}
 export interface SelectOptionDeclaration extends LitOption<WidgetOptions.SelectOptionDeclaration> {}
 
@@ -52,6 +54,7 @@ export type OptionDeclaration =
 | UrlOptionDeclaration
 | ObjectOptionDeclaration
 | ColorOptionDeclaration
+| MediaOptionDeclaration
 | SelectOptionDeclaration
 | ReferenceOptionDeclaration
 

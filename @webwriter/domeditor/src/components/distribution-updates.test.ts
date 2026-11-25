@@ -5,6 +5,7 @@ import {DistributionControls} from "./distribution-controls"
 import {emptyDistributionConfig, type DistributionConfig} from "../distribution.js"
 import type {DistributionSelection} from "../features/distribution"
 import {ribbonInsertionDragType} from "./insertion-menu"
+import {packageCompatibleSnippets, packageMemberAction, type PackageMember, type WebWriterPackage} from "../packages"
 
 const state = (): DistributionSelection => {
   const config = emptyDistributionConfig()
@@ -139,6 +140,40 @@ describe("distribution updates", () => {
     expect(host.distributionGeneral.local.permissions).toEqual(["insert"])
     expect(host.distributionGeneral.local.items[0].html).toBe("<sample-widget></sample-widget>")
     expect(install).toHaveBeenCalledWith(pkg, true)
+  })
+
+  it("loads a compatible snippet's dependencies before saving its resolved reader template", async () => {
+    const {host, execute} = dropHost()
+    const makePackage = (name: string, member?: Omit<PackageMember, "packageName" | "packageVersion">, optionalDependencies = {}): WebWriterPackage => ({
+      name, version: "1.0.0", label: name, authors: [], keywords: [], links: {}, scripts: [], styles: [],
+      members: member ? [{...member, packageName: name, packageVersion: "1.0.0"}] : [],
+      manifest: {name, version: "1.0.0", optionalDependencies},
+    })
+    const wrapper = makePackage("@webwriter/tasks", {id: "task", kind: "widget", label: "Task", insertable: true,
+      exportName: "./widgets/webwriter-task", tagName: "webwriter-task", editingConfig: {compatibleSnippets: {category: "Interact"}}})
+    const dependency = makePackage("@webwriter/resources")
+    const activity = makePackage("@webwriter/activity", {id: "activity", kind: "snippet", label: "Activity", insertable: true,
+      exportName: "./snippets/activity.html", htmlUrl: "https://example.test/activity.html", editingConfig: {
+        compatibleHosts: ["@webwriter/tasks/widgets/webwriter-task"], dependencies: [dependency.name],
+      }}, {[wrapper.name]: "^1.0.0", [dependency.name]: "^1.0.0"})
+    host.installedPackages = [wrapper, activity]
+    const action = packageMemberAction(packageCompatibleSnippets(host.installedPackages)[0])
+    vi.spyOn(host.packageRegistry, "getPackageForRange").mockResolvedValue(dependency)
+    vi.spyOn(host.packageRegistry, "fetchSnippet").mockResolvedValue("<p>Activity</p>")
+    vi.spyOn(host, "reloadEditor").mockImplementation(async packages => {
+      expect(execute.mock.calls.map(([command]: any[]) => command.type)).toEqual(["captureDistributionTarget"])
+      host.installedPackages = packages
+      host.frameRevision++
+    })
+    const original = execute.getMockImplementation()! as (command: any) => Promise<any>
+    execute.mockImplementation((command: any) => command.type === "readDistributionTarget" ? Promise.resolve({...state(), identity: "restored-document"})
+      : original(command))
+    await host.handleDistributionInsertDrop(drop({action}))
+    expect(host.installedPackages).toEqual([wrapper, activity, dependency])
+    expect(execute).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: "setDistributionConfig", identity: "restored-document",
+      config: expect.objectContaining({items: [{id: action, label: "Activity", html: "<webwriter-task><p>Activity</p></webwriter-task>"}]}),
+    }))
   })
 
   it("keeps the permission cards checked and enabled while the frame saves", async () => {

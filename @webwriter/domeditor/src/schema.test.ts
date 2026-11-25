@@ -96,6 +96,64 @@ describe("table cell descendant restrictions", () => {
   })
 })
 
+describe("widget descendant restrictions", () => {
+  it("disallows the widget's own type through native wrappers and editable widgets", () => {
+    const schema = new Schema()
+    schema.extendWidgets([
+      {tagName: "quiz-widget", editingConfig: {content: "flow*"}},
+      {tagName: "quiz-prompt", editingConfig: {content: "flow*"}},
+      {tagName: "atomic-widget"},
+    ])
+    const quiz = document.createElement("quiz-widget")
+    quiz.innerHTML = "<div><!--keep--><quiz-prompt></quiz-prompt></div>"
+    const prompt = quiz.querySelector("quiz-prompt")!
+    const candidate = document.createElement("quiz-widget")
+    const wrapper = document.createElement("section")
+    wrapper.append(candidate)
+
+    expect(schema.findValidContentTypes(prompt)).not.toContain("quiz-widget")
+    expect(schema.canInsert(quiz, candidate, 0)).toBe(false)
+    expect(schema.canInsert(prompt, wrapper, 0)).toBe(false)
+    expect(schema.canInsert(document.body, quiz, 0)).toBe(true)
+
+    const atomic = document.createElement("atomic-widget")
+    atomic.append(wrapper)
+    expect(schema.canInsert(prompt, atomic, 0)).toBe(true)
+  })
+
+  it("supports explicit exclusions and recursive widgets", () => {
+    const schema = new Schema()
+    schema.extendWidgets([
+      {tagName: "quiz-widget", editingConfig: {content: "flow*", excludedDescendants: ["quiz-widget", "table"]}},
+      {tagName: "recursive-widget", editingConfig: {content: "flow*", excludedDescendants: []}},
+    ])
+    const quiz = document.createElement("quiz-widget")
+    const recursive = document.createElement("recursive-widget")
+    expect(schema.canInsert(quiz, document.createElement("table"), 0)).toBe(false)
+    expect(schema.canInsert(quiz, document.createElement("quiz-widget"), 0)).toBe(false)
+    expect(schema.canInsert(quiz, recursive, 0)).toBe(true)
+    expect(schema.canInsert(recursive, document.createElement("recursive-widget"), 0)).toBe(true)
+
+    const customized = document.createElement("div")
+    customized.setAttribute("is", "quiz-widget")
+    expect(schema.canInsert(customized, document.createElement("table"), 0)).toBe(false)
+    expect(schema.canInsert(quiz, customized, 0)).toBe(false)
+  })
+
+  it("rejects a newly placed recursive subtree while preserving existing authored nesting during repair", () => {
+    const schema = new Schema()
+    schema.extendWidgets([{tagName: "quiz-widget", editingConfig: {content: "flow*"}}])
+    document.body.innerHTML = "<quiz-widget><div><!--keep--><quiz-widget><p>Nested</p></quiz-widget></div></quiz-widget>"
+    const original = document.body.innerHTML
+    const quiz = document.querySelector("quiz-widget")!
+
+    expect(schema.allowsPlacement(document.body, [quiz])).toBe(false)
+    schema.checkAndCorrect(document.body, true)
+    expect(document.body.innerHTML).toBe(original)
+    expect(document.querySelector("quiz-widget")).toBe(quiz)
+  })
+})
+
 describe("caption content", () => {
   it.each(["caption", "figcaption"])("allows phrasing content in <%s>", tag => {
     const schema = new Schema()

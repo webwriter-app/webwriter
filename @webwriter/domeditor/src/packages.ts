@@ -1,6 +1,9 @@
 import type {WidgetEditingConfig, WidgetSchemaDefinition} from "./schema"
 import {stripActiveContent} from "./active-content"
 import {fetchNpmFile, JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT, npmPublishedVersions} from "./npm-files"
+import {intersects, maxSatisfying, satisfies, valid, validRange} from "semver"
+import {toHexString} from "lib0/buffer"
+import {digest} from "lib0/hash/sha256"
 
 export {JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT}
 export const NPM_SEARCH_ENDPOINT = "https://registry.npmjs.org/-/v1/search"
@@ -27,6 +30,7 @@ export const webWriterPackageExportTypes = [
   {value: "snippet", label: "Snippet"},
   {value: "theme", label: "Theme"},
   {value: "icon", label: "Package icon"},
+  {value: "widget-icon", label: "Widget icon"},
   {value: "editing-config", label: "Editing config"},
   {value: "custom-elements", label: "Custom elements manifest"},
   {value: "other", label: "Other"},
@@ -41,6 +45,9 @@ export type WebWriterPackageExportDescriptor = {
 }
 
 const exportNameWithoutExtension = (value: string) => value.replace(/\.\*$/, "").replace(/\.(?:html?|m?js|css|ts|json)$/i, "")
+const widgetExportPrefix = "./widgets/"
+const widgetIconSuffix = ".icon.svg"
+const isWidgetIconExport = (name: string) => name.startsWith(widgetExportPrefix) && name.endsWith(widgetIconSuffix)
 
 /** Presents package export keys as the fields used by the Develop toolbox. */
 export function describePackageExport(exportName: string, target: PackageExportTarget): WebWriterPackageExportDescriptor {
@@ -48,6 +55,7 @@ export function describePackageExport(exportName: string, target: PackageExportT
   let name = exportName
   if(exportName === "./migrate.js") [type, name] = ["migration", "migrate"]
   else if(exportName === "./icon") [type, name] = ["icon", "icon"]
+  else if(isWidgetIconExport(exportName)) [type, name] = ["widget-icon", exportName.slice(widgetExportPrefix.length, -widgetIconSuffix.length)]
   else if(exportName === "./editing-config.json") [type, name] = ["editing-config", "editing-config"]
   else if(exportName === "./custom-elements.json") [type, name] = ["custom-elements", "custom-elements"]
   else if(exportName.startsWith("./widgets/")) [type, name] = ["widget", exportNameWithoutExtension(exportName.slice(10))]
@@ -66,6 +74,7 @@ export function webWriterPackageExportName(type: WebWriterPackageExportType, nam
   const trimmed = name.trim().replace(/^\.\//, "")
   if(type === "migration") return "./migrate.js"
   if(type === "icon") return "./icon"
+  if(type === "widget-icon") return `${widgetExportPrefix}${trimmed.replace(/^widgets\//, "").replace(/\.icon\.svg$/, "")}${widgetIconSuffix}`
   if(type === "editing-config") return "./editing-config.json"
   if(type === "custom-elements") return "./custom-elements.json"
   if(type === "widget") return `./widgets/${exportNameWithoutExtension(trimmed)}.*`
@@ -82,6 +91,7 @@ export function defaultPackageExportSource(type: WebWriterPackageExportType, nam
   if(type === "snippet") return `./src/snippets/${name}.html`
   if(type === "theme") return `./src/themes/${name}.css`
   if(type === "icon") return "./src/icon.svg"
+  if(type === "widget-icon") return `./src/widgets/${name}${widgetIconSuffix}`
   if(type === "editing-config") return "./editing-config.json"
   if(type === "custom-elements") return "./custom-elements.json"
   if(type === "other") return `./src/${name}`
@@ -96,7 +106,16 @@ export function withPackageExportSource(target: PackageExportTarget, source: str
 export type PackageEditingConfigEntry = WidgetEditingConfig & {
   label?: LocalizedText
   description?: LocalizedText
+  /** Groups this insertable in a second-level insertion menu. */
+  category?: LocalizedText
   uninsertable?: boolean
+  /** Full widget tag whose icon is used for this snippet. */
+  iconWidget?: string
+  /** Optional package names required when inserting this snippet. */
+  dependencies?: string[]
+  compatibleHosts?: string[]
+  equivalentTo?: string[]
+  compatibleSnippets?: {category?: LocalizedText}
   /** File format keys advertised by the widget's convertFrom handlers. */
   importFormats?: string[]
   /** File format keys advertised by the widget's convertTo handlers. */
@@ -106,8 +125,9 @@ export type PackageEditingConfigEntry = WidgetEditingConfig & {
 
 /** Options the editor reads from an editing-config entry. */
 export const packageEditingConfigOptions = [
-  "label", "description", "uninsertable", "group", "inline", "content", "isolating", "marks", "propagateEvents", "sharedData",
-  "importFormats", "exportFormats",
+  "label", "description", "category", "uninsertable", "group", "inline", "content", "isolating", "marks", "propagateEvents", "sharedData",
+  "split", "excludedDescendants", "importFormats", "exportFormats", "iconWidget", "dependencies",
+  "compatibleHosts", "equivalentTo", "compatibleSnippets",
 ] as const
 
 export type PackageEditingConfig = Record<string, PackageEditingConfigEntry>
@@ -117,6 +137,7 @@ export type WebWriterPackageManifest = {
   version: string
   dependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
+  optionalDependencies?: Record<string, string>
   description?: string
   keywords?: string[]
   author?: PersonMetadata
@@ -185,10 +206,12 @@ export type PackageInsertionItem = {
   name: string
   packageName: string
   kind: "widget" | "snippet"
+  category?: LocalizedText
   description?: string
   iconUrl?: string
   tag?: string
   htmlUrl?: string
+  packageAction?: string
   /** Non-insertable members still provide names and icons for existing widgets. */
   insertable?: boolean
 }
@@ -217,6 +240,11 @@ export type WebWriterPackage = {
   tests?: PackageTest[]
   editingConfig?: PackageEditingConfig
   manifest?: WebWriterPackageManifest
+}
+
+export type CompatibleSnippet = PackageMember & {
+  host: PackageMember & {tagName: string}
+  source: PackageMember
 }
 
 export const PACKAGE_DOCUMENTATION_MAX_BYTES = 1_000_000
@@ -314,21 +342,175 @@ export function packageUpdateKind(current: string, candidate: string): "compatib
   if(from[4]) return "compatible"
 }
 
+export function packageMemberIcon(pkg: WebWriterPackage, member?: PackageMember) {
+  if(member?.kind === "widget" && member.tagName
+    && !pkg.manifest?.exports?.[webWriterPackageExportName("widget-icon", member.tagName)]) return pkg.iconUrl ?? member.iconUrl
+  return member?.iconUrl ?? pkg.iconUrl
+}
+
+/** Resolves the visible category in the current language. */
+export function packageCategoryLabel(category: LocalizedText | undefined, locale: string) {
+  const label = localizedText(category, locale)
+  return typeof label === "string" ? label.trim() || undefined : undefined
+}
+
+export function packageMemberCategory(member: PackageMember, locale = "en") {
+  return packageCategoryLabel(member.editingConfig?.category, locale)
+}
+
+export const isPackageName = (value: unknown): value is string =>
+  typeof value === "string" && /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/.test(value)
+
+const isWidgetTag = (value: unknown): value is string =>
+  typeof value === "string" && /^[a-z][a-z0-9._-]*-[a-z0-9._-]*$/.test(value)
+
+export function parsePackageWidgetReference(value: unknown) {
+  if(typeof value !== "string") return
+  const separator = value.lastIndexOf("/widgets/")
+  if(separator === -1) return
+  const name = value.slice(0, separator)
+  const tag = value.slice(separator + "/widgets/".length)
+  if(isPackageName(name) && isWidgetTag(tag)) return {name, tag}
+}
+
+export const isCompatibleSnippetsConfig = (value: unknown): value is NonNullable<PackageEditingConfigEntry["compatibleSnippets"]> =>
+  isRecord(value) && (value.category === undefined || isLocalizedText(value.category))
+
+export function packageOptionalDependencyRange(manifest: WebWriterPackageManifest | undefined, name: string) {
+  const dependencies = manifest?.optionalDependencies
+  const range = isRecord(dependencies) && Object.hasOwn(dependencies, name) && dependencies[name]
+  return typeof range === "string" && range.trim() && validRange(range) ? range : undefined
+}
+
+export function packageMemberConfig(pkg: WebWriterPackage, member: PackageMember) {
+  const key = editingConfigKey(member.exportName)
+  return member.editingConfig ?? pkg.editingConfig?.[key] ?? pkg.manifest?.editingConfig?.[key]
+}
+
+export function packageSnippetDependencies(pkg: WebWriterPackage, member: PackageMember) {
+  const dependencies = packageMemberConfig(pkg, member)?.dependencies
+  if(member.kind !== "snippet" || dependencies === undefined) return []
+  if(!Array.isArray(dependencies) || !dependencies.every(isPackageName)) {
+    throw new TypeError(`Snippet '${member.label}' requires a list of package names in dependencies`)
+  }
+  return [...new Set(dependencies)].map(name => {
+    const range = packageOptionalDependencyRange(pkg.manifest, name)
+    if(!range) throw new Error(`Snippet '${member.label}' requires a version range for ${name} in optionalDependencies`)
+    return {name, range}
+  })
+}
+
+export function packageMemberNeedsPreparation(pkg: WebWriterPackage, member: PackageMember) {
+  if(isCompatibleSnippet(member)) return true
+  if(member.kind !== "snippet") return false
+  const value = packageMemberConfig(pkg, member)?.dependencies
+  return value !== undefined && (!Array.isArray(value) || value.length > 0)
+}
+
+export const isCompatibleSnippet = (member: PackageMember): member is CompatibleSnippet => "host" in member
+
+type WidgetEndpoint = {key: string, range: string}
+type WidgetEquivalence = {a: WidgetEndpoint, b: WidgetEndpoint}
+const widgetKey = (pkg: string, tag: string) => `${pkg}#${tag}`
+const packageActionEncoder = new TextEncoder()
+
+const versionRangesOverlap = (a: string, b: string) =>
+  valid(a) ? satisfies(a, b) : valid(b) ? satisfies(b, a) : intersects(a, b)
+
+function widgetEndpoints(pkg: WebWriterPackage, references: unknown): WidgetEndpoint[] {
+  if(!Array.isArray(references)) return []
+  return references.flatMap(value => {
+    const reference = parsePackageWidgetReference(value)
+    if(!reference) return []
+    const range = reference.name === pkg.name ? valid(pkg.version) : packageOptionalDependencyRange(pkg.manifest, reference.name)
+    return range ? [{key: widgetKey(reference.name, reference.tag), range}] : []
+  })
+}
+
+/** Builds the insertable variants from the installed package set. An equivalent
+ * widget may refer to a canonical widget whose package has yet to be installed. */
+export function packageCompatibleSnippets(packages: readonly WebWriterPackage[]) {
+  const hosts = new Map<string, {member: CompatibleSnippet["host"], category?: LocalizedText}>()
+  const graph = new Map<string, WidgetEquivalence[]>()
+  for(const pkg of packages) for(const member of pkg.members) {
+    if(member.kind !== "widget" || !isWidgetTag(member.tagName) || !valid(pkg.version)) continue
+    const key = widgetKey(pkg.name, member.tagName)
+    const config = packageMemberConfig(pkg, member)
+    if(isCompatibleSnippetsConfig(config?.compatibleSnippets)) {
+      hosts.set(key, {member: {...member, tagName: member.tagName}, category: config.compatibleSnippets.category})
+    }
+    for(const target of widgetEndpoints(pkg, config?.equivalentTo)) {
+      if(key === target.key) continue
+      const edge = {a: {key, range: pkg.version}, b: target}
+      for(const endpoint of [edge.a, edge.b]) {
+        const edges = graph.get(endpoint.key)
+        if(edges) edges.push(edge)
+        else graph.set(endpoint.key, [edge])
+      }
+    }
+  }
+  const variants: CompatibleSnippet[] = []
+  if(!hosts.size) return variants
+  for(const pkg of packages) for(const source of pkg.members) {
+    if(!source.insertable) continue
+    const pending: {point: WidgetEndpoint, previous?: WidgetEquivalence}[] =
+      widgetEndpoints(pkg, packageMemberConfig(pkg, source)?.compatibleHosts).map(point => ({point}))
+    const visited = new Set<WidgetEndpoint>()
+    const matched = new Set<string>()
+    for(const {point, previous} of pending) {
+      if(visited.has(point)) continue
+      visited.add(point)
+      const host = hosts.get(point.key)
+      if(host && source.id !== host.member.id && !matched.has(point.key) && satisfies(host.member.packageVersion, point.range)) {
+        matched.add(point.key)
+        variants.push({
+          id: `compatible:${toHexString(digest(packageActionEncoder.encode(JSON.stringify([host.member.id, source.id]))))}`,
+          packageName: host.member.packageName,
+          packageVersion: host.member.packageVersion,
+          exportName: host.member.exportName,
+          kind: "snippet",
+          label: source.label,
+          description: source.description,
+          iconUrl: packageMemberIcon(pkg, source),
+          insertable: true,
+          editingConfig: {category: host.category},
+          host: host.member,
+          source,
+        })
+      }
+      for(const edge of graph.get(point.key) ?? []) {
+        if(edge === previous) continue
+        const [from, to] = edge.a.key === point.key ? [edge.a, edge.b] : [edge.b, edge.a]
+        if(versionRangesOverlap(point.range, from.range)) pending.push({point: to, previous: edge})
+      }
+    }
+  }
+  return variants
+}
+
 export function packageInsertionItems(packages: WebWriterPackage[], includeUninsertable = false): PackageInsertionItem[] {
-  return packages.flatMap(pkg => pkg.members
+  const compatible = packageCompatibleSnippets(packages)
+  return packages.flatMap(pkg => [...pkg.members, ...compatible.filter(member => member.packageName === pkg.name)]
     .filter(member => member.insertable || includeUninsertable)
-    .map(member => ({
-      section: "Packages" as const,
-      name: member.kind === "widget" && member.tagName && (!member.label || member.label === member.tagName || member.label === titleCase(member.exportName))
-        ? widgetNameLabel(member.tagName) : member.label,
-      packageName: member.packageName,
-      kind: member.kind,
-      description: member.description,
-      iconUrl: member.kind === "widget" ? pkg.iconUrl ?? member.iconUrl : member.iconUrl ?? pkg.iconUrl,
-      ...(member.tagName ? {tag: member.tagName} : {}),
-      ...(member.htmlUrl ? {htmlUrl: member.htmlUrl} : {}),
-      ...(!member.insertable ? {insertable: false} : {}),
-    })))
+    .map(member => {
+      const configuredCategory = member.editingConfig?.category
+      const category = typeof configuredCategory === "string" ? configuredCategory.trim()
+        : isLocalizedText(configuredCategory) ? configuredCategory : undefined
+      return {
+        section: "Packages" as const,
+        name: member.kind === "widget" && member.tagName && (!member.label || member.label === member.tagName || member.label === titleCase(member.exportName))
+          ? widgetNameLabel(member.tagName) : member.label,
+        packageName: member.packageName,
+        kind: member.kind,
+        ...(category ? {category} : {}),
+        description: member.description,
+        iconUrl: packageMemberIcon(pkg, member),
+        ...(member.tagName ? {tag: member.tagName} : {}),
+        ...(member.htmlUrl ? {htmlUrl: member.htmlUrl} : {}),
+        ...(packageMemberNeedsPreparation(pkg, member) ? {packageAction: packageMemberAction(member)} : {}),
+        ...(!member.insertable ? {insertable: false} : {}),
+      }
+    }))
 }
 
 /** Resolves the installed widget tags and the editing settings that contribute
@@ -412,6 +594,13 @@ export function resolvePackageExport(target: PackageExportTarget | undefined): s
     const resolved = resolvePackageExport(target[condition])
     if(resolved) return resolved
   }
+}
+
+function packageMemberIconPath(manifest: WebWriterPackageManifest, tagName: string) {
+  const target = resolvePackageExport(manifest.exports?.[webWriterPackageExportName("widget-icon", tagName)])
+  if(!target || !/^\.\/[^*?#\\]+\.svg$/i.test(target)) return
+  try { return packagePath(target).join("/") }
+  catch { return undefined }
 }
 
 /** Builds a pinned jsDelivr URL while retaining the slash in scoped names. */
@@ -578,6 +767,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
+export const isLocalizedText = (value: unknown): value is LocalizedText =>
+  typeof value === "string" || isRecord(value) && Object.values(value).every(text => typeof text === "string")
+
 const mergeConfigValue = (base: unknown, override: unknown): unknown => {
   if(!isRecord(base) || !isRecord(override)) return override ?? base
   const result: Record<string, unknown> = {...base}
@@ -613,6 +805,8 @@ export type PackageMemberSource = {
   requiredPaths: string[]
   /** Stylesheet inferred from a wildcard export; it may be absent. */
   inferredStylePath?: string
+  /** Optional member icon. Its absence never makes a member unusable. */
+  iconPath?: string
 }
 
 export type PackageContents = {
@@ -636,6 +830,7 @@ export function packageContents(
   const tests = new Map<string, PackageContents["tests"][number]>()
   let migrationPath: string | undefined
   for(const [exportName, exportTarget] of Object.entries(manifest.exports ?? {})) {
+    if(isWidgetIconExport(exportName)) continue
     const target = resolvePackageExport(exportTarget)
     if(!target) continue
     const key = configKey(exportName)
@@ -657,6 +852,8 @@ export function packageContents(
     if(!isWidget && !isSnippet) continue
     const config = editingConfig[key] ?? {}
     const tagName = key.split("/").at(-1)!
+    const iconTag = isWidget ? tagName : config.iconWidget
+    const iconPath = typeof iconTag === "string" ? packageMemberIconPath(manifest, iconTag) : undefined
     const base = {
       id: `${manifest.name}@${manifest.version}:${key}`,
       packageName: manifest.name,
@@ -665,17 +862,17 @@ export function packageContents(
       label: localized(config.label, locale) ?? (isWidget ? widgetNameLabel(tagName) : titleCase(key)),
       description: localized(config.description, locale),
       insertable: config.uninsertable !== true,
-      iconUrl,
+      iconUrl: iconPath ? urlFor(iconPath) : iconUrl,
       editingConfig: config,
     }
     if(isSnippet) {
       const path = normalizePath(target)
-      members.push({member: {...base, kind: "snippet", htmlUrl: urlFor(path)}, requiredPaths: [path]})
+      members.push({member: {...base, kind: "snippet", htmlUrl: urlFor(path)}, requiredPaths: [path], iconPath})
       continue
     }
     let widget = widgets.get(key)
     if(!widget) {
-      widget = {source: {member: {...base, kind: "widget", tagName}, requiredPaths: []}}
+      widget = {source: {member: {...base, kind: "widget", tagName}, requiredPaths: [], iconPath}}
       widgets.set(key, widget)
       members.push(widget.source)
     }
@@ -769,6 +966,14 @@ export class WebWriterPackageRegistry {
     const versions = await npmPublishedVersions(name, this.fetcher)
     return versions.reduce((latest, candidate) => packageUpdateKind(latest, candidate) === "compatible"
       ? candidate : latest, version)
+  }
+
+  async getPackageForRange(name: string, range: string) {
+    const version = maxSatisfying(await npmPublishedVersions(name, this.fetcher), range)
+    if(!version) throw new Error(`No published version of ${name} matches ${range}`)
+    const pkg = await this.getPackage({name, version})
+    if(pkg.name !== name || pkg.version !== version) throw new Error(`Invalid package metadata for ${name}@${version}`)
+    return pkg
   }
 
   /** Fetch a directly linked package without waiting for catalog search. */
@@ -934,7 +1139,7 @@ export class WebWriterPackageRegistry {
       }
     })()
     const hasWildcardWidget = Object.entries(exports).some(([exportName, exportTarget]) => (
-      exportName.startsWith("./widgets/") && resolvePackageExport(exportTarget)?.endsWith(".*")
+      exportName.startsWith(widgetExportPrefix) && !isWidgetIconExport(exportName) && resolvePackageExport(exportTarget)?.endsWith(".*")
     ))
     const packageFilesRequest = hasWildcardWidget
       ? this.fetchPackageFiles(manifest.name, manifest.version)

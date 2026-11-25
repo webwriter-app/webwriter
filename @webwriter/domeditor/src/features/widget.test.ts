@@ -340,6 +340,19 @@ describe("WidgetFeature", () => {
     expect(choice.children).toHaveLength(1)
   })
 
+  it("checks exclusions after prefilling a detached child widget", () => {
+    editor.schema.extendWidgets([
+      {tagName: "demo-choice", editingConfig: {content: "demo-choice-item", excludedDescendants: ["table"]}},
+      {tagName: "demo-choice-item", editingConfig: {content: "table"}},
+    ])
+    document.body.innerHTML = "<demo-choice><!--keep--></demo-choice>"
+    const choice = document.querySelector("demo-choice")!
+
+    editor.features.widget.refresh()
+
+    expect(choice.innerHTML).toBe("<!--keep-->")
+  })
+
   it("preserves comments, data, and authored irregular content when prefilling", () => {
     document.body.innerHTML = '<demo-note><!--keep--><script type="application/json" slot="data">{}</script></demo-note><demo-note><unknown-node title="keep"><!--inside--></unknown-node></demo-note><demo-note contenteditable="false"></demo-note>'
     const [empty, authored, locked] = Array.from(document.querySelectorAll("demo-note"))
@@ -1780,6 +1793,56 @@ describe("widget file-input actions", () => {
       expect(picker()).toBeNull()
       expect(await feature.runAction(widget, "importFiles", false, [])).toBe(false)
       expect(await feature.runAction(widget, "importFiles", false, [new File([], "a"), new File([], "b")])).toBe(false)
+    }
+    finally { click.mockRestore() }
+  })
+
+  it("handles ww-request-media from widgets via an appendix file picker and cleans up on cancel/disable", async () => {
+    const widget = advancedWidget()
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {})
+    try {
+      const feature = editor.features.widget
+      const pending = new Promise<string | null>(resolve => {
+        const dispatched = widget.dispatchEvent(new CustomEvent("ww-request-media", {
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+          detail: {media: "image", accept: "image/png", resolve},
+        }))
+        expect(dispatched).toBe(false)
+      })
+      expect(picker().accept).toBe("image/png")
+      await chooseActionFiles(picker(), [new File([new Uint8Array([137, 80, 78, 71])], "pic.png", {type: "image/png"})])
+      const resolved = await pending
+      expect(resolved).toMatch(/^data:image\/png;base64,/)
+      expect(picker()).toBeNull()
+
+      const cancelled = new Promise<string | null>(resolve => {
+        widget.dispatchEvent(new CustomEvent("ww-request-media", {
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+          detail: {media: "audio", resolve},
+        }))
+      })
+      expect(picker().accept).toBe("audio/*")
+      picker().dispatchEvent(new Event("cancel"))
+      expect(await cancelled).toBeNull()
+      expect(picker()).toBeNull()
+
+      const disabledDuringPick = new Promise<string | null>(resolve => {
+        widget.dispatchEvent(new CustomEvent("ww-request-media", {
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+          detail: {resolve},
+        }))
+      })
+      expect(picker().accept).toBe("image/*,audio/*,video/*")
+      feature.disable()
+      expect(await disabledDuringPick).toBeNull()
+      expect(picker()).toBeNull()
+      feature.enable()
     }
     finally { click.mockRestore() }
   })

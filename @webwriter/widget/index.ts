@@ -1,6 +1,7 @@
 import type {LocalizedText} from "./options"
 
 export type * from "./options"
+export {requestMedia} from "./options"
 export * from "./shapes"
 
 /**

@@ -111,13 +111,6 @@ body:state(ww-appendix-fullscreen-active) :not(:state(ww-appendix-fullscreen-tar
  * The base theme caps direct children at the prose measure; authored document
  * styles can opt out without a separate editor sizing rule. */
 
-html:state(ww-key-mod-down),
-html:state(ww-key-mod-down) *,
-html:state(ww-key-mod-down) *::before,
-html:state(ww-key-mod-down) *::after {
-  cursor: pointer !important;
-}
-
 body > :last-child:not(:where(:state(ww-gap-after-selected))) {
   margin-block-end: 0;
 }
@@ -139,11 +132,6 @@ body > :last-child:not(:where(:state(ww-gap-after-selected))) {
   :where(table:state(ww-table-resize-auto-layout)) {
     --ww-table-default-layout: auto;
   }
-}
-
-/* Show cell boundaries without changing the table's reading-mode geometry. */
-:where(td, th) {
-  outline: 1px solid #aeb8c4;
 }
 
 /* Forms have little useful authoring presentation without a site stylesheet.
@@ -816,10 +804,6 @@ body:state(ww-template-active):has(> [role~="document"]:state(ww-element-selecte
 }
 
 body:state(ww-element-selected)::part(hover-caret) { background: transparent; }
-
-body:state(ww-key-mod-down), body:state(ww-key-mod-down) * {
-  cursor: pointer;
-}
 
 body::part(presence-caret) {
   position: fixed;

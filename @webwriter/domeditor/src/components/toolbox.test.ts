@@ -144,19 +144,14 @@ describe("toolbox", () => {
     expect(toolButton(toolbox, "Review").getAttribute("aria-selected")).toBe("true")
   })
 
-  it("keeps only Versions controls in the Review footer when the console is open", async () => {
+  it("puts Comments above Issues with independent scroll areas and Checks & Tests and Versions footer controls", async () => {
     const toolbox = await mountToolbox()
-    toolbox.consoleOpen = true
-    toolbox.selectTool("Review")
-    await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector(".versions-console-toggle")).not.toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('[aria-label="Developer console controls"]')).toBeNull()
-  })
-
-  it("puts Comments above Issues with independent thin scroll areas and a Versions footer", async () => {
-    const toolbox = await mountToolbox()
-    const changes = vi.fn()
+    const root = toolbox.shadowRoot!
+    expect(root.querySelector('.review-panel-controls button[aria-label="Checks & Tests"]')).toBeNull()
+    toolbox.hasLocalPackages = true
+    const changes = vi.fn(), checks = vi.fn()
     toolbox.addEventListener("versions-console-change", changes)
+    toolbox.addEventListener("checks-panel-change", checks)
     toolbox.selectTool("Review")
     await toolbox.updateComplete
     const content = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!
@@ -168,20 +163,26 @@ describe("toolbox", () => {
       expect(getComputedStyle(section).flexBasis).toBe("50%")
     }
     expect(content.querySelector('ribbon-drawer[label="Versions"]')).toBeNull()
-    const button = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".versions-console-toggle")!
-    expect(button.closest("footer")).not.toBeNull()
-    expect(button.getAttribute("aria-pressed")).toBe("false")
-    expect(button.textContent?.trim()).toBe("Versions")
-    expect(button.getAttribute("aria-label")).toBe("Versions")
-    const issues = sections[1].querySelector<HTMLElement>(".proofreading-content")!
-    expect(getComputedStyle(issues).overflowY).toBe("auto")
-    button.click()
+    const versions = root.querySelector<HTMLButtonElement>('.review-panel-controls button[aria-label="Versions"]')!
+    const checksButton = root.querySelector<HTMLButtonElement>('.review-panel-controls button[aria-label="Checks & Tests"]')!
+    expect(versions.closest("footer")).not.toBeNull()
+    expect(versions.getAttribute("aria-pressed")).toBe("false")
+    expect(checksButton.getAttribute("aria-pressed")).toBe("false")
+    expect(checksButton.classList.contains("checks-panel-toggle")).toBe(true)
+    expect(versions.compareDocumentPosition(checksButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    versions.click()
     expect(changes.mock.calls.at(-1)![0].detail).toEqual({enabled: true})
+    checksButton.click()
+    expect(checks.mock.calls.at(-1)![0].detail).toEqual({enabled: true})
     toolbox.versionsOpen = true
+    toolbox.checksOpen = true
     await toolbox.updateComplete
-    expect(button.getAttribute("aria-pressed")).toBe("true")
+    expect(versions.getAttribute("aria-pressed")).toBe("true")
+    expect(checksButton.getAttribute("aria-pressed")).toBe("true")
     expect(toolbox.hasAttribute("versions-open")).toBe(true)
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close versions"]')!.click()
+    expect(toolbox.hasAttribute("checks-open")).toBe(true)
+    expect(root.querySelector('.review-panel-controls [aria-label^="Close"]')).toBeNull()
+    versions.click()
     expect(changes.mock.calls.at(-1)![0].detail).toEqual({enabled: false})
   })
 
@@ -203,9 +204,6 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!.hidden).toBe(false)
     expect(toolbox.shadowRoot!.querySelector(".feedback-content")!.textContent).toContain("Start sharing")
     expect(toolbox.shadowRoot!.querySelector("ribbon-drawer")).toBeNull()
-    toolbox.consoleOpen = true
-    await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector(".edit-mode-footer")).toBeNull()
     toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close Feedback"]')!.click()
     await toolbox.updateComplete
     expect(toolbox.activeTool).toBeNull()
@@ -314,8 +312,6 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(renderIssues).toHaveBeenCalledTimes(1)
 
-    toolbox.consoleOpen = true
-    await toolbox.updateComplete
     expect(renderIssues).toHaveBeenCalledTimes(1)
 
     toolbox.proofreadingState = {...emptyProofreadingState(), enabled: false, documentEnabled: false}
@@ -1065,20 +1061,6 @@ describe("toolbox", () => {
     expect(getComputedStyle(toolbox).width).toBe("122px")
   })
 
-  it("does not show console controls in the Edit toolbox", async () => {
-    const toolbox = await mountToolbox()
-    toolButton(toolbox, "Edit").click()
-    toolbox.consoleOpen = true
-    await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector(".edit-mode-footer")).toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('[aria-label="Close developer console"]')).toBeNull()
-    toolbox.htmlPending = true
-    await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!.inert).toBe(true)
-    toolbox.selectTool("Style")
-    expect(toolbox.activeTool).toBe("Edit")
-  })
-
   it("shows the selected element name in blue without opening Edit", async () => {
     const toolbox = await mountToolbox()
     const edit = toolButton(toolbox, "Edit")
@@ -1402,7 +1384,6 @@ describe("toolbox", () => {
 
     toolButton(toolbox, "Edit").click()
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector(".developer-console-toggle")).toBeNull()
     drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     expect(drawers.map(drawer => drawer.label)).toEqual(["Style"])
   })

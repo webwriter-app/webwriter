@@ -7,6 +7,7 @@ export class PackageSearch extends LitElement {
   static properties = {
     query: {type: String},
     loading: {type: Boolean, reflect: true},
+    localLoading: {type: Boolean, attribute: false},
     error: {type: String},
   }
 
@@ -53,13 +54,11 @@ export class PackageSearch extends LitElement {
 
     .icon svg { display: block; width: 100%; height: 100%; }
 
-    .refresh {
+    .refresh, .local-package-actions-trigger {
       display: grid;
       place-items: center;
       flex: 0 0 1.55rem;
       align-self: stretch;
-      margin-left: -0.35rem;
-      margin-right: -0.35rem;
       padding: 0;
       border: 0;
       border-radius: 0.25rem;
@@ -68,13 +67,19 @@ export class PackageSearch extends LitElement {
       cursor: pointer;
     }
 
+    .refresh { margin-inline: -0.35rem; }
+    .local-package-actions-trigger { flex-basis: 1.3rem; margin-inline-start: -0.35rem; }
+    .local-package-actions-trigger svg { width: .75rem; height: .75rem; }
+    .local-package-actions-trigger[data-error] { color: #a34521; }
+
     .refresh-icon { display: none; }
     .refresh:is(:hover, :focus-visible):not(:disabled) .search-icon { display: none; }
     .refresh:is(:hover, :focus-visible):not(:disabled) .refresh-icon { display: block; }
-    .refresh:hover:not(:disabled) { color: #1e4f87; background: rgb(215 231 247 / 65%); }
-    .refresh:active:not(:disabled) { color: #173d6b; background: #b9d7f5; }
-    .refresh:focus-visible { outline: 2px solid #3977c7; outline-offset: -2px; }
-    .refresh:disabled { cursor: default; }
+    :is(.refresh, .local-package-actions-trigger, .local-package-actions button):hover:not(:disabled),
+    .field:has(:popover-open) .local-package-actions-trigger { color: #1e4f87; background: rgb(215 231 247 / 65%); }
+    :is(.refresh, .local-package-actions-trigger, .local-package-actions button):active:not(:disabled) { color: #173d6b; background: #b9d7f5; }
+    :is(.refresh, .local-package-actions-trigger, .local-package-actions button):focus-visible { outline: 2px solid #3977c7; outline-offset: -2px; }
+    :is(.refresh, .local-package-actions-trigger, .local-package-actions button):disabled { cursor: default; }
 
     input {
       box-sizing: border-box;
@@ -91,16 +96,13 @@ export class PackageSearch extends LitElement {
     }
 
     input::-webkit-search-cancel-button { display: none; }
-    .field:has(.clear) input { padding-right: 1.5rem; }
-
     .clear {
       display: grid;
-      position: absolute;
-      top: 0;
-      right: 0;
       place-items: center;
+      flex: 0 0 1.3rem;
       width: 1.3rem;
       height: 100%;
+      margin-inline-start: -0.35rem;
       padding: 0.4rem 0.225rem;
       border: 0;
       border-radius: 0.25rem;
@@ -112,6 +114,46 @@ export class PackageSearch extends LitElement {
     .clear:hover { color: #1e4f87; background: rgb(215 231 247 / 65%); }
     .clear:focus-visible { outline: 2px solid #3977c7; outline-offset: -2px; }
     .clear svg { display: block; width: 100%; height: 100%; }
+
+    .local-package-actions {
+      box-sizing: border-box;
+      inline-size: max-content;
+      max-inline-size: calc(100vi - 1rem);
+      padding: .2rem;
+      border: 1px solid #c8d2df;
+      border-radius: .3rem;
+      color: #2f3742;
+      background: #f7f8fa;
+      box-shadow: 0 3px 10px #0002;
+    }
+
+    @supports (position-area: block-end span-inline-start) {
+      .local-package-actions {
+        inset: auto;
+        margin: .15rem 0;
+        position-area: block-end span-inline-start;
+        position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+      }
+    }
+
+    .local-package-actions button {
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+      width: 100%;
+      padding: .4rem .5rem;
+      border: 0;
+      border-radius: .2rem;
+      font: 500 .75rem system-ui, sans-serif;
+      text-align: start;
+      color: inherit;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .local-package-actions button svg { flex: 0 0 1rem; width: 1rem; height: 1rem; }
+    .local-package-actions p { max-inline-size: 16rem; margin: .35rem .5rem; color: #a34521; font: .72rem system-ui, sans-serif; overflow-wrap: anywhere; }
+    .package-feedback { position: absolute; inline-size: 1px; block-size: 1px; clip-path: inset(50%); overflow: hidden; }
 
     .loading {
       box-sizing: border-box;
@@ -128,6 +170,7 @@ export class PackageSearch extends LitElement {
 
   query = ""
   loading = false
+  localLoading = false
   error = ""
 
   focus(options?: FocusOptions) {
@@ -166,6 +209,19 @@ export class PackageSearch extends LitElement {
     void this.updateComplete.then(() => this.focus())
   }
 
+  dismissActions() {
+    this.renderRoot.querySelector<HTMLElement>(".local-package-actions:popover-open")?.hidePopover?.()
+  }
+
+  private chooseLocalPackage(action: string) {
+    this.dismissActions()
+    this.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: action, keepDrawerOpen: true},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
   render() {
     return html`
       <div class="field">
@@ -191,6 +247,20 @@ export class PackageSearch extends LitElement {
             ${ribbonIcon("Reject")}
           </button>
         ` : ""}
+        <button class="local-package-actions-trigger" type="button" aria-label="Local package actions"
+          title=${this.error || "Local package actions"} popovertarget="local-package-actions" ?data-error=${Boolean(this.error)}>
+          ${ribbonIcon("MoreVertical")}
+        </button>
+        <div id="local-package-actions" class="local-package-actions" popover="auto" role="group" aria-label="Local package actions">
+          <button type="button" autofocus ?disabled=${this.localLoading} @click=${() => this.chooseLocalPackage("local-package-add")}>
+            ${ribbonIcon("Open")}Add from local folder
+          </button>
+          <button type="button" ?disabled=${this.localLoading} @click=${() => this.chooseLocalPackage("local-package-add-batch")}>
+            ${ribbonIcon("Open")}Add from parent folder
+          </button>
+          ${this.error ? html`<p>${this.error}</p>` : ""}
+        </div>
+        <span class="package-feedback" role="status">${this.error}</span>
       </div>
     `
   }

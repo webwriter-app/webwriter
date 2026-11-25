@@ -1,7 +1,7 @@
 import {normalizeURLInput} from "../src/url-input.js"
 import {SharedDOMDoc} from "../src/domdoc"
 import {LiveSession} from "../src/live-session"
-import {boxStylePresets} from "../src/css-color"
+import {boxStylePresetPadding, boxStylePresets} from "../src/css-color"
 
 const html = `<!doctype html><html><head><title>Planning a community garden</title></head><body>
 <h1>Planning a community garden</h1>
@@ -241,8 +241,9 @@ export class ScenarioRunner {
             const from = anchor && peer.domPointFromRelativePosition(anchor), to = focus && peer.domPointFromRelativePosition(focus)
             if(!from || !to || from.node !== to.node || to.offset !== from.offset + 1 || from.node.childNodes.item(from.offset) !== block
               || !this.editableBlocks(peer.root).includes(block) || block.getAttribute("style") !== originalStyle) return false
+            const padding = boxStylePresetPadding(block)
             const styles = {"background-color": `#${preset.background}`, "border-width": "1px", "border-style": "solid", "border-color": `#${preset.border}`,
-              padding: "8px", color: "#2f3742", "border-radius": "4px", "box-shadow": "none"}
+              color: "#2f3742", "border-radius": "4px", "box-shadow": "none", ...(padding ? {padding} : {})}
             for(const [property, value] of Object.entries(styles)) block.style.setProperty(property, value, block.style.getPropertyPriority(property))
             return true
           }

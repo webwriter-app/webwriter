@@ -4,7 +4,7 @@ import {attributionAttributes} from "./attribution.js"
 import listMarkerStyleSource from "./document-list-markers.css?raw"
 import referenceFormatterSource from "virtual:reference-formatter-source"
 import {collectReferences} from "./document-viewer.js"
-import {documentLayoutMode} from "./document-layout"
+import {documentLayoutMode, slideFragmentStyles} from "./document-layout"
 import {getDocumentRoot} from "./document-template"
 import {creativeCommonsLicenses} from "./document-head"
 import {siteTranslations} from "./site-translations"
@@ -29,10 +29,11 @@ const serializedReaderScriptIds = [
   "webwriter-distribution-reader", "webwriter-widget-effects",
 ]
 
-/** Retire generated export runtimes before rebuilding them or editing a saved document. */
-export function removeSerializedReaderScripts(root: ParentNode) {
+/** Retire generated reader assets before rebuilding them or editing a saved document. */
+export function removeSerializedReaderAssets(root: ParentNode) {
   root.querySelectorAll(serializedReaderScriptIds.map(id => `script[id="${id}"]`).join(", "))
     .forEach(script => script.remove())
+  root.querySelectorAll('style[id="webwriter-slide-fragment-styles"]').forEach(style => style.remove())
 }
 
 export const restorableResourceAttributes = ["src", "srcset", "poster", "data", "href", "xlink:href", "style", "integrity"] as const
@@ -83,7 +84,7 @@ export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWri
   const {documentElement, body, baseURI} = root
   const owner = documentElement.ownerDocument
   const distribution = [...readDistributionConfigs(root).values()]
-  removeSerializedReaderScripts(documentElement)
+  removeSerializedReaderAssets(documentElement)
   const permissions = new Set(distribution.flatMap(config => config.permissions))
   const resourceKey = (url: string) => {
     try { return new URL(url, baseURI).href }
@@ -123,6 +124,12 @@ export function appendSerializedAssets(root: HTMLDocumentParts, packages: WebWri
   documentElement.querySelectorAll('script[id="webwriter-scoped-registry"]').forEach(script => script.remove())
   // Replace an earlier export's runtime, including after a template change.
   const layout = documentLayoutMode(body)
+  if(layout === "slides") {
+    const style = owner.createElement("style")
+    style.id = "webwriter-slide-fragment-styles"
+    style.textContent = slideFragmentStyles
+    head.append(style)
+  }
   if(layout === "board") {
     const script = owner.createElement("script")
     script.id = "webwriter-layout-print"

@@ -1,0 +1,50 @@
+{
+  "name": "@webwriter/graphic",
+  "version": "0.1.0",
+  "description": "Shared SVG graphic geometry, presets, and lightweight drawing controller for WebWriter",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "source": "./index.ts",
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./graphic": {
+      "source": "./graphic.ts",
+      "types": "./graphic.d.ts",
+      "default": "./graphic.js"
+    },
+    "./shapes": {
+      "source": "./shapes.ts",
+      "types": "./shapes.d.ts",
+      "default": "./shapes.js"
+    },
+    "./presets": {
+      "source": "./presets.ts",
+      "types": "./presets.d.ts",
+      "default": "./presets.js"
+    },
+    "./canvas": {
+      "source": "./canvas.ts",
+      "types": "./canvas.d.ts",
+      "default": "./canvas.js"
+    }
+  },
+  "files": [
+    "*.js",
+    "!*.test.js",
+    "*.d.ts",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.4",
+    "typescript": "^7.0.2"
+  }
+}

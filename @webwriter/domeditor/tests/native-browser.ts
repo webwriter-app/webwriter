@@ -354,6 +354,68 @@ await check("canvas multiline text keeps partial selections after formatting", a
 })
 
 await check("editing suppresses native autoplay while preserving attributes and explicit playback", checkMediaAutoplay)
+await check("video subtitles load during playback from a cross-origin link or a WebVTT file", async () => {
+  const frame = document.createElement("iframe")
+  frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  const waitFor = async (condition: () => boolean, message: string) => {
+    for(let attempt = 0; attempt < 200; attempt++) {
+      if(condition()) return
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    throw new Error(message)
+  }
+  try {
+    await waitFor(() => Boolean(frame.contentWindow?.editor), "subtitle editor did not initialize")
+    const editor = frame.contentWindow!.editor!
+    const doc = frame.contentDocument!
+    const video = doc.createElement("video")
+    video.controls = video.muted = video.loop = true
+    video.src = new URL("/src/assets/layouts/document.mp4", location.href).href
+    doc.body.append(video)
+    editor.features.selection.captureElement(video)
+    const media = editor.features.media
+    media.actions.addTimedMediaResource({type: "addTimedMediaResource", resource: "track"})
+    let track = video.querySelector("track")!
+    track.srclang = "en"
+    const url = new URL("/tests/fixtures/media-captions.vtt", location.href)
+    url.hostname = location.hostname === "localhost" ? "127.0.0.1" : "localhost"
+    const setTrackSource = (src: string) => {
+      const row = media.getState()!.tracks![0]
+      assert(media.actions.setTimedMediaResourceAttribute({type: "setTimedMediaResourceAttribute",
+        resource: "track", index: row.index, expected: row.attributes, name: "src", value: src}), "track URL was rejected")
+    }
+    setTrackSource(url.href)
+    await video.play()
+    track.track.mode = "showing"
+    await waitFor(() => media.getState()?.tracks?.[0].loadError === true, "cross-origin failure was not reported")
+    assert(media.getState()?.tracks?.[0].crossOrigin, "track URL was not identified as cross-origin")
+
+    media.actions.setMediaAttribute({type: "setMediaAttribute", name: "crossorigin", value: "anonymous"})
+    track = video.querySelector("track")!
+    await waitFor(() => track.readyState === HTMLTrackElement.LOADED && Boolean(track.track.activeCues?.length),
+      "cross-origin track did not recover after enabling access")
+    assert(!video.paused, "correcting the track stopped playback")
+    assert(!media.getState()?.tracks?.[0].loadError, "successful retry retained the load error")
+
+    media.actions.setMediaAttribute({type: "setMediaAttribute", name: "crossorigin", value: null})
+    setTrackSource(url.href + "?file-fallback")
+    await waitFor(() => track.readyState === HTMLTrackElement.ERROR, "cross-origin URL did not fail without access")
+    const row = media.getState()!.tracks![0]
+    const captions = await (await fetch("/tests/fixtures/media-captions.vtt")).text()
+    const FrameFile = (frame.contentWindow as Window & typeof globalThis).File
+    assert(media.actions.setMediaFile({type: "setMediaFile",
+      resource: {type: "track", index: row.index, expected: row.attributes}, file: new FrameFile([captions], "captions.vtt")}),
+      "WebVTT file was rejected")
+    await waitFor(() => track.readyState === HTMLTrackElement.LOADED && Boolean(track.track.activeCues?.length),
+      "embedded subtitle did not display during playback")
+    assert(!video.paused && !video.hasAttribute("crossorigin"), "embedding the track changed video playback or cross-origin access")
+  }
+  finally {
+    frame.contentWindow?.editor?.destroy()
+    frame.remove()
+  }
+})
 await check("saved document issue checker loads without reloading the editor", checkSavedDocumentChecker)
 await check("Board media shrinks with card height in editing and standalone documents", checkBoardMedia)
 await check("Board controls and transform frames follow CSS anchors through layout changes", checkBoardAnchors)
@@ -1733,14 +1795,14 @@ await check("Editor UI prevents text selection while preserving editable fields 
     import("../src/components/ribbon"), import("../src/components/settings-panel"),
     import("../src/components/document-head-editor"), import("../src/components/element-style-editor"),
     import("../src/components/element-attribute-editor"), import("../src/components/link-keyboard"),
-    import("../src/components/widget-grouping-dialog"), import("../src/components/developer-console"),
+    import("../src/components/widget-grouping-dialog"), import("../src/components/bottom-detail-panel"),
   ])
   const stage = document.createElement("section")
   stage.contentEditable = "false"
   fixture.append(stage)
   const tags = ["app-ribbon", "settings-panel", "document-head-editor", "document-head-combobox",
     "element-style-editor", "element-attribute-editor", "dom-editor-link-keyboard",
-    "widget-grouping-dialog", "developer-console", "package-search", "ribbon-button"]
+    "widget-grouping-dialog", "bottom-detail-panel", "package-search", "ribbon-button"]
   const controls = tags.map(tag => document.createElement(tag))
   stage.append(...controls)
   let editor: DOMEditor | undefined
@@ -1762,9 +1824,11 @@ await check("Editor UI prevents text selection while preserving editable fields 
       inspect(control.shadowRoot!)
     }
     assert(fields > 10, `only ${fields} native fields were checked`)
-    const console = stage.querySelector("developer-console")!
-    for(const panel of console.shadowRoot!.querySelectorAll(".test-content, .element-content")) {
-      assert(getComputedStyle(panel).userSelect === "none", "console text remains selectable")
+    const detailPanel = stage.querySelector<import("../src/components/bottom-detail-panel").BottomDetailPanel>("bottom-detail-panel")!
+    detailPanel.mode = "checks"
+    await detailPanel.updateComplete
+    for(const panel of detailPanel.shadowRoot!.querySelectorAll(".test-content, .panel-content")) {
+      assert(getComputedStyle(panel).userSelect === "none", "Checks & Tests text remains selectable")
     }
     // Rich editable UI must opt back into selection, including its descendants.
     const rich = document.createElement("div")
@@ -2590,7 +2654,8 @@ await check("table presets respect whole-table and cell selections without chang
     const table = doc.querySelector("table")!, cells = Array.from(table.querySelectorAll<HTMLTableCellElement>("th, td"))
     const descendants = Array.from(table.querySelectorAll("*"))
     controls.addEventListener("element-style-change", event => {
-      editor!.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: (event as CustomEvent).detail.styles})
+      const {styles, boxPreset} = (event as CustomEvent).detail
+      editor!.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles, boxPreset})
     })
     for(const selection of ["table", "cell", "all cells"]) {
       table.removeAttribute("style")
@@ -3425,44 +3490,58 @@ await check("popup content drags stay inside the bubble", async () => {
   finally { view.editor?.destroy(); frame.remove() }
 })
 
-await check("popup table content clicks keep the bubble open", async () => {
-  const frame = document.createElement("iframe")
-  frame.style.cssText = "width:800px!important;max-width:none;height:400px"
-  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
-  nativeRootEditor.addAppendix(frame)
-  const view = frame.contentWindow as Window & {editor?: DOMEditor, PointerEvent: typeof PointerEvent, MouseEvent: typeof MouseEvent}
-  try {
-    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
-    assert(view.editor, "popup table fixture did not initialize")
-    const doc = frame.contentDocument!, selection = view.getSelection()!, editor = view.editor!
-    doc.body.innerHTML = '<table><tbody><tr><td><p>Before <span class="ww-popup"><button popovertarget="note">Toggle</button></span> after</p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Bubble words here</p></div></td><td><p>Other</p></td></tr></tbody></table>'
-    const content = doc.querySelector<HTMLElement>("[popover]")!, text = content.querySelector("p")!.firstChild!
-    selection.setPosition(text, 3)
-    editor.features.selection.processSelection()
-    editor.features.dialog.refresh()
-    await layoutFrame()
-    assert(hasPresentationState(content, "popup-visible"), "popup did not open in the table cell")
-    const range = doc.createRange()
-    range.setStart(text, 3); range.collapse(true)
-    const rect = range.getBoundingClientRect(), bubble = content.getBoundingClientRect()
-    for(const [x, y] of [[rect.left + 1, rect.top + rect.height / 2], [bubble.right - 5, bubble.bottom - 5]]) {
-      const hit = doc.elementFromPoint(x, y)
-      if(!hit || !content.contains(hit)) throw new Error("popup content is not hittable inside the table")
-      hit.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerType: "mouse", pointerId: 89,
-        button: 0, buttons: 1, clientX: x, clientY: y}))
-      hit.dispatchEvent(new view.MouseEvent("mousedown", {bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y}))
-      doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerType: "mouse", pointerId: 89,
-        button: 0, clientX: x, clientY: y}))
-      doc.dispatchEvent(new Event("selectionchange"))
-      await layoutFrame()
+await check("popup table and Details content clicks keep the bubble open", async () => {
+  const popup = '<p>Before <span class="ww-popup"><button popovertarget="note">Toggle</button></span> after</p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Bubble words here</p></div>'
+  for(const html of [
+    `<table><tbody><tr><td>${popup}</td><td><p>Other</p></td></tr></tbody></table>`,
+    `<details open><summary>Heading</summary>${popup}</details>`,
+    `<details open><summary>Outer</summary><details open><summary>Inner</summary>${popup}</details></details>`,
+  ]) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:800px!important;max-width:none;height:400px"
+    frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
+    nativeRootEditor.addAppendix(frame)
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, PointerEvent: typeof PointerEvent, MouseEvent: typeof MouseEvent}
+    try {
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor, "popup container fixture did not initialize")
+      const doc = frame.contentDocument!, selection = view.getSelection()!, editor = view.editor!
+      doc.body.innerHTML = html
+      const content = doc.querySelector<HTMLElement>("[popover]")!, text = content.querySelector("p")!.firstChild!
+      selection.setPosition(text, 3)
+      editor.features.selection.processSelection()
       editor.features.dialog.refresh()
-      assert(content.contains(selection.anchorNode) && content.contains(selection.focusNode),
-        `clicking popup content in a table moved the selection out of the bubble: ${selection.anchorNode?.nodeName}@${selection.anchorOffset}, hit ${hit.localName}`)
-      assert(hasPresentationState(content, "popup-visible"), "clicking popup content in a table closed the bubble")
-      assert(!editor.features.table.hasCellSelection, "clicking popup content selected the table cell")
+      await layoutFrame()
+      assert(hasPresentationState(content, "popup-visible"), "popup did not open in its container")
+      const range = doc.createRange()
+      range.setStart(text, 3); range.collapse(true)
+      const rect = range.getBoundingClientRect(), bubble = content.getBoundingClientRect()
+      for(const [x, y] of [[rect.left + 1, rect.top + rect.height / 2], [bubble.right - 5, bubble.bottom - 5],
+        [rect.left + 1, rect.top + rect.height / 2]]) {
+        const hit = doc.elementFromPoint(x, y)
+        if(!hit || !content.contains(hit)) throw new Error("popup content is not hittable inside its container")
+        hit.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerType: "mouse", pointerId: 89,
+          button: 0, buttons: 1, clientX: x, clientY: y}))
+        hit.dispatchEvent(new view.MouseEvent("mousedown", {bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y}))
+        doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerType: "mouse", pointerId: 89,
+          button: 0, clientX: x, clientY: y}))
+        hit.dispatchEvent(new view.MouseEvent("click", {bubbles: true, cancelable: true, detail: 1,
+          button: 0, clientX: x, clientY: y}))
+        doc.dispatchEvent(new Event("selectionchange"))
+        await layoutFrame()
+        editor.features.dialog.refresh()
+        assert(content.contains(selection.anchorNode) && content.contains(selection.focusNode),
+          `clicking popup content moved the selection out of the bubble: ${selection.anchorNode?.nodeName}@${selection.anchorOffset}, hit ${hit.localName}, container ${content.parentElement?.localName}`)
+        assert(hasPresentationState(content, "popup-visible"), "clicking popup content closed the bubble")
+        assert(!editor.features.table.hasCellSelection, "clicking popup content selected the table cell")
+      }
+      assert(doc.execCommand("insertText", false, "edited"), "popup did not accept native typing")
+      assert(content.textContent?.includes("edited") && content.textContent.replace("edited", "") === "Bubble words here",
+        "native typing did not edit the popup content")
+      assert(Array.from(doc.querySelectorAll("details")).every(details => details.open), "editing the popup closed its disclosure")
     }
+    finally { view.editor?.destroy(); frame.remove() }
   }
-  finally { view.editor?.destroy(); frame.remove() }
 })
 
 await check("popup table trailing gap accepts Enter", async () => {
@@ -6335,53 +6414,53 @@ await check("selected images inside table cells keep their own effects", async (
   }
 })
 
-await check("modifier clicks select whole tables from cells and borders", async () => {
+await check("middle clicks cycle from table contents through authored ancestors", async () => {
   const table = document.createElement("table")
   table.innerHTML = '<tbody><tr><th rowspan="2"><button>Run</button></th><td>B</td></tr><tr><td>C</td></tr></tbody>'
   table.style.cssText = "width:320px;border:2px solid black"
   table.querySelectorAll<HTMLElement>("td, th").forEach(cell => cell.style.cssText = "padding:20px;border:1px solid black")
   fixture.append(table)
-  const cell = table.querySelector("th")!
-  const button = cell.querySelector("button")!
+  const cell = table.querySelector("th")!, button = cell.querySelector("button")!
   let activations = 0
-  button.addEventListener("click", () => activations++)
+  button.addEventListener("auxclick", () => activations++)
   const click = (target: Element, x: number, y: number) => {
-    for(const type of ["pointerdown", "pointerup", "click"]) {
-      const event = new PointerEvent(type, {button: 0, bubbles: true, composed: true, cancelable: true,
-        ctrlKey: true, metaKey: true, clientX: x, clientY: y})
+    const init = {button: 1, bubbles: true, composed: true, cancelable: true, clientX: x, clientY: y}
+    target.dispatchEvent(new PointerEvent("pointerdown", {...init, buttons: 4}))
+    for(const type of ["mousedown", "mouseup", "auxclick"]) {
+      const event = new MouseEvent(type, init)
       target.dispatchEvent(event)
       assert(event.defaultPrevented, `${type} reached native activation`)
     }
   }
   try {
-    for(const collapse of ["collapse", "separate"]) for(const captionSide of ["none", "top", "bottom"]) {
+    for(const collapse of ["collapse", "separate"]) {
       table.style.borderCollapse = collapse
       table.style.borderSpacing = "8px"
-      table.caption?.remove()
-      if(captionSide !== "none") {
-        const caption = table.createCaption()
-        caption.textContent = "Table caption"
-        caption.style.captionSide = captionSide
-      }
-      table.scrollIntoView()
+      button.scrollIntoView({block: "center", behavior: "instant"})
       await layoutFrame()
-      const rect = table.getBoundingClientRect(), box = cell.getBoundingClientRect()
-      const top = captionSide === "top" ? table.caption!.getBoundingClientRect().bottom : rect.top
-      const bottom = captionSide === "bottom" ? table.caption!.getBoundingClientRect().top : rect.bottom
-      click(button, box.left + box.width / 2, box.top + box.height / 2)
-      assert($.selectedElement === table && !editor.features.table.hasCellSelection, `${collapse}: cell interior did not select the table`)
-      const next = table.querySelector("td")!.getBoundingClientRect()
-      click(table, (box.right + next.left) / 2, next.top + next.height / 2)
-      assert($.selectedElement === table && !editor.features.table.hasCellSelection, `${collapse}: inner border did not select the table`)
-      for(const [x, y] of [[rect.left + 1, (top + bottom) / 2], [rect.right - 1, (top + bottom) / 2],
-        [rect.left + rect.width / 2, top + 1], [rect.left + rect.width / 2, bottom - 1]]) {
-        click(table, x, y)
-        assert($.selectedElement === table && !editor.features.table.hasCellSelection, `${collapse}: outer border did not select the table`)
+      const rect = button.getBoundingClientRect()
+      const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
+      const path = [button, cell, cell.parentElement!, table.tBodies[0], table, fixture, button]
+      for(const target of path) {
+        const beneath = editor.hitTestBeneathAppendix(() => document.elementFromPoint(x, y))
+        assert(beneath && button.contains(beneath), `${collapse}: the click moved off the button`)
+        const surface = editor.appendix.elementFromPoint(x, y)
+        click(surface?.matches('[part~="node-drag-surface"]') ? surface : button, x, y)
+        await layoutFrame()
+        assert($.selectedElement === target && !editor.features.table.hasCellSelection,
+          `${collapse}: expected ${target.localName} in the selection cycle`)
+        assert(hasPresentationState(target, "element-selected"), `${target.localName} has no node selection marker`)
+        assert(!$.isDocumentSelection, "the cycle selected Document")
       }
-      click(button, box.left + box.width / 2, box.top + box.height / 2)
-      assert($.selectedElement === table && !editor.features.table.hasCellSelection, `${collapse}: repeated modifier-click lost table selection`)
+      const caption = table.createCaption()
+      caption.textContent = "Table caption"
+      const bounds = caption.getBoundingClientRect()
+      click(caption, bounds.left + 5, bounds.top + 5)
+      await layoutFrame()
+      assert($.selectedElement === caption, "caption was not selected as a node")
+      caption.remove()
     }
-    assert(!activations, "modifier-click activated a cell control")
+    assert(!activations, "middle-click activated a cell control")
     assert(!editor.toHTML(true).includes("◆"), "cell selection markers leaked into serialization")
   }
   finally {
@@ -8364,7 +8443,7 @@ await check("dead-key composition stays outside authored formulas", async () => 
   finally { paragraph.remove(); editor.features.math.refresh() }
 })
 
-await check("repeated canvas modifier selections preserve item placement and camera", async () => {
+await check("repeated canvas middle-click selections preserve item placement and camera", async () => {
   for(const tag of ["ul", "p", "canvas-selection-widget"]) {
     const frame = document.createElement("iframe")
     frame.style.cssText = "width:900px;height:600px"
@@ -8389,17 +8468,19 @@ await check("repeated canvas modifier selections preserve item placement and cam
           await layoutFrame()
         }
         const camera = slot.style.transform, initial = item.getBoundingClientRect()
+        const mark = item.querySelector("em")!
+        const path = tag === "ul" ? [mark, mark.parentElement!, item] : tag === "p" ? [mark, item] : [item]
         for(let i = 0; i < 6; i++) {
-          const rect = item.getBoundingClientRect()
-          // The left padding selects the list itself, toggling the final item
-          // off on every second click, as in issue #256.
-          const options = {bubbles: true, composed: true, cancelable: true, pointerId: 91, button: 0,
-            ctrlKey: true, metaKey: true, clientX: rect.left + 10, clientY: rect.top + 10}
-          item.dispatchEvent(new view.PointerEvent("pointerdown", options))
-          item.dispatchEvent(new view.PointerEvent("pointerup", options))
-          item.dispatchEvent(new view.MouseEvent("click", options))
+          const rect = mark.getBoundingClientRect()
+          const options = {bubbles: true, composed: true, cancelable: true, pointerId: 91, button: 1,
+            clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2}
+          mark.dispatchEvent(new view.PointerEvent("pointerdown", {...options, buttons: 4}))
+          mark.dispatchEvent(new view.PointerEvent("pointerup", options))
+          mark.dispatchEvent(new view.MouseEvent("auxclick", options))
           await layoutFrame()
-          assert((i % 2 === 0) === hasPresentationState(item, "element-selected"), `${tag}: modifier click did not toggle selection`)
+          const expected = path[i % path.length]
+          assert(path.every(target => hasPresentationState(target, "element-selected") === (target === expected)),
+            `${tag}: middle-click did not select ${expected.localName}`)
           assert(slot.style.transform === camera, `${tag} at ${zoom}: selection ${i} moved the camera: ${camera} -> ${slot.style.transform}`)
           const after = item.getBoundingClientRect()
           assert(Math.abs(after.left - initial.left) < .01 && Math.abs(after.top - initial.top) < .01,
@@ -8451,6 +8532,11 @@ await check("canvas box selection retains disjoint ranges and stays in the docum
     const selection = canvasEditor.doc.snapshot().selection
     assert(selection?.ranges?.length === 2, "snapshot lost disjoint ranges")
     assert(!canvasEditor.toHTML().includes("selection-box"), "marquee leaked into serialized content")
+    const snippet = canvasEditor.features.manipulation.actions.getSnippet({type: "getSnippet"})
+    assert(snippet?.label === "first last" && !snippet.html.includes(">hole</p>"), "snippet did not capture the disjoint selection")
+    await canvasEditor.features.manipulation.actions.insert({type: "insert", html: snippet!.html})
+    assert(Array.from(doc.querySelectorAll("p"), paragraph => paragraph.textContent).join(",") === "first,hole,last,first,last",
+      "reinserting the snippet did not restore both selected items")
   }
   finally { canvasEditor?.destroy(); frame.remove() }
 })
@@ -10117,6 +10203,129 @@ await check("Board columns and cards retain native editing and standalone layout
 await check("canvas and slide movement follows the dot grid and alignment guides", () => checkLayoutGrid(nativeRootEditor))
 
 await check("slide editing retains text and media selections after focus", () => checkSlideEditing(nativeRootEditor))
+
+await check("local fragment links reveal targets in Document, Canvas, Slides and Board", async () => {
+  const links = '<p id="cross-reference"><a href="#far%20away">Jump to target</a></p>'
+  const destination = '<p id="far away"><a href="#cross-reference">Return to the first item</a></p>'
+  const fixtures = {
+    document: `${links}<div style="height:1400px"></div>${destination}`,
+    canvas: `${links}<section style="left:-1800px;top:1500px;width:300px">${destination}</section>`,
+    slides: `<div class="ww-slides-viewport"><section class="ww-slide" id="first-slide">${links}</section><section class="ww-slide" id="second-slide">${destination}</section></div>`,
+    board: `<section class="ww-board-column"><h2>Start</h2><article class="ww-board-card">${links}</article></section>
+      ${'<section class="ww-board-column"><h2>Spacer</h2></section>'.repeat(3)}
+      <section class="ww-board-column"><h2>End</h2><article class="ww-board-card"><div style="height:1400px"></div>${destination}</article></section>`,
+  }
+  const isVisible = (node: Element, view: Window) => {
+    const bounds = node.getBoundingClientRect()
+    return bounds.width > 0 && bounds.height > 0 && bounds.right > 0 && bounds.left < view.innerWidth
+      && bounds.bottom > 0 && bounds.top < view.innerHeight
+  }
+  const waitForTarget = async (node: Element, view: Window, context: string) => {
+    for(let attempt = 0; attempt < 30 && !isVisible(node, view); attempt++) await layoutFrame()
+    assert(isVisible(node, view), `${context}: target outside viewport ${JSON.stringify(node.getBoundingClientRect())}`)
+  }
+  const panAway = (slot: HTMLSlotElement) => {
+    slot.dispatchEvent(new slot.ownerDocument.defaultView!.WheelEvent("wheel", {
+      deltaX: 2600, deltaY: -2100, bubbles: true, composed: true, cancelable: true,
+    }))
+  }
+  for(const mode of ["canvas", "document", "slides", "board"] as const) {
+    const styles = {document: "", canvas: canvasStyles, slides: slidesStyles, board: boardStyles}[mode]
+    const bodyClass = mode === "document" ? "" : ` class="ww-${mode}"`
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:900px;height:600px;border:0"
+    frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}${styles}</style>
+      <script class="◆editor-only" type="module">
+        import {openFrameLinksInNewTabs} from "/src/frame-links.ts"
+        openFrameLinksInNewTabs(window)
+      </script></head><body${bodyClass}>${fixtures[mode]}
+      <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+    nativeRootEditor.addAppendix(frame)
+    try {
+      const view = frame.contentWindow!
+      for(let attempt = 0; !view.editor && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
+      assert(view.editor, `${mode}: editor did not initialize: ${view.editorError}`)
+      const doc = frame.contentDocument!
+      const source = doc.getElementById("cross-reference")!, target = doc.getElementById("far away")!
+      const link = source.querySelector<HTMLAnchorElement>('a[href="#far%20away"]')!
+      await layoutFrame()
+      if(mode === "canvas") view.editor!.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+      assert(!isVisible(target, view), `${mode}: destination should start outside the viewport`)
+      const originalHTML = target.outerHTML, zoom = view.editor!.features.canvas.zoom
+      link.click()
+      await waitForTarget(target, view, `${mode} editor jump`)
+      assert(view.location.hash === "#far%20away" && frame.contentDocument === doc, `${mode}: jump did not stay in the current document`)
+      assert(target.outerHTML === originalHTML && view.editor!.features.canvas.zoom === zoom, `${mode}: jump changed content or zoom`)
+      if(mode === "canvas") assert(view.scrollX === 0 && view.scrollY === 0, "canvas jump scrolled the page instead of moving the camera")
+      if(mode === "slides") assert(Math.abs(target.closest(".ww-slide")!.getBoundingClientRect().left) < 1, "slide jump did not center the target slide")
+      target.querySelector("a")!.click()
+      await waitForTarget(source, view, `${mode} editor return`)
+      assert(view.location.hash === "#cross-reference", `${mode}: return did not update the fragment`)
+      if(mode === "canvas") {
+        view.history.back()
+        await waitForTarget(target, view, "canvas history back")
+        panAway(view.editor!.appendix.querySelector("slot")!)
+        assert(!isVisible(target, view), "canvas: editor pan did not leave the destination")
+        link.click()
+        await waitForTarget(target, view, "canvas repeated editor jump")
+      }
+      if(mode === "slides") {
+        view.editor!.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+        await layoutFrame()
+        assert(!isVisible(target, view), "slides: destination should be offscreen at actual size")
+        link.click()
+        await waitForTarget(target, view, "slides editor jump at actual size")
+      }
+
+      const saved = await view.editor!.serializeHTML(true)
+      const previewHTML = previewFrameHTML(new DOMParser().parseFromString(saved, "text/html"), {
+        bridgeNonce: "cross-reference", packages: [], importMap: null,
+        hostOrigin: location.origin, frameOrigin: location.origin,
+        entryURL: new URL("../src/preview-entry.ts", import.meta.url).href, executeScripts: true,
+      })
+      for(const [context, html] of [["saved reader", saved], ["preview", previewHTML]]) {
+        const output = document.createElement("iframe")
+        output.style.cssText = frame.style.cssText
+        // A standalone file resolves its own fragment links. A srcdoc
+        // document inherits the parent URL unless the preview bridge handles them.
+        const savedURL = context === "saved reader" ? URL.createObjectURL(new Blob([html], {type: "text/html"})) : null
+        if(savedURL) {
+          if(mode === "slides") output.setAttribute("sandbox", "allow-same-origin")
+          output.src = mode === "canvas" ? `${savedURL}#far%20away` : savedURL
+        }
+        else output.srcdoc = html
+        const loaded = new Promise<void>(resolve => output.addEventListener("load", () => resolve(), {once: true}))
+        nativeRootEditor.addAppendix(output)
+        try {
+          await loaded
+          const reader = output.contentWindow!, content = output.contentDocument!
+          const target = content.getElementById("far away")!
+          const link = content.querySelector<HTMLAnchorElement>('a[href="#far%20away"]')!
+          const slot = content.body.shadowRoot?.querySelector("slot")
+          if(savedURL && mode === "canvas") {
+            const rect = target.getBoundingClientRect()
+            assert(Math.abs(rect.left + rect.width / 2 - reader.innerWidth / 2) < 1
+              && Math.abs(rect.top + rect.height / 2 - reader.innerHeight / 2) < 1, "saved canvas did not center its initial fragment")
+            target.querySelector("a")!.click()
+            await waitForTarget(content.getElementById("cross-reference")!, reader, "canvas saved reader return")
+          }
+          for(let jump = 0; jump < (mode === "canvas" ? 2 : 1); jump++) {
+            if(mode === "canvas") panAway(slot!)
+            assert(!isVisible(target, reader), `${mode} ${context}: destination should start offscreen`)
+            link.click()
+            await waitForTarget(target, reader, `${mode} ${context} jump ${jump + 1}`)
+            assert(reader.location.hash === "#far%20away", `${mode} ${context}: jump did not update the fragment`)
+          }
+        }
+        finally {
+          output.remove()
+          if(savedURL) URL.revokeObjectURL(savedURL)
+        }
+      }
+    }
+    finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+  }
+})
 
 let savedSlidesHTML = ""
 await check("CSS Slides use native fragment links while editing", async () => {
@@ -12445,14 +12654,17 @@ await check("narrow toolboxes collapse below bottom panels and restore on tab ac
     const transparent = "rgba(0, 0, 0, 0)"
     assert(getComputedStyle(tabs).borderBottomColor === transparent && getComputedStyle(tabsArea).backgroundColor === transparent
       && getComputedStyle(tabsArea).boxShadow.includes(transparent), "the adjacent toolbox paints over the shared divider")
-    for(const surface of ["console", "versions", "math", "shape", "link"]) {
-      Object.assign(app, {consoleOpen: false, reviewOpen: false, mathSelection: null, graphicSelection: null, linkSelection: null,
+    for(const surface of ["checks", "versions", "math", "shape", "link"]) {
+      Object.assign(app, {checksOpen: false, reviewOpen: false, mathSelection: null, graphicSelection: null, linkSelection: null,
         mathKeyboardHidden: false, shapeKeyboardHidden: false, linkKeyboardHidden: false})
       app.style.width = "900px"
       await settle()
       host.breadcrumbVisible = true
-      toolbox.selectTool(surface === "versions" ? "Review" : "Edit")
-      if(surface === "console") host.consoleOpen = true
+      toolbox.selectTool(surface === "versions" || surface === "checks" ? "Review" : "Edit")
+      if(surface === "checks") {
+        host.localPackages = [{name: "@local/demo", version: "1.0.0", label: "Demo", members: []}]
+        host.checksOpen = true
+      }
       else if(surface === "versions") host.reviewOpen = true
       else if(surface === "math") host.mathSelection = {active: true, display: "inline"}
       else if(surface === "shape") host.graphicSelection = {active: true, capture: true}
@@ -12460,13 +12672,19 @@ await check("narrow toolboxes collapse below bottom panels and restore on tab ac
         attributes: {href: "https://example.com"}, targets: [], references: []}
       await settle()
       assert(!toolbox.collapsed && pane.getBoundingClientRect().height > 0, `${surface}: wide toolbox collapsed`)
+      if(surface === "checks") {
+        const controls = toolbox.shadowRoot!.querySelector<HTMLElement>(".review-panel-controls")!
+        const checks = controls.querySelector<HTMLButtonElement>(".checks-panel-toggle")!
+        assert(Math.abs(checks.getBoundingClientRect().right - controls.getBoundingClientRect().right) < 1,
+          "Checks & Tests is not aligned to the right of the Review footer")
+      }
       for(const width of [600, 599, 380]) {
         app.style.width = `${width}px`
         await settle()
         assert(toolbox.collapsed === (width < 600), `${surface}: collapse does not match container width ${width}`)
         if(width >= 600) continue
-        const panel = app.shadowRoot!.querySelector<HTMLElement>(surface === "console" || surface === "versions"
-          ? ".html-source-panel" : `.${surface}-keyboard-area`)!
+        const panel = app.shadowRoot!.querySelector<HTMLElement>(surface === "checks" || surface === "versions"
+          ? ".bottom-detail-panel" : `.${surface}-keyboard-area`)!
         const bar = tabs.getBoundingClientRect(), bounds = panel.getBoundingClientRect(), editorBounds = app.getBoundingClientRect()
         assert(pane.hidden && pane.getBoundingClientRect().height === 0, `${surface}: toolbox pane is still visible`)
         assert(bar.top >= bounds.bottom - 1 && Math.abs(bar.bottom - editorBounds.bottom + .5) <= 1,
@@ -12945,11 +13163,27 @@ await check("bottom layout cards retain native editing focus after rendering", a
     assert(!ribbon.shadowRoot!.querySelector('[aria-label="Pin snippet"]'), "separate pin snippet button was retained")
     const packagesDrawer = ribbon.shadowRoot!.querySelector<any>('ribbon-drawer[label="Packages"]')!
     const packageControls = packagesDrawer.shadowRoot.querySelector(".controls") as HTMLElement
-    const search = packagesDrawer.querySelector("package-search")!
+    const search: HTMLElementTagNameMap["package-search"] = packagesDrawer.querySelector("package-search")!
+    await search.updateComplete
     if(packageControls.getBoundingClientRect().width > 0 && packagesDrawer.packageColumnCount > 1) {
       assert(search.getBoundingClientRect().width <= packageControls.getBoundingClientRect().width / packagesDrawer.packageColumnCount + 1,
         "package search spans the full drawer")
     }
+    const localPackageActions: {label: string, keepDrawerOpen?: boolean}[] = []
+    search.addEventListener("ribbon-button-click", event => {
+      event.stopPropagation()
+      localPackageActions.push((event as CustomEvent<{label: string, keepDrawerOpen?: boolean}>).detail)
+    })
+    search.shadowRoot!.querySelector<HTMLButtonElement>(".local-package-actions-trigger")!.click()
+    const localActions = search.shadowRoot!.querySelector<HTMLElement>(".local-package-actions")!
+    assert(localActions.matches(":popover-open"), "local package actions did not open from package search")
+    localActions.querySelectorAll<HTMLButtonElement>("button")[0].click()
+    assert(localPackageActions[0]?.label === "local-package-add" && localPackageActions[0].keepDrawerOpen,
+      "Add from local folder did not dispatch its package action")
+    search.shadowRoot!.querySelector<HTMLButtonElement>(".local-package-actions-trigger")!.click()
+    localActions.querySelectorAll<HTMLButtonElement>("button")[1].click()
+    assert(localPackageActions[1]?.label === "local-package-add-batch" && localPackageActions[1].keepDrawerOpen,
+      "Add from parent folder did not dispatch its package action")
     await snippets.updateComplete
     let chevron = snippets.shadowRoot.querySelector('[aria-label="Show more Snippets options"]')!
     assert(chevron, "empty Snippets item has no dropdown chevron")
@@ -13549,16 +13783,16 @@ await check("Accessibility review shares Issues controls without loading while d
 
 await check("Review shares bounded scroll areas and lays out versions beside responsive changes", async () => {
   const {DomEditorToolbox} = await import("../src/components/toolbox")
-  const {DeveloperConsole} = await import("../src/components/developer-console")
+  const {BottomDetailPanel} = await import("../src/components/bottom-detail-panel")
   const {emptyProofreadingState, emptyVersionHistoryState} = await import("../src/editor-bridge")
   const toolbox = new DomEditorToolbox()
   toolbox.style.cssText = "position:fixed;top:60px;right:10px;width:218px;height:480px"
   toolbox.selectTool("Review")
   fixture.append(toolbox)
-  const console = new DeveloperConsole()
-  console.review = true
-  console.style.cssText = "position:fixed;top:60px;left:10px;width:800px"
-  fixture.append(console)
+  const panel = new BottomDetailPanel()
+  panel.mode = "versions"
+  panel.style.cssText = "position:fixed;top:60px;left:10px;width:800px;height:480px"
+  fixture.append(panel)
   const scenario = async (comments: number, issues: number) => {
     toolbox.commentState = {canComment: false, active: false, text: "", activeCount: 0, count: comments,
       highlighting: true, activeThreadId: null, threads: Array.from({length: comments}, (_, index) => ({
@@ -13599,14 +13833,14 @@ await check("Review shares bounded scroll areas and lays out versions beside res
     const user = {clientId: 1, name: "Ada", initials: "AD", color: "#64748b"}
     const checkpoint = (id: string) => ({id, timestamp: 1, label: "Change", user, changes: {added: 0, removed: 0, modified: 1}, commentCount: 0})
     const checkpoints = Array.from({length: 16}, (_, index) => checkpoint(`change-${index}`))
-    console.historyState = {...emptyVersionHistoryState(), checkpoints, versions: Array.from({length: 8}, (_, index) => ({
+    panel.historyState = {...emptyVersionHistoryState(), checkpoints, versions: Array.from({length: 8}, (_, index) => ({
       ...checkpoint(`version-${index}`), checkpointIds: checkpoints.map(checkpoint => checkpoint.id), isUnsaved: index === 0, isCurrent: index === 0,
     }))}
-    await console.updateComplete
-    await Promise.all(Array.from(console.shadowRoot!.querySelectorAll<import("../src/components/ribbon-drawer").RibbonDrawer>("ribbon-drawer"), drawer => drawer.updateComplete))
+    await panel.updateComplete
+    await Promise.all(Array.from(panel.shadowRoot!.querySelectorAll<import("../src/components/ribbon-drawer").RibbonDrawer>("ribbon-drawer"), drawer => drawer.updateComplete))
     await layoutFrame()
-    const sidebar = console.shadowRoot!.querySelector<HTMLElement>(".version-list")!
-    const main = console.shadowRoot!.querySelector<HTMLElement>("#console-panel-Review")!
+    const sidebar = panel.shadowRoot!.querySelector<HTMLElement>(".version-list")!
+    const main = panel.shadowRoot!.querySelector<HTMLElement>(".panel-content.version-changes")!
     const changes = Array.from(main.querySelectorAll<HTMLElement>(".history-change-card"))
     assert(sidebar.scrollHeight > sidebar.clientHeight && getComputedStyle(sidebar).scrollbarWidth === "thin", "versions list does not scroll")
     assert(main.getBoundingClientRect().left >= sidebar.getBoundingClientRect().right, "changes are not beside versions")
@@ -13622,16 +13856,32 @@ await check("Review shares bounded scroll areas and lays out versions beside res
     const versionCard = sidebar.querySelector<HTMLElement>(".history-version-card")!
     const versionBadge = versionCard.querySelector<HTMLElement>(".history-change-count")!
     assert(versionBadge.getBoundingClientRect().right > versionCard.getBoundingClientRect().right - 10, "version badge is not on the right edge")
-    console.style.width = "424px"
+    panel.style.width = "424px"
     await layoutFrame()
     assert(main.getBoundingClientRect().width >= 195 && main.getBoundingClientRect().width <= 205, "narrow changes fixture is not about 200px")
     assert(Math.abs(counts.getBoundingClientRect().left - label.getBoundingClientRect().left) < 1, "narrow counts do not align with text")
     assert(meta.getBoundingClientRect().top > label.getBoundingClientRect().top, "narrow changes do not wrap into compact cards")
     assert(main.scrollWidth <= main.clientWidth && changes[0].scrollWidth <= changes[0].clientWidth, "narrow changes overflow horizontally")
-    assert(!toolbox.shadowRoot!.querySelector(".version-list") && toolbox.shadowRoot!.querySelector("footer .versions-console-toggle"), "Versions remain in the Review toolbox")
+    assert(!toolbox.shadowRoot!.querySelector(".version-list") && toolbox.shadowRoot!.querySelector('footer button[aria-label="Versions"]'), "Versions remain in the Review toolbox footer")
 
+    const headerHeight = (label: string) => {
+      const titleBar = panel.shadowRoot!.querySelector<HTMLElement>("header")!
+      const close = titleBar.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!
+      const heading = titleBar.getBoundingClientRect()
+      const button = close.getBoundingClientRect()
+      const endPadding = parseFloat(getComputedStyle(titleBar).paddingInlineEnd)
+      assert(Math.abs(heading.right - button.right - endPadding) < 1, "close button is not at the right edge of the title bar")
+      assert(button.width >= 24 && button.height >= 24, "close button is smaller than its minimum target size")
+      assert(titleBar.scrollWidth <= titleBar.clientWidth, "narrow panel title bar overflows")
+      return heading.height
+    }
+    const changesHeight = headerHeight("Close versions")
+    panel.mode = "checks"
+    await panel.updateComplete
+    await layoutFrame()
+    assert(Math.abs(changesHeight - headerHeight("Close checks and tests")) < 1, "Changes and Checks & Tests have different title bar heights")
   }
-  finally {toolbox.remove(); console.remove()}
+  finally {toolbox.remove(); panel.remove()}
 })
 
 await check("Elements pullout reserves matching padding after its opening animation", async () => {

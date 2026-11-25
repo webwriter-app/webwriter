@@ -97,6 +97,8 @@ export type SchemaEntry = {
   propagateEvents?: string[]
   /** Uses a scoped, persistent script[slot=data] payload. */
   sharedData?: boolean
+  /** Default split unit inside this widget's content. */
+  split?: "block" | "self" | "line"
 }
 
 /** The editing-config fields that affect a widget's document-schema entry. */
@@ -109,10 +111,18 @@ export type WidgetEditingConfig = {
   inline?: boolean
   isolating?: boolean
   content?: string
+  /** HTML tag names forbidden in authored descendants. Defaults to this widget's tag. */
+  excludedDescendants?: string[]
   /** Space-separated mark names allowed in the content; "_" allows all, "" none. */
   marks?: string
   /** Event types from the widget's shadow tree that editor features handle. */
   propagateEvents?: string[]
+  /** Default split unit inside this widget's content. */
+  split?: "block" | "self" | "line"
+}
+
+export function isExcludedDescendantList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(tag => typeof tag === "string" && /^[a-z][a-z0-9._-]*$/.test(tag))
 }
 
 /** Reads `WidgetEditingConfig.marks`: undefined allows all marks. */
@@ -431,6 +441,12 @@ export class Schema {
         }
       }
       const marks = parseWidgetMarks(editingConfig.marks)
+      const excludedTags = isExcludedDescendantList(editingConfig.excludedDescendants)
+        ? editingConfig.excludedDescendants : [tagName]
+      const excludedDescendant = excludedTags.flatMap(tag => {
+        const name = CSS.escape(tag)
+        return tag.includes("-") ? [name, `[is="${name}" i]`] : [name]
+      }).join(", ")
       const propagateEvents = Array.isArray(editingConfig.propagateEvents)
         ? editingConfig.propagateEvents.filter((type): type is string => typeof type === "string" && type.length > 0)
         : []
@@ -439,10 +455,12 @@ export class Schema {
         ...(editingConfig.movable === false ? {movable: false} : {}),
         ...(editingConfig.resize && ["inline", "block", "both", "none"].includes(editingConfig.resize) ? {resize: editingConfig.resize} : {}),
         ...(content ? {content} : {}),
+        ...(excludedDescendant ? {excludedDescendant} : {}),
         inseperable: editingConfig.isolating ?? true,
         ...(marks ? {marks} : {}),
         ...(propagateEvents.length ? {propagateEvents} : {}),
         ...(editingConfig.sharedData === true ? {sharedData: true} : {}),
+        ...(editingConfig.split && ["block", "self", "line"].includes(editingConfig.split) ? {split: editingConfig.split} : {}),
       } satisfies SchemaEntry]
     }))
     this.extend(extension)
@@ -746,8 +764,9 @@ export class Schema {
   }
 
   #excludedDescendant(element: Element) {
-    return element.namespaceURI === "http://www.w3.org/1999/xhtml" && !element.hasAttribute("is")
-      ? this.#schema[element.localName]?.excludedDescendant : undefined
+    const name = element.getAttribute("is")?.toLowerCase() ?? element.localName
+    return element.namespaceURI === "http://www.w3.org/1999/xhtml"
+      ? this.#schema[name]?.excludedDescendant : undefined
   }
 
   #excludedDescendants(container: Node | string | null) {
@@ -776,8 +795,14 @@ export class Schema {
 
   /** Checks descendant restrictions at the live destination and inside newly inserted subtrees. */
   allowsPlacement(container: Node | string | null, content: readonly Node[]) {
+    return this.placementCheck(container)(content)
+  }
+
+  /** Shares the destination's ancestor checks across a batch of candidates. */
+  placementCheck(container: Node | string | null, checkNewSubtree = true) {
     const excluded = this.#excludedDescendants(container)
-    return content.every(node => this.#allowsDescendants(node, excluded, true))
+    return (content: readonly Node[]) => (!excluded.length && !checkNewSubtree)
+      || content.every(node => this.#allowsDescendants(node, excluded, checkNewSubtree))
   }
 
   /** Whether `content` (default: the node's current children) is valid for the node (given as node or type key). Each node is validated against a shared cloned rule (see isNodeValid), and the rule's minimum must be satisfied. Non-element nodes are always valid.. */

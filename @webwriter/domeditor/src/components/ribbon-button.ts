@@ -33,6 +33,7 @@ export class RibbonButton extends LitElement {
     compact: {type: Boolean, reflect: true},
     disabled: {type: Boolean, reflect: true},
     disabledReason: {attribute: false},
+    insertionDisabled: {type: Boolean, attribute: "insertion-disabled", reflect: true},
     loading: {type: Boolean, reflect: true},
     icon: {type: String},
     hoverIcon: {type: String, attribute: "hover-icon"},
@@ -240,7 +241,7 @@ export class RibbonButton extends LitElement {
       cursor: pointer;
     }
 
-    button:disabled {
+    button:disabled, :host([insertion-disabled]) .main-button {
       color: #9aa4b1;
       cursor: default;
       opacity: 0.55;
@@ -899,10 +900,6 @@ export class RibbonButton extends LitElement {
     :host([variant="widget-action"]) .button-label-text {white-space: normal; overflow-wrap: anywhere;}
     :host([variant="widget-action"]) .button-icon {flex: 0 0 .85rem; width: .85rem; height: .85rem;}
 
-    :host([package-add]) {height: 100%}
-    :host([package-add]) .button-row {height: 100%; min-height: 0; border: 0; border-radius: 0}
-    :host([package-add]) .main-button {height: 100%; min-height: 0; justify-content: flex-start; padding: 0 .65rem; border-radius: 0}
-    :host([package-add]) .submenu-trigger {position: static; flex: 0 0 auto; align-self: stretch; width: auto; height: 100%; min-height: 0; aspect-ratio: 1; transform: none; border: 0; border-left: 1px solid #c8c8c8; border-radius: 0; padding: 0}
 
     :host([variant="qr"]) {
       grid-column: span 1;
@@ -1058,20 +1055,6 @@ export class RibbonButton extends LitElement {
       opacity: 0.8;
     }
 
-    :host([variant="package"][console-selected]) .button-row,
-    :host([variant="package"][console-selected]) .button-row:hover {
-      color: #153b5c;
-      opacity: 1;
-    }
-
-    :host([variant="package"][console-selected]) .button-label-text {
-      text-decoration-line: underline;
-      text-decoration-color: #8eb6df;
-      text-decoration-thickness: 2px;
-      text-underline-offset: 2px;
-      text-decoration-skip-ink: none;
-    }
-
     :host([variant="package"][management][active]) .corner-trigger:hover {
       background: #fee2e2;
       color: #991b1b;
@@ -1095,8 +1078,7 @@ export class RibbonButton extends LitElement {
       background: #a8c9ee;
     }
 
-    .button-row[data-connected],
-    :host([package-add]) .button-row[data-connected] {
+    .button-row[data-connected] {
       border: 1px solid #a8a8a8;
       border-bottom-color: #ffffff;
       border-radius: 0.45rem 0.45rem 0 0;
@@ -1104,8 +1086,7 @@ export class RibbonButton extends LitElement {
       box-shadow: none;
     }
 
-    .button-row[data-connected="above"],
-    :host([package-add]) .button-row[data-connected="above"] {
+    .button-row[data-connected="above"] {
       border-top-color: #ffffff;
       border-bottom-color: #a8a8a8;
       border-radius: 0 0 0.45rem 0.45rem;
@@ -1131,6 +1112,7 @@ export class RibbonButton extends LitElement {
   compact = false
   disabled = false
   disabledReason = ""
+  insertionDisabled = false
   icon = ""
   hoverIcon = ""
   loading = false
@@ -1243,7 +1225,7 @@ export class RibbonButton extends LitElement {
   }
 
   protected updated(changedProperties: Map<PropertyKey, unknown>) {
-    if(changedProperties.has("disabled") && this.disabled) this.clearInsertionHover()
+    if(changedProperties.has("disabled") && this.disabled || changedProperties.has("insertionDisabled") && this.insertionDisabled) this.clearInsertionHover()
     if(changedProperties.has("disabled") && this.disabled && this.submenuOpen) {
       this.closeSubmenuPopover()
     }
@@ -1305,7 +1287,7 @@ export class RibbonButton extends LitElement {
     const insertable = !isWidgetConversionAction(action) && !action.startsWith("insert-math:") && !action.startsWith("list-style:") && action !== "element:math"
       && ((this.variant === "insertion" && Boolean(ribbonElementTag(this.label, action)))
         || ribbonInsertionAction(action) || ribbonElementInsertionAction(action))
-    const active = insertable && !this.disabled && (this.insertionHoverPointer || this.insertionHoverFocus)
+    const active = insertable && !this.disabled && !this.insertionDisabled && (this.insertionHoverPointer || this.insertionHoverFocus)
     if(active === this.insertionHoverActive) return
     this.insertionHoverActive = active
     const tag = active ? ribbonElementTag(this.label, action) : null
@@ -1325,7 +1307,7 @@ export class RibbonButton extends LitElement {
   }
 
   private handleClick(event: Event) {
-    if(this.disabled) {
+    if(this.disabled || this.insertionDisabled) {
       event.preventDefault()
       event.stopPropagation()
       if(this.disabledTooltip) this.showDetails()
@@ -1409,11 +1391,11 @@ export class RibbonButton extends LitElement {
     if(this.iconPath) return html`<span class="button-icon shape-preview" aria-hidden="true">
       <svg viewBox="-10 -10 120 120" focusable="false"><path d=${this.iconPath} fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
     </span>`
-    return html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
+    return keyed(this.iconUrl, html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
       <slot name="icon">${this.hoverIcon ? html`<span class="button-icon-default">${ribbonIcon(icon)}</span>` : ribbonIcon(icon)}
       ${this.hoverIcon ? html`<span class="button-icon-hover">${ribbonIcon(this.hoverIcon)}</span>` : nothing}</slot>
       ${this.renderIconImage()}
-    </span>`
+    </span>`)
   }
 
   private renderIconImage() {
@@ -1489,7 +1471,7 @@ export class RibbonButton extends LitElement {
   }
 
   private get disabledTooltip() {
-    return this.disabled ? this.disabledReason : ""
+    return this.disabled ? this.disabledReason : this.insertionDisabled ? "Unavailable at the current selection" : ""
   }
 
   protected willUpdate() {
@@ -1500,6 +1482,7 @@ export class RibbonButton extends LitElement {
     const hasDropdown = this.hasDropdown
     const showSubmenuTrigger = (hasDropdown || this.openDrawer) && (!this.dropdownOnClick || Boolean(this.iconAction))
     const action = this.action || this.label
+    const hoverSubmenus = this.variant === "insertion" || this.variant === "package" || action === "Formula"
     const dragAction = this.dragAction ?? action
     const conversion = isWidgetConversionAction(action)
     const dragTag = !conversion && (this.variant === "insertion" || dragAction === "Formula") ? ribbonElementTag(this.label, dragAction) : null
@@ -1510,7 +1493,8 @@ export class RibbonButton extends LitElement {
       : action.startsWith("widget-conversion:") ? `Convert to ${this.label}`
       : `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
-      <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}${this.iconAction ? " has-icon-action" : ""}`} @mouseenter=${this.scheduleDetailsShow} @mouseleave=${this.leaveDetails}>
+      <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}${this.iconAction ? " has-icon-action" : ""}`}
+        @mouseenter=${this.scheduleDetailsShow} @mouseleave=${this.leaveDetails}>
         ${this.iconAction ? html`
           <button
             class="icon-action-trigger"
@@ -1529,7 +1513,7 @@ export class RibbonButton extends LitElement {
           class="main-button"
           ?data-conversion=${conversion}
           type="button"
-          draggable=${String(Boolean(dragTag || dragPackageInsertion) && !this.disabled)}
+          draggable=${String(Boolean(dragTag || dragPackageInsertion) && !this.disabled && !this.insertionDisabled)}
           aria-label=${conversion ? title : this.label}
           aria-disabled=${disabledTooltip ? "true" : nothing}
           aria-describedby=${disabledTooltip ? "disabled-reason" : nothing}
@@ -1545,6 +1529,7 @@ export class RibbonButton extends LitElement {
           @blur=${() => { this.hideDetails(); this.dispatchInsertionHover(false, "focus") }}
           @click=${this.handleClick}
           @dragstart=${(event: DragEvent) => {
+            if(this.disabled || this.insertionDisabled) { event.preventDefault(); return }
             this.clearInsertionHover()
             const icon = (event.currentTarget as HTMLElement).querySelector(".button-icon")
             if(dragTag) startElementDrag(event, dragTag, icon)
@@ -1607,6 +1592,7 @@ export class RibbonButton extends LitElement {
           popover="manual"
           .groups=${this.dropdown === null && (!shapeGallery || this.submenuOpen) ? this.submenuGroups ?? [{label: `${this.label} options`, buttons: this.submenu}] : []}
           .customContent=${this.dropdown !== null}
+          .hoverSubmenus=${hoverSubmenus}
           .label=${`${this.label} options`}
           ?no-scroll=${this.dropdownNoScroll}
           ?compact-content=${this.dropdownCompact}

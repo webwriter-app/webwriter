@@ -30,7 +30,7 @@ const pkg = (name = "@local/quiz"): WebWriterPackage => ({
 
 const makeManager = () => {
   const options = {
-    changed: vi.fn(), refreshing: vi.fn(), error: vi.fn(), loaded: vi.fn(), install: vi.fn(async () => {}),
+    changed: vi.fn(), error: vi.fn(), loaded: vi.fn(), install: vi.fn(async () => {}),
   }
   const manager = new LocalPackageManager(options)
   vi.spyOn((manager as any).worker, "start").mockResolvedValue({})
@@ -109,7 +109,7 @@ describe("LocalPackageManager folder permission renewal", () => {
     expect(manager.records.get("saved-quiz")?.error).toContain("Click Refresh")
     expect(loadLocalPackage).not.toHaveBeenCalled()
 
-    await manager.refresh("saved-quiz", true)
+    await manager.refreshAll()
 
     expect(handle.requestPermission).toHaveBeenCalledTimes(1)
     expect(loadLocalPackage).toHaveBeenCalledTimes(1)
@@ -150,7 +150,7 @@ describe("LocalPackageManager folder permission renewal", () => {
     expect(loadLocalPackage).not.toHaveBeenCalled()
 
     loadLocalPackage.mockResolvedValueOnce(loaded())
-    await manager.refresh("saved-quiz", true)
+    await manager.refreshAll()
 
     expect(start).toHaveBeenCalledTimes(2)
     expect(manager.records.get("saved-quiz")?.error).toBeUndefined()
@@ -165,12 +165,34 @@ describe("LocalPackageManager folder permission renewal", () => {
     } as unknown as LocalPackageRecord
     manager.records.set(record.id, record)
 
-    await manager.refresh(record.id, true)
+    await manager.refreshAll()
 
     expect(handle.requestPermission).toHaveBeenCalledTimes(1)
     expect(loadLocalPackage).not.toHaveBeenCalled()
     expect(record.error).toContain("Click Refresh")
     expect(options.error).toHaveBeenCalledWith("Quiz: Folder access is unavailable. Click Refresh to grant access to this folder.")
+  })
+
+  it("refreshes other folders after denied access and forces installation with auto-reload off", async () => {
+    const {manager, options} = makeManager()
+    manager.connect()
+    manager.autoReload = false
+    const denied = {requestPermission: vi.fn(async () => "denied")}
+    const allowed = {requestPermission: vi.fn(async () => "granted")}
+    const deniedPackage = {...pkg("@local/denied"), label: "Denied folder"}
+    manager.records.set("denied", {id: "denied", directory: denied, package: deniedPackage, warnings: [], revision: 0, enabled: true} as unknown as LocalPackageRecord)
+    manager.records.set("allowed", {id: "allowed", directory: allowed, package: pkg(), warnings: [], revision: 0, enabled: true} as unknown as LocalPackageRecord)
+    const built = {...pkg(), members: [{}] as WebWriterPackage["members"]}
+    loadLocalPackage.mockResolvedValueOnce({package: built, warnings: []})
+
+    const refresh = manager.refreshAll()
+    expect(denied.requestPermission).toHaveBeenCalledOnce()
+    expect(allowed.requestPermission).toHaveBeenCalledOnce()
+    await refresh
+
+    expect(loadLocalPackage).toHaveBeenCalledExactlyOnceWith(allowed, expect.any(Object))
+    expect(options.install).toHaveBeenCalledExactlyOnceWith(built, built.name)
+    expect(options.error).toHaveBeenLastCalledWith(expect.stringContaining("Denied folder: Folder access is unavailable"))
   })
 
   it("does not request permission during automatic refresh", async () => {

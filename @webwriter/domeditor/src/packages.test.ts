@@ -11,18 +11,111 @@ import {
   describePackageExport,
   localizeSnippet,
   mergeEditingConfig,
+  packageCategoryLabel,
   packageCdnUrl,
+  packageCompatibleSnippets,
   packageContents,
   packageInsertionItems,
+  packageMemberAction,
+  packageSnippetDependencies,
   packageWidgetSchemaDefinitions,
   refreshPackageLabels,
   sanitizePackageSnippet,
   webWriterPackageExportName,
   withPackageExportSource,
   type WebWriterPackage,
+  type WebWriterPackageManifest,
 } from "./packages"
 
+describe("snippet package contracts", () => {
+  function makePackage(name: string, editingConfig: NonNullable<WebWriterPackageManifest["editingConfig"]>,
+    optionalDependencies: Record<string, string> = {}, version = "1.0.0"): WebWriterPackage {
+    const exports = Object.fromEntries(Object.keys(editingConfig).map(key => {
+      const path = key + (key.startsWith("./widgets/") ? ".js" : ".html")
+      return [path, path]
+    }))
+    const manifest = {name, version, optionalDependencies, exports}
+    const {members} = packageContents(manifest, editingConfig, path => `https://example.com/${name}/${path}`, undefined, "en")
+    return {name, version, label: name, manifest, authors: [], keywords: [], links: {}, scripts: [], styles: [],
+      members: members.map(({member}) => member)}
+  }
+
+  it("resolves only the selected snippet's optional dependencies after merging its config", () => {
+    const key = "./snippets/lesson"
+    const pkg = makePackage("@webwriter/lesson", mergeEditingConfig({
+      [key]: {dependencies: ["@webwriter/scale", "@webwriter/scale"]},
+      "./snippets/cleared.html": {dependencies: ["@webwriter/chart"]},
+      "./snippets/invalid": {dependencies: ["@webwriter/undeclared"]},
+    }, {"./snippets/cleared": {dependencies: []}}), {"@webwriter/scale": "^2.1.0", "@webwriter/chart": "~1.4.0"})
+    const [lesson, cleared, invalid] = pkg.members
+    expect(packageSnippetDependencies(pkg, lesson)).toEqual([{name: "@webwriter/scale", range: "^2.1.0"}])
+    expect(packageSnippetDependencies(pkg, cleared)).toEqual([])
+    expect(() => packageSnippetDependencies(pkg, invalid)).toThrow("@webwriter/undeclared")
+    expect(packageInsertionItems([pkg]).map(item => item.packageAction)).toEqual([
+      packageMemberAction(lesson), undefined, packageMemberAction(invalid),
+    ])
+  })
+
+  it("lists each compatible widget and snippet once through direct or transitive versioned matches", () => {
+    const task = makePackage("@webwriter/tasks", {"./widgets/webwriter-task": {compatibleSnippets: {category: "Interact"}}})
+    const quiz = makePackage("@webwriter/quiz", {"./widgets/webwriter-quiz": {
+      compatibleSnippets: {category: "Quiz"},
+      equivalentTo: ["@webwriter/tasks/widgets/webwriter-task"],
+    }}, {[task.name]: "^1.0.0"})
+    const practice = makePackage("@webwriter/practice", {"./widgets/webwriter-practice": {
+      compatibleSnippets: {}, equivalentTo: ["@webwriter/quiz/widgets/webwriter-quiz"],
+    }}, {[quiz.name]: "^1.0.0"})
+    const newer = makePackage("@webwriter/newer", {"./widgets/webwriter-newer": {
+      compatibleSnippets: {}, equivalentTo: ["@webwriter/tasks/widgets/webwriter-task"],
+    }}, {[task.name]: "^2.0.0"})
+    const activities = makePackage("@webwriter/activities", {
+      "./widgets/webwriter-scale": {compatibleHosts: ["@webwriter/tasks/widgets/webwriter-task"]},
+      "./snippets/graph": {compatibleHosts: ["@webwriter/tasks/widgets/webwriter-task", "@webwriter/quiz/widgets/webwriter-quiz"]},
+      "./snippets/hidden": {compatibleHosts: ["@webwriter/tasks/widgets/webwriter-task"], uninsertable: true},
+      "./snippets/unrelated": {},
+    }, {[task.name]: "^1.0.0", [quiz.name]: "^1.0.0"})
+
+    const choices = packageCompatibleSnippets([task, quiz, practice, newer, activities])
+    for(const host of [task, quiz, practice]) {
+      expect(choices.filter(choice => choice.packageName === host.name).map(choice => choice.source.id)).toEqual([
+        activities.members[0].id, activities.members[1].id,
+      ])
+    }
+    expect(choices.filter(choice => choice.packageName === newer.name)).toEqual([])
+    expect(packageInsertionItems([task, activities]).filter(item => item.packageAction)).toEqual([
+      expect.objectContaining({name: "Scale", category: "Interact", packageName: task.name}),
+      expect.objectContaining({category: "Interact", packageName: task.name}),
+    ])
+    expect(packageCompatibleSnippets([quiz, practice, newer, activities])).toHaveLength(4)
+  })
+
+  it("keeps localized categories on package insertion items and resolves them with the label fallbacks", () => {
+    const category = {_: "Practice", de: "Übung", "de-CH": "Üben", fr: " "}
+    const pkg = makePackage("@webwriter/tasks", {"./snippets/task": {category}})
+    expect(packageInsertionItems([pkg])[0].category).toEqual(category)
+    expect(packageCategoryLabel(category, "de-CH")).toBe("Üben")
+    expect(packageCategoryLabel(category, "de-AT")).toBe("Übung")
+    expect(packageCategoryLabel(category, "it")).toBe("Practice")
+    expect(packageCategoryLabel(category, "fr")).toBeUndefined()
+    expect(packageCategoryLabel("  Explore  ", "de")).toBe("Explore")
+  })
+})
+
 describe("WebWriterPackageRegistry", () => {
+  it("loads the highest published version in a snippet's declared range", async () => {
+    const name = "@webwriter/scale"
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      if(String(input).startsWith("https://registry.npmjs.org/")) {
+        return Response.json({versions: {"2.1.0": {}, "2.5.1": {}, "2.6.0-beta.1": {}, "3.0.0": {}}})
+      }
+      expect(String(input)).toBe(packageCdnUrl(name, "2.5.1", "package.json"))
+      return Response.json({name, version: "2.5.1"})
+    })
+    const registry = new WebWriterPackageRegistry(fetcher as typeof fetch)
+    await expect(registry.getPackageForRange(name, "^2.1.0")).resolves.toMatchObject({name, version: "2.5.1"})
+    await expect(registry.getPackageForRange(name, "^4.0.0")).rejects.toThrow("matches ^4.0.0")
+  })
+
   it("reads and paginates an exact-version registry README through the cache", async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       expect(String(input)).toBe("https://registry.npmjs.org/%40webwriter%2Fdocs/1.0.0")
@@ -430,6 +523,28 @@ describe("package contents", () => {
   const manifest = (exports: Record<string, string>) => ({name: "@webwriter/demo", version: "1.0.0", exports})
   const urlFor = (path: string) => `https://cdn.test/${path}`
 
+  it("resolves widget icons by the exact tag and uses the package icon as a fallback", () => {
+    const definition = {name: "@webwriter/demo", version: "1.0.0", exports: {
+      "./widgets/webwriter-quiz.js": "./dist/quiz.js",
+      "./widgets/webwriter-prompt.js": "./dist/prompt.js",
+      "./widgets/webwriter-results.js": "./dist/results.js",
+      "./widgets/webwriter-quiz.icon.svg": {browser: "./assets/quiz.svg", default: "./assets/default-quiz.svg"},
+      "./widgets/webwriter-prompt.icon.svg": "./assets/prompt.js",
+    }}
+    const iconUrl = urlFor("assets/package.svg")
+    const {members} = packageContents(definition, {}, urlFor, iconUrl, "en")
+    const pkg: WebWriterPackage = {...definition, manifest: definition, iconUrl, members: members.map(({member}) => member),
+      label: "Demo", authors: [], keywords: [], links: {}, scripts: [], styles: []}
+
+    expect(packageInsertionItems([pkg]).map(item => [item.tag, item.iconUrl])).toEqual([
+      ["webwriter-quiz", urlFor("assets/quiz.svg")], ["webwriter-prompt", iconUrl], ["webwriter-results", iconUrl],
+    ])
+    expect(describePackageExport("./widgets/webwriter-quiz.icon.svg", "./assets/quiz.svg")).toEqual({
+      type: "widget-icon", name: "webwriter-quiz", source: "./assets/quiz.svg",
+    })
+    expect(webWriterPackageExportName("widget-icon", "webwriter-quiz")).toBe("./widgets/webwriter-quiz.icon.svg")
+  })
+
   it("includes non-insertable widgets for presentation with their package icon and readable names", () => {
     const contents = packageContents(manifest({
       "./widgets/webwriter-quiz.js": "./dist/quiz.js",
@@ -440,6 +555,28 @@ describe("package contents", () => {
     expect(packageInsertionItems([pkg], true)).toEqual([
       expect.objectContaining({name: "Quiz", iconUrl: pkg.iconUrl}),
       expect.objectContaining({name: "Task Prompt", tag: "webwriter-task-prompt", iconUrl: pkg.iconUrl, insertable: false}),
+    ])
+  })
+
+  it("lets snippets reference a widget icon by tag", () => {
+    const definition = manifest({
+      "./snippets/quiz.html": "./snippets/quiz.html",
+      "./snippets/prompt.html": "./snippets/prompt.html",
+      "./snippets/overview.html": "./snippets/overview.html",
+      "./widgets/webwriter-quiz.js": "./dist/quiz.js",
+      "./widgets/webwriter-quiz.icon.svg": "./assets/quiz.svg",
+      "./widgets/webwriter-prompt.js": "./dist/prompt.js",
+    })
+    const iconUrl = urlFor("assets/package.svg")
+    const {members} = packageContents(definition, {
+      "./snippets/quiz": {iconWidget: "webwriter-quiz"},
+      "./snippets/prompt": {iconWidget: "webwriter-prompt"},
+    }, urlFor, iconUrl, "en")
+
+    expect(members.filter(({member}) => member.kind === "snippet")).toEqual([
+      expect.objectContaining({member: expect.objectContaining({iconUrl: urlFor("assets/quiz.svg")}), iconPath: "assets/quiz.svg"}),
+      expect.objectContaining({member: expect.objectContaining({iconUrl}), iconPath: undefined}),
+      expect.objectContaining({member: expect.objectContaining({iconUrl}), iconPath: undefined}),
     ])
   })
 

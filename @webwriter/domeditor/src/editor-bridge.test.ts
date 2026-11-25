@@ -673,6 +673,12 @@ it("validates caption alignment in selection updates", () => {
   expect(isSelectionChangeMessage({...message, detail: {...message.detail, captionAlignment: "justify"}})).toBe(false)
 })
 
+it("validates unavailable insertion identifiers in selection updates", () => {
+  const detail = {path: [], unavailableInsertions: ["element:table", "widget:quiz-widget", "user-snippet:quiz"]}
+  expect(isSelectionChangeMessage({type: selectionChangeEvent, detail})).toBe(true)
+  expect(isSelectionChangeMessage({type: selectionChangeEvent, detail: {...detail, unavailableInsertions: [42]}})).toBe(false)
+})
+
 describe("snapshot text-node boundary transport", () => {
   const nodeShape = (node: Node): unknown => [
     node.nodeType,

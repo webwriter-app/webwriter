@@ -1,5 +1,6 @@
 import type { LocalizedText } from "./options";
 export type * from "./options";
+export { requestMedia } from "./options";
 export * from "./shapes";
 /**
  * A text of an editor declaration as a widget writes it: fixed, a map by

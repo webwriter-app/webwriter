@@ -882,14 +882,7 @@ export class SettingsPanel extends LitElement {
         ${this.renderProofreadingDictionary()}
         <details class="command-category developer-settings">
           <summary>Developer settings</summary>
-          <section class="setting-card" aria-label="Developer console">
-            <label class="checkbox-setting">
-              <input type="checkbox" .checked=${this.settings.pinDeveloperConsole}
-                @change=${(event: Event) => this.emitSettings({...this.settings, pinDeveloperConsole: (event.currentTarget as HTMLInputElement).checked})}
-              />
-              <span class="checkbox-label">Pin developer console</span>
-              <span class="checkbox-description">Keep the developer console open when switching tools and after reloading.</span>
-            </label>
+          <section class="setting-card" aria-label="Local packages">
             <label class="checkbox-setting">
               <input type="checkbox" .checked=${this.settings.autoReloadPackages}
                 @change=${(event: Event) => this.emitSettings({...this.settings, autoReloadPackages: (event.currentTarget as HTMLInputElement).checked})}

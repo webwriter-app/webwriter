@@ -8,7 +8,8 @@ A key identifies an export with or without its extension. The key `.` supplies p
 {
   "editingConfig": {
     ".": {"label": {"_": "Quiz", "de": "Quiz"}},
-    "./widgets/ww-quiz": {"label": "Quiz", "content": "p+", "sharedData": true}
+    "./widgets/ww-quiz": {"label": "Quiz", "content": "p+", "sharedData": true, "category": {"_": "Practice", "de": "Üben"}},
+    "./snippets/answer-sheet": {"category": {"_": "Practice", "de": "Üben"}}
   }
 }
 ```
@@ -17,18 +18,27 @@ A key identifies an export with or without its extension. The key `.` supplies p
 |---|---|---|---|
 | `label` | `LocalizedText` | Member name in title case. For a widget, this omits the part before the first hyphen. | Label in the insertion menu. On `.`, this is the package label. |
 | `description` | `LocalizedText` | None. | Member description. On `.`, this is the package description. |
+| `category` | `LocalizedText` | None. | Groups widgets and snippets by their category label in the document language. Each submenu takes the position of its first insertable in the package dropdown and the `++` insertion picker. Items with an empty resolved label stay at the top level. |
 | `uninsertable` | `boolean` | `false` | Hides the member from the insertion menu. |
+| `iconWidget` | `string` | Package icon. | On a snippet, the full widget tag whose [exported icon](distribution.md#exports) appears in the package dropdown. |
+| `dependencies` | `string[]` | `[]` | On a snippet, names of entries in the package's `optionalDependencies` to load when that snippet is inserted. An empty list clears inherited external configuration. If an installed version conflicts with the declared range, insertion reports an error. |
+| `compatibleHosts` | `string[]` | `[]` | Lists the full exports of widgets that can host this snippet or widget. |
+| `equivalentTo` | `string[]` | `[]` | On a widget, lists the full exports of equivalent widgets for compatibility lookup. |
+| `compatibleSnippets` | `{category?: LocalizedText}` | None. | On a widget, generates snippet choices from installed, insertable snippet and widget members. Choosing one places its content inside the host widget. An optional category groups the choices. The host widget owns the generated choice's scoring and links. Dependencies declared by a source snippet are loaded for its generated choice. |
 | `group` | `string` | `"flow"` for block widgets. | Content groups separated by spaces. An explicit value replaces the default group. The authoring tool always adds `widget` or `widgetinline`. |
 | `movable` | `boolean` | `true` | Set `false` to disable moving or dragging the widget itself and hide the transformation frame's Move control. Its authored children remain editable, and its parent can still be moved. |
 | `resize` | `"inline" \| "block" \| "both" \| "none"` | Existing element behavior. | Declares the logical axes the editor may resize. The frame filters handles and enforces the rule during resizing, including groups. For a content-height widget, use `"inline"` and CSS `block-size: auto`. |
 | `inline` | `boolean` | `false` | Makes a [phrasing](https://developer.mozilla.org/en-US/docs/Web/HTML/Guides/Content_categories#phrasing_content) widget in `widgetinline`, without automatically adding `flow`. |
 | `content` | `string` | None. The authoring tool treats the widget as one unit. | [Content expression](content-expressions.md) for editable light DOM children. |
+| `excludedDescendants` | `string[]` | The widget's own tag name. | Lowercase HTML tag names the editor disallows anywhere in the widget's editable content. An explicit list replaces the default. |
 | `isolating` | `boolean` | `true` | Prevents splitting, joining, and partial text selections across the widget boundary. The widget remains selectable as a whole from outside. Use `false` to allow text ranges to cross its authored content. |
 | `marks` | `string` | `"_"` | Permitted formatting marks. Use names separated by spaces, `""` for none, or `"_"` for all. |
 | `propagateEvents` | `string[]` | `[]` | Types of shadow DOM events that the authoring tool can handle, for example `["keydown"]`. |
 | `sharedData` | `boolean` | `false` | Enables [scoped data](data.md) in a direct `script[slot="data"]` child. |
 | `importFormats` | `string[]` | `[]` | File format keys that the widget's `convertFrom` handlers support. Extensions and media types only, never HTML tag names. |
 | `exportFormats` | `string[]` | `[]` | File format keys that the widget's `convertTo` handlers support. Extensions and media types only, never HTML tag names. |
+
+See [Widget and snippet relationships](distribution.md#widget-and-snippet-relationships) for the reference format and matching rules.
 
 `LocalizedText` is a string or a locale map such as `{"en": "Answer", "de": "Antwort", "_": "Answer"}`. The authoring tool tries the exact locale first. It then tries the language. It uses `_` as the default.
 
@@ -38,7 +48,9 @@ Marks use element names such as `b`, `i`, `a`, and `span` for text styles. The c
 
 Constrain placement through the receiving element's `content` expression and the child's `group` membership. For a structural child, use an explicit `group: ""` to remove the default `flow` membership, and name the child type in the parent's content expression. The document body and other `flow` containers then reject that child.
 
-The editor still adds the `widget` group. A container declaring `widget*` deliberately accepts all block widget types, including structural children. Use `flow*` for general document content and explicit types or custom groups for structured content. `uninsertable` only hides an insertion-menu entry; it does not impose a structural restriction.
+The editor adds every block widget type to the `widget` group, including structural children. A `widget*` content expression accepts any member of that group, subject to descendant exclusions. Use `flow*` for general document content and explicit types or custom groups for structured content. Set `uninsertable` to hide the member in the insertion menu.
+
+`excludedDescendants` adds a placement rule throughout editable light DOM. By default, a quiz cannot contain another quiz, even through a prompt widget that accepts `flow*`. To also exclude tables, set `"excludedDescendants": ["ww-quiz", "table"]` on the quiz export. Use `"excludedDescendants": []` to allow recursive nesting wherever the `content` expression permits it. The editor applies these rules to new placements and preserves existing document content during normalization.
 
 Set `movable: false` when the editor must not move or drag that element. This disables its native editor drag handle and the transformation frame's Move affordance. It does not lock the authored content or prevent moving the containing widget. Other editing permissions remain independent.
 

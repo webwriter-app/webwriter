@@ -1212,7 +1212,7 @@ export class DOMEditor {
     const root = getDocumentRoot()
     if(selected === document.body || selected === root && root === document.body) return document.documentElement
     const attributeElement = selected === root || root.contains(selected) ? selected : null
-    return attributeElement && popupElementRole(attributeElement) === "popup"
+    return attributeElement && $.exactSelectedElement !== attributeElement && popupElementRole(attributeElement) === "popup"
       ? popupDisplayToggle(attributeElement) ?? attributeElement : attributeElement
   }
 
@@ -1230,12 +1230,14 @@ export class DOMEditor {
     const rawElement = selected === body
       ? root
       : selected && (selected === root || root.contains(selected)) ? selected : root
-    const element = popupElementRole(rawElement) === "popup" ? popupDisplayToggle(rawElement) ?? rawElement : rawElement
+    const exact = $.exactSelectedElement
+    const element = rawElement !== exact && popupElementRole(rawElement) === "popup" ? popupDisplayToggle(rawElement) ?? rawElement : rawElement
     const elements: Element[] = []
     let current: Element | null = element
     while(current && current !== root) {
       const role = slideLayoutRole(current)
-      if(role === "navigation") elements.length = 0
+      if(current === exact) elements.unshift(current)
+      else if(role === "navigation") elements.length = 0
       else if(role !== "viewport" && !isCanvasStartingView(current)) elements.unshift(current)
       current = current.parentElement
     }
@@ -1303,10 +1305,11 @@ export class DOMEditor {
     const path: SelectionPathItem[] = []
     let pendingSections: SelectionPathSection[] = []
     elements.forEach(currentElement => {
-      if(currentElement.parentElement?.closest("svg")) return
+      const exactTarget = currentElement === exact
+      if(!exactTarget && currentElement.parentElement?.closest("svg")) return
       const formula = mathRoot(currentElement)
-      if(formula && (formula !== currentElement || formula.getAttribute("display") !== "block")
-        || currentElement.matches("caption, figcaption, details > summary")) return
+      if(!exactTarget && (formula && (formula !== currentElement || formula.getAttribute("display") !== "block")
+        || currentElement.matches("caption, figcaption, details > summary"))) return
       if(currentElement.localName === "figure") {
         if(currentElement !== element && !isViewportDocument(currentElement)) return
         const content = Array.from(currentElement.children).find(child => child.localName !== "figcaption")
@@ -1318,7 +1321,7 @@ export class DOMEditor {
       }
       const isTableInternal = currentElement.matches("caption, colgroup, col, thead, tbody, tfoot, tr, td, th")
       const popupRole = popupElementRole(currentElement)
-      if(popupRole === "popup" && popupDisplayToggle(currentElement)) return
+      if(!exactTarget && popupRole === "popup" && popupDisplayToggle(currentElement)) return
       if(popupRole === "content") {
         const toggle = popupDisplayToggle(currentElement)
         if(toggle && !path.some(item => item.path.join(".") === this.pathToElement(toggle).join("."))) {
@@ -1327,11 +1330,11 @@ export class DOMEditor {
           pendingSections = []
         }
       }
-      if(currentElement !== root && !isViewportDocument(currentElement) && slideLayoutRole(currentElement) !== "slide" && !boardLayoutRole(currentElement) && !popupElementRole(currentElement) && isSectionElement(currentElement)) {
+      if(!exactTarget && currentElement !== root && !isViewportDocument(currentElement) && slideLayoutRole(currentElement) !== "slide" && !boardLayoutRole(currentElement) && !popupElementRole(currentElement) && isSectionElement(currentElement)) {
         pendingSections.push(sectionPathItem(currentElement))
         return
       }
-      if(currentElement !== root && !popupElementRole(currentElement) && (isMarkElement(currentElement) || isLineBreakElement(currentElement) || isTableInternal)
+      if(!exactTarget && currentElement !== root && !popupElementRole(currentElement) && (isMarkElement(currentElement) || isLineBreakElement(currentElement) || isTableInternal)
         && !positions.has(currentElement) && !anchors.has(currentElement)) return
       path.push({
         path: this.pathToElement(currentElement),
@@ -1385,6 +1388,7 @@ export class DOMEditor {
     this.#postedSpatialSelection = spatialSelection
     const detail: SelectionChangeDetail = {
       path,
+      unavailableInsertions: this.features.manipulation.unavailableInsertions(),
       ...(this.options.touchKeyboard && this.features.manipulation.canTypeWithTextKeyboard ? {textKeyboard: true} : {}),
       distribution: this.features.distribution.getState(attributeElement),
       distributionGeneral: this.features.distribution.getState(document.documentElement),

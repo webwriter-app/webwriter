@@ -47,6 +47,8 @@ interface InputOptionDeclaration<TypeHint=any> extends BaseOptionDeclaration<Typ
 }
 
 export interface StringOptionDeclaration extends InputOptionDeclaration<StringConstructor | "string"> {
+  /** Show a language picker for a BCP 47 tag. */
+  control?: "language"
   multiline?: boolean
 }
 
@@ -75,6 +77,43 @@ export interface TimeOptionDeclaration extends InputOptionDeclaration<"time"> {}
 export interface UrlOptionDeclaration extends InputOptionDeclaration<"url"> {}
 
 export interface ObjectOptionDeclaration extends BaseOptionDeclaration<ObjectConstructor | "object" | ArrayConstructor | "array"> {}
+
+export type MediaOptionKind = "image" | "audio" | "video"
+
+export interface MediaOptionDeclaration extends BaseOptionDeclaration<"media"> {
+  media?: MediaOptionKind
+  accept?: string
+}
+
+export type RequestMediaDetail = {
+  media?: MediaOptionKind
+  accept?: string
+  resolve: (value: string | null) => void
+}
+
+/** Asks an enclosing WebWriter editor to pick or supply a media URL for a widget. */
+export function requestMedia(host: Element, options?: {media?: MediaOptionKind, accept?: string}): Promise<string | null> {
+  return new Promise(resolve => {
+    let settled = false
+    const finish = (value: string | null) => {
+      if(settled) return
+      settled = true
+      resolve(value)
+    }
+    const event = new CustomEvent<RequestMediaDetail>("ww-request-media", {
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+      detail: {
+        media: options?.media,
+        accept: options?.accept,
+        resolve: finish,
+      },
+    })
+    host.dispatchEvent(event)
+    if(!event.defaultPrevented) finish(null)
+  })
+}
 
 export interface ColorOptionDeclaration extends BaseOptionDeclaration<"color"> {
   swatches?: string[]
@@ -115,6 +154,7 @@ export type OptionDeclaration =
 | UrlOptionDeclaration
 | ObjectOptionDeclaration
 | ColorOptionDeclaration
+| MediaOptionDeclaration
 | SelectOptionDeclaration
 | ReferenceOptionDeclaration
 

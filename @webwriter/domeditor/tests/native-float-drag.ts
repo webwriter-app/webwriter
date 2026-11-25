@@ -36,12 +36,10 @@ export async function checkNativeFloatDrag(nativeRootEditor: HostEditor, assert:
         const preview = editor.appendix.querySelector("#◆float-drop-preview");
         assert(preview, "no " + side + " float preview (active column: " + editor.features.manipulation.floatColumnSide()
           + "; authored floats: " + Array.from(document.body.querySelectorAll(".ww-float-left, .ww-float-right")).map(item => item.outerHTML).join(" | ") + ")");
-        const box = preview.getBoundingClientRect();
         editor.features.manipulation.clearFloatDropPreview("transfer");
-        // A floated source returns to flow in the current prose column;
-        // switching sides therefore targets the visible outer gutter.
-        return {clientX:element.matches(".ww-float-left, .ww-float-right") ? side === "left" ? 5 : 1395 : box.left + box.width / 2,
-          clientY:box.top + box.height / 2};
+        const target = peer.getBoundingClientRect();
+        return {clientX:side === "left" ? Math.max(0, target.left - 16) : Math.min(innerWidth - 1, target.right + 16),
+          clientY:target.top + target.height / 2};
       };
       const selfChild = source.appendChild(document.createElement("span"));
       selfChild.textContent = "nested";
@@ -119,13 +117,12 @@ export async function checkNativeFloatDrag(nativeRootEditor: HostEditor, assert:
       assert(previewSource, "external image drop preview source could not be parsed")
       source.style.cssText = originalStyle
       editor.features.manipulation.setFloat(source, "none")
-      const lanePoints = {left:floatPoint(previewSource, "left"), right:floatPoint(previewSource, "right")}
       for(const side of ["left", "right"]) {
         source.style.cssText = originalStyle
         editor.features.manipulation.setFloat(source, "none")
         const dataTransfer = new DataTransfer();
         dataTransfer.setData("text/html", imageHTML);
-        const init = {dataTransfer, ...lanePoints[side], bubbles:true, cancelable:true, composed:true};
+        const init = {dataTransfer, ...floatPoint(previewSource, side), bubbles:true, cancelable:true, composed:true};
         peer.dispatchEvent(new DragEvent("dragover", init));
         peer.dispatchEvent(new DragEvent("drop", init));
         const dropped = main.querySelector("picture");

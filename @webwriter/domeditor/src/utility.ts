@@ -401,6 +401,7 @@ export class EditingSelection {
   static isSettingRanges = false
   private static layoutRanges: Range[] | null = null
   private static layoutRangeWitness: Range | null = null
+  private static exactNodeRanges = new WeakMap<Range, Element>()
 
   /** Live DOM ranges for spatial selection. The native Selection stores them
    * where supported; single-range browsers retain the remaining ranges here. */
@@ -467,12 +468,34 @@ export class EditingSelection {
     if(focus) focusEditorWindow()
     if(!element.parentNode) return
     if(this.isMultiElementSelection || this.#selection.rangeCount > 1) this.selectElements([element])
-    else if(this.#selection.rangeCount) this.range.selectNode(element)
+    else if(this.#selection.rangeCount) {
+      this.exactNodeRanges.delete(this.range)
+      this.range.selectNode(element)
+    }
     else {
       const range = document.createRange()
       range.selectNode(element)
       this.#selection.addRange(range)
     }
+  }
+
+  /** Explicitly selects the live node, including nodes normally edited as text
+   * or selected via their containing figure. */
+  static selectExactElement(element: Element) {
+    focusEditorWindow()
+    if(!element.isConnected || !element.parentNode) return
+    const range = document.createRange()
+    range.selectNode(element)
+    this.exactNodeRanges.set(range, element)
+    this.selectRanges([range])
+  }
+
+  static get exactSelectedElement() {
+    if(this.#selection.rangeCount !== 1) return
+    const range = this.range
+    const element = this.exactNodeRanges.get(range)
+    if(element?.isConnected && range.startContainer === range.endContainer
+      && range.endOffset === range.startOffset + 1 && range.startContainer.childNodes[range.startOffset] === element) return element
   }
 
   /** Select independent layout items using live ranges, in document order. */
@@ -817,11 +840,13 @@ export class EditingSelection {
     }
     if(listGap) return listGap
     let disclosure = pointerElement?.closest("details") ?? caretElement?.closest("details") ?? null
-    const insideDisclosure = disclosure?.open && root.contains(disclosure)
+    const insideDisclosure = disclosure?.open && root.contains(disclosure) && editingFlowRoot(disclosure) === flow
       && x >= disclosure.getBoundingClientRect().left && x <= disclosure.getBoundingClientRect().right
       && y >= disclosure.getBoundingClientRect().top && y <= disclosure.getBoundingClientRect().bottom ? disclosure : null
     let disclosureGap: ReturnType<typeof gap> | null = null
-    while(disclosure && root.contains(disclosure)) {
+    // Positioned popup content has its own flow, even when it overflows a
+    // disclosure. Only disclosures in that flow can supply its outer gaps.
+    while(disclosure && root.contains(disclosure) && editingFlowRoot(disclosure) === flow) {
       const rect = disclosure.getBoundingClientRect()
       if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
         disclosureGap = gap(disclosure, y < rect.top ? "before" : "after")
@@ -1244,6 +1269,7 @@ export class EditingSelection {
   /** Whether exactly one element is selected (anchored in its parent,
    * spanning one child). */
   static get isElementSelection() {
+    if(this.exactSelectedElement) return true
     if(this.ranges.length !== 1 || this.anchor !== this.focus || !isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
     const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
     const selected = this.anchor.childNodes.item(index)
@@ -1414,6 +1440,8 @@ export class EditingSelection {
    * every editing flow, including floated and positioned descendants. */
   static get isDocumentSelection() {
     const root = getDocumentRoot()
+    const exact = this.exactSelectedElement
+    if(exact) return exact === root || exact === document.body
     if(this.selectedElement === root || this.selectedElement === document.body) return true
     const range = this.range
     return !range.collapsed && range.startContainer === root && range.startOffset === 0
@@ -2339,6 +2367,20 @@ export function widgetSlotContentFromCoords(x: number, y: number, target: EventT
     .map(element => ({element, rect: renderedClientRect(element)}))
     .filter(({rect}) => rect.height > 0 && x >= rect.left && x <= rect.right)
     .sort((a, b) => Math.max(a.rect.top - y, 0, y - a.rect.bottom) - Math.max(b.rect.top - y, 0, y - b.rect.bottom))[0]
+    ?? widgetTextSurface(x, y, target, owner, slots)
+}
+
+/** Inline or text-only contentful widgets (such as `content: "text*"`) project bare Text nodes into
+ * their slot instead of child elements. The surface around that text belongs to the authored text:
+ * the widget is the content, and the pointer is inside the box that holds it. Indentation-only
+ * whitespace between blocks does not count as text. */
+function widgetTextSurface(x: number, y: number, target: Element, owner: Element, slots: HTMLSlotElement[]) {
+  const hasText = slots.some(slot => slot.assignedNodes({flatten: true})
+    .some(node => node instanceof Text && document.body.contains(node) && node.data.replace(/[ \t\r\n]+/g, "").length > 0))
+  if(!hasText) return undefined
+  const rect = target.getBoundingClientRect()
+  if(rect.height <= 0 || rect.width <= 0 || x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return undefined
+  return {element: owner, rect, textSurface: true as const}
 }
 
 /** The editable widget host whose surface or shadow tree originated an interaction. */

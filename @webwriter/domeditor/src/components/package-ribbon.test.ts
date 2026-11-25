@@ -2,12 +2,14 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {html} from "lit"
 import type {WebWriterPackage} from "../packages"
+import {packageCompatibleSnippets, packageMemberAction} from "../packages"
 import {AppRibbon} from "./ribbon"
 import {RibbonButton} from "./ribbon-button"
 import {RibbonMenu} from "./ribbon-menu"
 import {RibbonDrawer} from "./ribbon-drawer"
 import {ribbonElementInsertionAction, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 import {hasAnchorTarget} from "../anchor-positioning.test-utils"
+import {insertSubmenuClickGrace, insertSubmenuHoverDelay} from "../insertion"
 
 const packageFixture = (name = "demo"): WebWriterPackage => ({
   name: `@webwriter/${name}`,
@@ -62,6 +64,181 @@ function dragData(target: Element) {
 }
 
 describe("package ribbon controls", () => {
+  it("adds compatible snippets to the named host package category as action-only drags", async () => {
+    const ribbon = new AppRibbon()
+    const tasks = packageFixture("task")
+    tasks.members[0].editingConfig = {compatibleSnippets: {category: "Interact"}}
+    const scale = packageFixture("scale")
+    scale.members[1].editingConfig = {compatibleHosts: ["@webwriter/task/widgets/webwriter-task"]}
+    scale.manifest = {name: scale.name, version: scale.version, optionalDependencies: {[tasks.name]: "^1.0.0"}}
+    ribbon.installedPackages = [tasks, scale]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Task"]')!
+    await button.updateComplete
+    const [variant] = packageCompatibleSnippets([tasks, scale])
+    expect(button.submenu).toContainEqual(expect.objectContaining({
+      label: "Interact", menuOnly: true, submenu: [expect.objectContaining({
+        label: scale.members[1].label, action: packageMemberAction(variant), dragHTML: undefined,
+      })],
+    }))
+    ribbon.installedPackages = [tasks]
+    await ribbon.updateComplete
+    expect(button.submenu).not.toContainEqual(expect.objectContaining({label: "Interact"}))
+  })
+
+  it("opens the package dropdown by click and its category submenu on hover", async () => {
+    const ribbon = new AppRibbon()
+    const pkg = packageFixture()
+    pkg.members = pkg.members.map(member => ({...member, editingConfig: {category: "Practice"}}))
+    ribbon.installedPackages = [pkg]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    const trigger = button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!
+    const hover = () => trigger.closest(".button-row")!.dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+    const click = () => trigger.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, detail: 1}))
+    vi.useFakeTimers()
+    try {
+      hover()
+      await vi.advanceTimersByTimeAsync(insertSubmenuHoverDelay)
+      expect(trigger.getAttribute("aria-expanded")).toBe("false")
+      click()
+      await button.updateComplete
+      expect(trigger.getAttribute("aria-expanded")).toBe("true")
+      click()
+      await button.updateComplete
+      expect(trigger.getAttribute("aria-expanded")).toBe("false")
+
+      click()
+      await button.updateComplete
+      const menu = button.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+      await menu.updateComplete
+      const category = menu.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="package-category:Practice"]')!
+      category.closest(".item-row")!.dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+      await vi.advanceTimersByTimeAsync(insertSubmenuHoverDelay)
+      expect(category.getAttribute("aria-expanded")).toBe("true")
+      category.dispatchEvent(new MouseEvent("click", {bubbles: true, detail: 1}))
+      await menu.updateComplete
+      expect(category.getAttribute("aria-expanded")).toBe("true")
+      await vi.advanceTimersByTimeAsync(insertSubmenuClickGrace)
+      category.dispatchEvent(new MouseEvent("click", {bubbles: true, detail: 1}))
+      await menu.updateComplete
+      expect(category.getAttribute("aria-expanded")).toBe("false")
+    }
+    finally { vi.useRealTimers() }
+  })
+
+  it("uses the package icon on the main button and member icons in the dropdown", async () => {
+    const ribbon = new AppRibbon()
+    const pkg = packageFixture()
+    const main = {...pkg.members[0], iconUrl: "https://example.com/demo.svg"}
+    const alternate = {...main, id: "alternate", label: "Alternate Widget", tagName: "webwriter-alternate", iconUrl: "https://example.com/alternate.svg"}
+    pkg.manifest = {name: pkg.name, version: pkg.version, exports: {
+      "./widgets/webwriter-demo.icon.svg": "./demo.svg", "./widgets/webwriter-alternate.icon.svg": "./alternate.svg",
+    }}
+    pkg.members = [main, alternate, pkg.members[1]]
+    ribbon.installedPackages = [pkg]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    const image = button.shadowRoot!.querySelector<HTMLImageElement>(".main-button img")!
+    expect(image.getAttribute("src")).toBe(pkg.iconUrl)
+    expect(image.alt).toBe("")
+    expect(button.submenu).toEqual([
+      expect.objectContaining({label: alternate.label, iconUrl: alternate.iconUrl}),
+      expect.objectContaining({iconUrl: pkg.iconUrl}),
+    ])
+    ribbon.shadowRoot!.querySelector("package-search")!.dispatchEvent(new CustomEvent("package-search-change", {detail: {query: "alternate"}}))
+    await ribbon.updateComplete
+    const searchButton = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Alternate Widget"]')!
+    await searchButton.updateComplete
+    const searchImage = searchButton.shadowRoot!.querySelector<HTMLImageElement>(".main-button img")!
+    expect(searchImage.getAttribute("src")).toBe(pkg.iconUrl)
+    expect(searchButton.submenu).toContainEqual(expect.objectContaining({label: main.label, iconUrl: main.iconUrl}))
+    searchImage.dispatchEvent(new Event("error"))
+    expect(searchButton.shadowRoot!.querySelector(".main-button img")).toBeNull()
+  })
+
+  it("disables installed members at the selection while keeping package management available", async () => {
+    const ribbon = new AppRibbon()
+    const installed = packageFixture()
+    ribbon.installedPackages = [installed]
+    ribbon.packages = [packageFixture("other")]
+    ribbon.unavailableInsertions = new Set(["widget:webwriter-demo", packageMemberAction(installed.members[1])])
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    expect(button.insertionDisabled).toBe(true)
+    expect(button.submenu[0]).toMatchObject({insertionDisabled: true})
+    expect(ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Other"]')!.insertionDisabled).toBe(false)
+
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    drawer.dispatchEvent(new CustomEvent("ribbon-drawer-state-change", {detail: {label: "Packages", open: true}}))
+    await ribbon.updateComplete
+    await button.updateComplete
+    expect(button.shadowRoot!.querySelector<HTMLButtonElement>(".corner-trigger")!.disabled).toBe(false)
+    expect(button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.disabled).toBe(false)
+  })
+
+  it("groups widgets and snippets at the first member of each category", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.documentLanguage = "de-DE"
+    const pkg = packageFixture()
+    const [widget, snippet] = pkg.members
+    const widgetIconUrl = "https://example.com/widget.svg"
+    const snippetIconUrl = "https://example.com/snippet.svg"
+    pkg.manifest = {name: pkg.name, version: pkg.version, exports: {
+      "./widgets/webwriter-demo.icon.svg": "./widget.svg",
+    }}
+    const standalone = {...widget, id: "standalone", label: "Standalone"}
+    const practiceCategory = {_: "Practice", de: "Üben"}
+    const second = {...snippet, id: "second", label: "Second", iconUrl: snippetIconUrl, editingConfig: {category: "Explore"}}
+    pkg.members = [
+      {...second, id: "hidden", label: "Hidden", iconUrl: "https://example.com/hidden.svg", insertable: false},
+      {...widget, iconUrl: widgetIconUrl, editingConfig: {category: practiceCategory}},
+      standalone,
+      second,
+      {...snippet, iconUrl: snippetIconUrl, editingConfig: {category: practiceCategory}},
+    ]
+    ribbon.installedPackages = [pkg]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await button.updateComplete
+    const menu = button.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    const rows = [...menu.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item[data-action]")]
+    expect(rows.map(row => row.textContent?.trim())).toEqual(["Üben", "Standalone", "Explore"])
+    expect(rows.map(row => row.querySelector("img")?.getAttribute("src"))).toEqual([widgetIconUrl, pkg.iconUrl, snippetIconUrl])
+
+    const practice = rows[0]
+    const chevron = practice.querySelector<HTMLElement>('.submenu-toggle-chevron[aria-hidden="true"]')!
+    expect(chevron).not.toBeNull()
+    expect(practice.closest(".item-row")!.querySelectorAll("button")).toHaveLength(1)
+    const click = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", click)
+    practice.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true}))
+    await menu.updateComplete
+    expect(practice.getAttribute("aria-expanded")).toBe("true")
+    const leaves = [...menu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".submenu button.item")]
+    expect(leaves.map(leaf => leaf.getAttribute("aria-label"))).toEqual([widget.label, snippet.label])
+    expect(click).not.toHaveBeenCalled()
+    leaves[0].dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowLeft", bubbles: true, cancelable: true}))
+    await menu.updateComplete
+    expect(practice.getAttribute("aria-expanded")).toBe("false")
+    expect(menu.shadowRoot!.activeElement).toBe(practice)
+    chevron.click()
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector<HTMLButtonElement>(`.submenu [data-action="${packageMemberAction(snippet)}"]`)!.click()
+    expect(click.mock.calls[0][0].detail.label).toBe(packageMemberAction(snippet))
+  })
+
   it("shows a separate update action only for outdated packages in management mode", async () => {
     const ribbon = new AppRibbon()
     const installed = packageFixture()
@@ -235,12 +412,11 @@ describe("package ribbon controls", () => {
     expect(events.mock.calls.every(([event]) => event.detail.hovered || event.detail.tag === undefined)).toBe(true)
   })
 
-  it("keeps wrapped package labels compact without cropping underlines", async () => {
+  it("keeps wrapped package labels compact", async () => {
     for(const label of ["Map", "Algebra Term", "PhET Simulation", "Interactive Video", "Neural Network", "Branching Scenario"]) {
       const button = new RibbonButton()
       button.variant = "package"
       button.label = label
-      button.setAttribute("console-selected", "")
       button.setAttribute("developer-package", "")
       document.body.append(button)
       await button.updateComplete
@@ -250,7 +426,6 @@ describe("package ribbon controls", () => {
       expect(text.textContent).toBe(label)
       expect(getComputedStyle(text).whiteSpace).toBe("normal")
       expect(getComputedStyle(text).overflow).toBe("visible")
-      expect(getComputedStyle(text).textDecorationLine).toBe("underline")
       expect(labelStyle.overflow).toBe("clip")
       expect(labelStyle.getPropertyValue("overflow-clip-margin")).toBe("0.2em")
       expect(labelStyle.lineHeight).toBe("1.1")
@@ -740,7 +915,6 @@ describe("package ribbon controls", () => {
 
   it("keeps the actual collapsed package menu open after pinning a snippet", async () => {
     const ribbon = new AppRibbon()
-    ribbon.consoleOpen = true
     ribbon.expanded = false
     ribbon.menuOpen = true
     document.body.append(ribbon)
@@ -823,70 +997,6 @@ describe("package ribbon controls", () => {
     ribbon.installedPackages = [git]
     expect(await labels()).toEqual(["Git", "Published"])
     expect(ribbon.localPackages).toEqual([local, git])
-  })
-
-  it("highlights the console selection only while the console is open", async () => {
-    const ribbon = new AppRibbon()
-    const local = packageFixture("local")
-    const git = {...packageFixture("git"), developerSource: {kind: "git" as const, repository: "https://example.test/repo.git", ref: "main", path: "", commit: "abc"}}
-    ribbon.localPackages = [local, git]
-    ribbon.installedPackages = [local, git, packageFixture("published")]
-    document.body.append(ribbon)
-    await ribbon.updateComplete
-    const buttons = () => Array.from(ribbon.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button')).filter(button => button.label !== "Snippets")
-    const selected = () => buttons().filter(button => button.hasAttribute("console-selected")).map(button => button.label)
-    expect(selected()).toEqual([])
-    ribbon.consoleOpen = true
-    await ribbon.updateComplete
-    expect(selected()).toEqual(["Local"])
-    ribbon.selectedLocalPackageName = git.name
-    await ribbon.updateComplete
-    await Promise.all(buttons().map(button => button.updateComplete))
-    expect(selected()).toEqual(["Git"])
-    expect(getComputedStyle(buttons()[1].shadowRoot!.querySelector(".button-row")!).backgroundColor).not.toBe("#dbe7f2")
-    const labelStyle = getComputedStyle(buttons()[1].shadowRoot!.querySelector(".button-label-text")!)
-    expect(labelStyle.textDecorationLine).toBe("underline")
-    expect(labelStyle.textDecorationColor).toBe("#8eb6df")
-    expect(getComputedStyle(buttons()[1].shadowRoot!.querySelector(".button-row")!).opacity).toBe("1")
-    ribbon.consoleOpen = false
-    await ribbon.updateComplete
-    await Promise.all(buttons().map(button => button.updateComplete))
-    expect(selected()).toEqual([])
-    expect(getComputedStyle(buttons()[1].shadowRoot!.querySelector(".button-label-text")!).textDecorationLine).not.toBe("underline")
-    expect(buttons()[0].active).toBe(true)
-  })
-
-  it("updates the selected entry in the collapsed package menu", async () => {
-    const ribbon = new AppRibbon()
-    ribbon.localPackages = [packageFixture("local"), packageFixture("other")]
-    ribbon.installedPackages = [...ribbon.localPackages, packageFixture("published")]
-    ribbon.consoleOpen = true
-    ribbon.expanded = false
-    ribbon.menuOpen = true
-    document.body.append(ribbon)
-    await ribbon.updateComplete
-    const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
-    await menu.updateComplete
-    menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
-    const selected = async () => {
-      await ribbon.updateComplete
-      await menu.updateComplete
-      const packages = menu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
-      await packages.updateComplete
-      const rows = Array.from(packages.shadowRoot!.querySelectorAll(".item-row.selected"))
-      for(const row of rows) {
-        expect(getComputedStyle(row).backgroundColor).not.toBe("#dbe7f2")
-        const labelStyle = getComputedStyle(row.querySelector(".item-label")!)
-        expect(labelStyle.textDecorationLine).toBe("underline")
-        expect(labelStyle.textDecorationColor).toBe("#8eb6df")
-      }
-      return rows.map(row => row.querySelector<HTMLButtonElement>(".item")!.title)
-    }
-    expect(await selected()).toEqual(["Local"])
-    ribbon.selectedLocalPackageName = ribbon.localPackages[1].name
-    expect(await selected()).toEqual(["Other"])
-    ribbon.consoleOpen = false
-    expect(await selected()).toEqual([])
   })
 
   it("places developer packages first, keeps their metadata and italicizes only their names", async () => {

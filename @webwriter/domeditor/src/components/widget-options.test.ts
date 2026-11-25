@@ -4,7 +4,7 @@ import {DomEditorToolbox} from "./toolbox"
 import {RibbonDrawer} from "./ribbon-drawer"
 import type {StyleCombobox} from "./style-combobox"
 import type {RibbonButton} from "./ribbon-button"
-import type {WidgetActionState, WidgetOptionGroupState, WidgetOptionState, WidgetOptionsState} from "../widget-options"
+import {isWidgetOptionsState, type WidgetActionState, type WidgetOptionGroupState, type WidgetOptionState, type WidgetOptionsState} from "../widget-options"
 
 afterEach(() => { document.body.replaceChildren(); vi.unstubAllGlobals() })
 
@@ -522,6 +522,39 @@ describe("rich widget options drawer", () => {
     action.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
     expect(events.mock.calls[0][0].detail).toEqual({name: "import"})
     expect(events.mock.calls[0][0].detail).not.toHaveProperty("files")
+  })
+
+  it("validates and renders media widget options using ww-request-media and clear", async () => {
+    const valid = widgetState([
+      {name: "poster", label: "Poster", type: "media", media: "image", accept: ".png,image/png", value: "https://example.com/a.png"},
+    ])
+    expect(isWidgetOptionsState(valid)).toBe(true)
+    expect(isWidgetOptionsState({
+      ...valid,
+      options: [{...valid.options[0], media: "invalid"}],
+    })).toBe(false)
+
+    const toolbox = await mountToolbox()
+    toolbox.widgetOptions = valid
+    await toolbox.updateComplete
+    const drawer = drawerFor(toolbox)
+    const input = drawer.querySelector<HTMLInputElement>('.widget-option-media input[type="url"]')!
+    expect(input.value).toBe("https://example.com/a.png")
+    const changes = vi.fn()
+    toolbox.addEventListener("widget-option-change", changes)
+    toolbox.addEventListener("ww-request-media", event => {
+      event.preventDefault()
+      ;(event as CustomEvent<{media?: string, accept?: string, resolve: (url: string | null) => void}>).detail
+        .resolve("https://example.com/picked.png")
+    })
+
+    drawer.querySelector<HTMLButtonElement>(".widget-option-media-pick")!.click()
+    await Promise.resolve()
+    drawer.querySelector<HTMLButtonElement>(".widget-option-media-clear")!.click()
+    expect(changes.mock.calls.map(([event]) => (event as CustomEvent).detail)).toEqual([
+      {name: "poster", value: "https://example.com/picked.png"},
+      {name: "poster", value: null},
+    ])
   })
 
 })

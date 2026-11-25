@@ -262,7 +262,7 @@ describe("DOMEditor stylesheets", () => {
       .toContain("transform-overlay-scale-up-left")
   })
 
-  it("shows a full-width contiguous editor-only grid for otherwise unstyled tables", () => {
+  it("gives tables full width and shows an editing placeholder for empty tables", () => {
     const stylesheet = document.adoptedStyleSheets.find(sheet => hasExactSelector(sheet, "html"))!
     const tableRule = Array.from(stylesheet.cssRules)
       .find(rule => (rule as CSSStyleRule).selectorText === ":where(table)") as CSSStyleRule | undefined
@@ -272,11 +272,7 @@ describe("DOMEditor stylesheets", () => {
     expect(tableRule?.style.boxSizing).toBe("border-box")
     expect(tableRule?.style.width).toBe("100%")
     expect(tableRule?.style.borderCollapse).toBe("collapse")
-    expect(cellRule?.style.outlineWidth).toBe("1px")
-    expect(cellRule?.style.outlineStyle).toBe("solid")
-    expect(cellRule?.style.padding).toBe("")
-    expect(cellRule?.style.minWidth).toBe("")
-    expect(cellRule?.style.height).toBe("")
+    expect(cellRule).toBeUndefined()
     expect(editorStyleString).toMatch(/:where\(table:not\(:has\(td, th\)\)\)::after\s*\{[\s\S]*?display:\s*table-cell;[\s\S]*?height:\s*2\.2rem;[\s\S]*?border:\s*1px dashed #aeb8c4;[\s\S]*?content:\s*"";/)
   })
 

@@ -1,7 +1,21 @@
 const frameLinkListeners = new WeakMap<Window, () => void>()
+const frameLinkTargets = new WeakMap<MouseEvent, Element>()
+const linkSelector = "a[href], area[href], a[xlink\\:href]"
 
 export function isNativeDownloadURL(url: URL, origin: string) {
   return url.protocol === "data:" || ["blob:", "http:", "https:"].includes(url.protocol) && url.origin === origin
+}
+
+export function frameLinkTarget(event: MouseEvent, win: Window & typeof globalThis) {
+  return frameLinkTargets.get(event) ?? event.composedPath().find((node): node is Element =>
+    node instanceof win.Element && node.matches(linkSelector))
+}
+
+/** Preserve the frame's link activation when an editing surface covers a link. */
+export function retargetFrameLink(event: MouseEvent, origin: Element) {
+  const link = origin.closest(linkSelector)
+  if(link) frameLinkTargets.set(event, link)
+  return link
 }
 
 /** Keep links out of document frames, or only external pages out of the site. */
@@ -10,8 +24,7 @@ export function openFrameLinksInNewTabs(win: Window & typeof globalThis, {extern
   if(existing) return existing
   const activate = (event: MouseEvent) => {
     if(event.defaultPrevented || (event.type === "click" ? event.button !== 0 : event.button !== 1)) return
-    const link = event.composedPath().find((node): node is Element =>
-      node instanceof win.Element && node.matches("a[href], area[href], a[xlink\\:href]"))
+    const link = frameLinkTarget(event, win)
     if(!link) return
     const href = link.getAttribute("href") ?? link.getAttributeNS("http://www.w3.org/1999/xlink", "href")
     if(href === null) return

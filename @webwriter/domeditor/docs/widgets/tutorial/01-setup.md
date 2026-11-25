@@ -382,7 +382,7 @@ npm run build
 Check that the build created `dist/ww-ghost-disco.js`. This is the file named in the widget export.
 <!-- /library -->
 
-In WebWriter, open **Developer console → Add package → Add from local folder**. Select the folder that contains `package.json` and insert Ghost Disco in a document. In the live example, switch to **package.json** to check the manifest and back to **Source** to check the registration.
+In WebWriter, open the vertical-dots menu at the right of the **Search widgets** bar and select **Add from local folder**. Select the folder that contains `package.json` and insert Ghost Disco in a document. In the live example, switch to **package.json** to check the manifest and back to **Source** to check the registration.
 
 ## Results
 

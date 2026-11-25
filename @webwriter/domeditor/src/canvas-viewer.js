@@ -681,6 +681,14 @@ class CanvasMinimap {
 
 export class CanvasViewer {
   #pinch = new TouchPinch()
+  #fragmentFrame = null
+  #scheduleFragmentReveal = () => {
+    if(this.#fragmentFrame !== null) return
+    this.#fragmentFrame = requestAnimationFrame(() => {
+      this.#fragmentFrame = null
+      this.revealFragment()
+    })
+  }
 
   constructor(slot, background, controls, panSurface = null, onChange = () => {}, loadSnapdom = null, isAuthoredMutation = null) {
     slot.dispatchEvent(new Event("webwriter-canvas-viewer-dispose"))
@@ -704,6 +712,9 @@ export class CanvasViewer {
     this.untrackStyles = trackPresentationStyles(document, this.stylesheet)
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, this.stylesheet]
     setPresentationState(document.documentElement, "canvas-active")
+    // Reopening the current fragment can fire popstate without hashchange.
+    window.addEventListener("popstate", this.#scheduleFragmentReveal)
+    window.addEventListener("hashchange", this.#scheduleFragmentReveal)
   }
 
   get active() { return this.slot.isConnected && document.body === this.body }
@@ -715,6 +726,9 @@ export class CanvasViewer {
   }
 
   destroy() {
+    window.removeEventListener("popstate", this.#scheduleFragmentReveal)
+    window.removeEventListener("hashchange", this.#scheduleFragmentReveal)
+    if(this.#fragmentFrame !== null) cancelAnimationFrame(this.#fragmentFrame)
     this.minimap?.destroy()
     this.stopPan()
     this.endPinch()
@@ -905,6 +919,16 @@ export class CanvasViewer {
     if(dx || dy) { this.camera.x += dx; this.camera.y += dy; this.applyCamera() }
   }
 
+  revealFragment() {
+    if(!this.active || !location.hash) return
+    let id
+    try { id = decodeURIComponent(location.hash.slice(1)) } catch { return }
+    const target = document.getElementById(id)
+    if(!target || target === this.body || !this.body.contains(target) || !target.getClientRects().length) return
+    const {left, top, width, height} = target.getBoundingClientRect()
+    this.centerOn(this.clientPoint(left + width / 2, top + height / 2))
+  }
+
   panAtEdge(point) {
     if(!this.active) return false
     const delta = (position, end) => position < 32 ? Math.min(16, (32 - position) / 3)
@@ -1034,7 +1058,8 @@ body.ww-canvas > div.ww-canvas-starting-view:not([is]) { visibility: hidden; poi
 :where(picture) { display: block; width: 100%; height: auto; }
 
 @media screen {
-/* The viewport is finite; the appendix slot supplies an unbounded camera. */
+/* Clip overflow on the body too so native fragment navigation cannot scroll
+ * the root viewport towards transformed content. */
 html:state(ww-canvas-active):has(> body.ww-canvas) {
   overflow: clip;
   background: white;
@@ -1048,7 +1073,7 @@ html:state(ww-canvas-active) body {
   height: 100vh !important;
   min-height: 0 !important;
   max-width: none !important;
-  overflow: visible;
+  overflow: clip;
   background: transparent;
   isolation: isolate;
   cursor: default;
@@ -1180,13 +1205,6 @@ export function mountCanvasReader(loadSnapdom) {
   for(const [type, handler] of Object.entries(listeners)) document.addEventListener(type, handler, {capture: true, passive: false})
   controls.addEventListener("click", click)
   window.addEventListener("blur", cancelPanning)
-  const revealHash = () => {
-    let id
-    try { id = decodeURIComponent(location.hash.slice(1)) } catch { return }
-    const target = id && document.getElementById(id)
-    if(target && body.contains(target)) viewer.reveal(target.getBoundingClientRect())
-  }
-  window.addEventListener("hashchange", revealHash)
   let destroyed = false
   const destroy = () => {
     if(destroyed) return
@@ -1196,7 +1214,6 @@ export function mountCanvasReader(loadSnapdom) {
     for(const [type, handler] of Object.entries(listeners)) document.removeEventListener(type, handler, true)
     controls.removeEventListener("click", click)
     window.removeEventListener("blur", cancelPanning)
-    window.removeEventListener("hashchange", revealHash)
     viewer.destroy()
     clearPresentationState(body, "canvas-hand")
     background.remove(); panSurface.remove(); controls.remove()
@@ -1209,7 +1226,7 @@ export function mountCanvasReader(loadSnapdom) {
   slot.addEventListener("webwriter-canvas-viewer-dispose", destroy)
   observer.observe(document.documentElement, {childList: true, subtree: true, attributes: true, attributeFilter: ["class"]})
   if(!viewer.startView()) viewer.fit()
-  revealHash()
+  viewer.revealFragment()
   viewer.mountMinimap(toolbar)
   return {viewer, destroy}
 }

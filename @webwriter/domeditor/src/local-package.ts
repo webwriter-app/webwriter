@@ -1,7 +1,11 @@
-import {widgetDefinitionErrors} from "./schema"
+import {isExcludedDescendantList, widgetDefinitionErrors} from "./schema"
 import {isWidgetFileFormat} from "./widget-options"
 import {
   editingConfigKey,
+  isCompatibleSnippetsConfig,
+  isLocalizedText,
+  isPackageName,
+  parsePackageWidgetReference,
   localizedText,
   mergeEditingConfig,
   PACKAGE_DOCUMENTATION_MAX_BYTES,
@@ -9,10 +13,12 @@ import {
   packageContents,
   packageDocumentationExcerpt,
   packageEditingConfigOptions,
+  packageOptionalDependencyRange,
   packageNameLabel,
   personLabel,
   repositoryUrl,
   resolvePackageExport,
+  webWriterPackageExportName,
   type PackageContents,
   type PackageEditingConfig,
   type PackageDocumentationReadOptions,
@@ -33,6 +39,7 @@ export type LocalResourceUrlBuilder = (path: string) => string
 export type LocalPackageWarningCode =
   | "missing-bundle"
   | "missing-export"
+  | "invalid-export"
   | "editing-config-unavailable"
   | "invalid-editing-config"
   | "unknown-editing-option"
@@ -313,34 +320,42 @@ async function fileExists(directory: LocalPackageDirectory, path: string) {
   }
 }
 
-const isLocalizedText = (value: unknown) => typeof value === "string"
-  || !!value && typeof value === "object" && !Array.isArray(value) && Object.values(value).every(text => typeof text === "string")
-
 const isFileFormatList = (value: unknown) => Array.isArray(value) && value.every(isWidgetFileFormat)
+const isWidgetReferenceList = (value: unknown) =>
+  Array.isArray(value) && value.every(reference => !!parsePackageWidgetReference(reference))
 
 const optionChecks: Record<string, (value: unknown) => boolean> = {
   label: isLocalizedText,
   description: isLocalizedText,
+  category: isLocalizedText,
   uninsertable: value => typeof value === "boolean",
   group: value => typeof value === "string",
   inline: value => typeof value === "boolean",
   content: value => typeof value === "string",
+  excludedDescendants: isExcludedDescendantList,
   isolating: value => typeof value === "boolean",
   marks: value => typeof value === "string",
   propagateEvents: value => Array.isArray(value) && value.every(type => typeof type === "string" && type.length > 0),
   sharedData: value => typeof value === "boolean",
+  split: value => typeof value === "string" && ["block", "self", "line"].includes(value),
   importFormats: isFileFormatList,
   exportFormats: isFileFormatList,
+  iconWidget: value => typeof value === "string" && value.length > 0,
+  dependencies: value => Array.isArray(value) && value.every(isPackageName),
+  compatibleHosts: isWidgetReferenceList,
+  equivalentTo: isWidgetReferenceList,
+  compatibleSnippets: isCompatibleSnippetsConfig,
 }
 
 /** Checks the editing config against the options the editor reads and the
  * package's exports, so mistakes surface in the Develop toolbox instead of
  * being silently ignored. */
-export function editingConfigWarnings(editingConfig: PackageEditingConfig, contents: PackageContents): LocalPackageWarning[] {
+export function editingConfigWarnings(editingConfig: PackageEditingConfig, contents: PackageContents, manifest?: WebWriterPackageManifest): LocalPackageWarning[] {
   const warnings: LocalPackageWarning[] = []
-  const memberKeys = new Set(contents.members.map(({member}) => editingConfigKey(member.exportName)))
+  const members = new Map(contents.members.map(({member}) => [editingConfigKey(member.exportName), member]))
   for(const [key, entry] of Object.entries(editingConfig)) {
-    if(key !== "." && !memberKeys.has(key)) {
+    const member = members.get(key)
+    if(key !== "." && !member) {
       warnings.push({code: "unmatched-editing-config", path: key, message: `Editing config '${key}' matches no widget or snippet export.`})
     }
     if(!entry || typeof entry !== "object" || Array.isArray(entry)) {
@@ -353,6 +368,22 @@ export function editingConfigWarnings(editingConfig: PackageEditingConfig, conte
       }
       else if(!optionChecks[option](value)) {
         warnings.push({code: "invalid-editing-option", path: key, message: `Editing config '${key}' has an invalid value for '${option}'.`})
+      }
+      else if(option === "dependencies" || option === "compatibleHosts" || option === "equivalentTo" || option === "compatibleSnippets") {
+        const allowed = option === "dependencies" ? member?.kind === "snippet"
+          : option === "compatibleHosts" ? !!member : member?.kind === "widget"
+        if(!allowed) {
+          warnings.push({code: "invalid-editing-option", path: key, message: `Editing config '${key}' cannot declare '${option}' on this export.`})
+          continue
+        }
+        if(!manifest || option === "compatibleSnippets") continue
+        const names = option === "dependencies" ? value as string[] : (value as string[]).flatMap(reference => {
+          const target = parsePackageWidgetReference(reference)
+          return target && target.name !== manifest.name ? [target.name] : []
+        })
+        for(const name of new Set(names)) if(!packageOptionalDependencyRange(manifest, name)) {
+          warnings.push({code: "invalid-editing-option", path: key, message: `Editing config '${key}' requires a version range for ${name} in optionalDependencies.`})
+        }
       }
     }
   }
@@ -416,9 +447,9 @@ export async function loadLocalPackage(directory: LocalPackageDirectory, options
   const editingConfig = mergeEditingConfig(externalConfig, manifest.editingConfig)
   const urlFor = (path: string) => options.urlFor(normalizePath(path))
   const contents = packageContents(manifest, editingConfig, urlFor, iconUrl, locale)
-  warnings.push(...editingConfigWarnings(editingConfig, contents))
+  warnings.push(...editingConfigWarnings(editingConfig, contents, manifest))
   const members: PackageMember[] = []
-  for(const {member, requiredPaths, inferredStylePath} of contents.members) {
+  for(const {member, requiredPaths, inferredStylePath, iconPath} of contents.members) {
     const available = await Promise.all(requiredPaths.map(path => fileExists(directory, path)))
     const missing = requiredPaths.filter((_, index) => !available[index])
     if(missing.length) {
@@ -426,6 +457,14 @@ export async function loadLocalPackage(directory: LocalPackageDirectory, options
       continue
     }
     if(inferredStylePath && !await fileExists(directory, inferredStylePath)) member.styleUrl = undefined
+    if(iconPath && !await fileExists(directory, iconPath)) {
+      member.iconUrl = iconUrl
+      warnings.push({code: "missing-export", path: iconPath, message: `Member icon is missing: ${iconPath}`})
+    }
+    else if(!iconPath && member.kind === "widget" && member.tagName) {
+      const name = webWriterPackageExportName("widget-icon", member.tagName)
+      if(Object.hasOwn(exports, name)) warnings.push({code: "invalid-export", path: name, message: "The widget icon must target an SVG file in the package."})
+    }
     members.push(member)
   }
   if(!members.length) warnings.push({code: "missing-bundle", message: "The package does not contain a usable widget or snippet bundle yet."})

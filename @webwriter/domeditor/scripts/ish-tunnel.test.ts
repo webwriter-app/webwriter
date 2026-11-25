@@ -15,7 +15,12 @@ let env: NodeJS.ProcessEnv
 const run = (command: string) => execute("sh", [script, command], {env})
 const read = (name: string) => readFile(join(directory, name), "utf8")
 const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch { return false } }
-const pidOf = async (name: string) => Number((await read(name)).trim())
+const processWait = {timeout: 4_000}
+const pidOf = async (name: string) => {
+  const pid = Number((await read(name)).trim())
+  expect(pid).toBeGreaterThan(0)
+  return pid
+}
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "ish tunnel "))
@@ -46,25 +51,25 @@ afterEach(async () => {
   await run("stop").catch(() => {})
   await vi.waitFor(async () => {
     await expect(readFile(join(state, "lock/pid"))).rejects.toThrow()
-  })
+  }, processWait)
   await rm(directory, {recursive: true, force: true})
 })
 
 describe("iSH tunnel supervisor", () => {
   it("waits for an unavailable Mac and reconnects after losing a working tunnel", async () => {
     await run("start")
-    await vi.waitFor(async () => expect((await read("calls")).trim()).not.toBe(""))
+    await vi.waitFor(async () => expect((await read("calls")).trim()).not.toBe(""), processWait)
     await writeFile(join(directory, "available"), "")
-    await vi.waitFor(async () => expect(alive(await pidOf("ssh-pid"))).toBe(true), {timeout: 4000})
+    await vi.waitFor(async () => expect(alive(await pidOf("ssh-pid"))).toBe(true), processWait)
     const first = await pidOf("ssh-pid")
     await rm(join(directory, "available"))
-    await vi.waitFor(() => expect(alive(first)).toBe(false))
+    await vi.waitFor(() => expect(alive(first)).toBe(false), processWait)
     await writeFile(join(directory, "available"), "")
     await vi.waitFor(async () => {
       const second = await pidOf("ssh-pid")
       expect(second).not.toBe(first)
       expect(alive(second)).toBe(true)
-    }, {timeout: 4000})
+    }, processWait)
     expect((await run("status")).stdout).toContain("may still be reconnecting")
     const calls = await read("calls")
     expect(calls).toContain("BatchMode=yes")
@@ -77,25 +82,32 @@ describe("iSH tunnel supervisor", () => {
   it("keeps one supervisor across concurrent startup hooks and stops its owned children", async () => {
     await writeFile(join(directory, "available"), "")
     await Promise.all([run("start"), run("start"), run("start")])
-    await vi.waitFor(async () => expect(alive(await pidOf("ssh-pid"))).toBe(true))
+    const {location, ssh} = await vi.waitFor(async () => {
+      const location = await pidOf("location-pid"), ssh = await pidOf("ssh-pid")
+      expect(alive(location)).toBe(true)
+      expect(alive(ssh)).toBe(true)
+      return {location, ssh}
+    }, processWait)
     expect((await read("calls")).trim().split("\n")).toHaveLength(1)
-    const location = await pidOf("location-pid"), ssh = await pidOf("ssh-pid")
     await run("stop")
     await vi.waitFor(() => {
       expect(alive(location)).toBe(false)
       expect(alive(ssh)).toBe(false)
-    })
+    }, processWait)
     await expect(run("status")).rejects.toThrow()
   })
 
-  it("recovers a stale owner but never signals an unrelated reused PID", async () => {
+  it("recovers a stale owner once across concurrent starts and leaves a reused PID alone", async () => {
     const unrelated = spawn("sleep", ["60"])
     try {
       await mkdir(join(state, "lock"), {recursive: true})
-      await writeFile(join(state, "lock/pid"), String(unrelated.pid))
+      await writeFile(join(state, "lock/pid"), `${unrelated.pid}\n`)
       expect((await run("stop")).stdout).toContain("not running")
       expect(alive(unrelated.pid!)).toBe(true)
-      await run("start")
+      await writeFile(join(directory, "available"), "")
+      await Promise.all([run("start"), run("start"), run("start")])
+      await vi.waitFor(async () => expect(alive(await pidOf("ssh-pid"))).toBe(true), processWait)
+      expect((await read("calls")).trim().split("\n")).toHaveLength(1)
       expect((await run("status")).stdout).toContain("running")
       expect(alive(unrelated.pid!)).toBe(true)
     }
@@ -107,7 +119,7 @@ describe("iSH tunnel supervisor", () => {
     env.WEBWRITER_TUNNEL_SSHD = join(directory, "bin/ssh")
     await writeFile(join(directory, "available"), "")
     await run("start")
-    await vi.waitFor(async () => expect(alive(await pidOf("ssh-pid"))).toBe(true))
+    await vi.waitFor(async () => expect(alive(await pidOf("ssh-pid"))).toBe(true), processWait)
     const calls = await read("calls")
     expect(calls).toContain("-D -e -f /dev/null")
     expect(calls).toContain("ListenAddress=127.0.0.1")
@@ -118,6 +130,6 @@ describe("iSH tunnel supervisor", () => {
     expect(calls).not.toContain("webwriter-mac")
     const server = await pidOf("ssh-pid")
     await run("stop")
-    await vi.waitFor(() => expect(alive(server)).toBe(false))
+    await vi.waitFor(() => expect(alive(server)).toBe(false), processWait)
   })
 })

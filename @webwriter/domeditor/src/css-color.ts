@@ -23,6 +23,10 @@ export const boxStylePresets = [
   {name: "Purple", background: themeColorColumns[8][1], border: themeColorColumns[8][0]},
 ] as const
 
+export function boxStylePresetPadding(element: Element) {
+  if(element.namespaceURI === "http://www.w3.org/1999/xhtml"
+    && element.matches(":is(p, h1, h2, h3, h4, h5, h6, ul, ol, dl, menu):not([is], [popover])")) return "8px"
+}
 
 /** Seven document accents follow the three neutral palette columns. */
 export const defaultThemeAccents = themeColorColumns.slice(3).map(column => `#${column[0]}`)

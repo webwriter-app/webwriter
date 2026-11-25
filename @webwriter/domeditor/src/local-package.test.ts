@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {PACKAGE_DOCUMENTATION_MAX_BYTES, PACKAGE_DOCUMENTATION_MAX_CHARS} from "./packages"
+import {PACKAGE_DOCUMENTATION_MAX_BYTES, PACKAGE_DOCUMENTATION_MAX_CHARS, packageContents, type PackageContents, type PackageEditingConfig} from "./packages"
 import {
+  editingConfigWarnings,
   isLocalPackageExportTarget,
   loadLocalPackage,
   localPackageWatchPaths,
@@ -108,6 +109,20 @@ describe("loadLocalPackage", () => {
     expect(result.package.scripts).toEqual(["http://local.test/pkg/dist/browser.js"])
   })
 
+  it.each([true, false])("keeps a widget loadable with a present or missing icon (present=%s)", async present => {
+    const result = await loadLocalPackage(nestedDirectory({
+      files: {"package.json": manifest({"./widgets/demo-widget.icon.svg": "./assets/demo.svg"}), "icon.svg": "package icon"},
+      directories: {
+        assets: {files: present ? {"demo.svg": "widget icon"} : {}},
+        dist: {files: {"demo.js": "bundle"}},
+        snippets: {files: {"example.html": "<p>Example</p>"}},
+      },
+    }), {urlFor})
+    expect(result.package.members.find(member => member.tagName === "demo-widget")?.iconUrl)
+      .toBe(urlFor(present ? "assets/demo.svg" : "icon.svg"))
+    expect(result.warnings).toEqual(present ? [] : [expect.objectContaining({code: "missing-export", path: "assets/demo.svg"})])
+  })
+
   it("reports a missing configured bundle while returning usable metadata", async () => {
     const result = await loadLocalPackage(directory({files: {"package.json": manifest(), "icon.svg": "icon"}}), {urlFor})
     expect(result.package.members).toEqual([])
@@ -150,6 +165,29 @@ describe("loadLocalPackage", () => {
 
 describe("local package checks", () => {
   it.each([
+    {category: "Media", valid: true},
+    {category: "", valid: true},
+    {category: {_: "Media", de: "Medien"}, valid: true},
+    {category: {_: "Media", de: 42}, valid: false},
+    {category: 42, valid: false},
+  ])("validates insertion category $category", async ({category, valid}) => {
+    const result = await loadLocalPackage(nestedDirectory({
+      files: {"package.json": JSON.stringify({
+        name: "@local/demo",
+        version: "0.1.0",
+        exports: {"./snippets/example.html": "./snippets/example.html"},
+        editingConfig: {"./snippets/example": {category}},
+      })},
+      directories: {snippets: {files: {"example.html": "<p>Example</p>"}}},
+    }), {urlFor})
+
+    expect(result.warnings).toEqual(valid ? [] : [expect.objectContaining({
+      code: "invalid-editing-option", path: "./snippets/example", message: expect.stringContaining("category"),
+    })])
+    expect(result.package.members[0].editingConfig?.category).toEqual(category)
+  })
+
+  it.each([
     {formats: {importFormats: ["text/javascript", ".js"], exportFormats: []}, invalid: []},
     {formats: {importFormats: ".js", exportFormats: ["image/*"]}, invalid: ["importFormats", "exportFormats"]},
     {formats: {importFormats: ["ul"], exportFormats: [42]}, invalid: ["importFormats", "exportFormats"]},
@@ -188,6 +226,28 @@ describe("local package checks", () => {
       path: "./widgets/demo-widget",
       message: expect.stringContaining("sharedData"),
     })])
+  })
+
+  it.each([
+    {excludedDescendants: ["demo-widget", "table"], valid: true},
+    {excludedDescendants: [], valid: true},
+    {excludedDescendants: "demo-widget", valid: false},
+    {excludedDescendants: ["div > table"], valid: false},
+  ])("validates descendant exclusions $excludedDescendants", async ({excludedDescendants, valid}) => {
+    const result = await loadLocalPackage(nestedDirectory({
+      files: {"package.json": JSON.stringify({
+        name: "@local/demo",
+        version: "0.1.0",
+        exports: {"./widgets/demo-widget.js": "./dist/demo.js"},
+        editingConfig: {"./widgets/demo-widget": {excludedDescendants}},
+      })},
+      directories: {dist: {files: {"demo.js": "bundle"}}},
+    }), {urlFor})
+
+    expect(result.warnings).toEqual(valid ? [] : [expect.objectContaining({
+      code: "invalid-editing-option", message: expect.stringContaining("excludedDescendants"),
+    })])
+    if(valid) expect(result.package.members[0].editingConfig?.excludedDescendants).toEqual(excludedDescendants)
   })
 
   it("reports editing config the editor would ignore or reject", async () => {
@@ -266,5 +326,43 @@ describe("readLocalPackageReadme", () => {
     await expect(readLocalPackageReadme(directory({files: {"README.md": "x".repeat(PACKAGE_DOCUMENTATION_MAX_CHARS + 1)}}), {
       packageName: "@local/demo", version: "0.1.0",
     })).resolves.toMatchObject({status: "unavailable", reason: "too-large"})
+  })
+
+  it("validates split editing-config options without throwing or warning on block, self, and line", () => {
+    const contents = {
+      members: [
+        {member: {kind: "widget", exportName: "./widgets/w-self", tagName: "w-self", editingConfig: {split: "self", isolating: false}}},
+        {member: {kind: "widget", exportName: "./widgets/w-line", tagName: "w-line", editingConfig: {split: "line"}}},
+        {member: {kind: "widget", exportName: "./widgets/w-block", tagName: "w-block", editingConfig: {split: "block"}}},
+      ],
+    } as unknown as PackageContents
+    expect(editingConfigWarnings({
+      "./widgets/w-self": {split: "self", isolating: false},
+      "./widgets/w-line": {split: "line"},
+      "./widgets/w-block": {split: "block"},
+    }, contents)).toEqual([])
+    expect(editingConfigWarnings({
+      "./widgets/w-self": {split: "invalid" as never},
+    }, contents)).toEqual([expect.objectContaining({code: "invalid-editing-option", path: "./widgets/w-self"})])
+  })
+
+  it("validates snippet dependencies and full compatible host export names", () => {
+    const editingConfig: PackageEditingConfig = {
+      "./widgets/demo-widget": {compatibleSnippets: {category: "Interact"}, equivalentTo: ["@webwriter/tasks/widgets/webwriter-task"]},
+      "./snippets/demo": {dependencies: ["@webwriter/scale"], compatibleHosts: ["@webwriter/tasks/widgets/webwriter-task"]},
+    }
+    const metadata = {name: "@local/demo", version: "0.1.0", optionalDependencies: {
+      "@webwriter/tasks": "^1.0.0", "@webwriter/scale": "^2.0.0",
+    }, exports: {"./widgets/demo-widget.js": "./widget.js", "./snippets/demo.html": "./demo.html"}}
+    const contents = packageContents(metadata, editingConfig, urlFor, undefined, "en")
+    expect(editingConfigWarnings(editingConfig, contents, metadata)).toEqual([])
+    expect(editingConfigWarnings({
+      "./widgets/demo-widget": {dependencies: ["@webwriter/scale"]},
+      "./snippets/demo": {dependencies: ["@webwriter/missing"], compatibleHosts: ["@webwriter/tasks"]},
+    }, contents, metadata).map(({message}) => message)).toEqual([
+      expect.stringContaining("cannot declare 'dependencies'"),
+      expect.stringContaining("@webwriter/missing in optionalDependencies"),
+      expect.stringContaining("invalid value for 'compatibleHosts'"),
+    ])
   })
 })
