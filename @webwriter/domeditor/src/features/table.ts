@@ -1696,8 +1696,6 @@ export class TableFeature extends EditorFeature {
       }
       if(isAppendixInteraction(event)) return
       const cell = cellForNode(event.target instanceof Node ? event.target : null)
-      // The selection capture handler owns modifier-click; leave no cell drag or
-      // column resize pending for subsequent pointer movement.
       if(!cell || modifierKeyDown(event)) {
         this.setResizeHover(null)
         this.clearCellSelection()

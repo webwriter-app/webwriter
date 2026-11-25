@@ -401,6 +401,7 @@ export class EditingSelection {
   static isSettingRanges = false
   private static layoutRanges: Range[] | null = null
   private static layoutRangeWitness: Range | null = null
+  private static exactNodeRanges = new WeakMap<Range, Element>()
 
   /** Live DOM ranges for spatial selection. The native Selection stores them
    * where supported; single-range browsers retain the remaining ranges here. */
@@ -467,12 +468,34 @@ export class EditingSelection {
     if(focus) focusEditorWindow()
     if(!element.parentNode) return
     if(this.isMultiElementSelection || this.#selection.rangeCount > 1) this.selectElements([element])
-    else if(this.#selection.rangeCount) this.range.selectNode(element)
+    else if(this.#selection.rangeCount) {
+      this.exactNodeRanges.delete(this.range)
+      this.range.selectNode(element)
+    }
     else {
       const range = document.createRange()
       range.selectNode(element)
       this.#selection.addRange(range)
     }
+  }
+
+  /** Explicitly selects the live node, including nodes normally edited as text
+   * or selected via their containing figure. */
+  static selectExactElement(element: Element) {
+    focusEditorWindow()
+    if(!element.isConnected || !element.parentNode) return
+    const range = document.createRange()
+    range.selectNode(element)
+    this.exactNodeRanges.set(range, element)
+    this.selectRanges([range])
+  }
+
+  static get exactSelectedElement() {
+    if(this.#selection.rangeCount !== 1) return
+    const range = this.range
+    const element = this.exactNodeRanges.get(range)
+    if(element?.isConnected && range.startContainer === range.endContainer
+      && range.endOffset === range.startOffset + 1 && range.startContainer.childNodes[range.startOffset] === element) return element
   }
 
   /** Select independent layout items using live ranges, in document order. */
@@ -1246,6 +1269,7 @@ export class EditingSelection {
   /** Whether exactly one element is selected (anchored in its parent,
    * spanning one child). */
   static get isElementSelection() {
+    if(this.exactSelectedElement) return true
     if(this.ranges.length !== 1 || this.anchor !== this.focus || !isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
     const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
     const selected = this.anchor.childNodes.item(index)
@@ -1416,6 +1440,8 @@ export class EditingSelection {
    * every editing flow, including floated and positioned descendants. */
   static get isDocumentSelection() {
     const root = getDocumentRoot()
+    const exact = this.exactSelectedElement
+    if(exact) return exact === root || exact === document.body
     if(this.selectedElement === root || this.selectedElement === document.body) return true
     const range = this.range
     return !range.collapsed && range.startContainer === root && range.startOffset === 0

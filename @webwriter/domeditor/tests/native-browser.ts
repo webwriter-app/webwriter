@@ -6349,53 +6349,53 @@ await check("selected images inside table cells keep their own effects", async (
   }
 })
 
-await check("modifier clicks select whole tables from cells and borders", async () => {
+await check("middle clicks cycle from table contents through authored ancestors", async () => {
   const table = document.createElement("table")
   table.innerHTML = '<tbody><tr><th rowspan="2"><button>Run</button></th><td>B</td></tr><tr><td>C</td></tr></tbody>'
   table.style.cssText = "width:320px;border:2px solid black"
   table.querySelectorAll<HTMLElement>("td, th").forEach(cell => cell.style.cssText = "padding:20px;border:1px solid black")
   fixture.append(table)
-  const cell = table.querySelector("th")!
-  const button = cell.querySelector("button")!
+  const cell = table.querySelector("th")!, button = cell.querySelector("button")!
   let activations = 0
-  button.addEventListener("click", () => activations++)
+  button.addEventListener("auxclick", () => activations++)
   const click = (target: Element, x: number, y: number) => {
-    for(const type of ["pointerdown", "pointerup", "click"]) {
-      const event = new PointerEvent(type, {button: 0, bubbles: true, composed: true, cancelable: true,
-        ctrlKey: true, metaKey: true, clientX: x, clientY: y})
+    const init = {button: 1, bubbles: true, composed: true, cancelable: true, clientX: x, clientY: y}
+    target.dispatchEvent(new PointerEvent("pointerdown", {...init, buttons: 4}))
+    for(const type of ["mousedown", "mouseup", "auxclick"]) {
+      const event = new MouseEvent(type, init)
       target.dispatchEvent(event)
       assert(event.defaultPrevented, `${type} reached native activation`)
     }
   }
   try {
-    for(const collapse of ["collapse", "separate"]) for(const captionSide of ["none", "top", "bottom"]) {
+    for(const collapse of ["collapse", "separate"]) {
       table.style.borderCollapse = collapse
       table.style.borderSpacing = "8px"
-      table.caption?.remove()
-      if(captionSide !== "none") {
-        const caption = table.createCaption()
-        caption.textContent = "Table caption"
-        caption.style.captionSide = captionSide
-      }
-      table.scrollIntoView()
+      button.scrollIntoView({block: "center", behavior: "instant"})
       await layoutFrame()
-      const rect = table.getBoundingClientRect(), box = cell.getBoundingClientRect()
-      const top = captionSide === "top" ? table.caption!.getBoundingClientRect().bottom : rect.top
-      const bottom = captionSide === "bottom" ? table.caption!.getBoundingClientRect().top : rect.bottom
-      click(button, box.left + box.width / 2, box.top + box.height / 2)
-      assert($.selectedElement === table && !editor.features.table.hasCellSelection, `${collapse}: cell interior did not select the table`)
-      const next = table.querySelector("td")!.getBoundingClientRect()
-      click(table, (box.right + next.left) / 2, next.top + next.height / 2)
-      assert($.selectedElement === table && !editor.features.table.hasCellSelection, `${collapse}: inner border did not select the table`)
-      for(const [x, y] of [[rect.left + 1, (top + bottom) / 2], [rect.right - 1, (top + bottom) / 2],
-        [rect.left + rect.width / 2, top + 1], [rect.left + rect.width / 2, bottom - 1]]) {
-        click(table, x, y)
-        assert($.selectedElement === table && !editor.features.table.hasCellSelection, `${collapse}: outer border did not select the table`)
+      const rect = button.getBoundingClientRect()
+      const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
+      const path = [button, cell, cell.parentElement!, table.tBodies[0], table, fixture, button]
+      for(const target of path) {
+        const beneath = editor.hitTestBeneathAppendix(() => document.elementFromPoint(x, y))
+        assert(beneath && button.contains(beneath), `${collapse}: the click moved off the button`)
+        const surface = editor.appendix.elementFromPoint(x, y)
+        click(surface?.matches('[part~="node-drag-surface"]') ? surface : button, x, y)
+        await layoutFrame()
+        assert($.selectedElement === target && !editor.features.table.hasCellSelection,
+          `${collapse}: expected ${target.localName} in the selection cycle`)
+        assert(hasPresentationState(target, "element-selected"), `${target.localName} has no node selection marker`)
+        assert(!$.isDocumentSelection, "the cycle selected Document")
       }
-      click(button, box.left + box.width / 2, box.top + box.height / 2)
-      assert($.selectedElement === table && !editor.features.table.hasCellSelection, `${collapse}: repeated modifier-click lost table selection`)
+      const caption = table.createCaption()
+      caption.textContent = "Table caption"
+      const bounds = caption.getBoundingClientRect()
+      click(caption, bounds.left + 5, bounds.top + 5)
+      await layoutFrame()
+      assert($.selectedElement === caption, "caption was not selected as a node")
+      caption.remove()
     }
-    assert(!activations, "modifier-click activated a cell control")
+    assert(!activations, "middle-click activated a cell control")
     assert(!editor.toHTML(true).includes("◆"), "cell selection markers leaked into serialization")
   }
   finally {
@@ -8378,7 +8378,7 @@ await check("dead-key composition stays outside authored formulas", async () => 
   finally { paragraph.remove(); editor.features.math.refresh() }
 })
 
-await check("repeated canvas modifier selections preserve item placement and camera", async () => {
+await check("repeated canvas middle-click selections preserve item placement and camera", async () => {
   for(const tag of ["ul", "p", "canvas-selection-widget"]) {
     const frame = document.createElement("iframe")
     frame.style.cssText = "width:900px;height:600px"
@@ -8403,17 +8403,19 @@ await check("repeated canvas modifier selections preserve item placement and cam
           await layoutFrame()
         }
         const camera = slot.style.transform, initial = item.getBoundingClientRect()
+        const mark = item.querySelector("em")!
+        const path = tag === "ul" ? [mark, mark.parentElement!, item] : tag === "p" ? [mark, item] : [item]
         for(let i = 0; i < 6; i++) {
-          const rect = item.getBoundingClientRect()
-          // The left padding selects the list itself, toggling the final item
-          // off on every second click, as in issue #256.
-          const options = {bubbles: true, composed: true, cancelable: true, pointerId: 91, button: 0,
-            ctrlKey: true, metaKey: true, clientX: rect.left + 10, clientY: rect.top + 10}
-          item.dispatchEvent(new view.PointerEvent("pointerdown", options))
-          item.dispatchEvent(new view.PointerEvent("pointerup", options))
-          item.dispatchEvent(new view.MouseEvent("click", options))
+          const rect = mark.getBoundingClientRect()
+          const options = {bubbles: true, composed: true, cancelable: true, pointerId: 91, button: 1,
+            clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2}
+          mark.dispatchEvent(new view.PointerEvent("pointerdown", {...options, buttons: 4}))
+          mark.dispatchEvent(new view.PointerEvent("pointerup", options))
+          mark.dispatchEvent(new view.MouseEvent("auxclick", options))
           await layoutFrame()
-          assert((i % 2 === 0) === hasPresentationState(item, "element-selected"), `${tag}: modifier click did not toggle selection`)
+          const expected = path[i % path.length]
+          assert(path.every(target => hasPresentationState(target, "element-selected") === (target === expected)),
+            `${tag}: middle-click did not select ${expected.localName}`)
           assert(slot.style.transform === camera, `${tag} at ${zoom}: selection ${i} moved the camera: ${camera} -> ${slot.style.transform}`)
           const after = item.getBoundingClientRect()
           assert(Math.abs(after.left - initial.left) < .01 && Math.abs(after.top - initial.top) < .01,

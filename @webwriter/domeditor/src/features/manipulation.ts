@@ -3200,6 +3200,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!selection?.anchorNode || !selection.focusNode || selection.rangeCount === 0) return root
     const selectedElement = $.selectedElement
     if(inAuthoredBody(selectedElement)) {
+      if($.exactSelectedElement === selectedElement) return selectedElement
       const summary = selectedElement.closest("details:not([is]) > summary")
       if(summary && !atomicEditingContainer(selectedElement, this.editor.schema)) return summary.parentElement!
       return figureSelectionTarget(selectedElement)
@@ -4687,7 +4688,7 @@ export class ManipulationFeature extends EditorFeature {
     const placement = this.insertionPlacementCheck(point, false)
     const locked = this.editor.isEditingLocked || !root.contains(point) && !spatial || !features.board.allowsSelection(range)
       || !spatial && Boolean(atomicEditingContainer(point, schema))
-    const inList = !spatial && [range?.startContainer, range?.endContainer].some(node => node && getContainer(node).closest("li, dt, dd"))
+    const inList = !spatial && [range?.startContainer, range?.endContainer].some(node => node && getContainer(node)?.closest?.("li, dt, dd"))
     const inPopup = !spatial && Boolean(popupContentAncestor(selected ?? point) || popupContentAncestor(range?.endContainer ?? null))
     const parent = getContainer(point) ?? root
     const scope = this.widgetEditingScope(parent)

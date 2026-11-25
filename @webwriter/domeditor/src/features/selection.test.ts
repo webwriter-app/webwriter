@@ -5,12 +5,13 @@ import * as Y from "yjs"
 
 import { DOMEditor } from "../domeditor"
 import { SelectionFeature, nativeCaretHosts } from "./selection"
-import { $ } from "../utility"
+import { $, pathFromNode } from "../utility"
 import {hasPresentationState, presentationStateElements, setPresentationState, setPresentationStates} from "../presentation-state.js"
 import { replayHostPointer, selectionChangeEvent } from "../editor-bridge"
 import {elementAttributeState, elementAttributeTargetId} from "../element-attributes"
 import {sharedDOMBody} from "../domdoc"
 import {hasAnchorTarget} from "../anchor-positioning.test-utils"
+import {openFrameLinksInNewTabs} from "../frame-links"
 
 let editor: DOMEditor
 let feature: SelectionFeature
@@ -23,6 +24,19 @@ function pointerClick(target: EventTarget, down: MouseEvent) {
     clientX: down.clientX, clientY: down.clientY, pointerId: (down as PointerEvent).pointerId}
   target.dispatchEvent(down instanceof PointerEvent ? new PointerEvent("pointerup", init) : new MouseEvent("pointerup", init))
   target.dispatchEvent(new MouseEvent("click", init))
+}
+
+function middleClick(target: EventTarget, options: MouseEventInit = {}) {
+  const init = {button: 1, bubbles: true, composed: true, cancelable: true, ...options}
+  const down = new MouseEvent("mousedown", init)
+  const up = new MouseEvent("mouseup", init)
+  const click = new MouseEvent("auxclick", init)
+  target.dispatchEvent(new PointerEvent("pointerdown", {...init, buttons: 4}))
+  target.dispatchEvent(down)
+  target.dispatchEvent(new PointerEvent("pointerup", init))
+  target.dispatchEvent(up)
+  target.dispatchEvent(click)
+  return {down, up, click}
 }
 
 // Coordinate tests stub native hit testing. Real browser checks also cover
@@ -212,14 +226,17 @@ describe("inline popup selection", () => {
     return {wrapper, toggle, content, text: content.querySelector("em")!.firstChild!, before: document.querySelector("p")!.firstChild!, after: document.querySelector("p")!.lastChild!}
   }
 
-  it.each(["button", "[popover]"])("node-selects %s through the breadcrumb path and modifier click", selector => {
+  it.each(["button", "[popover]"])("node-selects %s through the breadcrumb path and middle-click cycle", selector => {
     const {toggle, content} = mount()
     const part = selector === "button" ? toggle : content
     const index = Array.from(part.parentNode!.childNodes).indexOf(part)
     feature.actions.selectNode({type: "selectNode", path: [0, 1, index]})
     expect($.selectedElement).toBe(part)
     $.move(document.querySelector("p")!.firstChild!, 0)
-    part.querySelector("b, em")!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
+    const child = part.querySelector("b, em")!
+    middleClick(child)
+    expect($.selectedElement).toBe(child)
+    middleClick(child)
     expect($.selectedElement).toBe(part)
   })
 
@@ -957,10 +974,10 @@ describe("widget capture opt-out", () => {
     expect(feature.captureSelectedWidget).toBe(widget)
   })
 
-  it("retains explicit modifier selection of the whole widget through a marked input", () => {
+  it("allows middle-click selection of the whole widget through a marked input", () => {
     const {widget, input} = mount()
     input.focus()
-    pointerClick(input, new PointerEvent("pointerdown", {...press, ctrlKey: true, metaKey: true}))
+    middleClick(input)
     document.dispatchEvent(new Event("selectionchange"))
     expect(feature.captureSelectedWidget).toBeNull()
     expect($.selectedElement).toBe(widget)
@@ -2081,24 +2098,17 @@ it("redirects leading summary gaps and native boundary carets into summary", () 
   expect($.isGapSelection).toBe(true)
 })
 
-it.each([
-  {selector: "summary", content: ""}, {selector: "summary", content: "<p>Body</p>"},
-  {selector: "b", content: "<p>Body</p>"},
-])("modifier-click on $selector selects its details element with body '$content'", ({selector, content}) => {
-  document.body.innerHTML = `<details><summary><b>Title</b></summary>${content}</details>`
+it("cycles from a mark through its summary and details without toggling disclosure", () => {
+  document.body.innerHTML = '<details><summary><b>Title</b></summary><p>Body</p></details>'
   const details = document.querySelector("details")!
-  const target = document.querySelector(selector)!
-  const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, metaKey: true, ctrlKey: true})
-
-  target.dispatchEvent(event)
-
-  expect(event.defaultPrevented).toBe(true)
-  expect($.selectedElement).toBe(details)
-  expect(hasPresentationState(details, "element-selected") && hasPresentationState(details, "atomic-range-selected")).toBe(true)
-  expect(editor.appendix.querySelectorAll('[part~="atomic-selection-overlay"]')).toHaveLength(1)
-  target.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, button: 0, metaKey: true, ctrlKey: true}))
-  expect($.selectedElement).toBe(details)
-  expect((details as HTMLDetailsElement).open).toBe(false)
+  const summary = details.querySelector("summary")!
+  const mark = summary.querySelector("b")!
+  for(const expected of [mark, summary, details, mark]) {
+    expect(middleClick(mark).click.defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(expected)
+    expect(hasPresentationState(expected, "element-selected")).toBe(true)
+    expect(details.open).toBe(false)
+  }
 })
 
 it.each([false, true])("keeps graphic selection visible during passive geometry refreshes (capture: %s)", captured => {
@@ -2940,15 +2950,15 @@ describe("contentful widgets", () => {
     expect(widget.querySelectorAll('h2[slot="title"]')).toHaveLength(2)
   })
 
-  it.each([false, true])("selects an inner paragraph directly, including when its widget is selected (slotted: %s)", slotted => {
+  it.each([false, true])("selects an authored mark and its paragraph inside the widget (slotted: %s)", slotted => {
     const {widget, paragraph} = timeline(slotted)
     for(const selected of [document.body, widget]) {
       $.selectElement(selected)
       feature.processSelection()
-      paragraph.querySelector("b")!.dispatchEvent(new MouseEvent("pointerdown", {
-        bubbles: true, composed: true, cancelable: true, ctrlKey: true,
-      }))
-
+      const mark = paragraph.querySelector("b")!
+      middleClick(mark)
+      expect($.selectedElement).toBe(mark)
+      middleClick(mark)
       expect($.selectedElement).toBe(paragraph)
       expect(hasPresentationState(paragraph, "element-selected")).toBe(true)
       expect(hasPresentationState(widget, "element-selected") || hasPresentationState(widget, "element-capture-selected")).toBe(false)
@@ -3018,14 +3028,14 @@ describe("contentful widgets", () => {
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
-  it.each(["host", "open", "closed"] as const)("never promotes repeated modifier clicks on a %s surface to capture", mode => {
+  it.each(["host", "open", "closed"] as const)("cycles through the widget from a %s surface without entering capture", mode => {
     const {widget} = timeline()
     const target = mode === "host" ? widget : document.createElement("button")
     if(mode !== "host") widget.attachShadow({mode}).append(target)
-    for(let i = 0; i < 3; i++) {
-      target.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, ctrlKey: true}))
-      expect($.selectedElement).toBe(widget)
-      expect(hasPresentationState(widget, "element-selected")).toBe(true)
+    for(const selected of [widget, widget, widget]) {
+      middleClick(target)
+      expect($.selectedElement).toBe(selected)
+      expect(hasPresentationState(selected, "element-selected")).toBe(true)
       expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
       expect(feature.isCaptureSelection).toBe(false)
     }
@@ -3236,12 +3246,12 @@ describe("contentful widgets", () => {
     expect(hasPresentationState(opaque, "element-capture-selected")).toBe(false)
   })
 
-  it("modifier-selects a contentful widget from its shadow DOM without scrolling", () => {
+  it("middle-click selects a contentful widget from its shadow DOM without scrolling", () => {
     const {widget} = timeline()
     const control = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(control)
     const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
-    control.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, ctrlKey: true, cancelable: true}))
+    middleClick(control)
     expect($.selectedElement).toBe(widget)
     expect(hasPresentationState(widget, "element-selected")).toBe(true)
     expect(scrollIntoView).not.toHaveBeenCalled()
@@ -4374,7 +4384,7 @@ describe("scrolling selections into view", () => {
     finally { vi.restoreAllMocks() }
   })
 
-  it.each(["ul", "p", "canvas-widget"])("does not reveal BODY when modifier-click deselects a canvas %s", tag => {
+  it.each(["ul", "p", "canvas-widget"])("does not reveal the selected canvas %s when middle-click wraps", tag => {
     document.body.className = "ww-canvas"
     const item = el(tag)
     item.innerHTML = tag === "ul" ? '<li>First<!--keep--></li><li>Second</li>' : 'Text<!--keep--><em>content</em>'
@@ -4383,19 +4393,12 @@ describe("scrolling selections into view", () => {
     const reveal = vi.spyOn(editor.features.canvas, "reveal").mockImplementation(() => {})
     try {
       for(let i = 0; i < 3; i++) {
-        const options = {bubbles: true, composed: true, cancelable: true, ctrlKey: true, metaKey: true}
-        const click = () => {
-          item.dispatchEvent(new MouseEvent("pointerdown", options))
-          item.dispatchEvent(new MouseEvent("pointerup", options))
-          item.dispatchEvent(new MouseEvent("click", options))
-        }
-        click()
+        middleClick(item)
         expect($.selectedElement).toBe(item)
         reveal.mockClear()
-        click()
-        expect(document.getSelection()!.isCollapsed).toBe(true)
-        expect(document.getSelection()!.focusNode).toBe(document.body)
-        feature.processSelection()
+        middleClick(item)
+        expect($.selectedElement).toBe(item)
+        feature.processSelection(undefined, {scrollIntoView: false})
         expect(reveal).not.toHaveBeenCalled()
         expect(item.style.cssText).toBe(style)
         expect(Array.from(item.childNodes)).toEqual(children)
@@ -5431,173 +5434,120 @@ describe("document listeners", () => {
     expect(message.detail.capture).toBe(true)
     expect(message.detail).not.toHaveProperty("gap")
   })
-  it("tracks modifier keys on the body", () => {
-    document.dispatchEvent(new KeyboardEvent("keydown", {ctrlKey: true, altKey: true, shiftKey: true}))
-    expect(hasPresentationState(document.body, "key-mod-down")).toBe(true)
-    expect(document.body.className).toBe("")
-    expect(getComputedStyle(document.documentElement).cursor).toBe("pointer")
-    expect(getComputedStyle(document.body).cursor).toBe("pointer")
-  })
-  it("removes the key markers on keyup", () => {
-    document.dispatchEvent(new KeyboardEvent("keydown", {ctrlKey: true, altKey: true, shiftKey: true}))
-    document.dispatchEvent(new KeyboardEvent("keyup", {}))
-    expect(hasPresentationState(document.body, "key-mod-down")).toBe(false)
-    expect(document.body.className).toBe("")
-  })
-  it.each(["blur", "focus", "hidden", "disable"])("clears modifier cursors on %s without a keyup", end => {
-    document.dispatchEvent(new KeyboardEvent("keydown", {ctrlKey: true, metaKey: true, altKey: true, shiftKey: true}))
-    if(end === "hidden") {
-      const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
-      try { document.dispatchEvent(new Event("visibilitychange")) }
-      finally { visibility.mockRestore() }
+  it.each(["ctrlKey", "metaKey"])("does not node-select with %s and a primary click", modifier => {
+    const widget = el("interactive-widget")
+    const target = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(target)
+    const received = vi.fn()
+    target.addEventListener("click", received)
+    const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue(modifier === "metaKey" ? "MacIntel" : "Win32")
+    try {
+      pointerClick(target, new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, [modifier]: true}))
+      expect(feature.captureSelectedWidget).toBe(widget)
+      expect(received).toHaveBeenCalledOnce()
+      expect(hasPresentationState(document.body, "key-mod-down")).toBe(false)
     }
-    else if(end === "disable") feature.disable()
-    else window.dispatchEvent(new Event(end))
+    finally { platform.mockRestore() }
+  })
 
-    for(const element of [document.documentElement, document.body]) {
-      expect(hasPresentationState(element, "key-mod-down")).toBe(false)
-      expect(element).not.toHaveClass("◆key-alt-down")
-      expect(element).not.toHaveClass("◆key-shift-down")
-      expect(getComputedStyle(element).cursor).not.toBe("pointer")
+  it("cycles the live authored path, marks each exact node, and wraps below Document", () => {
+    document.body.innerHTML = '<section><!--keep--><p>Before <span><strong>word</strong></span></p></section>'
+    const original = editor.toHTML(true)
+    const leaf = document.querySelector("strong")!
+    const path = [leaf, leaf.parentElement!, document.querySelector("p")!, document.querySelector("section")!, leaf]
+    const post = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+    try {
+      for(const [index, target] of path.entries()) {
+        const {down, up, click} = middleClick(leaf)
+        expect([down, up, click].every(event => event.defaultPrevented)).toBe(true)
+        feature.processSelection(undefined, {scrollIntoView: false})
+        expect($.selectedElement).toBe(target)
+        const message = post.mock.calls.findLast(([message]) => message.type === selectionChangeEvent)?.[0]
+        expect(message?.detail.path.at(-1)?.path).toEqual(pathFromNode(document.body, target))
+        expect(message?.detail.element?.path).toEqual(pathFromNode(document.body, target))
+        expect(hasPresentationState(target, "element-selected")).toBe(true)
+        if(index) expect(hasPresentationState(path[index - 1], "element-selected")).toBe(false)
+        expect($.isDocumentSelection).toBe(false)
+      }
     }
+    finally { post.mockRestore() }
+    expect(middleClick(document.body).click.defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(leaf)
+    expect(editor.toHTML(true)).toBe(original)
   })
-  it.each(["pointermove", "pointerdown"])("refreshes modifier state from %s after returning to the editor", type => {
-    const paragraph = el("p", "hello")
-    document.dispatchEvent(new KeyboardEvent("keydown", {ctrlKey: true, metaKey: true}))
-    window.dispatchEvent(new Event("blur"))
-    window.dispatchEvent(new Event("focus"))
-    paragraph.dispatchEvent(new MouseEvent(type, {bubbles: true, button: 2, ctrlKey: true, metaKey: true, altKey: true, shiftKey: true}))
-    expect(hasPresentationState(document.body, "key-mod-down")).toBe(true)
 
-    // The release may also have happened outside the document without a blur.
-    paragraph.dispatchEvent(new MouseEvent(type, {bubbles: true, button: 2}))
-    for(const element of [document.documentElement, document.body]) {
-      expect(hasPresentationState(element, "key-mod-down")).toBe(false)
-      expect(element).not.toHaveClass("◆key-alt-down")
-      expect(element).not.toHaveClass("◆key-shift-down")
-    }
-  })
-  it("selects an element on modifier pointerdown", () => {
-    const p = el("p", "hello")
-    const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true})
-    p.dispatchEvent(event)
-    expect(event.defaultPrevented).toBe(true)
-    expect($.selectedElement).toBe(p)
-    expect(hasPresentationState(p, "element-selected")).toBe(true)
-  })
-  it.each(["figure", "img", "figcaption", "figcaption span"])("modifier-click on %s selects the containing figure", selector => {
-    document.body.innerHTML = '<figure><img><figcaption><span>Caption</span></figcaption></figure><p>Other</p>'
-    const figure = document.querySelector("figure")!
-    const target = document.querySelector(selector)!
-    for(const type of ["pointerdown", "pointerup", "click"]) {
-      const event = new MouseEvent(type, {bubbles: true, cancelable: true, metaKey: true, ctrlKey: true})
-      target.dispatchEvent(event)
-      expect(event.defaultPrevented).toBe(true)
-    }
-    expect($.selectedElement).toBe(figure)
-    expect(hasPresentationState(figure, "element-selected")).toBe(true)
-    expect(hasPresentationState(document.querySelector("figcaption"), "element-selected")).toBe(false)
-  })
-  it.each(["body", "html", "span", "section"])("does not select the document on modifier-click of %s", tag => {
-    document.body.innerHTML = '<p>hello</p><span>inline</span><section>section text</section>'
-    const paragraph = document.querySelector("p")!
-    feature.selectElement(paragraph)
-    const target = document.querySelector(tag)!
-
-    for(const type of ["pointerdown", "click"]) {
-      const event = new MouseEvent(type, {bubbles: true, cancelable: true, metaKey: true, ctrlKey: true})
-      target.dispatchEvent(event)
-      expect(event.defaultPrevented).toBe(true)
-    }
-
+  it("starts at a different leaf and follows new parents after a live DOM move", () => {
+    document.body.innerHTML = '<section><p><span>A</span><em>B</em></p></section><aside></aside>'
+    const first = document.querySelector("span")!, second = document.querySelector("em")!
+    const paragraph = document.querySelector("p")!, aside = document.querySelector("aside")!
+    middleClick(first)
+    middleClick(first)
     expect($.selectedElement).toBe(paragraph)
-    expect(hasPresentationState(document.body, "element-selected")).toBe(false)
-    feature.actions.selectNode({type: "selectNode", path: []})
-    expect($.selectedElement).toBe(document.body)
+    middleClick(second)
+    expect($.selectedElement).toBe(second)
+    middleClick(second)
+    expect($.selectedElement).toBe(paragraph)
+    aside.append(paragraph)
+    middleClick(second)
+    expect($.selectedElement).toBe(second)
+    middleClick(second)
+    expect($.selectedElement).toBe(paragraph)
+    middleClick(second)
+    expect($.selectedElement).toBe(aside)
   })
-  it.each(["host", "shadow"])("does not modifier-select the document template from its %s", surface => {
+
+  it.each(["img", "figcaption", "br", "wbr", "rect"])("middle-click selects the exact authored <%s>", tag => {
+    document.body.innerHTML = '<figure><img><figcaption>Caption</figcaption></figure><p>a<br>b<wbr>c</p><svg><rect/></svg>'
+    const target = document.querySelector(tag)!
+    middleClick(target)
+    expect($.selectedElement).toBe(target)
+    expect(editor.features.manipulation.styleTarget).toBe(target)
+    expect(hasPresentationState(target, "element-selected")).toBe(true)
+    middleClick(target)
+    expect($.selectedElement).toBe(target.parentElement)
+  })
+
+  it.each(["host", "shadow"])("stops below the document template and leaves its %s surface unselected", surface => {
     document.body.innerHTML = '<demo-widget role="document"><p>hello</p></demo-widget>'
     const template = document.body.firstElementChild!
     const paragraph = template.firstElementChild!
     const button = document.createElement("button")
     template.attachShadow({mode: "open"}).append(button, document.createElement("slot"))
-    feature.selectElement(paragraph)
     const target = surface === "host" ? template : button
-
-    for(let i = 0; i < 2; i++) {
-      for(const type of ["pointerdown", "click"]) {
-        const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, metaKey: true, ctrlKey: true})
-        target.dispatchEvent(event)
-        expect(event.defaultPrevented).toBe(true)
-      }
-      expect($.selectedElement).toBe(paragraph)
-      expect(feature.isCaptureSelection).toBe(false)
-      expect(hasPresentationState(template, "element-selected") || hasPresentationState(template, "element-capture-selected")).toBe(false)
-    }
-
-    paragraph.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, metaKey: true, ctrlKey: true}))
+    middleClick(paragraph)
     expect($.selectedElement).toBe(paragraph)
-    feature.actions.selectNode({type: "selectNode", path: [0]})
-    expect($.selectedElement).toBe(template)
-    expect(hasPresentationState(template, "element-selected")).toBe(true)
+    middleClick(paragraph)
+    expect($.selectedElement).toBe(paragraph)
+    expect($.isDocumentSelection).toBe(false)
+    middleClick(target)
+    expect($.selectedElement).toBe(paragraph)
+    expect(feature.isCaptureSelection).toBe(false)
   })
-  it("prevents the default modifier-click action", () => {
-    const link = document.createElement("a")
-    link.href = "#target"
-    appendToBody(link)
-    link.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
-    const event = new MouseEvent("click", {bubbles: true, cancelable: true, ctrlKey: true})
 
-    link.dispatchEvent(event)
-
-    expect(event.defaultPrevented).toBe(true)
-  })
-  it("selects the containing block rather than a clicked mark on modifier pointerdown", () => {
-    document.body.innerHTML = "<p><b>hello</b></p>"
-    const p = document.querySelector("p")!
-    document.querySelector("b")!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
-    expect($.selectedElement).toBe(p)
-    expect(hasPresentationState(p, "element-selected")).toBe(true)
-  })
-  it("selects the containing block rather than a clicked phrase on modifier pointerdown", () => {
-    document.body.innerHTML = "<p><span>hello</span></p>"
-    const p = document.querySelector("p")!
-    document.querySelector("span")!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
-    expect($.selectedElement).toBe(p)
-    expect(hasPresentationState(p, "element-selected")).toBe(true)
-  })
-  it.each(["br", "wbr"])("does not node-select <%s> itself on modifier pointerdown", tag => {
-    document.body.innerHTML = `<p>a<${tag}>b</p>`
-    const p = document.querySelector("p")!
-    document.querySelector(tag)!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
-    expect($.selectedElement).toBe(p)
-    expect(hasPresentationState(p, "element-selected")).toBe(true)
-  })
-  it.each(["open", "closed", "light-button", "light-control"] as const)("keeps modifier interactions with a %s widget selected as a node", kind => {
-    const widget = document.createElement("interactive-widget")
-    const target = kind === "light-control" ? document.createElement("input") : document.createElement("button")
-    if(kind === "open" || kind === "closed") widget.attachShadow({mode: kind}).append(target)
-    else widget.append(target)
-    appendToBody(widget)
-    const received = vi.fn((event: Event) => {
-      event.stopPropagation()
-      event.preventDefault()
-    })
-    for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) target.addEventListener(type, received)
-
-    for(let click = 0; click < 3; click++) {
-      for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) {
-        const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, metaKey: true, ctrlKey: true})
-        target.dispatchEvent(event)
-        expect(event.defaultPrevented).toBe(true)
-      }
-      expect($.selectedElement).toBe(widget)
-      expect(hasPresentationState(widget, "element-selected")).toBe(true)
-      expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
+  it.each([false, true])("selects authored link contents and lets the frame open the link (covered: %s)", covered => {
+    document.body.innerHTML = '<p><a href="https://example.com/"><strong>Link</strong></a></p>'
+    const label = document.querySelector("strong")!
+    const opened = vi.spyOn(window, "open").mockImplementation(() => null)
+    const disconnect = openFrameLinksInNewTabs(window)
+    const surface = document.createElement("div")
+    surface.setAttribute("part", "node-drag-surface")
+    if(covered) editor.addAppendix(surface)
+    const hit = vi.spyOn(document, "elementFromPoint").mockReturnValue(label)
+    try {
+      const activation = vi.fn((event: Event) => expect(event.defaultPrevented).toBe(false))
+      const target = covered ? surface : label
+      target.addEventListener("auxclick", activation)
+      const {down, up} = middleClick(target)
+      expect(down.defaultPrevented).toBe(covered)
+      expect(up.defaultPrevented).toBe(covered)
+      expect($.selectedElement).toBe(label)
+      expect(activation).toHaveBeenCalledOnce()
+      expect(opened).toHaveBeenCalledWith("https://example.com/", "_blank", "noopener,noreferrer")
     }
-    expect(received).not.toHaveBeenCalled()
+    finally { hit.mockRestore(); disconnect(); opened.mockRestore() }
   })
-  it.each(["open", "closed", "light-button", "light-control"] as const)("intercepts modifier interactions in a capture-selected %s widget", kind => {
+
+  it.each(["open", "closed", "light-button", "light-control"] as const)("selects a captured atomic widget from its %s surface", kind => {
     const widget = document.createElement("interactive-widget")
     const target = kind === "light-control" ? document.createElement("input") : document.createElement("button")
     if(kind === "open" || kind === "closed") widget.attachShadow({mode: kind}).append(target)
@@ -5606,74 +5556,49 @@ describe("document listeners", () => {
     feature.captureElement(widget)
     target.focus()
     const received = vi.fn()
-    for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) target.addEventListener(type, received, {capture: true})
-
-    for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) {
-      const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, ctrlKey: true, metaKey: true})
-      target.dispatchEvent(event)
-      expect(event.defaultPrevented).toBe(true)
-    }
-
+    for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "auxclick"]) target.addEventListener(type, received)
+    middleClick(target)
     expect(received).not.toHaveBeenCalled()
     expect($.selectedElement).toBe(widget)
     expect(feature.isCaptureSelection).toBe(false)
     expect(hasPresentationState(widget, "element-selected")).toBe(true)
     expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
   })
-  it.each(["audio", "video", "iframe", "input", "button", "select", "textarea", "svg"])("intercepts modifier activation of a capture-selected <%s> before target handlers", tag => {
-    const target = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", tag) : document.createElement(tag)
-    if(target instanceof HTMLMediaElement) target.controls = true
-    appendToBody(target)
-    const received = vi.fn()
-    const types = ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]
-    for(const type of types) target.addEventListener(type, received, {capture: true})
 
-    for(const modifier of ["ctrlKey", "metaKey"]) {
-      const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue(modifier === "metaKey" ? "MacIntel" : "Win32")
-      try {
-        feature.captureElement(target)
-        for(const type of types) {
-          const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, [modifier]: true})
-          target.dispatchEvent(event)
-          expect(event.defaultPrevented).toBe(true)
-        }
-        expect($.selectedElement).toBe(target)
-        expect(feature.isCaptureSelection).toBe(false)
-        expect(hasPresentationState(target, "element-selected")).toBe(true)
-        expect(hasPresentationState(target, "element-capture-selected")).toBe(false)
-      }
-      finally { platform.mockRestore() }
+  it("leaves middle clicks in appendix controls alone", () => {
+    const paragraph = el("p", "hello")
+    feature.selectElement(paragraph)
+    const control = document.createElement("button")
+    editor.addAppendix(control)
+    const {down, up, click} = middleClick(control)
+    expect([down, up, click].some(event => event.defaultPrevented)).toBe(false)
+    expect($.selectedElement).toBe(paragraph)
+  })
+
+  it("selects authored media beneath its interaction shield", () => {
+    const media = el("video")
+    const shield = document.createElement("div")
+    shield.setAttribute("part", "media-interaction-shield")
+    editor.addAppendix(shield)
+    const hit = vi.spyOn(document, "elementFromPoint").mockReturnValue(media)
+    try {
+      expect(middleClick(shield).click.defaultPrevented).toBe(true)
+      expect($.selectedElement).toBe(media)
+      expect(feature.isCaptureSelection).toBe(false)
     }
-    expect(received).not.toHaveBeenCalled()
+    finally { hit.mockRestore() }
   })
-  it.each([false, true])("suppresses activation even when the modifier is released before the click (captured: %s)", captured => {
-    const widget = document.createElement("interactive-widget")
-    const button = document.createElement("button")
-    widget.attachShadow({mode: "open"}).append(button)
-    appendToBody(widget)
-    if(captured) feature.captureElement(widget)
-    const activated = vi.fn()
-    button.addEventListener("click", activated)
-    button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, ctrlKey: true}))
-    for(const type of ["mousedown", "pointerup", "mouseup", "click"]) {
-      const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true})
-      button.dispatchEvent(event)
-      expect(event.defaultPrevented).toBe(true)
-    }
-    expect(activated).not.toHaveBeenCalled()
-    expect($.selectedElement).toBe(widget)
-    pointerClick(button, new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
-    expect(activated).toHaveBeenCalledOnce()
+
+  it("ends a moved middle press without selecting an element", () => {
+    const p = el("p", "hello")
+    const init = {bubbles: true, composed: true, cancelable: true}
+    p.dispatchEvent(new PointerEvent("pointerdown", {...init, button: 1, buttons: 4, clientX: 5}))
+    p.dispatchEvent(new PointerEvent("pointermove", {...init, buttons: 4, clientX: 55}))
+    p.dispatchEvent(new PointerEvent("pointerup", {...init, button: 1, clientX: 5}))
+    p.dispatchEvent(new MouseEvent("auxclick", {...init, button: 1, clientX: 5}))
+    expect($.selectedElement).toBeUndefined()
   })
-  it.each([false, true])("takes precedence over canvas background box selection after re-enabling: %s", reenable => {
-    editor.setDocumentLayout("canvas", "document")
-    if(reenable) { feature.disable(); feature.enable() }
-    const boxSelection = vi.spyOn(feature, "beginBoxSelection")
-    const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true})
-    document.body.dispatchEvent(event)
-    expect(event.defaultPrevented).toBe(true)
-    expect(boxSelection).not.toHaveBeenCalled()
-  })
+
   it.each(["host", "open", "closed"] as const)("capture-selects an element-selected widget on an ordinary click in its %s content", kind => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
@@ -5972,11 +5897,7 @@ describe("document listeners", () => {
     document.getSelection()?.setPosition(document.body, 0)
     const paragraph = el("p", "hello")
 
-    paragraph.dispatchEvent(new MouseEvent("pointerdown", {
-      bubbles: true,
-      cancelable: true,
-      ctrlKey: true,
-    }))
+    middleClick(paragraph)
 
     expect(feature.isCaptureSelection).toBe(false)
     expect($.selectedElement).toBe(paragraph)
@@ -6586,39 +6507,18 @@ describe("explicit section selection lifecycle", () => {
   })
 })
 
-it("toggles an item in a freeform multi-selection on modifier-click", () => {
-  const first = el("p", "first")
-  const second = el("p", "second")
-  expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
-  for(const target of [first, second]) target.dispatchEvent(new MouseEvent("pointerdown", {
-    bubbles: true, cancelable: true, button: 0, ctrlKey: true, metaKey: true,
-  }))
-  expect($.selectedElements).toEqual([first, second])
-
-  first.dispatchEvent(new MouseEvent("pointerdown", {
-    bubbles: true, cancelable: true, button: 0, ctrlKey: true, metaKey: true,
-  }))
-  expect($.selectedElements).toEqual([second])
-  expect(hasPresentationState(first, "element-selected")).toBe(false)
-  expect(hasPresentationState(second, "element-selected")).toBe(true)
-  expect(editor.toHTML(true)).not.toContain("◆element-selected")
-})
-
-it("toggles all members of a saved canvas group together on modifier-click", () => {
-  const first = el("p", "first"), second = el("p", "second"), outside = el("p", "outside")
+it("selects a single canvas item from an existing group selection", () => {
+  const first = el("p", "first"), second = el("p", "second")
   expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
   $.selectElements([first, second])
   expect(editor.features.transformation.setSpatialGrouping("group")).toBe(true)
-  feature.selectElement(outside)
-  const toggle = (target: Element) => target.dispatchEvent(new PointerEvent("pointerdown", {
-    bubbles: true, cancelable: true, button: 0, ctrlKey: true, metaKey: true,
-  }))
-  toggle(second)
-  expect($.selectedElements).toEqual([first, second, outside])
-  toggle(first)
-  expect($.selectedElements).toEqual([outside])
+  middleClick(second)
+  expect($.selectedElements).toEqual([second])
+  expect(hasPresentationState(first, "element-selected")).toBe(false)
+  expect(hasPresentationState(second, "element-selected")).toBe(true)
+  middleClick(second)
+  expect($.selectedElements).toEqual([second])
 })
-
 
 describe("divider selection", () => {
   const press = (key: string) => {

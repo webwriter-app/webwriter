@@ -330,7 +330,7 @@ describe("Board layout", () => {
     expect(document.querySelector(".ww-board-group, .ww-board-column, .ww-board-card")).toBeNull()
   })
 
-  it.each(["breadcrumb", "modifier-click"])("selects and formats each column heading independently through %s", async source => {
+  it.each(["breadcrumb", "middle-click"])("selects and formats each column heading independently through %s", async source => {
     convert("board"); board().addColumn(); board().addColumn()
     const headings = columns().map((column, i) => {
       const heading = column.querySelector("h2")!
@@ -343,7 +343,13 @@ describe("Board layout", () => {
       if(!index) continue
       const content = Array.from(heading.childNodes)
       if(source === "breadcrumb") editor.features.selection.actions.selectNode({type: "selectNode", path: pathFromNode(document.body, heading)!})
-      else heading.querySelector("em")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, ctrlKey: true, metaKey: true}))
+      else {
+        const mark = heading.querySelector("em")!
+        const click = () => mark.dispatchEvent(new MouseEvent("auxclick", {bubbles: true, composed: true, cancelable: true, button: 1}))
+        click()
+        expect($.selectedElement).toBe(mark)
+        click()
+      }
       expect($.selectedElement).toBe(heading)
       expect(board().allowsSelection()).toBe(true)
       editor.features.manipulation.setStyle({color: "red"})
