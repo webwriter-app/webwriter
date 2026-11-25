@@ -5,7 +5,7 @@ import * as Y from "yjs"
 
 import { DOMEditor } from "../domeditor"
 import { SelectionFeature, nativeCaretHosts } from "./selection"
-import { $, pathFromNode } from "../utility"
+import { $, pathFromNode, widgetHostForShadowInteraction, widgetSlotContentFromCoords } from "../utility"
 import {hasPresentationState, presentationStateElements, setPresentationState, setPresentationStates} from "../presentation-state.js"
 import { replayHostPointer, selectionChangeEvent } from "../editor-bridge"
 import {elementAttributeState, elementAttributeTargetId} from "../element-attributes"
@@ -801,6 +801,150 @@ describe("gap clicks inside widget pages", () => {
     expect(event.defaultPrevented).toBe(false)
     expect(feature.captureSelectedWidget).toBe(organizer)
     expect(hasPresentationState(document.body, "gap-caret-visible")).toBe(false)
+  })
+
+  describe("text-only inline widgets", () => {
+    const mountText = (text: string) => {
+      editor.schema.extendWidgets([{tagName: "text-gap", editingConfig: {content: "text*"}}])
+      document.body.innerHTML = `<p>Fill <text-gap>${text}</text-gap> in</p>`
+      const widget = document.querySelector("text-gap")!
+      const root = widget.attachShadow({mode: "open"})
+      root.innerHTML = '<div class="edit"><slot></slot><button class="remove"></button></div>'
+      const edit = root.querySelector(".edit")!, remove = root.querySelector(".remove")!
+      vi.spyOn(edit, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 100, 30))
+      editor.features.widget.refresh()
+      return {widget, edit, remove}
+    }
+
+    it("treats the box around slotted text as the widget's content", () => {
+      const {widget, edit} = mountText("answer")
+      expect(widgetSlotContentFromCoords(30, 30, edit, editor.schema)?.element).toBe(widget)
+      expect(widgetSlotContentFromCoords(300, 30, edit, editor.schema)).toBeUndefined()
+      const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, clientX: 30, clientY: 30})
+      edit.dispatchEvent(event)
+      expect(widgetHostForShadowInteraction(event, editor.schema)).toBeNull()
+    })
+
+    it("keeps a control inside the box private", () => {
+      const {widget, remove} = mountText("answer")
+      expect(widgetSlotContentFromCoords(30, 30, remove, editor.schema)).toBeUndefined()
+      const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, clientX: 30, clientY: 30})
+      remove.dispatchEvent(event)
+      expect(widgetHostForShadowInteraction(event, editor.schema)).toBe(widget)
+    })
+
+    it("ignores indentation-only whitespace", () => {
+      const {edit} = mountText("\n  ")
+      expect(widgetSlotContentFromCoords(30, 30, edit, editor.schema)).toBeUndefined()
+    })
+
+    it("does not capture-select on light-DOM focusin of the inline widget host", () => {
+      const {widget} = mountText("answer")
+      const event = new FocusEvent("focusin", {bubbles: true, composed: true})
+      widget.dispatchEvent(event)
+      expect(feature.captureSelectedWidget).toBeNull()
+      expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
+    })
+
+    it("places caret in padding of an inline text-surface inside a tabindex=-1 outer widget without capture flashing", () => {
+      editor.schema.extendWidgets([
+        {tagName: "outer-gap-task", editingConfig: {content: "flow+"}},
+        {tagName: "text-gap", editingConfig: {content: "text*"}},
+      ])
+      document.body.innerHTML = `<outer-gap-task><p>Fill <text-gap>answer</text-gap> in</p></outer-gap-task>`
+      const outer = document.querySelector("outer-gap-task")!
+      const outerRoot = outer.attachShadow({mode: "open"})
+      outerRoot.innerHTML = '<div class="card" tabindex="-1"><slot></slot></div>'
+      const widget = outer.querySelector("text-gap")!
+      const widgetRoot = widget.attachShadow({mode: "open"})
+      widgetRoot.innerHTML = '<div class="edit"><slot></slot><button class="remove"></button></div>'
+      const edit = widgetRoot.querySelector(".edit")!
+      const text = widget.firstChild as Text
+      const rectSpy = vi.spyOn(edit, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 120, 30))
+      const efpSpy = vi.spyOn(document, "elementFromPoint").mockReturnValue(outer)
+      ;(outerRoot as unknown as {elementFromPoint: (x: number, y: number) => Element | null}).elementFromPoint = () => widget
+      ;(widgetRoot as unknown as {elementFromPoint: (x: number, y: number) => Element | null}).elementFromPoint = () => edit
+      const rangeRectsSpy = vi.spyOn(Range.prototype, "getClientRects").mockImplementation(function(this: Range) {
+        if(this.startContainer !== text || this.endContainer !== text) return [] as unknown as DOMRectList
+        const left = 26 + this.startOffset * 8
+        const width = (this.endOffset - this.startOffset) * 8
+        return [new DOMRect(left, 25, width, 20)] as unknown as DOMRectList
+      })
+      try {
+        editor.features.widget.refresh()
+        const pointerdown = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 110, clientY: 30})
+        edit.dispatchEvent(pointerdown)
+        const mousedown = new MouseEvent("mousedown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 110, clientY: 30})
+        edit.dispatchEvent(mousedown)
+        expect(pointerdown.defaultPrevented).toBe(true)
+        expect(mousedown.defaultPrevented).toBe(true)
+        expect(document.getSelection()?.isCollapsed).toBe(true)
+        expect(document.getSelection()?.anchorNode).toBe(text)
+        expect(document.getSelection()?.anchorOffset).toBe(text.length)
+        expect(feature.captureSelectedWidget).toBeNull()
+        expect(hasPresentationState(outer, "element-capture-selected")).toBe(false)
+        expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
+      } finally {
+        rangeRectsSpy.mockRestore()
+        efpSpy.mockRestore()
+        rectSpy.mockRestore()
+      }
+    })
+
+    it("prevents capture flash on host-targeted vertical-padding repeated and double clicks inside a tabindex=-1 outer widget", () => {
+      editor.schema.extendWidgets([
+        {tagName: "outer-gap-task", editingConfig: {content: "flow+"}},
+        {tagName: "text-gap", editingConfig: {content: "text*"}},
+      ])
+      document.body.innerHTML = `<outer-gap-task><p>Fill <text-gap>answer</text-gap> in</p></outer-gap-task>`
+      const outer = document.querySelector("outer-gap-task")!
+      const outerRoot = outer.attachShadow({mode: "open"})
+      outerRoot.innerHTML = '<div class="card" tabindex="-1"><slot></slot></div>'
+      const widget = outer.querySelector("text-gap")!
+      const widgetRoot = widget.attachShadow({mode: "open"})
+      widgetRoot.innerHTML = '<div class="edit"><slot></slot><button class="remove"></button></div>'
+      const edit = widgetRoot.querySelector(".edit")!
+      const text = widget.firstChild as Text
+      const rectSpy = vi.spyOn(edit, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 120, 30))
+      const efpSpy = vi.spyOn(document, "elementFromPoint").mockReturnValue(widget)
+      ;(widgetRoot as unknown as {elementFromPoint: (x: number, y: number) => Element | null}).elementFromPoint = () => widget
+      const rangeRectsSpy = vi.spyOn(Range.prototype, "getClientRects").mockImplementation(function(this: Range) {
+        if(this.startContainer !== text || this.endContainer !== text) return [] as unknown as DOMRectList
+        const left = 26 + this.startOffset * 8
+        const width = (this.endOffset - this.startOffset) * 8
+        return [new DOMRect(left, 25, width, 20)] as unknown as DOMRectList
+      })
+      try {
+        editor.features.widget.refresh()
+        const down1 = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 45, clientY: 22})
+        widget.dispatchEvent(down1)
+        const mouse1 = new MouseEvent("mousedown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 45, clientY: 22, detail: 1})
+        widget.dispatchEvent(mouse1)
+        const up1 = new PointerEvent("pointerup", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 45, clientY: 22})
+        widget.dispatchEvent(up1)
+        expect(down1.defaultPrevented).toBe(true)
+        expect(mouse1.defaultPrevented).toBe(true)
+        expect(document.getSelection()?.isCollapsed).toBe(true)
+        expect(document.getSelection()?.anchorNode).toBe(text)
+        expect(feature.captureSelectedWidget).toBeNull()
+        expect(hasPresentationState(outer, "element-capture-selected")).toBe(false)
+        expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
+
+        const down2 = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 45, clientY: 22})
+        widget.dispatchEvent(down2)
+        const mouse2 = new MouseEvent("mousedown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 45, clientY: 22, detail: 2})
+        widget.dispatchEvent(mouse2)
+        expect(down2.defaultPrevented).toBe(true)
+        expect(mouse2.defaultPrevented).toBe(true)
+        expect(feature.captureSelectedWidget).toBeNull()
+        expect(hasPresentationState(outer, "element-capture-selected")).toBe(false)
+        expect(hasPresentationState(widget, "element-capture-selected")).toBe(false)
+      } finally {
+        rangeRectsSpy.mockRestore()
+        efpSpy.mockRestore()
+        rectSpy.mockRestore()
+      }
+    })
   })
 
   const mountFlat = () => {

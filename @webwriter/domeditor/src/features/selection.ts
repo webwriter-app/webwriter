@@ -1757,7 +1757,9 @@ export class SelectionFeature extends EditorFeature {
       if(!inner || inner === target) break
       target = inner
     }
-    if(target && target.getRootNode() !== document) target = widgetSlotContentFromCoords(x, y, target, this.editor.schema)?.element ?? null
+    const slotted = target && target.getRootNode() !== document
+      ? widgetSlotContentFromCoords(x, y, target, this.editor.schema) : undefined
+    if(target && target.getRootNode() !== document) target = slotted?.element ?? null
     if(!target || atomicEditingContainer(target, this.editor.schema)) return null
     const container = getContainer(target)
     if(container && this.editor.schema.isBlock(container) && !container.textContent?.trim()
@@ -1766,7 +1768,13 @@ export class SelectionFeature extends EditorFeature {
       if(rect.width > 0 && rect.height > 0 && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return {node: container, offset: 0}
     }
     const hit = this.#textHit({clientX: x, clientY: y, target})
-    if(!hit || atomicEditingContainer(hit.node, this.editor.schema)) return null
+    if(!hit) {
+      const isTextSurface = Boolean(slotted && "textSurface" in slotted && slotted.textSurface)
+        || isContentfulWidget(target, this.editor.schema)
+          && Array.from(target.childNodes).some(node => node instanceof Text && node.data.replace(/[ \t\r\n]+/g, "").length > 0)
+      return isTextSurface ? this.#nearestTextBoundary(target, x, y) : null
+    }
+    if(atomicEditingContainer(hit.node, this.editor.schema)) return null
     const native = document.caretPositionFromPoint?.(x, y)
     if(native?.offsetNode === hit.node && (native.offset === hit.offset || native.offset === hit.offset + 1)) return {node: hit.node, offset: native.offset}
     const nativeRange = document.caretRangeFromPoint?.(x, y)
@@ -1777,6 +1785,41 @@ export class SelectionFeature extends EditorFeature {
     const rect = Array.from(range.getClientRects()).find(rect => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)
     const rtl = getComputedStyle(hit.node.parentElement!).direction === "rtl"
     return {node: hit.node, offset: hit.offset + Number(Boolean(rect && (rtl ? x < rect.left + rect.width / 2 : x > rect.left + rect.width / 2)))}
+  }
+
+  /** Find the nearest character boundary inside an inline/text-only widget surface when clicking box padding. */
+  #nearestTextBoundary(root: Element, x: number, y: number) {
+    const range = document.createRange()
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    let firstText: Text | null = null
+    let best: {text: Text, rect: DOMRect, dy: number, dx: number} | null = null
+    for(let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if(!(node instanceof Text) || atomicEditingContainer(node, this.editor.schema)
+        || node.data.replace(/[ \t\r\n]+/g, "").length === 0) continue
+      firstText ??= node
+      range.selectNodeContents(node)
+      for(const rect of Array.from(range.getClientRects())) {
+        if(rect.width <= 0 && rect.height <= 0) continue
+        const dy = y < rect.top ? rect.top - y : y > rect.bottom ? y - rect.bottom : 0
+        const dx = x < rect.left ? rect.left - x : x > rect.right ? x - rect.right : 0
+        if(!best || dy < best.dy || dy === best.dy && dx < best.dx) best = {text: node, rect, dy, dx}
+      }
+    }
+    if(!best) return firstText ? {node: firstText, offset: 0} : null
+    const {text, rect: textRect} = best
+    const rtl = text.parentElement ? getComputedStyle(text.parentElement).direction === "rtl" : false
+    if(x <= textRect.left) return {node: text, offset: rtl ? text.length : 0}
+    if(x >= textRect.right) return {node: text, offset: rtl ? 0 : text.length}
+    for(let i = 0; i < text.length; i++) {
+      range.setStart(text, i)
+      range.setEnd(text, i + 1)
+      const rects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 || rect.height > 0)
+      const charRect = rects.find(rect => rect.bottom > textRect.top && rect.top < textRect.bottom) ?? rects[0]
+      if(!charRect) continue
+      const mid = charRect.left + charRect.width / 2
+      if(rtl ? x > mid : x < mid) return {node: text, offset: i}
+    }
+    return {node: text, offset: text.length}
   }
 
   /** Captured popup and slot-padding clicks cannot always use native repeated
@@ -2139,13 +2182,24 @@ export class SelectionFeature extends EditorFeature {
     },
     focusin: event => {
       this.#invalidateFloatCandidates()
-      const widget = widgetHostForShadowInteraction(event, this.editor.schema)
+      const rawWidget = widgetHostForShadowInteraction(event, this.editor.schema)
+      // Light-DOM contenteditable focus on an open contentful host itself (with no
+      // shadow control focused and not already capture-selected/clicked) is authored editing focus.
+      const isLightDomHostFocus = Boolean(
+        rawWidget?.shadowRoot
+        && event.composedPath()[0] === rawWidget
+        && isContentfulWidget(rawWidget, this.editor.schema)
+        && !rawWidget.shadowRoot.activeElement
+        && this.captureSelectedWidget !== rawWidget
+        && this.#captureClick?.element !== rawWidget
+      )
+      const widget = isLightDomHostFocus ? null : rawWidget
       if(this.#captureClick && widget && widget !== this.#captureClick.element) this.#captureClick = null
       if(widget === this.#blurringWidget) this.#blurringWidget = null
       const selection = document.getSelection()
       this.#focusedContentfulShadow = widget && isContentfulWidget(widget, this.editor.schema)
         ? {element: widget, range: selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null} : null
-      this.#handleWidgetShadowInteraction(event)
+      if(widget) this.#handleWidgetShadowInteraction(event)
       if(!isAppendixInteraction(event) && !this.editor.features.media.isPlaceholderInteraction
         && !this.editor.features.slides.isSelectingForNavigation) {
         this.processSelection(undefined, {scrollIntoView: false})

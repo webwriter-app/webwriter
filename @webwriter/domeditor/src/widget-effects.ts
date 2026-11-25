@@ -95,7 +95,7 @@ type EffectLink = {
 type EffectOverride = {widget: Element, attribute: string, value: string}
 type EffectStatus = {message: string, cycle?: boolean}
 
-/** Discover authored widget hosts without entering the light DOM of a widget. */
+/** Discover authored widget hosts, including widgets nested inside container widgets. */
 function widgetHosts(root: HTMLElement) {
   const widgets: Element[] = []
   const pending: Element[] = root.firstElementChild ? [root.firstElementChild] : []
@@ -103,7 +103,7 @@ function widgetHosts(root: HTMLElement) {
     const element = pending.pop()!
     if(element.nextElementSibling) pending.push(element.nextElementSibling)
     if(isWidgetHost(element)) widgets.push(element)
-    else if(element.firstElementChild) pending.push(element.firstElementChild)
+    if(element.firstElementChild) pending.push(element.firstElementChild)
   }
   return widgets
 }

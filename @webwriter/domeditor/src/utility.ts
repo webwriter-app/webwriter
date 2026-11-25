@@ -2367,6 +2367,20 @@ export function widgetSlotContentFromCoords(x: number, y: number, target: EventT
     .map(element => ({element, rect: renderedClientRect(element)}))
     .filter(({rect}) => rect.height > 0 && x >= rect.left && x <= rect.right)
     .sort((a, b) => Math.max(a.rect.top - y, 0, y - a.rect.bottom) - Math.max(b.rect.top - y, 0, y - b.rect.bottom))[0]
+    ?? widgetTextSurface(x, y, target, owner, slots)
+}
+
+/** Inline or text-only contentful widgets (such as `content: "text*"`) project bare Text nodes into
+ * their slot instead of child elements. The surface around that text belongs to the authored text:
+ * the widget is the content, and the pointer is inside the box that holds it. Indentation-only
+ * whitespace between blocks does not count as text. */
+function widgetTextSurface(x: number, y: number, target: Element, owner: Element, slots: HTMLSlotElement[]) {
+  const hasText = slots.some(slot => slot.assignedNodes({flatten: true})
+    .some(node => node instanceof Text && document.body.contains(node) && node.data.replace(/[ \t\r\n]+/g, "").length > 0))
+  if(!hasText) return undefined
+  const rect = target.getBoundingClientRect()
+  if(rect.height <= 0 || rect.width <= 0 || x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return undefined
+  return {element: owner, rect, textSurface: true as const}
 }
 
 /** The editable widget host whose surface or shadow tree originated an interaction. */
