@@ -3,7 +3,7 @@ import {hasDistributionInstructions, isDistributionPI} from "../distribution-dom
 import {batchPresentationStates, clearPresentationState, hasPresentationState, setPresentationState} from "../presentation-state.js"
 import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
 import {documentThemeProperties, documentTypographyCSS, documentTypographyProperties, originalTypographyCSS} from "../document-theme-options"
-import {themeAccentProperties} from "../css-color"
+import {boxStylePresetPadding, themeAccentProperties} from "../css-color"
 import {isTokenDimension, tokenize} from "@csstools/css-tokenizer"
 import {mediaElementSelector, isMediaType, isWebMediaType, isWebsiteType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
@@ -5085,14 +5085,14 @@ export class ManipulationFeature extends EditorFeature {
       return topLevel && !this.editor.features.table.hasCellSelection
         ? this.getElementsStyleState(properties, this.topLevelStyleTargets, true) : this.getStyleState(properties)
     },
-    setStyle: ({styles, topLevel}: {type: "setStyle", styles: Record<string, ElementStyleMutation>, topLevel?: boolean}) => {
+    setStyle: ({styles, topLevel, boxPreset}: {type: "setStyle", styles: Record<string, ElementStyleMutation>, topLevel?: boolean, boxPreset?: boolean}) => {
       if(topLevel && !this.editor.features.table.hasCellSelection) {
         const targets = this.topLevelStyleTargets
         if(!targets.length) return
         const entries = this.validateElementStyles(styles)
-        this.applyStyleToElements(targets.map(target => this.documentStyleTarget(target)), entries, true)
+        this.applyStyleToElements(targets.map(target => this.documentStyleTarget(target)), entries, {wholeFigure: true, boxPreset})
       }
-      else this.setStyle(styles)
+      else this.setStyle(styles, boxPreset)
     },
     setDocumentThemeStyles: ({styles}: {type: "setDocumentThemeStyles", styles: Record<string, ElementStyleMutation>}) => {
       const entries = this.validateElementStyles(styles).filter(entry => documentThemeProperties.includes(entry.name))
@@ -6253,22 +6253,33 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Assigns inline styles to the live target or every explicitly selected
    * element. Null or an empty string clears a property. */
-  setStyle(styles: Record<string, ElementStyleMutation>) {
+  setStyle(styles: Record<string, ElementStyleMutation>, boxPreset = false) {
     const entries = this.validatedStyleEntries(styles)
     const cells = this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
     const target = this.documentStyleTarget(this.styleTarget)
-    if(cells.length || $.isMultiElementSelection || target.matches("table, td, th")) {
+    if(boxPreset || cells.length || $.isMultiElementSelection || target.matches("table, td, th")) {
       const elements = cells.length ? cells : $.isMultiElementSelection ? $.selectedElements : [target]
-      return this.applyStyleToElements(elements, entries)
+      return this.applyStyleToElements(elements, entries, {boxPreset})
     }
     if(!this.allowedElementStyles(target, entries).length) return false
     return this.withNormalization(() => this.applyElementStyleEntries(target, entries))
   }
 
-  private applyStyleToElements(elements: Element[], entries: ValidatedStyleEntry[], wholeFigure = false) {
+  private applyStyleToElements(elements: Element[], entries: ValidatedStyleEntry[],
+    {wholeFigure = false, boxPreset = false}: {wholeFigure?: boolean, boxPreset?: boolean} = {}) {
     const end = this.editor.doc.beginUndoGroup()
     try {
-      const styled = elements.filter(element => this.applyElementStyleEntries(element, entries, wholeFigure))
+      const styled = elements.filter(element => {
+        const padding = boxPreset ? boxStylePresetPadding(element) : undefined
+        if(!padding) return this.applyElementStyleEntries(element, entries, wholeFigure)
+        const style = this.inlineStyleOf(element)
+        const priority = (name: string) => style?.getPropertyPriority(name) === "important" ? "important" : ""
+        const declarations: ValidatedStyleEntry[] = [...entries, {name: "padding", value: padding, priority: priority("padding")}]
+        if(element.matches("ul, ol, menu")) {
+          declarations.push({name: "list-style-position", value: "inside", priority: priority("list-style-position")})
+        }
+        return this.applyElementStyleEntries(element, declarations, wholeFigure)
+      })
       this.mirrorCellBorders(styled, entries)
       return styled.length > 0
     }

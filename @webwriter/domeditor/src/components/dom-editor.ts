@@ -8997,6 +8997,7 @@ export class DomEditor extends LitElement {
       property?: unknown
       mutation?: unknown
       styles?: unknown
+      boxPreset?: unknown
     }>).detail
     const entries = isRecord(detail?.styles)
       ? Object.entries(detail.styles)
@@ -9040,12 +9041,13 @@ export class DomEditor extends LitElement {
     }
     this.elementStyle = {...this.elementStyle, inline}
 
-    const paragraphSelection = !topLevel && Object.keys(styles).every(property => paragraphStylePropertyNameSet.has(property))
+    const boxPreset = detail.boxPreset === true
+    const paragraphSelection = !boxPreset && !topLevel && Object.keys(styles).every(property => paragraphStylePropertyNameSet.has(property))
       && !this.nodeSelection && !this.selectionGap && !this.tableSelection?.cellSelection
     void this.execute(paragraphSelection ? {
       type: "setBlockStyle", styles,
     } : {
-      type: "setStyle", styles, ...(topLevel ? {topLevel: true} : {}),
+      type: "setStyle", styles, ...(topLevel ? {topLevel: true} : {}), ...(boxPreset ? {boxPreset: true} : {}),
     }).then(() => this.refreshElementStyleState()).catch(() => {
       this.elementStyle = previousState
       return this.refreshElementStyleState()

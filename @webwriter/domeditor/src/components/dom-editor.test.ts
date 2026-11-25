@@ -7361,7 +7361,7 @@ describe("DomEditor.execute()", () => {
     const styleEditor = toolbox.shadowRoot!.querySelector<ElementStyleEditor>('ribbon-drawer[label="Style"] element-style-editor[show-presets]')!
     await styleEditor.updateComplete
     styleEditor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Blue style preset"]')!.click()
-    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "setStyle", topLevel: true,
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "setStyle", topLevel: true, boxPreset: true,
       styles: expect.objectContaining({"background-color": expect.any(Object), "box-shadow": expect.any(Object)})}))
     const command = execute.mock.calls.find(([action]) => action.type === "setStyle")![0]
     if(command.type !== "setStyle") throw new Error("The preset did not set styles")

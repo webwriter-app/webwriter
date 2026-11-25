@@ -2590,7 +2590,8 @@ await check("table presets respect whole-table and cell selections without chang
     const table = doc.querySelector("table")!, cells = Array.from(table.querySelectorAll<HTMLTableCellElement>("th, td"))
     const descendants = Array.from(table.querySelectorAll("*"))
     controls.addEventListener("element-style-change", event => {
-      editor!.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: (event as CustomEvent).detail.styles})
+      const {styles, boxPreset} = (event as CustomEvent).detail
+      editor!.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles, boxPreset})
     })
     for(const selection of ["table", "cell", "all cells"]) {
       table.removeAttribute("style")

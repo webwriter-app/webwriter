@@ -957,20 +957,19 @@ it("offers eight palette-based box presets and applies each as one style change"
   const changes: unknown[] = []
   editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
   buttons[2].click()
-  expect(changes).toEqual([{styles: {
+  expect(changes).toEqual([{boxPreset: true, styles: {
     "background-color": {value: "#deebf7", priority: ""},
     "border-width": {value: "1px", priority: ""},
     "border-radius": {value: "4px", priority: ""},
     "border-style": {value: "solid", priority: ""},
     "border-color": {value: "#5b9bd5", priority: ""},
-    "padding": {value: "8px", priority: ""},
     "box-shadow": {value: "none", priority: ""},
     "color": {value: "#2f3742", priority: ""},
   }}])
   editor.state = {...state(), target: {localName: "body", namespaceURI: "http://www.w3.org/1999/xhtml", documentRoot: true}}
   await editor.updateComplete
   buttons[3].click()
-  expect(changes.at(-1)).toEqual({styles: {"background-color": {value: "#e2efda", priority: ""}}})
+  expect(changes.at(-1)).toEqual({boxPreset: true, styles: {"background-color": {value: "#e2efda", priority: ""}}})
 })
 
 it("uses document accent colors for Style presets and color choices", async () => {
@@ -989,7 +988,7 @@ it("uses document accent colors for Style presets and color choices", async () =
   expect(editor.shadowRoot!.querySelector('[aria-label="Color #12ab34"]')).not.toBeNull()
 })
 
-it.each(["table", "td", "th"])("preserves padding in all %s style presets", async localName => {
+it.each(["example-widget", "table", "td", "th"])("preserves padding in all %s style presets", async localName => {
   const editor = await mount([], {...state({
     padding: {value: "20px 24px", priority: "important"},
     "padding-inline-start": {value: "30px", priority: ""},
@@ -998,16 +997,17 @@ it.each(["table", "td", "th"])("preserves padding in all %s style presets", asyn
   await editor.updateComplete
   const changes: {styles: Record<string, {value: string}>}[] = []
   editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
+  const cellTarget = localName === "td" || localName === "th"
   for(let page = 0; page < 4; page++) {
     for(const button of editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".style-gallery button")) {
       button.click()
       const styles = changes.at(-1)!.styles
-      expect(Object.keys(styles).sort()).toEqual(localName === "table"
-        ? ["background-color", "border-color", "border-radius", "border-style", "border-width", "box-shadow", "color"]
-        : ["background-color", "border-color", "border-style", "border-width", "color"])
+      expect(Object.keys(styles).sort()).toEqual(cellTarget
+        ? ["background-color", "border-color", "border-style", "border-width", "color"]
+        : ["background-color", "border-color", "border-radius", "border-style", "border-width", "box-shadow", "color"])
       expect(styles.color.value).toBe(page >= 2 ? "#ffffff" : "#2f3742")
       expect(button.title).not.toContain("padding")
-      if(localName !== "table") expect(button.title).not.toContain("corners")
+      if(cellTarget) expect(button.title).not.toContain("corners")
     }
     if(page < 3) {
       editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Next style presets"]')!.click()

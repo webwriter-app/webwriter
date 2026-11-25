@@ -5849,6 +5849,34 @@ describe("setBlockType()", () => {
 })
 describe("setStyle()", () => {
   it.each([
+    ["<p>Text</p>", "8px"],
+    ...["h1", "h2", "h3", "h4", "h5", "h6"].map(tag => [`<${tag}>Heading</${tag}>`, "8px"]),
+    ["<ul><li>Item</li></ul>", "8px", "inside"],
+    ['<ol style="list-style-position: outside !important"><li>Item</li></ol>', "8px", "inside"],
+    ["<dl><dt>Term</dt><dd>Definition</dd></dl>", "8px"],
+    ["<menu><li>Item</li></menu>", "8px", "inside"],
+    ['<p is="demo-widget">Widget</p>', "13px"],
+    ["<p popover>Popup</p>", "13px"],
+    ["<blockquote>Quote</blockquote>", "13px"],
+    ["<demo-widget>Widget</demo-widget>", "13px"],
+  ])("sets eligible preset spacing for %s", (html, padding, markerPosition = "") => {
+    document.body.innerHTML = `${html}<p>Unselected</p>`
+    const element = document.body.firstElementChild as HTMLElement
+    element.style.setProperty("padding", "13px", "important")
+    const markerPriority = element.style.getPropertyPriority("list-style-position")
+    $.selectElement(element)
+
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, boxPreset: true, styles: {"background-color": "gold"}})
+
+    expect(element).toHaveStyle({backgroundColor: "gold", padding})
+    expect(element.style.getPropertyPriority("padding")).toBe("important")
+    expect(element.style.getPropertyValue("list-style-position")).toBe(markerPosition)
+    expect(element.style.getPropertyPriority("list-style-position")).toBe(markerPriority)
+    expect(element.querySelector("[style]")).toBeNull()
+    expect(element.nextElementSibling).not.toHaveAttribute("style")
+  })
+
+  it.each([
     '<audio controls></audio>',
     '<video controls></video>',
     '<picture><img src="photo.png"></picture>',
