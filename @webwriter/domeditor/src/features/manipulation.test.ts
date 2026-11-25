@@ -422,6 +422,30 @@ describe("saved snippet capture", () => {
     }
     finally { document.head.innerHTML = headHTML }
   })
+
+  it.each(["canvas", "slides"] as const)("saves disjoint %s items as one snippet in document order", mode => {
+    const headHTML = document.head.innerHTML
+    try {
+      document.body.innerHTML = '<svg viewBox="0 0 16 16"><rect width="16" height="16"/></svg>'
+        + '<p>Unselected</p><table><tbody><tr><td>Cell<!--keep--></td></tr></tbody></table><h2>Heading</h2>'
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      const [graphic, table, heading] = Array.from(document.querySelectorAll("svg, table, h2"))
+      heading.classList.add("authored", "◆text-selected")
+      $.selectElements([heading, graphic, table])
+      const before = document.body.innerHTML
+
+      const snippet = editor.features.manipulation.actions.getSnippet({type: "getSnippet"})!
+      expect(snippet?.label).toBe("Cell Heading")
+      const saved = fragmentFromHTML(snippet.html)
+      expect(Array.from(saved.children, element => element.localName)).toEqual(["svg", "table", "h2"])
+      expect(saved.querySelector("rect")?.namespaceURI).toBe(graphic.namespaceURI)
+      expect(saved.querySelector("td")?.innerHTML).toBe("Cell<!--keep-->")
+      expect(saved.querySelector("h2")?.className).toBe("authored")
+      expect(document.body.innerHTML).toBe(before)
+      expect($.selectedElements).toEqual([graphic, table, heading])
+    }
+    finally { document.head.innerHTML = headHTML }
+  })
 })
 
 describe("captions", () => {

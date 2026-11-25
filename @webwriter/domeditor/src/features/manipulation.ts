@@ -4862,13 +4862,16 @@ export class ManipulationFeature extends EditorFeature {
       && !topLevel(container) && !slideLayoutRole(container) && !$.isMultiElementSelection ? container : null
   }
 
-  /** Action handlers, addressable by action type through the editor. */
   private elementSnippet(container: Element | null) {
     if(!container) return null
     const fragment = getInertDocument(container).createDocumentFragment()
     fragment.append(cloneWithoutEditorMarkers(container, true, {inert: true}))
+    return this.serializeSnippet(fragment, container.localName)
+  }
+
+  private serializeSnippet(fragment: DocumentFragment, fallbackLabel: string) {
     const {html, text} = this.editor.serializeClipboardFragment(fragment)
-    return {html, label: text.trim().replace(/\s+/g, " ").slice(0, 80) || container.localName}
+    return {html, label: text.trim().replace(/\s+/g, " ").slice(0, 80) || fallbackLabel}
   }
 
   /** Recheck the live range for each virtual key. A pending host command can
@@ -4975,7 +4978,9 @@ export class ManipulationFeature extends EditorFeature {
       if(!getDocumentRoot().contains(source.element)) return null
       return this.elementSnippet(source.element)
     },
-    getSnippet: ({}: {type: "getSnippet"}) => this.elementSnippet(this.snippetTarget),
+    getSnippet: ({}: {type: "getSnippet"}) => $.isMultiElementSelection
+      ? this.serializeSnippet($.copy(), $.selectedElements[0].localName)
+      : this.elementSnippet(this.snippetTarget),
     hoverSnippet: ({hovered}: {type: "hoverSnippet", hovered: boolean}) => {
       this.editor.features.selection.showSnippetHover(hovered ? this.snippetTarget : null)
     },

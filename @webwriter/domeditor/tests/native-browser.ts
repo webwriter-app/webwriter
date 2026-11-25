@@ -8465,6 +8465,11 @@ await check("canvas box selection retains disjoint ranges and stays in the docum
     const selection = canvasEditor.doc.snapshot().selection
     assert(selection?.ranges?.length === 2, "snapshot lost disjoint ranges")
     assert(!canvasEditor.toHTML().includes("selection-box"), "marquee leaked into serialized content")
+    const snippet = canvasEditor.features.manipulation.actions.getSnippet({type: "getSnippet"})
+    assert(snippet?.label === "first last" && !snippet.html.includes(">hole</p>"), "snippet did not capture the disjoint selection")
+    await canvasEditor.features.manipulation.actions.insert({type: "insert", html: snippet!.html})
+    assert(Array.from(doc.querySelectorAll("p"), paragraph => paragraph.textContent).join(",") === "first,hole,last,first,last",
+      "reinserting the snippet did not restore both selected items")
   }
   finally { canvasEditor?.destroy(); frame.remove() }
 })
