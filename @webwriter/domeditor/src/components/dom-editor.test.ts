@@ -9446,7 +9446,7 @@ describe("DomEditor.execute()", () => {
     expect(preview().querySelector("script")).toBeNull()
   })
 
-  it("adds the optional document reader to preview with a trusted nonce and fullscreen permission", async () => {
+  it("adds the optional document reader to preview with a trusted nonce and delegates preview permissions", async () => {
     const {editor, iframe} = await mountEditor()
     const source = iframe.contentDocument!
     source.body.innerHTML = '<h1 id="intro">Intro</h1><figure id="diagram"><img><figcaption>Diagram</figcaption></figure><script id="webwriter-document-viewer">untrusted()</script>'
@@ -9461,7 +9461,10 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     const previewFrame = editor.shadowRoot!.querySelector("iframe.preview-frame")!
     expect(previewFrame.hasAttribute("allowfullscreen")).toBe(true)
-    expect(previewFrame.getAttribute("allow")).toBe("clipboard-write")
+    expect(previewFrame.getAttribute("allow")?.split("; ")).toEqual([
+      "camera", "microphone", "display-capture", "geolocation", "clipboard-read", "clipboard-write",
+      "accelerometer", "gyroscope", "magnetometer",
+    ])
     expect(previewFrame.getAttribute("sandbox")).toContain("allow-modals")
     expect(previewFrame.getAttribute("sandbox")).toContain("allow-popups allow-popups-to-escape-sandbox")
   })

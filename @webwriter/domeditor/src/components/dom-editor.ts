@@ -10407,7 +10407,7 @@ export class DomEditor extends LitElement {
         ${this.previewActive && !this.previewFramePending ? html`
           <iframe
             class="preview-frame"
-            allow="clipboard-write"
+            allow="camera; microphone; display-capture; geolocation; clipboard-read; clipboard-write; accelerometer; gyroscope; magnetometer"
             allowfullscreen
             title=${this.replayActive ? "Session replay" : this.liveSessionActive ? "Live document preview" : "Document preview"}
             sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads"
