@@ -98,4 +98,6 @@ image:webwriter:
     # unter *.staging.edumix.eu (node2, nur VPN); die Editor-Frames brauchen eine eigene Origin.
     WEBWRITER_APP_ORIGIN: https://webwriter.staging.edumix.eu
     WEBWRITER_EDITOR_ORIGIN: https://webwriter-frame.staging.edumix.eu
-    IMAGE_BUILD_ARGS: VITE_APP_ORIGIN=$WEBWRITER_APP_ORIGIN VITE_EDITOR_ORIGIN=$WEBWRITER_EDITOR_ORIGIN
+    # Edumix auf Staging: Cloud-Dienst und Anmeldung über dessen Keycloak (Client webwriter).
+    WEBWRITER_EDUMIX_URL: https://staging.edumix.eu
+    IMAGE_BUILD_ARGS: VITE_APP_ORIGIN=$WEBWRITER_APP_ORIGIN VITE_EDITOR_ORIGIN=$WEBWRITER_EDITOR_ORIGIN VITE_EDUMIX_URL=$WEBWRITER_EDUMIX_URL

@@ -21,10 +21,13 @@ import {documentLanguageName, orderedLanguageOptions} from "../language-suggesti
 import {appIconUrl, ribbonIcon} from "../ribbon-icons"
 import {documentLayoutLabel, documentLayoutModes} from "./layout-preview"
 import {cloudServiceURL, EDUMIX_URL, cloudServiceExpired, type CloudService} from "../cloud-services"
-import {connectCloudService} from "../backend-client"
+import {CloudProviderSignIn, connectCloudService} from "../backend-client"
+import {forgetCloudSignIn, openCloudSignInWindow, startCloudSignIn} from "../cloud-sign-in"
 import {normalizeProofreadingDictionary} from "../proofreading"
 import componentLicenses from "virtual:component-licenses"
 import {editorInteractionStyles} from "./editing-controls.styles"
+
+const EDUMIX_HOST = new URL(EDUMIX_URL).host
 
 export type SettingsTab = "Editor" | "Cloud" | "Commands"
 
@@ -478,7 +481,7 @@ export class SettingsPanel extends LitElement {
     try {
       const type = this.providerType
       const url = cloudServiceURL(type === "edumix" ? EDUMIX_URL : normalizeURLInput(form.querySelector<HTMLInputElement>('[name="url"]')!.value))
-      const service = {id: crypto.randomUUID(), type, url, username: form.querySelector<HTMLInputElement>('[name="username"]')!.value.trim()}
+      const service = {id: crypto.randomUUID(), type, url, username: form.querySelector<HTMLInputElement>('[name="username"]')?.value.trim() ?? ""}
       this.changeCloudServices([...this.settings.cloudServices, service])
       this.cloudError = ""
       this.providerType = null
@@ -492,7 +495,15 @@ export class SettingsPanel extends LitElement {
       : html`<span class="provider-icon" aria-hidden="true">${ribbonIcon("Cloud")}</span>`
   }
 
+  /** Edumix and services that advertised an identity provider sign in there, not with a password here. */
+  private signsInWithProvider(service?: CloudService) {
+    return (service?.type ?? this.providerType) === "edumix" || Boolean(service?.oidc)
+  }
+
   private renderCredentials(service?: CloudService) {
+    if(service?.authentication !== "none" && this.signsInWithProvider(service)) {
+      return html`<p class="setting-description">You sign in on ${service ? new URL(service.oidc?.issuer ?? service.url).host : EDUMIX_HOST}; WebWriter never sees your password.</p>`
+    }
     const required = (service?.type ?? this.providerType) === "edumix" && service?.authentication !== "none"
     return html`
       <label class="setting-label">Username
@@ -510,25 +521,76 @@ export class SettingsPanel extends LitElement {
     event.preventDefault()
     if(this.signingIn) return
     const form = event.currentTarget as HTMLFormElement
-    const password = form.querySelector<HTMLInputElement>('input[type="password"]')!
+    const password = form.querySelector<HTMLInputElement>('input[type="password"]')
+    // Opened inside the click, before any request, so the browser does not block the window.
+    const closeSignInWindow = this.signsInWithProvider(service) ? openCloudSignInWindow() : () => {}
     const controller = new AbortController()
     this.signInController = controller
     this.signingIn = service.id
     this.cloudError = ""
     try {
-      const result = await connectCloudService(service, {password: password.value, signal: controller.signal})
+      if(service.oidc) {
+        await this.signInOnProvider(service, service.oidc)
+        return
+      }
+      const result = await connectCloudService(service, {password: password?.value ?? "", signal: controller.signal})
+      closeSignInWindow()
       if(controller.signal.aborted || !this.isConnected
         || this.settings.cloudServices.find(value => value.id === service.id) !== service) return
       this.changeCloudServices(this.settings.cloudServices.map(value => value.id === service.id ? result.service : value), service.id)
     }
-    catch(error) {if(!controller.signal.aborted) this.cloudError = error instanceof Error ? error.message : String(error)}
+    catch(error) {
+      if(!(error instanceof CloudProviderSignIn)) closeSignInWindow()
+      if(controller.signal.aborted) return
+      // The session names an identity provider: sign in there instead of with a password.
+      if(error instanceof CloudProviderSignIn && this.isConnected) {
+        try {await this.signInOnProvider(service, error.oidc)}
+        catch(providerError) {
+          closeSignInWindow()
+          this.cloudError = providerError instanceof Error ? providerError.message : String(providerError)
+        }
+        return
+      }
+      this.cloudError = error instanceof Error ? error.message : String(error)
+    }
     finally {
-      password.value = ""
+      if(password) password.value = ""
       if(this.signInController === controller) {
         this.signInController = null
         this.signingIn = ""
       }
     }
+  }
+
+  /** Signs in on the provider's login window and keeps its token on the selected service. */
+  private async signInOnProvider(service: CloudService, oidc: NonNullable<CloudService["oidc"]>) {
+    const withProvider = {...service, oidc}
+    this.changeCloudServices(this.settings.cloudServices.map(value => value.id === service.id ? withProvider : value), service.id)
+    let signedIn
+    try {
+      signedIn = await startCloudSignIn(withProvider)
+    }
+    catch(error) {
+      // Closing the window is a change of mind, not an error.
+      if(error instanceof Error && /closed/i.test(error.message)) return
+      throw error
+    }
+    const current = this.settings.cloudServices.find(value => value.id === service.id)
+    if(!current || !this.isConnected) return
+    this.changeCloudServices(this.settings.cloudServices.map(value => value.id === service.id
+      ? {...current, oidc, accessToken: signedIn.accessToken, expiresAt: signedIn.expiresAt} : value), service.id)
+  }
+
+  private removeCloudService(service: CloudService) {
+    void forgetCloudSignIn(service)
+    this.changeCloudServices(this.settings.cloudServices.filter(value => value.id !== service.id),
+      this.settings.activeCloudServiceId === service.id ? null : this.settings.activeCloudServiceId)
+  }
+
+  private signOut(service: CloudService) {
+    void forgetCloudSignIn(service)
+    this.changeCloudServices(this.settings.cloudServices.map(value => value.id === service.id
+      ? {...value, accessToken: undefined, expiresAt: undefined} : value))
   }
 
   private renderCloudSettings() {
@@ -542,14 +604,13 @@ export class SettingsPanel extends LitElement {
           @input=${(event: Event) => this.emitSettings({...this.settings, localUsername: (event.currentTarget as HTMLInputElement).value})}>
       </div>
       ${repeat(this.settings.cloudServices, service => service.id, service => html`<div class="cloud-service" ?data-active=${this.settings.activeCloudServiceId === service.id}>
-        <button class="cloud-remove" type="button" aria-label=${`Remove ${service.type === "edumix" ? "edumix.eu" : service.url}`}
-          title="Remove provider" @click=${() => this.changeCloudServices(
-            this.settings.cloudServices.filter(value => value.id !== service.id), this.settings.activeCloudServiceId === service.id ? null : this.settings.activeCloudServiceId)}>×</button>
+        <button class="cloud-remove" type="button" aria-label=${`Remove ${service.type === "edumix" ? EDUMIX_HOST : service.url}`}
+          title="Remove provider" @click=${() => this.removeCloudService(service)}>×</button>
         <label class="setting-label cloud-service-header"><input type="radio" name="active-cloud"
           .checked=${this.settings.activeCloudServiceId === service.id}
           @change=${() => this.changeCloudServices(this.settings.cloudServices, service.id)}>
           ${this.renderProviderIcon(service.type)}
-          ${service.type === "edumix" ? "edumix.eu" : service.url}</label>
+          ${service.type === "edumix" ? EDUMIX_HOST : service.url}</label>
         ${service.authentication === "none" ? html`
           <p class="setting-description">Available on this host · no sign-in required</p>
           <div class="cloud-identity">${this.renderCredentials(service)}</div>` : html`
@@ -559,8 +620,7 @@ export class SettingsPanel extends LitElement {
               : service.accessToken ? "Signed in" : "Sign in to connect."}</p>
             <div class="cloud-actions"><button class="cloud-button primary" type="submit" ?disabled=${Boolean(this.signingIn)}>
               ${this.signingIn === service.id ? "Signing in…" : "Sign in"}</button>
-              ${service.accessToken ? html`<button class="cloud-button" type="button" @click=${() => this.changeCloudServices(this.settings.cloudServices.map(value => value.id === service.id
-                ? {...value, accessToken: undefined, expiresAt: undefined} : value))}>Sign out</button>` : ""}
+              ${service.accessToken ? html`<button class="cloud-button" type="button" @click=${() => this.signOut(service)}>Sign out</button>` : ""}
             </div>
           </form>`}
       </div>`)}
@@ -568,7 +628,7 @@ export class SettingsPanel extends LitElement {
       <p class="setting-label add-provider-label">Add a cloud service</p>
       <div class="provider-types" role="group" aria-label="Provider type">
         <button type="button" aria-pressed=${this.providerType === "edumix"} aria-controls="new-cloud-provider"
-          ?disabled=${Boolean(this.signingIn)} @click=${() => this.chooseProvider("edumix")}>${this.renderProviderIcon("edumix")}edumix.eu</button>
+          ?disabled=${Boolean(this.signingIn)} @click=${() => this.chooseProvider("edumix")}>${this.renderProviderIcon("edumix")}${EDUMIX_HOST}</button>
         <button type="button" aria-pressed=${this.providerType === "url"} aria-controls="new-cloud-provider"
           ?disabled=${Boolean(this.signingIn)} @click=${() => this.chooseProvider("url")}>${this.renderProviderIcon("url")}Custom provider</button>
       </div>

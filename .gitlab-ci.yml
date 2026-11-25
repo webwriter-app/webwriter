@@ -42,18 +42,39 @@ typecheck:
 unit:
   extends: .domeditor
   stage: test
+  # staging übernimmt nur, was auf dev schon die volle Suite durchlaufen hat. Dort reicht ein
+  # schneller Lauf ohne die großen DOM-Dateien (src/features/**, dom-editor.test.ts: ~34 von
+  # ~40 Testminuten); dafür blockiert er den Deploy. MR, dev und main laufen voll.
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "staging"'
+      variables:
+        UNIT_SCOPE: fast
+      allow_failure: false
+    - allow_failure: true
   script:
     # dev-server/git-packages.test.js ruft echtes git auf; node:22-slim bringt es nicht mit.
     - apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates > /dev/null
     # Ein Worker: die großen DOM-Testdateien brauchen je bis ~6,5 GB RSS (live, kein GC-Spielraum).
     # Zwei parallel sprengen das Container-Limit des Runners -> "Worker exited unexpectedly".
-    - npx vitest run --maxWorkers=1 --reporter=default --reporter=junit --outputFile.junit=junit.xml
+    # dev-server/server.test.js läuft getrennt: im Gesamtlauf endete ihr Worker unerwartet,
+    # allein ist sie grün. Beide Läufe laufen immer durch; der Job ist rot, wenn einer rot ist.
+    - |
+      if [ "$UNIT_SCOPE" = fast ]; then
+        set -- --exclude 'src/features/**' --exclude src/components/dom-editor.test.ts
+      else
+        set --
+      fi
+      rc=0
+      npx vitest run dev-server/server.test.js --maxWorkers=1 --reporter=default --reporter=junit --outputFile.junit=junit-server.xml || rc=1
+      npx vitest run --exclude dev-server/server.test.js "$@" --maxWorkers=1 --reporter=default --reporter=junit --outputFile.junit=junit.xml || rc=1
+      exit $rc
   artifacts:
     when: always
     reports:
-      junit: "@webwriter/domeditor/junit.xml"
-  # Erst blockierend machen, wenn die Suite in CI stabil grün ist.
-  allow_failure: true
+      junit:
+        - "@webwriter/domeditor/junit-server.xml"
+        - "@webwriter/domeditor/junit.xml"
+  # Volle Suite (MR, dev, main) bleibt allow_failure, bis sie in CI stabil grün ist.
 
 # ---------------------------------------------------------------------------
 # Deploy nach Staging: eigene Pipeline, startet erst nach grünen Prüfungen auf staging.

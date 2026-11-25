@@ -90,6 +90,9 @@ class ReplayTestWorker {
   terminate() { this.stopped = true; this.handler.close() }
 }
 
+/** The session part of a mocked BackendClient whose service offers saved documents. */
+const documentsSession = {capabilities: ["documents"]}
+
 const configureCloudStorage = (host: any) => {
   host.settings = {...host.settings, cloudServicesConfigured: true, activeCloudServiceId: "test-cloud",
     cloudServices: [{id: "test-cloud", type: "url", url: "http://localhost:1234/api", username: "Tester", authentication: "none"}]}
@@ -4871,7 +4874,7 @@ describe("DomEditor file actions", () => {
     const {editor} = await mountEditor()
     const host = editor as any
     host.settings = {...host.settings, cloudServicesConfigured: true, activeCloudServiceId: null}
-    host.backendClient = {listDocuments: vi.fn()}
+    host.backendClient = {session: documentsSession, listDocuments: vi.fn()}
     host.storageLocation = "development-server"
     vi.stubGlobal("showOpenFilePicker", undefined)
     const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
@@ -5080,7 +5083,7 @@ describe("DomEditor file actions", () => {
     const host = editor as any
     configureCloudStorage(host)
     const existing = {id: "existing", title: "Lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}
-    host.backendClient = {listDocuments: vi.fn().mockResolvedValue([{...existing, id: "earlier"}, existing]), updateDocument: vi.fn().mockRejectedValue(new Error("Save failed")), createDocument: vi.fn()}
+    host.backendClient = {session: documentsSession, listDocuments: vi.fn().mockResolvedValue([{...existing, id: "earlier"}, existing]), updateDocument: vi.fn().mockRejectedValue(new Error("Save failed")), createDocument: vi.fn()}
     host.accessibilityReviewEnabled = false
     const report = vi.spyOn(host, "reportFileError").mockImplementation((error: unknown) => {host.fileError = (error as Error).message})
     vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
@@ -5201,6 +5204,7 @@ describe("DomEditor file actions", () => {
   it("opens documents from the development backend when logged in", async () => {
     const {editor} = await mountEditor()
     const backend = {
+      session: documentsSession,
       listDocuments: vi.fn().mockResolvedValue([{id: "doc-1", title: "Server lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}]),
       getDocument: vi.fn().mockResolvedValue({
         id: "doc-1",
@@ -5236,7 +5240,7 @@ describe("DomEditor file actions", () => {
     const newer = {id: "newer", title: "Newer", format: "html", updatedAt: "2026-09-10T12:00:00Z"}
     const listDocuments = vi.fn().mockRejectedValueOnce(new Error("Server unavailable"))
       .mockResolvedValueOnce([older, newer]).mockResolvedValueOnce([])
-    host.backendClient = {listDocuments}
+    host.backendClient = {session: documentsSession, listDocuments}
     host.storageLocation = "development-server"
     configureCloudStorage(host)
     host.fileDirty = true
@@ -5339,7 +5343,7 @@ describe("DomEditor file actions", () => {
     const {editor} = await mountEditor()
     const host = editor as any
     const saved = {id: "folder/new document", title: "Saved", format: "html", createdAt: "2026-10-03", updatedAt: "2026-10-03"}
-    const client = {listDocuments: vi.fn().mockResolvedValue([]), apiBaseUrl: "http://localhost:1234/api", createDocument: vi.fn().mockResolvedValue(saved), updateDocument: vi.fn().mockResolvedValue(saved)}
+    const client = {session: documentsSession, listDocuments: vi.fn().mockResolvedValue([]), apiBaseUrl: "http://localhost:1234/api", createDocument: vi.fn().mockResolvedValue(saved), updateDocument: vi.fn().mockResolvedValue(saved)}
     host.backendClient = client
     host.storageLocation = "development-server"
     configureCloudStorage(host)
@@ -5414,7 +5418,7 @@ describe("DomEditor file actions", () => {
     await host.recentDocumentsReady
     host.backendSession = {apiBaseUrl: "https://storage.example/api", user: {id: "ada"}}
     const documents = Array.from({length: 12}, (_, index) => ({id: `doc-${index}`, title: `Lesson ${index}`, format: "html", updatedAt: "2026-09-10T12:00:00Z"}))
-    host.backendClient = {listDocuments: vi.fn().mockResolvedValue(documents.slice())}
+    host.backendClient = {session: documentsSession, listDocuments: vi.fn().mockResolvedValue(documents.slice())}
     host.savedDocuments = documents
     host.recentDocuments = documents.map((document, index) => ({id: `recent-${index}`, title: document.title, openedAt: 100 - index, kind: "backend", documentId: document.id, apiBaseUrl: host.backendSession.apiBaseUrl, userId: "ada"}))
     await host.refreshRecentDocuments()
@@ -5553,7 +5557,7 @@ describe("DomEditor file actions", () => {
     const {editor} = await mountEditor()
     const host = editor as any
     const summary = {id: "doc-1", title: "Lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}
-    const backend = {listDocuments: vi.fn().mockResolvedValue([summary]), deleteDocument: vi.fn().mockResolvedValue(undefined), getDocument: vi.fn()}
+    const backend = {session: documentsSession, listDocuments: vi.fn().mockResolvedValue([summary]), deleteDocument: vi.fn().mockResolvedValue(undefined), getDocument: vi.fn()}
     host.backendClient = backend
     host.storageLocation = "development-server"
     configureCloudStorage(host)
@@ -5575,7 +5579,7 @@ describe("DomEditor file actions", () => {
     const {editor} = await mountEditor()
     const host = editor as any
     const summary = {id: "doc-1", title: "Lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}
-    const backend = {listDocuments: vi.fn().mockResolvedValue([summary]), deleteDocument: vi.fn().mockRejectedValue(new Error("Delete failed"))}
+    const backend = {session: documentsSession, listDocuments: vi.fn().mockResolvedValue([summary]), deleteDocument: vi.fn().mockRejectedValue(new Error("Delete failed"))}
     host.backendClient = backend
     host.storageLocation = "development-server"
     configureCloudStorage(host)
@@ -5598,7 +5602,7 @@ describe("DomEditor file actions", () => {
     const host = editor as any
     let finish!: (value: unknown) => void
     const getDocument = vi.fn(() => new Promise(resolve => { finish = resolve }))
-    host.backendClient = {listDocuments: vi.fn().mockResolvedValue([{id: "doc-1", title: "Lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}]), getDocument}
+    host.backendClient = {session: documentsSession, listDocuments: vi.fn().mockResolvedValue([{id: "doc-1", title: "Lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}]), getDocument}
     host.storageLocation = "development-server"
     configureCloudStorage(host)
     host.fileDirty = true
@@ -5630,7 +5634,7 @@ describe("DomEditor file actions", () => {
       content: "<!DOCTYPE html><html><body><p>Saved remotely</p></body></html>",
       format: "html",
     }
-    const backend = {listDocuments: vi.fn().mockResolvedValue([]), createDocument: vi.fn().mockResolvedValue(saved), updateDocument: vi.fn()}
+    const backend = {session: documentsSession, listDocuments: vi.fn().mockResolvedValue([]), createDocument: vi.fn().mockResolvedValue(saved), updateDocument: vi.fn()}
     ;(editor as any).backendClient = backend
     ;(editor as any).storageLocation = "development-server"
     configureCloudStorage(editor as any)

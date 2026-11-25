@@ -1,3 +1,6 @@
+/** Sign-in on the service's identity provider (Authorization Code + PKCE), advertised by its session. */
+export type CloudOIDC = {issuer: string, clientId: string}
+
 export type CloudService = {
   id: string
   type: "edumix" | "url"
@@ -6,9 +9,22 @@ export type CloudService = {
   accessToken?: string
   expiresAt?: number
   authentication?: "none"
+  oidc?: CloudOIDC
 }
 
-export const EDUMIX_URL = "https://edumix.eu"
+/** The Edumix preset; staging builds point it elsewhere with VITE_EDUMIX_URL. */
+export const EDUMIX_URL = import.meta.env.VITE_EDUMIX_URL || "https://edumix.eu"
+
+/** An identity provider as a session advertises it: an HTTPS issuer (HTTP on loopback) and a client ID. */
+export function cloudOIDC(value: unknown): CloudOIDC | undefined {
+  if(!value || typeof value !== "object") return undefined
+  const {issuer, clientId} = value as Record<string, unknown>
+  if(typeof issuer !== "string" || typeof clientId !== "string" || !clientId) return undefined
+  try {
+    return {issuer: cloudServiceURL(issuer), clientId}
+  }
+  catch {return undefined}
+}
 
 export function cloudServiceURL(value: string) {
   const url = new URL(value)
@@ -32,6 +48,7 @@ export function storedCloudServices(value: unknown): CloudService[] {
         ...(typeof item.accessToken === "string" && item.accessToken ? {accessToken: item.accessToken} : {}),
         ...(typeof item.expiresAt === "number" && Number.isFinite(item.expiresAt) ? {expiresAt: item.expiresAt} : {}),
         ...(item.authentication === "none" ? {authentication: "none" as const} : {}),
+        ...(cloudOIDC(item.oidc) ? {oidc: cloudOIDC(item.oidc)} : {}),
       })
     }
     catch { /* Ignore malformed saved providers. */ }

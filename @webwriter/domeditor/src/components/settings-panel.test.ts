@@ -18,6 +18,11 @@ import {excludedMarkNames} from "../marks"
 import {AppRibbon} from "./ribbon"
 import {SettingsPanel} from "./settings-panel"
 import type {RibbonMenu} from "./ribbon-menu"
+import {openCloudSignInWindow, startCloudSignIn} from "../cloud-sign-in"
+
+// The provider's login window is a real browser window; the tests check what goes in and out.
+vi.mock("../cloud-sign-in", async importOriginal => ({...await importOriginal<typeof import("../cloud-sign-in")>(),
+  openCloudSignInWindow: vi.fn(), startCloudSignIn: vi.fn()}))
 
 const shortcutEvent = (shortcut: string) => {
   const parts = shortcut.split("+")
@@ -793,6 +798,9 @@ describe("identity and cloud settings", () => {
         collaborationUrl: origin.replace(/^http/, "ws"), adminUrl: `${origin}/admin`}
       return cloudResponse(init?.method === "POST" ? {session, accessToken: "access-token"} : {...session, user: null})
     }))
+    // Edumix opens its sign-in window; this service answers with a password session, so it closes again.
+    const closeWindow = vi.fn()
+    vi.mocked(openCloudSignInWindow).mockReturnValue(closeWindow)
     const panel = await mountPanel()
     panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
     const root = panel.shadowRoot!
@@ -802,8 +810,11 @@ describe("identity and cloud settings", () => {
     const click = (label: string) => [...root.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === label)!.click()
     const submitProvider = async () => {
       const form = root.querySelector<HTMLFormElement>(".new-provider")!
-      form.querySelector<HTMLInputElement>('[name="username"]')!.value = "ada"
-      form.querySelector<HTMLInputElement>('[name="password"]')!.value = "transient-password"
+      // Edumix signs in on its identity provider; only custom providers ask for credentials here.
+      const username = form.querySelector<HTMLInputElement>('[name="username"]')
+      const password = form.querySelector<HTMLInputElement>('[name="password"]')
+      if(username) username.value = "ada"
+      if(password) password.value = "transient-password"
       form.dispatchEvent(new Event("submit", {cancelable: true}))
       await vi.waitFor(() => expect(panel.settings.cloudServices.at(-1)?.accessToken).toBe("access-token"))
       await panel.updateComplete
@@ -818,6 +829,8 @@ describe("identity and cloud settings", () => {
     url.value = "cloud.example"
     await submitProvider()
     expect(panel.settings.cloudServices.map(service => service.type)).toEqual(["edumix", "url"])
+    expect(openCloudSignInWindow).toHaveBeenCalledOnce()
+    expect(closeWindow).toHaveBeenCalledOnce()
     expect(panel.settings.cloudServices[1].url).toBe("https://cloud.example")
     const radios = root.querySelectorAll<HTMLInputElement>('input[name="active-cloud"]')
     radios[1].click()
@@ -845,6 +858,45 @@ describe("identity and cloud settings", () => {
     expect(password.value).toBe("")
     expect(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)).not.toContain("never-store-this")
     expect(panel.shadowRoot!.textContent).toContain("Signed in")
+  })
+
+  it("sends an Edumix sign-in to the advertised identity provider without asking for a password", async () => {
+    const oidc = {issuer: "https://auth.example/realms/edumix", clientId: "webwriter"}
+    vi.stubGlobal("fetch", vi.fn(async () => cloudResponse({...sessionMetadata, signInUrl: undefined, oidc, user: null})))
+    const panel = await mountPanel()
+    panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+    const root = panel.shadowRoot!
+    ;[...root.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "edumix.eu")!.click()
+    await panel.updateComplete
+    const form = root.querySelector<HTMLFormElement>(".new-provider")!
+    expect(form.querySelector('[name="password"]')).toBeNull()
+    expect(form.querySelector('[name="username"]')).toBeNull()
+    const closeWindow = vi.fn()
+    vi.mocked(openCloudSignInWindow).mockReturnValue(closeWindow)
+    vi.mocked(startCloudSignIn).mockResolvedValue({accessToken: "keycloak-token", expiresAt: Date.now() + 300_000})
+    form.requestSubmit()
+    expect(openCloudSignInWindow).toHaveBeenCalledOnce()
+    await vi.waitFor(() => expect(loadAppSettings().cloudServices[0]?.accessToken).toBe("keycloak-token"))
+    const [service] = loadAppSettings().cloudServices
+    expect(vi.mocked(startCloudSignIn).mock.calls[0][0]).toMatchObject({id: service.id, type: "edumix", oidc})
+    expect(service).toMatchObject({type: "edumix", oidc})
+    expect(loadAppSettings().activeCloudServiceId).toBe(service.id)
+    expect(closeWindow).not.toHaveBeenCalled()
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(vi.mocked(fetch).mock.calls[0][1]?.body).toBeUndefined()
+    expect(root.querySelector('[role="alert"]')).toBeNull()
+  })
+
+  it("treats a closed sign-in window as a change of mind, not an error", async () => {
+    const oidc = {issuer: "https://auth.example/realms/edumix", clientId: "webwriter"}
+    vi.mocked(openCloudSignInWindow).mockReturnValue(vi.fn())
+    vi.mocked(startCloudSignIn).mockRejectedValue(new Error("Popup closed by user"))
+    const panel = await mountPanel({...defaultAppSettings(), cloudServices: [{...configuredService, type: "edumix", url: "https://edumix.eu", oidc}]})
+    panel.shadowRoot!.querySelector<HTMLFormElement>(".cloud-service form")!.requestSubmit()
+    await vi.waitFor(() => expect(startCloudSignIn).toHaveBeenCalledOnce())
+    await panel.updateComplete
+    expect(panel.settings.cloudServices[0].accessToken).toBeUndefined()
+    expect(panel.shadowRoot!.querySelector('[role="alert"]')).toBeNull()
   })
 
   it.each(["", "unused-password"])("adds a no-auth local provider through its loopback alias without requiring credentials (%s)", async suppliedPassword => {
@@ -942,7 +994,8 @@ it("reveals the selected provider form, clears credentials when switching or can
   expect(choices[0].getAttribute("aria-pressed")).toBe("true")
   expect(root.querySelector('.new-provider [name="url"]')).toBeNull()
   expect(root.textContent).not.toContain("Passwords are never saved")
-  root.querySelector<HTMLInputElement>('.new-provider [name="password"]')!.value = "discard-on-switch"
+  expect(root.querySelector('.new-provider [name="password"]')).toBeNull()
+  expect(root.querySelector(".new-provider")!.textContent).toContain("WebWriter never sees your password")
   choices[1].click()
   await panel.updateComplete
   expect(choices[0].getAttribute("aria-pressed")).toBe("false")

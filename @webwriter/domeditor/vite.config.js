@@ -177,6 +177,7 @@ export default defineConfig(({mode}) => {
             "docs-preview": fileURLToPath(new URL("./docs/widgets/examples/preview.html", import.meta.url)),
             "docs-hello": fileURLToPath(new URL("./docs/widgets/examples/hello.html", import.meta.url)),
             "frame-shell": fileURLToPath(new URL("./frame-shell.html", import.meta.url)),
+            "sign-in-callback": fileURLToPath(new URL("./sign-in-callback.html", import.meta.url)),
             "editor-entry": fileURLToPath(new URL("./src/editor-entry.ts", import.meta.url)),
             "preview-entry": fileURLToPath(new URL("./src/preview-entry.ts", import.meta.url)),
             "live-learner-entry": fileURLToPath(new URL("./src/live-learner-entry.ts", import.meta.url)),

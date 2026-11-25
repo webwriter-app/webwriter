@@ -1,11 +1,13 @@
 import type {AIProviderConfig} from "./ai-provider"
-import {cloudServiceURL, cloudServiceExpired, tokenExpiresAt, type CloudService} from "./cloud-services"
+import {cloudOIDC, cloudServiceURL, cloudServiceExpired, tokenExpiresAt, type CloudOIDC, type CloudService} from "./cloud-services"
 
 export type BackendSession = {
   kind: "webwriter-dev-server" | "webwriter-cloud-service"
   version: 1
   authentication: "none" | "bearer"
   signInUrl?: string
+  /** Sign-in on an identity provider instead of `signInUrl` (cloud-sign-in.ts). */
+  oidc?: CloudOIDC
   user: {id: string, name: string}
   apiBaseUrl: string
   collaborationUrl: string
@@ -59,9 +61,14 @@ export class BackendClient {
   readonly apiBaseUrl: string
 
   constructor(readonly session: BackendSession, private readonly fetchImplementation = globalThis.fetch,
-    private readonly accessToken?: string, private readonly onUnauthorized?: () => void) {
+    private accessToken?: string, private readonly onUnauthorized?: () => void) {
     this.apiBaseUrl = session.kind === "webwriter-dev-server" ? normalizedBaseUrl(session.apiBaseUrl) : cloudServiceURL(session.apiBaseUrl)
     validateSessionURLs(session)
+  }
+
+  /** A renewed token for the same signed-in user (cloud-sign-in.ts); the connection stays. */
+  setAccessToken(accessToken: string) {
+    this.accessToken = accessToken
   }
 
   private async request<T>(path: string, init: RequestInit = {}) {
@@ -192,7 +199,9 @@ const sessionFrom = (value: unknown): BackendSession | null => {
   catch {
     return null
   }
-  return value as BackendSession
+  const oidc = cloudOIDC(value.oidc)
+  if(value.oidc !== undefined && !oidc) return null
+  return {...value, ...(oidc ? {oidc} : {})} as BackendSession
 }
 
 const backendCandidates = () => {
@@ -284,6 +293,8 @@ export async function connectCloudService(service: CloudService, options: {
   if(options.password === undefined && cloudServiceExpired(service)) throw new CloudAuthenticationError("Sign in again in Settings.")
   let value = await request(`${api}/session`)
   if(options.password !== undefined && sessionFrom(value)?.authentication !== "none") {
+    const advertised = isRecord(value) && value.kind === "webwriter-cloud-service" ? cloudOIDC(value.oidc) : undefined
+    if(advertised) throw new CloudProviderSignIn(advertised)
     if(!isRecord(value) || value.kind !== "webwriter-cloud-service" || value.version !== 1 || value.authentication !== "bearer") {
       throw new Error("This URL does not provide a supported WebWriter cloud service.")
     }
@@ -309,10 +320,18 @@ export async function connectCloudService(service: CloudService, options: {
       : accessToken ? tokenExpiresAt(accessToken) ?? (options.password === undefined ? service.expiresAt : undefined) : undefined
   return {session, service: {...service, url: session.kind === "webwriter-dev-server" ? sessionAPI.href : service.url,
     authentication: session.authentication === "none" ? "none" as const : undefined,
+    ...(session.oidc ? {oidc: session.oidc} : {}),
     accessToken, expiresAt}}
 }
 
 export class CloudAuthenticationError extends Error {}
+
+/** The service signs in on an identity provider (cloud-sign-in.ts), not with a password. */
+export class CloudProviderSignIn extends Error {
+  constructor(readonly oidc: CloudOIDC) {
+    super("Sign in on the identity provider.")
+  }
+}
 
 /** Discover only the current host; localhost port fallback belongs to dev setups. */
 export async function discoverHostBackend(signal?: AbortSignal, fetchImplementation = globalThis.fetch) {

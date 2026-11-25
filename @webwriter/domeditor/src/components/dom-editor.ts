@@ -227,6 +227,7 @@ import {
   type BackendSession,
   type BackendDocumentSummary,
 } from "../backend-client"
+import {forgetCloudSignIn, renewCloudSignIn} from "../cloud-sign-in"
 import {
   WEBWRITER_GENERATOR,
   emptyDocumentHeadState,
@@ -284,6 +285,8 @@ type StorageLocation = "local" | "development-server"
 const localPackageResourcePath = LOCAL_PACKAGE_ROUTE_PREFIX
 const packageLoadTimeoutMs = 10_000
 const executeTimeoutMs = 15_000
+/** Renew identity-provider access tokens this long before they expire (Keycloak issues five-minute tokens). */
+const CLOUD_RENEWAL_LEAD_MS = 30_000
 // Every recovery capture serializes the whole document inside the editor
 // frame, which blocks typing there. A capture therefore waits until the author
 // has stopped for the quiet period, long enough that pauses within a paragraph
@@ -864,6 +867,7 @@ export class DomEditor extends LitElement {
   private backendDocumentId: string | null = null
   private backendProbeController: AbortController | null = null
   private cloudExpiryTimer: ReturnType<typeof setTimeout> | undefined
+  private readonly cloudRenewals = new Set<string>()
   private dirtyTrackingReady = false
   private dirtyTrackingMutationPending = false
   private dirtyTrackingTimer: ReturnType<typeof setTimeout> | undefined
@@ -1817,10 +1821,40 @@ export class DomEditor extends LitElement {
       if(!service.accessToken) continue
       const expiry = service.expiresAt ?? tokenExpiresAt(service.accessToken)
       if(expiry === undefined) continue
-      if(expiry <= Date.now()) {this.expireCloudService(service); return}
-      nextExpiry = Math.min(nextExpiry, expiry)
+      // Identity-provider sessions renew shortly before their access token expires.
+      const due = service.oidc ? expiry - CLOUD_RENEWAL_LEAD_MS : expiry
+      if(due <= Date.now()) {
+        if(service.oidc) {void this.renewCloudService(service); continue}
+        this.expireCloudService(service)
+        return
+      }
+      nextExpiry = Math.min(nextExpiry, due)
     }
     if(Number.isFinite(nextExpiry)) this.cloudExpiryTimer = setTimeout(() => this.updateCloudExpiry(), Math.min(nextExpiry - Date.now(), 2 ** 31 - 1))
+  }
+
+  /** A fresh access token from the identity provider; signs the service out when that is no longer possible. */
+  private async renewCloudService(service: CloudService) {
+    if(this.cloudRenewals.has(service.id)) return
+    this.cloudRenewals.add(service.id)
+    try {
+      const renewed = await renewCloudSignIn(service)
+      const current = this.settings.cloudServices.find(value => value.id === service.id)
+      if(!current || current.accessToken !== service.accessToken) return
+      if(!renewed) {
+        await forgetCloudSignIn(current)
+        this.expireCloudService(current)
+        return
+      }
+      this.settings = {...this.settings, cloudServices: this.settings.cloudServices.map(value => value.id === service.id
+        ? {...value, accessToken: renewed.accessToken, expiresAt: renewed.expiresAt} : value)}
+      persistAppSettings(this.settings)
+      if(this.settings.activeCloudServiceId === service.id) this.backendClient?.setAccessToken(renewed.accessToken)
+    }
+    finally {
+      this.cloudRenewals.delete(service.id)
+      this.updateCloudExpiry()
+    }
   }
 
   private get cloudSessionWarning() {
@@ -3483,7 +3517,9 @@ export class DomEditor extends LitElement {
       void this.execute({type: "setProofreadingDictionary", words: [...settings.proofreadingDictionary]}).catch(() => {})
     }
     const active = (value: AppSettings) => value.cloudServices.find(service => service.id === value.activeCloudServiceId)
-    const connection = (service?: CloudService) => service?.authentication === "none" ? {...service, username: ""} : service
+    const connection = (service?: CloudService) => service?.authentication === "none" ? {...service, username: ""}
+      // A renewed token keeps the identity-provider connection; signing in or out changes it.
+      : service?.oidc ? {...service, accessToken: Boolean(service.accessToken), expiresAt: undefined} : service
     if(previous.activeCloudServiceId !== settings.activeCloudServiceId
       || JSON.stringify(connection(active(previous))) !== JSON.stringify(connection(active(settings)))) {
       if(previous.activeCloudServiceId !== settings.activeCloudServiceId
@@ -4314,6 +4350,7 @@ export class DomEditor extends LitElement {
   private async loadSavedDocuments() {
     const client = this.backendClient
     if(!client || this.documentsLoading || this.fileOperationActive) return
+    if(!client.session.capabilities.includes("documents")) return
     this.documentsLoading = true
     this.documentsError = ""
     try {

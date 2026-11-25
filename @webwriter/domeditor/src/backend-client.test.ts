@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {describe, expect, it, vi} from "vitest"
-import {BackendClient, probeDevelopmentBackend, connectCloudService, discoverHostBackend, type BackendSession} from "./backend-client"
+import {BackendClient, probeDevelopmentBackend, connectCloudService, discoverHostBackend, CloudProviderSignIn, type BackendSession} from "./backend-client"
 
 const session: BackendSession = {
   kind: "webwriter-dev-server",
@@ -205,6 +205,36 @@ describe("authenticated cloud services", () => {
     await connectCloudService(result.service, {fetchImplementation: fetch})
     expect(fetch.mock.calls[2][1].headers.Authorization).toBe("Bearer opaque-token")
     expect(fetch.mock.calls[2][1].body).toBeUndefined()
+  })
+
+  it("hands a sign-in to the advertised identity provider without sending the password", async () => {
+    const oidc = {issuer: "https://auth.example/realms/edumix", clientId: "webwriter"}
+    const providerSession = {...cloudSession, signInUrl: undefined, oidc, user: null}
+    const fetch = vi.fn().mockResolvedValue(response(providerSession))
+    const failure = await connectCloudService(cloudService, {password: "", fetchImplementation: fetch}).catch(error => error)
+    expect(failure).toBeInstanceOf(CloudProviderSignIn)
+    expect(failure.oidc).toEqual(oidc)
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(fetch.mock.calls[0][1].body).toBeUndefined()
+  })
+
+  it("keeps the identity provider on a service restored with its bearer token, and rejects an unsafe one", async () => {
+    const oidc = {issuer: "https://auth.example/realms/edumix", clientId: "webwriter"}
+    const restored = await connectCloudService({...cloudService, accessToken: "keycloak-token"},
+      {fetchImplementation: vi.fn().mockResolvedValue(response({...cloudSession, oidc}))})
+    expect(restored.session.oidc).toEqual(oidc)
+    expect(restored.service.oidc).toEqual(oidc)
+    await expect(connectCloudService({...cloudService, accessToken: "keycloak-token"}, {fetchImplementation:
+      vi.fn().mockResolvedValue(response({...cloudSession, oidc: {issuer: "http://auth.example/realms/edumix", clientId: "webwriter"}}))}))
+      .rejects.toThrow("does not provide a supported WebWriter cloud service")
+  })
+
+  it("lets a renewed token replace the old one on an open connection", async () => {
+    const fetch = vi.fn().mockImplementation(async () => response({documents: []}))
+    const client = new BackendClient({...cloudSession, capabilities: ["documents"]}, fetch, "old-token")
+    client.setAccessToken("new-token")
+    await client.listDocuments()
+    expect(fetch.mock.calls[0][1].headers.Authorization).toBe("Bearer new-token")
   })
 
   it("sends bearer authorization for documents and flags 401 even without JSON", async () => {
