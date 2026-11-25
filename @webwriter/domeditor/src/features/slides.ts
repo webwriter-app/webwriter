@@ -3,7 +3,7 @@ import {EditorFeature, type DocumentListenerMap} from "."
 import {canvasControlsStyles, canvasIcons, groupCanvasZoomPresets, updateCanvasZoomControls, type CanvasNavigation} from "../canvas-viewer.js"
 import {$, clearInlinePlacement, createAnchorPositioner, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker, uiMotionDisabled} from "../utility"
 import {getDocumentRoot} from "../document-template"
-import {documentLayoutMode, resetEmptyLayoutContent, isSlide, slideLayoutRole, slidesClass, slidesStyles, slideWidth, slideHeight} from "../document-layout"
+import {documentLayoutMode, resetEmptyLayoutContent, isSlide, slideLayoutRole, slidesClass, slidesStyles, slideFragmentStyles, slideWidth, slideHeight} from "../document-layout"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {TouchPinch} from "../touch-pinch.js"
 
@@ -46,7 +46,8 @@ export class SlidesFeature extends EditorFeature {
       this.removeZoomStyle?.()
       this.removeZoomStyle = this.editor.addMainDOMStyleRule(`@media screen {
         body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) {
-          zoom: ${this.viewZoom}; margin-inline: max(0px, calc((100vw / ${this.viewZoom} - ${slideWidth}px) / 2));
+          --ww-slide-scale: ${this.viewZoom};
+          zoom: var(--ww-slide-scale); margin-inline: max(0px, calc((100vw / var(--ww-slide-scale) - ${slideWidth}px) / 2));
         }
       }`)
     }
@@ -635,7 +636,7 @@ export class SlidesFeature extends EditorFeature {
     // Measure older flow decks above before applying the bundled layout.
     // Its portable <style> element is blocked by the strict editing CSP.
     // Keep editor rules (including local zoom) later in the cascade.
-    this.layoutStylesheet = createStylesheet(slidesStyles + `
+    this.layoutStylesheet = createStylesheet(slidesStyles + slideFragmentStyles + `
       @media screen { body.ww-slides > .ww-slides-viewport { overscroll-behavior-x: contain; } }
     `)
     document.adoptedStyleSheets = [this.layoutStylesheet, ...document.adoptedStyleSheets]

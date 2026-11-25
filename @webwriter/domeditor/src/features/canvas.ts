@@ -578,6 +578,7 @@ export class CanvasFeature extends EditorFeature {
       this.slot = this.editor.appendix.querySelector<HTMLSlotElement>("slot:not([name])")!
       this.viewer = new CanvasViewer(this.slot, this.background!, this.controls!, this.panSurface, this.cameraChanged, this.editor.options.loadCanvasSnapdom, isAuthoredMutation)
       if(!this.viewer.startView()) this.viewer.applyCamera()
+      this.viewer.revealFragment()
       this.viewer.mountMinimap(this.controlButtons!.parentElement!, {
         add: () => this.saveStartingView(),
         remove: () => this.deleteStartingView(),

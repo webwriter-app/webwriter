@@ -36,6 +36,7 @@ export class CanvasViewer {
   fit(): void
   startView(): boolean
   reveal(rect: Rect): void
+  revealFragment(): void
   panAtEdge(point: Point): boolean
   applyCamera(): void
   startPan(event: PointerEvent): void

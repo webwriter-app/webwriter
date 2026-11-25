@@ -190,6 +190,14 @@ export const slidesClass = "ww-slides"
 export const slideClass = "ww-slide"
 export const slideWidth = 1280
 export const slideHeight = 720
+export const slideFragmentStyles = `@media screen {
+  /* A small native fragment scroll can snap back to the preceding slide.
+   * Expand the target by half a viewport on each side, accounting for zoom. */
+  :where(body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) :target) {
+    scroll-margin-left: calc(50vw / var(--ww-slide-scale, 1));
+    scroll-margin-right: calc(50vw / var(--ww-slide-scale, 1));
+  }
+}`
 export const slidesStyles = `
 @media screen {
   html:has(> body.ww-slides) { height: 100%; overflow: hidden; }

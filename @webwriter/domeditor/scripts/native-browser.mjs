@@ -274,6 +274,7 @@ const expectedChecks = [
   "typing after moving a text box preserves its text and position",
   "a clean canvas retains its initial item when moving and typing without inserting links",
   "CSS Slides use native fragment links while editing",
+  "local fragment links reveal targets in Document, Canvas, Slides and Board",
   "slide editing retains text and media selections after focus",
   "exported canvas runs its standalone viewer without editor dependencies",
   "image hotspots scale and open popovers in preview and standalone reading mode",

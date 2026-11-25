@@ -10140,6 +10140,129 @@ await check("canvas and slide movement follows the dot grid and alignment guides
 
 await check("slide editing retains text and media selections after focus", () => checkSlideEditing(nativeRootEditor))
 
+await check("local fragment links reveal targets in Document, Canvas, Slides and Board", async () => {
+  const links = '<p id="cross-reference"><a href="#far%20away">Jump to target</a></p>'
+  const destination = '<p id="far away"><a href="#cross-reference">Return to the first item</a></p>'
+  const fixtures = {
+    document: `${links}<div style="height:1400px"></div>${destination}`,
+    canvas: `${links}<section style="left:-1800px;top:1500px;width:300px">${destination}</section>`,
+    slides: `<div class="ww-slides-viewport"><section class="ww-slide" id="first-slide">${links}</section><section class="ww-slide" id="second-slide">${destination}</section></div>`,
+    board: `<section class="ww-board-column"><h2>Start</h2><article class="ww-board-card">${links}</article></section>
+      ${'<section class="ww-board-column"><h2>Spacer</h2></section>'.repeat(3)}
+      <section class="ww-board-column"><h2>End</h2><article class="ww-board-card"><div style="height:1400px"></div>${destination}</article></section>`,
+  }
+  const isVisible = (node: Element, view: Window) => {
+    const bounds = node.getBoundingClientRect()
+    return bounds.width > 0 && bounds.height > 0 && bounds.right > 0 && bounds.left < view.innerWidth
+      && bounds.bottom > 0 && bounds.top < view.innerHeight
+  }
+  const waitForTarget = async (node: Element, view: Window, context: string) => {
+    for(let attempt = 0; attempt < 30 && !isVisible(node, view); attempt++) await layoutFrame()
+    assert(isVisible(node, view), `${context}: target outside viewport ${JSON.stringify(node.getBoundingClientRect())}`)
+  }
+  const panAway = (slot: HTMLSlotElement) => {
+    slot.dispatchEvent(new slot.ownerDocument.defaultView!.WheelEvent("wheel", {
+      deltaX: 2600, deltaY: -2100, bubbles: true, composed: true, cancelable: true,
+    }))
+  }
+  for(const mode of ["canvas", "document", "slides", "board"] as const) {
+    const styles = {document: "", canvas: canvasStyles, slides: slidesStyles, board: boardStyles}[mode]
+    const bodyClass = mode === "document" ? "" : ` class="ww-${mode}"`
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:900px;height:600px;border:0"
+    frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}${styles}</style>
+      <script class="◆editor-only" type="module">
+        import {openFrameLinksInNewTabs} from "/src/frame-links.ts"
+        openFrameLinksInNewTabs(window)
+      </script></head><body${bodyClass}>${fixtures[mode]}
+      <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+    nativeRootEditor.addAppendix(frame)
+    try {
+      const view = frame.contentWindow!
+      for(let attempt = 0; !view.editor && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
+      assert(view.editor, `${mode}: editor did not initialize: ${view.editorError}`)
+      const doc = frame.contentDocument!
+      const source = doc.getElementById("cross-reference")!, target = doc.getElementById("far away")!
+      const link = source.querySelector<HTMLAnchorElement>('a[href="#far%20away"]')!
+      await layoutFrame()
+      if(mode === "canvas") view.editor!.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+      assert(!isVisible(target, view), `${mode}: destination should start outside the viewport`)
+      const originalHTML = target.outerHTML, zoom = view.editor!.features.canvas.zoom
+      link.click()
+      await waitForTarget(target, view, `${mode} editor jump`)
+      assert(view.location.hash === "#far%20away" && frame.contentDocument === doc, `${mode}: jump did not stay in the current document`)
+      assert(target.outerHTML === originalHTML && view.editor!.features.canvas.zoom === zoom, `${mode}: jump changed content or zoom`)
+      if(mode === "canvas") assert(view.scrollX === 0 && view.scrollY === 0, "canvas jump scrolled the page instead of moving the camera")
+      if(mode === "slides") assert(Math.abs(target.closest(".ww-slide")!.getBoundingClientRect().left) < 1, "slide jump did not center the target slide")
+      target.querySelector("a")!.click()
+      await waitForTarget(source, view, `${mode} editor return`)
+      assert(view.location.hash === "#cross-reference", `${mode}: return did not update the fragment`)
+      if(mode === "canvas") {
+        view.history.back()
+        await waitForTarget(target, view, "canvas history back")
+        panAway(view.editor!.appendix.querySelector("slot")!)
+        assert(!isVisible(target, view), "canvas: editor pan did not leave the destination")
+        link.click()
+        await waitForTarget(target, view, "canvas repeated editor jump")
+      }
+      if(mode === "slides") {
+        view.editor!.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+        await layoutFrame()
+        assert(!isVisible(target, view), "slides: destination should be offscreen at actual size")
+        link.click()
+        await waitForTarget(target, view, "slides editor jump at actual size")
+      }
+
+      const saved = await view.editor!.serializeHTML(true)
+      const previewHTML = previewFrameHTML(new DOMParser().parseFromString(saved, "text/html"), {
+        bridgeNonce: "cross-reference", packages: [], importMap: null,
+        hostOrigin: location.origin, frameOrigin: location.origin,
+        entryURL: new URL("../src/preview-entry.ts", import.meta.url).href, executeScripts: true,
+      })
+      for(const [context, html] of [["saved reader", saved], ["preview", previewHTML]]) {
+        const output = document.createElement("iframe")
+        output.style.cssText = frame.style.cssText
+        // A standalone file resolves its own fragment links. A srcdoc
+        // document inherits the parent URL unless the preview bridge handles them.
+        const savedURL = context === "saved reader" ? URL.createObjectURL(new Blob([html], {type: "text/html"})) : null
+        if(savedURL) {
+          if(mode === "slides") output.setAttribute("sandbox", "allow-same-origin")
+          output.src = mode === "canvas" ? `${savedURL}#far%20away` : savedURL
+        }
+        else output.srcdoc = html
+        const loaded = new Promise<void>(resolve => output.addEventListener("load", () => resolve(), {once: true}))
+        nativeRootEditor.addAppendix(output)
+        try {
+          await loaded
+          const reader = output.contentWindow!, content = output.contentDocument!
+          const target = content.getElementById("far away")!
+          const link = content.querySelector<HTMLAnchorElement>('a[href="#far%20away"]')!
+          const slot = content.body.shadowRoot?.querySelector("slot")
+          if(savedURL && mode === "canvas") {
+            const rect = target.getBoundingClientRect()
+            assert(Math.abs(rect.left + rect.width / 2 - reader.innerWidth / 2) < 1
+              && Math.abs(rect.top + rect.height / 2 - reader.innerHeight / 2) < 1, "saved canvas did not center its initial fragment")
+            target.querySelector("a")!.click()
+            await waitForTarget(content.getElementById("cross-reference")!, reader, "canvas saved reader return")
+          }
+          for(let jump = 0; jump < (mode === "canvas" ? 2 : 1); jump++) {
+            if(mode === "canvas") panAway(slot!)
+            assert(!isVisible(target, reader), `${mode} ${context}: destination should start offscreen`)
+            link.click()
+            await waitForTarget(target, reader, `${mode} ${context} jump ${jump + 1}`)
+            assert(reader.location.hash === "#far%20away", `${mode} ${context}: jump did not update the fragment`)
+          }
+        }
+        finally {
+          output.remove()
+          if(savedURL) URL.revokeObjectURL(savedURL)
+        }
+      }
+    }
+    finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+  }
+})
+
 let savedSlidesHTML = ""
 await check("CSS Slides use native fragment links while editing", async () => {
   const frame = document.createElement("iframe")

@@ -102,6 +102,34 @@ describe("standalone canvas reader", () => {
     expect(getComputedStyle(picture).width).toBe("320px")
   })
 
+  it("reveals an initial fragment and cleans up queued fragment navigation on teardown", async () => {
+    const url = location.href
+    const target = document.querySelector("test-widget span")!
+    target.id = "a target"
+    vi.spyOn(target, "getClientRects").mockReturnValue([new DOMRect(-900, 1200, 200, 30)] as unknown as DOMRectList)
+    const measure = vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(-900, 1200, 200, 30))
+    try {
+      history.replaceState(null, "", "#a%20target")
+      reader = mountCanvasReader()!
+      expect(measure).toHaveBeenCalledOnce()
+
+      measure.mockClear()
+      window.dispatchEvent(new PopStateEvent("popstate"))
+      window.dispatchEvent(new HashChangeEvent("hashchange"))
+      await cameraFrame()
+      expect(measure).toHaveBeenCalledOnce()
+
+      measure.mockClear()
+      window.dispatchEvent(new PopStateEvent("popstate"))
+      reader.destroy()
+      reader = null
+      window.dispatchEvent(new HashChangeEvent("hashchange"))
+      await cameraFrame()
+      expect(measure).not.toHaveBeenCalled()
+    }
+    finally { history.replaceState(null, "", url) }
+  })
+
   it("fits the minimap to the viewport ratio and refreshes content and settled resizes only while open", async () => {
     const {context} = mockCameraCanvas()
     const resize = (width: number, height: number) => {
