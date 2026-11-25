@@ -177,7 +177,14 @@ const createNpmFileProvider = (base: string, versionCache: PublishedVersionCache
     return name && version ? {registry: "npm", name, version} : undefined
   },
   async resolveLatestTarget({registry, name, range, unstable}: {registry: string, name: string, range: SemverRange, unstable: boolean}, _layer: string, parentUrl?: string) {
-    const version = range.bestMatch(await publishedVersions(name, versionCache), unstable)
+    let version = range.bestMatch(await publishedVersions(name, versionCache), unstable)
+    if(!version) {
+      const registryVersions = await npmPublishedVersions(name, globalThis.fetch.bind(globalThis)).catch(() => [])
+      if(registryVersions.length) {
+        versionCache.set(name, Promise.resolve(registryVersions))
+        version = range.bestMatch(registryVersions, unstable)
+      }
+    }
     if(!version) throw new Error(`No published version of ${name} matches ${String(range)}${parentUrl ? `, imported from ${parentUrl}` : ""}`)
     return {registry, name, version: version.toString()}
   },

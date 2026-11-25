@@ -187,6 +187,23 @@ describe("package dependency resolution", () => {
     expect(provider.parseUrlPkg("https://unpkg.com/lit@3.3.3/index.js")).toBeUndefined()
   })
 
+  it("falls back to the npm registry when jsDelivr metadata is stale for a newly published version", async () => {
+    const requests: string[] = []
+    vi.stubGlobal("fetch", vi.fn(async(url: string) => {
+      requests.push(url)
+      if(url === "https://data.jsdelivr.com/v1/packages/npm/@webwriter/widget") return Response.json({versions: ["1.4.0"]})
+      if(url === "https://registry.npmjs.org/%40webwriter%2Fwidget") return Response.json({versions: {"1.4.0": {}, "1.5.0": {}}})
+      return new Response(null, {status: 404})
+    }))
+    const provider = npmFileProvider("https://cdn.jsdelivr.net/npm")
+    const range = (prefix: string) => ({bestMatch: (versions: string[]) => versions.find(version => version.startsWith(prefix)) ?? null})
+    await expect(provider.resolveLatestTarget({registry: "npm", name: "@webwriter/widget", range: range("1.5."), unstable: false}, "default"))
+      .resolves.toEqual({registry: "npm", name: "@webwriter/widget", version: "1.5.0"})
+    await expect(provider.resolveLatestTarget({registry: "npm", name: "@webwriter/widget", range: range("1.5."), unstable: false}, "default"))
+      .resolves.toEqual({registry: "npm", name: "@webwriter/widget", version: "1.5.0"})
+    expect(requests.filter(url => url === "https://registry.npmjs.org/%40webwriter%2Fwidget")).toHaveLength(1)
+  })
+
   it("refreshes published version metadata between dependency resolution passes", async () => {
     const requests: string[] = []
     let catalogFetch = 0
