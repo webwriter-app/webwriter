@@ -4,6 +4,7 @@ import {AppRibbon} from "./ribbon"
 import {RibbonMenu} from "./ribbon-menu"
 import {primaryDrawerMarkNames} from "../marks"
 import {formatShortcut} from "../app-settings"
+import {insertSubmenuHoverDelay} from "../insertion"
 
 afterEach(() => document.body.replaceChildren())
 
@@ -363,5 +364,26 @@ describe("collapsed ribbon file menu", () => {
     ribbon.addEventListener("ribbon-button-click", commands)
     insert.shadowRoot!.querySelector<HTMLButtonElement>('.submenu button')!.click()
     expect(commands).toHaveBeenCalledOnce()
+  })
+
+  it("waits for explicit activation of top-level insertion menus before enabling submenu hover", async () => {
+    const {menu} = await mount()
+    const hover = (trigger: HTMLButtonElement) => trigger.closest(".item-row")!
+      .dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+    vi.useFakeTimers()
+    try {
+      for(const label of ["Insert", "Packages"]) {
+        const trigger = menu.shadowRoot!.querySelector<HTMLButtonElement>(`button[title="${label}"]`)!
+        hover(trigger)
+        await vi.advanceTimersByTimeAsync(insertSubmenuHoverDelay)
+        expect(trigger.getAttribute("aria-expanded")).toBe("false")
+      }
+      const insert = await open(menu, "Insert")
+      const heading = insert.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show more Heading options"]')!
+      hover(heading)
+      await vi.advanceTimersByTimeAsync(insertSubmenuHoverDelay)
+      expect(heading.getAttribute("aria-expanded")).toBe("true")
+    }
+    finally { vi.useRealTimers() }
   })
 })

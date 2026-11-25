@@ -103,6 +103,8 @@ export function withPackageExportSource(target: PackageExportTarget, source: str
 export type PackageEditingConfigEntry = WidgetEditingConfig & {
   label?: LocalizedText
   description?: LocalizedText
+  /** Groups this insertable in a second-level insertion menu. */
+  category?: string
   uninsertable?: boolean
   /** File format keys advertised by the widget's convertFrom handlers. */
   importFormats?: string[]
@@ -113,7 +115,7 @@ export type PackageEditingConfigEntry = WidgetEditingConfig & {
 
 /** Options the editor reads from an editing-config entry. */
 export const packageEditingConfigOptions = [
-  "label", "description", "uninsertable", "group", "inline", "content", "isolating", "marks", "propagateEvents", "sharedData",
+  "label", "description", "category", "uninsertable", "group", "inline", "content", "isolating", "marks", "propagateEvents", "sharedData",
   "excludedDescendants", "importFormats", "exportFormats",
 ] as const
 
@@ -192,6 +194,7 @@ export type PackageInsertionItem = {
   name: string
   packageName: string
   kind: "widget" | "snippet"
+  category?: string
   description?: string
   iconUrl?: string
   tag?: string
@@ -327,21 +330,31 @@ export function packageMemberIcon(pkg: WebWriterPackage, member?: PackageMember)
   return member?.iconUrl ?? pkg.iconUrl
 }
 
+/** Returns the trimmed nonempty insertion category for a package member. */
+export function packageMemberCategory(member: PackageMember) {
+  const category = member.editingConfig?.category
+  return typeof category === "string" ? category.trim() || undefined : undefined
+}
+
 export function packageInsertionItems(packages: WebWriterPackage[], includeUninsertable = false): PackageInsertionItem[] {
   return packages.flatMap(pkg => pkg.members
     .filter(member => member.insertable || includeUninsertable)
-    .map(member => ({
-      section: "Packages" as const,
-      name: member.kind === "widget" && member.tagName && (!member.label || member.label === member.tagName || member.label === titleCase(member.exportName))
-        ? widgetNameLabel(member.tagName) : member.label,
-      packageName: member.packageName,
-      kind: member.kind,
-      description: member.description,
-      iconUrl: packageMemberIcon(pkg, member),
-      ...(member.tagName ? {tag: member.tagName} : {}),
-      ...(member.htmlUrl ? {htmlUrl: member.htmlUrl} : {}),
-      ...(!member.insertable ? {insertable: false} : {}),
-    })))
+    .map(member => {
+      const category = packageMemberCategory(member)
+      return {
+        section: "Packages" as const,
+        name: member.kind === "widget" && member.tagName && (!member.label || member.label === member.tagName || member.label === titleCase(member.exportName))
+          ? widgetNameLabel(member.tagName) : member.label,
+        packageName: member.packageName,
+        kind: member.kind,
+        ...(category ? {category} : {}),
+        description: member.description,
+        iconUrl: packageMemberIcon(pkg, member),
+        ...(member.tagName ? {tag: member.tagName} : {}),
+        ...(member.htmlUrl ? {htmlUrl: member.htmlUrl} : {}),
+        ...(!member.insertable ? {insertable: false} : {}),
+      }
+    }))
 }
 
 /** Resolves the installed widget tags and the editing settings that contribute

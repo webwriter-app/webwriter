@@ -3,7 +3,7 @@ import { property, state } from "lit/decorators.js"
 import {fixedClientX, uiMotionDisabled} from "../utility"
 import { ribbonIcon } from "../ribbon-icons"
 import {packageNameLabel, type PackageInsertionItem} from "../packages"
-import {insertionMenuItems, sectionInsertionTags, type InsertionMenuItem} from "../insertion"
+import {groupInsertablesByCategory, insertSubmenuClickGrace, insertSubmenuHoverDelay, insertionMenuItems, sectionInsertionTags, type InsertionMenuItem} from "../insertion"
 export {
   deliberatelyUnsupportedInsertionTags, elementDragType, emptyElementHTML, headingInsertionTags,
   insertionMenuItems, nodeDragType, ribbonElementInsertionAction, ribbonElementTag,
@@ -77,6 +77,9 @@ export class InsertionMenu extends LitElement {
 
     .item:hover { background: #eef4fb; }
     .item[data-active] { color: #0c4a6e; background: #e0f2fe; }
+    .category-back { width: calc(100% - 2.25rem); margin-bottom: 0.25rem; font-weight: 600; }
+    .category-back .item-icon { transform: rotate(180deg); }
+    .category-next { margin-inline-start: auto; }
 
     .item-icon {
       display: block;
@@ -110,6 +113,9 @@ export class InsertionMenu extends LitElement {
   @property({attribute: false}) items: InsertionMenuItem[] | null = null
   @property({type: Boolean, reflect: true}) inline = false
   @state() private activeIndex = -1
+  @state() private activeCategory: string | null = null
+  private categoryHoverTimer: ReturnType<typeof setTimeout> | undefined
+  private categoryHover: {openedAt: number, triggerBounds: DOMRect} | null = null
 
   get filteredItems() {
     const query = this.query.trim().toLowerCase()
@@ -118,18 +124,39 @@ export class InsertionMenu extends LitElement {
         && !sectionInsertionTags.some(tag => tag === item.tag)),
       ...(globalThis.DOMEDITOR_PACKAGE_ITEMS ?? []) as PackageInsertionItem[],
     ]
-    return items.filter(item => (!("insertable" in item) || item.insertable !== false) && (!query || [item.name, item.id, item.tag, item.packageName,
+    return items.filter(item => (!("insertable" in item) || item.insertable !== false) && (!query || [item.name, item.id, item.tag, item.category, item.packageName,
       item.packageName && packageNameLabel(item.packageName), item.kind]
       .filter(Boolean).join(" ").toLowerCase().includes(query)))
   }
 
+  private get sections() {
+    const items = this.filteredItems
+    if(this.activeCategory) {
+      return [{
+        label: this.activeCategory,
+        entries: items.filter(item => item.section === "Packages" && item.category === this.activeCategory).map(item => ({item})),
+      }]
+    }
+    return [
+      {label: "Elements", entries: items.filter(item => item.section !== "Packages").map(item => ({item}))},
+      {label: "Packages", entries: groupInsertablesByCategory(items.filter(item => item.section === "Packages"), item => item.category)},
+    ]
+  }
+
+  private get activeEntry() {
+    return this.sections.flatMap(section => section.entries)[this.activeIndex]
+  }
+
   get activeItem() {
-    return this.filteredItems[this.activeIndex]
+    const entry = this.activeEntry
+    return entry && "item" in entry ? entry.item : undefined
   }
 
   showAt(x: number, y: number) {
+    this.resetCategoryHover()
     this.setPosition(x, y)
     this.query = ""
+    this.activeCategory = null
     this.activeIndex = -1
     this.resetScrollPosition()
     this.open = true
@@ -141,30 +168,58 @@ export class InsertionMenu extends LitElement {
   }
 
   moveActive(direction: 1 | -1) {
-    const items = this.filteredItems
-    if(!items.length) return
+    const count = this.sections.reduce((total, section) => total + section.entries.length, 0)
+    if(!count) return
     if(this.activeIndex < 0) {
-      this.activeIndex = direction === 1? 0: items.length - 1
+      this.activeIndex = direction === 1? 0: count - 1
       return
     }
-    this.activeIndex = (this.activeIndex + direction + items.length) % items.length
+    this.activeIndex = (this.activeIndex + direction + count) % count
   }
 
   selectActive() {
-    const item = this.activeItem
-    if(item) this.choose(item)
+    const entry = this.activeEntry
+    if(!entry) return false
+    if("category" in entry) this.openCategory(entry.category)
+    else this.choose(entry.item)
+    return true
+  }
+
+  openActiveCategory() {
+    const entry = this.activeEntry
+    if(!entry || !("category" in entry)) return false
+    this.openCategory(entry.category)
+    return true
+  }
+
+  private openCategory(category: string) {
+    this.resetCategoryHover()
+    this.activeCategory = category
+    this.activeIndex = 0
+  }
+
+  closeCategory() {
+    const category = this.activeCategory
+    if(!category) return false
+    this.resetCategoryHover()
+    this.activeCategory = null
+    this.activeIndex = this.sections.flatMap(section => section.entries)
+      .findIndex(entry => "category" in entry && entry.category === category)
+    return true
   }
 
   protected willUpdate(changed: Map<string, unknown>) {
-    if(changed.has("query")) {
+    if(changed.has("query") || changed.has("items") || !this.open) {
+      this.resetCategoryHover()
+      this.activeCategory = null
       this.activeIndex = -1
     }
   }
 
   protected updated(changed: Map<string, unknown>) {
     if(!this.open) return
-    if(changed.has("open") || changed.has("query")) this.resetScrollPosition()
-    else if(changed.has("activeIndex")) {
+    if(changed.has("open") || changed.has("query") || (changed.has("activeCategory") && this.activeCategory)) this.resetScrollPosition()
+    else if(changed.has("activeIndex") || changed.has("activeCategory")) {
       this.shadowRoot?.querySelector<HTMLElement>(".item[data-active]")
         ?.scrollIntoView({behavior: uiMotionDisabled(this) ? "instant" : "smooth", block: "nearest", inline: "nearest"})
     }
@@ -183,26 +238,61 @@ export class InsertionMenu extends LitElement {
     }))
   }
 
-  private chooseFromPointer(event: PointerEvent, item: InsertionMenuItem) {
-    if(event.button !== 0) return
-    event.preventDefault()
-    event.stopPropagation()
-    this.choose(item)
+  private cancelCategoryHover = () => clearTimeout(this.categoryHoverTimer)
+
+  private resetCategoryHover() {
+    this.cancelCategoryHover()
+    this.categoryHover = null
   }
 
-  private closeFromPointer(event: PointerEvent) {
+  private scheduleCategoryHover(event: PointerEvent, category: string) {
+    if(event.pointerType !== "mouse" || event.buttons) return
+    const trigger = event.currentTarget as HTMLElement
+    this.cancelCategoryHover()
+    this.categoryHoverTimer = setTimeout(() => {
+      if(!this.open || this.activeCategory || !trigger.isConnected) return
+      const triggerBounds = trigger.getBoundingClientRect()
+      this.openCategory(category)
+      this.categoryHover = {openedAt: Date.now(), triggerBounds}
+    }, insertSubmenuHoverDelay)
+  }
+
+  private activateFromClick(event: MouseEvent, activate: () => void) {
+    // Hover replaces the list in place. Guard clicks that can still land where the trigger was.
+    const hover = this.categoryHover
+    if(hover && (event.detail > 0 || event.type === "pointerdown")
+      && Date.now() - hover.openedAt < insertSubmenuClickGrace) {
+      const {left, right, top, bottom} = hover.triggerBounds
+      if(event.clientX >= left && event.clientX <= right && event.clientY >= top && event.clientY <= bottom) return
+    }
+    activate()
+  }
+
+  private activateFromPointer(event: PointerEvent, activate: () => void) {
     if(event.button !== 0) return
     event.preventDefault()
     event.stopPropagation()
-    this.close()
+    this.activateFromClick(event, activate)
+  }
+
+  disconnectedCallback() {
+    this.resetCategoryHover()
+    super.disconnectedCallback()
   }
 
   private close() {
     this.dispatchEvent(new Event("insertion-menu-close", {bubbles: true, composed: true}))
   }
 
+  private renderItemIcon(item: InsertionMenuItem) {
+    return html`<span class="item-icon" aria-hidden="true">
+      ${item.iconUrl ? html`<img src=${item.iconUrl} alt="" />` : ribbonIcon(item.section === "Packages" ? "Packages" : item.icon ?? item.name)}
+    </span>`
+  }
+
   render() {
-    const items = this.filteredItems
+    const sections = this.sections
+    const active = sections.flatMap(section => section.entries)[this.activeIndex]
     return html`
       <div class="menu" ?hidden=${!this.open}>
         <button
@@ -210,30 +300,50 @@ export class InsertionMenu extends LitElement {
           type="button"
           aria-label="Close element menu"
           title="Close"
-          @pointerdown=${this.closeFromPointer}
+          @pointerdown=${(event: PointerEvent) => this.activateFromPointer(event, () => this.close())}
           @click=${this.close}
         >×</button>
         <div class="sections">
-          ${(["Elements", "Packages"] as const).map(section => html`
-            <section aria-label=${section}>
-              <h2>${section}</h2>
-              ${items.filter(item => (item.section === "Packages") === (section === "Packages")).map(item => html`
-                <button
-                  class="item"
-                  type="button"
-                  ?data-active=${items[this.activeIndex] === item}
-                  @pointerdown=${(event: PointerEvent) => this.chooseFromPointer(event, item)}
-                  @click=${() => this.choose(item)}
-                >
-                  <span class="item-icon" aria-hidden="true">
-                    ${item.iconUrl ? html`<img src=${item.iconUrl} alt="" />` : ribbonIcon(item.section === "Packages" ? "Packages" : item.icon ?? item.name)}
-                  </span>
-                  <span class="item-text">
-                    <span class="item-name">${item.name}</span>
-                    ${item.packageName ? html`<span class="item-package">${packageNameLabel(item.packageName)}</span>` : ""}
-                  </span>
+          ${sections.map(({label, entries}) => html`
+            <section aria-label=${label}>
+              ${this.activeCategory ? html`
+                <button class="item category-back" type="button" aria-label="Back to insert menu"
+                  @pointerdown=${(event: PointerEvent) => this.activateFromPointer(event, () => this.closeCategory())}
+                  @click=${(event: MouseEvent) => this.activateFromClick(event, () => this.closeCategory())}>
+                  <span class="item-icon" aria-hidden="true">${ribbonIcon("ChevronRight")}</span>
+                  <span class="item-text item-name">${label}</span>
                 </button>
-              `)}
+              ` : html`<h2>${label}</h2>`}
+              ${entries.map(entry => {
+                if("category" in entry) return html`
+                  <button class="item" type="button"
+                    ?data-active=${active === entry}
+                    @pointerenter=${(event: PointerEvent) => this.scheduleCategoryHover(event, entry.category)}
+                    @pointerleave=${this.cancelCategoryHover}
+                    @pointerdown=${(event: PointerEvent) => this.activateFromPointer(event, () => this.openCategory(entry.category))}
+                    @click=${() => this.openCategory(entry.category)}>
+                    ${this.renderItemIcon(entry.items[0])}
+                    <span class="item-text item-name">${entry.category}</span>
+                    <span class="item-icon category-next" aria-hidden="true">${ribbonIcon("ChevronRight")}</span>
+                  </button>
+                `
+                const {item} = entry
+                return html`
+                  <button
+                    class="item"
+                    type="button"
+                    ?data-active=${active === entry}
+                    @pointerdown=${(event: PointerEvent) => this.activateFromPointer(event, () => this.choose(item))}
+                    @click=${(event: MouseEvent) => this.activateFromClick(event, () => this.choose(item))}
+                  >
+                    ${this.renderItemIcon(item)}
+                    <span class="item-text">
+                      <span class="item-name">${item.name}</span>
+                      ${item.packageName ? html`<span class="item-package">${packageNameLabel(item.packageName)}</span>` : ""}
+                    </span>
+                  </button>
+                `
+              })}
             </section>
           `)}
         </div>

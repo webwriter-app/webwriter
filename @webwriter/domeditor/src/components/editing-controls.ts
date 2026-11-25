@@ -1262,7 +1262,11 @@ export abstract class EditingControls extends LitElement {
   private renderPackageEditingFields(key: string, config: Record<string, unknown> = {}) {
     const textOptions = key === "."
       ? [["label", "Display label"], ["description", "Display description"]]
-      : [["label", "Display label"], ["description", "Display description"], ["group", "Group"], ["content", "Content"], ["marks", "Allowed marks"], ["propagateEvents", "Propagated events"]]
+      : [
+          ["label", "Display label"], ["description", "Display description"],
+          ...(/^\.\/(widgets|snippets)\//.test(key) ? [["category", "Insert menu category"]] : []),
+          ["group", "Group"], ["content", "Content"], ["marks", "Allowed marks"], ["propagateEvents", "Propagated events"],
+        ]
     return html`
       ${textOptions.map(([option, label]) => html`<label class="develop-field">
         <span class="develop-field-label">${label}</span>

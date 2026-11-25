@@ -4,6 +4,9 @@ import {sectionNames} from "./sections"
 import {isGraphicShapeType} from "./graphic"
 import {mathStructureOptions} from "./math"
 
+export const insertSubmenuHoverDelay = 180
+export const insertSubmenuClickGrace = 250
+
 export type InsertionMenuItem = {
   id?: string
   tag?: string
@@ -13,10 +16,33 @@ export type InsertionMenuItem = {
   section: "Text" | "Lists" | "Media" | "Forms" | "Packages"
   packageName?: string
   kind?: "widget" | "snippet" | "html"
+  category?: string
   description?: string
   icon?: string
   iconUrl?: string
   htmlUrl?: string
+}
+
+type InsertionEntry<Item> = {item: Item} | {category: string, items: Item[]}
+
+export function groupInsertablesByCategory<Item>(items: readonly Item[], categoryOf: (item: Item) => string | undefined) {
+  const entries: InsertionEntry<Item>[] = []
+  const categories = new Map<string, Item[]>()
+  for(const item of items) {
+    const category = categoryOf(item)
+    if(!category) {
+      entries.push({item})
+      continue
+    }
+    const existing = categories.get(category)
+    if(existing) existing.push(item)
+    else {
+      const members = [item]
+      categories.set(category, members)
+      entries.push({category, items: members})
+    }
+  }
+  return entries
 }
 
 type BuiltinInsertionMenuItem = InsertionMenuItem & {

@@ -30,7 +30,8 @@ import {isMediaCaptureMode, mediaCaptureModes, mediaCaptureOptions, type MediaTy
 import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames, type StyleMarkName} from "../marks"
 import {packageKeywordPresentations} from "../package-keywords"
 import type {PackageMember, WebWriterPackage} from "../packages"
-import {packageAction, packageMemberAction, packageMemberIcon, packageToggleAction, packageUpdateAction, packageUpdateKind} from "../packages"
+import {packageAction, packageMemberAction, packageMemberCategory, packageMemberIcon, packageToggleAction, packageUpdateAction, packageUpdateKind} from "../packages"
+import {groupInsertablesByCategory} from "../insertion"
 import {safeCssColor} from "../css-color"
 import {ribbonIcon} from "../ribbon-icons"
 import {uiMotionDisabled} from "../utility"
@@ -2471,6 +2472,35 @@ export class AppRibbon extends EditingControls {
     return !!member && this.unavailableInsertions.has(member.kind === "widget" ? `widget:${member.tagName}` : packageMemberAction(member))
   }
 
+  private packageMemberButtons(pkg: WebWriterPackage, members: PackageMember[]): RibbonMenuButton[] {
+    const primary = members[0]
+    const menuMembers = members.some(packageMemberCategory)
+      ? pkg.members
+        .filter(member => member.insertable && (member !== primary || packageMemberCategory(member)))
+      : members.slice(1)
+    const memberButton = (member: PackageMember): RibbonMenuButton => {
+      const conversion = this.packageConversion(pkg, member)
+      return {
+        label: member.label,
+        action: conversion ?? packageMemberAction(member),
+        insertionDisabled: !conversion && this.packageInsertionDisabled(member),
+        dragHTML: this.packageDragHTML(pkg, member),
+        icon: "Packages",
+        iconUrl: packageMemberIcon(pkg, member),
+      }
+    }
+    return groupInsertablesByCategory(menuMembers, packageMemberCategory).map(entry => "item" in entry
+      ? memberButton(entry.item)
+      : {
+        label: entry.category,
+        action: `package-category:${entry.category}`,
+        icon: "Packages",
+        iconUrl: packageMemberIcon(pkg, entry.items[0]),
+        menuOnly: true,
+        submenu: entry.items.map(memberButton),
+      })
+  }
+
   private packageButton({pkg, members, match}: PackageSearchResult) {
     const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)
     const busy = this.busyPackageNames.includes(pkg.name)
@@ -2485,17 +2515,7 @@ export class AppRibbon extends EditingControls {
       action: conversion ?? (installed && !busy && matchAction ? matchAction : packageAction(pkg)),
       dragAction: conversion ? undefined : matchAction,
       dragHTML: this.packageDragHTML(pkg, members[0]),
-      submenu: !installed || busy ? this.emptyPackageSubmenu : members.slice(1).map(member => {
-        const memberConversion = this.packageConversion(pkg, member)
-        return {
-          label: member.label,
-          action: memberConversion ?? packageMemberAction(member),
-          insertionDisabled: !memberConversion && this.packageInsertionDisabled(member),
-          dragHTML: this.packageDragHTML(pkg, member),
-          icon: "Packages",
-          iconUrl: packageMemberIcon(pkg, member),
-        }
-      }),
+      submenu: !installed || busy ? this.emptyPackageSubmenu : this.packageMemberButtons(pkg, members),
     }
   }
 
@@ -3019,9 +3039,9 @@ export class AppRibbon extends EditingControls {
     }))
     return [{label: "Editing", buttons: [
       {label: "Format", icon: "MarkBold", menuOnly: true, submenuGroups: format},
-      {label: "Insert", icon: "Paragraph", menuOnly: true, submenu: this.markElementConversions(insert)},
+      {label: "Insert", icon: "Paragraph", menuOnly: true, hoverSubmenus: true, submenu: this.markElementConversions(insert)},
       ...this.widgetConversionGroups.map(({label, icon, buttons}) => ({label, icon, menuOnly: true, submenu: buttons})),
-      {label: "Packages", icon: "Packages", menuOnly: true, submenuGroups: [{label: "Packages", buttons: packages,
+      {label: "Packages", icon: "Packages", menuOnly: true, hoverSubmenus: true, submenuGroups: [{label: "Packages", buttons: packages,
         content: !this.packagesLoading && !results.length ? html`<span>No packages</span>` : undefined}],
         submenuHeader: html`<package-search .query=${this.packageSearchQuery} .loading=${this.packagesLoading}
           .error=${this.packageError} @package-search-change=${this.handlePackageSearch}></package-search>`},

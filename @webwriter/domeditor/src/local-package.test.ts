@@ -164,6 +164,27 @@ describe("loadLocalPackage", () => {
 
 describe("local package checks", () => {
   it.each([
+    {category: "Media", valid: true},
+    {category: "", valid: true},
+    {category: 42, valid: false},
+  ])("validates insertion category $category", async ({category, valid}) => {
+    const result = await loadLocalPackage(nestedDirectory({
+      files: {"package.json": JSON.stringify({
+        name: "@local/demo",
+        version: "0.1.0",
+        exports: {"./snippets/example.html": "./snippets/example.html"},
+        editingConfig: {"./snippets/example": {category}},
+      })},
+      directories: {snippets: {files: {"example.html": "<p>Example</p>"}}},
+    }), {urlFor})
+
+    expect(result.warnings).toEqual(valid ? [] : [expect.objectContaining({
+      code: "invalid-editing-option", path: "./snippets/example", message: expect.stringContaining("category"),
+    })])
+    expect(result.package.members[0].editingConfig?.category).toBe(category)
+  })
+
+  it.each([
     {formats: {importFormats: ["text/javascript", ".js"], exportFormats: []}, invalid: []},
     {formats: {importFormats: ".js", exportFormats: ["image/*"]}, invalid: ["importFormats", "exportFormats"]},
     {formats: {importFormats: ["ul"], exportFormats: [42]}, invalid: ["importFormats", "exportFormats"]},

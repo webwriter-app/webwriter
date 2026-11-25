@@ -85,6 +85,12 @@ export class InsertionFeature extends EditorFeature {
           this.menu.moveActive(-1)
           return
         }
+        if((ev.key === "ArrowRight" && this.menu.openActiveCategory())
+          || (ev.key === "ArrowLeft" && this.menu.closeCategory())) {
+          ev.preventDefault()
+          ev.stopImmediatePropagation()
+          return
+        }
         if(ev.key === "Tab") {
           ev.preventDefault()
           ev.stopImmediatePropagation()
@@ -95,19 +101,18 @@ export class InsertionFeature extends EditorFeature {
           return
         }
         if(ev.key === "Enter") {
-          if(!this.menu.activeItem) {
+          if(!this.menu.selectActive()) {
             this.close()
             return
           }
           ev.preventDefault()
           ev.stopImmediatePropagation()
-          this.menu.selectActive()
           return
         }
         if(ev.key === "Escape") {
           ev.preventDefault()
           ev.stopImmediatePropagation()
-          this.close()
+          if(!this.menu.closeCategory()) this.close()
           return
         }
         // Backspace/Delete are handled by the editor's manipulation feature,

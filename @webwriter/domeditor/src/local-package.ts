@@ -323,6 +323,7 @@ const isFileFormatList = (value: unknown) => Array.isArray(value) && value.every
 const optionChecks: Record<string, (value: unknown) => boolean> = {
   label: isLocalizedText,
   description: isLocalizedText,
+  category: value => typeof value === "string",
   uninsertable: value => typeof value === "boolean",
   group: value => typeof value === "string",
   inline: value => typeof value === "boolean",

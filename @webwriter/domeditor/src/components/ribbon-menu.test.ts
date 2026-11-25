@@ -3,6 +3,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {RibbonMenu} from "./ribbon-menu"
 import {insertMathStructureButtons} from "./ribbon-menu-config"
 import {graphicShapeOptions} from "../graphic"
+import {insertSubmenuClickGrace, insertSubmenuHoverDelay} from "../insertion"
 
 const opened = new Set<HTMLElement>()
 const showPopover = vi.fn(function(this: HTMLElement) {opened.add(this)})
@@ -46,6 +47,43 @@ async function open(menu: RibbonMenu, label: string) {
 }
 
 describe("nested ribbon menus", () => {
+  it("opens insertion submenus after a sustained hover and guards against an immediate click", async () => {
+    const menu = await mount()
+    menu.hoverSubmenus = true
+    await menu.updateComplete
+    const trigger = menu.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-toggle")!
+    const row = trigger.closest(".item-row")!
+    const enter = (pointerType: string) => row.dispatchEvent(new PointerEvent("pointerenter", {pointerType}))
+    const leave = () => row.dispatchEvent(new PointerEvent("pointerleave", {pointerType: "mouse"}))
+    const click = () => trigger.dispatchEvent(new MouseEvent("click", {bubbles: true, detail: 1}))
+    vi.useFakeTimers()
+    try {
+      enter("touch")
+      await vi.advanceTimersByTimeAsync(insertSubmenuHoverDelay)
+      expect(opened.size).toBe(0)
+      enter("mouse")
+      await vi.advanceTimersByTimeAsync(insertSubmenuHoverDelay - 1)
+      expect(opened.size).toBe(0)
+      leave()
+      await vi.advanceTimersByTimeAsync(insertSubmenuHoverDelay)
+      expect(opened.size).toBe(0)
+
+      enter("mouse")
+      await vi.advanceTimersByTimeAsync(insertSubmenuHoverDelay)
+      expect(opened.size).toBe(1)
+      expect(menu.shadowRoot!.activeElement).toBeNull()
+      leave()
+      click()
+      await menu.updateComplete
+      expect(opened.size).toBe(1)
+      await vi.advanceTimersByTimeAsync(insertSubmenuClickGrace)
+      click()
+      await menu.updateComplete
+      expect(opened.size).toBe(0)
+    }
+    finally { vi.useRealTimers() }
+  })
+
   it.each(["shapes", "media"])("keeps a closed %s gallery menu hidden", async kind => {
     const shapes = graphicShapeOptions.map(shape => ({label: shape.label, category: shape.category, path: shape.path}))
     const menu = new RibbonMenu()

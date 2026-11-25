@@ -1502,6 +1502,7 @@ export class RibbonButton extends LitElement {
     const hasDropdown = this.hasDropdown
     const showSubmenuTrigger = (hasDropdown || this.openDrawer) && (!this.dropdownOnClick || Boolean(this.iconAction))
     const action = this.action || this.label
+    const hoverSubmenus = this.variant === "insertion" || this.variant === "package" || action === "Formula"
     const dragAction = this.dragAction ?? action
     const conversion = isWidgetConversionAction(action)
     const dragTag = !conversion && (this.variant === "insertion" || dragAction === "Formula") ? ribbonElementTag(this.label, dragAction) : null
@@ -1610,6 +1611,7 @@ export class RibbonButton extends LitElement {
           popover="manual"
           .groups=${this.dropdown === null && (!shapeGallery || this.submenuOpen) ? this.submenuGroups ?? [{label: `${this.label} options`, buttons: this.submenu}] : []}
           .customContent=${this.dropdown !== null}
+          .hoverSubmenus=${hoverSubmenus}
           .label=${`${this.label} options`}
           ?no-scroll=${this.dropdownNoScroll}
           ?compact-content=${this.dropdownCompact}

@@ -3,6 +3,7 @@ import {hasPresentationState} from "../presentation-state.js"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import "@testing-library/jest-dom/vitest"
 import { DOMEditor } from "../domeditor"
+import {insertSubmenuClickGrace, insertSubmenuHoverDelay} from "../insertion"
 import { $ } from "../utility"
 
 const editor = new DOMEditor()
@@ -233,6 +234,72 @@ describe("insertion menu", () => {
     await menu.updateComplete
     expect(menu.filteredItems).toHaveLength(0)
     expect(menu.shadowRoot!.textContent).not.toContain("Task Prompt")
+  })
+
+  it("groups package insertables in first-appearance order and opens a category from the caret", async () => {
+    const widget = {section: "Packages", packageName: "@webwriter/quiz", kind: "widget"} as const
+    globalThis.DOMEDITOR_PACKAGE_ITEMS = [
+      {...widget, name: "Hidden", tag: "ww-hidden", category: "Other", insertable: false},
+      {...widget, name: "Quiz", tag: "ww-quiz", category: "Practice", iconUrl: "/quiz.svg"},
+      {...widget, name: "Timer", tag: "ww-timer"},
+      {...widget, name: "Survey", tag: "ww-survey", category: "Other"},
+      {section: "Packages", packageName: "@webwriter/templates", kind: "snippet", name: "Answer sheet", category: "Practice", iconUrl: "/answer-sheet.svg"},
+    ]
+    const menu = editor.features.insertion.menu
+    const press = async (key: string) => {
+      document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+      await menu.updateComplete
+    }
+    typeCommand()
+    await menu.updateComplete
+
+    const names = () => Array.from(menu.shadowRoot!.querySelectorAll('section[aria-label="Packages"] .item-name'), item => item.textContent)
+    expect(names()).toEqual(["Practice", "Timer", "Other"])
+    const categoryIcon = menu.shadowRoot!.querySelector('section[aria-label="Packages"] .item img')!
+    expect(categoryIcon.getAttribute("src")).toBe("/quiz.svg")
+    expect(categoryIcon.getAttribute("alt")).toBe("")
+    for(let i = 0; i < 3; i++) await press("ArrowUp")
+    await press("ArrowRight")
+    const practice = menu.shadowRoot!.querySelector('section[aria-label="Practice"]')!
+    expect(Array.from(practice.querySelectorAll(".item:not(.category-back) .item-name"), item => item.textContent)).toEqual(["Quiz", "Answer sheet"])
+    expect(document.getSelection()?.anchorNode?.textContent).toBe("++")
+
+    await press("Escape")
+    expect(menu.open).toBe(true)
+    expect(menu.shadowRoot!.querySelector(".item[data-active] .item-name")?.textContent).toBe("Practice")
+    await press("Enter")
+    await press("Enter")
+    expect(document.querySelector("ww-quiz")).not.toBeNull()
+    expect(menu.open).toBe(false)
+  })
+
+  it("opens a hovered category after a delay and blocks immediate clicks on the replacement list", async () => {
+    globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
+      section: "Packages", packageName: "@webwriter/quiz", kind: "widget", name: "Quiz", tag: "ww-quiz", category: "Practice",
+    }]
+    typeCommand()
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    const trigger = menu.shadowRoot!.querySelector<HTMLButtonElement>('section[aria-label="Packages"] .item')!
+    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 180, 30))
+    vi.useFakeTimers()
+    try {
+      trigger.dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+      await vi.advanceTimersByTimeAsync(insertSubmenuHoverDelay - 1)
+      expect(menu.shadowRoot!.querySelector(".category-back")).toBeNull()
+      await vi.advanceTimersByTimeAsync(1)
+      const back = menu.shadowRoot!.querySelector<HTMLButtonElement>(".category-back")!
+      expect(back).not.toBeNull()
+      back.dispatchEvent(new PointerEvent("pointerdown", {pointerType: "mouse", cancelable: true, clientX: 50, clientY: 20}))
+      back.dispatchEvent(new MouseEvent("click", {bubbles: true, detail: 1, clientX: 50, clientY: 20}))
+      await menu.updateComplete
+      expect(menu.shadowRoot!.querySelector(".category-back")).toBe(back)
+      await vi.advanceTimersByTimeAsync(insertSubmenuClickGrace)
+      back.dispatchEvent(new MouseEvent("click", {bubbles: true, detail: 1, clientX: 50, clientY: 20}))
+      await menu.updateComplete
+      expect(menu.shadowRoot!.querySelector(".category-back")).toBeNull()
+    }
+    finally { vi.useRealTimers() }
   })
 
   it("anchors the initial typed command to an empty block", async () => {

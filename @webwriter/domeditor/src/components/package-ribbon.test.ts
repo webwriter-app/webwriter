@@ -9,6 +9,7 @@ import {RibbonMenu} from "./ribbon-menu"
 import {RibbonDrawer} from "./ribbon-drawer"
 import {ribbonElementInsertionAction, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 import {hasAnchorTarget} from "../anchor-positioning.test-utils"
+import {insertSubmenuClickGrace, insertSubmenuHoverDelay} from "../insertion"
 
 const packageFixture = (name = "demo"): WebWriterPackage => ({
   name: `@webwriter/${name}`,
@@ -63,6 +64,49 @@ function dragData(target: Element) {
 }
 
 describe("package ribbon controls", () => {
+  it("opens the package dropdown by click and its category submenu on hover", async () => {
+    const ribbon = new AppRibbon()
+    const pkg = packageFixture()
+    pkg.members = pkg.members.map(member => ({...member, editingConfig: {category: "Practice"}}))
+    ribbon.installedPackages = [pkg]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    const trigger = button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!
+    const hover = () => trigger.closest(".button-row")!.dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+    const click = () => trigger.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, detail: 1}))
+    vi.useFakeTimers()
+    try {
+      hover()
+      await vi.advanceTimersByTimeAsync(insertSubmenuHoverDelay)
+      expect(trigger.getAttribute("aria-expanded")).toBe("false")
+      click()
+      await button.updateComplete
+      expect(trigger.getAttribute("aria-expanded")).toBe("true")
+      click()
+      await button.updateComplete
+      expect(trigger.getAttribute("aria-expanded")).toBe("false")
+
+      click()
+      await button.updateComplete
+      const menu = button.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+      await menu.updateComplete
+      const category = menu.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="package-category:Practice"]')!
+      category.closest(".item-row")!.dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+      await vi.advanceTimersByTimeAsync(insertSubmenuHoverDelay)
+      expect(category.getAttribute("aria-expanded")).toBe("true")
+      category.dispatchEvent(new MouseEvent("click", {bubbles: true, detail: 1}))
+      await menu.updateComplete
+      expect(category.getAttribute("aria-expanded")).toBe("true")
+      await vi.advanceTimersByTimeAsync(insertSubmenuClickGrace)
+      category.dispatchEvent(new MouseEvent("click", {bubbles: true, detail: 1}))
+      await menu.updateComplete
+      expect(category.getAttribute("aria-expanded")).toBe("false")
+    }
+    finally { vi.useRealTimers() }
+  })
+
   it("uses each installed widget's image in its insertion control", async () => {
     const ribbon = new AppRibbon()
     const pkg = packageFixture()
@@ -112,6 +156,59 @@ describe("package ribbon controls", () => {
     await button.updateComplete
     expect(button.shadowRoot!.querySelector<HTMLButtonElement>(".corner-trigger")!.disabled).toBe(false)
     expect(button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.disabled).toBe(false)
+  })
+
+  it("groups widgets and snippets at the first member of each category", async () => {
+    const ribbon = new AppRibbon()
+    const pkg = packageFixture()
+    const [widget, snippet] = pkg.members
+    const widgetIconUrl = "https://example.com/widget.svg"
+    const snippetIconUrl = "https://example.com/snippet.svg"
+    pkg.manifest = {name: pkg.name, version: pkg.version, exports: {
+      "./widgets/webwriter-demo.icon.svg": "./widget.svg",
+    }}
+    const standalone = {...widget, id: "standalone", label: "Standalone"}
+    const second = {...snippet, id: "second", label: "Second", iconUrl: snippetIconUrl, editingConfig: {category: "Explore"}}
+    pkg.members = [
+      {...second, id: "hidden", label: "Hidden", iconUrl: "https://example.com/hidden.svg", insertable: false},
+      {...widget, iconUrl: widgetIconUrl, editingConfig: {category: "Practice"}},
+      standalone,
+      second,
+      {...snippet, iconUrl: snippetIconUrl, editingConfig: {category: "Practice"}},
+    ]
+    ribbon.installedPackages = [pkg]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await button.updateComplete
+    const menu = button.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    const rows = [...menu.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item[data-action]")]
+    expect(rows.map(row => row.textContent?.trim())).toEqual(["Practice", "Standalone", "Explore"])
+    expect(rows.map(row => row.querySelector("img")?.getAttribute("src"))).toEqual([widgetIconUrl, pkg.iconUrl, snippetIconUrl])
+
+    const practice = rows[0]
+    const chevron = practice.querySelector<HTMLElement>('.submenu-toggle-chevron[aria-hidden="true"]')!
+    expect(chevron).not.toBeNull()
+    expect(practice.closest(".item-row")!.querySelectorAll("button")).toHaveLength(1)
+    const click = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", click)
+    practice.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true}))
+    await menu.updateComplete
+    expect(practice.getAttribute("aria-expanded")).toBe("true")
+    const leaves = [...menu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".submenu button.item")]
+    expect(leaves.map(leaf => leaf.getAttribute("aria-label"))).toEqual([widget.label, snippet.label])
+    expect(click).not.toHaveBeenCalled()
+    leaves[0].dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowLeft", bubbles: true, cancelable: true}))
+    await menu.updateComplete
+    expect(practice.getAttribute("aria-expanded")).toBe("false")
+    expect(menu.shadowRoot!.activeElement).toBe(practice)
+    chevron.click()
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector<HTMLButtonElement>(`.submenu [data-action="${packageMemberAction(snippet)}"]`)!.click()
+    expect(click.mock.calls[0][0].detail.label).toBe(packageMemberAction(snippet))
   })
 
   it("shows a separate update action only for outdated packages in management mode", async () => {
