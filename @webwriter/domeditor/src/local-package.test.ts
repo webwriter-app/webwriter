@@ -167,6 +167,8 @@ describe("local package checks", () => {
   it.each([
     {category: "Media", valid: true},
     {category: "", valid: true},
+    {category: {_: "Media", de: "Medien"}, valid: true},
+    {category: {_: "Media", de: 42}, valid: false},
     {category: 42, valid: false},
   ])("validates insertion category $category", async ({category, valid}) => {
     const result = await loadLocalPackage(nestedDirectory({
@@ -182,7 +184,7 @@ describe("local package checks", () => {
     expect(result.warnings).toEqual(valid ? [] : [expect.objectContaining({
       code: "invalid-editing-option", path: "./snippets/example", message: expect.stringContaining("category"),
     })])
-    expect(result.package.members[0].editingConfig?.category).toBe(category)
+    expect(result.package.members[0].editingConfig?.category).toEqual(category)
   })
 
   it.each([

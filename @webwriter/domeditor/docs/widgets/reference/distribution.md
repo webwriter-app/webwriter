@@ -52,7 +52,7 @@ An export target can be a string or a condition object. The authoring tool check
 
 Exports with the same tag form one widget. Include each referenced file in the package. Use a separate export for a stylesheet that a dependency needs. Import maps resolve only JavaScript modules.
 
-The authoring tool uses a widget's icon in insertion controls and when identifying the widget in the document. The export key uses the full widget tag, such as `./widgets/ww-quiz.icon.svg`. The default comes from `./icon` or the editor's generic widget icon.
+The authoring tool uses a widget's icon in the package dropdown and when identifying the widget in the document. The export key uses the full widget tag, such as `./widgets/ww-quiz.icon.svg`. The top-level package button uses `./icon`, which also serves as the fallback when a member has no icon. A snippet can use the same icon as a widget by setting `iconWidget` to the full widget tag in its editing config.
 
 ## Widget and snippet relationships
 

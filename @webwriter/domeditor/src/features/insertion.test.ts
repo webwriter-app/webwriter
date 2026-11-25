@@ -275,39 +275,45 @@ describe("insertion menu", () => {
 
   it("groups package insertables in first-appearance order and opens a category from the caret", async () => {
     const widget = {section: "Packages", packageName: "@webwriter/quiz", kind: "widget"} as const
+    const practiceCategory = {_: "Practice", de: "Übung", "de-CH": "Üben"}
     globalThis.DOMEDITOR_PACKAGE_ITEMS = [
       {...widget, name: "Hidden", tag: "ww-hidden", category: "Other", insertable: false},
-      {...widget, name: "Quiz", tag: "ww-quiz", category: "Practice", iconUrl: "/quiz.svg"},
+      {...widget, name: "Quiz", tag: "ww-quiz", category: practiceCategory, iconUrl: "/quiz.svg"},
       {...widget, name: "Timer", tag: "ww-timer"},
       {...widget, name: "Survey", tag: "ww-survey", category: "Other"},
-      {section: "Packages", packageName: "@webwriter/templates", kind: "snippet", name: "Answer sheet", category: "Practice", iconUrl: "/answer-sheet.svg"},
+      {section: "Packages", packageName: "@webwriter/templates", kind: "snippet", name: "Answer sheet", category: practiceCategory, iconUrl: "/answer-sheet.svg"},
     ]
     const menu = editor.features.insertion.menu
     const press = async (key: string) => {
       document.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
       await menu.updateComplete
     }
-    typeCommand()
-    await menu.updateComplete
+    const originalLanguage = document.documentElement.lang
+    document.documentElement.lang = "de-CH"
+    try {
+      typeCommand()
+      await menu.updateComplete
 
-    const names = () => Array.from(menu.shadowRoot!.querySelectorAll('section[aria-label="Packages"] .item-name'), item => item.textContent)
-    expect(names()).toEqual(["Practice", "Timer", "Other"])
-    const categoryIcon = menu.shadowRoot!.querySelector('section[aria-label="Packages"] .item img')!
-    expect(categoryIcon.getAttribute("src")).toBe("/quiz.svg")
-    expect(categoryIcon.getAttribute("alt")).toBe("")
-    for(let i = 0; i < 3; i++) await press("ArrowUp")
-    await press("ArrowRight")
-    const practice = menu.shadowRoot!.querySelector('section[aria-label="Practice"]')!
-    expect(Array.from(practice.querySelectorAll(".item:not(.category-back) .item-name"), item => item.textContent)).toEqual(["Quiz", "Answer sheet"])
-    expect(document.getSelection()?.anchorNode?.textContent).toBe("++")
+      const names = () => Array.from(menu.shadowRoot!.querySelectorAll('section[aria-label="Packages"] .item-name'), item => item.textContent)
+      expect(names()).toEqual(["Üben", "Timer", "Other"])
+      const categoryIcon = menu.shadowRoot!.querySelector('section[aria-label="Packages"] .item img')!
+      expect(categoryIcon.getAttribute("src")).toBe("/quiz.svg")
+      expect(categoryIcon.getAttribute("alt")).toBe("")
+      for(let i = 0; i < 3; i++) await press("ArrowUp")
+      await press("ArrowRight")
+      const practice = menu.shadowRoot!.querySelector('section[aria-label="Üben"]')!
+      expect(Array.from(practice.querySelectorAll(".item:not(.category-back) .item-name"), item => item.textContent)).toEqual(["Quiz", "Answer sheet"])
+      expect(document.getSelection()?.anchorNode?.textContent).toBe("++")
 
-    await press("Escape")
-    expect(menu.open).toBe(true)
-    expect(menu.shadowRoot!.querySelector(".item[data-active] .item-name")?.textContent).toBe("Practice")
-    await press("Enter")
-    await press("Enter")
-    expect(document.querySelector("ww-quiz")).not.toBeNull()
-    expect(menu.open).toBe(false)
+      await press("Escape")
+      expect(menu.open).toBe(true)
+      expect(menu.shadowRoot!.querySelector(".item[data-active] .item-name")?.textContent).toBe("Üben")
+      await press("Enter")
+      await press("Enter")
+      expect(document.querySelector("ww-quiz")).not.toBeNull()
+      expect(menu.open).toBe(false)
+    }
+    finally { document.documentElement.lang = originalLanguage }
   })
 
   it("opens a hovered category after a delay and blocks immediate clicks on the replacement list", async () => {

@@ -73,7 +73,7 @@ For each update, increase the package version. Add a [migration](migrations.md) 
 
 ### Add a widget icon
 
-Place the SVG beside the widget source and export it as `./widgets/<tag>.icon.svg`. The editor matches the full widget tag and uses the image in the ribbon and when identifying the widget in the document.
+Place the SVG beside the widget source and export it as `./widgets/<tag>.icon.svg`. The editor matches the full widget tag and uses the image in the package dropdown and when identifying the widget in the document.
 
 ```json
 {
@@ -88,7 +88,7 @@ Place the SVG beside the widget source and export it as `./widgets/<tag>.icon.sv
 }
 ```
 
-Use `./icon` as the package-wide fallback. Before publishing, check that `npm pack --dry-run` lists the SVG files and that the ribbon shows the widget's icon after loading the local package. [Package manifest reference](../reference/distribution.md)
+Export `./icon` for the top-level package button and as the package-wide fallback. A snippet can reuse a widget's icon by setting `iconWidget` to the full widget tag in its editing config. Before publishing, check that `npm pack --dry-run` lists the SVG files and that the package dropdown shows the icons after loading the local package. [Package manifest reference](../reference/distribution.md)
 
 ## Embed on another site
 

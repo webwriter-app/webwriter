@@ -107,13 +107,15 @@ export type PackageEditingConfigEntry = WidgetEditingConfig & {
   label?: LocalizedText
   description?: LocalizedText
   /** Groups this insertable in a second-level insertion menu. */
-  category?: string
+  category?: LocalizedText
   uninsertable?: boolean
+  /** Full widget tag whose icon is used for this snippet. */
+  iconWidget?: string
   /** Optional package names required when inserting this snippet. */
   dependencies?: string[]
   compatibleHosts?: string[]
   equivalentTo?: string[]
-  compatibleSnippets?: {category?: string}
+  compatibleSnippets?: {category?: LocalizedText}
   /** File format keys advertised by the widget's convertFrom handlers. */
   importFormats?: string[]
   /** File format keys advertised by the widget's convertTo handlers. */
@@ -124,7 +126,7 @@ export type PackageEditingConfigEntry = WidgetEditingConfig & {
 /** Options the editor reads from an editing-config entry. */
 export const packageEditingConfigOptions = [
   "label", "description", "category", "uninsertable", "group", "inline", "content", "isolating", "marks", "propagateEvents", "sharedData",
-  "split", "excludedDescendants", "importFormats", "exportFormats", "dependencies",
+  "split", "excludedDescendants", "importFormats", "exportFormats", "iconWidget", "dependencies",
   "compatibleHosts", "equivalentTo", "compatibleSnippets",
 ] as const
 
@@ -204,7 +206,7 @@ export type PackageInsertionItem = {
   name: string
   packageName: string
   kind: "widget" | "snippet"
-  category?: string
+  category?: LocalizedText
   description?: string
   iconUrl?: string
   tag?: string
@@ -346,10 +348,14 @@ export function packageMemberIcon(pkg: WebWriterPackage, member?: PackageMember)
   return member?.iconUrl ?? pkg.iconUrl
 }
 
-/** Returns the trimmed nonempty insertion category for a package member. */
-export function packageMemberCategory(member: PackageMember) {
-  const category = member.editingConfig?.category
-  return typeof category === "string" ? category.trim() || undefined : undefined
+/** Resolves the visible category in the current language. */
+export function packageCategoryLabel(category: LocalizedText | undefined, locale: string) {
+  const label = localizedText(category, locale)
+  return typeof label === "string" ? label.trim() || undefined : undefined
+}
+
+export function packageMemberCategory(member: PackageMember, locale = "en") {
+  return packageCategoryLabel(member.editingConfig?.category, locale)
 }
 
 export const isPackageName = (value: unknown): value is string =>
@@ -368,7 +374,7 @@ export function parsePackageWidgetReference(value: unknown) {
 }
 
 export const isCompatibleSnippetsConfig = (value: unknown): value is NonNullable<PackageEditingConfigEntry["compatibleSnippets"]> =>
-  isRecord(value) && (value.category === undefined || typeof value.category === "string")
+  isRecord(value) && (value.category === undefined || isLocalizedText(value.category))
 
 export function packageOptionalDependencyRange(manifest: WebWriterPackageManifest | undefined, name: string) {
   const dependencies = manifest?.optionalDependencies
@@ -424,7 +430,7 @@ function widgetEndpoints(pkg: WebWriterPackage, references: unknown): WidgetEndp
 /** Builds the insertable variants from the installed package set. An equivalent
  * widget may refer to a canonical widget whose package has yet to be installed. */
 export function packageCompatibleSnippets(packages: readonly WebWriterPackage[]) {
-  const hosts = new Map<string, {member: CompatibleSnippet["host"], category?: string}>()
+  const hosts = new Map<string, {member: CompatibleSnippet["host"], category?: LocalizedText}>()
   const graph = new Map<string, WidgetEquivalence[]>()
   for(const pkg of packages) for(const member of pkg.members) {
     if(member.kind !== "widget" || !isWidgetTag(member.tagName) || !valid(pkg.version)) continue
@@ -487,7 +493,9 @@ export function packageInsertionItems(packages: WebWriterPackage[], includeUnins
   return packages.flatMap(pkg => [...pkg.members, ...compatible.filter(member => member.packageName === pkg.name)]
     .filter(member => member.insertable || includeUninsertable)
     .map(member => {
-      const category = packageMemberCategory(member)
+      const configuredCategory = member.editingConfig?.category
+      const category = typeof configuredCategory === "string" ? configuredCategory.trim()
+        : isLocalizedText(configuredCategory) ? configuredCategory : undefined
       return {
         section: "Packages" as const,
         name: member.kind === "widget" && member.tagName && (!member.label || member.label === member.tagName || member.label === titleCase(member.exportName))
@@ -759,6 +767,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
+export const isLocalizedText = (value: unknown): value is LocalizedText =>
+  typeof value === "string" || isRecord(value) && Object.values(value).every(text => typeof text === "string")
+
 const mergeConfigValue = (base: unknown, override: unknown): unknown => {
   if(!isRecord(base) || !isRecord(override)) return override ?? base
   const result: Record<string, unknown> = {...base}
@@ -841,7 +852,8 @@ export function packageContents(
     if(!isWidget && !isSnippet) continue
     const config = editingConfig[key] ?? {}
     const tagName = key.split("/").at(-1)!
-    const iconPath = isWidget ? packageMemberIconPath(manifest, tagName) : undefined
+    const iconTag = isWidget ? tagName : config.iconWidget
+    const iconPath = typeof iconTag === "string" ? packageMemberIconPath(manifest, iconTag) : undefined
     const base = {
       id: `${manifest.name}@${manifest.version}:${key}`,
       packageName: manifest.name,
@@ -855,7 +867,7 @@ export function packageContents(
     }
     if(isSnippet) {
       const path = normalizePath(target)
-      members.push({member: {...base, kind: "snippet", htmlUrl: urlFor(path)}, requiredPaths: [path]})
+      members.push({member: {...base, kind: "snippet", htmlUrl: urlFor(path)}, requiredPaths: [path], iconPath})
       continue
     }
     let widget = widgets.get(key)

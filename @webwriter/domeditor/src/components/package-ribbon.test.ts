@@ -130,7 +130,7 @@ describe("package ribbon controls", () => {
     finally { vi.useRealTimers() }
   })
 
-  it("uses each installed widget's image in its insertion control", async () => {
+  it("uses the package icon on the main button and member icons in the dropdown", async () => {
     const ribbon = new AppRibbon()
     const pkg = packageFixture()
     const main = {...pkg.members[0], iconUrl: "https://example.com/demo.svg"}
@@ -145,18 +145,21 @@ describe("package ribbon controls", () => {
     const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
     await button.updateComplete
     const image = button.shadowRoot!.querySelector<HTMLImageElement>(".main-button img")!
-    expect(image.getAttribute("src")).toBe(main.iconUrl)
+    expect(image.getAttribute("src")).toBe(pkg.iconUrl)
     expect(image.alt).toBe("")
     expect(button.submenu).toEqual([
       expect.objectContaining({label: alternate.label, iconUrl: alternate.iconUrl}),
       expect.objectContaining({iconUrl: pkg.iconUrl}),
     ])
-    image.dispatchEvent(new Event("error"))
-    expect(button.shadowRoot!.querySelector(".main-button img")).toBeNull()
     ribbon.shadowRoot!.querySelector("package-search")!.dispatchEvent(new CustomEvent("package-search-change", {detail: {query: "alternate"}}))
     await ribbon.updateComplete
-    await button.updateComplete
-    expect(button.shadowRoot!.querySelector(".main-button img")?.getAttribute("src")).toBe(alternate.iconUrl)
+    const searchButton = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Alternate Widget"]')!
+    await searchButton.updateComplete
+    const searchImage = searchButton.shadowRoot!.querySelector<HTMLImageElement>(".main-button img")!
+    expect(searchImage.getAttribute("src")).toBe(pkg.iconUrl)
+    expect(searchButton.submenu).toContainEqual(expect.objectContaining({label: main.label, iconUrl: main.iconUrl}))
+    searchImage.dispatchEvent(new Event("error"))
+    expect(searchButton.shadowRoot!.querySelector(".main-button img")).toBeNull()
   })
 
   it("disables installed members at the selection while keeping package management available", async () => {
@@ -183,6 +186,7 @@ describe("package ribbon controls", () => {
 
   it("groups widgets and snippets at the first member of each category", async () => {
     const ribbon = new AppRibbon()
+    ribbon.documentLanguage = "de-DE"
     const pkg = packageFixture()
     const [widget, snippet] = pkg.members
     const widgetIconUrl = "https://example.com/widget.svg"
@@ -191,13 +195,14 @@ describe("package ribbon controls", () => {
       "./widgets/webwriter-demo.icon.svg": "./widget.svg",
     }}
     const standalone = {...widget, id: "standalone", label: "Standalone"}
+    const practiceCategory = {_: "Practice", de: "Üben"}
     const second = {...snippet, id: "second", label: "Second", iconUrl: snippetIconUrl, editingConfig: {category: "Explore"}}
     pkg.members = [
       {...second, id: "hidden", label: "Hidden", iconUrl: "https://example.com/hidden.svg", insertable: false},
-      {...widget, iconUrl: widgetIconUrl, editingConfig: {category: "Practice"}},
+      {...widget, iconUrl: widgetIconUrl, editingConfig: {category: practiceCategory}},
       standalone,
       second,
-      {...snippet, iconUrl: snippetIconUrl, editingConfig: {category: "Practice"}},
+      {...snippet, iconUrl: snippetIconUrl, editingConfig: {category: practiceCategory}},
     ]
     ribbon.installedPackages = [pkg]
     document.body.append(ribbon)
@@ -209,7 +214,7 @@ describe("package ribbon controls", () => {
     const menu = button.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await menu.updateComplete
     const rows = [...menu.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item[data-action]")]
-    expect(rows.map(row => row.textContent?.trim())).toEqual(["Practice", "Standalone", "Explore"])
+    expect(rows.map(row => row.textContent?.trim())).toEqual(["Üben", "Standalone", "Explore"])
     expect(rows.map(row => row.querySelector("img")?.getAttribute("src"))).toEqual([widgetIconUrl, pkg.iconUrl, snippetIconUrl])
 
     const practice = rows[0]

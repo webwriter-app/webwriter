@@ -2476,9 +2476,11 @@ export class AppRibbon extends EditingControls {
 
   private packageMemberButtons(pkg: WebWriterPackage, members: PackageMember[]): RibbonMenuButton[] {
     const primary = members[0]
-    const menuMembers = members.some(packageMemberCategory)
+    const locale = this.documentLanguage || this.interfaceLanguage
+    const categoryOf = (member: PackageMember) => packageMemberCategory(member, locale)
+    const menuMembers = members.some(categoryOf)
       ? [...pkg.members, ...members.filter(isCompatibleSnippet)]
-        .filter(member => member.insertable && (member !== primary || packageMemberCategory(member)))
+        .filter(member => member.insertable && (member !== primary || categoryOf(member)))
       : members.slice(1)
     const memberButton = (member: PackageMember): RibbonMenuButton => {
       const conversion = this.packageConversion(pkg, member)
@@ -2491,7 +2493,7 @@ export class AppRibbon extends EditingControls {
         iconUrl: packageMemberIcon(pkg, member),
       }
     }
-    return groupInsertablesByCategory(menuMembers, packageMemberCategory).map(entry => "item" in entry
+    return groupInsertablesByCategory(menuMembers, categoryOf).map(entry => "item" in entry
       ? memberButton(entry.item)
       : {
         label: entry.category,
@@ -2513,7 +2515,7 @@ export class AppRibbon extends EditingControls {
       installed, busy, conversion,
       insertionDisabled: installed && !busy && !conversion && this.packageInsertionDisabled(members[0]),
       label: match?.label ?? pkg.label,
-      iconUrl: packageMemberIcon(pkg, installed || match ? members[0] : undefined),
+      iconUrl: pkg.iconUrl,
       action: conversion ?? (installed && !busy && matchAction ? matchAction : packageAction(pkg)),
       dragAction: conversion ? undefined : matchAction,
       dragHTML: this.packageDragHTML(pkg, members[0]),

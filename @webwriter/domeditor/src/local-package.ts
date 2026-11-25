@@ -3,6 +3,7 @@ import {isWidgetFileFormat} from "./widget-options"
 import {
   editingConfigKey,
   isCompatibleSnippetsConfig,
+  isLocalizedText,
   isPackageName,
   parsePackageWidgetReference,
   localizedText,
@@ -319,9 +320,6 @@ async function fileExists(directory: LocalPackageDirectory, path: string) {
   }
 }
 
-const isLocalizedText = (value: unknown) => typeof value === "string"
-  || !!value && typeof value === "object" && !Array.isArray(value) && Object.values(value).every(text => typeof text === "string")
-
 const isFileFormatList = (value: unknown) => Array.isArray(value) && value.every(isWidgetFileFormat)
 const isWidgetReferenceList = (value: unknown) =>
   Array.isArray(value) && value.every(reference => !!parsePackageWidgetReference(reference))
@@ -329,7 +327,7 @@ const isWidgetReferenceList = (value: unknown) =>
 const optionChecks: Record<string, (value: unknown) => boolean> = {
   label: isLocalizedText,
   description: isLocalizedText,
-  category: value => typeof value === "string",
+  category: isLocalizedText,
   uninsertable: value => typeof value === "boolean",
   group: value => typeof value === "string",
   inline: value => typeof value === "boolean",
@@ -342,6 +340,7 @@ const optionChecks: Record<string, (value: unknown) => boolean> = {
   split: value => typeof value === "string" && ["block", "self", "line"].includes(value),
   importFormats: isFileFormatList,
   exportFormats: isFileFormatList,
+  iconWidget: value => typeof value === "string" && value.length > 0,
   dependencies: value => Array.isArray(value) && value.every(isPackageName),
   compatibleHosts: isWidgetReferenceList,
   equivalentTo: isWidgetReferenceList,

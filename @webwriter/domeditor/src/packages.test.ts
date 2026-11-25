@@ -11,6 +11,7 @@ import {
   describePackageExport,
   localizeSnippet,
   mergeEditingConfig,
+  packageCategoryLabel,
   packageCdnUrl,
   packageCompatibleSnippets,
   packageContents,
@@ -86,6 +87,17 @@ describe("snippet package contracts", () => {
       expect.objectContaining({category: "Interact", packageName: task.name}),
     ])
     expect(packageCompatibleSnippets([quiz, practice, newer, activities])).toHaveLength(4)
+  })
+
+  it("keeps localized categories on package insertion items and resolves them with the label fallbacks", () => {
+    const category = {_: "Practice", de: "Übung", "de-CH": "Üben", fr: " "}
+    const pkg = makePackage("@webwriter/tasks", {"./snippets/task": {category}})
+    expect(packageInsertionItems([pkg])[0].category).toEqual(category)
+    expect(packageCategoryLabel(category, "de-CH")).toBe("Üben")
+    expect(packageCategoryLabel(category, "de-AT")).toBe("Übung")
+    expect(packageCategoryLabel(category, "it")).toBe("Practice")
+    expect(packageCategoryLabel(category, "fr")).toBeUndefined()
+    expect(packageCategoryLabel("  Explore  ", "de")).toBe("Explore")
   })
 })
 
@@ -543,6 +555,28 @@ describe("package contents", () => {
     expect(packageInsertionItems([pkg], true)).toEqual([
       expect.objectContaining({name: "Quiz", iconUrl: pkg.iconUrl}),
       expect.objectContaining({name: "Task Prompt", tag: "webwriter-task-prompt", iconUrl: pkg.iconUrl, insertable: false}),
+    ])
+  })
+
+  it("lets snippets reference a widget icon by tag", () => {
+    const definition = manifest({
+      "./snippets/quiz.html": "./snippets/quiz.html",
+      "./snippets/prompt.html": "./snippets/prompt.html",
+      "./snippets/overview.html": "./snippets/overview.html",
+      "./widgets/webwriter-quiz.js": "./dist/quiz.js",
+      "./widgets/webwriter-quiz.icon.svg": "./assets/quiz.svg",
+      "./widgets/webwriter-prompt.js": "./dist/prompt.js",
+    })
+    const iconUrl = urlFor("assets/package.svg")
+    const {members} = packageContents(definition, {
+      "./snippets/quiz": {iconWidget: "webwriter-quiz"},
+      "./snippets/prompt": {iconWidget: "webwriter-prompt"},
+    }, urlFor, iconUrl, "en")
+
+    expect(members.filter(({member}) => member.kind === "snippet")).toEqual([
+      expect.objectContaining({member: expect.objectContaining({iconUrl: urlFor("assets/quiz.svg")}), iconPath: "assets/quiz.svg"}),
+      expect.objectContaining({member: expect.objectContaining({iconUrl}), iconPath: undefined}),
+      expect.objectContaining({member: expect.objectContaining({iconUrl}), iconPath: undefined}),
     ])
   })
 

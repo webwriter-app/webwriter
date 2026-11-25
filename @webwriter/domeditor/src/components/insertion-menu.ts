@@ -2,7 +2,7 @@ import { LitElement, css, html } from "lit"
 import { property, state } from "lit/decorators.js"
 import {fixedClientX, uiMotionDisabled} from "../utility"
 import { ribbonIcon } from "../ribbon-icons"
-import {packageNameLabel, type PackageInsertionItem} from "../packages"
+import {packageCategoryLabel, packageNameLabel} from "../packages"
 import {groupInsertablesByCategory, insertSubmenuClickGrace, insertSubmenuHoverDelay, insertionMenuItems, sectionInsertionTags, type InsertionMenuItem} from "../insertion"
 export {
   deliberatelyUnsupportedInsertionTags, elementDragType, emptyElementHTML, headingInsertionTags,
@@ -119,10 +119,12 @@ export class InsertionMenu extends LitElement {
 
   get filteredItems() {
     const query = this.query.trim().toLowerCase()
+    const locale = this.ownerDocument.documentElement.lang || this.ownerDocument.defaultView?.navigator.language || "en"
     const items: InsertionMenuItem[] = this.items ?? [
       ...insertionMenuItems.filter(item => item.kind !== "html" && item.tag !== "pre"
         && !sectionInsertionTags.some(tag => tag === item.tag)),
-      ...(globalThis.DOMEDITOR_PACKAGE_ITEMS ?? []) as PackageInsertionItem[],
+      ...(globalThis.DOMEDITOR_PACKAGE_ITEMS ?? []).map(({category, ...item}) =>
+        ({...item, category: packageCategoryLabel(category, locale)})),
     ]
     return items.filter(item => (!("insertable" in item) || item.insertable !== false) && (!query || [item.name, item.id, item.tag, item.category, item.packageName,
       item.packageName && packageNameLabel(item.packageName), item.kind]

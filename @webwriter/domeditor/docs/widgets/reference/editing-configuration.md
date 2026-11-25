@@ -8,8 +8,8 @@ A key identifies an export with or without its extension. The key `.` supplies p
 {
   "editingConfig": {
     ".": {"label": {"_": "Quiz", "de": "Quiz"}},
-    "./widgets/ww-quiz": {"label": "Quiz", "content": "p+", "sharedData": true, "category": "Practice"},
-    "./snippets/answer-sheet": {"category": "Practice"}
+    "./widgets/ww-quiz": {"label": "Quiz", "content": "p+", "sharedData": true, "category": {"_": "Practice", "de": "Üben"}},
+    "./snippets/answer-sheet": {"category": {"_": "Practice", "de": "Üben"}}
   }
 }
 ```
@@ -18,12 +18,13 @@ A key identifies an export with or without its extension. The key `.` supplies p
 |---|---|---|---|
 | `label` | `LocalizedText` | Member name in title case. For a widget, this omits the part before the first hyphen. | Label in the insertion menu. On `.`, this is the package label. |
 | `description` | `LocalizedText` | None. | Member description. On `.`, this is the package description. |
-| `category` | `string` | None. | Groups widgets and snippets under a submenu in the package dropdown and the `++` insertion picker. Each submenu takes the position of its first insertable. Blank values leave the item at the top level. |
+| `category` | `LocalizedText` | None. | Groups widgets and snippets by their category label in the document language. Each submenu takes the position of its first insertable in the package dropdown and the `++` insertion picker. Items with an empty resolved label stay at the top level. |
 | `uninsertable` | `boolean` | `false` | Hides the member from the insertion menu. |
+| `iconWidget` | `string` | Package icon. | On a snippet, the full widget tag whose [exported icon](distribution.md#exports) appears in the package dropdown. |
 | `dependencies` | `string[]` | `[]` | On a snippet, names of entries in the package's `optionalDependencies` to load when that snippet is inserted. An empty list clears inherited external configuration. If an installed version conflicts with the declared range, insertion reports an error. |
 | `compatibleHosts` | `string[]` | `[]` | Lists the full exports of widgets that can host this snippet or widget. |
 | `equivalentTo` | `string[]` | `[]` | On a widget, lists the full exports of equivalent widgets for compatibility lookup. |
-| `compatibleSnippets` | `{category?: string}` | None. | On a widget, generates snippet choices from installed, insertable snippet and widget members. Choosing one places its content inside the host widget. An optional category groups the choices. The host widget owns the generated choice's scoring and links. Dependencies declared by a source snippet are loaded for its generated choice. |
+| `compatibleSnippets` | `{category?: LocalizedText}` | None. | On a widget, generates snippet choices from installed, insertable snippet and widget members. Choosing one places its content inside the host widget. An optional category groups the choices. The host widget owns the generated choice's scoring and links. Dependencies declared by a source snippet are loaded for its generated choice. |
 | `group` | `string` | `"flow"` for block widgets. | Content groups separated by spaces. An explicit value replaces the default group. The authoring tool always adds `widget` or `widgetinline`. |
 | `movable` | `boolean` | `true` | Set `false` to disable moving or dragging the widget itself and hide the transformation frame's Move control. Its authored children remain editable, and its parent can still be moved. |
 | `resize` | `"inline" \| "block" \| "both" \| "none"` | Existing element behavior. | Declares the logical axes the editor may resize. The frame filters handles and enforces the rule during resizing, including groups. For a content-height widget, use `"inline"` and CSS `block-size: auto`. |
