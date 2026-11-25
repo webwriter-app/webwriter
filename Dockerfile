@@ -4,8 +4,10 @@ FROM node:22-slim AS build
 RUN npm install -g bun@1.2
 WORKDIR /app
 
-# Editor frames must run on a separate origin from the app. Both are baked in at build time.
-# Leave empty for local testing: the app then pairs 127.0.0.1 <-> localhost automatically.
+# Editor frames must run on a separate origin from the app. Preferably set APP_ORIGIN,
+# EDITOR_ORIGIN and EDUMIX_URL when the container starts (served as /runtime-config.js), so one
+# image serves several environments; these build arguments are only the fallback.
+# Leave both empty for local testing: the app then pairs 127.0.0.1 <-> localhost automatically.
 ARG VITE_APP_ORIGIN=""
 ARG VITE_EDITOR_ORIGIN=""
 # The Edumix cloud preset (sign-in via Edumix's Keycloak); empty means https://edumix.eu.

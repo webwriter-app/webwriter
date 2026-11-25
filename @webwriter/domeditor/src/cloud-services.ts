@@ -1,3 +1,5 @@
+import {runtimeSetting} from "./runtime-config"
+
 /** Sign-in on the service's identity provider (Authorization Code + PKCE), advertised by its session. */
 export type CloudOIDC = {issuer: string, clientId: string}
 
@@ -12,8 +14,8 @@ export type CloudService = {
   oidc?: CloudOIDC
 }
 
-/** The Edumix preset; staging builds point it elsewhere with VITE_EDUMIX_URL. */
-export const EDUMIX_URL = import.meta.env.VITE_EDUMIX_URL || "https://edumix.eu"
+/** The Edumix preset; staging points it elsewhere with EDUMIX_URL (runtime) or VITE_EDUMIX_URL (build). */
+export const EDUMIX_URL = runtimeSetting("edumixURL", import.meta.env.VITE_EDUMIX_URL) || "https://edumix.eu"
 
 /** An identity provider as a session advertises it: an HTTPS issuer (HTTP on loopback) and a client ID. */
 export function cloudOIDC(value: unknown): CloudOIDC | undefined {
