@@ -271,101 +271,12 @@ export const editingControlStyles = css`
       height: 0.7rem;
     }
 
-    .local-packages-drawer {
-      --ribbon-drawer-expanded-width: 12rem;
-      flex-grow: 0;
-    }
-
     .package-status {
       align-self: center;
       padding: 0.25rem;
       color: #667085;
       font-size: 0.66rem;
       white-space: nowrap;
-    }
-
-    .local-package-select {
-      box-sizing: border-box;
-      flex: 1 1 auto;
-      width: auto;
-      min-width: 0;
-      height: 1.55rem;
-      padding: 0 0.25rem;
-      border: 1px solid #c8d2df;
-      border-radius: 0.25rem;
-      color: #2f3742;
-      background: #ffffff;
-      font: inherit;
-      font-size: 0.7rem;
-      cursor: pointer;
-    }
-
-    .local-package-select:hover {
-      border-color: #8eb6df;
-      background: #ffffff;
-    }
-
-    .local-package-select:focus {
-      border-color: #3977c7;
-      outline: 1px solid #3977c7;
-    }
-
-    .local-package-select:disabled {
-      color: #667085;
-      background: #f7f8fa;
-      cursor: default;
-    }
-
-    .local-package-selection {
-      box-sizing: border-box;
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-      width: 100%;
-      min-width: 0;
-      padding: 0.2rem 0.3rem;
-      border: 1px solid #d8dee6;
-      border-radius: 0.35rem;
-      background: #e8eef5;
-    }
-
-    .local-package-selection-icon {
-      display: block;
-      flex: 0 0 1rem;
-      width: 1rem;
-      height: 1rem;
-      color: #526b86;
-    }
-
-    .local-package-selection-icon svg {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
-
-    .local-package-actions {
-      display: flex;
-      align-items: stretch;
-      gap: 0.15rem;
-      width: 100%;
-      min-width: 0;
-    }
-
-    .local-package-actions > ribbon-button {
-      flex: 1 1 0;
-      min-width: 0;
-    }
-
-    .develop-fields {
-      border: 0;
-      margin: 0;
-      box-sizing: border-box;
-      display: flex;
-      flex-direction: column;
-      gap: 0.9rem;
-      width: 100%;
-      min-width: 0;
-      padding: 0.2rem 0 0.35rem;
     }
 
     .develop-section {
@@ -389,8 +300,7 @@ export const editingControlStyles = css`
       line-height: 1;
     }
 
-    .develop-section-title-row,
-    .develop-export-card-header {
+    .develop-section-title-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -429,58 +339,6 @@ export const editingControlStyles = css`
       height: 100%;
     }
 
-    .develop-export-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.55rem;
-    }
-
-    .develop-export-card {
-      box-sizing: border-box;
-      position: relative;
-      min-width: 0;
-      padding: 0.5rem;
-      border: 1px solid #d8dee6;
-      border-radius: 0.4rem;
-      background: rgb(255 255 255 / 55%);
-    }
-
-    .develop-export-card-header {
-      min-height: 1.55rem;
-      padding-right: 1.95rem;
-      list-style: none;
-      cursor: pointer;
-    }
-    .develop-export-card-header::-webkit-details-marker {display: none}
-    .develop-export-card-header::before {content: "›"; flex: 0 0 auto; color: #526b86}
-    .develop-export-details[open] > summary::before {transform: rotate(90deg)}
-    .develop-export-card-header:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px}
-    .develop-export-type-icon {display: flex; flex: 0 0 1rem; color: #526b86}
-    .develop-export-type-icon svg {width: 1rem; height: 1rem}
-    .develop-export-card-fields {display: grid; gap: .45rem; margin-top: .45rem}
-    .develop-export-delete {position: absolute; top: .5rem; right: .5rem}
-
-    .develop-export-card-title {
-      flex: 1;
-      min-width: 0;
-      color: #52606d;
-      font-size: 0.61rem;
-      font-weight: 650;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .develop-field {
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 0.2rem;
-      min-width: 0;
-      color: #526b86;
-      font-size: 0.65rem;
-    }
-
     .develop-checks {
       display: grid;
       gap: 0.2rem;
@@ -508,12 +366,6 @@ export const editingControlStyles = css`
 
     ${widgetOptionControlStyles}
 
-    .develop-field document-head-combobox {
-      --metadata-combobox-height: 1.75rem;
-      --metadata-combobox-font-size: .65rem;
-      --metadata-combobox-background: #fff;
-    }
-
     .develop-field-label {
       color: #526b86;
       font-size: 0.65rem;
@@ -525,122 +377,6 @@ export const editingControlStyles = css`
       color: #748094;
       font-size: 0.58rem;
       line-height: 0.78rem;
-    }
-
-    .develop-field input[type="text"],
-    .develop-field textarea,
-    .develop-field select,
-    .develop-contributor-row input {
-      box-sizing: border-box;
-      width: 100%;
-      min-width: 0;
-      min-height: 1.75rem;
-      padding: 0.3rem 0.4rem;
-      border: 1px solid #c8d2df;
-      border-radius: 0.25rem;
-      color: #2f3742;
-      background: #ffffff;
-      font: inherit;
-      font-size: 0.65rem;
-    }
-
-    .develop-field input[type="text"]:invalid {
-      border-color: #c2413a;
-      box-shadow: 0 0 0 1px rgb(194 65 58 / 10%);
-    }
-
-    .develop-field textarea {
-      min-height: 3.6rem;
-      line-height: 1.3;
-      resize: vertical;
-    }
-
-    .develop-field textarea[data-json] {
-      min-height: 6.5rem;
-      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-      font-size: 0.6rem;
-      tab-size: 2;
-    }
-
-    .develop-field input[type="text"]:focus,
-    .develop-field textarea:focus,
-    .develop-field select:focus,
-    .develop-contributor-row input:focus {
-      border-color: #3977c7;
-      outline: 1px solid #3977c7;
-    }
-
-    .develop-export-source-row {
-      display: flex;
-      align-items: center;
-      gap: 0.2rem;
-    }
-
-    .develop-export-source-row input {
-      flex: 1 1 auto;
-    }
-
-    .develop-compact-details {
-      min-width: 0;
-      border: 1px solid #d8dee6;
-      border-radius: 0.3rem;
-      background: rgb(255 255 255 / 45%);
-    }
-
-    .develop-compact-details summary {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      min-height: 1.7rem;
-      padding: 0 0.4rem;
-      color: #526b86;
-      font-size: 0.65rem;
-      font-weight: 600;
-      cursor: pointer;
-      list-style: none;
-    }
-
-    .develop-compact-details summary::-webkit-details-marker {
-      display: none;
-    }
-
-    .develop-compact-details summary::after {
-      content: "›";
-      font-size: 0.9rem;
-      transform: rotate(90deg);
-      transition: var(--ww-ui-transition, transform 120ms ease);
-    }
-
-    .develop-compact-details[open] summary::after {
-      transform: rotate(270deg);
-    }
-
-    .develop-compact-details .develop-field {
-      padding: 0 0.4rem 0.4rem;
-    }
-
-    .develop-keyword-list {list-style: none; margin: 0; padding: 0; display: grid; gap: .2rem}
-    .develop-keyword-entry {display: flex; align-items: center; justify-content: space-between; gap: .3rem; min-height: 1.6rem; padding: 0 .4rem; font-size: .65rem; color: #526b86}
-    .develop-keyword-entry span {min-width: 0; overflow-wrap: anywhere}
-    .develop-keyword-entry.required {color: #8b929c; background: rgb(0 0 0 / 3%)}
-    .develop-keyword-add {position: relative}
-    .develop-keyword-add input[type="text"] {padding-right: 2rem}
-    .develop-keyword-add button {position: absolute; right: .2rem; top: 50%; transform: translateY(-50%)}
-
-    .develop-contributors {
-      display: flex;
-      flex-direction: column;
-      gap: 0.3rem;
-    }
-
-    .develop-contributor-row {
-      display: flex;
-      align-items: center;
-      gap: 0.2rem;
-    }
-
-    .develop-contributor-row input {
-      flex: 1 1 auto;
     }
 
     .develop-empty {

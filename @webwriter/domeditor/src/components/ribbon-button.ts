@@ -900,10 +900,6 @@ export class RibbonButton extends LitElement {
     :host([variant="widget-action"]) .button-label-text {white-space: normal; overflow-wrap: anywhere;}
     :host([variant="widget-action"]) .button-icon {flex: 0 0 .85rem; width: .85rem; height: .85rem;}
 
-    :host([package-add]) {height: 100%}
-    :host([package-add]) .button-row {height: 100%; min-height: 0; border: 0; border-radius: 0}
-    :host([package-add]) .main-button {height: 100%; min-height: 0; justify-content: flex-start; padding: 0 .65rem; border-radius: 0}
-    :host([package-add]) .submenu-trigger {position: static; flex: 0 0 auto; align-self: stretch; width: auto; height: 100%; min-height: 0; aspect-ratio: 1; transform: none; border: 0; border-left: 1px solid #c8c8c8; border-radius: 0; padding: 0}
 
     :host([variant="qr"]) {
       grid-column: span 1;
@@ -1059,20 +1055,6 @@ export class RibbonButton extends LitElement {
       opacity: 0.8;
     }
 
-    :host([variant="package"][console-selected]) .button-row,
-    :host([variant="package"][console-selected]) .button-row:hover {
-      color: #153b5c;
-      opacity: 1;
-    }
-
-    :host([variant="package"][console-selected]) .button-label-text {
-      text-decoration-line: underline;
-      text-decoration-color: #8eb6df;
-      text-decoration-thickness: 2px;
-      text-underline-offset: 2px;
-      text-decoration-skip-ink: none;
-    }
-
     :host([variant="package"][management][active]) .corner-trigger:hover {
       background: #fee2e2;
       color: #991b1b;
@@ -1096,8 +1078,7 @@ export class RibbonButton extends LitElement {
       background: #a8c9ee;
     }
 
-    .button-row[data-connected],
-    :host([package-add]) .button-row[data-connected] {
+    .button-row[data-connected] {
       border: 1px solid #a8a8a8;
       border-bottom-color: #ffffff;
       border-radius: 0.45rem 0.45rem 0 0;
@@ -1105,8 +1086,7 @@ export class RibbonButton extends LitElement {
       box-shadow: none;
     }
 
-    .button-row[data-connected="above"],
-    :host([package-add]) .button-row[data-connected="above"] {
+    .button-row[data-connected="above"] {
       border-top-color: #ffffff;
       border-bottom-color: #a8a8a8;
       border-radius: 0 0 0.45rem 0.45rem;
@@ -1513,7 +1493,8 @@ export class RibbonButton extends LitElement {
       : action.startsWith("widget-conversion:") ? `Convert to ${this.label}`
       : `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
-      <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}${this.iconAction ? " has-icon-action" : ""}`} @mouseenter=${this.scheduleDetailsShow} @mouseleave=${this.leaveDetails}>
+      <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}${this.iconAction ? " has-icon-action" : ""}`}
+        @mouseenter=${this.scheduleDetailsShow} @mouseleave=${this.leaveDetails}>
         ${this.iconAction ? html`
           <button
             class="icon-action-trigger"

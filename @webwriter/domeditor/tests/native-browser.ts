@@ -1795,14 +1795,14 @@ await check("Editor UI prevents text selection while preserving editable fields 
     import("../src/components/ribbon"), import("../src/components/settings-panel"),
     import("../src/components/document-head-editor"), import("../src/components/element-style-editor"),
     import("../src/components/element-attribute-editor"), import("../src/components/link-keyboard"),
-    import("../src/components/widget-grouping-dialog"), import("../src/components/developer-console"),
+    import("../src/components/widget-grouping-dialog"), import("../src/components/bottom-detail-panel"),
   ])
   const stage = document.createElement("section")
   stage.contentEditable = "false"
   fixture.append(stage)
   const tags = ["app-ribbon", "settings-panel", "document-head-editor", "document-head-combobox",
     "element-style-editor", "element-attribute-editor", "dom-editor-link-keyboard",
-    "widget-grouping-dialog", "developer-console", "package-search", "ribbon-button"]
+    "widget-grouping-dialog", "bottom-detail-panel", "package-search", "ribbon-button"]
   const controls = tags.map(tag => document.createElement(tag))
   stage.append(...controls)
   let editor: DOMEditor | undefined
@@ -1824,9 +1824,11 @@ await check("Editor UI prevents text selection while preserving editable fields 
       inspect(control.shadowRoot!)
     }
     assert(fields > 10, `only ${fields} native fields were checked`)
-    const console = stage.querySelector("developer-console")!
-    for(const panel of console.shadowRoot!.querySelectorAll(".test-content, .element-content")) {
-      assert(getComputedStyle(panel).userSelect === "none", "console text remains selectable")
+    const detailPanel = stage.querySelector<import("../src/components/bottom-detail-panel").BottomDetailPanel>("bottom-detail-panel")!
+    detailPanel.mode = "checks"
+    await detailPanel.updateComplete
+    for(const panel of detailPanel.shadowRoot!.querySelectorAll(".test-content, .panel-content")) {
+      assert(getComputedStyle(panel).userSelect === "none", "Checks & Tests text remains selectable")
     }
     // Rich editable UI must opt back into selection, including its descendants.
     const rich = document.createElement("div")
@@ -12652,14 +12654,17 @@ await check("narrow toolboxes collapse below bottom panels and restore on tab ac
     const transparent = "rgba(0, 0, 0, 0)"
     assert(getComputedStyle(tabs).borderBottomColor === transparent && getComputedStyle(tabsArea).backgroundColor === transparent
       && getComputedStyle(tabsArea).boxShadow.includes(transparent), "the adjacent toolbox paints over the shared divider")
-    for(const surface of ["console", "versions", "math", "shape", "link"]) {
-      Object.assign(app, {consoleOpen: false, reviewOpen: false, mathSelection: null, graphicSelection: null, linkSelection: null,
+    for(const surface of ["checks", "versions", "math", "shape", "link"]) {
+      Object.assign(app, {checksOpen: false, reviewOpen: false, mathSelection: null, graphicSelection: null, linkSelection: null,
         mathKeyboardHidden: false, shapeKeyboardHidden: false, linkKeyboardHidden: false})
       app.style.width = "900px"
       await settle()
       host.breadcrumbVisible = true
-      toolbox.selectTool(surface === "versions" ? "Review" : "Edit")
-      if(surface === "console") host.consoleOpen = true
+      toolbox.selectTool(surface === "versions" || surface === "checks" ? "Review" : "Edit")
+      if(surface === "checks") {
+        host.localPackages = [{name: "@local/demo", version: "1.0.0", label: "Demo", members: []}]
+        host.checksOpen = true
+      }
       else if(surface === "versions") host.reviewOpen = true
       else if(surface === "math") host.mathSelection = {active: true, display: "inline"}
       else if(surface === "shape") host.graphicSelection = {active: true, capture: true}
@@ -12667,13 +12672,19 @@ await check("narrow toolboxes collapse below bottom panels and restore on tab ac
         attributes: {href: "https://example.com"}, targets: [], references: []}
       await settle()
       assert(!toolbox.collapsed && pane.getBoundingClientRect().height > 0, `${surface}: wide toolbox collapsed`)
+      if(surface === "checks") {
+        const controls = toolbox.shadowRoot!.querySelector<HTMLElement>(".review-panel-controls")!
+        const checks = controls.querySelector<HTMLButtonElement>(".checks-panel-toggle")!
+        assert(Math.abs(checks.getBoundingClientRect().right - controls.getBoundingClientRect().right) < 1,
+          "Checks & Tests is not aligned to the right of the Review footer")
+      }
       for(const width of [600, 599, 380]) {
         app.style.width = `${width}px`
         await settle()
         assert(toolbox.collapsed === (width < 600), `${surface}: collapse does not match container width ${width}`)
         if(width >= 600) continue
-        const panel = app.shadowRoot!.querySelector<HTMLElement>(surface === "console" || surface === "versions"
-          ? ".html-source-panel" : `.${surface}-keyboard-area`)!
+        const panel = app.shadowRoot!.querySelector<HTMLElement>(surface === "checks" || surface === "versions"
+          ? ".bottom-detail-panel" : `.${surface}-keyboard-area`)!
         const bar = tabs.getBoundingClientRect(), bounds = panel.getBoundingClientRect(), editorBounds = app.getBoundingClientRect()
         assert(pane.hidden && pane.getBoundingClientRect().height === 0, `${surface}: toolbox pane is still visible`)
         assert(bar.top >= bounds.bottom - 1 && Math.abs(bar.bottom - editorBounds.bottom + .5) <= 1,
@@ -13152,11 +13163,27 @@ await check("bottom layout cards retain native editing focus after rendering", a
     assert(!ribbon.shadowRoot!.querySelector('[aria-label="Pin snippet"]'), "separate pin snippet button was retained")
     const packagesDrawer = ribbon.shadowRoot!.querySelector<any>('ribbon-drawer[label="Packages"]')!
     const packageControls = packagesDrawer.shadowRoot.querySelector(".controls") as HTMLElement
-    const search = packagesDrawer.querySelector("package-search")!
+    const search: HTMLElementTagNameMap["package-search"] = packagesDrawer.querySelector("package-search")!
+    await search.updateComplete
     if(packageControls.getBoundingClientRect().width > 0 && packagesDrawer.packageColumnCount > 1) {
       assert(search.getBoundingClientRect().width <= packageControls.getBoundingClientRect().width / packagesDrawer.packageColumnCount + 1,
         "package search spans the full drawer")
     }
+    const localPackageActions: {label: string, keepDrawerOpen?: boolean}[] = []
+    search.addEventListener("ribbon-button-click", event => {
+      event.stopPropagation()
+      localPackageActions.push((event as CustomEvent<{label: string, keepDrawerOpen?: boolean}>).detail)
+    })
+    search.shadowRoot!.querySelector<HTMLButtonElement>(".local-package-actions-trigger")!.click()
+    const localActions = search.shadowRoot!.querySelector<HTMLElement>(".local-package-actions")!
+    assert(localActions.matches(":popover-open"), "local package actions did not open from package search")
+    localActions.querySelectorAll<HTMLButtonElement>("button")[0].click()
+    assert(localPackageActions[0]?.label === "local-package-add" && localPackageActions[0].keepDrawerOpen,
+      "Add from local folder did not dispatch its package action")
+    search.shadowRoot!.querySelector<HTMLButtonElement>(".local-package-actions-trigger")!.click()
+    localActions.querySelectorAll<HTMLButtonElement>("button")[1].click()
+    assert(localPackageActions[1]?.label === "local-package-add-batch" && localPackageActions[1].keepDrawerOpen,
+      "Add from parent folder did not dispatch its package action")
     await snippets.updateComplete
     let chevron = snippets.shadowRoot.querySelector('[aria-label="Show more Snippets options"]')!
     assert(chevron, "empty Snippets item has no dropdown chevron")
@@ -13756,16 +13783,16 @@ await check("Accessibility review shares Issues controls without loading while d
 
 await check("Review shares bounded scroll areas and lays out versions beside responsive changes", async () => {
   const {DomEditorToolbox} = await import("../src/components/toolbox")
-  const {DeveloperConsole} = await import("../src/components/developer-console")
+  const {BottomDetailPanel} = await import("../src/components/bottom-detail-panel")
   const {emptyProofreadingState, emptyVersionHistoryState} = await import("../src/editor-bridge")
   const toolbox = new DomEditorToolbox()
   toolbox.style.cssText = "position:fixed;top:60px;right:10px;width:218px;height:480px"
   toolbox.selectTool("Review")
   fixture.append(toolbox)
-  const console = new DeveloperConsole()
-  console.review = true
-  console.style.cssText = "position:fixed;top:60px;left:10px;width:800px"
-  fixture.append(console)
+  const panel = new BottomDetailPanel()
+  panel.mode = "versions"
+  panel.style.cssText = "position:fixed;top:60px;left:10px;width:800px;height:480px"
+  fixture.append(panel)
   const scenario = async (comments: number, issues: number) => {
     toolbox.commentState = {canComment: false, active: false, text: "", activeCount: 0, count: comments,
       highlighting: true, activeThreadId: null, threads: Array.from({length: comments}, (_, index) => ({
@@ -13806,14 +13833,14 @@ await check("Review shares bounded scroll areas and lays out versions beside res
     const user = {clientId: 1, name: "Ada", initials: "AD", color: "#64748b"}
     const checkpoint = (id: string) => ({id, timestamp: 1, label: "Change", user, changes: {added: 0, removed: 0, modified: 1}, commentCount: 0})
     const checkpoints = Array.from({length: 16}, (_, index) => checkpoint(`change-${index}`))
-    console.historyState = {...emptyVersionHistoryState(), checkpoints, versions: Array.from({length: 8}, (_, index) => ({
+    panel.historyState = {...emptyVersionHistoryState(), checkpoints, versions: Array.from({length: 8}, (_, index) => ({
       ...checkpoint(`version-${index}`), checkpointIds: checkpoints.map(checkpoint => checkpoint.id), isUnsaved: index === 0, isCurrent: index === 0,
     }))}
-    await console.updateComplete
-    await Promise.all(Array.from(console.shadowRoot!.querySelectorAll<import("../src/components/ribbon-drawer").RibbonDrawer>("ribbon-drawer"), drawer => drawer.updateComplete))
+    await panel.updateComplete
+    await Promise.all(Array.from(panel.shadowRoot!.querySelectorAll<import("../src/components/ribbon-drawer").RibbonDrawer>("ribbon-drawer"), drawer => drawer.updateComplete))
     await layoutFrame()
-    const sidebar = console.shadowRoot!.querySelector<HTMLElement>(".version-list")!
-    const main = console.shadowRoot!.querySelector<HTMLElement>("#console-panel-Review")!
+    const sidebar = panel.shadowRoot!.querySelector<HTMLElement>(".version-list")!
+    const main = panel.shadowRoot!.querySelector<HTMLElement>(".panel-content.version-changes")!
     const changes = Array.from(main.querySelectorAll<HTMLElement>(".history-change-card"))
     assert(sidebar.scrollHeight > sidebar.clientHeight && getComputedStyle(sidebar).scrollbarWidth === "thin", "versions list does not scroll")
     assert(main.getBoundingClientRect().left >= sidebar.getBoundingClientRect().right, "changes are not beside versions")
@@ -13829,16 +13856,32 @@ await check("Review shares bounded scroll areas and lays out versions beside res
     const versionCard = sidebar.querySelector<HTMLElement>(".history-version-card")!
     const versionBadge = versionCard.querySelector<HTMLElement>(".history-change-count")!
     assert(versionBadge.getBoundingClientRect().right > versionCard.getBoundingClientRect().right - 10, "version badge is not on the right edge")
-    console.style.width = "424px"
+    panel.style.width = "424px"
     await layoutFrame()
     assert(main.getBoundingClientRect().width >= 195 && main.getBoundingClientRect().width <= 205, "narrow changes fixture is not about 200px")
     assert(Math.abs(counts.getBoundingClientRect().left - label.getBoundingClientRect().left) < 1, "narrow counts do not align with text")
     assert(meta.getBoundingClientRect().top > label.getBoundingClientRect().top, "narrow changes do not wrap into compact cards")
     assert(main.scrollWidth <= main.clientWidth && changes[0].scrollWidth <= changes[0].clientWidth, "narrow changes overflow horizontally")
-    assert(!toolbox.shadowRoot!.querySelector(".version-list") && toolbox.shadowRoot!.querySelector("footer .versions-console-toggle"), "Versions remain in the Review toolbox")
+    assert(!toolbox.shadowRoot!.querySelector(".version-list") && toolbox.shadowRoot!.querySelector('footer button[aria-label="Versions"]'), "Versions remain in the Review toolbox footer")
 
+    const headerHeight = (label: string) => {
+      const titleBar = panel.shadowRoot!.querySelector<HTMLElement>("header")!
+      const close = titleBar.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!
+      const heading = titleBar.getBoundingClientRect()
+      const button = close.getBoundingClientRect()
+      const endPadding = parseFloat(getComputedStyle(titleBar).paddingInlineEnd)
+      assert(Math.abs(heading.right - button.right - endPadding) < 1, "close button is not at the right edge of the title bar")
+      assert(button.width >= 24 && button.height >= 24, "close button is smaller than its minimum target size")
+      assert(titleBar.scrollWidth <= titleBar.clientWidth, "narrow panel title bar overflows")
+      return heading.height
+    }
+    const changesHeight = headerHeight("Close versions")
+    panel.mode = "checks"
+    await panel.updateComplete
+    await layoutFrame()
+    assert(Math.abs(changesHeight - headerHeight("Close checks and tests")) < 1, "Changes and Checks & Tests have different title bar heights")
   }
-  finally {toolbox.remove(); console.remove()}
+  finally {toolbox.remove(); panel.remove()}
 })
 
 await check("Elements pullout reserves matching padding after its opening animation", async () => {

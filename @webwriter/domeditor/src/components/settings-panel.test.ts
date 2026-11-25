@@ -432,11 +432,11 @@ describe("settings panel", () => {
     expect(cloudSettings.closest("#settings-cloud")).not.toBeNull()
     expect(category.querySelector("summary")!.textContent).toBe("Developer settings")
     expect(category.open).toBe(false)
-    expect([...category.querySelectorAll(".checkbox-label")].map(label => label.textContent)).toEqual(["Pin developer console", "Auto-reload packages", "Autosave cloud on bundle change"])
+    expect([...category.querySelectorAll(".checkbox-label")].map(label => label.textContent)).toEqual(["Auto-reload packages", "Autosave cloud on bundle change"])
     category.open = true
     category.querySelector<HTMLInputElement>("input")!.click()
     await panel.updateComplete
-    expect(panel.settings.pinDeveloperConsole).toBe(true)
+    expect(panel.settings.autoReloadPackages).toBe(false)
     expect(category.open).toBe(true)
   })
 
@@ -556,7 +556,6 @@ describe("settings panel", () => {
       language: "de",
       updateDocumentLanguage: false,
       disableAnimations: true,
-      pinDeveloperConsole: true,
       shortcuts: {...defaultAppSettings().shortcuts, "document.save": "Alt+S"},
     }
     panel.dispatchEvent(new CustomEvent("settings-change", {
@@ -642,7 +641,7 @@ describe("settings dialog", () => {
     const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#settings-dialog")!
 
     const settings = menu.shadowRoot!.querySelector<HTMLButtonElement>(
-      'section[aria-label="Settings"] .item[title="Settings"]',
+      '.item[title="Settings"]',
     )!
     expect(settings.title).toBe("Settings")
     const section = settings.closest("section")!
@@ -705,25 +704,7 @@ it("omits the removed style toolbox option and ignores its saved preference", as
 })
 
 
-it("defaults to an unpinned console, validates saved settings, and exposes its checkbox", async () => {
-  expect(defaultAppSettings().pinDeveloperConsole).toBe(false)
-  for(const value of [undefined, "yes", true, false]) {
-    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({pinDeveloperConsole: value}))
-    expect(loadAppSettings().pinDeveloperConsole).toBe(value === true)
-  }
-  const panel = await mountPanel()
-  const changes: AppSettings[] = []
-  panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
-  const checkbox = panel.shadowRoot!.querySelector<HTMLInputElement>('section[aria-label="Developer console"] input')!
-  expect(checkbox.checked).toBe(false)
-  checkbox.click()
-  expect(changes.at(-1)!.pinDeveloperConsole).toBe(true)
-  persistAppSettings(changes.at(-1)!)
-  expect(loadAppSettings().pinDeveloperConsole).toBe(true)
-})
-
-
-it("persists global auto-reload and exposes it under developer console settings", async () => {
+it("persists global auto-reload under Local packages settings", async () => {
   expect(defaultAppSettings().autoReloadPackages).toBe(true)
   for(const value of [undefined, "no", true, false]) {
     localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({autoReloadPackages: value}))
@@ -732,7 +713,7 @@ it("persists global auto-reload and exposes it under developer console settings"
   const panel = await mountPanel()
   const changes: AppSettings[] = []
   panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
-  const input = panel.shadowRoot!.querySelectorAll<HTMLInputElement>('section[aria-label="Developer console"] input')[1]
+  const input = panel.shadowRoot!.querySelectorAll<HTMLInputElement>('section[aria-label="Local packages"] input')[0]
   expect(input.checked).toBe(true)
   input.click()
   expect(changes.at(-1)!.autoReloadPackages).toBe(false)

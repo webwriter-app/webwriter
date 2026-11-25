@@ -25,7 +25,7 @@ Add the keywords for your widget to the [`keywords` array](https://docs.npmjs.co
 | `widget-online`, `widget-online-edit`, `widget-online-use` | The widget needs a network connection for all operations, for editing, or for use, respectively. |
 | `widget-supports-dynamic-loading` | The widget loads optional code or resources when necessary. |
 | `widget-supports-shared-dependencies` | The widget supports dependencies shared with other widgets. |
-| `widget-testable` | The package exports tests for the authoring tool's **Developer console**. |
+| `widget-testable` | The package exports tests for the authoring tool's **Checks & Tests** tab. |
 | `widget-migrates-from-[semver]` | The widget can migrate saved content from the specified version. |
 | `webwriter-widget` | The package contains a widget that the catalog can find. |
 | `widget-standalone` | The widget can operate on a web page outside the authoring tool. |
@@ -84,7 +84,7 @@ A keyword is a claim. The guidance CLI's `badges` command checks that the keywor
 | `widget-online`, `widget-online-edit`, `widget-online-use` | The widget requests network resources in the stated phase, and fails in a clear way without them. |
 | `widget-supports-dynamic-loading` | The widget loads optional code with `import()` and declares the files in `static offlineImports`. |
 | `widget-supports-shared-dependencies` | The package builds with `--shared-dependencies`, and its dependencies are bare imports that the import map resolves. |
-| `widget-testable` | The `exports` field has `./tests/<name>.js` modules that report to the **Developer console**. |
+| `widget-testable` | The `exports` field has `./tests/<name>.js` modules that report to **Checks & Tests**. |
 | `widget-migrates-from-…` | A `./migrate.js` export that handles saved content of that version, with a fixture. |
 | `webwriter-widget` | The `exports` field has a `./widgets/<tag>.js` export for each widget. |
 | `widget-standalone` | The widget runs on a plain page, as [Standalone widgets](standalone.md) describes. |

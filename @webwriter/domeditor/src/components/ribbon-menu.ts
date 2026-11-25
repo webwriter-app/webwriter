@@ -994,6 +994,7 @@ export class RibbonMenu extends LitElement {
     this.renderRoot?.querySelector<HTMLTextAreaElement>(".item-label-input")?.blur()
     this.openSubmenu = null
     this.openSubmenuToggle = null
+    this.renderRoot?.querySelectorAll("package-search").forEach(search => search.dismissActions())
     this.renderRoot?.querySelectorAll<RibbonMenu>("ribbon-menu").forEach(menu => menu.closeSubmenus())
     this.renderRoot?.querySelectorAll<HTMLElement>(".submenu").forEach(submenu => {
       if(typeof submenu.hidePopover !== "function") return

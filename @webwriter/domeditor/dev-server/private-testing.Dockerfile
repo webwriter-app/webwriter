@@ -21,13 +21,13 @@ RUN npm prune --legacy-peer-deps --omit=dev --ignore-scripts --no-audit --no-fun
 
 FROM node:24-bookworm-slim AS backend
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git \
+    && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && install -d -o node -g node -m 0700 /var/lib/webwriter
 WORKDIR /app/@webwriter/domeditor
 COPY --from=runtime-dependencies /app/@webwriter/domeditor/node_modules/ ./node_modules/
 COPY @webwriter/domeditor/package.json ./
-COPY @webwriter/domeditor/dev-server/server.mjs @webwriter/domeditor/dev-server/git-packages.mjs @webwriter/domeditor/dev-server/live-signaling.mjs @webwriter/domeditor/dev-server/admin.html ./dev-server/
+COPY @webwriter/domeditor/dev-server/server.mjs @webwriter/domeditor/dev-server/live-signaling.mjs @webwriter/domeditor/dev-server/admin.html ./dev-server/
 COPY @webwriter/domeditor/src/live-session-permissions.js @webwriter/domeditor/src/widget-grouping.js @webwriter/domeditor/src/url-input.js @webwriter/domeditor/src/example-documents.json ./src/
 COPY @webwriter/domeditor/examples/subjects/ ./examples/subjects/
 RUN node -e "import('./dev-server/server.mjs')"

@@ -58,7 +58,7 @@ customElements.define("ww-unit-converter", UnitConverter)
 
 <!-- /live-example -->
 
-Open the **Developer console** to examine package warnings, the selected element, and document HTML. Refresh the package when you change its built files. For automatic refresh, enable **Auto-reload**.
+With a local package loaded, open **Review** and select **Checks & Tests** to the right of **Versions**. To reload after changing built files, click the refresh control in widget search. For automatic refresh, enable **Auto-reload packages** in Settings.
 
 Do these checks for each widget.
 
@@ -69,7 +69,7 @@ Do these checks for each widget.
 - Test keyboard input, narrow layouts, preview, and printing.
 - Wait for shared data before you write to it. Check that updates from other participants appear.
 
-Export test modules as `./tests/<name>.js` or `./tests/<name>.*`. Run the modules from **Tests** in the **Developer console**. Each module runs in a separate frame with a time limit of 60 seconds.
+Export test modules as `./tests/<name>.js` or `./tests/<name>.*`. Run the modules from **Checks & Tests** at the bottom of the editor. Each module runs in a separate frame with a time limit of 60 seconds.
 
 To test a unit converter, change the saved target unit. Check that the widget calculates the new output. Use undo. Check that the widget restores the previous output. The [Ghost Disco test module](../examples/ghost-disco-tests.js) has a test without a test-runner dependency. For [Mocha](https://mochajs.org/getting-started/), `getMochaConfig()` from `@webwriter/build/test` supplies the reporting hooks. To test a widget that receives a signal, `connectEffect()` from the same module connects the effect to a source you create, as the authoring tool does. See [Make data reactive](reactivity.md#test-a-receiver).
 

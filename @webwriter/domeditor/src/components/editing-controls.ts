@@ -83,9 +83,7 @@ import {
   type TimedMediaResourceType,
 } from "../media"
 import type {MathSelectionState} from "../math"
-import type {PackageTestResult, WebWriterPackage, WebWriterPackageExportType} from "../packages"
-import type {LocalPackageWarning} from "../local-package"
-import {describePackageExport, editingConfigKey, normalizeEditingConfig, webWriterPackageExportTypes} from "../packages"
+import type {WebWriterPackage} from "../packages"
 import {ribbonIcon} from "../ribbon-icons"
 import {sectionOptions, type SectionName} from "../sections"
 import type {TableSelectionState} from "../table"
@@ -98,13 +96,10 @@ import "./ribbon-combobox"
 import "./style-combobox"
 import type {StyleCombobox} from "./style-combobox"
 import "./document-head-editor"
-import {packageLicenseOptions} from "../package-licenses"
 import "./ribbon-drawer"
 import {type RibbonDrawer} from "./ribbon-drawer"
 import {type RibbonMenuGroup} from "./ribbon-menu"
 import {graphicAlignButtons, graphicDistributeButtons, graphicOrderButtons, type RibbonMenuName} from "./ribbon-menu-config"
-import {createAnchorPositioner} from "../anchor-positioning.js"
-import {popupAnchorCSS} from "./popup-position"
 
 type RibbonInputEventDetail = {
   input: HTMLElement
@@ -124,23 +119,6 @@ const isRibbonInput = (target: EventTarget | null): target is HTMLElement => {
 }
 
 const ribbonInputFromEvent = (event: Event) => event.composedPath().find(isRibbonInput)
-
-const packageMetadataText = (value: unknown) => value === undefined
-  ? ""
-  : typeof value === "string" ? value : JSON.stringify(value, null, 2)
-
-const packagePersonText = (value: unknown) => value === undefined
-  ? ""
-  : typeof value === "string" ? value : JSON.stringify(value)
-
-const packageExportIcons: Record<WebWriterPackageExportType, string> = {
-  widget: "Extensions", test: "Accept", migration: "Migration", snippet: "Code",
-  theme: "Theme", icon: "Image", "widget-icon": "Image", "editing-config": "Preferences",
-  "custom-elements": "Document", other: "More",
-}
-
-const scopedPackageNamePattern = String.raw`@[^\/\s]+/[^\/\s]+`
-const semanticVersionPattern = String.raw`(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*)?(\+[0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*)?`
 
 /** Selection controls shared by the top ribbon and side toolbox. Application
  * menus, AI, sharing and ribbon layout belong to AppRibbon. */
@@ -168,13 +146,6 @@ export abstract class EditingControls extends LitElement {
     newCommentDraft: {type: String, state: true},
     localPackages: {attribute: false},
     unavailableInsertions: {attribute: false},
-    localPackageRefreshingNames: {attribute: false},
-    localPackagesLoading: {type: Boolean, attribute: "local-packages-loading"},
-    localPackageError: {type: String, attribute: "local-package-error"},
-    selectedLocalPackageName: {type: String, attribute: "selected-local-package-name"},
-    localPackageWarnings: {attribute: false},
-    localPackageRuntimeWarnings: {attribute: false},
-    localPackageTestResults: {attribute: false},
     listType: {type: String, attribute: "list-type"},
     listStyle: {type: String, attribute: "list-style"},
     orderedList: {attribute: false},
@@ -202,7 +173,6 @@ export abstract class EditingControls extends LitElement {
 
   static styles = editingControlStyles
 
-  private anchorPositioner: ReturnType<typeof createAnchorPositioner> | null = null
 
   activeMenu: RibbonMenuName = "Start"
 
@@ -256,21 +226,6 @@ export abstract class EditingControls extends LitElement {
 
   localPackages: WebWriterPackage[] = []
   unavailableInsertions: ReadonlySet<string> = new Set()
-
-  localPackagesLoading = false
-  localPackageRefreshingNames: string[] = []
-
-  localPackageError = ""
-
-  selectedLocalPackageName = ""
-
-
-  /** Loader and runtime checks per local package name. */
-  localPackageWarnings: Record<string, LocalPackageWarning[]> = {}
-  localPackageRuntimeWarnings: Record<string, LocalPackageWarning[]> = {}
-
-  /** Latest test run per `<package name>/<test name>`. */
-  localPackageTestResults: Record<string, PackageTestResult | "running"> = {}
 
   listType: ListType | null = null
 
@@ -1029,128 +984,6 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected get selectedLocalPackage() {
-    return this.localPackages.find(pkg => pkg.name === this.selectedLocalPackageName) ?? this.localPackages[0]
-  }
-
-  protected get localPackageSelectionName() {
-    return this.selectedLocalPackage?.name ?? ""
-  }
-
-  protected selectLocalPackageByName(name: string) {
-    const accepted = this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
-      detail: {label: `local-package-select:${name}`},
-      bubbles: true,
-      composed: true,
-      cancelable: true,
-    }))
-    if(accepted) this.selectedLocalPackageName = name
-  }
-
-  protected localPackageMetadataChange = (event: Event) => {
-    const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement
-    if(input instanceof HTMLInputElement && !input.checkValidity()) {
-      input.reportValidity()
-      return
-    }
-    this.dispatchEvent(new CustomEvent<{field: string, value: string}>("local-package-metadata-change", {
-      detail: {field: input.name, value: input.value},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  protected localPackageExportChange = (
-    exportName: string,
-    field: "type" | "name" | "source",
-    event: Event,
-  ) => {
-    const value = (event.currentTarget as HTMLInputElement | HTMLSelectElement).value
-    if(field !== "source" && !this.prepareLocalPackageStructureChange(event)) return
-    this.dispatchEvent(new CustomEvent("local-package-export-change", {
-      detail: {exportName, field, value},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  protected prepareLocalPackageStructureChange(_event: Event) { return true }
-
-  protected addLocalPackageExport = () => {
-    this.dispatchEvent(new Event("local-package-export-add", {bubbles: true, composed: true}))
-  }
-
-  protected deleteLocalPackageExport = (exportName: string) => {
-    this.dispatchEvent(new CustomEvent("local-package-export-delete", {
-      detail: {exportName},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  protected pickLocalPackageExportFile = (exportName: string) => {
-    this.dispatchEvent(new CustomEvent("local-package-export-file-pick", {
-      detail: {exportName},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  protected localPackageContributorChange = (index: number, event: Event) => {
-    this.dispatchEvent(new CustomEvent("local-package-contributor-change", {
-      detail: {index, value: (event.currentTarget as HTMLInputElement).value},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  protected addLocalPackageContributor = () => {
-    this.dispatchEvent(new Event("local-package-contributor-add", {bubbles: true, composed: true}))
-  }
-
-  protected deleteLocalPackageContributor = (index: number) => {
-    this.dispatchEvent(new CustomEvent("local-package-contributor-delete", {
-      detail: {index},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
-  private handlePackageLoadMenu(event: Event) {
-    if((event as CustomEvent<{label: string}>).detail.label !== "git-package-add") return
-    event.stopPropagation()
-    this.renderRoot.querySelector<HTMLDialogElement>(".git-package-dialog")?.showModal()
-  }
-
-  private loadGitPackage(event: SubmitEvent) {
-    event.preventDefault()
-    const form = event.currentTarget as HTMLFormElement
-    const data = new FormData(form)
-    this.dispatchEvent(new CustomEvent("git-package-load", {bubbles: true, composed: true,
-      detail: {repository: normalizeURLInput(String(data.get("repository") ?? "")), ref: String(data.get("ref")).trim(), path: String(data.get("path")).trim()}}))
-    form.closest("dialog")!.close()
-  }
-
-  private showPackageSource(event: Event) {
-    const button = event.currentTarget as HTMLElement
-    const popup = button.closest("li")?.querySelector<HTMLElement>(".package-source-popup")
-    if(!popup || typeof popup.showPopover !== "function") return
-    popup.showPopover()
-    this.anchorPositioner ??= createAnchorPositioner(this.ownerDocument)
-    this.anchorPositioner.bind(popup, button,
-      `${popupAnchorCSS(4)}position-area:top span-right;justify-self:end;`)
-    this.anchorPositioner.refresh()
-  }
-
-  private hidePackageSource(event: Event) {
-    const button = event.currentTarget as HTMLElement
-    const popup = button.closest("li")?.querySelector<HTMLElement>(".package-source-popup")
-    if(popup) {
-      popup.hidePopover?.()
-      this.anchorPositioner?.release(popup)
-    }
-  }
-
   private shortcutLayout?: ShortcutLayout
   private refreshShortcutLayout = async () => {
     this.shortcutLayout = await getShortcutLayout()
@@ -1165,358 +998,7 @@ export abstract class EditingControls extends LitElement {
 
   disconnectedCallback() {
     this.ownerDocument.defaultView?.removeEventListener("focus", this.refreshShortcutLayout)
-    this.anchorPositioner?.destroy()
-    this.anchorPositioner = null
     super.disconnectedCallback()
-  }
-
-  protected renderDevelopDrawer() {
-    const displayPackages = this.localPackages
-    return html`
-      <aside class="local-packages-drawer" aria-label="Local packages">
-        <nav class="local-package-list" aria-label="Choose a local package">
-          <ul>
-            ${displayPackages.map((pkg, index) => html`<li>
-              <button type="button" class="local-package-item"
-                aria-pressed=${this.localPackageSelectionName === pkg.name}
-                title=${`${pkg.name} ${pkg.version}`}
-                @click=${() => this.selectLocalPackageByName(pkg.name)}
-              ><span class="local-package-name">${pkg.name}</span> <span class="local-package-version">${pkg.version}</span></button>
-              <span class="local-package-icon-stack">
-                <span class="local-package-icon" aria-hidden="true">${pkg.iconUrl ? html`<img src=${pkg.iconUrl} alt="" />` : ribbonIcon("Packages")}</span>
-                <span class="local-package-source" tabindex="0" role="img" aria-label=${`${pkg.developerSource?.kind === "git" ? "Git" : "Folder"} source of ${pkg.name}`}
-                  aria-describedby=${`package-source-${index}`}
-                  @mouseenter=${this.showPackageSource} @mouseleave=${this.hidePackageSource}
-                  @focus=${this.showPackageSource} @blur=${this.hidePackageSource}
-                >${ribbonIcon(pkg.developerSource?.kind === "git" ? "Git" : "Open")}</span>
-              </span>
-              <button type="button" class="local-package-remove" aria-label=${`Remove ${pkg.name}`} title="Remove package"
-                ?disabled=${this.localPackagesLoading}
-                @click=${() => this.dispatchEvent(new CustomEvent("ribbon-button-click", {detail: {label: `local-package-remove:${pkg.name}`}, bubbles: true, composed: true}))}
-              >${ribbonIcon("Reject")}</button>
-              <button type="button" class="local-package-refresh" aria-label=${`Refresh ${pkg.name}`} title="Refresh from source"
-                aria-busy=${this.localPackageRefreshingNames.includes(pkg.name)}
-                ?disabled=${this.localPackagesLoading || this.localPackageRefreshingNames.includes(pkg.name)}
-                @click=${() => this.dispatchEvent(new CustomEvent("ribbon-button-click", {detail: {label: `local-package-refresh:${pkg.name}`}, bubbles: true, composed: true}))}
-              >${this.localPackageRefreshingNames.includes(pkg.name) ? html`<span class="package-refresh-spinner" aria-hidden="true"></span>` : ribbonIcon("Refresh")}</button>
-              <aside id=${`package-source-${index}`} class="package-source-popup" role="tooltip" popover="manual">
-                ${pkg.developerSource?.kind === "git" ? html`<span>${pkg.developerSource.repository}</span><small>${pkg.developerSource.ref || "Default branch"}${pkg.developerSource.path ? ` · ${pkg.developerSource.path}` : ""}</small>`
-                  : pkg.developerSource?.path || pkg.label}
-              </aside>
-            </li>`)}
-          </ul>
-          ${!displayPackages.length ? html`<span class="package-status">${this.localPackagesLoading ? "Loading packages…" : "No local packages"}</span>` : ""}
-        </nav>
-        <div class="local-package-actions">
-          <ribbon-button
-            label="Add package"
-            action="local-package-add"
-            ?disabled=${this.localPackagesLoading}
-            .submenu=${[{label: "Add from local folder", action: "local-package-add", icon: "Open"}, {label: "Add from parent folder", action: "local-package-add-batch", icon: "Open"}, {label: "Add from Git repository", action: "git-package-add", icon: "Git"}]}
-            @ribbon-button-click=${this.handlePackageLoadMenu}
-            icon="Plus"
-            variant="toolbar"
-            package-add
-            keep-drawer-open
-          ></ribbon-button>
-        </div>
-        <dialog class="git-package-dialog" aria-labelledby="git-package-title">
-          <form @submit=${this.loadGitPackage}>
-            <strong id="git-package-title">Load Git package</strong>
-            <label>Repository URL<input name="repository" inputmode="url" required placeholder="https://github.com/owner/repository.git" /></label>
-            <label>Branch or tag<input name="ref" type="text" placeholder="Default branch" /></label>
-            <label>Package folder<input name="path" type="text" placeholder="Repository root" /></label>
-            <small>Public repositories only. Git package contents are read-only.</small>
-            <div><button type="button" @click=${(event: Event) => (event.currentTarget as HTMLElement).closest("dialog")!.close()}>Cancel</button><button type="submit">Load</button></div>
-          </form>
-        </dialog>
-      </aside>
-    `
-  }
-
-  private addLocalPackageKeyword(event: Event) {
-    const target = event.currentTarget as HTMLElement
-    const input = target instanceof HTMLInputElement ? target : target.parentElement!.querySelector<HTMLInputElement>("input")!
-    const value = input.value.trim()
-    if(!value) return
-    this.dispatchEvent(new CustomEvent("local-package-keyword-change", {
-      detail: {operation: "add", value}, bubbles: true, composed: true,
-    }))
-    input.value = ""
-    input.focus()
-  }
-
-  private removeLocalPackageKeyword(value: string) {
-    if(value === "webwriter-widget") return
-    this.dispatchEvent(new CustomEvent("local-package-keyword-change", {
-      detail: {operation: "remove", value}, bubbles: true, composed: true,
-    }))
-  }
-
-  private localPackageEditingOptionChange(key: string, option: string, event: Event) {
-    const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    this.dispatchEvent(new CustomEvent("local-package-editing-option-change", {
-      detail: {key, option, value: input.value}, bubbles: true, composed: true,
-    }))
-  }
-
-  private renderPackageEditingFields(key: string, config: Record<string, unknown> = {}) {
-    const textOptions = key === "."
-      ? [["label", "Display label"], ["description", "Display description"]]
-      : [
-          ["label", "Display label"], ["description", "Display description"],
-          ...(/^\.\/(widgets|snippets)\//.test(key) ? [["category", "Insert menu category"]] : []),
-          ["group", "Group"], ["content", "Content"], ["marks", "Allowed marks"], ["propagateEvents", "Propagated events"],
-        ]
-    return html`
-      ${textOptions.map(([option, label]) => html`<label class="develop-field">
-        <span class="develop-field-label">${label}</span>
-        <input type="text" data-editing-key=${key} data-editing-option=${option}
-          .value=${option === "propagateEvents" && Array.isArray(config[option]) ? config[option].join(", ") : packageMetadataText(config[option])}
-          placeholder=${option === "marks" ? "_ (all marks)" : option === "propagateEvents" ? "click, input" : ""}
-          @change=${(event: Event) => this.localPackageEditingOptionChange(key, option, event)} />
-        ${option === "label" || option === "description" ? html`<span class="develop-field-help">Text or JSON translations by language</span>` : nothing}
-      </label>`)}
-      ${key === "." ? nothing : [["uninsertable", "Prevent insertion"], ["inline", "Inline"], ["isolating", "Isolating"], ["sharedData", "Shared data"]].map(([option, label]) => html`<label class="develop-field">
-        <span class="develop-field-label">${label}</span>
-        <select data-editing-key=${key} data-editing-option=${option} .value=${config[option] === undefined ? "" : String(config[option])}
-          @change=${(event: Event) => this.localPackageEditingOptionChange(key, option, event)}>
-          <option value="" ?selected=${config[option] === undefined}>Default</option><option value="true" ?selected=${config[option] === true}>Yes</option><option value="false" ?selected=${config[option] === false}>No</option>
-        </select>
-      </label>`)}
-    `
-  }
-
-  protected renderMetadataDrawer() {
-    const pkg = this.selectedLocalPackage
-    const manifest = pkg?.manifest
-    const editingConfig = normalizeEditingConfig(manifest?.editingConfig)
-    const author = manifest ? manifest.author : pkg?.authors[0]
-    const keywords = ["webwriter-widget", ...new Set((manifest?.keywords ?? pkg?.keywords ?? []).filter(keyword => keyword !== "webwriter-widget"))]
-    const contributors = manifest?.contributors ?? []
-    const packageExports = Object.entries(manifest?.exports ?? {})
-      .map(([exportName, target]) => ({exportName, descriptor: describePackageExport(exportName, target)}))
-      .sort((a, b) => webWriterPackageExportTypes.findIndex(type => type.value === a.descriptor.type)
-        - webWriterPackageExportTypes.findIndex(type => type.value === b.descriptor.type))
-    return html`
-      <ribbon-drawer label="Metadata" icon="Properties" layout="metadata" hide-pane-label>
-        ${pkg ? html`<fieldset class="develop-fields" ?disabled=${pkg.developerSource?.kind === "git"}>
-          <section class="develop-section" aria-labelledby="develop-package-fields">
-            <span id="develop-package-fields" class="develop-section-title">Package</span>
-            <label class="develop-field">
-              <span class="develop-field-label">Name</span>
-              <input type="text" name="name" .value=${manifest?.name ?? pkg.name} .pattern=${scopedPackageNamePattern} required @change=${this.localPackageMetadataChange} />
-            </label>
-            <label class="develop-field">
-              <span class="develop-field-label">Version</span>
-              <input type="text" name="version" .value=${manifest?.version ?? pkg.version} .pattern=${semanticVersionPattern} required @change=${this.localPackageMetadataChange} />
-              <span class="develop-field-help">Semantic version, for example 1.2.0</span>
-            </label>
-            <label class="develop-field">
-              <span class="develop-field-label">Description</span>
-              <textarea name="description" .value=${manifest ? manifest.description ?? "" : pkg.description ?? ""} @change=${this.localPackageMetadataChange}></textarea>
-            </label>
-            <label class="develop-field">
-              <span class="develop-field-label">License</span>
-              <document-head-combobox label="License" placeholder="SPDX identifier or custom license"
-                .value=${manifest?.license ?? pkg.license ?? ""} .options=${packageLicenseOptions}
-                .disabled=${pkg.developerSource?.kind === "git"}
-                @combobox-change=${(event: CustomEvent<{value: string}>) => this.dispatchEvent(new CustomEvent("local-package-metadata-change", {
-                  detail: {field: "license", value: event.detail.value}, bubbles: true, composed: true,
-                }))}
-              ></document-head-combobox>
-            </label>
-            <details class="develop-compact-details">
-              <summary><span>Keywords</span><span>${keywords.length}</span></summary>
-              <ul class="develop-keyword-list" aria-label="Keywords">
-                ${keywords.map(keyword => html`<li class="develop-keyword-entry ${keyword === "webwriter-widget" ? "required" : ""}">
-                  <span>${keyword}</span>
-                  ${keyword === "webwriter-widget" ? nothing : html`<button class="develop-icon-button" type="button" aria-label=${`Remove keyword ${keyword}`} title="Remove keyword" @click=${() => this.removeLocalPackageKeyword(keyword)}>${ribbonIcon("Reject")}</button>`}
-                </li>`)}
-                <li class="develop-field">
-                  <div class="develop-keyword-add">
-                    <input type="text" name="newKeyword" aria-label="New keyword" placeholder="Add keyword"
-                      @keydown=${(event: KeyboardEvent) => {
-                        if(event.key !== "Enter" || event.isComposing) return
-                        event.preventDefault()
-                        event.stopPropagation()
-                        this.addLocalPackageKeyword(event)
-                      }} />
-                    <button class="develop-icon-button" type="button" aria-label="Add keyword" title="Add keyword" @click=${this.addLocalPackageKeyword}>${ribbonIcon("Accept")}</button>
-                  </div>
-                </li>
-              </ul>
-            </details>
-            <div class="develop-section-title-row">
-              <span class="develop-field-label">Author</span>
-              <button class="develop-icon-button" type="button" aria-label="Add contributor" title="Add contributor" @click=${this.addLocalPackageContributor}>${ribbonIcon("Plus")}</button>
-            </div>
-            <label class="develop-field">
-              <input type="text" name="author" .value=${packagePersonText(author)} placeholder="Name &lt;email&gt;" @change=${this.localPackageMetadataChange} />
-            </label>
-            ${contributors.length ? html`<div class="develop-contributors">
-              ${contributors.map((contributor, index) => html`
-                <div class="develop-contributor-row">
-                  <input
-                    type="text"
-                    aria-label=${`Contributor ${index + 1}`}
-                    .value=${packagePersonText(contributor)}
-                    placeholder="Name &lt;email&gt;"
-                    @change=${(event: Event) => this.localPackageContributorChange(index, event)}
-                  />
-                  <button
-                    class="develop-icon-button"
-                    type="button"
-                    aria-label=${`Delete contributor ${index + 1}`}
-                    title="Delete contributor"
-                    @click=${() => this.deleteLocalPackageContributor(index)}
-                  >${ribbonIcon("Delete")}</button>
-                </div>
-              `)}
-            </div>` : ""}
-            ${this.renderPackageEditingFields(".", editingConfig["."])}
-          </section>
-
-          <section class="develop-section" aria-labelledby="develop-export-fields">
-            <div class="develop-section-title-row">
-              <span id="develop-export-fields" class="develop-section-title">Exports</span>
-              <button class="develop-icon-button" type="button" aria-label="Create export" title="Create export" @click=${this.addLocalPackageExport}>${ribbonIcon("Plus")}</button>
-            </div>
-            <div class="develop-export-list">
-              ${packageExports.length ? repeat(packageExports, item => `${pkg.name}/${item.exportName}`, ({exportName, descriptor}) => {
-                const fixedName = ["migration", "icon", "editing-config", "custom-elements"].includes(descriptor.type)
-                return html`
-                  <article class="develop-export-card" data-export-name=${exportName}>
-                    <details class="develop-export-details">
-                      <summary class="develop-export-card-header">
-                        <span class="develop-export-type-icon" aria-hidden="true" title=${webWriterPackageExportTypes.find(type => type.value === descriptor.type)!.label}>${ribbonIcon(packageExportIcons[descriptor.type])}</span>
-                        <span class="develop-export-card-title" title=${exportName}>${exportName}</span>
-                      </summary>
-                      <div class="develop-export-card-fields">
-                        <label class="develop-field">
-                          <span class="develop-field-label">Type</span>
-                          <select name="exportType" .value=${descriptor.type} @change=${(event: Event) => this.localPackageExportChange(exportName, "type", event)}>
-                            ${webWriterPackageExportTypes.map(type => html`<option value=${type.value} ?selected=${type.value === descriptor.type}>${type.label}</option>`)}
-                          </select>
-                        </label>
-                        <label class="develop-field">
-                          <span class="develop-field-label">Name</span>
-                          <input
-                            type="text"
-                            name="exportName"
-                            .value=${descriptor.name}
-                            ?disabled=${fixedName}
-                            title=${fixedName ? "This export type has a fixed package name" : ""}
-                            required
-                            @change=${(event: Event) => this.localPackageExportChange(exportName, "name", event)}
-                          />
-                        </label>
-                        <label class="develop-field">
-                          <span class="develop-field-label">Source path</span>
-                          <span class="develop-export-source-row">
-                            <input
-                              type="text"
-                              .value=${descriptor.source}
-                              placeholder="./src/file.ts"
-                              required
-                              @change=${(event: Event) => this.localPackageExportChange(exportName, "source", event)}
-                            />
-                            <button
-                              class="develop-icon-button"
-                              type="button"
-                              aria-label=${`Choose source file for ${exportName}`}
-                              title="Choose source file"
-                              @click=${() => this.pickLocalPackageExportFile(exportName)}
-                            >${ribbonIcon("Open")}</button>
-                          </span>
-                        </label>
-                        ${descriptor.type === "widget-icon" ? nothing : this.renderPackageEditingFields(editingConfigKey(exportName), editingConfig[editingConfigKey(exportName)])}
-                      </div>
-                    </details>
-                    <button
-                      class="develop-icon-button develop-export-delete"
-                      type="button"
-                      aria-label=${`Delete export ${exportName}`}
-                      title="Delete export"
-                      @click=${() => this.deleteLocalPackageExport(exportName)}
-                    >${ribbonIcon("Delete")}</button>
-                  </article>
-                `
-              }) : html`<span class="develop-empty">No exports</span>`}
-            </div>
-            <label class="develop-field">
-              <span class="develop-field-label">Custom elements manifest</span>
-              <input type="text" name="customElements" .value=${manifest?.customElements ?? ""} placeholder="custom-elements.json" @change=${this.localPackageMetadataChange} />
-            </label>
-          </section>
-
-        </fieldset>` : html`<span class="develop-empty">Select a package</span>`}
-      </ribbon-drawer>
-    `
-  }
-
-  protected renderLocalPackageChecks(pkg: WebWriterPackage) {
-    const warnings = this.localPackageWarnings[pkg.name] ?? []
-    const loaded = Boolean(pkg.manifest && Object.hasOwn(this.localPackageWarnings, pkg.name))
-    const runtimeChecked = Object.hasOwn(this.localPackageRuntimeWarnings, pkg.name)
-    const checks: {label: string, codes: LocalPackageWarning["code"][], checked: boolean}[] = [
-      {label: "Package metadata loaded", codes: [], checked: loaded},
-      {label: "Widget or snippet bundle available", codes: ["missing-bundle"], checked: loaded},
-      {label: "Configured exports available", codes: ["missing-export", "invalid-export"], checked: loaded},
-      {label: "Editing configuration readable", codes: ["editing-config-unavailable", "invalid-editing-config"], checked: loaded},
-      {label: "Editing options valid", codes: ["unknown-editing-option", "invalid-editing-option"], checked: loaded},
-      {label: "Editing entries match exports", codes: ["unmatched-editing-config"], checked: loaded},
-      {label: "Widget definitions valid", codes: ["invalid-widget"], checked: loaded},
-      ...pkg.members.some(member => member.kind === "widget") ? [
-        {label: "Widgets registered", codes: ["undefined-widget" as const], checked: runtimeChecked},
-        {label: "Widget properties reflect to attributes", codes: ["unreflected-property" as const], checked: runtimeChecked},
-      ] : [],
-    ]
-    return html`
-      <section class="develop-section" aria-labelledby="develop-check-fields">
-        <span id="develop-check-fields" class="develop-section-title">Checks</span>
-        <ul class="develop-checklist">${checks.map(check => {
-          const failures = warnings.filter(warning => check.codes.includes(warning.code))
-          return failures.length ? failures.map(warning => html`<li class="develop-check" data-status="failed" data-code=${warning.code}>
-            <span class="check-icon" aria-label="Failed">${ribbonIcon("Reject")}</span><span>${warning.message}</span></li>`)
-            : html`<li class="develop-check" data-status=${check.checked ? "passed" : "pending"}>
-              <span class="check-icon" aria-label=${check.checked ? "Passed" : "Not checked"}>${check.checked ? ribbonIcon("Accept") : "–"}</span>
-              <span>${check.label}${check.checked ? "" : " (not checked)"}</span></li>`
-        })}${warnings.filter(warning => !checks.some(check => check.codes.includes(warning.code))).map(warning => html`<li class="develop-check" data-status="failed" data-code=${warning.code}>
-          <span class="check-icon" aria-label="Failed">${ribbonIcon("Reject")}</span><span>${warning.message}</span></li>`)}</ul>
-      </section>
-    `
-  }
-
-  protected renderLocalPackageTests(pkg: WebWriterPackage) {
-    if(!pkg.tests?.length) return nothing
-    return html`
-      <section class="develop-section" aria-labelledby="develop-test-fields">
-        <span id="develop-test-fields" class="develop-section-title">Tests</span>
-        ${pkg.tests.map(test => {
-          const result = this.localPackageTestResults[`${pkg.name}/${test.name}`]
-          const running = result === "running"
-          const summary = !result || running ? ""
-            : result.status === "timeout" ? "Timed out"
-            : result.status === "error" ? result.error ?? "Failed to run"
-            : `${result.tests.filter(item => item.passed).length}/${result.tests.length} passed`
-          const failures = result && !running ? result.tests.filter(item => !item.passed) : []
-          return html`
-            <div class="develop-test" data-status=${running ? "running" : result ? result.status : "idle"}>
-              <div class="develop-section-title-row">
-                <span class="develop-field-label">${test.name}</span>
-                <button class="develop-icon-button" type="button" ?disabled=${running}
-                  aria-label=${`Run test ${test.name}`} title="Run test"
-                  @click=${() => this.dispatchEvent(new CustomEvent("local-package-test-run", {detail: {name: test.name}, bubbles: true, composed: true}))}
-                >${ribbonIcon(running ? "Refresh" : "Preview")}</button>
-              </div>
-              ${summary ? html`<span class="develop-field-help" role="status">${summary}</span>` : nothing}
-              ${failures.length ? html`<ul class="develop-checks">${failures.map(item => html`<li class="develop-check">${item.path.join(" › ")}${item.timedOut ? " (timed out)" : ""}</li>`)}</ul>` : nothing}
-            </div>
-          `
-        })}
-      </section>
-    `
   }
 
   protected mediaSelectionMatches(type: MediaType) {
@@ -2914,9 +2396,6 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected updated(changed: Map<string, unknown>) {
-    if(changed.has("activeMenu") && this.activeMenu === "Develop") {
-      this.dispatchEvent(new Event("local-package-request", {bubbles: true, composed: true}))
-    }
     if(changed.has("activeMenu") && this.activeMenu === "Style") {
       this.dispatchEvent(new Event("element-style-state-request", {bubbles: true, composed: true}))
     }
@@ -2951,10 +2430,6 @@ export abstract class EditingControls extends LitElement {
     if(drawer.label === "Comments") return this.renderCommentDrawer()
     if(drawer.label === "Layout") return this.renderTableDrawers()
     if(drawer.label === "Graphic") return this.renderGraphicDrawer()
-    if(drawer.label === "Local packages") return this.renderDevelopDrawer()
-    if(drawer.label === "Metadata") {
-      return this.renderMetadataDrawer()
-    }
     const representative = drawer.buttons[0]
     const icon = typeof representative === "string"
       ? representative

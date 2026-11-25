@@ -9,7 +9,7 @@ import {
 import {type RibbonMenuButton, type RibbonMenuGroup} from "./ribbon-menu"
 import {elementStyleCategories} from "../element-styles"
 
-export type RibbonMenuName = "File" | "Start" | "Edit" | "Style" | "Develop" | "History"
+export type RibbonMenuName = "File" | "Start" | "Edit" | "Style" | "History"
 
 export const menuTabs: RibbonMenuName[] = ["File"]
 export const dropdownMenus: RibbonMenuName[] = ["File"]
@@ -230,10 +230,6 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "View", buttons: ["Zoom", "Guides", "Fullscreen"]},
   ],
   Style: elementStyleCategories.map(category => ({label: category.label, buttons: []})),
-  Develop: [
-    {label: "Local packages", buttons: []},
-    {label: "Metadata", buttons: []},
-  ],
   History: [
     {label: "Versions", buttons: []},
   ],
@@ -243,7 +239,6 @@ export type ContextDrawerPolicy = {
   menu: RibbonMenuName
   surface: "ribbon" | "toolbox"
   activeTool?: "Edit" | "Style" | "Review"
-  developMode?: boolean
   documentSelected?: boolean
   paragraphSelected?: boolean
   sectionSelected?: boolean
@@ -293,7 +288,6 @@ export function contextDrawerPolicy(context: ContextDrawerPolicy): RibbonMenuGro
     return menuGroups.Edit.filter(group => group.label === "Comments")
   }
   if(context.surface === "toolbox" && context.activeTool !== "Edit") return []
-  if(context.surface === "toolbox" && context.developMode) return menuGroups.Develop
   if(context.menu !== "Edit") {
     const groups = menuGroups[context.menu]
     return context.menu === "Start" && context.startPackages ? [...groups, context.startPackages] : groups

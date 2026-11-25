@@ -91,7 +91,8 @@ export class DomEditorToolbox extends EditingControls {
     documentThemeStyles: {attribute: false},
     elementSelected: {type: Boolean, attribute: false},
     documentHead: {attribute: false},
-    consoleOpen: {type: Boolean, attribute: "console-open", reflect: true},
+    checksOpen: {type: Boolean, attribute: "checks-open", reflect: true},
+    hasLocalPackages: {type: Boolean, attribute: false},
     versionsOpen: {type: Boolean, attribute: "versions-open", reflect: true},
     htmlPending: {type: Boolean, attribute: "html-pending", reflect: true},
     documentLayout: {attribute: false},
@@ -159,13 +160,13 @@ export class DomEditorToolbox extends EditingControls {
 
 
 
-  .developer-console-controls {display: flex; align-items: center; gap: 0; background: #e9e9e9}
-  .developer-console-controls button {box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: .35rem; min-height: 32px; padding: .3rem .5rem; border: 0; border-radius: 0; background: transparent; color: #46576a; font: 600 .72rem/1 system-ui, sans-serif; cursor: pointer}
-  .developer-console-controls button[aria-pressed="true"] {color: #153b5c; background: #e9e9e9}
-  .developer-console-controls button:hover:not(:disabled) {color: #153b5c; background: #e9e9e9}
-  .developer-console-controls button:focus-visible {outline: 2px solid #3977c7; outline-offset: -2px}
-  .developer-console-controls button:disabled {opacity: .6; cursor: default}
-  .developer-console-controls svg {display: block; width: 15px; height: 15px}
+  .review-panel-controls {display: flex; align-items: center; gap: 0; background: #e9e9e9}
+  .review-panel-controls button {box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: .35rem; min-height: 32px; padding: .3rem .5rem; border: 0; border-radius: 0; background: transparent; color: #46576a; font: 600 .72rem/1 system-ui, sans-serif; cursor: pointer}
+  .review-panel-controls button[aria-pressed="true"] {color: #153b5c; background: #e9e9e9}
+  .review-panel-controls button:hover:not(:disabled) {color: #153b5c; background: #e9e9e9}
+  .review-panel-controls button:focus-visible {outline: 2px solid #3977c7; outline-offset: -2px}
+  .review-panel-controls button:disabled {opacity: .6; cursor: default}
+  .review-panel-controls svg {display: block; width: 15px; height: 15px}
 
 
     .shape-paint-controls { grid-column: 1 / -1; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: .35rem; color: #2f3742; font: .68rem/1.25 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -820,9 +821,10 @@ export class DomEditorToolbox extends EditingControls {
       border-top: 1px solid #c8c8c8;
       background: #e9e9e9;
     }
-    .edit-mode-footer .developer-console-controls {justify-content: space-between}
-    :host(:is([console-open], [versions-open])) .toolbox-pane {clip-path: inset(0 0 0 -1rem)}
-    :host([active-tool]:is([console-open], [versions-open]))::after {
+    .edit-mode-footer .review-panel-controls {flex-wrap: wrap}
+    .checks-panel-toggle {margin-inline-start: auto}
+    :host(:is([checks-open], [versions-open])) .toolbox-pane {clip-path: inset(0 0 0 -1rem)}
+    :host([active-tool]:is([checks-open], [versions-open]))::after {
       content: "";
       position: absolute;
       bottom: -1px;
@@ -877,7 +879,8 @@ export class DomEditorToolbox extends EditingControls {
   documentThemeStyles: Record<string, unknown> = {}
   elementSelected = false
   documentHead: DocumentHeadState = emptyDocumentHeadState()
-  consoleOpen = false
+  checksOpen = false
+  hasLocalPackages = false
   versionsOpen = false
   htmlPending = false
   documentLayout: DocumentLayoutState = {mode: "document", canConvert: true, zoom: 100}
@@ -1794,20 +1797,22 @@ export class DomEditorToolbox extends EditingControls {
     }))
   }
 
-  private renderVersionsFooter() {
+  private renderReviewFooter() {
+    const tab = (label: string, icon: string, open: boolean, event: string) => html`
+      <button type="button" class=${event === "versions-console-change" ? "versions-console-toggle" : "checks-panel-toggle"} aria-label=${label} title=${label}
+        aria-pressed=${open} ?disabled=${this.htmlPending}
+        @click=${() => this.toggleReviewPanel(event, !open)}>${ribbonIcon(icon)}<span>${label}</span></button>
+    `
     return html`<footer class="edit-mode-footer">
-      <div class="developer-console-controls" role="group" aria-label="Versions controls">
-        <button type="button" class="versions-console-toggle" aria-label="Versions" title="Versions"
-          aria-pressed=${this.versionsOpen} ?disabled=${this.htmlPending}
-          @click=${() => this.dispatchEvent(new CustomEvent("versions-console-change", {
-            detail: {enabled: !this.versionsOpen}, bubbles: true, composed: true,
-          }))}>${ribbonIcon("History")}<span>Versions</span></button>
-        ${this.versionsOpen ? html`<button type="button" aria-label="Close versions" title="Close versions"
-          ?disabled=${this.htmlPending} @click=${() => this.dispatchEvent(new CustomEvent("versions-console-change", {
-            detail: {enabled: false}, bubbles: true, composed: true,
-          }))}>${ribbonIcon("Reject")}</button>` : nothing}
+      <div class="review-panel-controls" role="group" aria-label="Review panels">
+        ${tab("Versions", "History", this.versionsOpen, "versions-console-change")}
+        ${this.hasLocalPackages ? tab("Checks & Tests", "Develop", this.checksOpen, "checks-panel-change") : nothing}
       </div>
     </footer>`
+  }
+
+  private toggleReviewPanel(type: string, enabled: boolean) {
+    this.dispatchEvent(new CustomEvent(type, {detail: {enabled}, bubbles: true, composed: true}))
   }
 
   protected willUpdate(changed: Map<string, unknown>) {
@@ -2119,7 +2124,7 @@ export class DomEditorToolbox extends EditingControls {
             ${this.activeTool === "Edit" && !this.documentSelected ? this.renderShapeDrawer() : ""}
             <div class="ai-toolbox-content" ?hidden=${this.activeTool !== "AI"}></div>
           </div>
-          ${this.activeTool === "Review" ? this.renderVersionsFooter() : ""}
+          ${this.activeTool === "Review" ? this.renderReviewFooter() : ""}
         </aside>
       </div>
     `

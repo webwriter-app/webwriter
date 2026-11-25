@@ -86,12 +86,13 @@ export async function checkBottomPanelMotion() {
   frame.srcdoc = `<!doctype html><body>${"<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>".repeat(60)}</body>`
   stage.append(frame)
   root.append(stage)
-  const panels = ["html-source", "document-layouts"].map(name => {
+  const panels = ["checks", "document-layouts"].map(name => {
     const panel = document.createElement("div")
-    panel.className = `${name}-panel`
+    panel.className = name === "checks" ? "bottom-detail-panel" : `${name}-panel`
     const clip = document.createElement("div")
-    clip.className = `${name}-clip`
-    const content = document.createElement(name === "html-source" ? "developer-console" : "section")
+    clip.className = name === "checks" ? "bottom-detail-clip" : `${name}-clip`
+    const content = document.createElement(name === "checks" ? "bottom-detail-panel" : "section")
+    if(name === "checks") (content as HTMLElement & {mode: string}).mode = "checks"
     if(name === "document-layouts") {
       content.className = "document-layouts-bar"
       content.innerHTML = '<h2>Layouts &amp; Recently opened</h2><p>Document · Canvas · Slides · Board</p>'
@@ -150,10 +151,10 @@ export async function checkBottomPanelMotion() {
     host.style.setProperty("--ww-ui-transition", "none")
     source.panel.inert = false
     await nextFrame()
-    assert(getComputedStyle(source.content).visibility === "visible", "disabled motion hid the console")
+    assert(getComputedStyle(source.content).visibility === "visible", "disabled motion hid Checks & Tests")
     source.panel.inert = true
     await nextFrame()
-    assert(getComputedStyle(source.content).visibility === "hidden", "disabled motion left the console visible")
+    assert(getComputedStyle(source.content).visibility === "hidden", "disabled motion left Checks & Tests visible")
     assert(source.content.getAnimations().length === 0, "disabled motion retained an animation")
   }
   finally { host.remove() }

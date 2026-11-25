@@ -251,12 +251,11 @@ npx @webwriter/build dev
 
 ## Step 2: Insert the widget
 
-1. Open the **Developer console** in WebWriter.
-2. Select **Add package**.
-3. Select **Add from local folder**.
-4. Select the widget folder.
-5. Insert **Hello** from the insertion menu.
-6. Make sure that the widget shows “Hello, world!”.
+1. Open the vertical-dots menu at the right of the **Search widgets** bar.
+2. Select **Add from local folder**.
+3. Select the widget folder.
+4. Insert **Hello** from the insertion menu.
+5. Make sure that the widget shows “Hello, world!”.
 
 ## Step 3: Change the greeting
 
@@ -279,7 +278,7 @@ node compile.mjs
 ```
 <!-- /library -->
 
-Wait for the development build to finish. With **Auto-reload** on, WebWriter loads the new widget code. You can also refresh the package manually.
+Wait for the development build to finish. With **Auto-reload** on, WebWriter loads the new widget code. You can also use the existing refresh control in widget search to reload it manually.
 
 Change the greeting to `Welcome,` in the widget source, or put your name between the tags in the HTML pane. The preview updates as you type.
 

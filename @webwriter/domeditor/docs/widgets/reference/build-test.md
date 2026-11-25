@@ -39,7 +39,7 @@ import legacy from "inline:./fixtures/legacy.dat"
 
 The `@webwriter/build/client` types declare these imports for TypeScript.
 
-The **Developer console** reports invalid configuration, export keys, tag names, and content expressions. It also reports widget tags without definitions and [Lit properties](https://lit.dev/docs/components/properties/) that fail to reflect changes to attributes.
+The **Checks & Tests** tab at the bottom of the editor reports invalid configuration, export keys, tag names, and content expressions. It also reports widget tags without definitions and [Lit properties](https://lit.dev/docs/components/properties/) that fail to reflect changes to attributes.
 
 ## Test reporting
 

@@ -8,7 +8,7 @@ Package Ghost Disco so it can load in WebWriter and on a standalone page.
 
 Bundle the widget and its dependencies into `dist/ww-ghost-disco.js`. Run the build script from the previous step after any change to the widget.
 
-Check that `dist/ww-ghost-disco.js` exists, then refresh the local package in WebWriter and try the invitation and dance controls.
+Check that `dist/ww-ghost-disco.js` exists, then use the existing refresh control in widget search to reload the local package and try the invitation and dance controls.
 
 **Terminal**
 

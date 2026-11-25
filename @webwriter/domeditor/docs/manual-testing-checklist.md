@@ -133,12 +133,10 @@
 - [ ] Return to the current document; check its content is unchanged.
 - [ ] Restore an earlier change and inspect the resulting document.
 
-### DEVELOPER CONSOLE
+### CHECKS & TESTS
 
-- [ ] Open the console; pin/unpin it, switch tabs, then close and reopen it.
-- [ ] Select a paragraph; edit Selected HTML and discard the draft.
-- [ ] Edit Selected HTML again, Apply, and check the paragraph updates.
-- [ ] Select a local package; inspect Metadata/Element and run Tests & Checks.
+- [ ] With a local package loaded, open **Checks & Tests** to the right of **Versions** in Review and inspect its available checks and package tests.
+- [ ] Select a local package and run one of its tests.
 
 ### CROSS-FEATURE TASKS
 

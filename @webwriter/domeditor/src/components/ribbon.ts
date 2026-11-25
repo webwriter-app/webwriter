@@ -152,8 +152,9 @@ export class AppRibbon extends EditingControls {
     documentLanguage: {attribute: false},
     editingSnippetId: {attribute: false},
     installedPackages: {attribute: false},
-    consoleOpen: {type: Boolean, attribute: false},
     recentDocuments: {attribute: false},
+    localPackagesLoading: {type: Boolean, attribute: false},
+    localPackageError: {type: String, attribute: false},
     packagesLoading: {type: Boolean, attribute: "packages-loading"},
     busyPackageNames: {attribute: false},
     packageError: {type: String, attribute: "package-error"},
@@ -1250,10 +1251,11 @@ export class AppRibbon extends EditingControls {
 
   installedPackages: WebWriterPackage[] = []
 
-  consoleOpen = false
   recentDocuments: {id: string, title: string}[] = []
 
   packagesLoading = false
+  localPackagesLoading = false
+  localPackageError = ""
 
   busyPackageNames: string[] = []
 
@@ -2281,6 +2283,11 @@ export class AppRibbon extends EditingControls {
     this.menuOpen = false
   }
 
+  override dismissMenus() {
+    super.dismissMenus()
+    this.renderRoot.querySelectorAll("package-search").forEach(search => search.dismissActions())
+  }
+
   focusFileMenuTrigger() {
     const trigger = this.heightConstrained
       ? this.renderRoot.querySelector<HTMLButtonElement>("button.brand")
@@ -2430,10 +2437,6 @@ export class AppRibbon extends EditingControls {
     return this.settings.userSnippets
   }
 
-  private isConsoleSelectedPackage(pkg: WebWriterPackage) {
-    return this.consoleOpen && this.localPackageSelectionName === pkg.name
-  }
-
   private get packageManagementMode() {
     return Boolean(this.packageSearchQuery.trim()) || this.packageDrawerOpen
   }
@@ -2541,7 +2544,6 @@ export class AppRibbon extends EditingControls {
         slot=${slot}
         variant="package"
         ?developer-package=${this.isDeveloperPackage(pkg)}
-        ?console-selected=${this.isConsoleSelectedPackage(pkg)}
         label=${label}
         icon="Packages"
         icon-url=${iconUrl ?? ""}
@@ -2607,12 +2609,6 @@ export class AppRibbon extends EditingControls {
     this.renderRoot.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')?.openDrawer(true)
   }
 
-  private selectLocalPackage = (event: Event) => {
-    const label = (event as CustomEvent<{label?: string}>).detail?.label
-    if(!label?.startsWith("local-package-select:")) return
-    this.selectedLocalPackageName = label.slice("local-package-select:".length)
-  }
-
   private renderPackageDrawer() {
     const displayPackages = this.packageSearchResults
     const visibleCount = Math.max(0, this.packageVisibleCount - 1)
@@ -2632,8 +2628,9 @@ export class AppRibbon extends EditingControls {
       >
         <package-search
           .query=${this.packageSearchQuery}
-          .loading=${this.packagesLoading}
-          .error=${this.packageError}
+          .loading=${this.packagesLoading || this.localPackagesLoading}
+          .localLoading=${this.localPackagesLoading}
+          .error=${this.localPackageError || this.packageError}
           @package-search-change=${this.handlePackageSearch}
           @package-search-focus=${this.handlePackageSearchFocus}
         ></package-search>
@@ -3034,7 +3031,7 @@ export class AppRibbon extends EditingControls {
       const {pkg} = result
       const {installed, label, iconUrl, action, dragAction, dragHTML, submenu, insertionDisabled} = this.packageButton(result)
       return {
-        label, italic: this.isDeveloperPackage(pkg), selected: this.isConsoleSelectedPackage(pkg), icon: "Packages", iconUrl,
+        label, italic: this.isDeveloperPackage(pkg), icon: "Packages", iconUrl,
         action, dragAction, dragHTML, submenu, insertionDisabled,
         removeAction: installed ? packageToggleAction(pkg) : undefined,
         removeLabel: `Remove ${pkg.label}`,
@@ -3047,8 +3044,8 @@ export class AppRibbon extends EditingControls {
       ...this.widgetConversionGroups.map(({label, icon, buttons}) => ({label, icon, menuOnly: true, submenu: buttons})),
       {label: "Packages", icon: "Packages", menuOnly: true, hoverSubmenus: true, submenuGroups: [{label: "Packages", buttons: packages,
         content: !this.packagesLoading && !results.length ? html`<span>No packages</span>` : undefined}],
-        submenuHeader: html`<package-search .query=${this.packageSearchQuery} .loading=${this.packagesLoading}
-          .error=${this.packageError} @package-search-change=${this.handlePackageSearch}></package-search>`},
+        submenuHeader: html`<package-search .query=${this.packageSearchQuery} .loading=${this.packagesLoading || this.localPackagesLoading} .localLoading=${this.localPackagesLoading}
+          .error=${this.localPackageError || this.packageError} @package-search-change=${this.handlePackageSearch}></package-search>`},
     ]}]
   }
 
@@ -3634,7 +3631,6 @@ export class AppRibbon extends EditingControls {
       return {
         label: pkg.label,
         italic: this.isDeveloperPackage(pkg),
-        selected: this.isConsoleSelectedPackage(pkg),
         action: member && isCompatibleSnippet(member) ? packageMemberAction(member) : packageAction(pkg),
         dragHTML: this.packageDragHTML(pkg, member),
         submenu: this.packageMemberButtons(pkg, members),
@@ -3923,11 +3919,10 @@ export class AppRibbon extends EditingControls {
         (typeof button === "string" ? button : button.label) === "Open"
           ? {...(typeof button === "string" ? {label: button} : button), submenu: this.recentDocumentButtons} : button)},
       ...(!this.expanded && !this.previewActive ? this.collapsedEditingMenuGroups() : []),
-      {label: "Settings", buttons: [
-        ...(!this.previewActive || this.settings.pinDeveloperConsole ? [{label: "Developer console", icon: "Develop", action: "show-developer-console"}] : []),
+      {label: "Application", buttons: [
         {label: "Settings", warning: this.cloudSessionWarning},
+        {label: "About WebWriter...", icon: "About", action: "about-webwriter"},
       ]},
-      {label: "About", buttons: [{label: "About WebWriter...", icon: "About", action: "about-webwriter"}]},
     ]
   }
 
@@ -3945,7 +3940,6 @@ export class AppRibbon extends EditingControls {
         @change=${this.handleRibbonInputChange}
         @keydown=${this.handleRibbonInputKeydown}
         @ribbon-tab-select=${this.selectMenu}
-        @ribbon-button-click=${this.selectLocalPackage}
         @ribbon-icon-hover=${this.handleRibbonIconHover}
         @ribbon-drawer-state-change=${this.handleRibbonDrawerState}
       >
