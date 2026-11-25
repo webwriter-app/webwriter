@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {PACKAGE_DOCUMENTATION_MAX_BYTES, PACKAGE_DOCUMENTATION_MAX_CHARS, packageContents, type PackageEditingConfig} from "./packages"
+import {PACKAGE_DOCUMENTATION_MAX_BYTES, PACKAGE_DOCUMENTATION_MAX_CHARS, packageContents, type PackageContents, type PackageEditingConfig} from "./packages"
 import {
   editingConfigWarnings,
   isLocalPackageExportTarget,
@@ -324,6 +324,24 @@ describe("readLocalPackageReadme", () => {
     await expect(readLocalPackageReadme(directory({files: {"README.md": "x".repeat(PACKAGE_DOCUMENTATION_MAX_CHARS + 1)}}), {
       packageName: "@local/demo", version: "0.1.0",
     })).resolves.toMatchObject({status: "unavailable", reason: "too-large"})
+  })
+
+  it("validates split editing-config options without throwing or warning on block, self, and line", () => {
+    const contents = {
+      members: [
+        {member: {kind: "widget", exportName: "./widgets/w-self", tagName: "w-self", editingConfig: {split: "self", isolating: false}}},
+        {member: {kind: "widget", exportName: "./widgets/w-line", tagName: "w-line", editingConfig: {split: "line"}}},
+        {member: {kind: "widget", exportName: "./widgets/w-block", tagName: "w-block", editingConfig: {split: "block"}}},
+      ],
+    } as unknown as PackageContents
+    expect(editingConfigWarnings({
+      "./widgets/w-self": {split: "self", isolating: false},
+      "./widgets/w-line": {split: "line"},
+      "./widgets/w-block": {split: "block"},
+    }, contents)).toEqual([])
+    expect(editingConfigWarnings({
+      "./widgets/w-self": {split: "invalid" as never},
+    }, contents)).toEqual([expect.objectContaining({code: "invalid-editing-option", path: "./widgets/w-self"})])
   })
 
   it("validates snippet dependencies and full compatible host export names", () => {

@@ -339,6 +339,7 @@ const optionChecks: Record<string, (value: unknown) => boolean> = {
   marks: value => typeof value === "string",
   propagateEvents: value => Array.isArray(value) && value.every(type => typeof type === "string" && type.length > 0),
   sharedData: value => typeof value === "boolean",
+  split: value => typeof value === "string" && ["block", "self", "line"].includes(value),
   importFormats: isFileFormatList,
   exportFormats: isFileFormatList,
   dependencies: value => Array.isArray(value) && value.every(isPackageName),

@@ -3811,6 +3811,15 @@ export class ManipulationFeature extends EditorFeature {
     return element ?? null
   }
 
+  private widgetSplitMode(node: Node | null): "self" | "line" | null {
+    const scope = this.widgetEditingScope(node)
+    if(!scope) return null
+    const split = this.editor.schema.get(scope).split
+    if(split === "line") return "line"
+    if(split === "self" && this.canSplitWidget(scope)) return "self"
+    return null
+  }
+
   /** Runs a command and normalizes both the command's original surroundings
    * and the surroundings of the resulting selection. */
   private withNormalization<T>(command: () => T) {
@@ -4360,6 +4369,66 @@ export class ManipulationFeature extends EditorFeature {
     // Joining ordinary text must not remove a widget's required title/body.
     return this.editor.schema.isContentValid(parent, Array.from(parent.childNodes).filter(node => node !== removed))
       && this.editor.schema.isContentValid(target, [...first.childNodes, ...second.childNodes].filter(node => !isDistributionPI(node)))
+  }
+
+  /** Merges two adjacent same-type `split: "self"` widgets when deleting across their boundary. */
+  private joinSplitWidget(scope: Element, direction: "forward" | "backward"): boolean {
+    if(this.editor.schema.get(scope).split !== "self" || !this.canSplitWidget(scope)) return false
+    const parent = scope.parentElement
+    const sibling = flowSibling(scope, direction === "backward" ? "previous" : "next")
+    if(!parent || !isElement(sibling) || sibling.localName !== scope.localName || sibling.namespaceURI !== scope.namespaceURI) return false
+    const left = direction === "backward" ? sibling : scope
+    const right = direction === "backward" ? scope : sibling
+    if(!this.canJoinDistributionRegions(left, right)
+      || !this.editor.schema.isContentValid(parent, Array.from(parent.childNodes).filter(node => node !== right))) return false
+
+    const authoredChildren = (el: Element) => Array.from(el.childNodes)
+      .filter(node => !isOutOfFlow(node) && !isDistributionPI(node) && !(isElement(node) && node.hasAttribute("slot")))
+    const moveToJoinBoundary = (target: Element, leftTailText: Text | null, leftTailLen: number, joinOffset: number) => {
+      if(leftTailText?.isConnected) $.move(leftTailText, leftTailLen)
+      else if(joinOffset < target.childNodes.length) this.moveToStart(target.childNodes[joinOffset])
+      else $.move(target, target.childNodes.length)
+    }
+
+    this.withNormalization(() => {
+      const leftChildren = authoredChildren(left)
+      const rightChildren = authoredChildren(right)
+      const leftLast = leftChildren.at(-1)
+      const rightFirst = rightChildren[0]
+      const isPlainBlock = (node: Node | undefined): node is Element =>
+        isElement(node) && this.editor.schema.isBlock(node) && !isContentfulWidget(node, this.editor.schema)
+
+      if(isPlainBlock(leftLast) && (!rightChildren.length || isPlainBlock(rightFirst))) {
+        if(!rightChildren.length || isEmptyParagraph(rightFirst!) && rightChildren.length === 1) {
+          right.remove()
+          const tail = !isEmptyParagraph(leftLast) && leftLast.lastChild instanceof Text ? leftLast.lastChild : null
+          $.move(tail ?? leftLast, tail ? tail.data.length : isEmptyParagraph(leftLast) ? 0 : leftLast.childNodes.length)
+          return
+        }
+        if(isEmptyParagraph(leftLast)) leftLast.replaceChildren()
+        const leftTailText = leftLast.lastChild instanceof Text ? leftLast.lastChild : null
+        const leftTailLen = leftTailText?.data.length ?? 0
+        const joinOffset = leftLast.childNodes.length
+        if(!isEmptyParagraph(rightFirst!)) {
+          leftLast.append(...Array.from(rightFirst!.childNodes).filter(node => !isOutOfFlow(node) && !isDistributionPI(node)))
+        }
+        rightFirst!.remove()
+        if(rightChildren.length > 1) left.append(...rightChildren.slice(1))
+        leftLast.normalize()
+        right.remove()
+        moveToJoinBoundary(leftLast, leftTailText, leftTailLen, joinOffset)
+        return
+      }
+
+      const leftTailText = left.lastChild instanceof Text ? left.lastChild : null
+      const leftTailLen = leftTailText?.data.length ?? 0
+      const joinOffset = left.childNodes.length
+      left.append(...rightChildren)
+      left.normalize()
+      right.remove()
+      moveToJoinBoundary(left, leftTailText, leftTailLen, joinOffset)
+    })
+    return true
   }
 
   /** Promotes a DOM point through nested mark wrappers to an offset in the
@@ -5395,7 +5464,9 @@ export class ManipulationFeature extends EditorFeature {
         || $.anchorContainer?.matches("h1, h2, h3, h4, h5, h6")
         || $.anchorContainer?.closest(Object.values(attributionAttributes).map(name => `[${name}]`).join(",")))) {
         ev.preventDefault()
-        this.insert()
+        const split = this.widgetSplitMode($.anchor)
+        if(split === "line") this.insertBreak("br")
+        else this.insert(undefined, split === "self" ? 1 : 0)
         return
       }
       if(ev.inputType === "insertLineBreak") {
@@ -5505,7 +5576,9 @@ export class ManipulationFeature extends EditorFeature {
           this.insert(undefined, 1)
         }
         else {
-          this.insert(undefined, 0)
+          const split = this.widgetSplitMode($.anchor)
+          if(split === "line") this.insertBreak("br")
+          else this.insert(undefined, split === "self" ? 1 : 0)
         }
       }
 
@@ -5708,7 +5781,10 @@ export class ManipulationFeature extends EditorFeature {
     // to text deletion. Resolve the nearest declared host from the live caret.
     const scope = this.widgetEditingScope(range.startContainer)
     if(range.collapsed && scope && (!scope.childNodes.length
-      || direction && isCaretAtBoundary(scope, direction === "backward" ? "start" : "end"))) return
+      || direction && isCaretAtBoundary(scope, direction === "backward" ? "start" : "end"))) {
+      if(direction && this.joinSplitWidget(scope, direction)) return
+      return
+    }
     const selectedSummary = range.startContainer === range.endContainer && range.endOffset === range.startOffset + 1
       ? range.startContainer.childNodes.item(range.startOffset) : null
     if(isElement(selectedSummary) && selectedSummary.matches("details > summary")) {

@@ -97,6 +97,8 @@ export type SchemaEntry = {
   propagateEvents?: string[]
   /** Uses a scoped, persistent script[slot=data] payload. */
   sharedData?: boolean
+  /** Default split unit inside this widget's content. */
+  split?: "block" | "self" | "line"
 }
 
 /** The editing-config fields that affect a widget's document-schema entry. */
@@ -115,6 +117,8 @@ export type WidgetEditingConfig = {
   marks?: string
   /** Event types from the widget's shadow tree that editor features handle. */
   propagateEvents?: string[]
+  /** Default split unit inside this widget's content. */
+  split?: "block" | "self" | "line"
 }
 
 export function isExcludedDescendantList(value: unknown): value is string[] {
@@ -456,6 +460,7 @@ export class Schema {
         ...(marks ? {marks} : {}),
         ...(propagateEvents.length ? {propagateEvents} : {}),
         ...(editingConfig.sharedData === true ? {sharedData: true} : {}),
+        ...(editingConfig.split && ["block", "self", "line"].includes(editingConfig.split) ? {split: editingConfig.split} : {}),
       } satisfies SchemaEntry]
     }))
     this.extend(extension)

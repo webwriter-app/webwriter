@@ -541,3 +541,153 @@ describe("widget content after local edits", () => {
     expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
   })
 })
+
+describe("widget editingConfig.split", () => {
+  beforeEach(() => {
+    editor.schema.extendWidgets([
+      {tagName: "split-list-widget", editingConfig: {group: "answer", content: "split-item+"}},
+      {tagName: "split-item", editingConfig: {group: "", content: "(p | flow)+", isolating: false, split: "self"}},
+      {tagName: "break-multi-widget", editingConfig: {content: "p+", split: "line"}},
+      {tagName: "break-single-widget", editingConfig: {content: "p", split: "line"}},
+    ])
+    editor.features.widget.refresh()
+  })
+
+  it.each(["keydown", "beforeinput"])("splits an item with split: \"self\" on plain %s", input => {
+    document.body.innerHTML = "<split-list-widget><split-item><p>abcd</p></split-item></split-list-widget>"
+    editor.features.widget.refresh()
+    const item = document.querySelector("split-item")!
+    $.move(item.querySelector("p")!.firstChild!, 2)
+    item.dispatchEvent(input === "keydown"
+      ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, composed: true, cancelable: true})
+      : new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, composed: true, cancelable: true}))
+    expect(Array.from(document.querySelectorAll("split-item"), el => el.textContent)).toEqual(["ab", "cd"])
+  })
+
+  it.each(["keydown", "beforeinput"])("inserts a line break instead of splitting in break-multi-widget on %s", input => {
+    document.body.innerHTML = "<break-multi-widget><p>abcd</p></break-multi-widget>"
+    editor.features.widget.refresh()
+    const widget = document.querySelector("break-multi-widget")!
+    $.move(widget.querySelector("p")!.firstChild!, 2)
+    widget.dispatchEvent(input === "keydown"
+      ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, composed: true, cancelable: true})
+      : new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, composed: true, cancelable: true}))
+    expect(widget.querySelectorAll("p")).toHaveLength(1)
+    expect(widget.querySelector("p")!.innerHTML).toBe("ab<br>cd")
+  })
+
+  it.each(["keydown", "beforeinput"])("inserts a line break inside single-paragraph widgets with split: \"line\" on %s", input => {
+    document.body.innerHTML = "<break-single-widget><p>abcd</p></break-single-widget>"
+    editor.features.widget.refresh()
+    const widget = document.querySelector("break-single-widget")!
+    $.move(widget.querySelector("p")!.firstChild!, 2)
+    widget.dispatchEvent(input === "keydown"
+      ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, composed: true, cancelable: true})
+      : new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, composed: true, cancelable: true}))
+    expect(widget.querySelectorAll("p")).toHaveLength(1)
+    expect(widget.querySelector("p")!.innerHTML).toBe("ab<br>cd")
+  })
+
+  it("splits the last webwriter-choice-item at the end of its paragraph on plain Enter", () => {
+    editor.schema.extendWidgets([
+      {tagName: "webwriter-quiz-hint", editingConfig: {group: "containerinline", content: "p+", isolating: true, split: "line"}},
+      {tagName: "webwriter-quiz-feedback", editingConfig: {content: "flow+", isolating: true, split: "line"}},
+      {tagName: "webwriter-choice", editingConfig: {content: "webwriter-quiz-hint? p webwriter-choice-item+ webwriter-quiz-feedback?", isolating: true, split: "line"}},
+      {tagName: "webwriter-choice-item", editingConfig: {group: "", content: "webwriter-quiz-hint? (p | flow)+", isolating: false, split: "self"}},
+    ])
+    editor.features.widget.refresh()
+    document.body.innerHTML = `<webwriter-choice><p slot="prompt">Question</p><webwriter-choice-item><p>A theme</p></webwriter-choice-item><webwriter-choice-item><p>A snippet</p></webwriter-choice-item><webwriter-choice-item><p>A live session</p></webwriter-choice-item><webwriter-quiz-feedback><p>Feedback</p></webwriter-quiz-feedback></webwriter-choice>`
+    editor.features.widget.refresh()
+    const choice = document.querySelector("webwriter-choice")!
+    const items = choice.querySelectorAll("webwriter-choice-item")
+    $.move(items[2].querySelector("p")!.firstChild!, 14)
+    items[2].dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, composed: true, cancelable: true}))
+    const updatedItems = choice.querySelectorAll("webwriter-choice-item")
+    expect(updatedItems).toHaveLength(4)
+    expect(updatedItems[2].querySelectorAll("p")).toHaveLength(1)
+    expect(updatedItems[2].textContent).toBe("A live session")
+    expect(updatedItems[3].querySelectorAll("p")).toHaveLength(1)
+    expect(updatedItems[3].textContent).toBe("")
+    expect(updatedItems[3].nextElementSibling?.localName).toBe("webwriter-quiz-feedback")
+  })
+
+  it("removes an empty second split: \"self\" item on Backspace and moves caret to end of the first", () => {
+    document.body.innerHTML = "<split-list-widget><split-item><p>First</p></split-item><split-item><p><br></p></split-item></split-list-widget>"
+    editor.features.widget.refresh()
+    const items = document.querySelectorAll("split-item")
+    $.move(items[1].querySelector("p")!, 0)
+    items[1].dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, composed: true, cancelable: true}))
+    const remaining = document.querySelectorAll("split-item")
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].textContent).toBe("First")
+    expect($.anchor).toBe(remaining[0].querySelector("p")!.firstChild)
+    expect($.anchorOffset).toBe(5)
+  })
+
+  it("merges a non-empty split: \"self\" item into the previous one on Backspace and supports undo/redo", () => {
+    document.body.innerHTML = "<split-list-widget><split-item><p>ab</p></split-item><split-item><p>cd</p></split-item></split-list-widget>"
+    editor.features.widget.refresh()
+    sync()
+    editor.doc.stopCapturing()
+    const items = document.querySelectorAll("split-item")
+    $.move(items[1].querySelector("p")!.firstChild!, 0)
+    items[1].dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, composed: true, cancelable: true}))
+    sync()
+    const remaining = document.querySelectorAll("split-item")
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].querySelectorAll("p")).toHaveLength(1)
+    expect(remaining[0].textContent).toBe("abcd")
+    expect($.anchor).toBe(remaining[0].querySelector("p")!.firstChild)
+    expect($.anchorOffset).toBe(2)
+
+    editor.doc.undo()
+    expect(Array.from(document.querySelectorAll("split-item"), el => el.textContent)).toEqual(["ab", "cd"])
+    editor.doc.redo()
+    expect(Array.from(document.querySelectorAll("split-item"), el => el.textContent)).toEqual(["abcd"])
+  })
+
+  it("merges the next split: \"self\" item on Delete at the end of the first item", () => {
+    document.body.innerHTML = "<split-list-widget><split-item><p>ab</p></split-item><split-item><p>cd</p></split-item></split-list-widget>"
+    editor.features.widget.refresh()
+    const items = document.querySelectorAll("split-item")
+    $.move(items[0].querySelector("p")!.firstChild!, 2)
+    items[0].dispatchEvent(new KeyboardEvent("keydown", {key: "Delete", bubbles: true, composed: true, cancelable: true}))
+    const remaining = document.querySelectorAll("split-item")
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].textContent).toBe("abcd")
+    expect($.anchor).toBe(remaining[0].querySelector("p")!.firstChild)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("does not join across prompt, feedback, or non-self-splitting widgets", () => {
+    editor.schema.extendWidgets([
+      {tagName: "webwriter-quiz-hint", editingConfig: {group: "containerinline", content: "p+", isolating: true, split: "line"}},
+      {tagName: "webwriter-quiz-feedback", editingConfig: {content: "flow+", isolating: true, split: "line"}},
+      {tagName: "webwriter-choice", editingConfig: {content: "webwriter-quiz-hint? p webwriter-choice-item+ webwriter-quiz-feedback?", isolating: true, split: "line"}},
+      {tagName: "webwriter-choice-item", editingConfig: {group: "", content: "webwriter-quiz-hint? (p | flow)+", isolating: false, split: "self"}},
+      {tagName: "block-split-widget", editingConfig: {group: "answer", content: "block-item+"}},
+      {tagName: "block-item", editingConfig: {group: "", content: "p+", isolating: false, split: "block"}},
+    ])
+    editor.features.widget.refresh()
+
+    document.body.innerHTML = `<webwriter-choice><p slot="prompt">Prompt</p><webwriter-choice-item><p>Only</p></webwriter-choice-item><webwriter-quiz-feedback><p>Feedback</p></webwriter-quiz-feedback></webwriter-choice>`
+    editor.features.widget.refresh()
+    const item = document.querySelector("webwriter-choice-item")!
+    $.move(item.querySelector("p")!.firstChild!, 0)
+    item.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, composed: true, cancelable: true}))
+    expect(document.querySelectorAll("webwriter-choice-item")).toHaveLength(1)
+    expect(document.querySelector('p[slot="prompt"]')!.textContent).toBe("Prompt")
+
+    $.move(item.querySelector("p")!.firstChild!, 4)
+    item.dispatchEvent(new KeyboardEvent("keydown", {key: "Delete", bubbles: true, composed: true, cancelable: true}))
+    expect(document.querySelectorAll("webwriter-choice-item")).toHaveLength(1)
+    expect(document.querySelector("webwriter-quiz-feedback")!.textContent).toBe("Feedback")
+
+    document.body.innerHTML = `<block-split-widget><block-item><p>First</p></block-item><block-item><p>Second</p></block-item></block-split-widget>`
+    editor.features.widget.refresh()
+    const blockItems = document.querySelectorAll("block-item")
+    $.move(blockItems[1].querySelector("p")!.firstChild!, 0)
+    blockItems[1].dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, composed: true, cancelable: true}))
+    expect(document.querySelectorAll("block-item")).toHaveLength(2)
+  })
+})

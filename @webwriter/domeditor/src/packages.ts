@@ -124,7 +124,7 @@ export type PackageEditingConfigEntry = WidgetEditingConfig & {
 /** Options the editor reads from an editing-config entry. */
 export const packageEditingConfigOptions = [
   "label", "description", "category", "uninsertable", "group", "inline", "content", "isolating", "marks", "propagateEvents", "sharedData",
-  "excludedDescendants", "importFormats", "exportFormats", "dependencies",
+  "split", "excludedDescendants", "importFormats", "exportFormats", "dependencies",
   "compatibleHosts", "equivalentTo", "compatibleSnippets",
 ] as const
 
