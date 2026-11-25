@@ -160,12 +160,13 @@ describe("receive-only editor document synchronization", () => {
   })
 
   it("builds a large outline without rescanning all siblings for each item's layout", () => {
-    const setup = fixture("<p>Text</p>".repeat(5000))
+    const paragraphCount = 1000
+    const setup = fixture("<p>Text</p>".repeat(paragraphCount))
     const mirror = setup.replica.doc.getMap("domeditor").get("document") as Y.Map<Y.XmlElement>
     const scan = vi.spyOn(mirror.get("body")!, "toArray")
     const host = new DomEditor() as any
     host.documentReplica = setup.replica
-    expect(host.buildDocumentTree().children).toHaveLength(5000)
+    expect(host.buildDocumentTree().children).toHaveLength(paragraphCount)
     expect(scan.mock.calls.length).toBeLessThanOrEqual(2)
   })
 

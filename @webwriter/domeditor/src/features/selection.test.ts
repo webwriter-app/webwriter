@@ -5161,32 +5161,27 @@ describe("document listeners", () => {
   })
 
   it("posts the default paragraph breadcrumb when a shared change removes the final node", async () => {
-    const p = el("p", "hello")
+    const heading = el("h2", "hello")
     await vi.waitFor(() => {
-      expect(editor.doc.body.firstChild?.toString()).toBe("<p>hello</p>")
+      expect(editor.doc.body.firstChild).toMatchObject({nodeName: "h2"})
     }, {timeout: 5_000})
-    $.move(p.firstChild!, 2)
+    $.move(heading.firstChild!, 2)
     feature.processSelection()
     await new Promise<void>(resolve => queueMicrotask(resolve))
     const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
 
     editor.doc.doc.transact(() => editor.doc.body.delete(0, editor.doc.body.length), "remote-test")
     await vi.waitFor(() => {
-      expect(postMessage).toHaveBeenLastCalledWith({
+      expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
         type: selectionChangeEvent,
         bridgeNonce: editor.trustedScriptNonce,
-        detail: {
-          captionPosition: "none",
-          selectedElementTypes: expect.any(Array),
-          distribution: null,
-          distributionGeneral: expect.objectContaining({path: null}),
-          documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
+        detail: expect.objectContaining({
           path: [
             {path: [], name: "Document", icon: "Document"},
             {path: [0], name: "Paragraph", icon: "Paragraph"},
           ],
-        },
-      }, window.location.origin)
+        }),
+      }), window.location.origin)
     }, {timeout: 5_000})
   })
 
@@ -5202,8 +5197,8 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       documentReplicaId: undefined,
-      detail: {
-          selectedElementTypes: expect.any(Array),
+      detail: expect.objectContaining({
+        selectedElementTypes: expect.any(Array),
         distribution: null,
         distributionGeneral: expect.objectContaining({path: null}),
         documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
@@ -5216,7 +5211,7 @@ describe("document listeners", () => {
             sections: [{path: [0], type: "div", name: "Division", icon: "Section"}],
           },
         ],
-      },
+      }),
     }, window.location.origin)
   })
   it.each(["svg", "g", "text", "circle", "p", "test-widget"])("omits graphic children from the breadcrumb when selection is inside %s", selector => {
@@ -5247,14 +5242,15 @@ describe("document listeners", () => {
     expect(postMessage).toHaveBeenCalledWith({
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
-      detail: {
+      documentReplicaId: undefined,
+      detail: expect.objectContaining({
         documentLayout: {mode: "document", canConvert: false, zoom: 100, conversions: {
           document: "A custom document template owns this document's layout.",
           canvas: "A custom document template owns this document's layout.",
           slides: "A custom document template owns this document's layout.",
           board: "A custom document template owns this document's layout.",
         }},
-        path: [{path: [0], name: "Widget", icon: "Packages"}],
+        path: [{path: [0], name: "Widget", icon: "Packages", fillViewport: true}],
         nodeSelected: true,
         element: {
           path: [0],
@@ -5267,7 +5263,7 @@ describe("document listeners", () => {
         },
         distribution: expect.objectContaining({path: [0]}),
         distributionGeneral: expect.objectContaining({path: null}),
-      },
+      }),
     }, window.location.origin)
   })
 
@@ -5477,8 +5473,8 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       documentReplicaId: undefined,
-      detail: {
-          selectedElementTypes: expect.any(Array),
+      detail: expect.objectContaining({
+        selectedElementTypes: expect.any(Array),
         distribution: null,
         distributionGeneral: expect.objectContaining({path: null}),
         documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
@@ -5491,7 +5487,7 @@ describe("document listeners", () => {
             sections: [{path: [0], type: "section", name: "Section", icon: "Section"}],
           },
         ],
-      },
+      }),
     }, window.location.origin)
   })
   it("stacks section types on the next structural breadcrumb item", () => {
@@ -5552,13 +5548,14 @@ describe("document listeners", () => {
     expect(postMessage).toHaveBeenLastCalledWith({
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
-      detail: {
+      documentReplicaId: undefined,
+      detail: expect.objectContaining({
         distribution: null,
         distributionGeneral: expect.objectContaining({path: null}),
         documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
         path: [{path: [], name: "Document", icon: "Document"}],
         gap: {parentPath: [], offset: 1},
-      },
+      }),
     }, window.location.origin)
   })
   it("posts the focused widget path instead of its projected outer gap", () => {

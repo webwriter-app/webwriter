@@ -6774,9 +6774,10 @@ describe("DomEditor.execute()", () => {
   it("saves a pending name before another add and ignores confirmation of a removed snippet", async () => {
     const {editor} = await mountEditor()
     vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
-    vi.spyOn(editor, "execute")
+    const getSnippet = vi.fn()
       .mockResolvedValueOnce({html: "<p>First</p>", label: "First"})
       .mockResolvedValueOnce({html: "<p>Second</p>", label: "Second"})
+    vi.spyOn(editor, "execute").mockImplementation(async action => action.type === "getSnippet" ? getSnippet() : undefined)
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     await ribbon.updateComplete
     const snippets = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Snippets"]')!

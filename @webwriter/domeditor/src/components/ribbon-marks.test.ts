@@ -457,7 +457,7 @@ describe("mark ribbon controls", () => {
     expect(ribbon.activeMenu).toBe("Start")
     const fileMenu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await fileMenu.updateComplete
-    expect(fileMenu.groups.map(group => group.label)).toEqual(["File", "Editing", "Settings", "About"])
+    expect(fileMenu.groups.map(group => group.label)).toEqual(["File", "Editing", "Application"])
     expect(fileMenu.groups[0]!.buttons.map(button => typeof button === "string" ? button : button.label))
       .toEqual(["New", "Open", "Save", "Save as", "Print"])
 

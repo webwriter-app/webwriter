@@ -306,14 +306,14 @@ describe("media ribbon drawer", () => {
     const placement = toolbox.shadowRoot!.querySelector('[aria-label="Placement"]')!
     const caption = toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Caption"]')!
     expect(caption.classList.contains("float-button-group")).toBe(true)
-    const captionLabel = placement.nextElementSibling!
+    const captionLabel = placement.closest("fieldset")!.nextElementSibling!
     expect(captionLabel.classList.contains("caption-label-row")).toBe(true)
     expect(captionLabel.textContent).toContain("Caption")
     const top = captionLabel.querySelector<HTMLInputElement>('input[type="checkbox"]')!
     expect(top.closest("label")?.textContent).toBe("Top")
     expect(top.checked).toBe(false)
     expect(top.disabled).toBe(true)
-    expect(placement.nextElementSibling?.nextElementSibling).toBe(caption)
+    expect(captionLabel.nextElementSibling).toBe(caption)
     const buttons = Array.from(caption.querySelectorAll<HTMLButtonElement>("button"))
     expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["No caption", "Caption below, align left", "Caption below, align center", "Caption below, align right"])
     expect(buttons[0].getAttribute("aria-pressed")).toBe("true")
