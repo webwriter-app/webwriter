@@ -73,6 +73,7 @@ import {
   platformEmbedURL,
   websiteSourceError,
   timedMediaResourceAttributeOptions,
+  timedMediaCrossOriginOption,
   type ImageMapAreaState,
   type ImageMapHotspotShape,
   type MediaAttributeOption,
@@ -1688,10 +1689,15 @@ export abstract class EditingControls extends LitElement {
     option: MediaAttributeOption,
   ) {
     const label = `${resource === "source" ? "Source" : "Track"}: ${option.label}`
+    const filename = resource === "track" && option.name === "src" && /^(blob|data):/.test(row.attributes.src ?? "")
+      ? row.sourceLabel ?? "WebVTT file" : undefined
     return this.renderMediaAttributeField(option, {
-      attributes: row.attributes,
+      attributes: filename ? {...row.attributes, src: filename} : row.attributes,
       label,
-      onChange: event => this.dispatchMediaResourceAttribute(resource, row, option, event),
+      onChange: event => {
+        if(filename && (event.currentTarget as HTMLInputElement).value === filename) return
+        this.dispatchMediaResourceAttribute(resource, row, option, event)
+      },
       selectFallback: option.options?.[0]?.value,
     })
   }
@@ -1699,6 +1705,16 @@ export abstract class EditingControls extends LitElement {
   protected renderMediaResourceList(resource: TimedMediaResourceType, rows: TimedMediaResourceState[]) {
     const singular = resource === "source" ? "source" : "track"
     const heading = resource === "source" ? "Fallback sources" : "Text tracks"
+    const media = this.media
+    const authoredCrossOrigin = media?.attributes.crossorigin
+    const hasCrossOrigin = authoredCrossOrigin !== undefined
+    const crossOrigin = hasCrossOrigin ? "anonymous" : ""
+    const crossOriginOption = resource === "track" && media && (hasCrossOrigin || rows.some(row => row.crossOrigin || row.loadError))
+      ? this.renderMediaAttributeField(timedMediaCrossOriginOption, {
+        attributes: {crossorigin: authoredCrossOrigin?.toLowerCase() === "use-credentials" ? "use-credentials" : crossOrigin},
+        label: timedMediaCrossOriginOption.label,
+        onChange: event => this.dispatchMediaAttribute(media.type, timedMediaCrossOriginOption, event),
+      }) : nothing
     return html`
       <section class="media-resource-editor" aria-label=${heading}>
         <div class="media-resource-heading">
@@ -1710,6 +1726,7 @@ export abstract class EditingControls extends LitElement {
             @click=${() => this.dispatchMediaResourceAction({action: "add", resource})}
           ><span aria-hidden="true">${ribbonIcon("Plus")}</span></button>
         </div>
+        ${crossOriginOption}
         ${rows.map((row, position) => html`
           <div class="media-resource-card" data-resource=${resource}>
             <div class="media-resource-card-heading">
@@ -1745,6 +1762,15 @@ export abstract class EditingControls extends LitElement {
             </div>
             ${timedMediaResourceAttributeOptions[resource]
               .map(option => this.renderMediaResourceAttribute(resource, row, option))}
+            ${resource === "track" ? html`
+              <button class="media-resource-action" type="button"
+                aria-label=${`Choose WebVTT file for track ${position + 1}`}
+                @click=${() => this.dispatchMediaResourceAction({action: "pick-file", resource, index: row.index, expected: row.attributes})}
+              >Choose WebVTT file</button>
+              ${row.crossOrigin && !hasCrossOrigin ? html`<p class="media-track-status" role="status">Choose Anonymous if both hosts allow cross-origin access. Otherwise, choose a WebVTT file.</p>`
+                : row.loadError ? html`<p class="media-track-status" role="status">The browser couldn’t load this track. Check the address and cross-origin access, or choose a WebVTT file.</p>`
+                : nothing}
+            ` : nothing}
           </div>
         `)}
       </section>

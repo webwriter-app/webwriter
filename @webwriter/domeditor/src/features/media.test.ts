@@ -2075,6 +2075,36 @@ describe("media editing", () => {
     expect(source.getAttribute("src")).toMatch(/^blob:/)
   })
 
+  it("embeds a WebVTT file in its original track and exports it with the correct MIME type", async () => {
+    document.body.innerHTML = '<video controls src="https://media.example/movie.mp4"><!--keep--><track kind="subtitles" srclang="en" src="https://tracks.example/captions.vtt"><p>Keep</p></video>'
+    const video = document.querySelector("video")!
+    const track = video.querySelector("track")!
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+    const initial = editor.features.media.getState()!.tracks![0]
+    expect(initial.crossOrigin).toBe(true)
+    const resource = {type: "track" as const, index: initial.index, expected: initial.attributes}
+    const text = "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nHello"
+    expect(editor.features.media.actions.selectMediaFile({type: "selectMediaFile", resource})).toBe(true)
+    const picker = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(picker.accept).toBe(".vtt,text/vtt")
+    Object.defineProperty(picker, "files", {value: [new File([text], "captions.vtt")]})
+    picker.dispatchEvent(new Event("change"))
+
+    expect(video.querySelector("track")).toBe(track)
+    expect(track).toHaveAttribute("srclang", "en")
+    expect(track.getAttribute("src")).toMatch(/^blob:/)
+    expect(video).toHaveAttribute("src", "https://media.example/movie.mp4")
+    expect(video).not.toHaveAttribute("crossorigin")
+    expect(editor.features.media.getState()!.tracks![0]).toMatchObject({sourceLabel: "captions.vtt", sourceKind: "file"})
+    expect(editor.features.media.getState()!.tracks![0].crossOrigin).toBeUndefined()
+    const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+    expect(saved.querySelector("track")).toHaveAttribute("src", `data:text/vtt;base64,${btoa(text)}`)
+    expect(editor.features.media.actions.setMediaFile({
+      type: "setMediaFile", resource, file: new File([text], "stale.vtt"),
+    })).toBe(false)
+  })
+
   it("keeps a fallback file picker tied to its original source row", () => {
     document.body.innerHTML = '<audio><source src="first.ogg"></audio><audio><source src="first.ogg"></audio>'
     const [first, second] = Array.from(document.querySelectorAll("audio"))

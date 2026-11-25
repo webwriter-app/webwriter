@@ -118,6 +118,8 @@ import {
   mediaAttributeOptions,
   mediaCaptureModes,
   timedMediaResourceAttributeOptions,
+  webVttFileAccept,
+  type TimedMediaFileTarget,
   type MediaSelectionState,
 } from "../media"
 import type {DialogSelectionState} from "../dialog"
@@ -4975,10 +4977,11 @@ export class DomEditor extends LitElement {
     })
   }
 
-  private async pickMediaFile(attribute?: "poster", resource?: {index: number, expected: Record<string, string>}) {
+  private async pickMediaFile(attribute?: "poster", resource?: TimedMediaFileTarget) {
     const media = this.mediaSelection
     if(!media || attribute && media.type !== "video") return
-    const accept = attribute === "poster" || media.type === "picture" || media.type === "img" ? "image/*"
+    const accept = resource?.type === "track" ? webVttFileAccept
+      : attribute === "poster" || media.type === "picture" || media.type === "img" ? "image/*"
       : media.type === "audio" ? "audio/*" : media.type === "video" ? "video/*" : ".html,.htm,text/html"
     return this.pickEditorFile({type: "selectMediaFile", attribute, resource}, accept)
   }
@@ -7362,12 +7365,13 @@ export class DomEditor extends LitElement {
     }
     const index = detail.index as number
     const expected = detail.expected as Record<string, string>
-    if(detail.resource === "source" && detail.action === "pick-file") {
-      void this.pickMediaFile(undefined, {index, expected})
+    const fileTarget = {index, expected, ...(detail.resource === "track" ? {type: detail.resource} : {})}
+    if(detail.action === "pick-file") {
+      void this.pickMediaFile(undefined, fileTarget)
       return
     }
-    if(detail.resource === "source" && detail.action === "set-file" && detail.file instanceof Blob) {
-      void this.execute({type: "setMediaFile", file: detail.file, resource: {index, expected}})
+    if(detail.action === "set-file" && detail.file instanceof Blob) {
+      void this.execute({type: "setMediaFile", file: detail.file, resource: fileTarget})
       return
     }
     if(detail.resource === "source" && detail.action === "capture" && isMediaCaptureMode(detail.mode)

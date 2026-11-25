@@ -354,6 +354,68 @@ await check("canvas multiline text keeps partial selections after formatting", a
 })
 
 await check("editing suppresses native autoplay while preserving attributes and explicit playback", checkMediaAutoplay)
+await check("video subtitles load during playback from a cross-origin link or a WebVTT file", async () => {
+  const frame = document.createElement("iframe")
+  frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  const waitFor = async (condition: () => boolean, message: string) => {
+    for(let attempt = 0; attempt < 200; attempt++) {
+      if(condition()) return
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    throw new Error(message)
+  }
+  try {
+    await waitFor(() => Boolean(frame.contentWindow?.editor), "subtitle editor did not initialize")
+    const editor = frame.contentWindow!.editor!
+    const doc = frame.contentDocument!
+    const video = doc.createElement("video")
+    video.controls = video.muted = video.loop = true
+    video.src = new URL("/src/assets/layouts/document.mp4", location.href).href
+    doc.body.append(video)
+    editor.features.selection.captureElement(video)
+    const media = editor.features.media
+    media.actions.addTimedMediaResource({type: "addTimedMediaResource", resource: "track"})
+    let track = video.querySelector("track")!
+    track.srclang = "en"
+    const url = new URL("/tests/fixtures/media-captions.vtt", location.href)
+    url.hostname = location.hostname === "localhost" ? "127.0.0.1" : "localhost"
+    const setTrackSource = (src: string) => {
+      const row = media.getState()!.tracks![0]
+      assert(media.actions.setTimedMediaResourceAttribute({type: "setTimedMediaResourceAttribute",
+        resource: "track", index: row.index, expected: row.attributes, name: "src", value: src}), "track URL was rejected")
+    }
+    setTrackSource(url.href)
+    await video.play()
+    track.track.mode = "showing"
+    await waitFor(() => media.getState()?.tracks?.[0].loadError === true, "cross-origin failure was not reported")
+    assert(media.getState()?.tracks?.[0].crossOrigin, "track URL was not identified as cross-origin")
+
+    media.actions.setMediaAttribute({type: "setMediaAttribute", name: "crossorigin", value: "anonymous"})
+    track = video.querySelector("track")!
+    await waitFor(() => track.readyState === HTMLTrackElement.LOADED && Boolean(track.track.activeCues?.length),
+      "cross-origin track did not recover after enabling access")
+    assert(!video.paused, "correcting the track stopped playback")
+    assert(!media.getState()?.tracks?.[0].loadError, "successful retry retained the load error")
+
+    media.actions.setMediaAttribute({type: "setMediaAttribute", name: "crossorigin", value: null})
+    setTrackSource(url.href + "?file-fallback")
+    await waitFor(() => track.readyState === HTMLTrackElement.ERROR, "cross-origin URL did not fail without access")
+    const row = media.getState()!.tracks![0]
+    const captions = await (await fetch("/tests/fixtures/media-captions.vtt")).text()
+    const FrameFile = (frame.contentWindow as Window & typeof globalThis).File
+    assert(media.actions.setMediaFile({type: "setMediaFile",
+      resource: {type: "track", index: row.index, expected: row.attributes}, file: new FrameFile([captions], "captions.vtt")}),
+      "WebVTT file was rejected")
+    await waitFor(() => track.readyState === HTMLTrackElement.LOADED && Boolean(track.track.activeCues?.length),
+      "embedded subtitle did not display during playback")
+    assert(!video.paused && !video.hasAttribute("crossorigin"), "embedding the track changed video playback or cross-origin access")
+  }
+  finally {
+    frame.contentWindow?.editor?.destroy()
+    frame.remove()
+  }
+})
 await check("saved document issue checker loads without reloading the editor", checkSavedDocumentChecker)
 await check("Board media shrinks with card height in editing and standalone documents", checkBoardMedia)
 await check("Board controls and transform frames follow CSS anchors through layout changes", checkBoardAnchors)

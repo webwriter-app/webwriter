@@ -1189,6 +1189,12 @@ export const editingControlStyles = css`
       gap: 0.15rem;
     }
 
+    .media-track-status {
+      margin: 0;
+      color: #526b86;
+      font: 0.64rem/1.35 system-ui, sans-serif;
+    }
+
     .media-fallback-help {
       margin: -0.15rem 0 0;
       color: #6d7d8f;

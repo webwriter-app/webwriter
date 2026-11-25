@@ -61,6 +61,7 @@ const expectedChecks = [
   "repeated canvas middle-click selections preserve item placement and camera",
   "canvas multiline text keeps partial selections after formatting",
   "editing suppresses native autoplay while preserving attributes and explicit playback",
+  "video subtitles load during playback from a cross-origin link or a WebVTT file",
   "rotated figure captions flow upright and their transformation frames fit the content",
   "legacy widget options use document gutters and sit beside freeform widgets",
   "bundled document themes always render light colors",

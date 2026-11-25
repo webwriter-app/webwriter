@@ -8460,6 +8460,28 @@ describe("DomEditor.execute()", () => {
     expect(document.body.querySelector('input[type="file"]')).toBeNull()
   })
 
+  it("routes a WebVTT file from the host picker to its track", async () => {
+    const {editor} = await mountEditor()
+    ;(editor as any).mediaSelection = {type: "video", attributes: {}}
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {})
+    const toolbox = editor.shadowRoot!.querySelector("dom-editor-toolbox")!
+    const expected = {src: "captions.vtt", srclang: "en"}
+    toolbox.dispatchEvent(new CustomEvent("media-resource-action", {
+      detail: {type: "video", action: "pick-file", resource: "track", index: 2, expected}, bubbles: true, composed: true,
+    }))
+    const picker = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(picker.accept).toBe(".vtt,text/vtt")
+    const {pickerId} = execute.mock.calls[0][0] as {pickerId: string}
+    expect(execute).toHaveBeenCalledWith({type: "selectMediaFile", attribute: undefined,
+      resource: {type: "track", index: 2, expected}, pickerId})
+    const file = new File(["WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nCaption"], "captions.vtt")
+    Object.defineProperty(picker, "files", {value: [file]})
+    picker.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "setMediaFile", file, pickerId}))
+    expect(picker.isConnected).toBe(false)
+  })
+
   it.each(["disconnect", "reload", "picker failure"])("cleans up a host media picker after %s", async condition => {
     const {editor} = await mountEditor()
     const host = editor as any
