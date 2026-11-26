@@ -67,7 +67,7 @@ it("starts shared for reduced motion and stops or restarts sharing from the swit
   expect($(".link")!.textContent).toBe("webwriter.app/join/…")
 })
 
-it("forms groups and shows the learner's group on the phone", async () => {
+it("forms groups and shows the learner's group on the tablet", async () => {
   await mount()
   const groupStarts = () => all(".seat").map(seat => seat.hasAttribute("data-start"))
   const label = () => $(".size")!.textContent!.replace(/\s+/g, "")
@@ -93,7 +93,7 @@ it("forms groups and shows the learner's group on the phone", async () => {
   expect(button("Smaller group").disabled).toBe(true)
 })
 
-it("keeps hidden parts and blocked changes off the learner's phone", async () => {
+it("keeps hidden parts and blocked changes off the learner's tablet", async () => {
   await mount()
   expect($(".page .notes")!.hasAttribute("data-hidden")).toBe(true)
   expect($(".learner .notes")).toBeNull()
@@ -137,6 +137,6 @@ it("localizes the scene's controls in every site language", async () => {
     expect($(".stage")!.getAttribute("aria-label")).toBe(copy["Live session preview"])
     expect(button(copy.Share).getAttribute("role")).toBe("switch")
     expect(button(copy.Edit)).toBeTruthy()
-    expect($(".phone-label")!.textContent).toBe(copy["Learner view"])
+    expect($(".tablet-label")!.textContent).toBe(copy["Learner view"])
   }
 })

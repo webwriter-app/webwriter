@@ -36,7 +36,7 @@ const minus = svg`<svg viewBox="0 0 10 10" fill="none"><path d="M2 5h6" stroke="
 
 /**
  * An interactive miniature of a live session: the host's preview with its
- * sharing, grouping, and permission controls, beside one learner's phone.
+ * sharing, grouping, and permission controls, beside one learner's tablet.
  * The explanatory cards stay in the page as slotted, translatable content.
  */
 export class LiveSessionShowcase extends LitElement {
@@ -127,7 +127,7 @@ export class LiveSessionShowcase extends LitElement {
     .icon, .icon svg {display: block; width: 1.4em; height: 1.4em}
 
     /* One em is 1/64 of the width, so the 16:9 scene scales as a whole. */
-    .showcase {position: relative; font-size: calc(100cqi / 64); --window-x: 2.2em; --page-x: 14.2em; --phone-x: 47.6em}
+    .showcase {position: relative; font-size: calc(100cqi / 64); --window-x: 2.2em; --page-x: 14.2em; --tablet-x: 40.8em; --tablet-y: 4.4em}
     .stage {position: relative; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid #dfe5ed; border-radius: .6rem; background-color: #f7f9fc;
       background-image: linear-gradient(rgb(21 94 155 / .04) 1px, transparent 1px), linear-gradient(90deg, rgb(21 94 155 / .04) 1px, transparent 1px);
       background-size: 4em 4em}
@@ -207,11 +207,12 @@ export class LiveSessionShowcase extends LitElement {
     .hidden-icon {color: #8792a2}
     .hidden-icon svg {width: .95em; height: .95em}
 
-    .phone-label {position: absolute; left: var(--phone-x); top: .5em; width: 12.6em; text-align: center}
-    .phone-label span {color: #617084; font-size: .55em; font-weight: 600; letter-spacing: .06em; text-transform: uppercase}
-    .phone {position: absolute; left: var(--phone-x); top: 2em; width: 12.6em; height: 22.4em; padding: .45em; border-radius: 1.9em; background: #1f2937; box-shadow: 0 .8em 2.2em rgb(23 32 51 / .22)}
-    .screen {position: relative; height: 100%; overflow: hidden; padding: 2em .8em .8em; border-radius: 1.5em; background: white}
-    .screen::before {position: absolute; top: .55em; left: 50%; width: 3.2em; height: .6em; border-radius: 1em; background: #1f2937; transform: translateX(-50%); content: ""}
+    .tablet-label {position: absolute; left: var(--tablet-x); top: calc(var(--tablet-y) - 1.5em); width: 16.4em; text-align: center}
+    .tablet-label span {color: #617084; font-size: .55em; font-weight: 600; letter-spacing: .06em; text-transform: uppercase}
+    /* A small portrait tablet that overlaps the host's window a little. */
+    .tablet {position: absolute; z-index: 1; left: var(--tablet-x); top: var(--tablet-y); width: 16.4em; height: 21.8em; padding: .75em .65em; border-radius: 1.3em; background: #1f2937; box-shadow: 0 .8em 2.2em rgb(23 32 51 / .24)}
+    .tablet::before {position: absolute; top: .27em; left: 50%; width: .26em; height: .26em; border-radius: 50%; background: #4b5563; translate: -50% 0; content: ""}
+    .screen {position: relative; height: 100%; overflow: hidden; padding: 1.2em 1.2em .9em; border-radius: .6em; background: white}
     .learner {animation: appear 300ms ease both}
     .learner .block {margin-block-start: .8em}
     .mini-tools {display: flex; align-items: center; justify-content: space-between; height: 1.6em; padding-inline: .35em; border-bottom: 1px solid #dfe5ed; background: #f7f9fc}
@@ -219,11 +220,11 @@ export class LiveSessionShowcase extends LitElement {
     .mates .avatar {width: 2.5em; height: 2.5em; margin-inline-end: -.7em; font-size: .4em}
     .lock {color: #8792a2}
     .lock svg {display: block; width: .9em; height: .9em}
-    .learner .area {height: 6.6em}
-    .learner .note {width: 3.1em; height: 3.1em; padding: .4em}
-    .learner .note:nth-child(1) {left: .5em; top: .7em}
-    .learner .note:nth-child(2) {left: 3.9em; top: 1.3em}
-    .learner .note:nth-child(3) {left: 7.2em; top: .6em}
+    .learner .area {height: 7.2em}
+    .learner .note {width: 3.6em; height: 3.6em; padding: .45em}
+    .learner .note:nth-child(1) {left: .7em; top: .9em}
+    .learner .note:nth-child(2) {left: 5em; top: 1.5em}
+    .learner .note:nth-child(3) {left: 9.3em; top: .8em}
     .note[data-moving] {animation: slide 3.2s ease-in-out infinite}
     .typed {display: flex; align-items: center; height: .5em}
     .typed::before {display: block; height: .35em; border-radius: .2em; background: rgb(23 32 51 / .3); content: ""; animation: type 3s steps(6, end) infinite}
@@ -241,7 +242,7 @@ export class LiveSessionShowcase extends LitElement {
 
     /* A page notice, such as availability, rests on top of the scene. */
     .status {position: absolute; z-index: 3; top: 1rem; left: 50%; display: flex; justify-content: center; width: max-content; max-width: calc(100% - 2rem); translate: -50% 0}
-    .callouts {position: absolute; inset: 0; pointer-events: none}
+    .callouts {position: absolute; z-index: 2; inset: 0; pointer-events: none}
     .callout {position: absolute; width: 15.6em; pointer-events: auto}
     .callout[data-step="share"] {left: 1.2em; top: 9.2em}
     .callout[data-step="groups"] {left: 1.2em; bottom: 1.4em}
@@ -252,8 +253,8 @@ export class LiveSessionShowcase extends LitElement {
 
     /* Without room for overlays, the cards follow the scene. */
     @container (max-width: 62rem) {
-      .showcase {--window-x: 1.6em; --page-x: 9.2em; --phone-x: 48.8em}
-      .window {width: 44.4em}
+      .showcase {--window-x: 8em; --page-x: 7em; --tablet-x: 39.4em; --tablet-y: 8.8em}
+      .window {width: 40em}
       .callouts {position: static; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; margin-block-start: 1.75rem}
       .callout, .callout[data-step] {position: relative; inset: auto; width: auto}
       ::slotted(article) {height: 100%; box-shadow: none}
@@ -330,8 +331,8 @@ export class LiveSessionShowcase extends LitElement {
             </div>
           </div>
         </div>
-        <div class="phone-label" aria-hidden="true"><span>${t("Learner view")}</span></div>
-        <div class="phone" aria-hidden="true"><div class="screen">${this.shared ? html`<div class="learner">
+        <div class="tablet-label" aria-hidden="true"><span>${t("Learner view")}</span></div>
+        <div class="tablet" aria-hidden="true"><div class="screen">${this.shared ? html`<div class="learner">
           <span class="bar heading"></span><span class="bar"></span>
           <div class="block board">
             <div class="mini-tools"><span class="mates">${mates.map(learner => html`<span class="avatar" style="--color: ${learner.color}">${learner.initials}</span>`)}</span>${this.canEdit ? nothing : html`<span class="lock">${ribbonIcon("Lock")}</span>`}</div>
