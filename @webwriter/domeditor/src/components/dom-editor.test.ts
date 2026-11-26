@@ -3423,6 +3423,26 @@ describe("DomEditor iframe setup", () => {
     expect(disconnect).not.toHaveBeenCalled()
   })
 
+  it("keeps the current document open and explains how to load a missing widget package", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.fileName = "Current"
+    const html = `<script type="module" data-webwriter-original-package-entries='["https://cdn.jsdelivr.net/npm/@webwriter/unpublished@2.0.0/dist/widget.js"]'></script><p>Incoming</p>`
+    const handle = {name: "incoming.html", getFile: async () => new File([html], "incoming.html")}
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([handle]))
+    vi.spyOn(host.packageRegistry, "getPackage").mockRejectedValue(new Error("Package metadata failed (404)"))
+    const disconnect = vi.spyOn(host, "clearDocumentCollaboration")
+    const revision = host.frameRevision
+
+    await host.openDocument()
+
+    expect(host.fileError).toContain("@webwriter/unpublished@2.0.0")
+    expect(host.fileError).toContain("Add from local folder")
+    expect(host.fileName).toBe("Current")
+    expect(host.frameRevision).toBe(revision)
+    expect(disconnect).not.toHaveBeenCalled()
+  })
+
   it("reloads the editor only when a catalog dependency check changes the import map", async () => {
     const pkg: WebWriterPackage = {
       ...demoPackage,
