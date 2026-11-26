@@ -1,0 +1,796 @@
+<!DOCTYPE html><html lang="de" id="ww5ed66049-3d02-4641-bbbe-74257b1c0cb7" style=""><head><meta charset="utf-8"><title>Diatonische Intervalle und Rhythmen</title><meta name="generator" content="webwriter@0.0.1"><style>
+html:has(> body.ww-board) { height: 100%; overflow: auto; background: #eaf0f6; }
+body.ww-board {
+  box-sizing: border-box; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch; gap: 1rem;
+  width: max-content; min-width: 100%; max-width: none; min-height: 100%; margin: 0; padding: 1.25rem 9rem 1.25rem 1.25rem;
+}
+body.ww-board > section.ww-board-column:not([is]) {
+  box-sizing: border-box; flex: 0 0 min(450px, calc(100vw - 2.5rem)); width: min(450px, calc(100vw - 2.5rem)); min-width: 0;
+  display: flex; flex-direction: column; align-self: flex-start; gap: .75rem; min-height: 10rem;
+  margin: 0; padding: 1rem 1rem 3.5rem; border: 1px solid #d4deea; border-radius: .75rem; background: #f4f7fa;
+}
+body.ww-board > section.ww-board-column:not([is]) > h2:not([is]) {
+  margin: 0; padding: 0 3.5rem 0 0; min-height: 1.5rem; font-size: 1rem; line-height: 1.5; overflow-wrap: anywhere;
+}
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) {
+  box-sizing: border-box; flex: 0 0 auto; min-width: 0; width: 100%; margin: 0; padding: .75rem;
+  border: 1px solid #dbe3ec; border-radius: .5rem; background: white; box-shadow: 0 2px 4px #26374a0a; overflow-wrap: anywhere; overflow: auto;
+
+  /* A definite card height constrains native media without rewriting its
+   * authored dimensions. Text, captions and atomic widgets keep their space. */
+  &:not([hidden]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is]), > figure:not([is]) > :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+    display: flex; flex-direction: column;
+    > * { flex-shrink: 0; }
+    > :is(picture, img, video, iframe, embed, object, svg):not([is]),
+    > figure:not([is]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+      flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain;
+    }
+    > picture:not([is], [hidden]), > figure:not([is], [hidden]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+      display: flex; flex-direction: column;
+      > * { flex-shrink: 0; }
+      > :is(picture, img, video, iframe, embed, object, svg):not([is]) {
+        flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain;
+      }
+      > picture:not([is], [hidden]) {
+        display: flex; flex-direction: column;
+        > img:not([is]) { flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain; }
+      }
+    }
+  }
+}
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :first-child { margin-top: 0; }
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :last-child { margin-bottom: 0; }
+@media print {
+  @page ww-board { size: portrait; margin: 10mm; }
+  html:has(> body.ww-board) { height: auto; overflow: visible; background: none; }
+  body.ww-board { page: ww-board; caret-color: transparent; }
+  
+body.ww-board { display: block; width: auto; min-width: 0; max-width: none; min-height: 0; margin: 0; padding: 0; background: none; }
+body.ww-board > section.ww-board-column:not([is]) {
+  width: 450px; inline-size: 450px; min-width: 0; max-width: none; max-inline-size: none; min-height: 0;
+  margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none;
+  break-inside: avoid; break-after: page;
+}
+body.ww-board > section.ww-board-column:not([is]):last-child { break-after: auto; }
+body.ww-board > section.ww-board-column:not([is]) > :not(article.ww-board-card) { display: none; }
+
+}
+</style><link rel="stylesheet" href="https://fonts.bunny.net/css?family=Abel%3A400&amp;display=swap"><link rel="stylesheet" href="https://fonts.bunny.net/css?family=42dot+Sans%3A300%2C400%2C500%2C600%2C700%2C800&amp;display=swap"><style>
+html:has(> body.ww-board) { height: 100%; overflow: auto; background: #eaf0f6; }
+body.ww-board {
+  box-sizing: border-box; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch; gap: 1rem;
+  width: max-content; min-width: 100%; max-width: none; min-height: 100%; margin: 0; padding: 1.25rem 9rem 1.25rem 1.25rem;
+}
+body.ww-board > section.ww-board-group:not([is]) {
+  box-sizing: border-box; display: grid; grid-template-rows: auto 1fr; grid-auto-columns: max-content; gap: .75rem 1rem;
+  flex: 0 0 auto; width: max-content; inline-size: max-content; min-width: 0; max-width: none;
+  align-self: flex-start; margin: 0; padding: 1rem; border: 1px solid #c5d3e3; border-radius: 1rem; background: #e0e9f3;
+}
+body.ww-board > section.ww-board-group:not([is]) > h2:not([is]) {
+  grid-column: 1 / -1; min-height: 1.5rem; margin: 0; font-size: 1.125rem; line-height: 1.5; overflow-wrap: anywhere;
+}
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) { grid-row: 2; }
+body.ww-board > section.ww-board-column:not([is]), body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) {
+  box-sizing: border-box; flex: 0 0 min(450px, calc(100vw - 2.5rem)); width: min(450px, calc(100vw - 2.5rem)); min-width: 0;
+  display: flex; flex-direction: column; align-self: flex-start; gap: .75rem; min-height: 10rem;
+  margin: 0; padding: 1rem 1rem 3.5rem; border: 1px solid #d4deea; border-radius: .75rem; background: #f4f7fa;
+}
+body.ww-board > section.ww-board-column:not([is]) > h2:not([is]), body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > h2:not([is]) {
+  margin: 0; padding: 0 3.5rem 0 0; min-height: 1.5rem; font-size: 1rem; line-height: 1.5; overflow-wrap: anywhere;
+}
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]), body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) {
+  box-sizing: border-box; flex: 0 0 auto; min-width: 0; width: 100%; margin: 0; padding: .75rem;
+  border: 1px solid #dbe3ec; border-radius: .5rem; background: white; box-shadow: 0 2px 4px #26374a0a; overflow-wrap: anywhere; overflow: auto;
+
+  /* A definite card height constrains native media without rewriting its
+   * authored dimensions. Text, captions and atomic widgets keep their space. */
+  &:not([hidden]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is]), > figure:not([is]) > :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+    display: flex; flex-direction: column;
+    > * { flex-shrink: 0; }
+    > :is(picture, img, video, iframe, embed, object, svg):not([is]),
+    > figure:not([is]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+      flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain;
+    }
+    > picture:not([is], [hidden]), > figure:not([is], [hidden]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+      display: flex; flex-direction: column;
+      > * { flex-shrink: 0; }
+      > :is(picture, img, video, iframe, embed, object, svg):not([is]) {
+        flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain;
+      }
+      > picture:not([is], [hidden]) {
+        display: flex; flex-direction: column;
+        > img:not([is]) { flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain; }
+      }
+    }
+  }
+}
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :first-child, body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :first-child { margin-top: 0; }
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :last-child, body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :last-child { margin-bottom: 0; }
+@media print {
+  @page ww-board { size: portrait; margin: 10mm; }
+  html:has(> body.ww-board) { height: auto; overflow: visible; background: none; }
+  body.ww-board { page: ww-board; caret-color: transparent; }
+  
+body.ww-board { display: block; width: auto; min-width: 0; max-width: none; min-height: 0; margin: 0; padding: 0; background: none; }
+body.ww-board > section.ww-board-group:not([is]) { display: contents; }
+body.ww-board > section.ww-board-group:not([is]) > :not(section.ww-board-column:not([is])) { display: none; }
+body.ww-board > section.ww-board-column:not([is]),
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) {
+  width: 450px; inline-size: 450px; min-width: 0; max-width: none; max-inline-size: none; min-height: 0;
+  margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none;
+  break-inside: avoid; break-after: page;
+}
+body.ww-board > section.ww-board-column:not([is]):last-child,
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]):last-child { break-after: auto; }
+body.ww-board > section.ww-board-column:not([is]) > :not(article.ww-board-card),
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > :not(article.ww-board-card) { display: none; }
+
+}
+</style><style>
+html:has(> body.ww-board) { height: 100%; overflow: auto; background: #eaf0f6; }
+body.ww-board {
+  box-sizing: border-box; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch; gap: 1rem;
+  width: max-content; min-width: 100%; max-width: none; min-height: 100%; margin: 0; padding: 1.25rem 9rem 1.25rem 1.25rem;
+}
+body.ww-board > section.ww-board-group:not([is]) {
+  box-sizing: border-box; display: grid; grid-template-rows: auto 1fr; grid-auto-columns: max-content; gap: .75rem 1rem;
+  flex: 0 0 auto; width: max-content; inline-size: max-content; min-width: 0; max-width: none;
+  align-self: flex-start; margin: 0; padding: 1rem; border: 1px solid #c5d3e3; border-radius: 1rem; background: #e0e9f3;
+}
+body.ww-board > section.ww-board-group:not([is]) > h2:not([is]) {
+  grid-column: 1 / -1; min-height: 1.5rem; margin: 0; font-size: 1.125rem; line-height: 1.5; overflow-wrap: anywhere;
+}
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) { grid-row: 2; }
+body.ww-board > section.ww-board-column:not([is]), body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) {
+  box-sizing: border-box; flex: 0 0 min(450px, calc(100vw - 2.5rem)); width: min(450px, calc(100vw - 2.5rem)); min-width: 0;
+  display: flex; flex-direction: column; align-self: flex-start; gap: .75rem; min-height: 10rem;
+  margin: 0; padding: 1rem 1rem 3.5rem; border: 1px solid #d4deea; border-radius: .75rem; background: #f4f7fa;
+}
+body.ww-board > section.ww-board-column:not([is]) > h2:not([is]), body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > h2:not([is]) {
+  margin: 0; padding: 0 3.5rem 0 0; min-height: 1.5rem; font-size: 1rem; line-height: 1.5; overflow-wrap: anywhere;
+}
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]), body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) {
+  box-sizing: border-box; flex: 0 0 auto; min-width: 0; width: 100%; margin: 0; padding: .75rem;
+  border: 1px solid #dbe3ec; border-radius: .5rem; background: white; box-shadow: 0 2px 4px #26374a0a; overflow-wrap: anywhere; overflow: auto;
+
+  /* A definite card height constrains native media without rewriting its
+   * authored dimensions. Text, captions and atomic widgets keep their space. */
+  &:not([hidden]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is]), > figure:not([is]) > :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+    display: flex; flex-direction: column;
+    > * { flex-shrink: 0; }
+    > :is(picture, img, video, iframe, embed, object, svg):not([is]),
+    > figure:not([is]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+      flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain;
+    }
+    > picture:not([is], [hidden]), > figure:not([is], [hidden]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+      display: flex; flex-direction: column;
+      > * { flex-shrink: 0; }
+      > :is(picture, img, video, iframe, embed, object, svg):not([is]) {
+        flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain;
+      }
+      > picture:not([is], [hidden]) {
+        display: flex; flex-direction: column;
+        > img:not([is]) { flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain; }
+      }
+    }
+  }
+}
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :first-child, body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :first-child { margin-top: 0; }
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :last-child, body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :last-child { margin-bottom: 0; }
+/* Match the editor's empty paragraph line box in previews and saved boards. */
+:where(body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) p:empty, body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) p:empty)::before { content: "\200B"; }
+@media print {
+  @page ww-board { size: portrait; margin: 10mm; }
+  html:has(> body.ww-board) { height: auto; overflow: visible; background: none; }
+  body.ww-board { page: ww-board; caret-color: transparent; }
+  
+body.ww-board { display: block; width: auto; min-width: 0; max-width: none; min-height: 0; margin: 0; padding: 0; background: none; }
+body.ww-board > section.ww-board-group:not([is]) { display: contents; }
+body.ww-board > section.ww-board-group:not([is]) > :not(section.ww-board-column:not([is])) { display: none; }
+body.ww-board > section.ww-board-column:not([is]),
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) {
+  width: 450px; inline-size: 450px; min-width: 0; max-width: none; max-inline-size: none; min-height: 0;
+  margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none;
+  break-inside: avoid; break-after: page;
+}
+body.ww-board > section.ww-board-column:not([is]):last-child,
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]):last-child { break-after: auto; }
+body.ww-board > section.ww-board-column:not([is]) > :not(article.ww-board-card),
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > :not(article.ww-board-card) { display: none; }
+
+}
+</style><style type="text/css" data-glamor=""></style><style type="text/css" data-glamor=""></style><style id="alphaTabStyleShared">
+                .at-surface * {
+                    cursor: default;
+                    vertical-align: top;
+                    overflow: visible;
+                }
+                .at-surface-svg text {
+                    dominant-baseline: alphabetic;
+                    white-space:pre;
+                }</style><script type="text/plain" data-music-score-export-licenses="">
+alphaTab is licensed under MPL-2.0.
+Copyright © 2025, Daniel Kuschny and Contributors, All rights reserved.
+
+See LICENSE.header for further licenses of integrated submodules.
+
+Mozilla Public License Version 2.0
+==================================
+
+1. Definitions
+--------------
+
+1.1. "Contributor"
+    means each individual or legal entity that creates, contributes to
+    the creation of, or owns Covered Software.
+
+1.2. "Contributor Version"
+    means the combination of the Contributions of others (if any) used
+    by a Contributor and that particular Contributor's Contribution.
+
+1.3. "Contribution"
+    means Covered Software of a particular Contributor.
+
+1.4. "Covered Software"
+    means Source Code Form to which the initial Contributor has attached
+    the notice in Exhibit A, the Executable Form of such Source Code
+    Form, and Modifications of such Source Code Form, in each case
+    including portions thereof.
+
+1.5. "Incompatible With Secondary Licenses"
+    means
+
+    (a) that the initial Contributor has attached the notice described
+        in Exhibit B to the Covered Software; or
+
+    (b) that the Covered Software was made available under the terms of
+        version 1.1 or earlier of the License, but not also under the
+        terms of a Secondary License.
+
+1.6. "Executable Form"
+    means any form of the work other than Source Code Form.
+
+1.7. "Larger Work"
+    means a work that combines Covered Software with other material, in
+    a separate file or files, that is not Covered Software.
+
+1.8. "License"
+    means this document.
+
+1.9. "Licensable"
+    means having the right to grant, to the maximum extent possible,
+    whether at the time of the initial grant or subsequently, any and
+    all of the rights conveyed by this License.
+
+1.10. "Modifications"
+    means any of the following:
+
+    (a) any file in Source Code Form that results from an addition to,
+        deletion from, or modification of the contents of Covered
+        Software; or
+
+    (b) any new file in Source Code Form that contains any Covered
+        Software.
+
+1.11. "Patent Claims" of a Contributor
+    means any patent claim(s), including without limitation, method,
+    process, and apparatus claims, in any patent Licensable by such
+    Contributor that would be infringed, but for the grant of the
+    License, by the making, using, selling, offering for sale, having
+    made, import, or transfer of either its Contributions or its
+    Contributor Version.
+
+1.12. "Secondary License"
+    means either the GNU General Public License, Version 2.0, the GNU
+    Lesser General Public License, Version 2.1, the GNU Affero General
+    Public License, Version 3.0, or any later versions of those
+    licenses.
+
+1.13. "Source Code Form"
+    means the form of the work preferred for making modifications.
+
+1.14. "You" (or "Your")
+    means an individual or a legal entity exercising rights under this
+    License. For legal entities, "You" includes any entity that
+    controls, is controlled by, or is under common control with You. For
+    purposes of this definition, "control" means (a) the power, direct
+    or indirect, to cause the direction or management of such entity,
+    whether by contract or otherwise, or (b) ownership of more than
+    fifty percent (50%) of the outstanding shares or beneficial
+    ownership of such entity.
+
+2. License Grants and Conditions
+--------------------------------
+
+2.1. Grants
+
+Each Contributor hereby grants You a world-wide, royalty-free,
+non-exclusive license:
+
+(a) under intellectual property rights (other than patent or trademark)
+    Licensable by such Contributor to use, reproduce, make available,
+    modify, display, perform, distribute, and otherwise exploit its
+    Contributions, either on an unmodified basis, with Modifications, or
+    as part of a Larger Work; and
+
+(b) under Patent Claims of such Contributor to make, use, sell, offer
+    for sale, have made, import, and otherwise transfer either its
+    Contributions or its Contributor Version.
+
+2.2. Effective Date
+
+The licenses granted in Section 2.1 with respect to any Contribution
+become effective for each Contribution on the date the Contributor first
+distributes such Contribution.
+
+2.3. Limitations on Grant Scope
+
+The licenses granted in this Section 2 are the only rights granted under
+this License. No additional rights or licenses will be implied from the
+distribution or licensing of Covered Software under this License.
+Notwithstanding Section 2.1(b) above, no patent license is granted by a
+Contributor:
+
+(a) for any code that a Contributor has removed from Covered Software;
+    or
+
+(b) for infringements caused by: (i) Your and any other third party's
+    modifications of Covered Software, or (ii) the combination of its
+    Contributions with other software (except as part of its Contributor
+    Version); or
+
+(c) under Patent Claims infringed by Covered Software in the absence of
+    its Contributions.
+
+This License does not grant any rights in the trademarks, service marks,
+or logos of any Contributor (except as may be necessary to comply with
+the notice requirements in Section 3.4).
+
+2.4. Subsequent Licenses
+
+No Contributor makes additional grants as a result of Your choice to
+distribute the Covered Software under a subsequent version of this
+License (see Section 10.2) or under the terms of a Secondary License (if
+permitted under the terms of Section 3.3).
+
+2.5. Representation
+
+Each Contributor represents that the Contributor believes its
+Contributions are its original creation(s) or it has sufficient rights
+to grant the rights to its Contributions conveyed by this License.
+
+2.6. Fair Use
+
+This License is not intended to limit any rights You have under
+applicable copyright doctrines of fair use, fair dealing, or other
+equivalents.
+
+2.7. Conditions
+
+Sections 3.1, 3.2, 3.3, and 3.4 are conditions of the licenses granted
+in Section 2.1.
+
+3. Responsibilities
+-------------------
+
+3.1. Distribution of Source Form
+
+All distribution of Covered Software in Source Code Form, including any
+Modifications that You create or to which You contribute, must be under
+the terms of this License. You must inform recipients that the Source
+Code Form of the Covered Software is governed by the terms of this
+License, and how they can obtain a copy of this License. You may not
+attempt to alter or restrict the recipients' rights in the Source Code
+Form.
+
+3.2. Distribution of Executable Form
+
+If You distribute Covered Software in Executable Form then:
+
+(a) such Covered Software must also be made available in Source Code
+    Form, as described in Section 3.1, and You must inform recipients of
+    the Executable Form how they can obtain a copy of such Source Code
+    Form by reasonable means in a timely manner, at a charge no more
+    than the cost of distribution to the recipient; and
+
+(b) You may distribute such Executable Form under the terms of this
+    License, or sublicense it under different terms, provided that the
+    license for the Executable Form does not attempt to limit or alter
+    the recipients' rights in the Source Code Form under this License.
+
+3.3. Distribution of a Larger Work
+
+You may create and distribute a Larger Work under terms of Your choice,
+provided that You also comply with the requirements of this License for
+the Covered Software. If the Larger Work is a combination of Covered
+Software with a work governed by one or more Secondary Licenses, and the
+Covered Software is not Incompatible With Secondary Licenses, this
+License permits You to additionally distribute such Covered Software
+under the terms of such Secondary License(s), so that the recipient of
+the Larger Work may, at their option, further distribute the Covered
+Software under the terms of either this License or such Secondary
+License(s).
+
+3.4. Notices
+
+You may not remove or alter the substance of any license notices
+(including copyright notices, patent notices, disclaimers of warranty,
+or limitations of liability) contained within the Source Code Form of
+the Covered Software, except that You may alter any license notices to
+the extent required to remedy known factual inaccuracies.
+
+3.5. Application of Additional Terms
+
+You may choose to offer, and to charge a fee for, warranty, support,
+indemnity or liability obligations to one or more recipients of Covered
+Software. However, You may do so only on Your own behalf, and not on
+behalf of any Contributor. You must make it absolutely clear that any
+such warranty, support, indemnity, or liability obligation is offered by
+You alone, and You hereby agree to indemnify every Contributor for any
+liability incurred by such Contributor as a result of warranty, support,
+indemnity or liability terms You offer. You may include additional
+disclaimers of warranty and limitations of liability specific to any
+jurisdiction.
+
+4. Inability to Comply Due to Statute or Regulation
+---------------------------------------------------
+
+If it is impossible for You to comply with any of the terms of this
+License with respect to some or all of the Covered Software due to
+statute, judicial order, or regulation then You must: (a) comply with
+the terms of this License to the maximum extent possible; and (b)
+describe the limitations and the code they affect. Such description must
+be placed in a text file included with all distributions of the Covered
+Software under this License. Except to the extent prohibited by statute
+or regulation, such description must be sufficiently detailed for a
+recipient of ordinary skill to be able to understand it.
+
+5. Termination
+--------------
+
+5.1. The rights granted under this License will terminate automatically
+if You fail to comply with any of its terms. However, if You become
+compliant, then the rights granted under this License from a particular
+Contributor are reinstated (a) provisionally, unless and until such
+Contributor explicitly and finally terminates Your grants, and (b) on an
+ongoing basis, if such Contributor fails to notify You of the
+non-compliance by some reasonable means prior to 60 days after You have
+come back into compliance. Moreover, Your grants from a particular
+Contributor are reinstated on an ongoing basis if such Contributor
+notifies You of the non-compliance by some reasonable means, this is the
+first time You have received notice of non-compliance with this License
+from such Contributor, and You become compliant prior to 30 days after
+Your receipt of the notice.
+
+5.2. If You initiate litigation against any entity by asserting a patent
+infringement claim (excluding declaratory judgment actions,
+counter-claims, and cross-claims) alleging that a Contributor Version
+directly or indirectly infringes any patent, then the rights granted to
+You by any and all Contributors for the Covered Software under Section
+2.1 of this License shall terminate.
+
+5.3. In the event of termination under Sections 5.1 or 5.2 above, all
+end user license agreements (excluding distributors and resellers) which
+have been validly granted by You or Your distributors under this License
+prior to termination shall survive termination.
+
+************************************************************************
+*                                                                      *
+*  6. Disclaimer of Warranty                                           *
+*  -------------------------                                           *
+*                                                                      *
+*  Covered Software is provided under this License on an "as is"       *
+*  basis, without warranty of any kind, either expressed, implied, or  *
+*  statutory, including, without limitation, warranties that the       *
+*  Covered Software is free of defects, merchantable, fit for a        *
+*  particular purpose or non-infringing. The entire risk as to the     *
+*  quality and performance of the Covered Software is with You.        *
+*  Should any Covered Software prove defective in any respect, You     *
+*  (not any Contributor) assume the cost of any necessary servicing,   *
+*  repair, or correction. This disclaimer of warranty constitutes an   *
+*  essential part of this License. No use of any Covered Software is   *
+*  authorized under this License except under this disclaimer.         *
+*                                                                      *
+************************************************************************
+
+************************************************************************
+*                                                                      *
+*  7. Limitation of Liability                                          *
+*  --------------------------                                          *
+*                                                                      *
+*  Under no circumstances and under no legal theory, whether tort      *
+*  (including negligence), contract, or otherwise, shall any           *
+*  Contributor, or anyone who distributes Covered Software as          *
+*  permitted above, be liable to You for any direct, indirect,         *
+*  special, incidental, or consequential damages of any character      *
+*  including, without limitation, damages for lost profits, loss of    *
+*  goodwill, work stoppage, computer failure or malfunction, or any    *
+*  and all other commercial damages or losses, even if such party      *
+*  shall have been informed of the possibility of such damages. This   *
+*  limitation of liability shall not apply to liability for death or   *
+*  personal injury resulting from such party's negligence to the       *
+*  extent applicable law prohibits such limitation. Some               *
+*  jurisdictions do not allow the exclusion or limitation of           *
+*  incidental or consequential damages, so this exclusion and          *
+*  limitation may not apply to You.                                    *
+*                                                                      *
+************************************************************************
+
+8. Litigation
+-------------
+
+Any litigation relating to this License may be brought only in the
+courts of a jurisdiction where the defendant maintains its principal
+place of business and such litigation shall be governed by laws of that
+jurisdiction, without reference to its conflict-of-law provisions.
+Nothing in this Section shall prevent a party's ability to bring
+cross-claims or counter-claims.
+
+9. Miscellaneous
+----------------
+
+This License represents the complete agreement concerning the subject
+matter hereof. If any provision of this License is held to be
+unenforceable, such provision shall be reformed only to the extent
+necessary to make it enforceable. Any law or regulation which provides
+that the language of a contract shall be construed against the drafter
+shall not be used to construe this License against a Contributor.
+
+10. Versions of the License
+---------------------------
+
+10.1. New Versions
+
+Mozilla Foundation is the license steward. Except as provided in Section
+10.3, no one other than the license steward has the right to modify or
+publish new versions of this License. Each version will be given a
+distinguishing version number.
+
+10.2. Effect of New Versions
+
+You may distribute the Covered Software under the terms of the version
+of the License under which You originally received the Covered Software,
+or under the terms of any subsequent version published by the license
+steward.
+
+10.3. Modified Versions
+
+If you create software not governed by this License, and you want to
+create a new license for such software, you may create and use a
+modified version of this License if you rename the license and remove
+any references to the name of the license steward (except to note that
+such modified license differs from this License).
+
+10.4. Distributing Source Code Form that is Incompatible With Secondary
+Licenses
+
+If You choose to distribute Source Code Form that is Incompatible With
+Secondary Licenses under the terms of this version of the License, the
+notice described in Exhibit B of this License must be attached.
+
+Exhibit A - Source Code Form License Notice
+-------------------------------------------
+
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+If it is not possible or desirable to put the notice in a particular
+file, then You may include the notice in a location (such as a LICENSE
+file in a relevant directory) where a recipient would be likely to look
+for such a notice.
+
+You may add additional accurate notices of copyright ownership.
+
+Exhibit B - "Incompatible With Secondary Licenses" Notice
+---------------------------------------------------------
+
+  This Source Code Form is "Incompatible With Secondary Licenses", as
+  defined by the Mozilla Public License, v. 2.0.
+
+Copyright © 2015, Steinberg Media Technologies GmbH (http://www.steinberg.net/),
+with Reserved Font Name "Bravura".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+
+
+Copyright (c) 2004-2006 Sonic Network Inc.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+
+SONiVOX EAS Version 2.10 Editing Software: Synthfont Viena
+
+Ported from Samsung GT-E1272, SM-B109E, SM-B310E, Spreadtrum, and Android Soundfont of SONiVOX EAS Full Presets and Full Keys Range (no reverb). Frequency 11khz - 32khz
+Using a Creative Sound Blaster GM bank. Using a Software Creative Vienna Soundfont Studio. Copy a Soundfont wt210k_G.sf2 from in 3.5 Floppy Disk 1.44MB Assembled of Indonesia.
+
+Recommended Synthesizer: CoolSoft VirtualMIDISynth and BASSMIDI Driver.
+
+Windows OS Update 2021
+Microsoft Community https://answers.microsoft.com/
+English: SONiVOX Sound That Rocks Japanese: SONiVOX 揺れる音
+Available in country: Hong Kong Taiwan Japan
+Powered by BASSMIDI Copyright 1993 Sonic Network, Inc. All Rights Reserved Sonivox Corporation Tokyo Japan. Made in Japan
+
+https://musical-artifacts.com/artifacts/1517
+
+This soundfont is based on the Sonivox EAS synthesizer, Copyright Sonic Network Inc. 2006. 
+Sonivox EAS belongs to the Android Open Source Project. 
+https://android.googlesource.com/platform/external/sonivox/+/refs/heads/master
+
+
+</script>
+
+
+
+<style>
+html:has(> body.ww-board) { height: 100%; overflow: auto; background: #eaf0f6; }
+body.ww-board {
+  box-sizing: border-box; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch; gap: 1rem;
+  width: max-content; min-width: 100%; max-width: none; min-height: 100%; margin: 0; padding: 1.25rem 9rem 1.25rem 1.25rem;
+}
+body.ww-board > section.ww-board-group:not([is]) {
+  box-sizing: border-box; display: grid; grid-template-rows: auto 1fr; grid-auto-columns: max-content; gap: .75rem 1rem;
+  flex: 0 0 auto; width: max-content; inline-size: max-content; min-width: 0; max-width: none;
+  align-self: flex-start; margin: 0; padding: 1rem; border: 1px solid #c5d3e3; border-radius: 1rem; background: #e0e9f3;
+}
+body.ww-board > section.ww-board-group:not([is]) > h2:not([is]) {
+  grid-column: 1 / -1; min-height: 1.5rem; margin: 0; font-size: 1.125rem; line-height: 1.5; overflow-wrap: anywhere;
+}
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) { grid-row: 2; }
+body.ww-board > section.ww-board-column:not([is]), body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) {
+  box-sizing: border-box; flex: 0 0 auto; width: min(450px, calc(100vw - 2.5rem)); min-width: 0;
+  display: flex; flex-direction: column; align-self: flex-start; gap: .75rem; min-height: 10rem;
+  margin: 0; padding: 1rem 1rem 3.5rem; border: 1px solid #d4deea; border-radius: .75rem; background: #f4f7fa;
+}
+body.ww-board > section.ww-board-column:not([is]) > h2:not([is]), body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > h2:not([is]) {
+  margin: 0; padding: 0 3.5rem 0 0; min-height: 1.5rem; font-size: 1rem; line-height: 1.5; overflow-wrap: anywhere;
+}
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]), body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) {
+  box-sizing: border-box; flex: 0 0 auto; min-width: 0; width: 100%; margin: 0; padding: .75rem;
+  border: 1px solid #dbe3ec; border-radius: .5rem; background: white; box-shadow: 0 2px 4px #26374a0a; overflow-wrap: anywhere; overflow: auto;
+
+  /* A definite card height constrains native media without rewriting its
+   * authored dimensions. Text, captions and atomic widgets keep their space. */
+  &:not([hidden]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is]), > figure:not([is]) > :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+    display: flex; flex-direction: column;
+    > * { flex-shrink: 0; }
+    > :is(picture, img, video, iframe, embed, object, svg):not([is]),
+    > figure:not([is]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+      flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain;
+    }
+    > picture:not([is], [hidden]), > figure:not([is], [hidden]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+      display: flex; flex-direction: column;
+      > * { flex-shrink: 0; }
+      > :is(picture, img, video, iframe, embed, object, svg):not([is]) {
+        flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain;
+      }
+      > picture:not([is], [hidden]) {
+        display: flex; flex-direction: column;
+        > img:not([is]) { flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain; }
+      }
+    }
+  }
+}
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :first-child, body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :first-child { margin-top: 0; }
+body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :last-child, body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :last-child { margin-bottom: 0; }
+/* Match the editor's empty paragraph line box in previews and saved boards. */
+:where(body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) p:empty, body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) p:empty)::before { content: "\200B"; }
+@media print {
+  @page ww-board { size: portrait; margin: 10mm; }
+  html:has(> body.ww-board) { height: auto; overflow: visible; background: none; }
+  body.ww-board { page: ww-board; caret-color: transparent; }
+  
+body.ww-board { display: block; width: auto; min-width: 0; max-width: none; min-height: 0; margin: 0; padding: 0; background: none; }
+body.ww-board > section.ww-board-group:not([is]) { display: contents; }
+body.ww-board > section.ww-board-group:not([is]) > :not(section.ww-board-column:not([is])) { display: none; }
+body.ww-board > section.ww-board-column:not([is]),
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) {
+  width: 450px; inline-size: 450px; min-width: 0; max-width: none; max-inline-size: none; min-height: 0;
+  margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none;
+  break-inside: avoid; break-after: page;
+}
+body.ww-board > section.ww-board-column:not([is]):last-child,
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]):last-child { break-after: auto; }
+body.ww-board > section.ww-board-column:not([is]) > :not(article.ww-board-card),
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > :not(article.ww-board-card) { display: none; }
+
+}
+</style><script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/music-score@1.0.0/dist/widgets/webwriter-music-score.js"></script><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/tasks@3.0.1/dist/widgets/webwriter-text.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/tasks@3.0.1/dist/widgets/webwriter-quiz-results.css"><script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/tasks@3.0.1/dist/widgets/webwriter-text.js"></script><script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/tasks@3.0.1/dist/widgets/webwriter-quiz-results.js"></script></head><body class="ww-board"><section style="background-color: rgb(255, 255, 255); color: rgb(47, 55, 66); box-shadow: none; padding: 8px; border-radius: 4px; border-color: rgb(255, 255, 255); border-width: 1px; border-style: solid; width: 540px; flex-basis: 540px; max-width: 540px;" class="ww-board-column"><h2><span style="color: rgb(55, 86, 35);"></span><span style="color: rgb(55, 86, 35); font-family: Abel, sans-serif;"></span><span style="color: rgb(55, 86, 35); font-family: Abel, sans-serif; font-size: 18px;"></span><span style="color: rgb(55, 86, 35); font-family: Abel, sans-serif; font-size: 20px;"></span><span style="color: rgb(55, 86, 35); font-family: Abel, sans-serif; font-size: 24px;"></span><span style="color: rgb(55, 86, 35); font-family: Abel, sans-serif; font-size: 28px;"></span><span style="color: rgb(55, 86, 35); font-family: Abel, sans-serif; font-size: 32px;"></span><span style="color: rgb(55, 86, 35); font-family: Abel, sans-serif; font-size: 28px;"></span><span style="color: rgb(55, 86, 35); font-family: Abel, sans-serif; font-size: 24px;"></span><span style="color: rgb(55, 86, 35); font-family: Abel, sans-serif; font-size: 20px;"></span><span style="color: rgb(55, 86, 35); font-family: Abel, sans-serif; font-size: 48px;"></span><span style="color: rgb(55, 86, 35); font-family: Abel, sans-serif; font-size: 36px;"></span><span style="font-family: Abel, sans-serif; font-size: 48px; color: rgb(46, 117, 182);">Übung:</span><span style="font-family: Abel, sans-serif; font-size: 48px; color: rgb(31, 78, 120);"> </span><span style="font-family: Abel, sans-serif; font-size: 48px;">Diatonische Intervalle &amp; Rhythmen</span><span style="font-family: Abel, sans-serif; font-size: 36px;"></span><span style="font-family: Abel, sans-serif; font-size: 48px;"></span><span style="font-family: Abel, sans-serif; font-size: 20px;"></span><span style="font-family: Abel, sans-serif; font-size: 24px;"></span><span style="font-family: Abel, sans-serif; font-size: 28px;"></span><span style="font-family: Abel, sans-serif; font-size: 32px;"></span><span style="font-family: Abel, sans-serif; font-size: 28px;"></span><span style="font-family: Abel, sans-serif; font-size: 24px;"></span><span style="font-family: Abel, sans-serif; font-size: 20px;"></span><span style="font-family: Abel, sans-serif; font-size: 18px;"></span><span style="font-family: Abel, sans-serif;"></span></h2><article style="background-color: rgb(255, 255, 255); color: rgb(47, 55, 66); box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px;;border-width: 4px;border-style: dashed;border-color: #a6a6a6;padding: 8px;border-radius: 16px" class="ww-board-card"><p><span style="font-size: 14px;"><i>In dieser Übung wollen wir vor allem aufmerksam hören.</i></span>&nbsp;</p><p><b><span style="font-size: 14px;">Die Übung betrachtet zwei Aspekte:</span></b></p><ol><li>Diatonische Intervalle</li><li>Rhythmen</li></ol><p>Die roten Spalten enthalten jeweils Hörproben, die grünen Spalten Aufgaben</p></article></section><section style="box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px; background-color: rgb(255, 255, 255);;border-width: 4px;border-style: dashed;border-color: #a6a6a6;padding: 8px;border-radius: 16px" class="ww-board-group"><h2><span style="font-family: Abel, sans-serif; font-size: 32px; color: rgb(46, 117, 182);">Intervalle</span></h2><section style="background-color: rgb(46, 117, 182); color: rgb(255, 255, 255); box-shadow: none;;border-width: 1px;border-style: solid;border-color: #1f4e78;padding: 8px;border-radius: 16px" class="ww-board-column"><h2><span style="font-family: Abel, sans-serif; font-size: 18px;"></span><span style="font-family: Abel, sans-serif; color: rgb(255, 255, 255); font-size: 24px;">Hörproben A&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</span><span style="font-family: Abel, sans-serif; font-size: 18px;"></span></h2><article style="box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px;;border-radius: 16px" class="ww-board-card"><details open=""><summary><span style="font-family: &quot;42dot Sans&quot;, sans-serif; font-size: 14px;"><b>Beispiele aufsteigend</b></span><b><span style="font-size: 14px; font-family: &quot;42dot Sans&quot;, sans-serif;"></span></b></summary><audio controls="" src="/assets/examples/intervals-and-rhythms/audio-1.mp3"><track></audio></details></article><article style="box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px;;border-radius: 16px" class="ww-board-card"><details open=""><summary><b><span style="font-size: 14px; font-family: &quot;42dot Sans&quot;, sans-serif;">Beispiele absteigend</span></b></summary><audio controls="" src="/assets/examples/intervals-and-rhythms/audio-2.mp3"><track></audio></details></article><article style="box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px;;border-radius: 16px" class="ww-board-card"><details open=""><summary><b><span style="font-size: 14px; font-family: &quot;42dot Sans&quot;, sans-serif;">Test</span></b></summary><audio controls="" src="/assets/examples/intervals-and-rhythms/audio-3.mp3"><track></audio></details></article></section><section style="background-color: rgb(222, 235, 247); color: rgb(47, 55, 66); box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px; border-width: 1px; border-style: solid; border-color: rgb(91, 155, 213); padding: 8px; border-radius: 16px; width: 490px; flex-basis: 490px; max-width: 490px;" class="ww-board-column"><h2><span style="font-family: Abel, sans-serif; color: rgb(46, 117, 182); font-size: 24px;">Aufgabe A: Höre dir zunächst die Beispiele an. Bearbeite dann mit dem Test Frage 1.</span></h2><article style="box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px;;border-radius: 16px" class="ww-board-card"><details><summary><span style="font-family: &quot;42dot Sans&quot;, sans-serif; font-size: 14px;"><b>Notenübersicht der Beispiele</b></span></summary><picture><img src="/assets/examples/intervals-and-rhythms/image-1.jpg"></picture></details></article><article style="height: 388.542px; max-height: 388.542px; box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px; border-radius: 16px;" class="ww-board-card"><div id="wwa2292c86-9cd1-4bda-a72d-891fa04e3618" lang="de" data-quiz-layout=""><div id="ww852e8578-709a-45df-b611-69374ff22384" lang="de" data-task-layout=""><webwriter-text id="wwbf8ab8c0-1569-4e24-be4f-694664377da9" type="long-text" placeholder="" correct-message="" wrong-message="" solution="A/VmIgIrdhSxgTUkSk7A0MzSQcbXygM1At+plcfvXopGIdfSDF1UjxZ4GHDPBd0BBsAK7t3dPeUysa2yh9rcpn+ld43U0b3UUXK5O164TKKpXrfa4iomsyl7osYiiI7VeqTN3Tizlx4AXRi608jw6t4rUAxqzp6bZQqgl5WTR17Sl7mgsg7L4oUD+0OxbEAqJm1oHOZ7T7C/sq8bB2L+/b3ts7lsV600CZB0lBr2FJKvBDtyeVtEjvwxFzieTGTiAq8LiLwFPw951kao70xXy6zR4MKEekPcHYxzPVjFha7eqwbE3lRR3Veahnq5GICengcKJOYefUDx" lang="de" ignore-case="" class="ww-widget ww-v3.0.1 ww-pkg-@webwriter/tasks" points="1"><div id="wwe833e87a-01e7-4013-800f-3a2d9bd3bf99" lang="de" slot="prompt"><p>Benenne die Intervalle aus dem Test (1-13)</p></div></webwriter-text></div><webwriter-quiz-results lang="de" class="ww-widget ww-v3.0.1 ww-pkg-@webwriter/tasks" id="wwc9709d99-173c-4dc5-93f0-bef47aaf0245"></webwriter-quiz-results></div></article></section></section><section style="background-color: rgb(255, 255, 255); color: rgb(47, 55, 66); box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px;;border-width: 4px;border-style: dashed;border-color: #a6a6a6;padding: 8px;border-radius: 16px" class="ww-board-group"><h2><span style="font-family: Abel, sans-serif; font-size: 32px; color: rgb(46, 117, 182);">Rhythmen</span></h2><section style="background-color: rgb(46, 117, 182); color: rgb(255, 255, 255); box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px;;border-width: 1px;border-style: solid;border-color: #1f4e78;padding: 8px;border-radius: 16px" class="ww-board-column"><h2><span style="font-family: Abel, sans-serif; color: rgb(255, 255, 255); font-size: 24px;">Hörproben B:&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp;</span><span style="font-family: Abel, sans-serif; font-size: 18px;"> &nbsp; &nbsp; &nbsp;</span></h2><article style="height: 249px; max-height: 249px; box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px;;border-radius: 16px" class="ww-board-card"><p></p><p></p><details open="" style="max-width: 416px; max-height: 153px;"><summary><b><span style="font-size: 14px; font-family: &quot;42dot Sans&quot;, sans-serif;">Stufe 1</span></b></summary><audio controls="" src="/assets/examples/intervals-and-rhythms/audio-4.mp3"></audio></details></article><article style="height: 249px; max-height: 249px; box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px;;border-radius: 16px" class="ww-board-card"><p></p><p></p><details open=""><summary><b><span style="font-size: 14px; font-family: &quot;42dot Sans&quot;, sans-serif;">Stufe 2</span></b></summary><audio controls="" src="/assets/examples/intervals-and-rhythms/audio-5.mp3"><track></audio></details></article><article style="height: 249px; max-height: 249px; box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px;;border-radius: 16px" class="ww-board-card"><p></p><p></p><details open=""><summary><b><span style="font-size: 14px; font-family: &quot;42dot Sans&quot;, sans-serif;">Stufe 3</span></b></summary><audio controls="" src="/assets/examples/intervals-and-rhythms/audio-6.mp3"><track></audio></details></article><article style="height: 249px; max-height: 249px; box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px;;border-radius: 16px" class="ww-board-card"><p></p><p></p><details open=""><summary><b><span style="font-size: 14px; font-family: &quot;42dot Sans&quot;, sans-serif;">Stufe 4</span></b></summary><audio controls="" src="/assets/examples/intervals-and-rhythms/audio-7.mp3"><track></audio></details></article></section><section style="background-color: rgb(222, 235, 247); color: rgb(47, 55, 66); box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px;;border-width: 1px;border-style: solid;border-color: #5b9bd5;padding: 8px;border-radius: 16px" class="ww-board-column"><h2><span style="font-family: Abel, sans-serif; font-size: 24px; color: rgb(46, 117, 182);">Aufgabe B: Notiere für alle Stufen die Noten in den vorgegeben Takten.</span></h2><article style="box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px; height: 249px;;border-radius: 16px" class="ww-board-card"><p><span style="font-size: 14px; font-family: &quot;42dot Sans&quot;, sans-serif;"><b></b></span></p><p></p><webwriter-music-score id="ww5932002c-b5ac-4d50-8fe1-f39edbce3e15" size="spacious"><script type="application/json" slot="data" data-music-score="">{"format":"alphatab-1","score":{"album":"","artist":"","copyright":"","instructions":"","music":"","notices":"","subtitle":"","title":"Stufe 1","words":"","tab":"","masterbars":[{"alternateendings":0,"isdoublebar":false,"isrepeatstart":false,"repeatcount":0,"timesignaturenumerator":4,"timesignaturedenominator":4,"timesignaturecommon":false,"isfreetime":false,"tripletfeel":0,"tempoautomations":[{"islinear":false,"type":0,"value":80,"ratioposition":0,"text":"","isvisible":true}],"start":0,"isanacrusis":false,"displayscale":1,"displaywidth":-1}],"tracks":[{"staves":[{"bars":[{"id":4,"clef":4,"clefottava":2,"voices":[{"id":4,"beats":[{"id":16,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[{"islinear":false,"type":2,"value":0,"ratioposition":0,"text":"","isvisible":true}],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":0,"playbackstart":0,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null},{"id":17,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":960,"playbackstart":960,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null},{"id":18,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":1920,"playbackstart":1920,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null},{"id":19,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":2880,"playbackstart":2880,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null}]}],"similemark":0,"displayscale":1,"displaywidth":-1,"sustainpedals":[],"barlineleft":0,"barlineright":0,"keysignature":0,"keysignaturetype":0}],"capo":0,"transpositionpitch":0,"displaytranspositionpitch":0,"stringtuning":{"isstandard":false,"name":"","tunings":[]},"showslash":false,"shownumbered":false,"showtablature":false,"showstandardnotation":true,"ispercussion":false,"standardnotationlinecount":5}],"playbackinfo":{"volume":15,"balance":8,"port":1,"program":0,"bank":0,"primarychannel":0,"secondarychannel":0,"ismute":false,"issolo":false},"color":-3670016,"name":"","isvisibleonmultitrack":true,"shortname":"","defaultsystemslayout":3,"systemslayout":[],"percussionarticulations":[]}],"defaultsystemslayout":3,"systemslayout":[],"stylesheet":{"hidedynamics":false,"bracketextendmode":1,"usesystemsignseparator":false,"globaldisplaytuning":true,"tuningdisplaymode":0,"globaldisplaychorddiagramsontop":true,"globaldisplaychorddiagramsinscore":false,"singletracktracknamepolicy":1,"multitracktracknamepolicy":1,"firstsystemtracknamemode":1,"othersystemstracknamemode":1,"firstsystemtracknameorientation":1,"othersystemstracknameorientation":1,"multitrackmultibarrest":false,"extendbarlines":false,"hideemptystaves":false,"hideemptystavesinfirstsystem":false,"showsinglestaffbrackets":false,"barnumberdisplay":1,"scoreconfig":{"clef":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"keysignature":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"timesignature":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"barnumber":1},"tabconfig":{"clef":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"timesignature":{"isvisible":true,"staffplacement":1,"systemdisplay":0},"barnumber":1,"rhythm":3,"rests":{"isvisible":true,"staffplacement":1}},"slashconfig":{"keysignature":{"isvisible":false},"timesignature":{"isvisible":true,"staffplacement":1,"systemdisplay":0},"barnumber":1},"numberedconfig":{"timesignature":{"isvisible":true,"staffplacement":1,"systemdisplay":0},"barnumber":1}}}}</script><!--?ww-distribute %7B%22version%22%3A1%2C%22scope%22%3A%22individual%22%2C%22permissions%22%3A%5B%5D%2C%22add%22%3A%5B%5D%2C%22items%22%3A%5B%5D%7D?--></webwriter-music-score></article><article style="box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px; height: 249px;;border-radius: 16px" class="ww-board-card"><p><span style="font-family: &quot;42dot Sans&quot;, sans-serif; font-size: 14px;"><b></b></span></p><p></p><webwriter-music-score id="wwf44c9474-6b1b-4a9e-82ea-f983b303143a" size="spacious"><script type="application/json" slot="data" data-music-score="">{"format":"alphatab-1","score":{"album":"","artist":"","copyright":"","instructions":"","music":"","notices":"","subtitle":"","title":"Stufe 2","words":"","tab":"","masterbars":[{"alternateendings":0,"isdoublebar":false,"isrepeatstart":false,"repeatcount":0,"timesignaturenumerator":4,"timesignaturedenominator":4,"timesignaturecommon":false,"isfreetime":false,"tripletfeel":0,"tempoautomations":[{"islinear":false,"type":0,"value":80,"ratioposition":0,"text":"","isvisible":true}],"start":0,"isanacrusis":false,"displayscale":1,"displaywidth":-1}],"tracks":[{"staves":[{"bars":[{"id":6,"clef":4,"clefottava":2,"voices":[{"id":6,"beats":[{"id":24,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[{"islinear":false,"type":2,"value":0,"ratioposition":0,"text":"","isvisible":true}],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":0,"playbackstart":0,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null},{"id":25,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":960,"playbackstart":960,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null},{"id":26,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":1920,"playbackstart":1920,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null},{"id":27,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":2880,"playbackstart":2880,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null}]}],"similemark":0,"displayscale":1,"displaywidth":-1,"sustainpedals":[],"barlineleft":0,"barlineright":0,"keysignature":0,"keysignaturetype":0}],"capo":0,"transpositionpitch":0,"displaytranspositionpitch":0,"stringtuning":{"isstandard":false,"name":"","tunings":[]},"showslash":false,"shownumbered":false,"showtablature":false,"showstandardnotation":true,"ispercussion":false,"standardnotationlinecount":5}],"playbackinfo":{"volume":15,"balance":8,"port":1,"program":0,"bank":0,"primarychannel":0,"secondarychannel":0,"ismute":false,"issolo":false},"color":-3670016,"name":"","isvisibleonmultitrack":true,"shortname":"","defaultsystemslayout":3,"systemslayout":[],"percussionarticulations":[]}],"defaultsystemslayout":3,"systemslayout":[],"stylesheet":{"hidedynamics":false,"bracketextendmode":1,"usesystemsignseparator":false,"globaldisplaytuning":true,"tuningdisplaymode":0,"globaldisplaychorddiagramsontop":true,"globaldisplaychorddiagramsinscore":false,"singletracktracknamepolicy":1,"multitracktracknamepolicy":1,"firstsystemtracknamemode":1,"othersystemstracknamemode":1,"firstsystemtracknameorientation":1,"othersystemstracknameorientation":1,"multitrackmultibarrest":false,"extendbarlines":false,"hideemptystaves":false,"hideemptystavesinfirstsystem":false,"showsinglestaffbrackets":false,"barnumberdisplay":1,"scoreconfig":{"clef":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"keysignature":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"timesignature":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"barnumber":1},"tabconfig":{"clef":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"timesignature":{"isvisible":true,"staffplacement":1,"systemdisplay":0},"barnumber":1,"rhythm":3,"rests":{"isvisible":true,"staffplacement":1}},"slashconfig":{"keysignature":{"isvisible":false},"timesignature":{"isvisible":true,"staffplacement":1,"systemdisplay":0},"barnumber":1},"numberedconfig":{"timesignature":{"isvisible":true,"staffplacement":1,"systemdisplay":0},"barnumber":1}}}}</script></webwriter-music-score></article><article style="box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px; height: 249px;;border-radius: 16px" class="ww-board-card"><p></p><webwriter-music-score id="ww6654e483-3e85-48b5-95d0-b1bfbe84da7d" size="spacious"><script type="application/json" slot="data" data-music-score="">{"format":"alphatab-1","score":{"album":"","artist":"","copyright":"","instructions":"","music":"","notices":"","subtitle":"","title":"Stufe 3","words":"","tab":"","masterbars":[{"alternateendings":0,"isdoublebar":false,"isrepeatstart":false,"repeatcount":0,"timesignaturenumerator":4,"timesignaturedenominator":4,"timesignaturecommon":false,"isfreetime":false,"tripletfeel":0,"tempoautomations":[{"islinear":false,"type":0,"value":80,"ratioposition":0,"text":"","isvisible":true}],"start":0,"isanacrusis":false,"displayscale":1,"displaywidth":-1}],"tracks":[{"staves":[{"bars":[{"id":14,"clef":4,"clefottava":2,"voices":[{"id":14,"beats":[{"id":56,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[{"islinear":false,"type":2,"value":0,"ratioposition":0,"text":"","isvisible":true}],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":0,"playbackstart":0,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null},{"id":57,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":960,"playbackstart":960,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null},{"id":58,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":1920,"playbackstart":1920,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null},{"id":59,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":2880,"playbackstart":2880,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null}]}],"similemark":0,"displayscale":1,"displaywidth":-1,"sustainpedals":[],"barlineleft":0,"barlineright":0,"keysignature":0,"keysignaturetype":0}],"capo":0,"transpositionpitch":0,"displaytranspositionpitch":0,"stringtuning":{"isstandard":false,"name":"","tunings":[]},"showslash":false,"shownumbered":false,"showtablature":false,"showstandardnotation":true,"ispercussion":false,"standardnotationlinecount":5}],"playbackinfo":{"volume":15,"balance":8,"port":1,"program":0,"bank":0,"primarychannel":0,"secondarychannel":0,"ismute":false,"issolo":false},"color":-3670016,"name":"","isvisibleonmultitrack":true,"shortname":"","defaultsystemslayout":3,"systemslayout":[],"percussionarticulations":[]}],"defaultsystemslayout":3,"systemslayout":[],"stylesheet":{"hidedynamics":false,"bracketextendmode":1,"usesystemsignseparator":false,"globaldisplaytuning":true,"tuningdisplaymode":0,"globaldisplaychorddiagramsontop":true,"globaldisplaychorddiagramsinscore":false,"singletracktracknamepolicy":1,"multitracktracknamepolicy":1,"firstsystemtracknamemode":1,"othersystemstracknamemode":1,"firstsystemtracknameorientation":1,"othersystemstracknameorientation":1,"multitrackmultibarrest":false,"extendbarlines":false,"hideemptystaves":false,"hideemptystavesinfirstsystem":false,"showsinglestaffbrackets":false,"barnumberdisplay":1,"scoreconfig":{"clef":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"keysignature":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"timesignature":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"barnumber":1},"tabconfig":{"clef":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"timesignature":{"isvisible":true,"staffplacement":1,"systemdisplay":0},"barnumber":1,"rhythm":3,"rests":{"isvisible":true,"staffplacement":1}},"slashconfig":{"keysignature":{"isvisible":false},"timesignature":{"isvisible":true,"staffplacement":1,"systemdisplay":0},"barnumber":1},"numberedconfig":{"timesignature":{"isvisible":true,"staffplacement":1,"systemdisplay":0},"barnumber":1}}}}</script></webwriter-music-score></article><article style="box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 8px; height: 249px;;border-radius: 16px" class="ww-board-card"><p><span style="font-size: 14px; font-family: &quot;42dot Sans&quot;, sans-serif;"><b></b></span></p><p></p><webwriter-music-score id="ww45927d92-b4f1-4d10-ba62-157aa2c3d9cb" size="spacious"><script type="application/json" slot="data" data-music-score="">{"format":"alphatab-1","score":{"album":"","artist":"","copyright":"","instructions":"","music":"","notices":"","subtitle":"","title":"Stufe 4","words":"","tab":"","masterbars":[{"alternateendings":0,"isdoublebar":false,"isrepeatstart":false,"repeatcount":0,"timesignaturenumerator":4,"timesignaturedenominator":4,"timesignaturecommon":false,"isfreetime":false,"tripletfeel":0,"tempoautomations":[{"islinear":false,"type":0,"value":80,"ratioposition":0,"text":"","isvisible":true}],"start":0,"isanacrusis":false,"displayscale":1,"displaywidth":-1}],"tracks":[{"staves":[{"bars":[{"id":16,"clef":4,"clefottava":2,"voices":[{"id":16,"beats":[{"id":64,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[{"islinear":false,"type":2,"value":0,"ratioposition":0,"text":"","isvisible":true}],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":0,"playbackstart":0,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null},{"id":65,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":960,"playbackstart":960,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null},{"id":66,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":1920,"playbackstart":1920,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null},{"id":67,"notes":[],"isempty":false,"whammystyle":0,"ottava":2,"islegatoorigin":false,"duration":4,"automations":[],"dots":0,"fade":0,"lyrics":null,"pop":false,"slap":false,"tap":false,"text":null,"slashed":false,"deadslapped":false,"brushtype":0,"brushduration":0,"tupletdenominator":-1,"tupletnumerator":-1,"iscontinuedwhammy":false,"whammybartype":0,"vibrato":0,"chordid":null,"gracetype":0,"pickstroke":0,"crescendo":0,"displaystart":2880,"playbackstart":2880,"displayduration":960,"playbackduration":960,"golpe":0,"dynamics":5,"invertbeamdirection":false,"preferredbeamdirection":null,"beamingmode":0,"wahpedal":0,"barrefret":-1,"barreshape":0,"rasgueado":0,"showtimer":false,"timer":null}]}],"similemark":0,"displayscale":1,"displaywidth":-1,"sustainpedals":[],"barlineleft":0,"barlineright":0,"keysignature":0,"keysignaturetype":0}],"capo":0,"transpositionpitch":0,"displaytranspositionpitch":0,"stringtuning":{"isstandard":false,"name":"","tunings":[]},"showslash":false,"shownumbered":false,"showtablature":false,"showstandardnotation":true,"ispercussion":false,"standardnotationlinecount":5}],"playbackinfo":{"volume":15,"balance":8,"port":1,"program":0,"bank":0,"primarychannel":0,"secondarychannel":0,"ismute":false,"issolo":false},"color":-3670016,"name":"","isvisibleonmultitrack":true,"shortname":"","defaultsystemslayout":3,"systemslayout":[],"percussionarticulations":[]}],"defaultsystemslayout":3,"systemslayout":[],"stylesheet":{"hidedynamics":false,"bracketextendmode":1,"usesystemsignseparator":false,"globaldisplaytuning":true,"tuningdisplaymode":0,"globaldisplaychorddiagramsontop":true,"globaldisplaychorddiagramsinscore":false,"singletracktracknamepolicy":1,"multitracktracknamepolicy":1,"firstsystemtracknamemode":1,"othersystemstracknamemode":1,"firstsystemtracknameorientation":1,"othersystemstracknameorientation":1,"multitrackmultibarrest":false,"extendbarlines":false,"hideemptystaves":false,"hideemptystavesinfirstsystem":false,"showsinglestaffbrackets":false,"barnumberdisplay":1,"scoreconfig":{"clef":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"keysignature":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"timesignature":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"barnumber":1},"tabconfig":{"clef":{"isvisible":true,"staffplacement":0,"systemdisplay":0},"timesignature":{"isvisible":true,"staffplacement":1,"systemdisplay":0},"barnumber":1,"rhythm":3,"rests":{"isvisible":true,"staffplacement":1}},"slashconfig":{"keysignature":{"isvisible":false},"timesignature":{"isvisible":true,"staffplacement":1,"systemdisplay":0},"barnumber":1},"numberedconfig":{"timesignature":{"isvisible":true,"staffplacement":1,"systemdisplay":0},"barnumber":1}}}}</script></webwriter-music-score></article></section></section><!--?ww-distribute %7B%22version%22%3A1%2C%22scope%22%3A%22individual%22%2C%22permissions%22%3A%5B%5D%2C%22add%22%3A%5B%5D%2C%22items%22%3A%5B%5D%7D?--></body></html>

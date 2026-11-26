@@ -821,22 +821,22 @@ describe("DomEditor document loading", () => {
   it("opens a curated example as an editable local copy and rejects unknown examples", async () => {
     const {editor} = await mountEditor()
     const host = editor as any
-    history.replaceState(null, "", "/editor/?example=binary")
+    history.replaceState(null, "", "/editor/?example=heartburn")
     vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockImplementation(async ({name, version}) => {
-      const tagName = name === "@webwriter/code" ? "webwriter-code-javascript" : "webwriter-quiz"
-      const script = `https://cdn.jsdelivr.net/npm/${name}@${version}/dist/widgets/${name === "@webwriter/code" ? "ww-code-javascript" : tagName}.js`
+      const tagName = name === "@webwriter/chemlab" ? "webwriter-chemlab" : "webwriter-quiz"
+      const script = `https://cdn.jsdelivr.net/npm/${name}@${version}/dist/widgets/${tagName}.js`
       return {...demoPackage, name, version, scripts: [script], members: [{...demoPackage.members[0], tagName, scriptUrl: script}]}
     })
     const reload = vi.spyOn(host, "reloadDocument")
     vi.spyOn(host, "waitForEditorWindow").mockResolvedValue(undefined)
     vi.spyOn(host, "focusEditor").mockImplementation(() => {})
-    await host.restoreExampleDocument("binary", Promise.resolve())
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<webwriter-code-javascript"), false, null, false,
+    await host.restoreExampleDocument("heartburn", Promise.resolve())
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<webwriter-chemlab"), false, null, false,
       {beforeSwitch: expect.any(Function)})
     expect(host.frameDocumentHTML).toContain('data-ww-theme="base"')
-    expect(host.frameDocumentHTML).not.toContain('src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"')
-    expect(host.installedPackages.map((pkg: WebWriterPackage) => pkg.name)).toEqual(["@webwriter/code"])
-    expect(host.fileName).toBe("Count like a computer")
+    expect(host.frameDocumentHTML).not.toContain('src="https://cdn.jsdelivr.net/npm/@webwriter/chemlab@2.0.0/dist/widgets/webwriter-chemlab.js"')
+    expect(host.installedPackages.map((pkg: WebWriterPackage) => pkg.name)).toEqual(["@webwriter/chemlab"])
+    expect(host.fileName).toBe("Can water ease heartburn?")
     expect(host.fileHandle).toBeNull()
     expect(host.backendDocumentId).toBeNull()
     const error = vi.spyOn(host, "reportFileError").mockImplementation(() => {})
@@ -850,12 +850,12 @@ describe("DomEditor document loading", () => {
   it("discards a curated example when the user leaves its link during startup", async () => {
     const {editor} = await mountEditor()
     const host = editor as any
-    history.replaceState(null, "", "/editor/?example=binary")
+    history.replaceState(null, "", "/editor/?example=heartburn")
     vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
     const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
     let ready!: () => void
     const startup = new Promise<void>(resolve => {ready = resolve})
-    const opening = host.restoreExampleDocument("binary", startup)
+    const opening = host.restoreExampleDocument("heartburn", startup)
     history.replaceState(null, "", "/editor/")
     ready()
     await opening
@@ -863,19 +863,18 @@ describe("DomEditor document loading", () => {
     expect(host.linkedDocumentLoading).toBe(false)
   })
 
-  it.each(["canvas", "slides", "board"])("opens a curated example in its linked %s layout", async layout => {
+  it.each(["canvas", "slides", "board"])("keeps a curated example's authored layout for an older %s link", async layout => {
     const {editor} = await mountEditor()
     const host = editor as any
-    history.replaceState(null, "", `/editor/?example=binary&layout=${layout}`)
+    history.replaceState(null, "", `/editor/?example=food-chains&layout=${layout}`)
     vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
     const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
     vi.spyOn(host, "focusEditor").mockImplementation(() => {})
-    await host.restoreExampleDocument("binary", Promise.resolve())
+    await host.restoreExampleDocument("food-chains", Promise.resolve())
     expect(reload).toHaveBeenCalledOnce()
     const source = new DOMParser().parseFromString(reload.mock.calls[0][0] as string, "text/html")
-    expect(source.body.className).toBe(`ww-${layout}`)
-    expect(source.querySelector("webwriter-code-javascript")).not.toBeNull()
-    expect(host.downloadedFileName).toBe(`binary-${layout}.html`)
+    expect(source.body.className).toBe("ww-canvas")
+    expect(source.querySelector("webwriter-advance-organizer")).not.toBeNull()
     host.updateDocumentURL(null)
     expect(new URL(location.href).searchParams.has("layout")).toBe(false)
   })

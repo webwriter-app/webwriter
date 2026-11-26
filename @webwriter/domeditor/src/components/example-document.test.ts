@@ -18,7 +18,7 @@ let view: ExampleDocumentView
 beforeEach(() => {
   vi.clearAllMocks()
   getPackage.mockImplementation(async ({name, version}: {name: string, version: string}): Promise<WebWriterPackage> => {
-    const tagName = name === "@webwriter/code" ? "webwriter-code-javascript" : "webwriter-quiz"
+    const tagName = name === "@webwriter/chemlab" ? "webwriter-chemlab" : name === "@webwriter/advance-organizer" ? "webwriter-advance-organizer" : "webwriter-quiz"
     const scriptUrl = `https://cdn.jsdelivr.net/npm/${name}@${version}/widget.js`
     return {name, version, label: name, authors: [], keywords: [], links: {}, scripts: [scriptUrl], styles: [],
       members: [{id: tagName, packageName: name, packageVersion: version, exportName: `./widgets/${tagName}.js`, kind: "widget", tagName, label: tagName, scriptUrl, insertable: true}]}
@@ -30,7 +30,7 @@ beforeEach(() => {
 afterEach(() => {view?.remove(); setLanguage("en", false); vi.restoreAllMocks()})
 async function mount() {
   view = new ExampleDocumentView()
-  view.exampleId = "binary"
+  view.exampleId = "heartburn"
   document.body.append(view)
   await vi.waitFor(() => expect(view.shadowRoot?.querySelector("iframe")).not.toBeNull())
   return view.shadowRoot!.querySelector("iframe")!
@@ -54,13 +54,13 @@ it("uses an authenticated isolated learner frame and produces an editable standa
   message(frame, url.origin, nonce)
   expect(post).toHaveBeenCalledOnce()
   const html = post.mock.calls[0][0].html
-  expect(html).toContain("<webwriter-code-javascript")
-  expect(html).toContain("Count like a computer")
+  expect(html).toContain("<webwriter-chemlab")
+  expect(html).toContain("Can water ease heartburn?")
   expect(html).not.toContain("src/editor-entry")
-  expect(view.shadowRoot?.querySelector('a[target="_blank"]')?.getAttribute("href")).toBe("/editor/?example=binary&lang=en")
+  expect(view.shadowRoot?.querySelector('a[target="_blank"]')?.getAttribute("href")).toBe("/editor/?example=heartburn&lang=en")
   expect(view.shadowRoot?.textContent).toContain("Edit in WebWriter")
   expect(view.shadowRoot?.textContent).not.toMatch(/Reset example|Learner view/)
-  expect(view.shadowRoot?.querySelector("a[download]")?.getAttribute("download")).toBe("binary.html")
+  expect(view.shadowRoot?.querySelector("a[download]")?.getAttribute("download")).toBe("heartburn.html")
   const blob = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob
   const saved = await blob.text()
   expect(saved).toContain('data-ww-theme="base"')
@@ -78,7 +78,7 @@ it("uses an authenticated isolated learner frame and produces an editable standa
 it("replaces the frame when the example changes and discards an obsolete frame's bridge", async () => {
   const first = await mount()
   const firstURL = new URL(first.src)
-  view.exampleId = "printing"
+  view.exampleId = "printing-press"
   await vi.waitFor(() => {
     const frame = view.shadowRoot?.querySelector("iframe")
     expect(frame).not.toBeNull()
@@ -104,10 +104,10 @@ it("rebuilds the isolated example and editable download in the selected language
   const post = vi.spyOn(frame.contentWindow!, "postMessage")
   message(frame, url.origin, new URLSearchParams(url.hash.slice(1)).get("nonce")!)
   const source = post.mock.calls[0][0].html as string
-  expect(source).toContain('lang="de"')
-  expect(new DOMParser().parseFromString(source, "text/html").querySelector("h1")?.textContent).toBe("Zählen wie ein Computer")
-  expect(view.shadowRoot!.querySelector('a[target="_blank"]')?.getAttribute("href")).toBe("/editor/?example=binary&lang=de")
-  expect(view.shadowRoot!.querySelector("h2")?.textContent).toBe("Zählen wie ein Computer")
+  expect(source).toMatch(/<html lang="de(-DE)?"/)
+  expect(new DOMParser().parseFromString(source, "text/html").title).toBe("Wasser – natürliches Mittel gegen Sodbrennen?")
+  expect(view.shadowRoot!.querySelector('a[target="_blank"]')?.getAttribute("href")).toBe("/editor/?example=heartburn&lang=de")
+  expect(view.shadowRoot!.querySelector("h2")?.textContent).toBe("Wasser – natürliches Mittel gegen Sodbrennen?")
 })
 
 it("requests dismissal with an accessible icon button", async () => {
@@ -120,26 +120,31 @@ it("requests dismissal with an accessible icon button", async () => {
   expect(close).toHaveBeenCalledOnce()
 })
 
-it.each(["canvas", "slides", "board"] as const)("uses the %s layout for the learner, download, and editor copy", async layout => {
-  const first = await mount()
-  view.layout = layout
-  await vi.waitFor(() => {
-    const frame = view.shadowRoot?.querySelector("iframe")
-    expect(frame).not.toBeNull()
-    expect(frame?.src).not.toBe(first.src)
-  })
+it("keeps the authored layout and shared media in the learner view, download, and editor copy", async () => {
+  view = new ExampleDocumentView()
+  view.exampleId = "food-chains"
+  document.body.append(view)
+  await vi.waitFor(() => expect(view.shadowRoot?.querySelector("iframe")).not.toBeNull())
   const frame = view.shadowRoot!.querySelector("iframe")!
   const url = new URL(frame.src)
   const post = vi.spyOn(frame.contentWindow!, "postMessage")
   message(frame, url.origin, new URLSearchParams(url.hash.slice(1)).get("nonce")!)
-  expect(post.mock.calls[0][0].html).toContain(`class="ww-${layout}"`)
+  expect(post.mock.calls[0][0].html).toContain('class="ww-canvas"')
   const root = view.shadowRoot!
-  expect(root.querySelector('a[target="_blank"]')?.getAttribute("href")).toBe(`/editor/?example=binary&lang=en&layout=${layout}`)
-  expect(root.querySelector("a[download]")?.getAttribute("download")).toBe(`binary-${layout}.html`)
+  expect(root.querySelector('a[target="_blank"]')?.getAttribute("href")).toBe("/editor/?example=food-chains&lang=en")
+  expect(root.querySelector("a[download]")?.getAttribute("download")).toBe("food-chains.html")
   const blob = vi.mocked(URL.createObjectURL).mock.calls.at(-1)![0] as Blob
   const saved = new DOMParser().parseFromString(await blob.text(), "text/html")
-  expect(saved.body.className).toBe(`ww-${layout}`)
-  expect(saved.querySelector("webwriter-code-javascript")).not.toBeNull()
+  expect(saved.body.className).toBe("ww-canvas")
+  expect(saved.querySelector("webwriter-advance-organizer")).not.toBeNull()
   expect(saved.querySelector(".◆editor-only, [contenteditable]")).toBeNull()
-  for(const link of saved.querySelectorAll("nav a")) expect(link.getAttribute("href")).toMatch(/^#/)
+})
+
+it("gives downloaded copies absolute links to the shared example media", async () => {
+  await mount()
+  const blob = vi.mocked(URL.createObjectURL).mock.calls.at(-1)![0] as Blob
+  const saved = new DOMParser().parseFromString(await blob.text(), "text/html")
+  const sources = [...saved.querySelectorAll("img[src]")].map(image => image.getAttribute("src"))
+  expect(sources.length).toBeGreaterThan(0)
+  expect(sources.every(source => source!.startsWith(`${location.origin}/assets/examples/heartburn/`))).toBe(true)
 })
