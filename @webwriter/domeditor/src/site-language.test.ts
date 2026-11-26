@@ -88,7 +88,7 @@ describe("site translation", () => {
     expect(section.previousElementSibling?.classList.contains("widget-showcase")).toBe(true)
     expect(section.nextElementSibling?.classList.contains("developer-invitation")).toBe(true)
     expect(section.querySelector(`#${section.getAttribute("aria-labelledby")}`)?.localName).toBe("h2")
-    expect(section.querySelectorAll(".capabilities > article")).toHaveLength(3)
+    expect([...section.querySelectorAll("live-session-showcase > article")].map(card => card.slot)).toEqual(["share", "groups", "permissions"])
     const copy: string[] = []
     const walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT)
     while(walker.nextNode()) {
@@ -100,7 +100,7 @@ describe("site translation", () => {
       setLanguage(locale, false)
       const translated = section.cloneNode(true) as HTMLElement
       translateSiteTree(translated)
-      expect(translated.querySelector("h2")?.textContent).toBe(`${t("Share it live")} ${t("with your class")}`)
+      expect(translated.querySelector("h2")?.textContent).toBe(t("Share it live with your class"))
     }
   })
 
