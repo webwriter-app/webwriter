@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
 import {PACKAGE_DOCUMENTATION_MAX_BYTES, PACKAGE_DOCUMENTATION_MAX_CHARS, packageContents, type PackageContents, type PackageEditingConfig} from "./packages"
+import {packagePreviewCandidates} from "./package-preview"
 import {
   editingConfigWarnings,
   isLocalPackageExportTarget,
@@ -80,7 +81,7 @@ describe("loadLocalPackage", () => {
 
   it("resolves local widget/snippet assets and metadata through the injected URL builder", async () => {
     const result = await loadLocalPackage(nestedDirectory({
-      files: {"package.json": manifest(), "icon.svg": "icon"},
+      files: {"package.json": manifest({"./preview": "./preview.webp", "./preview/de": "./assets/preview-de.mp4"}), "icon.svg": "icon"},
       directories: {
         dist: {files: {"demo.js": "bundle", "demo.css": "style"}},
         snippets: {files: {"example.html": "<p>Example</p>"}},
@@ -99,6 +100,10 @@ describe("loadLocalPackage", () => {
       expect.objectContaining({kind: "widget", scriptUrl: "http://local.test/pkg/dist/demo.js", styleUrl: "http://local.test/pkg/dist/demo.css"}),
       expect.objectContaining({kind: "snippet", htmlUrl: "http://local.test/pkg/snippets/example.html"}),
     ]))
+    expect(packagePreviewCandidates(result.package, "de-CH")).toEqual([
+      {kind: "video", url: urlFor("assets/preview-de.mp4")},
+      {kind: "image", url: urlFor("preview.webp")},
+    ])
   })
 
   it("uses browser, then import, then default export targets", async () => {

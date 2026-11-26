@@ -80,7 +80,7 @@ export class BottomDetailPanel extends EditingControls {
     .local-package-version {flex: none; max-width: 55%; font-size: .65rem; color: #667085}
     .local-package-source, .local-package-icon {position: absolute; box-sizing: border-box; display: flex; align-items: center; justify-content: center; color: #536779}
     .local-package-icon-stack {position: absolute; left: .2rem; top: 50%; transform: translateY(-50%); width: 1.45rem; height: 1.45rem}
-    .local-package-icon {position: static; width: 100%; height: 100%; padding: .15rem; pointer-events: none}
+    .local-package-icon {position: static; width: 100%; height: 100%; padding: .15rem; pointer-events: none; filter: grayscale(1)}
     .local-package-icon > svg {color: #000}
     .local-package-source {right: -.25rem; top: -.25rem; width: 1rem; height: 1rem; border: 2px solid var(--package-item-background); border-radius: 50%; background: var(--package-item-background)}
     .local-package-source:focus-visible {outline: 2px solid #5267df; outline-offset: 1px}

@@ -37,6 +37,7 @@ describe("Bottom detail panel", () => {
     await panel.updateComplete
     const root = panel.shadowRoot!
     expect(root.querySelector('.develop-check[data-status="pending"]')).not.toBeNull()
+    expect(getComputedStyle(root.querySelector(".local-package-icon")!).filter).toBe("grayscale(1)")
     const selected = vi.fn()
     panel.addEventListener("ribbon-button-click", selected)
     root.querySelector<HTMLButtonElement>(".local-package-item")!.click()

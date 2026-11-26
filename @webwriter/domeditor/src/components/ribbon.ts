@@ -30,6 +30,7 @@ import {type PresenceUser, type UndoState} from "../editor-bridge"
 import {isMediaCaptureMode, mediaCaptureModes, mediaCaptureOptions, type MediaType} from "../media"
 import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames, type StyleMarkName} from "../marks"
 import {packageKeywordPresentations} from "../package-keywords"
+import {packagePreviewCandidates} from "../package-preview"
 import type {PackageMember, WebWriterPackage} from "../packages"
 import {isCompatibleSnippet, packageAction, packageCompatibleSnippets, packageMemberAction, packageMemberCategory, packageMemberIcon, packageToggleAction, packageUpdateAction, packageUpdateKind} from "../packages"
 import {groupInsertablesByCategory} from "../insertion"
@@ -2471,9 +2472,12 @@ export class AppRibbon extends EditingControls {
   private packageDetails(pkg: WebWriterPackage): RibbonButtonDetails {
     const locale = this.interfaceLanguage
     const preferredLocales = [navigator.language, ...(navigator.languages ?? []), this.documentLanguage]
+    const previewLocale = locale.includes("-") ? locale
+      : preferredLocales.find(tag => tag?.toLowerCase().split("-")[0] === locale.toLowerCase()) ?? locale
+    const previewCandidates = packagePreviewCandidates(pkg, previewLocale)
     // Compare values rather than array identities: local package editing can
     // change metadata in place, and changing UI language must update labels.
-    const key = JSON.stringify([locale, preferredLocales, pkg.label, pkg.name, pkg.version, pkg.description, pkg.authors, pkg.keywords])
+    const key = JSON.stringify([locale, preferredLocales, pkg.label, pkg.name, pkg.version, pkg.description, pkg.authors, pkg.keywords, previewCandidates])
     const cached = this.packageDetailsCache.get(pkg)
     if(cached?.key === key) return cached.details
     const details = {
@@ -2482,6 +2486,7 @@ export class AppRibbon extends EditingControls {
       description: pkg.description,
       authors: pkg.authors,
       keywords: packageKeywordPresentations(pkg.keywords, locale, preferredLocales),
+      previewCandidates,
     }
     this.packageDetailsCache.set(pkg, {key, details})
     return details

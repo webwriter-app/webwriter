@@ -355,6 +355,8 @@ export class DomEditorBreadcrumb extends LitElement {
       visibility: hidden;
     }
 
+    .item-icon[data-package-icon] { filter: grayscale(1); }
+
     .item-icon img {
       position: absolute;
       inset: 0;
@@ -792,7 +794,8 @@ export class DomEditorBreadcrumb extends LitElement {
 
   private renderItemIcon(item: SelectionPathItem) {
     return html`
-      <span class=${`item-icon${item.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
+      <span class=${`item-icon${item.iconUrl ? " image-icon" : ""}`}
+        ?data-package-icon=${item.icon === "Packages" || Boolean(item.iconUrl)} aria-hidden="true">
         ${ribbonIcon(item.icon ?? item.name)}
         ${item.iconUrl ? html`<img
           src=${item.iconUrl}

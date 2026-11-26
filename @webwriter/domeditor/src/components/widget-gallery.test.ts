@@ -3,6 +3,7 @@ import {afterEach, beforeEach, expect, it, vi} from "vitest"
 import type {WebWriterPackage} from "../packages"
 import {setLanguage, t} from "../site-language"
 import {EditorView} from "@codemirror/view"
+import * as packagePreviews from "../package-preview"
 
 const {search, fetchSnippet, getLatestPackage, resolveDependencies, registryLocales} = vi.hoisted(() => ({
   search: vi.fn(), fetchSnippet: vi.fn(), resolveDependencies: vi.fn(), registryLocales: [] as (string | undefined)[],
@@ -74,6 +75,13 @@ async function mount() {
   await vi.waitFor(() => expect(gallery.shadowRoot?.textContent).toContain("1 package"))
   return gallery.shadowRoot!
 }
+
+it("shows gallery package icons in greyscale", async () => {
+  search.mockResolvedValue([{...fixture(), iconUrl: "https://example.test/package.svg"}])
+  const root = await mount()
+  expect(getComputedStyle(root.querySelector(".card-heading img.icon")!).filter).toBe("grayscale(1)")
+})
+
 function button(root: ShadowRoot, text: string) {
   return [...root.querySelectorAll("button")].find(element => element.textContent?.trim() === text)!
 }
@@ -822,6 +830,145 @@ it("loads wall cards immediately and links each widget tile to its package page"
     expect(search).toHaveBeenCalledOnce()
   }
   finally {vi.unstubAllGlobals()}
+})
+
+/** happy-dom has no Popover API; record the calls a browser would act on. */
+function stubPopovers() {
+  const showPopover = vi.fn(), hidePopover = vi.fn()
+  Object.defineProperties(HTMLElement.prototype, {
+    popover: {configurable: true, get() { return this.getAttribute("popover") }},
+    showPopover: {configurable: true, value: showPopover}, hidePopover: {configurable: true, value: hidePopover},
+  })
+  const restore = () => { for(const name of ["popover", "showPopover", "hidePopover"]) delete (HTMLElement.prototype as any)[name] }
+  return {showPopover, hidePopover, restore}
+}
+
+async function previewTile() {
+  search.mockResolvedValue([fixture(), {...fixture(), name: "@webwriter/automaton", label: "Automaton"}])
+  gallery = new WidgetGallery()
+  gallery.wall = true
+  document.body.append(gallery)
+  await vi.waitFor(() => expect(gallery.shadowRoot!.querySelectorAll(".widget-tile")).toHaveLength(2))
+  return {
+    plain: gallery.shadowRoot!.querySelector<HTMLAnchorElement>('.widget-tile[href^="/packages/@webwriter/learning"]')!,
+    tile: gallery.shadowRoot!.querySelector<HTMLAnchorElement>('.widget-tile[href^="/packages/@webwriter/automaton"]')!,
+  }
+}
+
+it("loads a wall tile recording on hover, then plays it in an enlarged popover until the pointer leaves", async () => {
+  const {showPopover, hidePopover, restore} = stubPopovers()
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue()
+  const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {})
+  try {
+    const {plain, tile} = await previewTile()
+    const preview = tile.querySelector<HTMLElement>(".tile-preview")!, video = preview.querySelector("video")!
+    expect(plain.querySelector(".tile-preview, video")).toBeNull()
+    expect(preview.getAttribute("popover")).toBe("manual")
+    expect(preview.getAttribute("aria-hidden")).toBe("true")
+    expect(video.getAttribute("src")).toMatch(/automaton\.mp4/)
+    expect(video.getAttribute("preload")).toBe("none")
+    expect(video.muted && video.hasAttribute("playsinline")).toBe(true)
+
+    tile.dispatchEvent(new PointerEvent("pointerenter", {pointerType: "touch"}))
+    expect(tile.classList).not.toContain("previewing")
+
+    tile.dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+    expect(video.preload).toBe("auto")
+    expect(tile.classList).toContain("previewing")
+    expect(tile.hasAttribute("title")).toBe(false)
+    expect(showPopover).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(video.classList).toContain("playing"))
+    expect(showPopover.mock.contexts).toEqual([preview])
+    expect(play).toHaveBeenCalledOnce()
+    for(const property of ["--preview-x", "--preview-y", "--preview-size", "--preview-from"]) expect(preview.style.getPropertyValue(property)).not.toBe("")
+
+    tile.dispatchEvent(new PointerEvent("pointerleave", {pointerType: "mouse"}))
+    expect(hidePopover.mock.contexts).toEqual([preview])
+    expect(tile.classList).not.toContain("previewing")
+    expect(tile.getAttribute("title")).toBe("Automaton")
+    expect(video.classList).not.toContain("playing")
+    expect(pause).toHaveBeenCalled()
+
+    // Leaving before the delay ends neither opens nor plays the preview.
+    tile.dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+    tile.dispatchEvent(new PointerEvent("pointerleave", {pointerType: "mouse"}))
+    await new Promise(resolve => setTimeout(resolve, 500))
+    expect(showPopover).toHaveBeenCalledOnce()
+    expect(play).toHaveBeenCalledOnce()
+  }
+  finally {restore()}
+})
+
+it("closes a wall tile preview when the page scrolls or the gallery disconnects", async () => {
+  const {showPopover, hidePopover, restore} = stubPopovers()
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue()
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {})
+  try {
+    const {tile} = await previewTile()
+    tile.dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+    await vi.waitFor(() => expect(showPopover).toHaveBeenCalledOnce())
+    document.body.dispatchEvent(new Event("scroll"))
+    expect(hidePopover).toHaveBeenCalledOnce()
+    expect(tile.classList).not.toContain("previewing")
+
+    tile.dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+    gallery.remove()
+    expect(tile.getAttribute("title")).toBe("Automaton")
+    await new Promise(resolve => setTimeout(resolve, 500))
+    expect(showPopover).toHaveBeenCalledOnce()
+  }
+  finally {restore()}
+})
+
+it("opens localized still previews on the wall and releases them when the pointer leaves", async () => {
+  const {showPopover, hidePopover, restore} = stubPopovers()
+  const pkg = fixture()
+  pkg.manifest!.exports = {"./preview": "./default.mp4", "./preview/de": "./still.webp"}
+  search.mockResolvedValue([pkg])
+  setLanguage("de", false)
+  const image = document.createElement("img")
+  const load = vi.spyOn(packagePreviews, "loadPackagePreview").mockResolvedValue({element: image, url: "blob:preview"})
+  const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
+  vi.spyOn(window, "matchMedia").mockImplementation(query => ({matches: query === "(prefers-reduced-motion: reduce)", media: query} as MediaQueryList))
+  try {
+    gallery = new WidgetGallery()
+    gallery.wall = true
+    document.body.append(gallery)
+    await vi.waitFor(() => expect(gallery.shadowRoot!.querySelector(".widget-tile")).not.toBeNull())
+    const tile = gallery.shadowRoot!.querySelector<HTMLAnchorElement>(".widget-tile")!
+    const popover = tile.querySelector<HTMLElement>(".tile-preview")!
+    expect(load).not.toHaveBeenCalled()
+    tile.dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+    await vi.waitFor(() => expect(showPopover).toHaveBeenCalledOnce())
+    expect(load.mock.calls[0][0]).toEqual([{kind: "image", url: "https://cdn.jsdelivr.net/npm/@webwriter/learning@1.0.0/still.webp"}])
+    expect(popover.querySelector("img")).toBe(image)
+    tile.dispatchEvent(new PointerEvent("pointerleave", {pointerType: "mouse"}))
+    expect(load.mock.calls[0][1].aborted).toBe(true)
+    expect(hidePopover).toHaveBeenCalledOnce()
+    expect(popover.querySelector("img")).toBeNull()
+    expect(revoke).toHaveBeenCalledWith("blob:preview")
+  }
+  finally {restore()}
+})
+
+it("keeps wall tile recordings still when reduced motion is preferred or popovers are unsupported", async () => {
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue()
+  const {tile} = await previewTile()
+  const video = tile.querySelector("video")!
+  // Without stubs, happy-dom lacks the Popover API.
+  tile.dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+  expect(tile.classList).not.toContain("previewing")
+
+  const {showPopover, restore} = stubPopovers()
+  vi.spyOn(window, "matchMedia").mockImplementation(query => ({matches: query === "(prefers-reduced-motion: reduce)", media: query} as MediaQueryList))
+  try {
+    tile.dispatchEvent(new PointerEvent("pointerenter", {pointerType: "mouse"}))
+    await new Promise(resolve => setTimeout(resolve, 500))
+    expect(showPopover).not.toHaveBeenCalled()
+    expect(video.preload).toBe("none")
+    expect(play).not.toHaveBeenCalled()
+  }
+  finally {restore()}
 })
 
 it("provides a gallery link if the wall catalog cannot load", async () => {

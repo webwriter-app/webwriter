@@ -223,6 +223,8 @@ export type WebWriterPackage = {
   label: string
   description?: string
   iconUrl?: string
+  /** Preview exports resolved against the resource URLs of a local package. */
+  previewUrls?: Record<string, string>
   authors: string[]
   license?: string
   deprecated?: string

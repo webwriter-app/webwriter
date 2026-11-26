@@ -20,9 +20,19 @@ import {packageKeywordPresentations, type PackageKeywordPresentation} from "../p
 import packageKeywordStyles from "../package-keywords.css?raw"
 import {galleryLanguageOptions} from "../gallery-languages"
 import {ribbonIcon} from "../ribbon-icons"
+import {disposePackagePreview, loadPackagePreview, packagePreviewCandidates, packagePreviewSize} from "../package-preview"
 
 const previewEditDelay = 300
+const tilePreviewDelay = 400
+/** Recordings are 800 px squares, so they stay sharp at this CSS size on double-density displays. */
+const tilePreviewSize = 400
 const exampleHTMLLimit = 50_000_000
+const tilePreviews = import.meta.glob("../assets/widgets/**/*.mp4", {eager: true, query: "?url", import: "default"}) as Record<string, string>
+/** A recording of editing and then using the widget, in the site language when one exists. */
+const tilePreviewURL = (pkg: WebWriterPackage) => {
+  const name = pkg.name.replace(/^@webwriter\//, "")
+  return tilePreviews[`../assets/widgets/${language()}/${name}.mp4`] ?? tilePreviews[`../assets/widgets/${name}.mp4`]
+}
 type GalleryFrame = {
   url: string, nonce: string, html: string, ready: boolean, height: number,
   timeout?: ReturnType<typeof setTimeout>, markup?: string, editableMarkup?: string,
@@ -36,7 +46,7 @@ const extraEducationLevelIndex = ({kind, label}: KeywordLabel) =>
   extraEducationLevels.findIndex(level => level.kind === kind && level.label === label)
 
 export class WidgetGallery extends LitElement {
-  private languageController = new SiteLanguageController(this)
+  private languageController = new SiteLanguageController(this, () => this.stopTilePreview())
   static properties = {
     wall: {type: Boolean, reflect: true},
     packages: {state: true}, loading: {state: true}, error: {state: true}, query: {state: true}, selectedTag: {state: true}, selectedLanguage: {state: true},
@@ -86,7 +96,7 @@ export class WidgetGallery extends LitElement {
     article {display: flex; flex-direction: column; block-size: 100%; padding: 1.4rem; border: 1px solid var(--border); border-radius: .6rem; background: white; overflow-wrap: anywhere}
     .card-heading {display: flex; align-items: center; gap: .85rem}
     .card-heading h3 {min-inline-size: 0}
-    .icon {inline-size: 2.5rem; block-size: 2.5rem; object-fit: contain; flex: none}
+    .icon {inline-size: 2.5rem; block-size: 2.5rem; object-fit: contain; flex: none; filter: grayscale(1)}
     .placeholder {display: grid; place-items: center; background: #eaf2fb; border-radius: .4rem; font-size: 1.2rem; color: var(--accent)}
     h2, h3 {margin: 0; color: #172033; line-height: 1.3}
     h3 {font-size: 1.1rem}
@@ -177,6 +187,20 @@ export class WidgetGallery extends LitElement {
     .widget-tile {display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .65rem; inline-size: 100%; aspect-ratio: 1; padding: .75rem; border: 1px solid var(--border); background: white; border-radius: .6rem; color: #172033; text-decoration: none}
     .widget-tile .icon {inline-size: 2.25rem; block-size: 2.25rem}
     .tile-label {display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; min-block-size: 2.5em; font-size: .8rem; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere}
+    .widget-tile.previewing {border-color: #a9bed6}
+    .widget-tile.previewing[data-card-overlay]:hover::after {opacity: 0}
+    /* Wheel and touchpad gestures pass through to the page's scroller; the tile stays the hover and click target. */
+    .tile-preview {pointer-events: none; inset: auto; left: var(--preview-x); top: var(--preview-y); inline-size: var(--preview-size); block-size: var(--preview-size); margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: .75rem; background: white; box-shadow: 0 .75rem 2.5rem #17203338; opacity: 0; transform: var(--preview-from); transform-origin: 0 0}
+    .tile-preview:popover-open {opacity: 1; transform: none}
+    @starting-style {.tile-preview:popover-open {opacity: 0; transform: var(--preview-from)}}
+    .tile-preview :is(img, video) {display: block; inline-size: 100%; block-size: 100%; object-fit: cover}
+    .tile-preview [hidden] {display: none}
+    .tile-preview video {opacity: 0}
+    .tile-preview video.playing {opacity: 1}
+    @media (prefers-reduced-motion: no-preference) {
+      .tile-preview {transition: opacity 160ms, transform 340ms cubic-bezier(.3, 1.15, .5, 1), display 340ms, overlay 340ms; transition-behavior: allow-discrete}
+      .tile-preview video {transition: opacity 200ms}
+    }
     @media (max-width: 35rem) {
       :host([wall]) .cards {grid-template-columns: repeat(auto-fill, minmax(min(100%, 6rem), 1fr)); gap: .75rem}
       .widget-tile {gap: .5rem; padding: .5rem}
@@ -230,6 +254,11 @@ export class WidgetGallery extends LitElement {
   private tabsOverflow = false
   private tabsCanScrollLeft = false
   private tabsCanScrollRight = false
+  private previewTile: HTMLAnchorElement | null = null
+  private previewTitle: string | null = null
+  private tilePreviewTimer?: ReturnType<typeof setTimeout>
+  private tilePreviewAbort?: AbortController
+  private tilePreviewMedia?: Awaited<ReturnType<typeof loadPackagePreview>>
 
   connectedCallback() {
     super.connectedCallback()
@@ -240,6 +269,7 @@ export class WidgetGallery extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback()
+    this.stopTilePreview()
     this.tabResizeObserver?.disconnect()
     this.tabRow = null
     this.catalogAbort.abort()
@@ -249,6 +279,7 @@ export class WidgetGallery extends LitElement {
   }
 
   protected updated() {
+    if(this.previewTile && !this.previewTile.isConnected) this.stopTilePreview()
     const row = this.renderRoot.querySelector<HTMLElement>(".preview-tab-row")
     if(row === this.tabRow) return
     this.tabResizeObserver?.disconnect()
@@ -283,6 +314,7 @@ export class WidgetGallery extends LitElement {
   }
 
   private async refresh() {
+    this.stopTilePreview()
     this.closePreview()
     this.catalogAbort.abort()
     const controller = this.catalogAbort = new AbortController()
@@ -695,8 +727,7 @@ export class WidgetGallery extends LitElement {
     const selectedLanguage = this.wall ? "" : this.selectedLanguage
     const packages = galleryPackages(tag ? this.packages.filter(pkg => tag.packages.has(pkg.name)) : this.packages, this.query, selectedLanguage)
     const filtered = Boolean(tag || selectedLanguage || this.query.trim())
-    const cards = html`<ul class="cards" aria-label=${t("Published widgets")}>${repeat(packages, pkg => pkg.name, pkg => this.wall ? html`
-        <li><a class="widget-tile" data-card-overlay=${t("Show widget")} href=${packageGalleryURL(pkg.name) + location.search} aria-label=${t("Try {name}", {name: pkg.label})} title=${pkg.label}>${this.icon(pkg)}<span class="tile-label">${pkg.label}</span></a></li>` : html`
+    const cards = html`<ul class="cards" aria-label=${t("Published widgets")}>${repeat(packages, pkg => pkg.name, pkg => this.wall ? this.renderTile(pkg) : html`
         <li><article>
           <div class="card-heading">
             ${this.icon(pkg)}<h3>${pkg.label}</h3>
@@ -798,6 +829,106 @@ export class WidgetGallery extends LitElement {
         ${keyword.additionalLanguages?.length ? html`<span title=${keyword.additionalLanguages.join(", ")}>+${keyword.additionalLanguages.length}</span>` : nothing}
       </li>`)}
     </ul>` : nothing
+  }
+
+  private renderTile(pkg: WebWriterPackage) {
+    const siteLanguage = language()
+    const locale = [new URLSearchParams(location.search).get("lang"), ...(navigator.languages ?? [navigator.language])]
+      .find(tag => tag?.toLowerCase().split("-")[0] === siteLanguage) ?? siteLanguage
+    const candidates = packagePreviewCandidates(pkg, locale)
+    const bundled = tilePreviewURL(pkg)
+    const start = candidates.length || bundled
+      ? (event: Event) => this.startTilePreview(event, candidates) : nothing
+    return html`<li><a class="widget-tile" data-card-overlay=${t("Show widget")} href=${packageGalleryURL(pkg.name) + location.search} aria-label=${t("Try {name}", {name: pkg.label})} title=${pkg.label}
+      @pointerenter=${start} @pointerleave=${start !== nothing ? this.stopTilePreview : nothing}
+      @focus=${start} @blur=${start !== nothing ? this.stopTilePreview : nothing}>
+      ${this.icon(pkg)}<span class="tile-label">${pkg.label}</span>
+      ${start !== nothing ? html`<div class="tile-preview" popover="manual" aria-hidden="true">${bundled ? html`<video src=${bundled}
+        width=${packagePreviewSize} height=${packagePreviewSize} muted playsinline preload="none"></video>` : nothing}</div>` : nothing}
+    </a></li>`
+  }
+
+  private startTilePreview(event: Event, candidates: ReturnType<typeof packagePreviewCandidates>) {
+    if((event as PointerEvent).pointerType === "touch" || !Object.hasOwn(HTMLElement.prototype, "popover")) return
+    const tile = event.currentTarget as HTMLAnchorElement
+    if(tile === this.previewTile || event.type === "focus" && !tile.matches(":focus-visible")) return
+    const preview = tile.querySelector<HTMLElement>(".tile-preview")
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const bundled = reducedMotion.matches ? undefined : preview?.querySelector("video") ?? undefined
+    const available = reducedMotion.matches ? candidates.filter(candidate => candidate.kind === "image") : candidates
+    if(!preview || !available.length && !bundled) return
+    this.stopTilePreview()
+    this.previewTile = tile
+    this.previewTitle = tile.getAttribute("title")
+    const {signal} = this.tilePreviewAbort = new AbortController()
+    if(!available.length && bundled) {
+      tile.classList.add("previewing")
+      tile.removeAttribute("title")
+      bundled.preload = "auto"
+    }
+    // The fixed popover would detach from its tile while the page scrolls.
+    window.addEventListener("scroll", this.stopTilePreview, {capture: true, passive: true, signal})
+    window.addEventListener("keydown", event => { if(event.key === "Escape") this.stopTilePreview() }, {signal})
+    reducedMotion.addEventListener?.("change", this.stopTilePreview, {signal})
+    this.tilePreviewTimer = setTimeout(async () => {
+      const media = available.length ? await loadPackagePreview(available, signal) : undefined
+      if(signal.aborted || !tile.isConnected) {
+        if(media) disposePackagePreview(media)
+        return
+      }
+      const element = media?.element ?? bundled
+      if(!element) return this.stopTilePreview()
+      if(media) {
+        this.tilePreviewMedia = media
+        if(bundled) bundled.hidden = true
+        preview.append(media.element)
+      }
+      tile.classList.add("previewing")
+      // The native title tooltip would cover the preview.
+      tile.removeAttribute("title")
+      // Center the enlarged preview on the tile, shifted as needed to stay inside the viewport.
+      const box = tile.getBoundingClientRect(), {clientWidth: width, clientHeight: height} = document.documentElement
+      const margin = 8, size = Math.min(tilePreviewSize, width - 2 * margin, height - 2 * margin)
+      const place = (start: number, length: number, viewport: number) => Math.max(margin, Math.min(start + (length - size) / 2, viewport - margin - size))
+      const x = place(box.left, box.width, width), y = place(box.top, box.height, height)
+      preview.style.setProperty("--preview-x", `${x}px`)
+      preview.style.setProperty("--preview-y", `${y}px`)
+      preview.style.setProperty("--preview-size", `${size}px`)
+      preview.style.setProperty("--preview-from", `translate(${box.left - x}px, ${box.top - y}px) scale(${box.width / size})`)
+      preview.showPopover()
+      if(element instanceof HTMLVideoElement) {
+        element.currentTime = 0
+        element.play().then(() => {
+          if(!signal.aborted) element.classList.add("playing")
+        }, () => {
+          if(!signal.aborted) this.stopTilePreview()
+        })
+      }
+    }, tilePreviewDelay)
+  }
+
+  private stopTilePreview = (event?: Event) => {
+    if((event as PointerEvent | undefined)?.pointerType === "touch") return
+    clearTimeout(this.tilePreviewTimer)
+    this.tilePreviewAbort?.abort()
+    this.tilePreviewAbort = undefined
+    const tile = this.previewTile
+    if(!tile) return
+    this.previewTile = null
+    tile.classList.remove("previewing")
+    if(this.previewTitle !== null) tile.setAttribute("title", this.previewTitle)
+    const preview = tile.querySelector<HTMLElement>(".tile-preview")
+    // Hiding a closed popover does nothing; a disconnected one is already hidden.
+    if(preview?.isConnected) preview.hidePopover()
+    for(const video of preview?.querySelectorAll("video") ?? []) {
+      video.classList.remove("playing")
+      video.pause()
+      video.hidden = false
+    }
+    if(this.tilePreviewMedia) {
+      disposePackagePreview(this.tilePreviewMedia)
+      this.tilePreviewMedia = undefined
+    }
   }
 
   private icon(pkg: WebWriterPackage) {

@@ -227,7 +227,8 @@ describe("specialized element toolbox", () => {
     await drawer.updateComplete
     expect(drawer.label).toBe("Task Prompt")
     expect(drawer.iconUrl).toBe("https://example.test/quiz.svg")
-    expect(drawer.shadowRoot!.querySelector('img[src="https://example.test/quiz.svg"]')).not.toBeNull()
+    const image = drawer.shadowRoot!.querySelector('img[src="https://example.test/quiz.svg"]')!
+    expect(getComputedStyle(image.parentElement!).filter).toBe("grayscale(1)")
   })
 
   it.each(["ul", "ol"])("uses the shared List toolbox with a type switch for %s", async localName => {

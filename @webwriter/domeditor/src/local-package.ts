@@ -1,5 +1,6 @@
 import {isExcludedDescendantList, widgetDefinitionErrors} from "./schema"
 import {isWidgetFileFormat} from "./widget-options"
+import {localPackagePreviewUrls} from "./package-preview"
 import {
   editingConfigKey,
   isCompatibleSnippetsConfig,
@@ -447,6 +448,7 @@ export async function loadLocalPackage(directory: LocalPackageDirectory, options
   const editingConfig = mergeEditingConfig(externalConfig, manifest.editingConfig)
   const urlFor = (path: string) => options.urlFor(normalizePath(path))
   const contents = packageContents(manifest, editingConfig, urlFor, iconUrl, locale)
+  const previewUrls = localPackagePreviewUrls(manifest, urlFor)
   warnings.push(...editingConfigWarnings(editingConfig, contents, manifest))
   const members: PackageMember[] = []
   for(const {member, requiredPaths, inferredStylePath, iconPath} of contents.members) {
@@ -481,6 +483,7 @@ export async function loadLocalPackage(directory: LocalPackageDirectory, options
     label: localizedText(globalConfig.label, locale) ?? packageNameLabel(manifest.name),
     description: localizedText(globalConfig.description, locale) ?? manifest.description,
     iconUrl,
+    ...(Object.keys(previewUrls).length ? {previewUrls} : {}),
     authors: [...new Set(authors)],
     license: manifest.license,
     keywords: manifest.keywords ?? [],
