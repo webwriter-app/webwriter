@@ -5,19 +5,25 @@ const activePage = `element => element.localName === "webwriter-page" && element
 const words = {
   en: {tab: "Try it", text: "Your turn!", labels: {}},
   // Short names keep the tabs and the label field of the new tab readable.
-  de: {tab: "Mitmachen", text: "Du bist dran!", labels: {Create: "Erstellen", Explore: "Erkunden", Collaborate: "Gemeinsam", Extend: "Erweitern"}},
+  de: {tab: "Üben", text: "Du bist dran!", labels: {Create: "Erstellen", Explore: "Erkunden", Collaborate: "Gemeinsam", Extend: "Erweitern"}},
 }
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-/** The middle of the visible part of a tab, once the tab strip has stopped scrolling. */
-async function tabTarget(locate, label) {
-  let box = await locate(tab(label))
-  for(let attempt = 0; attempt < 6; attempt++) {
+/** An element's box once the tab strip has stopped scrolling it. */
+async function settled(locate, predicate) {
+  let box = await locate(predicate)
+  for(let attempt = 0; attempt < 8; attempt++) {
     await sleep(100)
-    const next = await locate(tab(label))
-    if(Math.abs(next.x - box.x) < 1) break
+    const next = await locate(predicate)
+    if(Math.abs(next.x - box.x) < 1) return next
     box = next
   }
+  return box
+}
+
+/** The middle of the visible part of a tab, once the tab strip has stopped scrolling. */
+async function tabTarget(locate, label) {
+  const box = await settled(locate, tab(label))
   const strip = await locate(`element => element.classList.contains("page-tabs-wrapper")`)
   const left = Math.max(box.left, strip.left), right = Math.min(box.left + box.width, strip.left + strip.width)
   return {x: (left + right) / 2, y: box.y}
@@ -37,8 +43,8 @@ export default ({lang}) => {
       await at(450); await mouse.move(add.x, add.y, 450)
       await at(950); await mouse.click()
       // The tab strip scrolls the new tab into view first.
-      await at(1450)
-      const name = await locate(`element => element.localName === "input" && element.classList.contains("page-label-input")`)
+      await at(1250)
+      const name = await settled(locate, `element => element.localName === "input" && element.classList.contains("page-label-input")`)
       await mouse.move(name.x, name.y, 300)
       await at(1800); await mouse.click()
       await at(1900); await keyboard.type(newTab, lang === "en" ? 100 : 60)

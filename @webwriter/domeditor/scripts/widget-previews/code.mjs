@@ -31,6 +31,9 @@ async function finished({evaluate, t}) {
   }
 }
 
+// Positions for the use take, read before it starts so that a busy machine keeps its timing.
+let positions = null
+
 // The pointer rests below the buttons at the end of the edit and the start of the use take.
 const rest = widget => ({x: widget.x + 290, y: widget.y + 150})
 
@@ -50,9 +53,12 @@ export default {
     await at(1300); await keyboard.type(" 6 7", 160)
     await at(2200); await mouse.move(end.x, end.y, 550)
   },
+  async prepareUse(take) {
+    positions = {run: await take.locate(button(take.t("Run"))), seven: await code(take, 2, "7")}
+  },
   async use(take) {
-    const {at, mouse, keyboard, locate, widget, t} = take
-    const end = rest(widget), run = await locate(button(t("Run"))), seven = await code(take, 2, "7")
+    const {at, mouse, keyboard, widget} = take
+    const end = rest(widget), {run, seven} = positions
     await mouse.place(end.x, end.y)
     await at(500); await mouse.move(run.x, run.y, 450)
     await at(1000); await mouse.click()

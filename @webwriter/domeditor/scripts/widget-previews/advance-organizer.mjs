@@ -11,7 +11,7 @@ const languages = {
     concept: "Lehrkräfte",
     labels: {
       "Documents": "Dokumente", "Live sessions": "Live-Sitzungen", "Themes": "Designs", "Snippets": "Codeausschnitte", "Shared data": "Geteilte Daten",
-      "authors": "erstellt", "offers": "bietet", "hosts": "veranstaltet", "styled by": "gestaltet durch", "reused in": "wiederverwendet in", "collect": "sammeln",
+      "authors": "erstellt", "offers": "bietet", "hosts": "veranstaltet", "styled by": "gestaltet durch", "reused in": "genutzt in", "collect": "sammeln",
     },
     localization: Object.fromEntries(Object.entries({
       "Concepts of WebWriter": "Konzepte von WebWriter",

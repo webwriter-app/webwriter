@@ -41,9 +41,11 @@ export default ({lang}) => ({
     if(await rate() !== "2x") throw new Error("The graph did not switch to 2x playback")
     await outside()
     // Choosing the search again shows its name in the widget's language: the select keeps the label it had before
-    // the translations loaded.
+    // the translations loaded. Under zoom a click only focuses this select, so Enter opens it and Enter chooses.
     await press(await locate(`element => element.localName === "sl-select" && !element.id && element.getRootNode().host?.localName === "algorithm-bar"`))
-    await press(await locate(`element => element.localName === "sl-option" && element.getAttribute("value") === "bfs"`))
+    await keyboard.press("Enter"); await sleep(500)
+    await keyboard.press("Enter"); await sleep(500)
+    if(await evaluate(`document.querySelector("ww-graph").shadowRoot.querySelector("algorithm-bar").shadowRoot.querySelector("sl-select").value`) !== "bfs") throw new Error("The graph no longer runs a breadth-first search")
     await press(await locate(`element => element.id === "start-select"`))
     await press(await locate(option("start-select", "Ina")))
     await press(await locate(`element => element.id === "target-select"`))

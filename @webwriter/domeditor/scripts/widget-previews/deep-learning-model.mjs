@@ -8,13 +8,17 @@ export default {
   package: "@webwriter/deep-learning-model", version: "2.0.0", snippet: "snippets/MNIST.html",
   // The snippet chains five widgets; the editor take frames the designer and the preview take the prediction widget.
   tag: kind => kind === "editor" ? "webwriter-model-designing" : "webwriter-model-prediction",
-  width: 435, height: 800,
+  // The document column is about 400 px wide: the designer fills it, and the prediction widget keeps 371 px.
+  width: 465, height: 800,
   // Only the two framed widgets show, each in its own take: installed widgets carry contenteditable in the editor only.
-  // The designer's height ends below its parameter count, so the page cannot scroll when a field takes focus.
+  // The designer's height ends below its parameter count, so the page cannot scroll when a field takes focus, and its
+  // width shows the input and convolution layers side by side without panning: a pan is view state that can reset
+  // while the take waits for the recording lock.
   // The prediction widget sets the drawing beside the predicted classes instead of stacking them at this width.
   style: `body > :not(webwriter-model-designing, webwriter-model-prediction) {display: none !important}
     webwriter-model-prediction[contenteditable], webwriter-model-designing:not([contenteditable]) {display: none !important}
-    webwriter-model-designing {height: 425px; overflow: hidden}
+    webwriter-model-designing {width: 400px; height: 425px; overflow: hidden}
+    webwriter-model-prediction {width: 371px}
     webwriter-model-prediction::part(inputs) {flex: 0 0 auto; min-width: 0; max-width: none}
     webwriter-model-prediction::part(outputs) {min-width: 0}`,
   // The editor waits for the designer's fields, the preview for the predicted classes.
@@ -23,16 +27,10 @@ export default {
     return designer?.hasAttribute("contenteditable") ? !!designer.shadowRoot?.querySelector("model-editor")?.shadowRoot?.querySelector("sl-input") : !!document.querySelector("webwriter-model-prediction")?.shadowRoot?.querySelector("#outputs")
   })()`,
   settle: 2500,
-  // The designer's layers and parameter count below its zoom buttons, or the drawing with the predicted classes below
-  // the model select. Regions of 366 px keep the 400 px crop at 1:1.
-  crop: widget => ({x: widget.x + widget.width / 2 - 183, width: 366, ...widget.height < 430 ? {y: widget.y + 90, height: 312} : {y: widget.y + 140, height: 347}}),
-  async prepareEdit({mouse, widget}) {
-    // Pan the canvas so the convolution layer sits in the middle of the crop. The drag starts on the dotted background
-    // below the layers, which the taller layer of longer translations still leaves free; a press on a layer selects it.
-    await mouse.place(widget.x + 250, widget.y + 375)
-    await mouse.down()
-    await mouse.move(widget.x + 125, widget.y + 375, 500)
-    await mouse.up()
+  // The designer's input and convolution layers with the parameter count below its zoom buttons, or the drawing with the
+  // predicted classes below the model select. Regions of 366 px keep the 400 px crop at 1:1.
+  crop: widget => widget.height < 430 ? {x: widget.x + 12, y: widget.y + 90, width: 366, height: 312} : {x: widget.x + widget.width / 2 - 183, y: widget.y + 140, width: 366, height: 347},
+  async prepareEdit({mouse}) {
     await mouse.blur()
   },
   async edit({at, mouse, keyboard, locate, clip, t}) {

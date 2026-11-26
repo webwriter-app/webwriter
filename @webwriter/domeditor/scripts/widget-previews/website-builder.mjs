@@ -4,8 +4,15 @@ const codeBody = `(() => { const find = root => { for(const element of root.quer
 /** Where the edit take leaves the pointer, relative to the crop, so the use take continues there. */
 let handoff
 
-export default {
+/**
+ * Long words set the minimum width of a grid column. Soft hyphens let them break like the English words do,
+ * so the four grid columns, with the added button, fit the canvas as in English.
+ */
+const breakable = {de: ["Fluss·layout", "an·ge·ord·net", "Navi·ga·tions·leis·ten"]}
+
+export default ({lang}) => ({
   package: "@webwriter/website-builder", version: "2.0.0", snippet: "snippets/flow-starter.html", tag: "webwriter-website-builder",
+  markup: html => (breakable[lang] ?? []).reduce((result, word) => result.replaceAll(word.replaceAll("·", ""), word.replaceAll("·", "\u00ad")), html),
   // The builder is 850 px high by default; a square keeps the page and its controls in view.
   width: 430, style: "webwriter-website-builder {height: 365px; min-height: 0}",
   async edit({at, mouse, locate, widget, clip, t}) {
@@ -50,4 +57,4 @@ export default {
     // Rest right of the closing tags at the end, off the markup of the button.
     await at(3700); await mouse.move(body.left + body.width * .45, body.top + body.height - 22, 500)
   },
-}
+})

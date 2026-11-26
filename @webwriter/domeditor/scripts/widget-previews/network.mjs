@@ -4,6 +4,8 @@ const typed = {en: "Phone", de: "Handy"}
 const device = id => `element => element.localName === "ww-node" && element.dataset.wwKey === ${JSON.stringify(id)}`
 const deviceName = id => `element => element.classList?.contains("name") && element.closest("ww-node")?.dataset.wwKey === ${JSON.stringify(id)}`
 const zoomControl = action => `element => element.getAttribute("data-ww-viewport-action") === ${JSON.stringify(action)} && element.closest("[data-ww-viewport-controls]")`
+const modeMenu = `element => element.localName === "sl-select" && element.closest(".modeSwitch")`
+const modeOption = label => `element => element.localName === "sl-option" && element.textContent.trim() === ${JSON.stringify(label)}`
 const nameField = `element => element.localName === "input" && element.getRootNode().host?.classList.contains("contextmenu__name")`
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 // Where the pointer rests between the takes, relative to the widget: on the empty board below the link
@@ -30,6 +32,8 @@ async function closeUp({mouse, locate, evaluate, widget}) {
   // switch1's name may reach further right than a packet, as the German "Netzwerk-Switch 1" does.
   const reach = Math.max(overhang, (name.left + name.width - hub.x) / fit)
   const factor = (400 - 4) / ((hub.x - sender.x) / fit + overhang + reach) / fit
+  // Without room to enlarge, the view stays as fitted.
+  if(factor < 1.02) return
   let around = widget.width * .7
   for(let attempt = 0; attempt < 3; attempt++) {
     await mouse.place(widget.x + around, widget.y + 4)
@@ -40,7 +44,7 @@ async function closeUp({mouse, locate, evaluate, widget}) {
     const shift = (widget.width - end - left) / 2
     if(Math.abs(shift) <= 1) return
     // The content moves by (1 - factor) for each pixel that the wheel's point moves.
-    around += shift / (1 - factor)
+    around = Math.min(widget.width, Math.max(0, around + shift / (1 - factor)))
     await mouse.clickAt(await locate(zoomControl("fit")))
     await sleep(600)
   }
@@ -48,13 +52,23 @@ async function closeUp({mouse, locate, evaluate, widget}) {
 
 export default ({lang}) => ({
   package: "@webwriter/network", version: "3.0.2", snippet: "snippets/simple-network.html", tag: "ww-network",
+  // The German snippet names the switches "Netzwerk-Switch 1"; switch1's name would then run past the board.
+  // "Switch 1" is as German and as long as the English "switch1".
+  markup: html => html.replaceAll('"name":"Netzwerk-Switch ', '"name":"Switch '),
   // A 420 px widget gives the packets room at both edges; the crop keeps the mode menu at its top and
   // Start Simulation at its bottom, at 99.5 %.
   width: 485, height: 800,
   crop: widget => ({x: widget.x + widget.width / 2 - 185, y: widget.y + 213 - 185, width: 370, height: 370}),
   async prepareEdit(take) {
+    const {mouse, locate, t} = take
     await closeUp(take)
-    await take.mouse.blur()
+    // The mode menu keeps the label it showed before the widget's translations loaded,
+    // so choosing Edit again shows it in the widget's language.
+    await mouse.clickAt(await locate(modeMenu))
+    await sleep(500)
+    await mouse.clickAt(await locate(modeOption(t("Edit"))))
+    await sleep(500)
+    await mouse.blur()
   },
   async edit({at, mouse, keyboard, locate, widget}) {
     const phone = await locate(device("host1"))
@@ -74,8 +88,8 @@ export default ({lang}) => ({
     const {mouse, locate, t} = take
     await closeUp(take)
     const press = async target => { await mouse.move(target.x, target.y, 250); await sleep(300); await mouse.click(); await sleep(500) }
-    await press(await locate(`element => element.localName === "sl-select" && element.closest(".modeSwitch")`))
-    await press(await locate(`element => element.localName === "sl-option" && element.textContent.trim() === ${JSON.stringify(t("Simulate"))}`))
+    await press(await locate(modeMenu))
+    await press(await locate(modeOption(t("Simulate"))))
     await press(await locate(`element => element.localName === "sl-button" && element.classList.contains("set-source-btn")`))
     // host0 sits under the mode menu in the close-up, so the Phone, the middle host, sends.
     await press(await locate(device("host1")))

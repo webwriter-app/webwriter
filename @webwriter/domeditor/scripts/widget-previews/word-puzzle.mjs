@@ -72,9 +72,10 @@ export default ({lang}) => ({
     const first = await settled(take, `element => element.localName === "td" && element.textContent.trim() === ${JSON.stringify(old)}`)
     await mouse.move(first.right - 12, first.y, 280)
     await at(1650); await mouse.click()
-    // One Backspace per letter, then the new word; longer words shift the rest of the take a little.
-    for(let letter = 0; letter < old.length; letter++) { await at(1800 + letter * 110); await keyboard.press("Backspace") }
-    const typed = 1830 + old.length * 110
+    // One Backspace per letter, then the new word; a longer word is erased faster so that the timing stays the same.
+    const step = Math.min(110, 550 / old.length)
+    for(let letter = 0; letter < old.length; letter++) { await at(1800 + letter * step); await keyboard.press("Backspace") }
+    const typed = 1830 + old.length * step
     await at(typed); await keyboard.type(added, 110)
     // Ctrl+Enter generates the puzzle; Escape closes the drawer.
     const generated = typed + added.length * 110 + 130

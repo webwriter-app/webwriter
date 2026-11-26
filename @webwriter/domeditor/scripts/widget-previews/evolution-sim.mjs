@@ -4,14 +4,23 @@ const input = label => `element => element.localName === "sl-input" && element.l
 /** Where the edit take leaves the pointer, relative to the widget, so the use take can continue there. */
 const rest = widget => ({x: widget.x + widget.width * .7, y: widget.y + widget.height * .62})
 
-export default {
+/**
+ * The 401 px widget and the "New" dialog in each language. A viewport of at most 600 px keeps the editor's compact toolbar,
+ * so the dialog, which grows with the viewport, fits over the widget. In the editor, which sits higher, the square ends below
+ * the dialog's buttons; in the preview it ends at the viewport.
+ */
+const layouts = {
+  // The controls keep one row, even while running, and the widget fills the square at 99 %.
+  en: {height: 500, crop: widget => ({x: widget.x + widget.width / 2 - 186, y: widget.y + (widget.y < 90 ? 14.5 : -2.5), width: 372, height: 372})},
+  // Longer labels wrap the controls into two rows; the 420 px widget is shown whole at 88 %, so the viewport grows with it.
+  de: {height: 552, crop: widget => ({x: widget.x, y: widget.y + (widget.y < 90 ? 16.75 : -1.5), width: widget.width, height: widget.height})},
+}
+
+export default ({lang}) => ({
   package: "@webwriter/evolution-sim", version: "2.0.0", snippet: "snippets/island-evolution.html", tag: "webwriter-evolution-sim",
-  // The snippet's introduction and quiz stay out of view. At this width the controls keep one row, even while running.
-  // A viewport of at most 600 px keeps the editor's compact toolbar, so the "New" dialog fits over the widget.
-  width: 465, height: 500, style: "body > :not(webwriter-evolution-sim) {display: none}",
-  // The 401 px widget fills the square at 99 %. In the editor, which sits higher, the square ends below the dialog's buttons;
-  // in the preview it ends at the viewport.
-  crop: widget => ({x: widget.x + widget.width / 2 - 186, y: widget.y + (widget.y < 90 ? 14.5 : -2.5), width: 372, height: 372}),
+  // The snippet's introduction and quiz stay out of view.
+  width: 465, height: (layouts[lang] ?? layouts.en).height, style: "body > :not(webwriter-evolution-sim) {display: none}",
+  crop: (layouts[lang] ?? layouts.en).crop,
   async edit({at, mouse, keyboard, locate, widget, t}) {
     const start = rest(widget), create = await locate(control(t("New")))
     await mouse.place(start.x, start.y + 60)
@@ -24,9 +33,11 @@ export default {
     await at(2050); await keyboard.press("Tab")
     await at(2350); await keyboard.press("Backspace"); await keyboard.press("Backspace")
     await at(2500); await keyboard.type("70", 140)
-    // The button straddles the widget's lower edge, where the editor's resize strip would take the click; aim above it.
-    const confirm = await locate(control(t("Create")))
-    await at(2800); await mouse.move(confirm.x, confirm.top + 8, 450)
+    // The button straddles the widget's lower edge, where the editor's resize strip would take the click;
+    // aim at whichever end of the button lies farther from that edge.
+    const confirm = await locate(control(t("Create"))), edge = widget.y + widget.height
+    const upper = confirm.top + 8, lower = confirm.top + confirm.height - 8
+    await at(2800); await mouse.move(confirm.x, Math.abs(upper - edge) >= Math.abs(lower - edge) ? upper : lower, 450)
     await at(3350); await mouse.click()
     await at(3650); await mouse.move(start.x, start.y, 600)
   },
@@ -40,4 +51,4 @@ export default {
     await at(2000); await mouse.click()
     await at(2300); await mouse.move(start.x, start.y + 40, 600)
   },
-}
+})
