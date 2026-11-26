@@ -29,6 +29,7 @@ A `README.md`, `.markdown`, or `.txt` file supplies package documentation.
 | `./widgets/<tag>.icon.svg` | SVG icon for the widget with that exact tag name. |
 | `./snippets/<name>.html` | HTML that the author can insert. The authoring tool removes active scripts, handlers, and styles. It keeps inert widget data blocks. |
 | `./icon` | Package icon and default icon for its widgets and snippets. |
+| `./preview`, `./preview/<locale>` | Default and localized [package previews](#package-previews). |
 | `./editing-config.json` | External editing configuration. |
 | `./migrate.js` | Script for [content migration](../guides/migrations.md) in a sandbox. |
 | `./tests/<name>.*`, `./tests/<name>.js` | Test module with optional stylesheet. |
@@ -53,6 +54,24 @@ An export target can be a string or a condition object. The authoring tool check
 Exports with the same tag form one widget. Include each referenced file in the package. Use a separate export for a stylesheet that a dependency needs. Import maps resolve only JavaScript modules.
 
 The authoring tool uses a widget's icon in the package dropdown and when identifying the widget in the document. The export key uses the full widget tag, such as `./widgets/ww-quiz.icon.svg`. The top-level package button uses `./icon`, which also serves as the fallback when a member has no icon. A snippet can use the same icon as a widget by setting `iconWidget` to the full widget tag in its editing config.
+
+### Package previews
+
+The widget gallery wall and the editor’s **Packages** drawer can show an optional still image or video on hover or keyboard focus. Add these entries to the package's existing `exports` and include the referenced files when publishing.
+
+```json
+{
+  "exports": {
+    "./preview": "./assets/preview.webp",
+    "./preview/de": "./assets/preview-de.mp4",
+    "./preview/de-CH": "./assets/preview-de-CH.webp"
+  }
+}
+```
+
+WebWriter tries the exact locale, then the base language, then the default export. For Swiss German, it tries `./preview/de-CH`, `./preview/de`, and `./preview` in order. Locale tags are matched case-insensitively. WebWriter skips missing, invalid, and unsupported files.
+
+Each file must be exactly **800 × 800 pixels** and at most **1,000,000 bytes (1 MB)**. Use still WebP (`.webp`) or H.264 video in an MP4 container (`.mp4`) with no audio track. Encode H.264 with 8-bit 4:2:0 for broad browser support. When reduced motion is enabled, the gallery looks for a still preview.
 
 ## Widget and snippet relationships
 

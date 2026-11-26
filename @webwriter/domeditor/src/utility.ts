@@ -630,7 +630,7 @@ export class EditingSelection {
           }
           const cx = Math.max(rect.left + 0.5, Math.min(x, rect.right - 0.5))
           const cy = Math.max(rect.top + 0.5, Math.min(y, rect.bottom - 0.5))
-          const native = document.caretPositionFromPoint(cx, cy, {shadowRoots})
+          const native = document.caretPositionFromPoint?.(cx, cy, {shadowRoots})
           if(native && node.contains(native.offsetNode) && !atomicEditingContainer(native.offsetNode, schema)) return point(native.offsetNode, native.offset)
           const fallback = document.caretRangeFromPoint?.(cx, cy)
           if(fallback && node.contains(fallback.startContainer) && !atomicEditingContainer(fallback.startContainer, schema)) return point(fallback.startContainer, fallback.startOffset)
@@ -708,7 +708,10 @@ export class EditingSelection {
   private static resolvePointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null, schema?: Schema, flowRoot?: Element, selectionRoot?: Element, dragAnchor?: Range): {node: Node, offset: number, overrideNative?: boolean} | undefined {
     const widgetGap = this.widgetGapFromCoords(x, y, pointerTarget, schema, false, dragAnchor)
     if(widgetGap && (!selectionRoot || selectionRoot.contains(widgetGap.node))) return widgetGap
-    let {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
+    const native = document.caretPositionFromPoint?.(x, y)
+    const fallback = native ? null : document.caretRangeFromPoint?.(x, y)
+    let offset = native?.offset ?? fallback?.startOffset
+    let offsetNode = native?.offsetNode ?? fallback?.startContainer
     const root = selectionRoot ?? getDocumentRoot()
     let overrideNative = false
     const point = (node: Node, offset: number) => {
@@ -913,7 +916,7 @@ export class EditingSelection {
         }
         overrideNative = true
         if(node instanceof Element) return gap(node, y > rect.top + rect.height / 2 ? "after" : "before")
-        const native = document.caretPositionFromPoint(
+        const native = document.caretPositionFromPoint?.(
           Math.max(rect.left + 1, Math.min(x, rect.right - 1)),
           Math.max(rect.top + 1, Math.min(y, rect.bottom - 1)),
         )
@@ -946,7 +949,7 @@ export class EditingSelection {
           container = node
           continue
         }
-        const native = document.caretPositionFromPoint(
+        const native = document.caretPositionFromPoint?.(
           Math.max(rect.left + 1, Math.min(x, rect.right - 1)),
           Math.max(rect.top + 1, Math.min(y, rect.bottom - 1)),
         )

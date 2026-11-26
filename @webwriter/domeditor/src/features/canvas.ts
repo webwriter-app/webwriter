@@ -308,9 +308,12 @@ export class CanvasFeature extends EditorFeature {
     return this.viewer?.clientPoint(x, y) ?? {x, y}
   }
 
-  /** Click insertion owns a new root item, independent of the old selection. */
+  /** Click insertion creates a root item unless the selection is in an editable field. */
   insertCentered<T>(command: () => T): T {
     if((!this.active && !this.editor.features.slides.active) || this.placing || this.editor.isEditingLocked) return command()
+    if(this.editor.features.manipulation.hasNestedInsertionSelection()) {
+      return this.editor.allowsSelection("insert") ? command() : undefined as T
+    }
     const root = this.active ? document.body : this.editor.features.slides.insertionSlide()
     if(!root || !this.editor.allows("insert", root)) return undefined as T
     const end = this.editor.doc.beginUndoGroup()

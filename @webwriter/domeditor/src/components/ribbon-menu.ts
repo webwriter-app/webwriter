@@ -492,6 +492,8 @@ export class RibbonMenu extends LitElement {
       visibility: hidden;
     }
 
+    .item-icon[data-package-icon] { filter: grayscale(1); }
+
     .item-icon img {
       position: absolute;
       inset: 0;
@@ -744,14 +746,17 @@ export class RibbonMenu extends LitElement {
         </svg>
       </span>
     `
-    const iconUrl = hover ? "" : this.buttonIconUrl(button)
+    const imageUrl = this.buttonIconUrl(button)
+    const iconUrl = hover ? "" : imageUrl
     const iconText = typeof button === "string" ? undefined : button.iconText
     if(iconText !== undefined) {
       return html`<span class="item-icon text-icon" aria-hidden="true">${iconText}</span>`
     }
     const icon = hover ? this.buttonHoverIcon(button) : this.buttonIcon(button)
+    const packageIcon = Boolean(imageUrl) || this.buttonIcon(button) === "Packages" || ribbonInsertionAction(this.buttonAction(button))
+      || (!hover && typeof button !== "string" && button.iconAction === "pin-snippet")
     return keyed(iconUrl, html`
-      <span class=${`item-icon${iconUrl ? " image-icon" : ""}`} aria-hidden="true">
+      <span class=${`item-icon${iconUrl ? " image-icon" : ""}`} ?data-package-icon=${packageIcon} aria-hidden="true">
         ${ribbonIcon(icon)}
         ${iconUrl ? html`<img src=${iconUrl} alt="" draggable="false" @error=${this.handleIconError} />` : ""}
       </span>

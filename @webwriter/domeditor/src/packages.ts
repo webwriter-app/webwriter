@@ -1,6 +1,6 @@
 import type {WidgetEditingConfig, WidgetSchemaDefinition} from "./schema"
 import {stripActiveContent} from "./active-content"
-import {fetchNpmFile, JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT, npmPublishedVersions} from "./npm-files"
+import {fetchNpmFile, fetchWithin, JSDELIVR_NPM_ENDPOINT, NPM_FILE_TIMEOUT_MS, NPM_REGISTRY_ENDPOINT, npmPublishedVersions} from "./npm-files"
 import {intersects, maxSatisfying, satisfies, valid, validRange} from "semver"
 import {toHexString} from "lib0/buffer"
 import {digest} from "lib0/hash/sha256"
@@ -223,8 +223,11 @@ export type WebWriterPackage = {
   label: string
   description?: string
   iconUrl?: string
+  /** Preview exports resolved against the resource URLs of a local package. */
+  previewUrls?: Record<string, string>
   authors: string[]
   license?: string
+  deprecated?: string
   keywords: string[]
   links: {
     npm?: string
@@ -547,6 +550,8 @@ type NpmSearchResponse = {
   objects?: Array<{package?: NpmSearchPackage}>
   total?: number
 }
+
+type NpmRegistryManifest = WebWriterPackageManifest & {deprecated?: string}
 
 const extensionPattern = /\.(?:html?|m?js|css|ts)$/i
 const scriptPattern = /\.(?:m?js|ts)$/i
@@ -927,7 +932,7 @@ export class WebWriterPackageRegistry {
   ) {}
 
   /** Discovers published WebWriter packages through npm search. */
-  async search() {
+  async search({includeDeprecation = false} = {}) {
     const summariesByName = new Map<string, WebWriterPackage>()
     let from = 0
     let total: number | undefined
@@ -953,13 +958,21 @@ export class WebWriterPackageRegistry {
     const summaries = [...summariesByName.values()]
 
     return Promise.all(summaries.map(async summary => {
-      try {
-        return await this.getPackage(summary)
-      }
-      catch {
-        return summary
-      }
+      const request = this.getPackage(summary).catch(() => summary)
+      if(!includeDeprecation) return request
+      const [pkg, release] = await Promise.all([request, this.publishedPackageManifest(summary.name, summary.version).catch(() => undefined)])
+      const deprecated = release?.deprecated
+      return deprecated ? {...pkg, deprecated} : pkg
     }))
+  }
+
+  async publishedPackageManifest(name: string, version: string) {
+    const response = await fetchWithin(this.fetcher, packageManifestUrl(name, version), {cache: "no-cache"}, NPM_FILE_TIMEOUT_MS)
+    if(!response.ok) throw new Error(`Package metadata failed (${response.status})`)
+    const manifest = await response.json() as NpmRegistryManifest
+    if(manifest.name !== name || manifest.version !== version) throw new Error(`Invalid package metadata for ${name}@${version}`)
+    const deprecated = typeof manifest.deprecated === "string" ? manifest.deprecated.trim() || undefined : undefined
+    return {...manifest, deprecated}
   }
 
   async latestCompatibleVersion(name: string, version: string) {
@@ -977,11 +990,12 @@ export class WebWriterPackageRegistry {
   }
 
   /** Fetch a directly linked package without waiting for catalog search. */
-  async getLatestPackage(name: string) {
-    const response = await this.fetcher(`${NPM_REGISTRY_ENDPOINT}/${encodeURIComponent(name)}/latest`, {cache: "no-cache"})
+  async getLatestPackage(name: string, {excludeDeprecated = false} = {}) {
+    const response = await this.fetcher(packageManifestUrl(name, "latest"), {cache: "no-cache"})
     if(!response.ok) throw new Error(`Package metadata failed (${response.status})`)
-    const manifest = await response.json() as WebWriterPackageManifest
+    const manifest = await response.json() as NpmRegistryManifest
     if(manifest.name !== name || typeof manifest.version !== "string") throw new Error("Invalid package metadata")
+    if(excludeDeprecated && manifest.deprecated) return null
     return this.getPackage({name, version: manifest.version, description: manifest.description,
       license: manifest.license, keywords: manifest.keywords,
       authors: [manifest.author, ...(manifest.contributors ?? [])].map(personLabel).filter((author): author is string => !!author)})

@@ -121,6 +121,26 @@ describe("CSS-only Slides layout", () => {
     await settle()
   })
 
+  it.each([640, 1280])("keeps caret reveals within a %ipx slide when text overflows the right edge", width => {
+    const [, slide] = seed(), viewport = slide.parentElement!, text = slide.querySelector("p")!.firstChild!
+    viewport.style.overflow = "auto"
+    for(const [key, value] of Object.entries({clientWidth: 640, scrollWidth: 4000, clientLeft: 0})) {
+      Object.defineProperty(viewport, key, {configurable: true, value})
+    }
+    viewport.scrollLeft = 1600
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 640, 480))
+    vi.spyOn(slide, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, width, 360))
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(width + 5, 100, 0, 20))
+    const relativeScroll = vi.spyOn(viewport, "scrollBy")
+    const absoluteScroll = vi.spyOn(viewport, "scrollTo").mockImplementation(() => {})
+    $.move(text, 2)
+    editor.features.selection.processSelection()
+    expect(relativeScroll).not.toHaveBeenCalled()
+    if(width === 640) expect(absoluteScroll).not.toHaveBeenCalled()
+    else expect(absoluteScroll).toHaveBeenCalledWith({left: 2240, top: 0, behavior: "smooth"})
+    expect($.anchor).toBe(text)
+  })
+
   it("ignores slide containers for modifier selection and style/outline highlighting", () => {
     const [slide] = seed()
     const text = slide.querySelector("p")!.firstChild!

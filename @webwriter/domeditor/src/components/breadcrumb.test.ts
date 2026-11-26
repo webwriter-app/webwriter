@@ -27,6 +27,17 @@ describe("generic element icons", () => {
     document.body.append(breadcrumb)
     await breadcrumb.updateComplete
     expect(breadcrumb.shadowRoot!.querySelector(".icon-tabler-pilcrow")).not.toBeNull()
+    expect(getComputedStyle(breadcrumb.shadowRoot!.querySelector(".item-icon")!).filter).not.toBe("grayscale(1)")
+  })
+
+  it("renders widgets in greyscale in the selection path", async () => {
+    const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+    breadcrumb.path = [{path: [0], ...getElementPresentation("example-widget"), iconUrl: "https://example.test/widget.svg"}]
+    document.body.append(breadcrumb)
+    await breadcrumb.updateComplete
+    const icon = breadcrumb.shadowRoot!.querySelector(".item-icon")!
+    expect(icon.querySelector("img")).not.toBeNull()
+    expect(getComputedStyle(icon).filter).toBe("grayscale(1)")
   })
 })
 

@@ -66,6 +66,7 @@ it("dismisses the reply with Escape and hides it when AI is disabled", async () 
 
 const mountRibbon = async () => {
   const ribbon = new AppRibbon()
+  ribbon.backendState = "connected"
   document.body.append(ribbon)
   await ribbon.updateComplete
   const toolbox = new DomEditorToolbox()

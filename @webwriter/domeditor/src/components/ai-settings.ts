@@ -27,6 +27,7 @@ export class AISettingsDialog extends LitElement {
   static properties = {
     open: {type: Boolean, reflect: true},
     embedded: {type: Boolean, reflect: true},
+    disabledReason: {attribute: false},
     providerId: {type: String, attribute: "provider-id", reflect: true},
     addingProvider: {state: true},
     expandedProviders: {state: true},
@@ -528,6 +529,7 @@ export class AISettingsDialog extends LitElement {
 
     .provider-cards { min-width: 0; }
     .provider-cards > h2 { font-size: .85rem; text-transform: uppercase; }
+    .provider-cards[aria-disabled="true"] {opacity: .55; filter: grayscale(1); cursor: not-allowed;}
     .provider-card { min-width: 0; max-width: 100%; border: 1px solid #c4ccd6; border-radius: .45rem; }
     .provider-card[data-active] { border-color: #93b9e8; background: #f8fbff; }
     .provider-card-header { display: flex; align-items: center; gap: .5rem; margin: 0; padding: .75rem; color: inherit; font-size: .72rem; font-weight: 600; cursor: pointer; list-style: none; }
@@ -570,6 +572,7 @@ export class AISettingsDialog extends LitElement {
   private expandedProviders = new Set<string>()
   private storedProvider: AIProviderConfig | undefined
   embedded = false
+  disabledReason = ""
   open = false
   store: AIProviderStore | null = null
   private draft: AIProviderConfig | null = null
@@ -593,9 +596,13 @@ export class AISettingsDialog extends LitElement {
   }
 
   protected willUpdate(changed: PropertyValues<this>) {
-    if(!this.embedded || !changed.has("open") && !changed.has("providerId")) return
+    if(!this.embedded || !changed.has("open") && !changed.has("providerId") && !changed.has("disabledReason")) return
     if(this.open) {
       if(!this.draft) this.initializeDraft()
+      else if(this.disabledReason) {
+        this.resetAutoFetch()
+        if(this.modelFetchController) this.cancelModelFetch()
+      }
       else this.scheduleAutoFetchModels()
     }
     else {
@@ -711,7 +718,7 @@ export class AISettingsDialog extends LitElement {
 
   private canFetchModels() {
     const draft = this.draft
-    if(!draft || !this.store || !draft.name.trim()) return false
+    if(this.disabledReason || !draft || !this.store || !draft.name.trim()) return false
     try {
       const url = new URL(normalizeURLInput(draft.baseUrl))
       if(url.protocol !== "http:" && url.protocol !== "https:") return false
@@ -855,7 +862,7 @@ export class AISettingsDialog extends LitElement {
 
   private save = async (event: SubmitEvent) => {
     event.preventDefault()
-    if(!this.draft || !this.store || this.loading) return
+    if(this.disabledReason || !this.draft || !this.store || this.loading) return
     this.resetAutoFetch()
     this.loading = true
     this.error = ""
@@ -904,7 +911,7 @@ export class AISettingsDialog extends LitElement {
 
   private fetchModels = async () => {
     this.clearAutoFetchTimer()
-    if(!this.draft || !this.store || this.loading) return
+    if(this.disabledReason || !this.draft || !this.store || this.loading) return
     const sequence = ++this.modelFetchSequence
     const controller = new AbortController()
     this.modelFetchController = controller
@@ -1118,40 +1125,45 @@ export class AISettingsDialog extends LitElement {
 
   private renderProviderCards() {
     const providers = this.store?.providers ?? []
-    return html`<section class="provider-cards" aria-labelledby="ai-settings-title">
+    return html`<section class="provider-cards" aria-labelledby="ai-settings-title"
+      title=${this.disabledReason || nothing} aria-description=${this.disabledReason || nothing}
+      aria-disabled=${this.disabledReason ? "true" : nothing}>
       <h2 id="ai-settings-title">AI providers</h2>
-      <div class="providers" aria-label="Configured providers">
-        ${repeat(providers.filter(provider => !(this.loading && provider.id === this.draft?.id)), provider => provider.id, provider => html`
-          <details class="provider-card" ?data-active=${this.store?.activeProviderId === provider.id}
-            .open=${this.expandedProviders.has(provider.id)} @toggle=${(event: Event) => {
-              const open = (event.currentTarget as HTMLDetailsElement).open
-              if(open === this.expandedProviders.has(provider.id)) return
-              const expanded = new Set(this.expandedProviders)
-              if(open) expanded.add(provider.id)
-              else expanded.delete(provider.id)
-              this.expandedProviders = expanded
-            }}>
-            <summary class="provider-card-header">
-              <input type="radio" name="active-ai-provider" aria-label=${`Use ${provider.name}`}
-                .checked=${live(this.store?.activeProviderId === provider.id)} ?disabled=${this.loading}
-                @click=${(event: Event) => event.stopPropagation()}
-                @change=${() => this.activateProvider(provider.id)}>
-              <span class="provider-icon" aria-hidden="true">${ribbonIcon("AI")}</span><span class="provider-card-name">${provider.name}</span>
-            </summary>
-            <ai-settings-dialog embedded .providerId=${provider.id} .store=${this.store} .open=${this.open && this.expandedProviders.has(provider.id)}></ai-settings-dialog>
-          </details>
-        `)}
+      <div ?inert=${this.disabledReason}>
+        <div class="providers" aria-label="Configured providers">
+          ${repeat(providers.filter(provider => !(this.loading && provider.id === this.draft?.id)), provider => provider.id, provider => html`
+            <details class="provider-card" ?data-active=${this.store?.activeProviderId === provider.id}
+              .open=${this.expandedProviders.has(provider.id)} @toggle=${(event: Event) => {
+                const open = (event.currentTarget as HTMLDetailsElement).open
+                if(open === this.expandedProviders.has(provider.id)) return
+                const expanded = new Set(this.expandedProviders)
+                if(open) expanded.add(provider.id)
+                else expanded.delete(provider.id)
+                this.expandedProviders = expanded
+              }}>
+              <summary class="provider-card-header">
+                <input type="radio" name="active-ai-provider" aria-label=${`Use ${provider.name}`}
+                  .checked=${live(this.store?.activeProviderId === provider.id)} ?disabled=${this.loading}
+                  @click=${(event: Event) => event.stopPropagation()}
+                  @change=${() => this.activateProvider(provider.id)}>
+                <span class="provider-icon" aria-hidden="true">${ribbonIcon("AI")}</span><span class="provider-card-name">${provider.name}</span>
+              </summary>
+              <ai-settings-dialog embedded .providerId=${provider.id} .store=${this.store} .disabledReason=${this.disabledReason}
+                .open=${this.open && this.expandedProviders.has(provider.id)}></ai-settings-dialog>
+            </details>
+          `)}
+        </div>
+        <h3>Add an AI provider</h3>
+        <div class="presets">
+          <button class="preset-button" type="button" ?disabled=${this.loading} @click=${() => this.startProvider("openai")}>OpenAI</button>
+          <button class="preset-button" type="button" ?disabled=${this.loading} @click=${() => this.startProvider("custom")}>Custom</button>
+        </div>
+        ${this.addingProvider || !providers.length ? html`<div class="content new-provider-card">
+          <header class="content-header"><h2>Add ${this.draft?.name}</h2></header>${this.renderProviderForm()}
+        </div>` : nothing}
+        ${!this.addingProvider && providers.length && this.error ? html`<p class="feedback error" role="alert">${this.error}</p>` : nothing}
+        ${!this.addingProvider && providers.length && this.notice ? html`<p class="feedback notice" role="status">${this.notice}</p>` : nothing}
       </div>
-      <h3>Add an AI provider</h3>
-      <div class="presets">
-        <button class="preset-button" type="button" ?disabled=${this.loading} @click=${() => this.startProvider("openai")}>OpenAI</button>
-        <button class="preset-button" type="button" ?disabled=${this.loading} @click=${() => this.startProvider("custom")}>Custom</button>
-      </div>
-      ${this.addingProvider || !providers.length ? html`<div class="content new-provider-card">
-        <header class="content-header"><h2>Add ${this.draft?.name}</h2></header>${this.renderProviderForm()}
-      </div>` : nothing}
-      ${!this.addingProvider && providers.length && this.error ? html`<p class="feedback error" role="alert">${this.error}</p>` : nothing}
-      ${!this.addingProvider && providers.length && this.notice ? html`<p class="feedback notice" role="status">${this.notice}</p>` : nothing}
     </section>`
   }
 

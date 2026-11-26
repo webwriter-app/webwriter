@@ -1,4 +1,5 @@
 import type {DomEditorToolbox} from "./toolbox"
+import {cloudConnectionRequired} from "../cloud-services"
 import {normalizeURLInput} from "../url-input.js"
 import {css, html, noChange, nothing, render} from "lit"
 import {guard} from "lit/directives/guard.js"
@@ -29,6 +30,7 @@ import {type PresenceUser, type UndoState} from "../editor-bridge"
 import {isMediaCaptureMode, mediaCaptureModes, mediaCaptureOptions, type MediaType} from "../media"
 import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames, type StyleMarkName} from "../marks"
 import {packageKeywordPresentations} from "../package-keywords"
+import {packagePreviewCandidates} from "../package-preview"
 import type {PackageMember, WebWriterPackage} from "../packages"
 import {isCompatibleSnippet, packageAction, packageCompatibleSnippets, packageMemberAction, packageMemberCategory, packageMemberIcon, packageToggleAction, packageUpdateAction, packageUpdateKind} from "../packages"
 import {groupInsertablesByCategory} from "../insertion"
@@ -497,6 +499,8 @@ export class AppRibbon extends EditingControls {
       padding-inline-start: 1.25rem;
       font-size: .875rem;
     }
+    #unsupported-widget-packages-dialog:modal { overscroll-behavior: contain; }
+    #unsupported-widget-packages-dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
     #settings-dialog {
       height: min(45rem, calc(100dvh - 2rem));
       padding: 0;
@@ -645,9 +649,10 @@ export class AppRibbon extends EditingControls {
     .ribbon-top-actions .toolbox-tabs { display: flex; flex: 0 0 auto; align-items: center; height: 40px; gap: 1px; padding-inline: 3px; }
     .ribbon-top-actions .toolbox-tab { flex: 0 0 auto; }
     .ribbon-top-actions .toolbox-tab-button { display: grid; place-items: center; position: relative; width: 30px; height: 30px; padding: 6px; border: 0; border-radius: .2rem; background: transparent; color: #526b86; cursor: pointer; }
-    .ribbon-top-actions .toolbox-tab-button:is(:hover, [aria-pressed="true"]) { background: #dbe7f2; color: #243447; }
+    .ribbon-top-actions .toolbox-tab-button:is(:hover, [aria-pressed="true"]):not([aria-disabled="true"]) { background: #dbe7f2; color: #243447; }
     .ribbon-top-actions .toolbox-tab-button:focus-visible { outline: 2px solid #3977c7; outline-offset: -2px; }
     .ribbon-top-actions .toolbox-tab-button:disabled { opacity: .4; cursor: default; }
+    .ribbon-top-actions .toolbox-tab-button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; filter: grayscale(1); }
     .ribbon-top-actions .toolbox-tab-icon { display: block; position: relative; width: 17px; height: 17px; }
     .ribbon-top-actions .toolbox-tab-icon svg { display: block; width: 100%; height: 100%; }
     .ribbon-top-actions .toolbox-tab-label { display: none; }
@@ -835,6 +840,14 @@ export class AppRibbon extends EditingControls {
     ${switchInputStyles}
 
     ${sharingLinkStyles}
+
+    .live-session-switch[data-cloud-disabled], .sharing-link-field[data-cloud-disabled] {
+      opacity: .55;
+      filter: grayscale(1);
+      cursor: not-allowed;
+    }
+    .live-session-switch[data-cloud-disabled] input,
+    .sharing-link-field[data-cloud-disabled] :is(input, button) {pointer-events: none;}
 
     .reader-sharing-bar {
       display: flex;
@@ -1232,6 +1245,7 @@ export class AppRibbon extends EditingControls {
   private confirmation?: {dialogId: string, resolve: (confirmed: boolean) => void}
   private largeAttachmentFiles: Array<{name: string, size: number}> = []
   private packageMajorChanges: Array<{name: string, from: string, to: string}> = []
+  private unsupportedWidgetPackageWarnings: string[] = []
   private settingsTab: SettingsTab = "Editor"
 
   logoUrl = ""
@@ -1679,11 +1693,19 @@ export class AppRibbon extends EditingControls {
     await root.querySelector<RibbonCombobox>(`ribbon-combobox[name="${name}"]`)?.focusAndOpen()
   }
 
+  private get cloudDisabledReason() {
+    return this.backendState === "connected" ? "" : cloudConnectionRequired
+  }
+
+  private get aiUnavailable() {
+    return this.settings.disableAI || Boolean(this.cloudDisabledReason)
+  }
+
   async focusAIBar() {
-    if(this.settings.disableAI) return
+    if(this.aiUnavailable) return
     this.dismissCollapsedMenu()
     await this.updateComplete
-    if(!this.settings.disableAI) this.renderRoot.querySelector<HTMLTextAreaElement>(".ai-prompt-input:not(:disabled)")?.focus({preventScroll: true})
+    if(!this.aiUnavailable) this.renderRoot.querySelector<HTMLTextAreaElement>(".ai-prompt-input:not(:disabled)")?.focus({preventScroll: true})
   }
 
   private updateAIPrompt(event: Event) {
@@ -1770,7 +1792,7 @@ export class AppRibbon extends EditingControls {
   }
 
   private runNextQueuedAIPrompt() {
-    if(this.aiBusy || this.pendingAIEdit || this.settings.disableAI || !this.isConnected) return
+    if(this.aiBusy || this.pendingAIEdit || this.aiUnavailable || !this.isConnected) return
     const next = this.queuedAIPrompts[0]
     if(!next) return
     void this.runAIPrompt(next.prompt, next)
@@ -1841,6 +1863,7 @@ export class AppRibbon extends EditingControls {
 
   private submitAIPrompt(event: SubmitEvent) {
     event.preventDefault()
+    if(this.aiUnavailable) return
     const prompt = this.aiPrompt.trim() || (this.aiAttachments.length ? "Please review the attached file(s)." : "")
     if(!prompt) return
     if(this.aiBusy || this.pendingAIEdit) {
@@ -1856,7 +1879,7 @@ export class AppRibbon extends EditingControls {
   }
 
   private toggleAIChat = () => {
-    if(this.settings.disableAI) return
+    if(this.aiUnavailable) return
     if(this.aiChatOpen) {
       this.closeAIChat(true)
       return
@@ -1919,6 +1942,7 @@ export class AppRibbon extends EditingControls {
   }
 
   private showAISettings = () => {
+    if(this.cloudDisabledReason) return
     this.dispatchAIBarAction("settings")
     this.settingsTab = "Cloud"
     void this.showRibbonDialog("settings")
@@ -2185,7 +2209,7 @@ export class AppRibbon extends EditingControls {
   }
 
   private async runAIPrompt(prompt: string, queued?: QueuedAIPrompt) {
-    if(this.settings.disableAI) return
+    if(this.aiUnavailable) return
     if(this.pendingAIEdit) {
       this.aiError = "Accept or reject the pending document change before continuing the chat."
       return
@@ -2315,10 +2339,11 @@ export class AppRibbon extends EditingControls {
   protected willUpdate(changed: Map<string, unknown>) {
     super.willUpdate(changed)
     if(changed.has("fullscreenControls")) this.updateHeightConstraint()
-    if(changed.has("settings") && this.settings.disableAI) {
+    if((changed.has("settings") || changed.has("backendState")) && this.aiUnavailable) {
       this.closeAIChat()
-      void this.cancelAIWork()
+      if(this.aiWorkActive || this.pendingAIEdit) void this.cancelAIWork()
     }
+    if(changed.has("backendState") && this.cloudDisabledReason) this.readerSharingCopyPending = false
     const previewActiveChanged = changed.has("previewActive") && changed.get("previewActive") !== undefined
     if(previewActiveChanged) {
       this.previewTransitioning = true
@@ -2355,7 +2380,7 @@ export class AppRibbon extends EditingControls {
     const previousTarget = changed.get("aiToolboxTarget") as HTMLElement | null | undefined
     if(previousTarget && previousTarget !== this.aiToolboxTarget) render(nothing, previousTarget)
     if(this.aiToolboxTarget) render(guard(this.aiChatRenderDependencies, () => when(
-      !this.settings.disableAI, () => this.renderAIChat(true),
+      !this.aiUnavailable, () => this.renderAIChat(true),
     )), this.aiToolboxTarget, {host: this})
     if((changed.has("aiChatOpen") || changed.has("aiChats") || changed.has("activeAIChatId")) && this.aiChatOpen) this.dismissedAIBarReplyId = this.latestAIBarReply?.id ?? ""
     const reply = this.renderRoot.querySelector<HTMLElement>(".ai-bar-reply")
@@ -2447,9 +2472,12 @@ export class AppRibbon extends EditingControls {
   private packageDetails(pkg: WebWriterPackage): RibbonButtonDetails {
     const locale = this.interfaceLanguage
     const preferredLocales = [navigator.language, ...(navigator.languages ?? []), this.documentLanguage]
+    const previewLocale = locale.includes("-") ? locale
+      : preferredLocales.find(tag => tag?.toLowerCase().split("-")[0] === locale.toLowerCase()) ?? locale
+    const previewCandidates = packagePreviewCandidates(pkg, previewLocale)
     // Compare values rather than array identities: local package editing can
     // change metadata in place, and changing UI language must update labels.
-    const key = JSON.stringify([locale, preferredLocales, pkg.label, pkg.name, pkg.version, pkg.description, pkg.authors, pkg.keywords])
+    const key = JSON.stringify([locale, preferredLocales, pkg.label, pkg.name, pkg.version, pkg.description, pkg.authors, pkg.keywords, previewCandidates])
     const cached = this.packageDetailsCache.get(pkg)
     if(cached?.key === key) return cached.details
     const details = {
@@ -2458,6 +2486,7 @@ export class AppRibbon extends EditingControls {
       description: pkg.description,
       authors: pkg.authors,
       keywords: packageKeywordPresentations(pkg.keywords, locale, preferredLocales),
+      previewCandidates,
     }
     this.packageDetailsCache.set(pkg, {key, details})
     return details
@@ -2949,6 +2978,13 @@ export class AppRibbon extends EditingControls {
     return this.confirmWithDialog("package-major-change-dialog")
   }
 
+  async confirmOpenWithoutWidgets(warnings: string[]): Promise<boolean> {
+    if(this.confirmation) return false
+    this.unsupportedWidgetPackageWarnings = warnings
+    this.requestUpdate()
+    return this.confirmWithDialog("unsupported-widget-packages-dialog")
+  }
+
   private async confirmWithDialog(dialogId: string): Promise<boolean> {
     if(!this.isConnected || this.confirmation) return false
     let settle!: (confirmed: boolean) => void
@@ -3209,6 +3245,19 @@ export class AppRibbon extends EditingControls {
           <button class="primary" type="button" @click=${() => this.finishConfirmation("package-major-change-dialog", true)}>Install versions</button>
         </footer>
       </dialog>
+      <dialog id="unsupported-widget-packages-dialog" class="document-dialog confirmation-dialog"
+        aria-labelledby="unsupported-widget-packages-title" aria-describedby="unsupported-widget-packages-description"
+        @close=${(event: Event) => { if(!(event.currentTarget as HTMLDialogElement).open) this.finishConfirmation("unsupported-widget-packages-dialog", false) }}>
+        <header><h2 id="unsupported-widget-packages-title">Open without unsupported widgets?</h2>
+          <button class="dialog-close" type="button" aria-label="Close widget package warning" @click=${() => this.finishConfirmation("unsupported-widget-packages-dialog", false)}>${ribbonIcon("Reject")}</button>
+        </header>
+        <ul class="confirmation-list">${this.unsupportedWidgetPackageWarnings.map(warning => html`<li>${warning}</li>`)}</ul>
+        <p id="unsupported-widget-packages-description">Open anyway keeps the content inside unsupported widgets and removes the widgets and their saved data.</p>
+        <footer>
+          <button type="button" autofocus @click=${() => this.finishConfirmation("unsupported-widget-packages-dialog", false)}>Cancel</button>
+          <button class="primary" type="button" @click=${() => this.finishConfirmation("unsupported-widget-packages-dialog", true)}>Open anyway</button>
+        </footer>
+      </dialog>
       <dialog id="settings-dialog" class="document-dialog" aria-labelledby="settings-dialog-title"
         @cancel=${(event: Event) => { event.preventDefault(); (event.currentTarget as HTMLDialogElement).close() }}
         @close=${() => { this.documentDialog = null }}>
@@ -3244,7 +3293,8 @@ export class AppRibbon extends EditingControls {
             .settings=${this.settings}
             .tab=${this.settingsTab}
             @settings-change=${this.handleSettingsChange}
-          ><ai-settings-dialog slot="ai" embedded .store=${this.aiProviderStore} .open=${this.settingsTab === "Cloud"}></ai-settings-dialog></settings-panel>
+          ><ai-settings-dialog slot="ai" embedded .store=${this.aiProviderStore}
+            .disabledReason=${this.cloudDisabledReason} .open=${this.settingsTab === "Cloud"}></ai-settings-dialog></settings-panel>
         </main>
         ` : ""}
       </dialog>
@@ -3344,14 +3394,15 @@ export class AppRibbon extends EditingControls {
   }
 
   private renderReaderLinkField(link: string, slot = "") {
-    return html`<label class="sharing-link-field" slot=${slot}>
+    return html`<label class="sharing-link-field" slot=${slot} ?data-cloud-disabled=${this.cloudDisabledReason}
+      title=${this.cloudDisabledReason || nothing}>
       <span class="sharing-link-input-row">
         <input class="sharing-link-input" aria-label="Reader sharing link" readonly .value=${link}
-          ?disabled=${!link}
+          ?disabled=${!link || this.cloudDisabledReason}
           placeholder="Sharing link"
           @click=${(event: Event) => (event.currentTarget as HTMLInputElement).select()} />
         <button class=${`sharing-link-copy${this.sharingCopyLinkSuccess ? " is-success" : ""}`}
-          type="button" aria-label="Copy reader link" ?disabled=${!link}
+          type="button" aria-label="Copy reader link" ?disabled=${!link || this.cloudDisabledReason}
           title=${this.sharingCopyLinkSuccess ? "Copied link" : "Copy link"}
           @click=${() => void this.copyReaderSharing(link)}>${ribbonIcon("Copy")}</button>
       </span>
@@ -3464,7 +3515,8 @@ export class AppRibbon extends EditingControls {
             </div>
           </div>
         </div>`}
-        keep-drawer-open dropdown-no-scroll ?disabled=${!link}
+        keep-drawer-open dropdown-no-scroll ?disabled=${!link || this.cloudDisabledReason}
+        .disabledTitle=${this.cloudDisabledReason}
       >${this.renderReaderLinkField(link, "trailing")}</ribbon-button>
     `
   }
@@ -3472,8 +3524,9 @@ export class AppRibbon extends EditingControls {
   private handleLiveSessionToggle = (event: Event) => {
     const input = event.currentTarget as HTMLInputElement
     const enabled = input.checked
-    this.readerSharingCopyPending = enabled
     input.checked = this.liveSessionActive
+    if(this.cloudDisabledReason) return
+    this.readerSharingCopyPending = enabled
     this.dispatchEvent(new CustomEvent<{enabled: boolean}>("live-session-toggle", {
       detail: {enabled},
       bubbles: true,
@@ -3486,16 +3539,18 @@ export class AppRibbon extends EditingControls {
       <ribbon-drawer label="Learners" icon="Plus" layout="learners">
         <div class="reader-sharing-bar" role="group" aria-label="Session controls">
           ${this.replayActive ? nothing : html`
-          <label class="live-session-switch">
+          <label class="live-session-switch" ?data-cloud-disabled=${this.cloudDisabledReason} title=${this.cloudDisabledReason || nothing}>
             <span class="live-session-share-icon" aria-hidden="true">${ribbonIcon("Share")}</span>
             <input type="checkbox" role="switch" aria-label="Share"
+              ?disabled=${this.cloudDisabledReason} aria-description=${this.cloudDisabledReason || nothing}
               .checked=${this.liveSessionActive} @change=${this.handleLiveSessionToggle} />
             <span class="live-session-switch-label">Share</span>
           </label>
           ${this.renderSharingButton()}
           <ribbon-button class="reader-link-popup" label="Reader sharing link" icon="Link" compact
             dropdown-on-click .dropdown=${html`<div class="sharing-dropdown">${this.renderReaderLinkField(this.liveSessionLink)}</div>`}
-            keep-drawer-open dropdown-no-scroll ?disabled=${!this.liveSessionActive || !this.liveSessionLink}></ribbon-button>
+            keep-drawer-open dropdown-no-scroll ?disabled=${!this.liveSessionActive || !this.liveSessionLink || this.cloudDisabledReason}
+            .disabledTitle=${this.cloudDisabledReason}></ribbon-button>
           `}
           ${this.replayActive ? html`<button class="reader-xapi-export" type="button" aria-label="Export xAPI" aria-busy=${this.exportingReplayDataset ? "true" : "false"}
             title=${this.exportingReplayDataset ? "Exporting xAPI statements" : "Export xAPI statements"}
@@ -3684,7 +3739,7 @@ export class AppRibbon extends EditingControls {
   }
 
   private get aiChatRenderDependencies() {
-    return [this.settings.disableAI, this.commandShortcut("focus-ai-bar"), this.previewActive, this.historyState.preview,
+    return [this.settings.disableAI, this.cloudDisabledReason, this.commandShortcut("focus-ai-bar"), this.previewActive, this.historyState.preview,
       this.aiChats, this.activeAIChatId, this.aiChatOpen, this.aiBusy, this.aiRequestChatId,
       this.aiProviders, this.activeAIProvider, this.aiModel, this.aiEffort, this.aiProgress, this.pendingAIEdit]
   }
@@ -3714,12 +3769,16 @@ export class AppRibbon extends EditingControls {
           ?data-open=${expanded}
           ?hidden=${this.previewActive}
           ?inert=${historyPreviewPending}
+          ?data-cloud-disabled=${this.cloudDisabledReason}
+          title=${this.cloudDisabledReason || nothing}
         >
           <button
             class="ai-chat-brand-button"
             type="button"
             aria-label=${this.aiChatOpen ? "Collapse AI chat" : "Expand AI chat"}
-            title=${this.aiChatOpen ? "Collapse chat" : "Expand chat"}
+            title=${this.cloudDisabledReason || (this.aiChatOpen ? "Collapse chat" : "Expand chat")}
+            aria-disabled=${this.cloudDisabledReason ? "true" : nothing}
+            aria-description=${this.cloudDisabledReason || nothing}
             aria-expanded=${this.aiChatOpen}
             aria-controls="ai-toolbox-chat"
             @click=${this.toggleAIChat}
@@ -3801,6 +3860,7 @@ export class AppRibbon extends EditingControls {
           <form
             class="ai-chat-composer"
             ?data-review=${Boolean(pending) && expanded}
+            ?inert=${this.cloudDisabledReason}
             @submit=${this.submitAIPrompt}
           >
             ${pending && expanded ? this.renderPendingAIEditActions() : html`
@@ -3833,7 +3893,7 @@ export class AppRibbon extends EditingControls {
                 autocomplete="off"
                 data-ribbon-input-persistent
                 .value=${this.aiPrompt}
-                ?disabled=${Boolean(pending)}
+                ?disabled=${Boolean(pending) || this.cloudDisabledReason}
                 title=${expanded ? "" : this.shortcutTitle(barThinking && this.aiProgress ? this.aiProgress : "AI prompt", "focus-ai-bar")}
                 @input=${this.updateAIPrompt}
                 @keydown=${this.handleAIChatPromptKeydown}
@@ -3901,7 +3961,7 @@ export class AppRibbon extends EditingControls {
             `}
           </form>
         </section>
-        ${!expanded && !this.aiChatOpen && !this.previewActive && !requestBusy && !pending
+        ${!this.cloudDisabledReason && !expanded && !this.aiChatOpen && !this.previewActive && !requestBusy && !pending
           && (this.aiError || this.latestAIBarReply && this.latestAIBarReply.id !== this.dismissedAIBarReplyId)
           ? html`<aside class="ai-bar-reply" popover="manual" role=${this.aiError ? "alert" : "status"} aria-label=${this.aiError ? "AI error" : "AI reply"}>
             <button type="button" class="ai-bar-reply-close" aria-label="Dismiss AI reply" title="Dismiss" @click=${this.dismissAIBarReply}>×</button>
@@ -3989,7 +4049,8 @@ export class AppRibbon extends EditingControls {
                       lazy-dropdown
                       dropdown-no-scroll
                       ?custom-icon=${this.presenceUsers.length > 0}
-                      ?disabled=${this.previewActive || historyPreviewPending}
+                      ?disabled=${this.previewActive || historyPreviewPending || this.cloudDisabledReason}
+                      .disabledTitle=${this.cloudDisabledReason}
                       .dropdown=${this.renderSharingDropdown(this.collaborationLink)}
                       @ribbon-dropdown-open=${() => {
                         this.menuOpen = false

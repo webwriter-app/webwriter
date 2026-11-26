@@ -35,6 +35,39 @@ function packageGalleryRoutes() {
 const localPackageWorkerSource = fileURLToPath(new URL('./src/local-package-service-worker.ts', import.meta.url))
 const localPackageWorkerFile = 'local-package-service-worker.js'
 
+function classicFrameShellPlugin() {
+  const shell = fileURLToPath(new URL('./frame-shell.html', import.meta.url))
+  let config
+  return {
+    name: 'classic-frame-shell',
+    configResolved(value) { config = value },
+    transformIndexHtml: {
+      order: 'post',
+      async handler(html, {filename}) {
+        if(filename !== shell) return
+        // document.open() retains the module loader. Keep the shell free of
+        // modules so the document it writes can register its first import map.
+        const result = await build({
+          absWorkingDir: config.root,
+          entryPoints: ['src/frame-shell.ts'],
+          bundle: true,
+          format: 'iife',
+          platform: 'browser',
+          target: 'es2022',
+          minify: config.command === 'build',
+          write: false,
+          define: Object.fromEntries(['BASE_URL', 'VITE_APP_ORIGIN', 'VITE_EDITOR_ORIGIN'].map(key => [
+            `import.meta.env.${key}`, JSON.stringify(config.env[key]) ?? 'undefined',
+          ])),
+        })
+        const source = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script')
+        return html.replace(/<script type="module" src="[^"]*\/@vite\/client"><\/script>\s*/, '')
+          .replace('<script id="webwriter-frame-shell"></script>', () => `<script>${source}</script>`)
+      },
+    },
+  }
+}
+
 function localPackageServiceWorkerPlugin() {
   let config
   return {
@@ -101,7 +134,7 @@ export default defineConfig(({mode}) => {
   for(const directory of [...privateDirectories]) if(existsSync(directory)) privateDirectories.push(realpathSync(directory))
   const privatePaths = [...new Set(privateDirectories)].map(path => `${normalizePath(path).replace(/[?*\[\]{}()!+@]/g, "\\$&")}/**`)
   return {
-    plugins: [appVersionPlugin(), appEntryUrlsPlugin(), packageGalleryRoutes(), siteHeaderPlugin(), documentationPlugin(), liveExampleRuntimes(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
+    plugins: [appVersionPlugin(), appEntryUrlsPlugin(), packageGalleryRoutes(), siteHeaderPlugin(), documentationPlugin(), liveExampleRuntimes(), classicFrameShellPlugin(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
       referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url))),
       distributionReaderPlugin(), canvasSnapshotPlugin(), documentThemesPlugin(), minifiedReaderSourcePlugin()],
     appType: "mpa",

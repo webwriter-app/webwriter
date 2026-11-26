@@ -7506,6 +7506,24 @@ describe("unified content transfer", () => {
     expect((document.body.lastElementChild as HTMLElement).style.position).toBe("absolute")
   })
 
+  it.each(["canvas", "slides"] as const)("drops a ribbon element at an authored cell position in %s", mode => {
+    document.body.innerHTML = "<table><tbody><tr><td><p>Cell</p></td><td>Other</td></tr></tbody></table>"
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const table = document.querySelector("table")!, parent = table.parentElement!
+    const items = Array.from(parent.children)
+    const cell = table.rows[0].cells[0], paragraph = cell.querySelector("p")!
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: paragraph.firstChild!, offset: 2})
+    const data = ribbonData("hr")
+    paragraph.dispatchEvent(transferEvent("dragover", data, {clientX: 50, clientY: 10}))
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(true)
+    paragraph.dispatchEvent(transferEvent("drop", data, {clientX: 50, clientY: 10}))
+    expect(cell.querySelector<HTMLElement>(":scope > hr")?.style.position).toBe("")
+    expect(paragraph.textContent).toBe("Cell")
+    expect(table.rows[0].cells[1].textContent).toBe("Other")
+    expect(Array.from(parent.children)).toEqual(items)
+    expect(hasPresentationState(document.body, "drop-selection-active")).toBe(false)
+  })
+
   it.each(["document", "canvas", "slides"] as const)("captures ribbon drops on editor overlays in %s", mode => {
     document.body.className = ""
     if(mode !== "document") expect(editor.setDocumentLayout(mode, "document")).toBe(true)
@@ -7533,6 +7551,24 @@ describe("unified content transfer", () => {
     const message = post.mock.calls.find(([message]) => (message as {type?: string}).type === "editor-ribbon-drop")?.[0]
     return message as {action: string, position: RibbonDropPosition} | undefined
   }
+
+  it("replays a deferred snippet drop at its live nested anchor in Slides", async () => {
+    document.body.innerHTML = "<details open><summary>Title</summary><p>Body</p></details>"
+    expect(editor.setDocumentLayout("slides", "document")).toBe(true)
+    const details = document.querySelector("details")!, slide = details.parentElement!
+    const items = Array.from(slide.children), paragraph = details.querySelector("p")!
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: paragraph.firstChild!, offset: 4})
+    const message = packageDrop("user-snippet:nested", paragraph)
+    expect(message?.position).toMatchObject({layout: "slides", nested: true})
+    $.move(slide, slide.childNodes.length)
+    const html = "<blockquote>Quote</blockquote>"
+    const {actions} = editor.features.manipulation
+    expect(await actions.insertRibbonDrop({type: "insertRibbonDrop", html, position: message!.position})).toBe(true)
+    expect(details.querySelector<HTMLElement>(":scope > blockquote")?.style.position).toBe("")
+    expect(Array.from(slide.children)).toEqual(items)
+    expect(editor.setDocumentLayout("document", "slides")).toBe(true)
+    expect(await actions.insertRibbonDrop({type: "insertRibbonDrop", html, position: message!.position})).toBe(false)
+  })
 
   it("resolves a drop beside a sole selected image when there is no native caret", () => {
     document.body.innerHTML = "<picture><img></picture>"

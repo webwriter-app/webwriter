@@ -7,6 +7,7 @@ import {createAnchorPositioner} from "../anchor-positioning.js"
 import {popupAnchorCSS} from "./popup-position"
 import type {PackageKeywordPresentation} from "../package-keywords"
 import packageKeywordStyles from "../package-keywords.css?raw"
+import {disposePackagePreview, loadPackagePreview, type PackagePreview} from "../package-preview"
 import "./qr-code"
 import {isWidgetConversionAction, type RibbonMenu, type RibbonMenuButton, type RibbonMenuGroup} from "./ribbon-menu"
 import {ribbonElementInsertionAction, ribbonElementTag, ribbonInsertionAction, startElementDrag, startRibbonInsertionDrag} from "./insertion-menu"
@@ -18,7 +19,12 @@ export type RibbonButtonDetails = {
   authors?: string[]
   fields?: Array<{label: string, value: string}>
   keywords?: PackageKeywordPresentation[]
+  previewCandidates?: PackagePreview[]
 }
+
+type LoadedDetailsPreview = NonNullable<Awaited<ReturnType<typeof loadPackagePreview>>> & {cacheKey: string}
+const detailsPreviewCacheLimit = 4
+const detailsPreviewCaches = new WeakMap<Document, Map<string, LoadedDetailsPreview>>()
 
 /** A compact action used inside a ribbon group. */
 export class RibbonButton extends LitElement {
@@ -33,6 +39,7 @@ export class RibbonButton extends LitElement {
     compact: {type: Boolean, reflect: true},
     disabled: {type: Boolean, reflect: true},
     disabledReason: {attribute: false},
+    disabledTitle: {type: String, attribute: "disabled-title"},
     insertionDisabled: {type: Boolean, attribute: "insertion-disabled", reflect: true},
     loading: {type: Boolean, reflect: true},
     icon: {type: String},
@@ -60,6 +67,8 @@ export class RibbonButton extends LitElement {
     muted: {type: Boolean, reflect: true},
     details: {attribute: false},
     detailsOpen: {type: Boolean, attribute: "details-open", reflect: true},
+    detailsPreview: {state: true},
+    detailsPreviewLoading: {state: true},
     selectionCount: {type: Number, attribute: "selection-count"},
     toggle: {type: Boolean, reflect: true},
     variant: {type: String, reflect: true},
@@ -362,6 +371,8 @@ export class RibbonButton extends LitElement {
     .button-icon.image-icon svg {
       visibility: hidden;
     }
+
+    .button-icon[data-package-icon], .details-heading-icon { filter: grayscale(1); }
 
     .button-icon img {
       position: absolute;
@@ -789,6 +800,57 @@ export class RibbonButton extends LitElement {
       color: hsl(240 7.3% 8%);
       overflow-wrap: anywhere;
     }
+    .package-details.with-preview {
+      --package-popup-width: 500px;
+      --package-preview-size: 200px;
+      container: package-details / inline-size;
+      width: min(var(--package-popup-width), 100%);
+      min-width: min(25rem, var(--package-popup-width), calc(100vw - 1rem));
+    }
+    .with-preview .details-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.75rem;
+    }
+    .details-preview {
+      inline-size: min(var(--package-preview-size), 100%);
+      aspect-ratio: 1;
+      border-radius: 0.3rem;
+      background: #f2f4f7;
+      overflow: clip;
+    }
+    .details-preview > :is(img, video) {
+      display: block;
+      inline-size: 100%;
+      block-size: 100%;
+    }
+    .details-preview.icon-loading::after {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .details-preview.icon-loading::after { animation-duration: 6s; }
+    }
+    .package-details.with-preview .details-keywords {
+      gap: 4px;
+      font-size: 0.85em;
+    }
+    .package-details.with-preview .details-keyword {
+      gap: 3px;
+      min-block-size: 1rem;
+    }
+    .package-details.with-preview .details-keyword-icon {
+      inline-size: 0.8125rem;
+      block-size: 0.8125rem;
+    }
+    @container package-details (min-width: 29rem) {
+      .with-preview .details-layout {
+        grid-template-columns: var(--package-preview-size) minmax(0, 1fr);
+        grid-template-areas: "preview copy";
+      }
+      .details-preview { grid-area: preview; }
+      .details-copy { grid-area: copy; }
+    }
     .package-details .details-heading {
       display: grid;
       grid-template-columns: 2.5rem minmax(0, 1fr);
@@ -897,6 +959,7 @@ export class RibbonButton extends LitElement {
 
     :host([variant="widget-action"]) .main-button:is(:disabled, [aria-disabled="true"]) {color: #748090; opacity: 1;}
     .main-button[aria-disabled="true"] {cursor: help;}
+    .main-button[data-disabled-title] {color: #69737f; cursor: not-allowed; opacity: .55; filter: grayscale(1);}
     :host([variant="widget-action"]) .button-label-text {white-space: normal; overflow-wrap: anywhere;}
     :host([variant="widget-action"]) .button-icon {flex: 0 0 .85rem; width: .85rem; height: .85rem;}
 
@@ -1112,6 +1175,7 @@ export class RibbonButton extends LitElement {
   compact = false
   disabled = false
   disabledReason = ""
+  disabledTitle = ""
   insertionDisabled = false
   icon = ""
   hoverIcon = ""
@@ -1147,6 +1211,9 @@ export class RibbonButton extends LitElement {
   private detailsOpen = false
   private detailsShowTimer: ReturnType<typeof setTimeout> | undefined
   private detailsHideTimer: ReturnType<typeof setTimeout> | undefined
+  private detailsPreview?: LoadedDetailsPreview
+  private detailsPreviewLoading = false
+  private detailsPreviewAbort?: AbortController
   private anchors = createAnchorPositioner(this.ownerDocument)
   private submenuTrigger: HTMLButtonElement | null = null
   private insertionHoverPointer = false
@@ -1228,6 +1295,20 @@ export class RibbonButton extends LitElement {
     if(changedProperties.has("disabled") && this.disabled || changedProperties.has("insertionDisabled") && this.insertionDisabled) this.clearInsertionHover()
     if(changedProperties.has("disabled") && this.disabled && this.submenuOpen) {
       this.closeSubmenuPopover()
+    }
+    if(changedProperties.has("details") || changedProperties.has("variant")
+      || changedProperties.has("disabled") || changedProperties.has("disabledReason") || changedProperties.has("disabledTitle")
+      || changedProperties.has("insertionDisabled")) {
+      this.refreshDetailsPreview()
+    }
+    if(this.detailsOpen && (changedProperties.has("detailsOpen") || changedProperties.has("detailsPreview"))) {
+      const video = this.detailsPreview?.element
+      if(video instanceof HTMLVideoElement) void this.updateComplete.then(() => {
+        if(this.detailsOpen && this.detailsPreview?.element === video) {
+          // Keep the decoded frame visible if the browser blocks playback.
+          void video.play().catch(() => {})
+        }
+      })
     }
   }
 
@@ -1391,7 +1472,8 @@ export class RibbonButton extends LitElement {
     if(this.iconPath) return html`<span class="button-icon shape-preview" aria-hidden="true">
       <svg viewBox="-10 -10 120 120" focusable="false"><path d=${this.iconPath} fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
     </span>`
-    return keyed(this.iconUrl, html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
+    return keyed(this.iconUrl, html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`}
+      ?data-package-icon=${this.variant === "package" || icon === "Packages" || Boolean(this.iconUrl)} aria-hidden="true">
       <slot name="icon">${this.hoverIcon ? html`<span class="button-icon-default">${ribbonIcon(icon)}</span>` : ribbonIcon(icon)}
       ${this.hoverIcon ? html`<span class="button-icon-hover">${ribbonIcon(this.hoverIcon)}</span>` : nothing}</slot>
       ${this.renderIconImage()}
@@ -1418,6 +1500,7 @@ export class RibbonButton extends LitElement {
       this.detailsShowTimer = undefined
       this.showDetails()
     }, 500)
+    void this.startDetailsPreview()
   }
 
   private cancelDetailsShow = () => {
@@ -1431,6 +1514,7 @@ export class RibbonButton extends LitElement {
     if(this.detailsOpen) return
     if(!(this.disabledTooltip || this.details) || !this.isConnected) return
     this.detailsOpen = true
+    void this.startDetailsPreview()
     void this.updateComplete.then(() => {
       if(!this.detailsOpen || !this.isConnected) return
       const details = this.renderRoot.querySelector<HTMLElement>(".details")
@@ -1452,7 +1536,10 @@ export class RibbonButton extends LitElement {
     const next = event.relatedTarget
     if(next instanceof Node && [".button-row", ".details"].some(selector => this.renderRoot.querySelector(selector)?.contains(next))) return
     this.cancelDetailsShow()
-    if(!this.detailsOpen) return
+    if(!this.detailsOpen) {
+      this.stopDetailsPreview()
+      return
+    }
     this.cancelDetailsHide()
     this.detailsHideTimer = setTimeout(this.hideDetails, 120)
   }
@@ -1460,10 +1547,79 @@ export class RibbonButton extends LitElement {
   private hideDetails = () => {
     this.cancelDetailsShow()
     this.cancelDetailsHide()
+    this.stopDetailsPreview()
     const details = this.renderRoot.querySelector<HTMLElement>(".details")
     if(details) this.anchors.release(details)
     this.hidePopoverElement(details)
     this.detailsOpen = false
+  }
+
+  private refreshDetailsPreview = () => {
+    this.stopDetailsPreview()
+    void this.startDetailsPreview()
+  }
+
+  private async startDetailsPreview() {
+    const candidates = this.details?.previewCandidates
+    if(this.detailsPreviewAbort || !this.isConnected || (!this.detailsOpen && this.detailsShowTimer === undefined)
+      || this.disabledTooltip || this.variant !== "package" || !candidates?.length) return
+    const {signal} = this.detailsPreviewAbort = new AbortController()
+    const motion = matchMedia("(prefers-reduced-motion: reduce)")
+    motion.addEventListener?.("change", this.refreshDetailsPreview, {signal})
+    const available = motion.matches ? candidates.filter(candidate => candidate.kind === "image") : candidates
+    if(!available.length) return
+    // Versioned URLs and their order distinguish locales, local revisions, and reduced motion.
+    const cacheKey = JSON.stringify(available)
+    const cache = detailsPreviewCaches.get(this.ownerDocument)
+    const cached = cache?.get(cacheKey)
+    if(cached) {
+      cache!.delete(cacheKey)
+      if(!(cached.element instanceof HTMLVideoElement && cached.element.error)) {
+        this.detailsPreview = cached
+        return
+      }
+      disposePackagePreview(cached)
+    }
+    this.detailsPreviewLoading = true
+    const preview = await loadPackagePreview(available, signal)
+    if(signal.aborted) {
+      if(preview) disposePackagePreview(preview)
+      return
+    }
+    this.detailsPreview = preview && {...preview, cacheKey}
+    this.detailsPreviewLoading = false
+  }
+
+  private stopDetailsPreview() {
+    this.detailsPreviewAbort?.abort()
+    this.detailsPreviewAbort = undefined
+    this.detailsPreviewLoading = false
+    const preview = this.detailsPreview
+    if(!preview) return
+    this.detailsPreview = undefined
+    const {element, cacheKey} = preview
+    if(element instanceof HTMLVideoElement) {
+      element.pause()
+      if(element.error) {
+        disposePackagePreview(preview)
+        return
+      }
+      element.currentTime = 0
+    }
+    element.remove()
+    let cache = detailsPreviewCaches.get(this.ownerDocument)
+    if(!cache) detailsPreviewCaches.set(this.ownerDocument, cache = new Map())
+    const replaced = cache.get(cacheKey)
+    if(replaced) {
+      disposePackagePreview(replaced)
+      cache.delete(cacheKey)
+    }
+    cache.set(cacheKey, preview)
+    if(cache.size > detailsPreviewCacheLimit) {
+      const [oldestKey, oldest] = cache.entries().next().value!
+      disposePackagePreview(oldest)
+      cache.delete(oldestKey)
+    }
   }
 
   private get hasDropdown() {
@@ -1471,7 +1627,8 @@ export class RibbonButton extends LitElement {
   }
 
   private get disabledTooltip() {
-    return this.disabled ? this.disabledReason : this.insertionDisabled ? "Unavailable at the current selection" : ""
+    return this.disabled ? this.disabledTitle ? "" : this.disabledReason
+      : this.insertionDisabled ? "Unavailable at the current selection" : ""
   }
 
   protected willUpdate() {
@@ -1489,6 +1646,8 @@ export class RibbonButton extends LitElement {
     const dragPackageInsertion = this.variant === "package" && ribbonInsertionAction(dragAction)
     const shapeGallery = this.submenu.some(item => typeof item !== "string" && item.category)
     const disabledTooltip = this.disabledTooltip
+    const disabledTitle = this.disabled ? this.disabledTitle : ""
+    const showDetailsPreview = this.detailsOpen && (this.detailsPreviewLoading || this.detailsPreview)
     const title = this.variant === "element-conversion" ? `Conversion options for ${this.label}`
       : action.startsWith("widget-conversion:") ? `Convert to ${this.label}`
       : `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
@@ -1515,14 +1674,16 @@ export class RibbonButton extends LitElement {
           type="button"
           draggable=${String(Boolean(dragTag || dragPackageInsertion) && !this.disabled && !this.insertionDisabled)}
           aria-label=${conversion ? title : this.label}
-          aria-disabled=${disabledTooltip ? "true" : nothing}
+          aria-disabled=${disabledTooltip || disabledTitle ? "true" : nothing}
           aria-describedby=${disabledTooltip ? "disabled-reason" : nothing}
+          aria-description=${disabledTitle || nothing}
+          ?data-disabled-title=${disabledTitle}
           aria-busy=${this.loading ? "true" : nothing}
           aria-pressed=${this.toggle? String(this.active): nothing}
           aria-haspopup=${this.dropdownOnClick && hasDropdown ? this.dropdown !== null ? "dialog" : "menu" : nothing}
           aria-expanded=${this.dropdownOnClick && hasDropdown ? String(this.submenuOpen) : nothing}
-          title=${disabledTooltip ? "" : title}
-          ?disabled=${this.disabled && !disabledTooltip}
+          title=${disabledTitle || (disabledTooltip ? "" : title)}
+          ?disabled=${this.disabled && !disabledTooltip && !disabledTitle}
           @mouseenter=${() => this.dispatchInsertionHover(true, "pointer")}
           @mouseleave=${() => this.dispatchInsertionHover(false, "pointer")}
           @focus=${() => { this.showDetails(); this.dispatchInsertionHover(true, "focus") }}
@@ -1609,42 +1770,51 @@ export class RibbonButton extends LitElement {
           @mouseenter=${this.cancelDetailsHide} @mouseleave=${this.leaveDetails}>${disabledTooltip}</aside>
       ` : this.details ? html`
         <aside
-          class=${this.variant === "package" ? "details package-details" : "details"}
+          class=${this.variant === "package" ? `details package-details${showDetailsPreview ? " with-preview" : ""}` : "details"}
           role="tooltip"
           popover="manual"
           @mouseenter=${this.cancelDetailsHide}
           @mouseleave=${this.leaveDetails}
         >
-          <div class="details-heading">
-            ${this.variant === "package" && this.detailsOpen ? keyed(this.iconUrl, html`
-              <span class=${`button-icon details-heading-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
-                ${ribbonIcon(this.icon || "Packages")}
-                ${this.renderIconImage()}
-              </span>
-            `) : nothing}
-            <div>
-              <h3>${this.details.heading}</h3>
-              ${this.details.subheading ? html`<div class="details-subheading">${this.details.subheading}</div>` : ""}
-              ${this.details.authors?.length ? html`
-                <div class="details-authors" title=${this.details.authors.join(", ")}>By ${this.details.authors.join(", ")}</div>
+          <div class="details-layout">
+            <div class="details-copy">
+              <div class="details-heading">
+                ${this.variant === "package" && this.detailsOpen ? keyed(this.iconUrl, html`
+                  <span class=${`button-icon details-heading-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
+                    ${ribbonIcon(this.icon || "Packages")}
+                    ${this.renderIconImage()}
+                  </span>
+                `) : nothing}
+                <div>
+                  <h3>${this.details.heading}</h3>
+                  ${this.details.subheading ? html`<div class="details-subheading">${this.details.subheading}</div>` : ""}
+                  ${this.details.authors?.length ? html`
+                    <div class="details-authors" title=${this.details.authors.join(", ")}>By ${this.details.authors.join(", ")}</div>
+                  ` : ""}
+                </div>
+              </div>
+              ${this.details.description ? html`<p class="details-description">${this.details.description}</p>` : ""}
+              ${this.details.fields?.length ? html`<dl>${this.details.fields.map(field => html`<dt>${field.label}</dt><dd>${field.value}</dd>`)}</dl>` : ""}
+              ${this.details.keywords?.length ? html`
+                <div class="details-keywords">
+                  ${this.details.keywords.map(keyword => html`
+                    <span class="details-keyword" data-kind=${keyword.kind} title=${keyword.description ?? nothing}>
+                      ${keyword.icon ? html`<span class="details-keyword-icon" aria-hidden="true">${ribbonIcon(keyword.icon)}</span>` : ""}
+                      ${keyword.label ? html`<span>${keyword.label}</span>` : nothing}
+                      ${keyword.additionalLanguages?.length ? html`
+                        <span title=${keyword.additionalLanguages.join(", ")}>+${keyword.additionalLanguages.length}</span>
+                      ` : nothing}
+                    </span>
+                  `)}
+                </div>
               ` : ""}
             </div>
+            ${showDetailsPreview ? html`
+              <div class=${this.detailsPreviewLoading ? "details-preview icon-loading" : "details-preview"} aria-hidden="true">
+                ${this.detailsPreview?.element ?? nothing}
+              </div>
+            ` : nothing}
           </div>
-          ${this.details.description ? html`<p class="details-description">${this.details.description}</p>` : ""}
-          ${this.details.fields?.length ? html`<dl>${this.details.fields.map(field => html`<dt>${field.label}</dt><dd>${field.value}</dd>`)}</dl>` : ""}
-          ${this.details.keywords?.length ? html`
-            <div class="details-keywords">
-              ${this.details.keywords.map(keyword => html`
-                <span class="details-keyword" data-kind=${keyword.kind} title=${keyword.description ?? nothing}>
-                  ${keyword.icon ? html`<span class="details-keyword-icon" aria-hidden="true">${ribbonIcon(keyword.icon)}</span>` : ""}
-                  ${keyword.label ? html`<span>${keyword.label}</span>` : nothing}
-                  ${keyword.additionalLanguages?.length ? html`
-                    <span title=${keyword.additionalLanguages.join(", ")}>+${keyword.additionalLanguages.length}</span>
-                  ` : nothing}
-                </span>
-              `)}
-            </div>
-          ` : ""}
         </aside>
       ` : ""}
     `

@@ -22,6 +22,19 @@ const previewOptions = (changes: Partial<PreviewFrameOptions> = {}): PreviewFram
 })
 const parse = (source: string) => new DOMParser().parseFromString(source, "text/html")
 
+it.each([null, '<script id="webwriter-package-importmap" type="importmap">{"imports":{"saved":"./saved.js"}}</script><p>Content</p>'])
+  ("writes a trusted package import map before editor modules (%s)", source => {
+    const importMap = {imports: {widget: "https://cdn.example/widget.js"}}
+    const root = parse(editorFrameHTML(source, editorOptions({importMap})))
+    const scripts = [...root.querySelectorAll('script[type="importmap"]')]
+    expect(scripts).toHaveLength(1)
+    expect(scripts[0].id).toBe(packageImportMapId)
+    expect(scripts[0].getAttribute("nonce")).toBe(editorOptions().bridgeNonce)
+    expect(JSON.parse(scripts[0].textContent!)).toEqual(importMap)
+    expect(scripts[0].previousElementSibling?.matches('meta[http-equiv="Content-Security-Policy"]')).toBe(true)
+    expect(scripts[0].compareDocumentPosition(root.querySelector('script[type="module"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+  })
+
 it("upgrades a stock legacy theme in editing and preview while preserving custom styles", () => {
   const legacyCSS = parse(legacyLayoutExample).head.querySelector('style[data-ww-theme="base"]')!.textContent!
   expect(legacyCSS).not.toContain(".ww-full-width")

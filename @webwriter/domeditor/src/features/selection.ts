@@ -3213,6 +3213,9 @@ export class SelectionFeature extends EditorFeature {
     const margin = 1.25 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16)
     const focusElement = selection.focusNode instanceof Element
       ? selection.focusNode : selection.focusNode.parentElement ?? document.body
+    const slides = this.editor.features.slides
+    const slide = slides.active ? slides.containingSlide(selection.focusNode) : null
+    const slideViewport = slide?.parentElement
     const behavior = uiMotionDisabled(focusElement) ? "instant" : "smooth"
     let predicted = {
       left: rect.left,
@@ -3240,7 +3243,12 @@ export class SelectionFeature extends EditorFeature {
       left = nextScrollLeft - target.scrollLeft
       top = Math.max(-target.scrollTop, Math.min(top, maxTop - target.scrollTop))
       if(!left && !top) return
-      target.scrollBy({left, top, behavior})
+      if(target === slideViewport) {
+        // A directional scrollBy can skip the current mandatory snap point
+        // even when revealing the caret requires only a pixel of movement.
+        target.scrollTo({left: nextScrollLeft, top: target.scrollTop + top, behavior})
+      }
+      else target.scrollBy({left, top, behavior})
       predicted = {
         left: predicted.left - left,
         right: predicted.right - left,
@@ -3262,14 +3270,23 @@ export class SelectionFeature extends EditorFeature {
         const viewport = ancestor.getBoundingClientRect()
         const visibleLeft = viewport.left + ancestor.clientLeft
         const visibleTop = viewport.top + ancestor.clientTop
-        const left = canScrollX
+        let left = canScrollX
           ? nearestDelta(predicted.left, predicted.right, visibleLeft, visibleLeft + ancestor.clientWidth)
           : 0
         const top = canScrollY
           ? nearestDelta(predicted.top, predicted.bottom, visibleTop, visibleTop + ancestor.clientHeight)
           : 0
+        if(left && slide && ancestor === slideViewport) {
+          // Content can extend beyond the slide in editing mode. Keep its
+          // reveal within the containing slide, including when zoomed in.
+          const bounds = slide.getBoundingClientRect()
+          const start = bounds.left - visibleLeft
+          const end = bounds.right - visibleLeft - ancestor.clientWidth
+          left = start <= end ? Math.max(start, Math.min(end, left)) : (start + end) / 2
+        }
         scroll(ancestor, left, top)
       }
+      if(ancestor === slideViewport) return
       ancestor = ancestor.parentElement
     }
 

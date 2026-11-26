@@ -850,6 +850,43 @@ describe("canvas document layout", () => {
     editor.doc.redo(); expect(editor.toHTML(true)).toBe(after)
   })
 
+  it.each((["canvas", "slides"] as const).flatMap(mode => [
+    {mode, html: '<details open><summary>Title</summary><!--keep--><p>Body</p></details>', target: "details"},
+    {mode, html: '<table><tbody><tr><td><!--keep--><p>Body</p></td></tr></tbody></table>', target: "td"},
+    {mode, html: '<nested-panel><!--keep--><nested-field slot="body"><p>Body</p></nested-field></nested-panel>', target: "nested-field"},
+  ]))("keeps clicked element and snippet insertion in $target in $mode", ({mode, html, target}) => {
+    editor.schema.extendWidgets([
+      {tagName: "nested-panel", editingConfig: {content: "nested-field"}},
+      {tagName: "nested-field", editingConfig: {group: "", content: "flow*"}},
+    ])
+    document.body.innerHTML = html
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    const root = mode === "canvas" ? document.body : document.querySelector(".ww-slide")!
+    const items = Array.from(root.children)
+    const field = root.querySelector(target)!
+    const paragraph = field.querySelector("p")!
+    $.move(paragraph.firstChild!, 4)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "hr"})
+    const rule = field.querySelector<HTMLElement>(":scope > hr")
+    expect(rule?.style.position).toBe("")
+    expect(Array.from(root.children)).toEqual(items)
+    expect(root.innerHTML).toContain("<!--keep-->")
+    expect(field.textContent).toContain("Body")
+
+    if(target === "details") $.move(field, field.childNodes.length)
+    else $.move(field.querySelector("p")!.firstChild!, 4)
+    editor.features.manipulation.actions.insert({type: "insert", html: '<blockquote>Quote</blockquote>'})
+    const quote = field.querySelector<HTMLElement>(":scope > blockquote")
+    expect(quote?.style.position).toBe("")
+    expect(Array.from(root.children)).toEqual(items)
+    if(target === "nested-field") {
+      $.selectElement(field)
+      editor.features.manipulation.actions.insert({type: "insert", html: '<blockquote>Invalid replacement</blockquote>'})
+      expect(field.isConnected).toBe(true)
+      expect(root.textContent).not.toContain("Invalid replacement")
+    }
+  })
+
   it("only creates a paragraph when a double click is outside existing canvas items", () => {
     document.body.innerHTML = "<section><p>Existing text</p></section><custom-widget></custom-widget>"
     editor.doc.syncFromDOM()

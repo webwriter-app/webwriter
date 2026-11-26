@@ -798,6 +798,8 @@ export class RibbonDrawer extends LitElement {
       height: 100%;
       object-fit: contain;
     }
+    .summary-icon[data-package-icon] > :is(.image-icon, svg),
+    .summary-icon[data-package-icon] > .icon-composite > :is(.image-icon, svg) { filter: grayscale(1); }
 
     .icon-composite {position: relative; display: block; width: 100%; height: 100%;}
     .icon-badge {position: absolute; top: -0.25rem; right: -0.25rem; display: block; width: 55%; height: 55%; padding: 0.5px; border: 1.5px solid var(--ribbon-drawer-icon-background, #fff); border-radius: 50%; background: var(--ribbon-drawer-icon-background, #fff);}
@@ -1594,6 +1596,7 @@ export class RibbonDrawer extends LitElement {
       : this.iconPath ? html`<svg viewBox="-10 -10 120 120" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round"><path d=${this.iconPath}></path></svg>`
         : ribbonIcon(this.icon || this.label)
     const icon = this.iconBadge ? html`<span class="icon-composite">${baseIcon}<span class="icon-badge">${ribbonIcon(this.iconBadge)}</span></span>` : baseIcon
+    const packageIcon = this.icon === "Packages" || Boolean(this.iconUrl)
     const elementCount = this.elementCount > 1 ? html`<span class="element-count" aria-label=${`${this.elementCount} elements`}>${this.elementCount}</span>` : ""
     const toggleUnavailable = (!this.collapsed && !this.expandable)
       || (this.layout === "elements" && !this.collapsed && !this.drawerOpen)
@@ -1627,7 +1630,7 @@ export class RibbonDrawer extends LitElement {
         @transitionend=${this.handleDrawerTransitionEnd}
       >
         <div class="summary">
-          <span class="summary-icon" aria-hidden="true">${icon}</span>
+          <span class="summary-icon" ?data-package-icon=${packageIcon} aria-hidden="true">${icon}</span>
           <span class="summary-label">${this.label}${elementCount}</span>
         </div>
        <span class="pane-label">
@@ -1635,9 +1638,9 @@ export class RibbonDrawer extends LitElement {
            ${this.selectableHeading ? html`<button type="button" class="pane-label-button"
              @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
              @click=${() => this.dispatchEvent(new CustomEvent("drawer-heading-select", {bubbles: true, composed: true}))}>
-             ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
+             ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" ?data-package-icon=${packageIcon} aria-hidden="true">${icon}</span>` : ""}
              <span class="pane-label-text">${this.label}${elementCount}</span></button>` : html`
-             ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
+             ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" ?data-package-icon=${packageIcon} aria-hidden="true">${icon}</span>` : ""}
              ${this.label}${elementCount}`}
          </slot>
          <slot name="heading-control"></slot>

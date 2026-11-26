@@ -100,8 +100,8 @@ export class InsertionMenu extends LitElement {
       width: 100%;
       height: 100%;
       object-fit: contain;
-      filter: grayscale(1);
     }
+    .item-icon[data-package-icon] { filter: grayscale(1); }
 
     .item-text { min-width: 0; }
     .item-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -287,7 +287,7 @@ export class InsertionMenu extends LitElement {
   }
 
   private renderItemIcon(item: InsertionMenuItem) {
-    return html`<span class="item-icon" aria-hidden="true">
+    return html`<span class="item-icon" ?data-package-icon=${item.section === "Packages" || Boolean(item.iconUrl)} aria-hidden="true">
       ${item.iconUrl ? html`<img src=${item.iconUrl} alt="" />` : ribbonIcon(item.section === "Packages" ? "Packages" : item.icon ?? item.name)}
     </span>`
   }

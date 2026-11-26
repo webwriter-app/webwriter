@@ -797,6 +797,7 @@ afterEach(async() => {
 beforeEach(() => {
   vi.spyOn(WebWriterPackageRegistry.prototype, "search").mockResolvedValue([])
   vi.spyOn(WebWriterPackageRegistry.prototype, "latestCompatibleVersion").mockImplementation(async (_name, version) => version)
+  vi.spyOn(WebWriterPackageRegistry.prototype, "publishedPackageManifest").mockImplementation(async (name, version) => ({name, version, deprecated: undefined}))
   // Bridge messages in these component tests are dispatched directly instead
   // of crossing the iframe's postMessage implementation. Add the same
   // per-editor nonce that production messages carry so tests exercise the
@@ -820,22 +821,22 @@ describe("DomEditor document loading", () => {
   it("opens a curated example as an editable local copy and rejects unknown examples", async () => {
     const {editor} = await mountEditor()
     const host = editor as any
-    history.replaceState(null, "", "/editor/?example=binary")
+    history.replaceState(null, "", "/editor/?example=heartburn")
     vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockImplementation(async ({name, version}) => {
-      const tagName = name === "@webwriter/code" ? "webwriter-code-javascript" : "webwriter-quiz"
-      const script = `https://cdn.jsdelivr.net/npm/${name}@${version}/dist/widgets/${name === "@webwriter/code" ? "ww-code-javascript" : tagName}.js`
+      const tagName = name === "@webwriter/chemlab" ? "webwriter-chemlab" : "webwriter-quiz"
+      const script = `https://cdn.jsdelivr.net/npm/${name}@${version}/dist/widgets/${tagName}.js`
       return {...demoPackage, name, version, scripts: [script], members: [{...demoPackage.members[0], tagName, scriptUrl: script}]}
     })
     const reload = vi.spyOn(host, "reloadDocument")
     vi.spyOn(host, "waitForEditorWindow").mockResolvedValue(undefined)
     vi.spyOn(host, "focusEditor").mockImplementation(() => {})
-    await host.restoreExampleDocument("binary", Promise.resolve())
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<webwriter-code-javascript"), false, null, false,
+    await host.restoreExampleDocument("heartburn", Promise.resolve())
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<webwriter-chemlab"), false, null, false,
       {beforeSwitch: expect.any(Function)})
     expect(host.frameDocumentHTML).toContain('data-ww-theme="base"')
-    expect(host.frameDocumentHTML).not.toContain('src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"')
-    expect(host.installedPackages.map((pkg: WebWriterPackage) => pkg.name)).toEqual(["@webwriter/code"])
-    expect(host.fileName).toBe("Count like a computer")
+    expect(host.frameDocumentHTML).not.toContain('src="https://cdn.jsdelivr.net/npm/@webwriter/chemlab@2.0.0/dist/widgets/webwriter-chemlab.js"')
+    expect(host.installedPackages.map((pkg: WebWriterPackage) => pkg.name)).toEqual(["@webwriter/chemlab"])
+    expect(host.fileName).toBe("Can water ease heartburn?")
     expect(host.fileHandle).toBeNull()
     expect(host.backendDocumentId).toBeNull()
     const error = vi.spyOn(host, "reportFileError").mockImplementation(() => {})
@@ -849,12 +850,12 @@ describe("DomEditor document loading", () => {
   it("discards a curated example when the user leaves its link during startup", async () => {
     const {editor} = await mountEditor()
     const host = editor as any
-    history.replaceState(null, "", "/editor/?example=binary")
+    history.replaceState(null, "", "/editor/?example=heartburn")
     vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
     const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
     let ready!: () => void
     const startup = new Promise<void>(resolve => {ready = resolve})
-    const opening = host.restoreExampleDocument("binary", startup)
+    const opening = host.restoreExampleDocument("heartburn", startup)
     history.replaceState(null, "", "/editor/")
     ready()
     await opening
@@ -862,19 +863,18 @@ describe("DomEditor document loading", () => {
     expect(host.linkedDocumentLoading).toBe(false)
   })
 
-  it.each(["canvas", "slides", "board"])("opens a curated example in its linked %s layout", async layout => {
+  it.each(["canvas", "slides", "board"])("keeps a curated example's authored layout for an older %s link", async layout => {
     const {editor} = await mountEditor()
     const host = editor as any
-    history.replaceState(null, "", `/editor/?example=binary&layout=${layout}`)
+    history.replaceState(null, "", `/editor/?example=food-chains&layout=${layout}`)
     vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
     const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
     vi.spyOn(host, "focusEditor").mockImplementation(() => {})
-    await host.restoreExampleDocument("binary", Promise.resolve())
+    await host.restoreExampleDocument("food-chains", Promise.resolve())
     expect(reload).toHaveBeenCalledOnce()
     const source = new DOMParser().parseFromString(reload.mock.calls[0][0] as string, "text/html")
-    expect(source.body.className).toBe(`ww-${layout}`)
-    expect(source.querySelector("webwriter-code-javascript")).not.toBeNull()
-    expect(host.downloadedFileName).toBe(`binary-${layout}.html`)
+    expect(source.body.className).toBe("ww-canvas")
+    expect(source.querySelector("webwriter-advance-organizer")).not.toBeNull()
     host.updateDocumentURL(null)
     expect(new URL(location.href).searchParams.has("layout")).toBe(false)
   })
@@ -1110,23 +1110,40 @@ describe("DomEditor document loading", () => {
     expect(host.fileDirty).toBe(false)
   })
 
-  it("retains the current document when a required widget package cannot be installed", async () => {
+  it("opens the file without unsupported widgets when Open anyway is confirmed", async () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
     const body = iframe.contentDocument!.body.innerHTML
-    const source = `<script type="module" src="${demoPackage.scripts[0]}"></script><webwriter-demo></webwriter-demo>`
+    const source = `<script type="module" src="${demoPackage.scripts[0]}"></script><webwriter-demo>
+      <script type="application/json" slot="data">{"discard":true}</script><p>Keep this content</p>
+    </webwriter-demo>`
     const file = new File([source], "lesson.html")
     vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{name: file.name, getFile: async() => file}]))
+    vi.spyOn(host, "rememberOpenedDocument").mockResolvedValue({id: "lesson", kind: "local"})
     vi.spyOn(host.packageRegistry, "getPackage").mockRejectedValue(new Error("Widget package unavailable"))
-    vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.spyOn(host, "postToEditor").mockImplementation(() => {})
+    const dialog = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!.shadowRoot!
+      .querySelector<HTMLDialogElement>("#unsupported-widget-packages-dialog")!
 
-    await host.openDocument()
-    await editor.updateComplete
-    expect(host.fileError).toBe("Widget package unavailable")
+    const opening = host.openDocument()
+    await vi.waitFor(() => expect(dialog.open).toBe(true))
     expect(host.frameRevision).toBe(0)
     expect(iframe.contentDocument!.body.innerHTML).toBe(body)
+    dialog.querySelector<HTMLButtonElement>("button.primary")!.click()
+    await vi.waitFor(() => expect(host.frameRevision).toBe(1))
+    await editor.updateComplete
+    editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!.dispatchEvent(new Event("load"))
+    await vi.waitFor(() => expect(host.packageLoadPromise).not.toBeNull())
+    completePendingPackageLoad(editor)
+    await opening
+    await editor.updateComplete
+
+    expect(host.fileError).toBe("")
+    expect(host.fileName).toBe("lesson")
     expect(host.installedPackages).toEqual([])
-    expect(iframe.classList.contains("loading")).toBe(false)
+    expect(host.frameDocumentHTML).toContain("<p>Keep this content</p>")
+    expect(host.frameDocumentHTML).not.toContain("<webwriter-demo")
+    expect(host.frameDocumentHTML).not.toContain('"discard"')
     expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
   })
 
@@ -2990,7 +3007,7 @@ describe("DomEditor iframe setup", () => {
   })
 
   it("focuses the AI bar and opens numbered toolboxes with the configured shortcuts", async () => {
-    const {editor, iframe} = await mountEditor()
+    const {editor, iframe} = await mountEditor(editor => Object.assign(editor, {backendState: "connected"}))
     const focus = vi.spyOn(HTMLElement.prototype, "focus")
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
@@ -3212,7 +3229,7 @@ describe("DomEditor iframe setup", () => {
   })
 
   it("keeps the AI toolbox open when the editor receives a pointer", async () => {
-    const {editor, iframe} = await mountEditor()
+    const {editor, iframe} = await mountEditor(editor => Object.assign(editor, {backendState: "connected"}))
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
 
@@ -3423,21 +3440,37 @@ describe("DomEditor iframe setup", () => {
     expect(disconnect).not.toHaveBeenCalled()
   })
 
-  it("keeps the current document open and explains how to load a missing widget package", async () => {
+  it.each([
+    ["missing", undefined],
+    ["deprecated", "Use a supported widget instead."],
+  ])("keeps the current document open and warns about a %s widget package", async (status, deprecation) => {
     const {editor} = await mountEditor()
     const host = editor as any
     host.fileName = "Current"
-    const html = `<script type="module" data-webwriter-original-package-entries='["https://cdn.jsdelivr.net/npm/@webwriter/unpublished@2.0.0/dist/widget.js"]'></script><p>Incoming</p>`
+    const release = `@webwriter/${status}@2.0.0`
+    const html = `<script type="module" data-webwriter-original-package-entries='["https://cdn.jsdelivr.net/npm/${release}/dist/widget.js"]'></script><p>Incoming</p>`
     const handle = {name: "incoming.html", getFile: async () => new File([html], "incoming.html")}
     vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([handle]))
-    vi.spyOn(host.packageRegistry, "getPackage").mockRejectedValue(new Error("Package metadata failed (404)"))
+    vi.mocked(WebWriterPackageRegistry.prototype.publishedPackageManifest).mockResolvedValueOnce({
+      name: `@webwriter/${status}`, version: "2.0.0", deprecated: deprecation,
+    })
+    const getPackage = vi.spyOn(host.packageRegistry, "getPackage").mockRejectedValue(new Error("Package metadata failed (404)"))
     const disconnect = vi.spyOn(host, "clearDocumentCollaboration")
     const revision = host.frameRevision
 
-    await host.openDocument()
-
-    expect(host.fileError).toContain("@webwriter/unpublished@2.0.0")
-    expect(host.fileError).toContain("Add from local folder")
+    const opening = host.openDocument()
+    const dialog = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!.shadowRoot!
+      .querySelector<HTMLDialogElement>("#unsupported-widget-packages-dialog")!
+    await vi.waitFor(() => expect(dialog.open).toBe(true))
+    expect(dialog.textContent).toContain(release)
+    if(deprecation) {
+      expect(dialog.textContent).toContain(`is deprecated. ${deprecation}`)
+      expect(getPackage).not.toHaveBeenCalled()
+    }
+    dialog.querySelector<HTMLButtonElement>("footer button")!.click()
+    await opening
+    expect(dialog.open).toBe(false)
+    expect(host.fileError).toBe("")
     expect(host.fileName).toBe("Current")
     expect(host.frameRevision).toBe(revision)
     expect(disconnect).not.toHaveBeenCalled()
@@ -8719,6 +8752,8 @@ describe("DomEditor.execute()", () => {
     const controls = editor.shadowRoot!.querySelector<LiveSessionControls>("live-session-controls")!
     const share = () => ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Learners"] ribbon-button[label="QR"]')!
     const toggle = () => ribbon.shadowRoot!.querySelector<HTMLInputElement>('input[role="switch"][aria-label="Share"]')!
+    const toggleRecording = (enabled: boolean) => (editor as any).toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled}}))
+    expect(toggle().disabled).toBe(true)
     expect(share().disabled).toBe(true)
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"] ribbon-button[label="Download"]')).not.toBeNull()
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"] ribbon-button[label="Print"]')).not.toBeNull()
@@ -8736,7 +8771,7 @@ describe("DomEditor.execute()", () => {
       await editor.updateComplete
       expect(controls.currentTime).toBe(2.5)
       expect(controls.duration).toBe(2.5)
-      toggle().click()
+      await toggleRecording(true)
       await editor.updateComplete
       await ribbon.updateComplete
       expect(share().disabled).toBe(true)
@@ -8748,7 +8783,7 @@ describe("DomEditor.execute()", () => {
       await vi.advanceTimersByTimeAsync(1500)
       await editor.updateComplete
       expect(controls.currentTime).toBe(1.5)
-      toggle().click()
+      const stopping = toggleRecording(false)
       await editor.updateComplete
       await ribbon.updateComplete
       const stopDialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#live-session-stop-dialog")!
@@ -8756,6 +8791,7 @@ describe("DomEditor.execute()", () => {
       expect(session.status).toBe("connected")
       stopDialog.querySelector<HTMLButtonElement>(".primary")!.click()
       await vi.advanceTimersByTimeAsync(0)
+      await stopping
       await editor.updateComplete
       await ribbon.updateComplete
       expect(session.status).toBe("stopped")
@@ -8771,7 +8807,7 @@ describe("DomEditor.execute()", () => {
   })
 
   it.each(["share", "preview", "return to editing", "file", "compact file", "new shortcut"])("requires confirmation to stop a live session through %s", async action => {
-    const {editor} = await mountEditor()
+    const {editor} = await mountEditor(editor => Object.assign(editor, {backendState: "connected"}))
     const host = editor as any
     await host.enterPreview()
     await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
@@ -11415,7 +11451,7 @@ describe("DomEditor.execute()", () => {
   })
 
   it("hides the AI bar, tab, and open sidebar when AI is disabled in settings", async () => {
-    const {editor} = await mountEditor()
+    const {editor} = await mountEditor(editor => Object.assign(editor, {backendState: "connected"}))
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     await ribbon.updateComplete
@@ -11454,7 +11490,7 @@ describe("DomEditor.execute()", () => {
   })
 
   it("opens AI in the toolbox or a closable sidebar and synchronizes the prompt", async () => {
-    const {editor} = await mountEditor()
+    const {editor} = await mountEditor(editor => Object.assign(editor, {backendState: "connected"}))
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     await toolbox.updateComplete
@@ -12724,6 +12760,78 @@ describe("cloud service settings integration", () => {
     adminUrl: "https://cloud.example/admin", capabilities: ["documents"], user: {id: "ada", name: "Ada"},
   }
   const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), {status, headers: {"Content-Type": "application/json"}})
+
+  it("gates AI, collaboration and preview sharing on the connection, while keeping local export available", async () => {
+    vi.stubGlobal("fetch", vi.fn(async(url: string) => response(String(url).endsWith("/session") ? session : {documents: []})))
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const root = ribbon.shadowRoot!
+    const collaboration = root.querySelector<RibbonButton>(".file-share-action")!
+    const chat = root.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
+    const prompt = root.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+    const aiTab = () => toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="AI"]')!
+    const providers = () => root.querySelector("ai-settings-dialog")!.shadowRoot!.querySelector<HTMLElement>(".provider-cards")!
+
+    await collaboration.updateComplete
+    const collaborationTrigger = collaboration.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    for(const control of [chat, aiTab(), collaborationTrigger]) {
+      expect(control.getAttribute("aria-disabled")).toBe("true")
+      expect(control.title).toContain("Connect to a cloud service")
+      control.click()
+    }
+    expect(ribbon.aiChatOpen).toBe(false)
+    expect(toolbox.activeTool).toBeNull()
+    expect(collaborationTrigger.getAttribute("aria-expanded")).toBe("false")
+    expect(prompt.disabled).toBe(true)
+
+    host.backendState = "unavailable"
+    await editor.updateComplete
+    await ribbon.updateComplete
+    root.querySelector<RibbonTab>('ribbon-tab[label="File"]')!.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    await ribbon.updateComplete
+    const fileMenu = root.querySelector<RibbonMenu>("#ribbon-file-menu")!
+    await fileMenu.updateComplete
+    fileMenu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Settings"]')!.click()
+    await ribbon.updateComplete
+    root.querySelector<HTMLButtonElement>("#settings-tab-cloud")!.click()
+    await vi.waitFor(() => expect(providers().querySelector("[inert]")).not.toBeNull())
+    expect(providers().title).toContain("Connect to a cloud service")
+
+    host.settings = {...defaultAppSettings(), cloudServices: [service], activeCloudServiceId: service.id, cloudServicesConfigured: true}
+    await host.loginToBackend()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    expect(providers().querySelector("[inert]")).toBeNull()
+    expect(aiTab().hasAttribute("aria-disabled")).toBe(false)
+    expect(prompt.disabled).toBe(false)
+    expect(collaboration.disabled).toBe(false)
+    root.querySelector<HTMLButtonElement>(".settings-close-button")!.click()
+
+    aiTab().click()
+    await vi.waitFor(() => expect(ribbon.aiChatOpen).toBe(true))
+    host.handleAppSettingsChange(new CustomEvent("app-settings-change", {detail: {...host.settings, activeCloudServiceId: null}}))
+    await vi.waitFor(() => expect(host.backendState).toBe("unavailable"))
+    expect(ribbon.aiChatOpen).toBe(false)
+    expect(aiTab().getAttribute("aria-disabled")).toBe("true")
+
+    await host.enterPreview()
+    await ribbon.updateComplete
+    const share = root.querySelector<HTMLInputElement>(".live-session-switch input")!
+    expect(share.disabled).toBe(true)
+    expect(share.closest("label")?.title).toContain("Connect to a cloud service")
+    share.click()
+    expect(host.liveSession).toBeNull()
+    for(const [label, method] of [["Download", "downloadDocument"], ["Print", "printDocument"]]) {
+      const action = root.querySelector<RibbonButton>(`ribbon-drawer[layout="sharing-preview"] ribbon-button[label="${label}"]`)!
+      expect(action.disabled).toBe(false)
+      const invoke = vi.spyOn(host, method).mockImplementation(() => {})
+      await action.updateComplete
+      action.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+      expect(invoke).toHaveBeenCalledOnce()
+    }
+  })
 
   it.each([false, true])("disconnects the document provider when changing services or selecting Local (opaque: %s)", async opaque => {
     const {editor, iframe} = await mountEditor()

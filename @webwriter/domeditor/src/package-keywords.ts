@@ -188,14 +188,16 @@ export function packageKeywordPresentations(
   const levelCodes = ["1", "2-4", "5-8"].every(level => levels.has(level)) ? ["all"] : [...levels].sort()
   const online = onlineKeywords.find(keyword => normalizedKeywords.has(keyword))
   const badges = [...types]
+  for(const code of fieldCodes) badges.push({kind: "field", ...educationFields[code]})
+  for(const level of levelCodes) badges.push({kind: "level", ...educationLevels[level]})
   if(languages.length || additionalLanguages.length) {
     badges.push({kind: "language", label: languages.join(", "), icon: widgetBadges[languagePrefix].icon, additionalLanguages})
   }
-  for(const code of fieldCodes) badges.push({kind: "field", ...educationFields[code]})
   if(online) {
     const {kind, label, icon} = widgetBadges[online]
     badges.push({kind, label, icon})
   }
-  for(const level of levelCodes) badges.push({kind: "level", ...educationLevels[level]})
-  return badges.concat(features, missingPackageCapabilityBadges(normalizedKeywords), custom)
+  const display = features.filter(badge => badge.kind === "display").sort((a, b) => a.label.localeCompare(b.label, "en"))
+  const otherFeatures = features.filter(badge => badge.kind !== "display")
+  return badges.concat(display, otherFeatures, missingPackageCapabilityBadges(normalizedKeywords), custom)
 }

@@ -25,7 +25,7 @@ import type {FloatInfo} from "./float-info"
 import type {DOMEditor} from "../domeditor"
 import type {LiveWidgetAggregateInput} from "../widget-aggregate"
 import type {LiveWidgetAggregateOptions} from "../widget-aggregate-view"
-import {cloudServiceExpired, tokenExpiresAt, type CloudService} from "../cloud-services"
+import {cloudConnectionRequired, cloudServiceExpired, tokenExpiresAt, type CloudService} from "../cloud-services"
 import {appIconUrl, ribbonIcon} from "../ribbon-icons"
 import {themeAccentColumn, themeAccentProperties} from "../css-color"
 import {documentThemeProperties, type SavedDocumentTheme} from "../document-theme-options"
@@ -192,7 +192,7 @@ import "./live-session-controls"
 import "./live-session-overlay"
 import {escapeHTMLAttribute, serializeDoctype} from "../serialization"
 import {bundleLocalPreviewPackages, editorFrameHTML, previewFrameHTML} from "../frame-document"
-import {isPackageImportMap, loadDocumentPackages, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
+import {isPackageImportMap, loadDocumentPackages, packageImportMapId, packageModuleEntries, resolvePackageDependencies, UnavailableDocumentPackagesError} from "../package-dependencies"
 import type {IImportMap} from "@jspm/import-map"
 import {applyPreviewWidgetSnapshot, LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
 import {editorFrameOrigin} from "../frame-origins"
@@ -547,6 +547,7 @@ export class DomEditor extends LitElement {
   private editorFrameStartupError: {revision: number, message: string} | null = null
   private editorShellRevision = -1
   private editorShellInstanceId: string | null = null
+  private editorFramePackageMapError: {error: unknown} | null = null
   private editorInitializedRevision = -1
   private previewShellInstanceId: string | null = null
   private readonly registeredWidgetTags = new Set<string>()
@@ -1578,15 +1579,45 @@ export class DomEditor extends LitElement {
     return this.editorSrcdocFromHTML(this.frameDocumentHTML)
   }
 
-  private editorSrcdocFromHTML(documentHTML: string | null) {
+  private editorSrcdocFromHTML(documentHTML: string | null, importMap?: IImportMap | null) {
     return editorFrameHTML(documentHTML, {
       bridgeNonce: this.bridgeNonce,
       revision: this.frameRevision,
       language: this.settings.language,
       packages: this.installedPackages,
+      importMap,
       hostOrigin: window.location.origin,
       entryURL: editorEntryUrl,
       executeScripts: import.meta.env.MODE !== "test",
+    })
+  }
+
+  private sendEditorFrameDocument(frame: HTMLIFrameElement) {
+    const revision = this.frameRevision
+    const instanceId = this.editorShellInstanceId
+    const packages = this.installedPackages
+    const packageSetKey = this.packageSetKey(packages)
+    const hostOrigin = window.location.origin
+    const frameOrigin = editorFrameOrigin()
+    const isCurrent = () => this.isConnected && this.frameRevision === revision && this.editorShellInstanceId === instanceId
+      && this.editorIframe() === frame && this.installedPackages === packages
+    const send = (map: IImportMap | null) => frame.contentWindow?.postMessage({
+      type: "webwriter-frame-document",
+      html: this.editorSrcdocFromHTML(this.frameDocumentHTML, frameImportMap(map, hostOrigin, frameOrigin)),
+    }, frameOrigin)
+    if(!packageModuleEntries(packages).length) send(null)
+    else if(this.packageImportMap && this.packageImportMapPackageSetKey === packageSetKey) send(this.packageImportMap)
+    else void resolvePackageDependencies(packages, document.baseURI, this.packageImportMap ?? undefined).then(plan => {
+      if(!isCurrent()) return
+      this.packageImportMap = plan.map
+      this.packageImportMapPackageSetKey = packageSetKey
+      this.persistPackageImportMap()
+      send(plan.map)
+    }, error => {
+      if(!isCurrent()) return
+      // Keep the editor bridge available so package changes can be retried.
+      this.editorFramePackageMapError = {error}
+      send(null)
     })
   }
 
@@ -2652,7 +2683,12 @@ export class DomEditor extends LitElement {
         })
       })
       this.packageLoadPromise = packageLoad
-      if(packageModuleEntries(this.installedPackages).length) {
+      if(this.editorFramePackageMapError) {
+        const pending = this.pendingExecutions.get(packageLoadRequestId)!
+        this.pendingExecutions.delete(packageLoadRequestId)
+        pending.reject(this.editorFramePackageMapError.error)
+      }
+      else if(packageModuleEntries(this.installedPackages).length) {
         if(importMap && this.packageImportMapPackageSetKey === packageSetKey) {
           this.postToEditor({...loadMessage, requestId: packageLoadRequestId})
         }
@@ -4456,10 +4492,19 @@ export class DomEditor extends LitElement {
     const revision = this.documentChangeSequence
     const frameRevision = this.frameRevision
     const installed = this.installedPackages
-    const packages = await loadDocumentPackages(parsed, this.packageRegistry, installed, {forEditing: true})
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    let packages: WebWriterPackage[]
+    try {
+      packages = await loadDocumentPackages(parsed, this.packageRegistry, installed, {forEditing: true})
+    }
+    catch(error) {
+      if(!(error instanceof UnavailableDocumentPackagesError)) throw error
+      if(!await ribbon?.confirmOpenWithoutWidgets(error.warnings)) return false
+      packages = error.openWithoutWidgets()
+    }
     const changes = this.packageMajorChanges(installed, packages)
     if(changes.length && !await this.confirmPackageChanges(changes)) return false
-    await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
+    await ribbon?.cancelAIWork()
     if(!this.isConnected || revision !== this.documentChangeSequence || frameRevision !== this.frameRevision
       || installed !== this.installedPackages) {
       throw new Error("The document changed while loading its widgets. Open the file again.")
@@ -6361,6 +6406,7 @@ export class DomEditor extends LitElement {
     this.authoredSnapshotCache = null
     this.editorWindow = null
     this.packageLoadPromise = null
+    this.editorFramePackageMapError = null
     this.savedEditorSelection = null
     this.frameState = undefined
     this.invalidateDocumentTree()
@@ -8638,7 +8684,8 @@ export class DomEditor extends LitElement {
       const position = event.data.position as RibbonDropPosition | undefined
       if(!position || !position.anchor || typeof position.anchor !== "object"
         || !["document", "canvas", "slides"].includes(position.layout)
-        || position.layout !== "document" && (!Number.isFinite(position.x) || !Number.isFinite(position.y))) return
+        || position.nested !== undefined && (position.nested !== true || position.layout === "document")
+        || position.layout !== "document" && !position.nested && (!Number.isFinite(position.x) || !Number.isFinite(position.y))) return
       void this.insertRibbonDropAction(event.data.action, position)
       return
     }
@@ -8693,12 +8740,12 @@ export class DomEditor extends LitElement {
             this.resetEditorFrame()
             this.frameState = state
           }
-          frame.contentWindow?.postMessage({type: "webwriter-frame-document", html: this.editorSrcdoc}, editorFrameOrigin())
+          this.sendEditorFrameDocument(frame)
           return
         }
         if(this.editorShellRevision === this.frameRevision) return
         this.editorShellRevision = this.frameRevision
-        frame.contentWindow?.postMessage({type: "webwriter-frame-document", html: this.editorSrcdoc}, editorFrameOrigin())
+        this.sendEditorFrameDocument(frame)
       }
       else if(event.data.kind === "preview" && event.data.revision === String(this.previewFrameRevision)) {
         const frame = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")
@@ -9997,6 +10044,7 @@ export class DomEditor extends LitElement {
         @shape-paint-change=${this.handleShapePaintChange}
         .proofreadingState=${this.proofreadingState}
         .disableAI=${this.settings.disableAI}
+        .aiDisabledReason=${this.backendState === "connected" ? "" : cloudConnectionRequired}
         .settings=${this.settings}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
         .distributionGeneral=${this.distributionGeneral}

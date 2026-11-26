@@ -3,6 +3,7 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import {html} from "lit"
 import type {WebWriterPackage} from "../packages"
 import {packageCompatibleSnippets, packageMemberAction} from "../packages"
+import * as packagePreviews from "../package-preview"
 import {AppRibbon} from "./ribbon"
 import {RibbonButton} from "./ribbon-button"
 import {RibbonMenu} from "./ribbon-menu"
@@ -147,6 +148,7 @@ describe("package ribbon controls", () => {
     const image = button.shadowRoot!.querySelector<HTMLImageElement>(".main-button img")!
     expect(image.getAttribute("src")).toBe(pkg.iconUrl)
     expect(image.alt).toBe("")
+    expect(getComputedStyle(image.parentElement!).filter).toBe("grayscale(1)")
     expect(button.submenu).toEqual([
       expect.objectContaining({label: alternate.label, iconUrl: alternate.iconUrl}),
       expect.objectContaining({iconUrl: pkg.iconUrl}),
@@ -228,6 +230,8 @@ describe("package ribbon controls", () => {
     expect(practice.getAttribute("aria-expanded")).toBe("true")
     const leaves = [...menu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".submenu button.item")]
     expect(leaves.map(leaf => leaf.getAttribute("aria-label"))).toEqual([widget.label, snippet.label])
+    expect(leaves.map(leaf => getComputedStyle(leaf.querySelector(".item-icon")!).filter))
+      .toEqual(["grayscale(1)", "grayscale(1)"])
     expect(click).not.toHaveBeenCalled()
     leaves[0].dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowLeft", bubbles: true, cancelable: true}))
     await menu.updateComplete
@@ -1274,6 +1278,7 @@ describe("package ribbon controls", () => {
       "webwriter-widget", "widget-practical", "widget-lang-de-AT", "widget-lang-gd-GB", "widget-online-use",
       "isced2011-1", "isced2011-2", "isced2011-3", "iscedf2013-05", "iscedf2013-0612",
       "historical-map", "local-history", "teacher-made", "widget-themeable", "WIDGET-ALLOWS-KEYBOARD-INPUT",
+      "widget-responsive", "widget-printable",
       "widget-stateful", "widget-configurable", "widget-reactive", "widget-testable", "widget-supports-dynamic-loading",
       "widget-supports-shared-dependencies", "widget-standalone", "widget-has-content", "widget-migrates-from-1.0.0",
       "widget-convertible-to-image/png", "widget-convertible-from-.csv",
@@ -1306,6 +1311,7 @@ describe("package ribbon controls", () => {
     const icon = heading.querySelector(".details-heading-icon")!
     const image = icon.querySelector("img")!
     expect(image.getAttribute("src")).toBe(pkg.iconUrl)
+    expect(getComputedStyle(icon).filter).toBe("grayscale(1)")
     expect(heading.querySelector("h3")?.textContent).toBe("Details")
     expect(heading.querySelector(".details-subheading")?.textContent).toBe("@webwriter/details@1.0.0")
     expect(heading.querySelector(".details-authors")?.textContent).toBe("By Ada, Grace")
@@ -1314,25 +1320,27 @@ describe("package ribbon controls", () => {
     expect(icon.classList.contains("image-icon")).toBe(false)
     expect(icon.querySelector("img")).toBeNull()
     expect(icon.querySelector(".icon-tabler-package")).not.toBeNull()
+    expect(getComputedStyle(icon).filter).toBe("grayscale(1)")
     expect(details.textContent).toContain("Primary school")
     expect(details.textContent).toContain("Secondary ed.")
     expect(details.textContent).toContain("Natural sciences")
     expect(details.textContent).not.toContain("License")
     expect(details.textContent).not.toContain("Contents")
-    const themeBadge = details.querySelector('.details-keyword[data-kind="display"]')!
-    expect(themeBadge.textContent?.trim()).toBe("Themeable")
-    expect(themeBadge.querySelector(".icon-tabler-palette")).not.toBeNull()
     const badges = Array.from(details.querySelectorAll<HTMLElement>(".details-keyword"))
     expect(badges.map(badge => badge.dataset.kind)).toEqual([
-      "type", "language", "field", "field", "online", "level", "level", "display", "editing", "input", "input", "custom", "custom", "custom",
+      "type", "field", "field", "level", "level", "language", "online", "display", "display", "display",
+      "editing", "input", "input", "custom", "custom", "custom",
     ])
+    const displayBadges = badges.filter(badge => badge.dataset.kind === "display")
+    expect(displayBadges.map(badge => badge.textContent?.trim())).toEqual(["Printable", "Responsive", "Themeable"])
+    expect(displayBadges[2].querySelector(".icon-tabler-palette")).not.toBeNull()
     const limitations = badges.filter(badge => badge.matches('[data-kind="editing"], [data-kind="input"]'))
     expect(limitations.map(badge => badge.textContent?.trim())).toEqual(["Not editable", "No pointer input", "No touch input"])
     for(const [index, icon] of ["pencil-off", "mouse-off", "hand-click-off"].entries()) {
       expect(limitations[index].querySelector(`[aria-hidden="true"] .icon-tabler-${icon}`)).not.toBeNull()
     }
-    expect(badges[1].textContent).toContain("German")
-    const languageCount = badges[1].querySelector("span[title]")
+    expect(badges[5].textContent).toContain("German")
+    const languageCount = badges[5].querySelector("span[title]")
     expect(languageCount?.textContent).toBe("+1")
     expect(languageCount?.getAttribute("title")).toBe("Scottish Gaelic")
     expect(badges.at(-1)?.textContent?.trim()).toBe("teacher-made")
@@ -1449,6 +1457,162 @@ describe("package ribbon controls", () => {
       expect(vi.getTimerCount()).toBe(0)
     }
     finally {vi.useRealTimers()}
+  })
+
+  it("loads and reuses the preview for an uninstalled catalog package", async () => {
+    const ribbon = new AppRibbon()
+    const pkg = packageFixture("preview")
+    pkg.manifest = {name: pkg.name, version: pkg.version, exports: {
+      "./preview": "./still.webp",
+      "./preview/de": "./de.mp4",
+      "./preview/de-CH": "./de-CH.mp4",
+    }}
+    ribbon.interfaceLanguage = "de-CH"
+    ribbon.packages = [pkg]
+    const element = document.createElement("video")
+    const play = vi.spyOn(element, "play").mockResolvedValue()
+    const pause = vi.spyOn(element, "pause").mockImplementation(() => {})
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
+    type Preview = Awaited<ReturnType<typeof packagePreviews.loadPackagePreview>>
+    let resolve!: (preview: Preview) => void
+    const promise = new Promise<Preview>(done => { resolve = done })
+    const load = vi.spyOn(packagePreviews, "loadPackagePreview").mockReturnValueOnce(promise).mockResolvedValue(undefined)
+    vi.useFakeTimers()
+    try {
+      document.body.append(ribbon)
+      await ribbon.updateComplete
+      const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Preview"]')!
+      await button.updateComplete
+      expect(ribbon.installedPackages).toEqual([])
+      expect(button.active).toBe(false)
+      const popup = button.shadowRoot!.querySelector(".package-details")!
+      const row = button.shadowRoot!.querySelector(".button-row")!
+      expect(load).not.toHaveBeenCalled()
+      row.dispatchEvent(new MouseEvent("mouseenter"))
+      expect(load.mock.calls[0][0]).toEqual([
+        {kind: "video", url: "https://cdn.jsdelivr.net/npm/@webwriter/preview@1.0.0/de-CH.mp4"},
+        {kind: "video", url: "https://cdn.jsdelivr.net/npm/@webwriter/preview@1.0.0/de.mp4"},
+        {kind: "image", url: "https://cdn.jsdelivr.net/npm/@webwriter/preview@1.0.0/still.webp"},
+      ])
+      expect(button.hasAttribute("details-open")).toBe(false)
+      expect(popup.querySelector(".details-preview")).toBeNull()
+      await vi.advanceTimersByTimeAsync(500)
+      const preview = popup.querySelector(".details-preview.icon-loading")
+      expect(preview).not.toBeNull()
+      expect(popup.classList.contains("with-preview")).toBe(true)
+      expect(load).toHaveBeenCalledOnce()
+      expect(play).not.toHaveBeenCalled()
+      resolve({element, url: "blob:preview"})
+      await vi.advanceTimersByTimeAsync(0)
+      expect(popup.querySelector(".details-preview")).toBe(preview)
+      expect(popup.querySelector(".details-preview.icon-loading")).toBeNull()
+      expect(popup.querySelector(".details-preview video")).toBe(element)
+      expect(popup.querySelector(".details-copy")?.textContent).toContain("The preview package")
+      expect(play).toHaveBeenCalledOnce()
+
+      element.currentTime = 2
+      row.dispatchEvent(new MouseEvent("mouseleave"))
+      await vi.advanceTimersByTimeAsync(120)
+      expect(load.mock.calls[0][1].aborted).toBe(true)
+      expect(pause).toHaveBeenCalledOnce()
+      expect(element.currentTime).toBe(0)
+      expect(revoke).not.toHaveBeenCalledWith("blob:preview")
+      row.dispatchEvent(new MouseEvent("mouseenter"))
+      await vi.advanceTimersByTimeAsync(500)
+      expect(popup.querySelector(".details-preview video")).toBe(element)
+      expect(popup.querySelector(".details-preview.icon-loading")).toBeNull()
+      expect(load).toHaveBeenCalledOnce()
+      expect(play).toHaveBeenCalledTimes(2)
+
+      row.dispatchEvent(new MouseEvent("mouseleave"))
+      await vi.advanceTimersByTimeAsync(120)
+      pkg.manifest!.exports = {"./preview": "./unavailable.webp"}
+      ribbon.requestUpdate()
+      await ribbon.updateComplete
+      await button.updateComplete
+      row.dispatchEvent(new MouseEvent("mouseenter"))
+      await vi.advanceTimersByTimeAsync(500)
+      expect(load).toHaveBeenCalledTimes(2)
+      expect(button.hasAttribute("details-open")).toBe(true)
+      expect(popup.querySelector(".details-preview")).toBeNull()
+      expect(popup.classList.contains("with-preview")).toBe(false)
+    }
+    finally {
+      ribbon.remove()
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it("reuses a preview across button remounts and releases the oldest cached preview", async () => {
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
+    const load = vi.spyOn(packagePreviews, "loadPackagePreview").mockImplementation(async ([candidate]) => ({
+      element: document.createElement("img"), url: `blob:${candidate.url}`,
+    }))
+    vi.useFakeTimers()
+    try {
+      const openPreview = async (index: number) => {
+        const button = new RibbonButton()
+        button.variant = "package"
+        button.details = {heading: "Cached package", previewCandidates: [{kind: "image", url: `/cached-${index}.webp`}]}
+        document.body.append(button)
+        await button.updateComplete
+        button.shadowRoot!.querySelector(".button-row")!.dispatchEvent(new MouseEvent("mouseenter"))
+        await vi.advanceTimersByTimeAsync(500)
+        expect(button.shadowRoot!.querySelector(".details-preview img")).not.toBeNull()
+        button.remove()
+      }
+      for(let index = 0; index < 5; index++) await openPreview(index)
+      expect(revoke).toHaveBeenCalledWith("blob:/cached-0.webp")
+      await openPreview(4)
+      expect(load).toHaveBeenCalledTimes(5)
+      await openPreview(0)
+      expect(load).toHaveBeenCalledTimes(6)
+    }
+    finally {
+      document.body.replaceChildren()
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it("cancels a preview when hover ends early and plays a preloaded video only when details open", async () => {
+    const button = new RibbonButton()
+    button.variant = "package"
+    button.details = {heading: "Preview", previewCandidates: [{kind: "video", url: "/preview.mp4"}]}
+    type Preview = NonNullable<Awaited<ReturnType<typeof packagePreviews.loadPackagePreview>>>
+    let resolve!: (preview: Preview) => void
+    const pending = new Promise<Preview>(done => { resolve = done })
+    const element = document.createElement("video")
+    const play = vi.spyOn(element, "play").mockResolvedValue()
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
+    const load = vi.spyOn(packagePreviews, "loadPackagePreview").mockReturnValueOnce(pending)
+      .mockResolvedValueOnce({element, url: "blob:preloaded"})
+    vi.useFakeTimers()
+    try {
+      document.body.append(button)
+      await button.updateComplete
+      const row = button.shadowRoot!.querySelector(".button-row")!
+      row.dispatchEvent(new MouseEvent("mouseenter"))
+      row.dispatchEvent(new MouseEvent("mouseleave"))
+      expect(load.mock.calls[0][1].aborted).toBe(true)
+      row.dispatchEvent(new MouseEvent("mouseenter"))
+      resolve({element: document.createElement("video"), url: "blob:cancelled"})
+      await vi.advanceTimersByTimeAsync(100)
+      expect(revoke).toHaveBeenCalledWith("blob:cancelled")
+      expect(play).not.toHaveBeenCalled()
+      expect(button.shadowRoot!.querySelector(".details-preview")).toBeNull()
+      await vi.advanceTimersByTimeAsync(400)
+      expect(button.shadowRoot!.querySelector(".details-preview video")).toBe(element)
+      expect(button.shadowRoot!.querySelector(".details-preview.icon-loading")).toBeNull()
+      expect(play).toHaveBeenCalledOnce()
+      expect(load).toHaveBeenCalledTimes(2)
+    }
+    finally {
+      button.remove()
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
   })
 
   it("anchors package details with a placement fallback", async () => {
