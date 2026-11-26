@@ -126,8 +126,11 @@ export class LiveSessionShowcase extends LitElement {
     button:focus-visible {outline: 2px solid #155e9b; outline-offset: 2px}
     .icon, .icon svg {display: block; width: 1.4em; height: 1.4em}
 
-    /* One em is 1/64 of the width, so the 16:9 scene scales as a whole. */
-    .showcase {position: relative; font-size: calc(100cqi / 64); --window-x: 2.2em; --page-x: 14.2em; --tablet-x: 40.8em; --tablet-y: 4.4em}
+    /* One em is 1/64 of the width, so the 16:9 scene scales as a whole.
+       The tablet sits beside the window at full width (73rem) and slides
+       over it as the scene narrows, keeping the devices large. */
+    .showcase {position: relative; font-size: calc(100cqi / 64); --overlap: clamp(0em, (73rem - 100cqi) * .3, 9.5em);
+      --window-x: 2.2em; --page-x: 14.2em; --tablet-x: calc(46.2em - var(--overlap)); --tablet-y: calc(3em + min(var(--overlap), 1.4em))}
     .stage {position: relative; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid #dfe5ed; border-radius: .6rem; background-color: #f7f9fc;
       background-image: linear-gradient(rgb(21 94 155 / .04) 1px, transparent 1px), linear-gradient(90deg, rgb(21 94 155 / .04) 1px, transparent 1px);
       background-size: 4em 4em}
@@ -253,7 +256,7 @@ export class LiveSessionShowcase extends LitElement {
 
     /* Without room for overlays, the cards follow the scene. */
     @container (max-width: 62rem) {
-      .showcase {--window-x: 8em; --page-x: 7em; --tablet-x: 39.4em; --tablet-y: 8.8em}
+      .showcase {--window-x: calc(3.1em + var(--overlap) / 2); --page-x: 7em; --tablet-x: calc(44.5em - var(--overlap) / 2); --tablet-y: 8.8em}
       .window {width: 40em}
       .callouts {position: static; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; margin-block-start: 1.75rem}
       .callout, .callout[data-step] {position: relative; inset: auto; width: auto}
