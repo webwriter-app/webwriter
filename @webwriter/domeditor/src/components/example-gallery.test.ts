@@ -22,7 +22,7 @@ it("lists every example, keeps a shareable example URL, and closes its learner v
   expect(root.querySelector<HTMLSlotElement>(".gallery-heading slot[name=heading]")?.assignedElements()).toContain(heading)
   expect([...root.querySelectorAll("a.thumbnail")].map(card => card.getAttribute("href"))).toEqual(exampleDocuments.map(example => `?example=${example.id}`))
   expect([...root.querySelectorAll("a.thumbnail")].every(card => card.getAttribute("data-card-overlay") === "Show example")).toBe(true)
-  expect([...root.querySelectorAll("a.thumbnail")].map(card => [...card.querySelectorAll(".metadata .pill")].map(pill => pill.textContent))).toEqual(exampleDocuments.map(example => [example.subject, example.duration]))
+  expect([...root.querySelectorAll("a.thumbnail")].map(card => [...card.querySelectorAll(".metadata .pill")].map(pill => pill.textContent))).toEqual(exampleDocuments.map(example => [{canvas: "Canvas", board: "Board", document: "Document"}[example.layout], example.subject, example.duration]))
   expect([...root.querySelectorAll("example-preview")].map(preview => preview.getAttribute("example-id"))).toEqual(exampleDocuments.map(example => example.id))
   expect(root.querySelector("h2, .description, .actions")).toBeNull()
   expect(root.querySelectorAll("a")).toHaveLength(exampleDocuments.length)

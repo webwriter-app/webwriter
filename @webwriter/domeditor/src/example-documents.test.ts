@@ -20,6 +20,7 @@ const mediaBase = `${location.origin}/assets/examples/`
 
 it("lists one example per subject, with chemistry twice", () => {
   expect(exampleDocuments.map(example => example.id)).toEqual(Object.keys(authoredLayouts))
+  expect(exampleDocuments.map(example => example.layout)).toEqual(Object.values(authoredLayouts))
   expect(exampleDocuments.map(example => example.subject)).toEqual(["Geography", "History", "Computer Science", "Chemistry", "Music", "Biology", "Physics", "Chemistry"])
 })
 

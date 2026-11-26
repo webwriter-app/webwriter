@@ -27,40 +27,25 @@ const mount = (id: string, compact = false) => {
   return preview
 }
 
-it("draws a canvas miniature from the authored text and first photo", async () => {
-  const source = await exampleDocumentSource.loadExampleDocument("ahr-valley")
-  const page = await loaded(mount("ahr-valley"))
-  expect(page.classList.contains("canvas")).toBe(true)
+it.each(exampleDocuments)("shows $id with a hero, its title, and a miniature in its authored layout", async example => {
+  const source = await exampleDocumentSource.loadExampleDocument(example.id)
+  const page = await loaded(mount(example.id, true))
   expect(page.querySelector("h2")?.textContent).toBe(source.title)
-  const topics = page.querySelectorAll(".layout-topic")
-  expect(topics).toHaveLength(2)
-  expect(topics[0].querySelector("p")?.textContent?.length).toBeGreaterThan(40)
-  const figure = source.querySelector("figure:has(img)")!
-  expect(topics[1].querySelector("h3")?.textContent).toBe(figure.querySelector("figcaption")?.textContent?.replace(/\s+/g, " ").trim())
-  expect(topics[1].querySelector("img")?.getAttribute("src")).toBe(figure.querySelector("img")?.getAttribute("src"))
-  expect(topics[1].querySelector("[style]")).toBeNull()
+  expect(page.querySelector(".hero")?.children.length).toBeGreaterThan(0)
+  expect(page.querySelector(".frame")?.className).toBe(`frame ${example.layout}`)
+  expect(page.querySelector(".frame .mini")?.textContent?.trim().length).toBeGreaterThan(100)
+  expect([...page.querySelectorAll("img")].every(image => image.getAttribute("alt") === "")).toBe(true)
 })
 
-it("draws a board miniature from the opening column and the first column with a picture", async () => {
-  const source = await exampleDocumentSource.loadExampleDocument("printing-press")
-  const page = await loaded(mount("printing-press", true))
-  expect(page.classList.contains("board")).toBe(true)
-  const columns = [...source.querySelectorAll("section.ww-board-column")]
-  const pictured = columns.slice(1).find(column => column.querySelector("img"))!
-  const heading = (column: Element) => column.querySelector(":scope > h2")!.textContent!.replace(/\s+/g, " ").trim()
-  expect([...page.querySelectorAll(".layout-topic h3")].map(element => element.textContent)).toEqual([heading(columns[0]), heading(pictured)])
-  expect([...page.querySelectorAll(".layout-topic p")].every(paragraph => paragraph.textContent!.length > 20)).toBe(true)
-  expect(page.querySelectorAll(".layout-topic")[1].querySelector("img")?.getAttribute("src")).toBe(pictured.querySelector("img")!.getAttribute("src"))
-  expect(page.querySelector(".layout-topic figcaption")).not.toBeNull()
-})
-
-it("draws a document miniature with its introduction and first visual", async () => {
-  const page = await loaded(mount("heartburn"))
-  expect(page.classList.contains("canvas") || page.classList.contains("board")).toBe(false)
-  expect(page.querySelector("h2")?.textContent).toBe("Can water ease heartburn?")
-  expect(page.querySelector(".intro")?.textContent).toMatch(/heartburn/i)
-  expect(page.querySelector(".visual img, .visual table")).not.toBeNull()
-  expect(page.querySelector(".visual [style]")).toBeNull()
+it("zooms the miniature to fill its frame at any card width", async () => {
+  let resize!: ResizeObserverCallback
+  vi.stubGlobal("ResizeObserver", class { constructor(callback: ResizeObserverCallback) { resize = callback } observe() {} disconnect() {} })
+  const preview = mount("ozone-hole")
+  for(const [width, zoom] of [[349, "1"], [676, "2"]] as const) {
+    resize([{contentRect: {width}} as ResizeObserverEntry], {} as ResizeObserver)
+    expect(preview.style.getPropertyValue("--miniature-zoom")).toBe(zoom)
+  }
+  vi.unstubAllGlobals()
 })
 
 it("shows German examples in German and other languages in English", async () => {

@@ -4,55 +4,63 @@
     "subject": "Geography",
     "title": "How people bend rivers to their will",
     "description": "Investigate the 2021 Ahr valley flood with a map, photos, and a timeline, and weigh how river engineering affects flood risk.",
-    "duration": "45 min"
+    "duration": "45 min",
+    "layout": "canvas"
   },
   {
     "id": "printing-press",
     "subject": "History",
     "title": "Printing press and industrialisation",
     "description": "Explore two timelines and compare how printing and industrialisation changed work, knowledge, and everyday life.",
-    "duration": "45 min"
+    "duration": "45 min",
+    "layout": "board"
   },
   {
     "id": "machine-learning",
     "subject": "Computer Science",
     "title": "How do computers learn?",
     "description": "Train an image classifier, cluster data, and watch an agent learn safe routes to meet three kinds of machine learning.",
-    "duration": "45 min"
+    "duration": "45 min",
+    "layout": "board"
   },
   {
     "id": "ozone-hole",
     "subject": "Chemistry",
     "title": "The ozone hole and the struggle for electrons",
     "description": "Use NASA data, a periodic table, and a molecule builder to connect electronegativity with the ozone hole.",
-    "duration": "30 min"
+    "duration": "30 min",
+    "layout": "canvas"
   },
   {
     "id": "intervals-and-rhythms",
     "subject": "Music",
     "title": "Diatonic intervals and rhythms",
     "description": "Listen to recorded examples, then write down intervals and rhythms in interactive music scores.",
-    "duration": "30 min"
+    "duration": "30 min",
+    "layout": "board"
   },
   {
     "id": "food-chains",
     "subject": "Biology",
     "title": "Eat and be eaten?",
     "description": "Follow an apple tree, caterpillars, a tit, and a cat through a garden food chain, then order the chain yourself.",
-    "duration": "20 min"
+    "duration": "20 min",
+    "layout": "canvas"
   },
   {
     "id": "pendulum",
     "subject": "Physics",
     "title": "Measure gravity in your living room",
     "description": "Time a simulated pendulum at different lengths, plot the results, and calculate gravitational acceleration from the slope.",
-    "duration": "20 min"
+    "duration": "20 min",
+    "layout": "document"
   },
   {
     "id": "heartburn",
     "subject": "Chemistry",
     "title": "Can water ease heartburn?",
     "description": "Mix stomach acid, water, and baking soda in a virtual lab and build the molecules to explain what neutralises acid.",
-    "duration": "20 min"
+    "duration": "20 min",
+    "layout": "document"
   }
 ]
