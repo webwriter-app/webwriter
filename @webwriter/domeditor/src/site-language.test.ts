@@ -80,6 +80,7 @@ describe("site translation", () => {
       expect(translated.querySelector("p")?.textContent).toContain("Dr.-Ing. Frederic Salmen")
       expect(translated.querySelector("p")?.textContent).toContain("Prof. Ulrik Schroeder")
       expect([...translated.querySelectorAll("a")].map(link => link.getAttribute("href"))).toEqual(links)
+      if(locale === "de") expect(translated.querySelector("p")?.textContent).toBe("WebWriter entstand ursprünglich als Forschungsprojekt im Rahmen der Dissertation von Dr.-Ing. Frederic Salmen. Durchgeführt wurde das Projekt am Lehr- und Forschungsgebiet Lerntechnologien der RWTH Aachen, unter der Leitung von Prof. Ulrik Schroeder.")
     }
   })
 
