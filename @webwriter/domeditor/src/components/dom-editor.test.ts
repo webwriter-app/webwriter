@@ -797,6 +797,7 @@ afterEach(async() => {
 beforeEach(() => {
   vi.spyOn(WebWriterPackageRegistry.prototype, "search").mockResolvedValue([])
   vi.spyOn(WebWriterPackageRegistry.prototype, "latestCompatibleVersion").mockImplementation(async (_name, version) => version)
+  vi.spyOn(WebWriterPackageRegistry.prototype, "publishedPackageManifest").mockImplementation(async (name, version) => ({name, version, deprecated: undefined}))
   // Bridge messages in these component tests are dispatched directly instead
   // of crossing the iframe's postMessage implementation. Add the same
   // per-editor nonce that production messages carry so tests exercise the
@@ -1110,23 +1111,40 @@ describe("DomEditor document loading", () => {
     expect(host.fileDirty).toBe(false)
   })
 
-  it("retains the current document when a required widget package cannot be installed", async () => {
+  it("opens the file without unsupported widgets when Open anyway is confirmed", async () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
     const body = iframe.contentDocument!.body.innerHTML
-    const source = `<script type="module" src="${demoPackage.scripts[0]}"></script><webwriter-demo></webwriter-demo>`
+    const source = `<script type="module" src="${demoPackage.scripts[0]}"></script><webwriter-demo>
+      <script type="application/json" slot="data">{"discard":true}</script><p>Keep this content</p>
+    </webwriter-demo>`
     const file = new File([source], "lesson.html")
     vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{name: file.name, getFile: async() => file}]))
+    vi.spyOn(host, "rememberOpenedDocument").mockResolvedValue({id: "lesson", kind: "local"})
     vi.spyOn(host.packageRegistry, "getPackage").mockRejectedValue(new Error("Widget package unavailable"))
-    vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.spyOn(host, "postToEditor").mockImplementation(() => {})
+    const dialog = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!.shadowRoot!
+      .querySelector<HTMLDialogElement>("#unsupported-widget-packages-dialog")!
 
-    await host.openDocument()
-    await editor.updateComplete
-    expect(host.fileError).toBe("Widget package unavailable")
+    const opening = host.openDocument()
+    await vi.waitFor(() => expect(dialog.open).toBe(true))
     expect(host.frameRevision).toBe(0)
     expect(iframe.contentDocument!.body.innerHTML).toBe(body)
+    dialog.querySelector<HTMLButtonElement>("button.primary")!.click()
+    await vi.waitFor(() => expect(host.frameRevision).toBe(1))
+    await editor.updateComplete
+    editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!.dispatchEvent(new Event("load"))
+    await vi.waitFor(() => expect(host.packageLoadPromise).not.toBeNull())
+    completePendingPackageLoad(editor)
+    await opening
+    await editor.updateComplete
+
+    expect(host.fileError).toBe("")
+    expect(host.fileName).toBe("lesson")
     expect(host.installedPackages).toEqual([])
-    expect(iframe.classList.contains("loading")).toBe(false)
+    expect(host.frameDocumentHTML).toContain("<p>Keep this content</p>")
+    expect(host.frameDocumentHTML).not.toContain("<webwriter-demo")
+    expect(host.frameDocumentHTML).not.toContain('"discard"')
     expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
   })
 
@@ -3423,21 +3441,37 @@ describe("DomEditor iframe setup", () => {
     expect(disconnect).not.toHaveBeenCalled()
   })
 
-  it("keeps the current document open and explains how to load a missing widget package", async () => {
+  it.each([
+    ["missing", undefined],
+    ["deprecated", "Use a supported widget instead."],
+  ])("keeps the current document open and warns about a %s widget package", async (status, deprecation) => {
     const {editor} = await mountEditor()
     const host = editor as any
     host.fileName = "Current"
-    const html = `<script type="module" data-webwriter-original-package-entries='["https://cdn.jsdelivr.net/npm/@webwriter/unpublished@2.0.0/dist/widget.js"]'></script><p>Incoming</p>`
+    const release = `@webwriter/${status}@2.0.0`
+    const html = `<script type="module" data-webwriter-original-package-entries='["https://cdn.jsdelivr.net/npm/${release}/dist/widget.js"]'></script><p>Incoming</p>`
     const handle = {name: "incoming.html", getFile: async () => new File([html], "incoming.html")}
     vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([handle]))
-    vi.spyOn(host.packageRegistry, "getPackage").mockRejectedValue(new Error("Package metadata failed (404)"))
+    vi.mocked(WebWriterPackageRegistry.prototype.publishedPackageManifest).mockResolvedValueOnce({
+      name: `@webwriter/${status}`, version: "2.0.0", deprecated: deprecation,
+    })
+    const getPackage = vi.spyOn(host.packageRegistry, "getPackage").mockRejectedValue(new Error("Package metadata failed (404)"))
     const disconnect = vi.spyOn(host, "clearDocumentCollaboration")
     const revision = host.frameRevision
 
-    await host.openDocument()
-
-    expect(host.fileError).toContain("@webwriter/unpublished@2.0.0")
-    expect(host.fileError).toContain("Add from local folder")
+    const opening = host.openDocument()
+    const dialog = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!.shadowRoot!
+      .querySelector<HTMLDialogElement>("#unsupported-widget-packages-dialog")!
+    await vi.waitFor(() => expect(dialog.open).toBe(true))
+    expect(dialog.textContent).toContain(release)
+    if(deprecation) {
+      expect(dialog.textContent).toContain(`is deprecated. ${deprecation}`)
+      expect(getPackage).not.toHaveBeenCalled()
+    }
+    dialog.querySelector<HTMLButtonElement>("footer button")!.click()
+    await opening
+    expect(dialog.open).toBe(false)
+    expect(host.fileError).toBe("")
     expect(host.fileName).toBe("Current")
     expect(host.frameRevision).toBe(revision)
     expect(disconnect).not.toHaveBeenCalled()

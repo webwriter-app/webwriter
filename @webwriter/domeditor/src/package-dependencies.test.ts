@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
-import type {WebWriterPackage} from "./packages"
-import {hasImportMapEntries, loadDocumentPackages, npmFileProvider, packageImportMapScript, packageModuleEntries, resolvePackageDependencies} from "./package-dependencies"
+import {WebWriterPackageRegistry, type WebWriterPackage} from "./packages"
+import {hasImportMapEntries, loadDocumentPackages, npmFileProvider, packageImportMapScript, packageModuleEntries, resolvePackageDependencies, UnavailableDocumentPackagesError} from "./package-dependencies"
 import {NPM_FILE_TIMEOUT_MS} from "./npm-files"
 import {localPackageUrl} from "./local-package-worker"
 
@@ -121,11 +121,78 @@ describe("package dependency resolution", () => {
         developerSource: {kind: "local" as const, path: "other"}},
     ]
     const latestCompatibleVersion = vi.fn().mockImplementation(async(_name, version) => version)
+    const publishedPackageManifest = vi.fn().mockResolvedValue({})
     const getPackage = vi.fn().mockRejectedValue(new Error("Package metadata failed (404)"))
 
-    await expect(loadDocumentPackages(source, {latestCompatibleVersion, getPackage} as never, installed, {forEditing: true}))
-      .rejects.toThrow(/could not load @webwriter\/demo@2\.0\.0, @webwriter\/other@1\.0\.0.*Add from local folder/)
+    await expect(loadDocumentPackages(source, {latestCompatibleVersion, publishedPackageManifest, getPackage} as never, installed, {forEditing: true}))
+      .rejects.toThrow(/could not load @webwriter\/demo@2\.0\.0.*could not load @webwriter\/other@1\.0\.0/)
     expect(source.querySelectorAll("script[src]")).toHaveLength(2)
+  })
+
+  it("warns about deprecated compatible releases alongside unavailable packages before loading package files", async () => {
+    const base = "https://cdn.jsdelivr.net/npm/@webwriter"
+    const source = documentWith(`<script type="module" src="${base}/retired@1.0.0/index.js"></script>
+      <script type="module" src="${base}/missing@1.0.0/index.js"></script>`)
+    const fetcher = vi.fn(async (url: string) => {
+      if(url === "https://registry.npmjs.org/%40webwriter%2Fretired") return Response.json({versions: {"1.1.0": {}}})
+      if(url === "https://registry.npmjs.org/%40webwriter%2Fretired/1.1.0") {
+        return Response.json({name: "@webwriter/retired", version: "1.1.0", deprecated: "Switch to @webwriter/new-widget."})
+      }
+      return new Response(null, {status: 404})
+    })
+    const registry = new WebWriterPackageRegistry(fetcher as typeof fetch)
+    const getPackage = vi.spyOn(registry, "getPackage")
+
+    await expect(loadDocumentPackages(source, registry, [], {forEditing: true}))
+      .rejects.toThrow(/@webwriter\/retired@1\.1\.0 is deprecated\. Switch to @webwriter\/new-widget\..*could not load @webwriter\/missing@1\.0\.0/)
+    expect(getPackage).not.toHaveBeenCalled()
+    expect(source.querySelectorAll("script[src]")).toHaveLength(2)
+  })
+
+  it("unwraps unavailable widgets and retains their light DOM and available widgets on request", async () => {
+    const base = "https://cdn.jsdelivr.net/npm/@webwriter"
+    const missingEntry = `${base}/missing@1.0.0/dist/legacy-widget.js`
+    const availableTag = "webwriter-available"
+    const availableEntry = `${base}/available@1.0.0/${availableTag}.js`
+    const available = resolvedPackage("@webwriter/available", "1.0.0", [availableEntry])
+    available.members = [{id: availableTag, packageName: available.name, packageVersion: available.version,
+      exportName: `./widgets/${availableTag}.js`, kind: "widget", label: availableTag, tagName: availableTag, insertable: true}]
+    const source = documentWith(`<link rel="stylesheet" href="${missingEntry.replace(/\.js$/, ".css")}">
+      <script type="module" src="${missingEntry}"></script>
+      <script type="module" src="${availableEntry}"></script>
+      <body><legacy-widget><script type="application/json" slot="data">{"discard":true}</script>Leading<!--keep-->
+        <webwriter-nested><p data-authored="keep">Nested content</p></webwriter-nested>
+        <activity-card><span>Content identified by the package manifest</span></activity-card>
+        <old-card class="ww-widget"><em>Legacy widget content</em></old-card>
+        <${availableTag}><script type="application/json" slot="data">{"keep":true}</script><p>Available</p></${availableTag}>
+        <vendor-element><script type="application/ld+json">{"keep":true}</script></vendor-element>
+        <template><ww-nested><script type="application/json">{"discard":true}</script><p>Template content</p></ww-nested></template>
+      </legacy-widget></body>`)
+    const latestCompatibleVersion = vi.fn().mockResolvedValue("1.0.0")
+    const publishedPackageManifest = vi.fn(async (name: string) => name === "@webwriter/missing"
+      ? {exports: {"./widgets/activity-card.js": "./lib/entry.js", "./widgets/p.js": "./lib/entry.js"}}
+      : {})
+    const getPackage = vi.fn(async ({name}: {name: string}) => {
+      if(name === available.name) return available
+      throw new Error("Missing")
+    })
+
+    const result = await loadDocumentPackages(source, {latestCompatibleVersion, publishedPackageManifest, getPackage} as never, [], {forEditing: true})
+      .catch(error => error)
+    if(!(result instanceof UnavailableDocumentPackagesError)) throw new Error("Expected a widget package warning")
+    expect(source.querySelector("legacy-widget > script")).not.toBeNull()
+
+    expect(result.openWithoutWidgets()).toEqual([available])
+    expect(source.body.innerHTML).toContain("Leading<!--keep-->")
+    expect(source.querySelector("body > p[data-authored]")?.textContent).toBe("Nested content")
+    expect(source.querySelector("body > span")?.textContent).toBe("Content identified by the package manifest")
+    expect(source.querySelector("body > em")?.textContent).toBe("Legacy widget content")
+    expect(source.querySelector(`${availableTag} > script`)?.textContent).toBe('{"keep":true}')
+    expect(source.querySelector("vendor-element > script")).not.toBeNull()
+    expect(source.querySelector("legacy-widget, webwriter-nested, activity-card, old-card, script[src], link[href]")).toBeNull()
+    const content = source.querySelector("template")!.content
+    expect(content.querySelector("ww-nested, script")).toBeNull()
+    expect(content.querySelector("p")?.textContent).toBe("Template content")
   })
 
   it("reuses an installed exact version and propagates lookup failures", async () => {
@@ -167,11 +234,13 @@ describe("package dependency resolution", () => {
       <script type="module" src="https://example.test/authored.js"></script>
       <template><script type="module" src="${base}@1.2.3/second.js"></script><webwriter-demo></webwriter-demo></template>`)
     const latestCompatibleVersion = vi.fn().mockResolvedValue("1.10.0")
+    const publishedPackageManifest = vi.fn().mockResolvedValue({})
     const latest = resolvedPackage("@webwriter/demo", "1.10.0", [`${base}@1.10.0/first.js`, `${base}@1.10.0/second.js`])
     const getPackage = vi.fn().mockResolvedValue(latest)
-    const [pkg] = await loadDocumentPackages(source, {getPackage, latestCompatibleVersion} as never, [], {forEditing: true})
+    const [pkg] = await loadDocumentPackages(source, {getPackage, latestCompatibleVersion, publishedPackageManifest} as never, [], {forEditing: true})
 
     expect(latestCompatibleVersion).toHaveBeenCalledWith("@webwriter/demo", "1.3.0")
+    expect(publishedPackageManifest).toHaveBeenCalledWith("@webwriter/demo", "1.10.0")
     expect(getPackage).toHaveBeenCalledWith({name: latest.name, version: latest.version})
     expect(pkg.scripts).toEqual([...latest.scripts].reverse())
     expect([...source.querySelectorAll("script[src], link[href]")].map(element => element.getAttribute("src") ?? element.getAttribute("href"))).toEqual([

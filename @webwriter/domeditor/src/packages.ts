@@ -1,6 +1,6 @@
 import type {WidgetEditingConfig, WidgetSchemaDefinition} from "./schema"
 import {stripActiveContent} from "./active-content"
-import {fetchNpmFile, JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT, npmPublishedVersions} from "./npm-files"
+import {fetchNpmFile, fetchWithin, JSDELIVR_NPM_ENDPOINT, NPM_FILE_TIMEOUT_MS, NPM_REGISTRY_ENDPOINT, npmPublishedVersions} from "./npm-files"
 import {intersects, maxSatisfying, satisfies, valid, validRange} from "semver"
 import {toHexString} from "lib0/buffer"
 import {digest} from "lib0/hash/sha256"
@@ -548,6 +548,8 @@ type NpmSearchResponse = {
   total?: number
 }
 
+type NpmRegistryManifest = WebWriterPackageManifest & {deprecated?: string}
+
 const extensionPattern = /\.(?:html?|m?js|css|ts)$/i
 const scriptPattern = /\.(?:m?js|ts)$/i
 
@@ -960,6 +962,15 @@ export class WebWriterPackageRegistry {
         return summary
       }
     }))
+  }
+
+  async publishedPackageManifest(name: string, version: string) {
+    const response = await fetchWithin(this.fetcher, packageManifestUrl(name, version), {cache: "no-cache"}, NPM_FILE_TIMEOUT_MS)
+    if(!response.ok) throw new Error(`Package metadata failed (${response.status})`)
+    const manifest = await response.json() as NpmRegistryManifest
+    if(manifest.name !== name || manifest.version !== version) throw new Error(`Invalid package metadata for ${name}@${version}`)
+    const deprecated = typeof manifest.deprecated === "string" ? manifest.deprecated.trim() || undefined : undefined
+    return {...manifest, deprecated}
   }
 
   async latestCompatibleVersion(name: string, version: string) {

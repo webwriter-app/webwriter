@@ -497,6 +497,8 @@ export class AppRibbon extends EditingControls {
       padding-inline-start: 1.25rem;
       font-size: .875rem;
     }
+    #unsupported-widget-packages-dialog:modal { overscroll-behavior: contain; }
+    #unsupported-widget-packages-dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
     #settings-dialog {
       height: min(45rem, calc(100dvh - 2rem));
       padding: 0;
@@ -1232,6 +1234,7 @@ export class AppRibbon extends EditingControls {
   private confirmation?: {dialogId: string, resolve: (confirmed: boolean) => void}
   private largeAttachmentFiles: Array<{name: string, size: number}> = []
   private packageMajorChanges: Array<{name: string, from: string, to: string}> = []
+  private unsupportedWidgetPackageWarnings: string[] = []
   private settingsTab: SettingsTab = "Editor"
 
   logoUrl = ""
@@ -2949,6 +2952,13 @@ export class AppRibbon extends EditingControls {
     return this.confirmWithDialog("package-major-change-dialog")
   }
 
+  async confirmOpenWithoutWidgets(warnings: string[]): Promise<boolean> {
+    if(this.confirmation) return false
+    this.unsupportedWidgetPackageWarnings = warnings
+    this.requestUpdate()
+    return this.confirmWithDialog("unsupported-widget-packages-dialog")
+  }
+
   private async confirmWithDialog(dialogId: string): Promise<boolean> {
     if(!this.isConnected || this.confirmation) return false
     let settle!: (confirmed: boolean) => void
@@ -3207,6 +3217,19 @@ export class AppRibbon extends EditingControls {
         <footer>
           <button type="button" autofocus @click=${() => this.finishConfirmation("package-major-change-dialog", false)}>Cancel</button>
           <button class="primary" type="button" @click=${() => this.finishConfirmation("package-major-change-dialog", true)}>Install versions</button>
+        </footer>
+      </dialog>
+      <dialog id="unsupported-widget-packages-dialog" class="document-dialog confirmation-dialog"
+        aria-labelledby="unsupported-widget-packages-title" aria-describedby="unsupported-widget-packages-description"
+        @close=${(event: Event) => { if(!(event.currentTarget as HTMLDialogElement).open) this.finishConfirmation("unsupported-widget-packages-dialog", false) }}>
+        <header><h2 id="unsupported-widget-packages-title">Open without unsupported widgets?</h2>
+          <button class="dialog-close" type="button" aria-label="Close widget package warning" @click=${() => this.finishConfirmation("unsupported-widget-packages-dialog", false)}>${ribbonIcon("Reject")}</button>
+        </header>
+        <ul class="confirmation-list">${this.unsupportedWidgetPackageWarnings.map(warning => html`<li>${warning}</li>`)}</ul>
+        <p id="unsupported-widget-packages-description">Open anyway keeps the content inside unsupported widgets and removes the widgets and their saved data.</p>
+        <footer>
+          <button type="button" autofocus @click=${() => this.finishConfirmation("unsupported-widget-packages-dialog", false)}>Cancel</button>
+          <button class="primary" type="button" @click=${() => this.finishConfirmation("unsupported-widget-packages-dialog", true)}>Open anyway</button>
         </footer>
       </dialog>
       <dialog id="settings-dialog" class="document-dialog" aria-labelledby="settings-dialog-title"

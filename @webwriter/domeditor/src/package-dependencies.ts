@@ -1,6 +1,7 @@
 import {markEditorOnlyNode} from "./editor-artifacts"
+import {isWidgetDataContainer} from "./active-content"
 import type {IImportMap} from "@jspm/import-map"
-import {packageCdnUrl, packageUpdateKind, packageVersionMajor, type WebWriterPackage, type WebWriterPackageRegistry} from "./packages"
+import {describePackageExport, packageCdnUrl, packageUpdateKind, packageVersionMajor, packageWidgetSchemaDefinitions, parsePackageWidgetReference, resolvePackageExport, type WebWriterPackage, type WebWriterPackageRegistry} from "./packages"
 import {canonicalNpmUrl, fetchWithin, JSDELIVR_DATA_ENDPOINT, JSDELIVR_NPM_ENDPOINT, NPM_FILE_MIRRORS, NPM_FILE_TIMEOUT_MS, npmPublishedVersions} from "./npm-files"
 import {parseLocalPackageRoute} from "./local-package-worker"
 export {runtimeDocumentBaseURL} from "./document-base-url"
@@ -12,6 +13,28 @@ export type PackageDependencyPlan = {
 }
 
 export const packageImportMapId = "webwriter-package-importmap"
+
+class DeprecatedDocumentPackageError extends Error {}
+
+export class UnavailableDocumentPackagesError extends AggregateError {
+  constructor(errors: unknown[], readonly warnings: string[], readonly openWithoutWidgets: () => WebWriterPackage[]) {
+    super(errors, warnings.join(" "))
+  }
+}
+
+function unwrapUnsupportedWidgets(root: ParentNode, supportedTags: Set<string>, unavailableTags: Set<string>) {
+  for(const element of root.querySelectorAll("*")) {
+    if(element.namespaceURI !== "http://www.w3.org/1999/xhtml") continue
+    const tag = element.localName
+    if(tag === "template") unwrapUnsupportedWidgets((element as HTMLTemplateElement).content, supportedTags, unavailableTags)
+    if(!tag.includes("-") || supportedTags.has(tag)) continue
+    if(!(unavailableTags.has(tag) || /^(?:webwriter|ww)-/.test(tag) || element.classList.contains("ww-widget"))) continue
+    for(const child of Array.from(element.children)) {
+      if(isWidgetDataContainer(child)) child.remove()
+    }
+    element.replaceWith(...element.childNodes)
+  }
+}
 
 const isStringRecord = (value: unknown): value is Record<string, string> =>
   !!value && typeof value === "object" && !Array.isArray(value)
@@ -86,6 +109,7 @@ export async function loadDocumentPackages(
   if(!references.size) return []
   const activeRegistry = registry ?? new (await import("./packages")).WebWriterPackageRegistry()
   const required = [...references.values()]
+  const published = new Map<string, Awaited<ReturnType<WebWriterPackageRegistry["publishedPackageManifest"]>>>()
   const pending = required.map(async({name, version: pinned, scripts: authored}) => {
     if(forEditing) {
       const local = installed.find(pkg => {
@@ -105,14 +129,19 @@ export async function loadDocumentPackages(
     const existing = installed.find(pkg => pkg.name === name && !pkg.developerSource && (forEditing || pkg.version === pinned))
     if(forEditing) {
       if(existing && packageUpdateKind(version, existing.version) === "compatible") version = existing.version
-      // If metadata is temporarily unavailable, an installed compatible version
-      // or the document's pinned version can still be loaded.
+      // Use the current candidate if the compatible-version lookup fails.
       version = await activeRegistry.latestCompatibleVersion(name, version).catch(() => version)
     }
     const installedScripts = new Set(existing?.scripts.map(canonicalNpmUrl) ?? [])
     const reuse = existing?.version === version && (version === pinned
       ? authored.every(({url}) => installedScripts.has(url))
       : existing.manifest && authored.every(({url}) => existing.scripts.some(script => packagePath(canonicalNpmUrl(script)) === packagePath(url))))
+    if(forEditing && !reuse) {
+      const release = await activeRegistry.publishedPackageManifest(name, version)
+      published.set(name, release)
+      const {deprecated} = release
+      if(deprecated) throw new DeprecatedDocumentPackageError(`${name}@${version} is deprecated. ${deprecated}`)
+    }
     const pkg = reuse ? existing : await activeRegistry.getPackage({name, version})
     const order = authored.map(({url}) => forEditing ? packagePath(url) : url)
     const position = (url: string) => {
@@ -122,24 +151,16 @@ export async function loadDocumentPackages(
     }
     return {...pkg, scripts: [...pkg.scripts].sort((a, b) => position(a) - position(b))}
   })
-  const packages = forEditing ? await Promise.allSettled(pending).then(results => {
-    const failures = results.flatMap((result, index) => {
-      if(result.status === "fulfilled") return []
-      const {name, version} = required[index]
-      return [{release: `${name}@${version}`, reason: result.reason}]
-    })
-    if(failures.length) {
-      const releases = failures.map(failure => failure.release).join(", ")
-      throw new AggregateError(failures.map(failure => failure.reason),
-        `WebWriter could not load ${releases} and kept the current document open. For unpublished releases, choose Add from local folder in the Widgets search menu to load a matching build, then open the document again.`)
-    }
-    return results.flatMap(result => result.status === "fulfilled" ? [result.value] : [])
-  }) : await Promise.all(pending)
-  if(forEditing) {
+  if(!forEditing) return Promise.all(pending)
+  const results = await Promise.allSettled(pending)
+  const packages = results.flatMap(result => result.status === "fulfilled" ? [result.value] : [])
+  const failures = results.flatMap((result, index) => result.status === "rejected"
+    ? [{reference: required[index], reason: result.reason}] : [])
+  const retirePackageAssets = (unavailableNames: string[] = []) => {
     const managedStyles = new Set(packages.flatMap(pkg => pkg.styles.map(url => packagePath(canonicalNpmUrl(url)))))
-    for(const pkg of packages) {
-      if(!pkg.scripts.length) continue
-      for(const {url, script} of references.get(pkg.name)?.scripts ?? []) {
+    const retiredNames = [...packages.filter(pkg => pkg.scripts.length).map(pkg => pkg.name), ...unavailableNames]
+    for(const name of retiredNames) {
+      for(const {url, script} of references.get(name)?.scripts ?? []) {
         managedStyles.add(packagePath(url).replace(/\.(?:m?js)$/, ".css"))
         script.remove()
       }
@@ -150,6 +171,37 @@ export async function loadDocumentPackages(
       if(ref && references.has(ref.name) && managedStyles.has(packagePath(url))) link.remove()
     }
   }
+  if(failures.length) {
+    const warnings = failures.map(({reference: {name, version}, reason}) => reason instanceof DeprecatedDocumentPackageError
+      ? reason.message : `WebWriter could not load ${name}@${version}.`)
+    throw new UnavailableDocumentPackagesError(failures.map(failure => failure.reason), warnings, () => {
+      const unavailableNames = failures.map(({reference}) => reference.name)
+      const supportedTags = new Set(packageWidgetSchemaDefinitions([
+        ...installed.filter(pkg => !references.has(pkg.name)), ...packages,
+      ]).map(widget => widget.tagName))
+      const unavailableTags = new Set(packageWidgetSchemaDefinitions(
+        installed.filter(pkg => unavailableNames.includes(pkg.name)),
+      ).map(widget => widget.tagName))
+      for(const {reference: {name, scripts}} of failures) {
+        const manifest = published.get(name)
+        for(const [exportName, target] of Object.entries(manifest?.exports ?? {})) {
+          const source = resolvePackageExport(target)
+          if(!source) continue
+          const descriptor = describePackageExport(exportName, source)
+          if(descriptor.type === "widget" && parsePackageWidgetReference(`${name}/widgets/${descriptor.name}`)) unavailableTags.add(descriptor.name)
+        }
+        for(const {url} of scripts) {
+          const file = new URL(url).pathname.split("/").at(-1)?.replace(/\.(?:m?js)$/, "")
+          const tag = parsePackageWidgetReference(`${name}/widgets/${file}`)?.tag
+          if(tag) unavailableTags.add(tag)
+        }
+      }
+      retirePackageAssets(unavailableNames)
+      unwrapUnsupportedWidgets(restored, supportedTags, unavailableTags)
+      return packages
+    })
+  }
+  retirePackageAssets()
   return packages
 }
 

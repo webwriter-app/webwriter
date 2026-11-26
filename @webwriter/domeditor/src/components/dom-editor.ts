@@ -192,7 +192,7 @@ import "./live-session-controls"
 import "./live-session-overlay"
 import {escapeHTMLAttribute, serializeDoctype} from "../serialization"
 import {bundleLocalPreviewPackages, editorFrameHTML, previewFrameHTML} from "../frame-document"
-import {isPackageImportMap, loadDocumentPackages, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
+import {isPackageImportMap, loadDocumentPackages, packageImportMapId, packageModuleEntries, resolvePackageDependencies, UnavailableDocumentPackagesError} from "../package-dependencies"
 import type {IImportMap} from "@jspm/import-map"
 import {applyPreviewWidgetSnapshot, LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
 import {editorFrameOrigin} from "../frame-origins"
@@ -4492,10 +4492,19 @@ export class DomEditor extends LitElement {
     const revision = this.documentChangeSequence
     const frameRevision = this.frameRevision
     const installed = this.installedPackages
-    const packages = await loadDocumentPackages(parsed, this.packageRegistry, installed, {forEditing: true})
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    let packages: WebWriterPackage[]
+    try {
+      packages = await loadDocumentPackages(parsed, this.packageRegistry, installed, {forEditing: true})
+    }
+    catch(error) {
+      if(!(error instanceof UnavailableDocumentPackagesError)) throw error
+      if(!await ribbon?.confirmOpenWithoutWidgets(error.warnings)) return false
+      packages = error.openWithoutWidgets()
+    }
     const changes = this.packageMajorChanges(installed, packages)
     if(changes.length && !await this.confirmPackageChanges(changes)) return false
-    await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
+    await ribbon?.cancelAIWork()
     if(!this.isConnected || revision !== this.documentChangeSequence || frameRevision !== this.frameRevision
       || installed !== this.installedPackages) {
       throw new Error("The document changed while loading its widgets. Open the file again.")
