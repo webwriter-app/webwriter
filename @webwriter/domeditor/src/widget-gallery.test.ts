@@ -77,14 +77,15 @@ describe("widget gallery helpers", () => {
     expect(styles).toContain("html:root, html > body {overscroll-behavior-y: auto}")
   })
 
-  it("selects packages used by widgets nested anywhere in the example", () => {
-    const outer = pkg("@school/outer", "Outer", [member("school-activity")])
-    const nested = pkg("@other/nested", "Nested", [member("other-control")])
+  it("includes deprecated packages when a published example still uses them", () => {
+    const outer = pkg("@webwriter/outer", "Outer", [member("school-activity")])
+    const nested = {...pkg("@webwriter/nested", "Nested", [member("other-control")]), deprecated: "Please migrate."}
     const unused = pkg("@unused/package", "Unused", [member("unused-widget")])
     const source = new DOMParser().parseFromString(
       "<school-activity><section><other-control></other-control></section></school-activity>", "text/html",
     )
 
+    expect(galleryPackages([outer, nested])).toEqual([outer])
     expect(galleryPreviewPackages(source, [outer, nested, unused])).toEqual([outer, nested])
   })
 })

@@ -30,8 +30,6 @@ type GalleryFrame = {
 const previewMembers = (pkg: WebWriterPackage) => pkg.members.filter(member => member.insertable && (member.kind === "widget" || member.kind === "snippet"))
 const npmPackageURL = (name: string) => `https://www.npmjs.com/package/${encodeURI(name)}`
 type KeywordLabel = Pick<PackageKeywordPresentation, "kind" | "label">
-const isOnlineOnly = ({kind, label}: KeywordLabel) => kind === "online" && label === "Online only"
-const onlineOnlyLast = (a: KeywordLabel, b: KeywordLabel) => Number(isOnlineOnly(a)) - Number(isOnlineOnly(b))
 const extraEducationLevels = ["0", "1", "8", "4", "5"].map(code =>
   packageKeywordPresentations([`isced2011-${code}`], "en")[0])
 const extraEducationLevelIndex = ({kind, label}: KeywordLabel) =>
@@ -302,7 +300,7 @@ export class WidgetGallery extends LitElement {
 
   private async loadCatalog(signal: AbortSignal) {
     try {
-      const packages = await this.registry.search()
+      const packages = await this.registry.search({includeDeprecation: true})
       if(!signal.aborted) {
         this.packages = packages.filter(pkg => pkg.name.startsWith("@webwriter/"))
         this.tagFilters = galleryTagFilters(this.packages)
@@ -333,13 +331,14 @@ export class WidgetGallery extends LitElement {
     this.closePreview()
     if(!name || this.wall) return
     const registry = this.registry
-    let pkg = this.packages.find(pkg => pkg.name === name) ?? await registry.getLatestPackage(name).catch(() => null)
+    let pkg = this.packages.find(pkg => pkg.name === name)
+      ?? await registry.getLatestPackage(name, {excludeDeprecated: true}).catch(() => null)
     if(!pkg && this.loading) {
       await this.catalogReady
       pkg = this.packages.find(pkg => pkg.name === name) ?? null
     }
     if(!this.isConnected || revision !== this.routeRevision || registry !== this.registry || packageNameFromPath(location.pathname) !== name) return
-    if(pkg) this.openPreview(pkg)
+    if(pkg && !pkg.deprecated) this.openPreview(pkg)
     else this.routeError = "The package could not be loaded."
   }
 
@@ -735,8 +734,8 @@ export class WidgetGallery extends LitElement {
     const extraLevels = options.filter(option => extraEducationLevelIndex(option) >= 0)
       .sort((a, b) => extraEducationLevelIndex(a) - extraEducationLevelIndex(b))
     const fields = options.filter(option => option.kind === "field").sort(byCode)
-    const others = options.filter(option => option.kind !== "level" && option.kind !== "field")
-      .sort((a, b) => onlineOnlyLast(a, b) || a.label.localeCompare(b.label, locale))
+    const general = options.filter(option => option.kind !== "level" && option.kind !== "field")
+      .sort((a, b) => a.label.localeCompare(b.label, locale))
     const buttons = (tags: typeof options, extra = false) => repeat(tags, option => option.key, option => html`
       <button type="button" class="keyword-badge tag-filter" data-kind=${option.kind} ?data-extra-education-level=${extra}
         aria-pressed=${this.selectedTag === option.key}
@@ -750,6 +749,7 @@ export class WidgetGallery extends LitElement {
     return html`<fieldset class="tag-filters">
       <legend>${t("Filter by tag")}</legend>
       <div class="tag-options">
+        ${buttons(general.filter(option => option.kind !== "online" && option.kind !== "display"))}
         <span class=${this.selectedLanguage ? "language-filter active" : "language-filter"}>
           ${this.keywordIcon("KeywordLanguage")}
           <select class="keyword-badge" data-kind="language" name="package-language" aria-label=${t("Language")}
@@ -761,7 +761,8 @@ export class WidgetGallery extends LitElement {
             ${repeat(languages, option => option.code, option => html`<option value=${option.code} .selected=${this.selectedLanguage === option.code}>${option.label}</option>`)}
           </select>
         </span>
-        ${buttons(others)}
+        ${buttons(general.filter(option => option.kind === "online"))}
+        ${buttons(general.filter(option => option.kind === "display"))}
       </div>
       ${levels.length || extraLevels.length ? html`<div class="tag-options" role="group" aria-label=${t("Level of education")}>
         ${buttons(levels)}
@@ -784,12 +785,12 @@ export class WidgetGallery extends LitElement {
     const selected = this.tagFilters.get(this.selectedTag)
     const selectedLevel = selected && extraEducationLevels[extraEducationLevelIndex(selected)]
     const keywords = packageKeywordPresentations(pkg.keywords, language(), navigator.languages)
+      .filter(keyword => keyword.kind !== "editing" && keyword.kind !== "input")
       .filter(keyword => placement === "details" || keyword.kind !== "custom")
       .filter(keyword => extraEducationLevelIndex(keyword) < 0 || keyword.label === selectedLevel?.label)
     if(selectedLevel && selected?.packages.has(pkg.name) && !keywords.some(keyword => keyword.kind === "level" && keyword.label === selectedLevel.label)) {
       keywords.push(selectedLevel)
     }
-    keywords.sort(onlineOnlyLast)
     return keywords.length ? html`<ul class="keyword-list ${placement}-keywords" role="list" aria-label=${t("Package tags")}>
       ${keywords.map(keyword => html`<li class="keyword-badge ${placement}-keyword" data-kind=${keyword.kind} title=${keyword.description ?? nothing}>
         ${this.keywordIcon(keyword.icon)}

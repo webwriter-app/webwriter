@@ -1274,6 +1274,7 @@ describe("package ribbon controls", () => {
       "webwriter-widget", "widget-practical", "widget-lang-de-AT", "widget-lang-gd-GB", "widget-online-use",
       "isced2011-1", "isced2011-2", "isced2011-3", "iscedf2013-05", "iscedf2013-0612",
       "historical-map", "local-history", "teacher-made", "widget-themeable", "WIDGET-ALLOWS-KEYBOARD-INPUT",
+      "widget-responsive", "widget-printable",
       "widget-stateful", "widget-configurable", "widget-reactive", "widget-testable", "widget-supports-dynamic-loading",
       "widget-supports-shared-dependencies", "widget-standalone", "widget-has-content", "widget-migrates-from-1.0.0",
       "widget-convertible-to-image/png", "widget-convertible-from-.csv",
@@ -1319,20 +1320,21 @@ describe("package ribbon controls", () => {
     expect(details.textContent).toContain("Natural sciences")
     expect(details.textContent).not.toContain("License")
     expect(details.textContent).not.toContain("Contents")
-    const themeBadge = details.querySelector('.details-keyword[data-kind="display"]')!
-    expect(themeBadge.textContent?.trim()).toBe("Themeable")
-    expect(themeBadge.querySelector(".icon-tabler-palette")).not.toBeNull()
     const badges = Array.from(details.querySelectorAll<HTMLElement>(".details-keyword"))
     expect(badges.map(badge => badge.dataset.kind)).toEqual([
-      "type", "language", "field", "field", "online", "level", "level", "display", "editing", "input", "input", "custom", "custom", "custom",
+      "type", "field", "field", "level", "level", "language", "online", "display", "display", "display",
+      "editing", "input", "input", "custom", "custom", "custom",
     ])
+    const displayBadges = badges.filter(badge => badge.dataset.kind === "display")
+    expect(displayBadges.map(badge => badge.textContent?.trim())).toEqual(["Printable", "Responsive", "Themeable"])
+    expect(displayBadges[2].querySelector(".icon-tabler-palette")).not.toBeNull()
     const limitations = badges.filter(badge => badge.matches('[data-kind="editing"], [data-kind="input"]'))
     expect(limitations.map(badge => badge.textContent?.trim())).toEqual(["Not editable", "No pointer input", "No touch input"])
     for(const [index, icon] of ["pencil-off", "mouse-off", "hand-click-off"].entries()) {
       expect(limitations[index].querySelector(`[aria-hidden="true"] .icon-tabler-${icon}`)).not.toBeNull()
     }
-    expect(badges[1].textContent).toContain("German")
-    const languageCount = badges[1].querySelector("span[title]")
+    expect(badges[5].textContent).toContain("German")
+    const languageCount = badges[5].querySelector("span[title]")
     expect(languageCount?.textContent).toBe("+1")
     expect(languageCount?.getAttribute("title")).toBe("Scottish Gaelic")
     expect(badges.at(-1)?.textContent?.trim()).toBe("teacher-made")

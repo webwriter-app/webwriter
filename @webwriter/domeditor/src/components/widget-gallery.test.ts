@@ -4,15 +4,16 @@ import type {WebWriterPackage} from "../packages"
 import {setLanguage, t} from "../site-language"
 import {EditorView} from "@codemirror/view"
 
-const {search, fetchSnippet, resolveDependencies, registryLocales} = vi.hoisted(() => ({
+const {search, fetchSnippet, getLatestPackage, resolveDependencies, registryLocales} = vi.hoisted(() => ({
   search: vi.fn(), fetchSnippet: vi.fn(), resolveDependencies: vi.fn(), registryLocales: [] as (string | undefined)[],
+  getLatestPackage: vi.fn(),
 }))
 vi.mock("../packages", async importOriginal => ({
   ...await importOriginal<typeof import("../packages")>(),
   WebWriterPackageRegistry: class {
     constructor(_fetcher?: unknown, locale?: string) { registryLocales.push(locale) }
     search = search; fetchSnippet = fetchSnippet
-    async getLatestPackage(name: string) { return (await search()).find((pkg: WebWriterPackage) => pkg.name === name) }
+    getLatestPackage = getLatestPackage
   },
 }))
 vi.mock("../package-dependencies", async importOriginal => ({
@@ -32,6 +33,8 @@ let gallery: WidgetGallery
 beforeEach(() => {
   vi.clearAllMocks()
   registryLocales.length = 0
+  getLatestPackage.mockReset()
+  getLatestPackage.mockImplementation(async (name: string) => (await search()).find((pkg: WebWriterPackage) => pkg.name === name))
   fetchSnippet.mockReset()
   search.mockResolvedValue([fixture()])
   resolveDependencies.mockResolvedValue({entries: [], map: null})
@@ -63,6 +66,7 @@ it("translates gallery controls while keeping package data and registry language
   expect(root.querySelector(".component")).toBeNull()
   expect([...root.querySelectorAll<HTMLAnchorElement>(".cards a")].some(link => link.hostname === "www.npmjs.com")).toBe(false)
   expect(registryLocales).toEqual(["en", "en"])
+  expect(search).toHaveBeenCalledWith({includeDeprecation: true})
 })
 async function mount() {
   gallery = new WidgetGallery()
@@ -98,8 +102,10 @@ function message(frame: HTMLIFrameElement, data: object, origin = new URL(frame.
 
 it("loads WebWriter packages, searches widgets, and shows an empty search result", async () => {
   const root = await mount()
-  expect(search).toHaveBeenCalledWith()
+  expect(search).toHaveBeenCalledWith({includeDeprecation: true})
   expect(root.querySelector("h3")?.textContent).toBe("Learning")
+  // Generated missing-capability badges must not leave an empty tag list.
+  expect(root.querySelector(".card-keywords")).toBeNull()
   const input = root.querySelector("input")!
   input.value = "missing topic"
   input.dispatchEvent(new Event("input"))
@@ -108,19 +114,37 @@ it("loads WebWriter packages, searches widgets, and shows an empty search result
   expect(root.textContent).toContain("No widgets match your search.")
 })
 
-it("shows standard package tags and missing capabilities after the gallery card description", async () => {
+it("keeps a deprecated package out of direct previews after the catalog loads", async () => {
+  const pkg = {...fixture(), deprecated: "Use the replacement widget."}
+  search.mockResolvedValue([pkg])
+  getLatestPackage.mockResolvedValue(null)
+  history.replaceState({}, "", "/packages/@webwriter/learning/")
+  gallery = new WidgetGallery()
+  document.body.append(gallery)
+
+  const root = gallery.shadowRoot!
+  await vi.waitFor(() => expect(root.querySelector(".error")?.textContent).toContain("The package could not be loaded."))
+  expect(root.querySelector(".preview-viewer")).toBeNull()
+})
+
+it("shows standard package tags after the gallery card description", async () => {
   const learning = {...fixture(), keywords: [
-    "webwriter-widget", "widget-online", "widget-practical", "widget-responsive", "custom-topic", "widget-reactive", "widget-convertible-to-.csv",
+    "webwriter-widget", "widget-themeable", "widget-online", "widget-lang-en", "widget-responsive", "widget-printable",
+    "widget-practical", "custom-topic", "widget-reactive", "widget-convertible-to-.csv",
   ]}
   const historyPackage = {...fixture(), name: "@webwriter/history", label: "History", keywords: [
     "webwriter-widget", "another-custom-topic", "WIDGET-EDITABLE", "WIDGET-ALLOWS-POINTER-INPUT",
     "widget-allows-keyboard-input", "widget-allows-touch-input",
   ]}
-  search.mockResolvedValue([learning, historyPackage])
+  const deprecatedPackage = {...fixture(), name: "@webwriter/deprecated", label: "Deprecated", deprecated: "No longer maintained",
+    keywords: ["webwriter-widget", "widget-simulational"]}
+  search.mockResolvedValue([learning, historyPackage, deprecatedPackage])
   gallery = new WidgetGallery()
   document.body.append(gallery)
   const root = gallery.shadowRoot!
   await vi.waitFor(() => expect(root.querySelectorAll("article")).toHaveLength(2))
+  expect(root.textContent).not.toContain("Deprecated")
+  expect(root.textContent).not.toContain("Simulation")
 
   const [untagged, tagged] = root.querySelectorAll("article")
   expect(tagged.querySelector("h3")?.textContent).toBe("Learning")
@@ -129,18 +153,15 @@ it("shows standard package tags and missing capabilities after the gallery card 
   expect(tags.getAttribute("aria-label")).toBe("Package tags")
   const badges = [...tags.querySelectorAll<HTMLLIElement>("li.keyword-badge")]
   expect(badges.map(badge => [badge.dataset.kind, badge.textContent?.trim()])).toEqual([
-    ["type", "Practice"], ["display", "Responsive"], ["editing", "Not editable"],
-    ["input", "No pointer input"], ["input", "No keyboard input"], ["input", "No touch input"], ["online", "Online only"],
+    ["type", "Practice"], ["language", "English"], ["online", "Online only"],
+    ["display", "Printable"], ["display", "Responsive"], ["display", "Themeable"],
   ])
   expect(badges[0].querySelector('.keyword-icon[aria-hidden="true"] svg')).not.toBeNull()
-  for(const [index, icon] of ["pencil-off", "mouse-off", "keyboard-off", "hand-click-off"].entries()) {
-    expect(badges[index + 2].querySelector(`.keyword-icon[aria-hidden="true"] .icon-tabler-${icon}`)).not.toBeNull()
-  }
   expect(untagged.querySelector("h3")?.textContent).toBe("History")
   expect(untagged.querySelector(".card-keywords")).toBeNull()
 })
 
-it("combines a tag or language with live search and keeps all filter options available", async () => {
+it("combines a positive tag or language with live search", async () => {
   const learning = {...fixture(), keywords: [
     "webwriter-widget", "widget-practical", "widget-lang-en", "widget-lang-fr", "atoms", "widget-allows-touch-input", "widget-configurable",
   ]}
@@ -161,21 +182,11 @@ it("combines a tag or language with live search and keeps all filter options ava
   const tagLabel = (button: HTMLButtonElement) => button.textContent?.trim()
   const tagButton = (label: string) => tagButtons().find(button => tagLabel(button) === label)!
   const selectedTags = () => tagButtons().filter(button => button.getAttribute("aria-pressed") === "true").map(tagLabel)
-  const tagLabels = ["No keyboard input", "No pointer input", "No touch input", "Not editable", "Practice", "Simulation"]
+  const tagLabels = ["Practice", "Simulation"]
   expect(tagButtons().map(tagLabel).sort()).toEqual(tagLabels)
   expect(selectedTags()).toEqual([])
   expect(tagButton("Practice").dataset.kind).toBe("type")
   expect(tagButton("Practice").querySelector('.keyword-icon[aria-hidden="true"] svg')).not.toBeNull()
-  const noTouch = tagButton("No touch input")
-  expect(noTouch.querySelector('.keyword-icon[aria-hidden="true"] .icon-tabler-hand-click-off')).not.toBeNull()
-  noTouch.click()
-  await gallery.updateComplete
-  expect(cards()).toEqual(["Physics"])
-  expect(selectedTags()).toEqual(["No touch input"])
-  noTouch.click()
-  await gallery.updateComplete
-  expect(cards()).toEqual(["History", "Learning", "Physics"])
-
   const languageSelects = filters.querySelectorAll<HTMLSelectElement>("select")
   expect(languageSelects).toHaveLength(1)
   const language = languageSelects[0]
@@ -263,9 +274,9 @@ it("combines a tag or language with live search and keeps all filter options ava
 
 it("shows general filter tags before education levels and fields", async () => {
   search.mockResolvedValue([{...fixture(), keywords: [
-    "webwriter-widget", "isced2011-6", "iscedf2013-06", "widget-practical",
+    "webwriter-widget", "isced2011-6", "iscedf2013-06", "widget-themeable", "widget-practical",
     "iscedf2013-04", "isced2011-3", "iscedf2013-02", "widget-lang-en",
-    "widget-online", "widget-online-use", "widget-online-edit", "widget-editable",
+    "widget-responsive", "widget-online", "widget-online-use", "widget-online-edit", "widget-printable", "widget-editable",
     "widget-allows-pointer-input", "widget-allows-keyboard-input", "widget-allows-touch-input",
   ]}])
   const root = await mount()
@@ -276,11 +287,14 @@ it("shows general filter tags before education levels and fields", async () => {
   expect(rows.map(row => [...row.querySelectorAll<HTMLButtonElement>("button.tag-filter")]
     .map(button => [button.textContent?.trim(), button.dataset.kind])))
     .toEqual([
-      [["Online when editing", "online"], ["Online when using", "online"], ["Practice", "type"], ["Online only", "online"]],
+      [["Practice", "type"], ["Online only", "online"], ["Online when editing", "online"], ["Online when using", "online"],
+        ["Printable", "display"], ["Responsive", "display"], ["Themeable", "display"]],
       [["High school", "level"], ["Bachelor's", "level"]],
       [["Humanities", "field"], ["Business", "field"], ["ICT", "field"]],
     ])
-  expect(rows[0].querySelector('select[aria-label="Language"]')).not.toBeNull()
+  const languageFilter = rows[0].querySelector('select[aria-label="Language"]')!
+  const firstOnlineFilter = rows[0].querySelector('button[data-kind="online"]')!
+  expect(languageFilter.compareDocumentPosition(firstOnlineFilter) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   expect(root.querySelector(".more-tag-filters-toggle")).toBeNull()
 })
 
@@ -411,9 +425,10 @@ it("opens a package URL from the gallery and closes a deep link back to the pack
   pkg.keywords = [
     "webwriter-widget", "widget-online", "widget-practical", "isced2011-0", "custom-topic", "widget-editable",
     "widget-allows-keyboard-input", "widget-reactive", "widget-convertible-from-.csv",
+    "widget-themeable", "widget-responsive", "widget-lang-en", "widget-printable",
   ]
   const tagLabels = (page: HTMLElement) => [...page.querySelectorAll(".details-keywords > .details-keyword")].map(tag => tag.textContent?.trim())
-  const expectedTags = ["Practice", "No pointer input", "No touch input", "custom-topic", "Online only"]
+  const expectedTags = ["Practice", "English", "Online only", "Printable", "Responsive", "Themeable", "custom-topic"]
   search.mockResolvedValue([pkg])
   const root = await mount()
   expect(location.pathname).toBe("/")
@@ -446,11 +461,14 @@ it("opens a package URL from the gallery and closes a deep link back to the pack
   expect(location.pathname).toBe("/packages/")
 
   history.replaceState({}, "", "/packages/@webwriter/learning/")
+  search.mockResolvedValue([])
+  getLatestPackage.mockResolvedValueOnce(pkg)
   gallery.remove()
   gallery = new WidgetGallery()
   document.body.append(gallery)
   const deepRoot = gallery.shadowRoot!
   await vi.waitFor(() => expect(deepRoot.querySelector(".details-title")?.textContent).toContain("Learning"))
+  expect(getLatestPackage).toHaveBeenCalledWith(pkg.name, {excludeDeprecated: true})
   const deepPage = deepRoot.querySelector<HTMLElement>(".package-page")!
   expect(deepPage.querySelector(".details-title")?.textContent).toContain("@webwriter/learning@1.0.0")
   expect(deepPage.querySelector(".details-byline")?.textContent).toContain("Ada Lovelace")

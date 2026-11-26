@@ -446,6 +446,45 @@ describe("WebWriterPackageRegistry", () => {
       .map(([input]) => new URL(String(input)).searchParams.get("from"))).toEqual(["0", "250"])
   })
 
+  it("annotates search results from exact-version npm deprecation metadata", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+      const url = new URL(String(input))
+      if(url.pathname === "/-/v1/search") return Response.json({total: 2, objects: [
+        {package: {name: "@webwriter/active", version: "1.0.0", keywords: ["webwriter-widget"]}},
+        {package: {name: "@webwriter/retired", version: "2.0.0", keywords: ["webwriter-widget"]}},
+      ]})
+      if(url.pathname === "/%40webwriter%2Factive/1.0.0" || url.pathname === "/%40webwriter%2Fretired/2.0.0") {
+        expect(options?.cache).toBe("no-cache")
+        return Response.json({name: decodeURIComponent(url.pathname.split("/")[1]),
+          version: url.pathname.endsWith("1.0.0") ? "1.0.0" : "2.0.0",
+          ...(url.pathname.includes("retired") ? {deprecated: "Use @webwriter/active instead"} : {})})
+      }
+      if(url.origin === "https://cdn.jsdelivr.net") {
+        const name = url.pathname.includes("/active@") ? "@webwriter/active" : "@webwriter/retired"
+        const version = name.endsWith("active") ? "1.0.0" : "2.0.0"
+        return Response.json({name, version, exports: {}})
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const result = await new WebWriterPackageRegistry(fetcher as typeof fetch).search({includeDeprecation: true})
+
+    expect(result.map(pkg => [pkg.name, pkg.deprecated])).toEqual([
+      ["@webwriter/active", undefined], ["@webwriter/retired", "Use @webwriter/active instead"],
+    ])
+    expect(fetcher.mock.calls.filter(([input]) => String(input).includes("registry.npmjs.org/%40webwriter%2F")))
+      .toHaveLength(2)
+  })
+
+  it("skips a deprecated latest release before fetching its published files when requested", async () => {
+    const name = "@webwriter/retired"
+    const fetcher = vi.fn().mockResolvedValue(Response.json({name, version: "2.0.0", deprecated: "Please migrate."}))
+    const registry = new WebWriterPackageRegistry(fetcher)
+
+    await expect(registry.getLatestPackage(name, {excludeDeprecated: true})).resolves.toBeNull()
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith("https://registry.npmjs.org/%40webwriter%2Fretired/latest", {cache: "no-cache"})
+  })
+
   it("looks up the newest stable version in the requested major directly on npm", async () => {
     const fetcher = vi.fn().mockResolvedValue(Response.json({versions: {
       "1.9.0": {}, "1.10.1": {}, "1.10.0": {}, "1.11.0-beta.0": {}, "2.0.0": {},

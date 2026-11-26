@@ -225,6 +225,7 @@ export type WebWriterPackage = {
   iconUrl?: string
   authors: string[]
   license?: string
+  deprecated?: string
   keywords: string[]
   links: {
     npm?: string
@@ -929,7 +930,7 @@ export class WebWriterPackageRegistry {
   ) {}
 
   /** Discovers published WebWriter packages through npm search. */
-  async search() {
+  async search({includeDeprecation = false} = {}) {
     const summariesByName = new Map<string, WebWriterPackage>()
     let from = 0
     let total: number | undefined
@@ -955,12 +956,11 @@ export class WebWriterPackageRegistry {
     const summaries = [...summariesByName.values()]
 
     return Promise.all(summaries.map(async summary => {
-      try {
-        return await this.getPackage(summary)
-      }
-      catch {
-        return summary
-      }
+      const request = this.getPackage(summary).catch(() => summary)
+      if(!includeDeprecation) return request
+      const [pkg, release] = await Promise.all([request, this.publishedPackageManifest(summary.name, summary.version).catch(() => undefined)])
+      const deprecated = release?.deprecated
+      return deprecated ? {...pkg, deprecated} : pkg
     }))
   }
 
@@ -988,11 +988,12 @@ export class WebWriterPackageRegistry {
   }
 
   /** Fetch a directly linked package without waiting for catalog search. */
-  async getLatestPackage(name: string) {
-    const response = await this.fetcher(`${NPM_REGISTRY_ENDPOINT}/${encodeURIComponent(name)}/latest`, {cache: "no-cache"})
+  async getLatestPackage(name: string, {excludeDeprecated = false} = {}) {
+    const response = await this.fetcher(packageManifestUrl(name, "latest"), {cache: "no-cache"})
     if(!response.ok) throw new Error(`Package metadata failed (${response.status})`)
-    const manifest = await response.json() as WebWriterPackageManifest
+    const manifest = await response.json() as NpmRegistryManifest
     if(manifest.name !== name || typeof manifest.version !== "string") throw new Error("Invalid package metadata")
+    if(excludeDeprecated && manifest.deprecated) return null
     return this.getPackage({name, version: manifest.version, description: manifest.description,
       license: manifest.license, keywords: manifest.keywords,
       authors: [manifest.author, ...(manifest.contributors ?? [])].map(personLabel).filter((author): author is string => !!author)})
