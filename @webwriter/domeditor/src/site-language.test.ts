@@ -83,6 +83,22 @@ describe("site translation", () => {
     }
   })
 
+  it("places a translated preview hint beside the widget wall introduction", () => {
+    const source = new DOMParser().parseFromString(landingPage, "text/html")
+    const intro = source.querySelector(".widget-showcase .section-intro")!
+    const hint = intro.querySelector(":scope > .media-hint")!
+    expect(hint.previousElementSibling?.querySelector("h2")?.id).toBe("widgets-title")
+    expect(hint.textContent).toBe("Hover/tap to see widgets in action")
+    expect(hint.querySelector("svg")?.closest("[aria-hidden=true]")).not.toBeNull()
+    for(const locale of ["de", "fr", "nl", "es", "pt", "it"]) {
+      expect(siteTranslations[locale]?.[hint.textContent!], locale).toBeTruthy()
+      setLanguage(locale, false)
+      const translated = hint.cloneNode(true) as HTMLElement
+      translateSiteTree(translated)
+      expect(translated.textContent).toBe(t("Hover/tap to see widgets in action"))
+    }
+  })
+
   it("follows the widget wall with a fully translated live sharing section", () => {
     const source = new DOMParser().parseFromString(landingPage, "text/html")
     const section = source.querySelector(".live-sharing")!

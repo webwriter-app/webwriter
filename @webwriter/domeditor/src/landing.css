@@ -33,6 +33,11 @@ live-session-showcase article h3 { margin: 0 0 .4rem; font-size: .95rem; line-he
 live-session-showcase article p { margin: 0; font-size: .8125rem; line-height: 1.55; color: #536174; }
 live-session-showcase:not(:defined) { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1.75rem; }
 :is(.widget-showcase, .live-sharing) .section-intro p { max-inline-size: 45rem; margin-block: 1rem 0; font-size: .95rem; color: #536174; }
+.widget-showcase .section-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1.25rem 2.5rem; }
+.widget-showcase .section-intro > div { flex: 1 1 28rem; min-inline-size: 0; }
+.widget-showcase .section-intro .media-hint { display: flex; flex: 0 1 auto; align-items: center; gap: .6rem; margin: 0; padding: .55rem .95rem .55rem .6rem; border: 1px solid #c8dced; border-radius: .5rem; background: #f3f8fd; color: #155e9b; font-size: .8125rem; font-weight: 600; line-height: 1.35; }
+.media-hint-icon { display: grid; flex: none; place-items: center; inline-size: 1.75rem; block-size: 1.75rem; border: 1px solid #d1dce8; border-radius: 50%; background: white; color: #1b639c; }
+.media-hint-icon svg { inline-size: .85rem; block-size: .85rem; margin-inline-start: .1rem; }
 live-session-showcase .status-note { display: flex; align-items: center; gap: .5rem; margin: 0; padding: .45rem .8rem; border: 1px solid #ecd9ae; border-radius: .4rem; background: #fcf6e8; color: #6f4d12; font-size: .8125rem; line-height: 1.45; box-shadow: 0 .4rem 1.2rem rgb(23 32 51 / .12); }
 live-session-showcase:not(:defined) .status-note { grid-column: 1 / -1; justify-self: start; box-shadow: none; }
 .status-note strong { font-weight: 650; }
