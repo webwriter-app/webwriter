@@ -71,6 +71,20 @@ export class BackendClient {
     this.accessToken = accessToken
   }
 
+  /**
+   * Fetch for requests this service proxies, such as AI inference of its managed providers. Only
+   * requests below `apiBaseUrl` carry the bearer token, so it never reaches an upstream provider.
+   */
+  readonly authorizedFetch: typeof globalThis.fetch = (input, init = {}) => {
+    const url = new URL(input instanceof Request ? input.url : String(input))
+    const api = new URL(`${this.apiBaseUrl}/`)
+    const headers = new Headers(init.headers)
+    if(this.accessToken && url.origin === api.origin && url.pathname.startsWith(api.pathname)) {
+      headers.set("Authorization", `Bearer ${this.accessToken}`)
+    }
+    return this.fetchImplementation.call(globalThis, input, {...init, headers})
+  }
+
   private async request<T>(path: string, init: RequestInit = {}) {
     if(typeof this.fetchImplementation !== "function") throw new Error("Backend requests are unavailable in this browser")
     let response: Response

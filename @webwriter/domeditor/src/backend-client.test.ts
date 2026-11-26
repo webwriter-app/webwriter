@@ -237,6 +237,19 @@ describe("authenticated cloud services", () => {
     expect(fetch.mock.calls[0][1].headers.Authorization).toBe("Bearer new-token")
   })
 
+  it("signs proxied AI requests on its own API and never forwards the token elsewhere", async () => {
+    const fetch = vi.fn().mockImplementation(async () => response({data: []}))
+    const client = new BackendClient(cloudSession, fetch, "token")
+    await client.authorizedFetch(`${cloudSession.apiBaseUrl}/inference/providers/edumix/models`, {headers: {Accept: "application/json"}})
+    const own = fetch.mock.calls[0][1].headers as Headers
+    expect(own.get("Authorization")).toBe("Bearer token")
+    expect(own.get("Accept")).toBe("application/json")
+    for(const url of ["https://api.mistral.ai/v1/models", `${new URL(cloudSession.apiBaseUrl).origin}/other/models`]) {
+      await client.authorizedFetch(url)
+      expect((fetch.mock.lastCall![1].headers as Headers).has("Authorization")).toBe(false)
+    }
+  })
+
   it("sends bearer authorization for documents and flags 401 even without JSON", async () => {
     const fetch = vi.fn().mockResolvedValue(new Response("Expired", {status: 401}))
     const unauthorized = vi.fn()

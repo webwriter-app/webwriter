@@ -921,7 +921,7 @@ export class AISettingsDialog extends LitElement {
         source = await this.store.save(provider, this.apiKey.trim() || undefined, !this.providerId)
         key = ""
       }
-      const models = await listAIModels(source, key, controller.signal)
+      const models = await listAIModels(source, key, controller.signal, this.store.fetchFor(source))
       if(sequence !== this.modelFetchSequence || controller.signal.aborted || !this.open) return
       const currentDraft = this.draft?.id === draftAtStart.id ? this.draft : draftAtStart
       const next = {

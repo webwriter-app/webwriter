@@ -146,6 +146,22 @@ describe("AIProviderStore", () => {
     expect(localStorage.getItem(AI_KEYS_STORAGE_KEY)).toBeNull()
   })
 
+  it("sends a managed provider's requests through the backend's signed fetch", async () => {
+    const provider = {...createAIProvider("custom"), id: "edumix", managed: "backend" as const}
+    const authorizedFetch = (async () => new Response()) as typeof fetch
+    const store = new AIProviderStore(localStorage)
+    await store.connectBackend({
+      listAIProviders: async () => ({providers: [provider], activeProviderId: provider.id}),
+      createAIProvider: async () => ({provider, activeProviderId: provider.id}),
+      updateAIProvider: async () => ({provider, activeProviderId: provider.id}),
+      deleteAIProvider: async () => undefined,
+      setActiveAIProvider: async () => undefined,
+      authorizedFetch,
+    })
+    expect(store.fetchFor(store.activeProvider!)).toBe(authorizedFetch)
+    expect(store.fetchFor(createAIProvider("openai"))).toBeUndefined()
+  })
+
   it("keeps the prior backend provider active when activation fails", async () => {
     const first = {...createAIProvider("openai"), id: "first", managed: "backend" as const}
     const second = {...createAIProvider("custom"), id: "second", managed: "backend" as const}

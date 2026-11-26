@@ -2168,6 +2168,7 @@ export class AppRibbon extends EditingControls {
       const response = await completeAIConversation({
         provider,
         apiKey,
+        fetch: this.aiProviderStore.fetchFor(provider),
         model: this.aiModel,
         effort: this.aiEffort,
         messages: this.conversationFor(chatId),

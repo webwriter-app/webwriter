@@ -333,6 +333,8 @@ export class AIProviderStore extends EventTarget {
     updateAIProvider(provider: AIProviderConfig, apiKey?: string): Promise<{provider: AIProviderConfig, activeProviderId: string | null}>
     deleteAIProvider(id: string): Promise<void>
     setActiveAIProvider(id: string): Promise<void>
+    /** Signs requests to the backend's own API (BackendClient.authorizedFetch). */
+    authorizedFetch?: typeof globalThis.fetch
   } | null = null
   private backendSequence = 0
   private activationSequence = 0
@@ -394,6 +396,11 @@ export class AIProviderStore extends EventTarget {
 
   prepare(provider: AIProviderConfig) {
     return this.backend ? {...provider, managed: "backend" as const} : provider
+  }
+
+  /** The fetch for a provider's AI requests: a managed provider's go through the signed-in backend. */
+  fetchFor(provider: AIProviderConfig) {
+    return provider.managed === "backend" ? this.backend?.authorizedFetch : undefined
   }
 
   private persist() {
