@@ -6,10 +6,11 @@ import {userInitials} from "../user-identity"
 export type LiveShowcaseStep = "share" | "groups" | "permissions"
 const steps: LiveShowcaseStep[] = ["share", "groups", "permissions"]
 
-// Live sessions name anonymous learners "Learner XXXX" and give each a color.
+// Live sessions name anonymous learners "Learner XXXX" and give each a color;
+// the landing page uses muted tones of that palette.
 const learners = ["7F2K", "K2MD", "Q9XA", "M4TR", "B8NC", "T3HW"].map((code, index) => ({
   initials: userInitials(`Learner ${code}`),
-  color: ["#e11d48", "#2563eb", "#059669", "#9333ea", "#ea580c", "#0891b2"][index],
+  color: ["#b26d7c", "#5b7fb2", "#5c937d", "#8673a8", "#b8865b", "#4f8d9c"][index],
 }))
 const maxGroupSize = 4
 
@@ -194,10 +195,10 @@ export class LiveSessionShowcase extends LitElement {
     .chip[aria-pressed="true"]:hover {background: #d5e5f5}
     .area {position: relative; height: 7.2em; background: radial-gradient(circle, #d3dbe5 .06em, transparent .08em) 0 0 / .9em .9em, white}
     .note {position: absolute; width: 4.2em; height: 4.2em; padding: .55em .5em; border-radius: .2em; box-shadow: 0 .15em .35em rgb(23 32 51 / .12)}
-    .note .bar {height: .35em; margin-block: .3em; background: rgb(23 32 51 / .14)}
-    .note:nth-child(1) {left: 1em; top: 1.1em; background: #fde68a; rotate: -2deg}
-    .note:nth-child(2) {left: 6em; top: 1.6em; background: #bfdbfe; rotate: 2deg}
-    .note:nth-child(3) {left: 11em; top: .9em; background: #bbf7d0; rotate: -1deg}
+    .note .bar {height: .35em; margin-block: .3em; background: rgb(23 32 51 / .11)}
+    .note:nth-child(1) {left: 1em; top: 1.1em; background: #f1e3b8; rotate: -2deg}
+    .note:nth-child(2) {left: 6em; top: 1.6em; background: #d6e2f0; rotate: 2deg}
+    .note:nth-child(3) {left: 11em; top: .9em; background: #d5e7dc; rotate: -1deg}
     .notes {padding-block-end: .6em; border-style: dashed}
     .notes .tools {border-bottom-style: dashed}
     .notes > .bar {margin-inline: .6em}

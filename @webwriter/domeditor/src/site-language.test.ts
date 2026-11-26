@@ -56,14 +56,15 @@ describe("site translation", () => {
     expect(background.previousElementSibling?.classList.contains("developer-invitation")).toBe(true)
     expect(background.querySelector("p")?.textContent).toBe("WebWriter was first developed as a research project for the dissertation of Dr.-Ing. Frederic Salmen. The project was conducted at the research group for Learning Technologies at RWTH Aachen University, led by Prof. Ulrik Schroeder.")
     expect(background.querySelector("img")?.getAttribute("src")).toBe("/src/assets/rwth-learntech.svg")
+    expect(background.lastElementChild?.classList.contains("research-logo")).toBe(true)
     expect(background.querySelector('[href="https://publications.rwth-aachen.de/record/1033892"]')?.textContent).toBe("dissertation")
     const links = [...background.querySelectorAll("a")].map(link => link.getAttribute("href"))
     expect(links).toEqual([
-      "https://learntech.rwth-aachen.de/",
       "https://publications.rwth-aachen.de/record/1033892",
       "https://learntech.rwth-aachen.de/cms/learntech/Das-Lehr-und-Forschungsgebiet/Mitarbeiter/Wissenschaftliche-Mitarbeiterinnen-und-M/~sezpi/Frederic-Salmen/lidx/1/",
       "https://learntech.rwth-aachen.de/",
       "https://learntech.rwth-aachen.de/cms/learntech/Das-Lehr-und-Forschungsgebiet/Mitarbeiter/Institutsleitung/~jxqe/Ulrik-Schroeder/lidx/1/",
+      "https://learntech.rwth-aachen.de/",
     ])
     for(const locale of ["de", "fr", "nl", "es", "pt", "it"]) {
       setLanguage(locale, false)
@@ -89,6 +90,9 @@ describe("site translation", () => {
     expect(section.nextElementSibling?.classList.contains("developer-invitation")).toBe(true)
     expect(section.querySelector(`#${section.getAttribute("aria-labelledby")}`)?.localName).toBe("h2")
     expect([...section.querySelectorAll("live-session-showcase > article")].map(card => card.slot)).toEqual(["share", "groups", "permissions"])
+    expect(section.querySelector(".section-intro .status-note")?.textContent).toBe("Work in progress. Live sharing is not available yet.")
+    expect([...section.querySelectorAll(".share-options > article h3")].map(heading => heading.textContent)).toEqual(["Share a file", "Print it"])
+    expect(section.querySelector(".share-options")?.previousElementSibling?.localName).toBe("live-session-showcase")
     const copy: string[] = []
     const walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT)
     while(walker.nextNode()) {
@@ -101,6 +105,22 @@ describe("site translation", () => {
       const translated = section.cloneNode(true) as HTMLElement
       translateSiteTree(translated)
       expect(translated.querySelector("h2")?.textContent).toBe(t("Share it live with your class"))
+    }
+  })
+
+  it("translates the developer invitation, which starts from a simple widget", () => {
+    const source = new DOMParser().parseFromString(landingPage, "text/html")
+    const invitation = source.querySelector(".developer-invitation")!
+    expect(invitation.querySelector("h2 + p")?.textContent).toBe("Build with web components and your preferred library. Start with a simple widget, then follow the tutorial through rendering, state, and collaboration.")
+    const walker = document.createTreeWalker(invitation, NodeFilter.SHOW_TEXT)
+    const copy: string[] = []
+    while(walker.nextNode()) {
+      const text = (walker.currentNode as Text).data.trim()
+      if(text && text !== "→") copy.push(text)
+    }
+    for(const locale of ["de", "fr", "nl", "es", "pt", "it"]) {
+      for(const text of copy) expect(siteTranslations[locale]?.[text], `${locale}: ${text}`).toBeTruthy()
+      expect(siteTranslations[locale][copy[2]]).not.toMatch(/quiz|hello|hallo/i)
     }
   })
 
