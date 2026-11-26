@@ -314,6 +314,7 @@ const expectedSmokeChecks = [
   "document frames align with text",
   "empty document starts at its paragraph",
   "editor page starts with a visible document",
+  "editor frame loads widgets with a native import map",
   "typing after deleting the initial paragraph stays in a paragraph",
   "native widget grouping dialog and processing instruction roundtrip",
   "native Range and Selection",
@@ -426,6 +427,8 @@ if(browserName === "firefox") {
     'user_pref("browser.startup.homepage_override.mstone", "ignore");',
     'user_pref("browser.newtabpage.enabled", false);',
     'user_pref("datareporting.policy.dataSubmissionEnabled", false);',
+    // Exercise the single-import-map behavior that still exists in Firefox releases.
+    'user_pref("dom.multiple_import_maps.enabled", false);',
     'user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);',
     "",
   ].join("\n"))

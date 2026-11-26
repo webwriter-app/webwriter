@@ -215,6 +215,8 @@ await check("typing after deleting the initial paragraph stays in a paragraph", 
   }
 })
 
+// Firefox suppresses iframe navigation while the smoke page is in designMode.
+editor.destroy()
 await check("editor page starts with a visible document", async () => {
   const frame = document.createElement("iframe")
   frame.src = "/editor/"
@@ -244,7 +246,37 @@ await check("editor page starts with a visible document", async () => {
   finally { frame.remove() }
 })
 
-editor.destroy()
+await check("editor frame loads widgets with a native import map", async () => {
+  const frame = document.createElement("iframe")
+  frame.src = "/editor/"
+  const packageName = "import-map-smoke-fixture"
+  const tagName = "import-map-smoke-widget"
+  const moduleURL = (source: string) => `data:text/javascript,${encodeURIComponent(source)}`
+  const script = moduleURL(`import {Widget} from "smoke-widget-base"; customElements.define("${tagName}", Widget);`)
+  const pkg = {name: packageName, version: "1.0.0", label: "Fixture", authors: [], keywords: [], links: {},
+    scripts: [script], styles: [], members: [{id: "widget", packageName, packageVersion: "1.0.0", exportName: "./widget",
+      kind: "widget", label: "Widget", insertable: true, tagName, scriptUrl: script}]}
+  const importMap = {imports: {"smoke-widget-base": moduleURL("export class Widget extends HTMLElement {}")}}
+  document.body.append(frame)
+  try {
+    const deadline = Date.now() + 15000
+    let host: any
+    while(Date.now() < deadline) {
+      host = frame.contentDocument?.querySelector("dom-editor")
+      if(host?.frameStarted) break
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    assert(host?.frameStarted, "the editor frame did not start")
+    await host.waitForEditorWindow()
+    host.packageImportMap = importMap
+    host.packageImportMapPackageSetKey = host.packageSetKey([pkg])
+    await host.reloadEditor([pkg])
+    const result = await host.requestFrameControl("registered-tags", {tags: [tagName]})
+    assert(result.tags?.includes(tagName), "the editor frame did not register the widget")
+  }
+  finally { frame.remove() }
+})
+
 await check("empty document starts at its paragraph", () => {
   document.body.replaceChildren()
   const fresh = new DOMEditor()

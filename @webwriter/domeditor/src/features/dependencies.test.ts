@@ -3,6 +3,7 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {isEditorOnlyNode} from "../editor-artifacts"
 import {loadWidgetsMessage} from "../editor-bridge"
+import {packageImportMapScript} from "../package-dependencies"
 import {packageCdnUrl, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import {DependencyFeature} from "./dependencies"
 
@@ -107,6 +108,28 @@ describe("DependencyFeature", () => {
     expect(children.findIndex(element => element.matches('script[type="importmap"]')))
       .toBeLessThan(children.findIndex(element => element.matches('script[type="module"][src]')))
     editor.destroy()
+  })
+
+  it("reuses the package import map from the frame bootstrap", async () => {
+    const editor = new DOMEditor()
+    const importMap = {imports: {lit: "https://cdn.example/lit.js"}}
+    const bootstrapMap = packageImportMapScript(document, importMap, true)
+    bootstrapMap.nonce = editor.trustedScriptNonce
+    document.head.prepend(bootstrapMap)
+    vi.spyOn(document.head, "append").mockImplementation((...assets) => {
+      for(const asset of assets) if(asset instanceof HTMLElement) asset.dispatchEvent(new Event("load"))
+    })
+    try {
+      await editor.getActionHandler(loadWidgetsMessage)({
+        type: loadWidgetsMessage,
+        widgets: [{name: demoPackage.name, version: demoPackage.version}],
+        packages: [demoPackage],
+        importMap,
+      })
+      expect([...document.head.querySelectorAll('script[type="importmap"]')]).toEqual([bootstrapMap])
+      expect(editor.features.dependency.packageDependencyPlan?.map).toEqual(importMap)
+    }
+    finally { editor.destroy() }
   })
 
   it("uses the current iframe's observer realm during feature startup", () => {

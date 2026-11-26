@@ -3,7 +3,7 @@ import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
 import {WEBWRITER_GENERATOR} from "./document-head"
 import {documentTheme, ensureDefaultDocumentTheme, upgradeBundledDocumentThemes} from "./document-themes"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "./frame-local-packages"
-import {packageImportMapId} from "./package-dependencies"
+import {packageImportMapId, packageImportMapScript} from "./package-dependencies"
 import {packageWidgetSchemaDefinitions, type WebWriterPackage} from "./packages"
 import {appendSerializedAssets, escapeHTMLAttribute, removeSerializedReaderAssets, restoreOriginalResourceURLs, scopedCustomElementRegistryScript, serializeDoctype} from "./serialization"
 import {clearEditorArtifacts, registerFrameArtifacts, widgetLookupForTags} from "./editor-artifacts"
@@ -26,6 +26,7 @@ type FrameDocumentOptions = {
 export type EditorFrameOptions = FrameDocumentOptions & {
   revision: number
   language: string
+  importMap?: IImportMap | null
 }
 
 export type PreviewFrameOptions = FrameDocumentOptions & {
@@ -139,6 +140,9 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   // own guard refuses user-code execution outside an opaque child sandbox.
   const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation} 'wasm-unsafe-eval' '${sandboxScriptHash}'; style-src 'none'; style-src-elem ${packageStyles}; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src * data: blob:; media-src * data: blob:; frame-src https: blob: data: ${testShell}; worker-src blob: https: ${workerSource}; object-src 'none'; base-uri 'none'; form-action 'none'`
   const csp = `<meta http-equiv="Content-Security-Policy" content="${escapeHTMLAttribute(policy)}">`
+  const importMap = options.executeScripts && options.importMap ? packageImportMapScript(document, options.importMap) : null
+  importMap?.setAttribute("nonce", options.bridgeNonce)
+  const headStart = csp + (importMap?.outerHTML ?? "")
   const bridge = `<meta name="webwriter-editor-bridge" data-nonce="${nonce}" data-host-origin="${escapeHTMLAttribute(options.hostOrigin)}">`
   // Happy DOM deliberately disables external script execution but reports
   // each attempted iframe load as an uncaught exception. Keep virtual test
@@ -151,7 +155,7 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   }
   const scopedRegistry = registryScript?.outerHTML ?? ""
   const bootstrapScripts = `<script nonce="${nonce}">globalThis.litIssuedWarnings ??= new Set(); globalThis.litIssuedWarnings.add("dev-mode");</script>${scopedRegistry}<script nonce="${nonce}" type="${editorScriptType}" src="${escapeHTMLAttribute(options.entryURL)}"></script>`
-  const bootstrap = `${csp}${bridge}${bootstrapScripts}`
+  const bootstrap = `${headStart}${bridge}${bootstrapScripts}`
   const themeNonce = options.executeScripts && !hasWidgetScripts ? options.bridgeNonce : undefined
   if(documentHTML === null) {
     const root = document.implementation.createHTMLDocument()
@@ -164,7 +168,7 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   upgradeBundledDocumentThemes(parsed)
   applyIframeSandboxPolicy(parsed, [options.hostOrigin, entryURL.origin])
   prepareWebsiteFrames(parsed)
-  // The iframe receives its trusted resolution through load-widgets.
+  // The host installs its own package map before any module is requested.
   parsed.getElementById(packageImportMapId)?.remove()
   // Saved exports carry the standalone adapter. Replace it with the nonce-bearing
   // editor bootstrap copy below so the frame has exactly one runtime instance.
@@ -189,6 +193,11 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
     parsed.head.append(restoreModules)
   }
   parsed.head.insertAdjacentHTML("beforeend", `${bridge}${bootstrapScripts}`)
+  const cspElement = parsed.createElement("meta")
+  cspElement.httpEquiv = "Content-Security-Policy"
+  cspElement.content = policy
+  if(importMap) parsed.head.prepend(importMap)
+  parsed.head.prepend(cspElement)
   if(restoreModules) {
     // The parser completes the body before evaluating this module. Record the
     // final script positions after adding the head bootstrap scripts.
@@ -200,10 +209,6 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   for (const [index, src] of entries) scripts[index]?.setAttribute("src", src);
 }`
   }
-  const cspElement = parsed.createElement("meta")
-  cspElement.httpEquiv = "Content-Security-Policy"
-  cspElement.content = policy
-  parsed.head.prepend(cspElement)
   return `<!-- frame ${options.revision} -->${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
 }
 

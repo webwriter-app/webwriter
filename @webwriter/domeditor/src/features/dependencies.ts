@@ -1,4 +1,4 @@
-import {markEditorOnlyNode} from "../editor-artifacts"
+import {isEditorOnlyNode, markEditorOnlyNode} from "../editor-artifacts"
 import {escapeHTMLAttribute} from "../serialization-primitives"
 import {scopedCustomElementRegistryScript} from "../scoped-custom-element-registry-script"
 import { EditorFeature } from "."
@@ -7,7 +7,7 @@ import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from 
 import {packageCdnUrl, packageInsertionItems, packageTestTimeout, packageWidgetSchemaDefinitions, resolvePackageExport, WebWriterPackageRegistry, type PackageTestCase, type PackageTestResult, type WebWriterPackage} from "../packages"
 import {Schema} from "../schema"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
-import {packageImportMapScript, packageModuleEntries, runtimeDocumentBaseURL, type PackageDependencyPlan} from "../package-dependencies"
+import {packageImportMapId, packageImportMapScript, packageModuleEntries, runtimeDocumentBaseURL, type PackageDependencyPlan} from "../package-dependencies"
 import {relayFrameLocalPackageRequest} from "../frame-local-packages"
 import {editorHostOrigin} from "../frame-origins"
 import {documentWidgetStyleSource} from "../document-themes"
@@ -169,7 +169,10 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
     })))
 
     this.widgetAssets.forEach(element => element.remove())
-    const importMap = plan.map ? packageImportMapScript(document, plan.map, true) : null
+    const bootstrapMap = document.head.querySelector<HTMLScriptElement>(`script#${packageImportMapId}[type="importmap"]`)
+    const hasBootstrapMap = bootstrapMap && bootstrapMap.nonce === this.editor.trustedScriptNonce && isEditorOnlyNode(bootstrapMap)
+    const importMap = plan.map && !hasBootstrapMap
+      ? packageImportMapScript(document, plan.map, true) : null
     if(importMap) importMap.nonce = this.editor.trustedScriptNonce
     const styles = [...new Set(packages.flatMap(pkg => pkg.styles))].map(href => {
       const link = document.createElement("link")
