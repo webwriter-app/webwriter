@@ -82,6 +82,28 @@ describe("site translation", () => {
     }
   })
 
+  it("follows the widget wall with a fully translated live sharing section", () => {
+    const source = new DOMParser().parseFromString(landingPage, "text/html")
+    const section = source.querySelector(".live-sharing")!
+    expect(section.previousElementSibling?.classList.contains("widget-showcase")).toBe(true)
+    expect(section.nextElementSibling?.classList.contains("developer-invitation")).toBe(true)
+    expect(section.querySelector(`#${section.getAttribute("aria-labelledby")}`)?.localName).toBe("h2")
+    expect(section.querySelectorAll(".capabilities > article")).toHaveLength(3)
+    const copy: string[] = []
+    const walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT)
+    while(walker.nextNode()) {
+      const text = (walker.currentNode as Text).data.trim()
+      if(text) copy.push(text)
+    }
+    for(const locale of ["de", "fr", "nl", "es", "pt", "it"]) {
+      for(const text of copy) expect(siteTranslations[locale]?.[text], `${locale}: ${text}`).toBeTruthy()
+      setLanguage(locale, false)
+      const translated = section.cloneNode(true) as HTMLElement
+      translateSiteTree(translated)
+      expect(translated.querySelector("h2")?.textContent).toBe(`${t("Share it live")} ${t("with your class")}`)
+    }
+  })
+
   it("distinguishes the French attribution preposition from a filtered package count", () => {
     setLanguage("fr", false)
     expect(t("of")).toBe("du")
