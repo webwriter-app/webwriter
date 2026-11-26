@@ -20,6 +20,7 @@ import {floatSideFromStyles} from "../src/element-styles"
 import {initializeEditorMessage, replayHostDrag, replayHostPointer, executeCompleteEvent, executeFailureEvent, selectionChangeEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction, type SelectionChangeDetail} from "../src/editor-bridge"
 import {SharedDOMDoc} from "../src/domdoc"
 import {buildTableMap} from "../src/table"
+import {elementDragType} from "../src/insertion"
 import * as Y from "yjs"
 import localFontURL from "temml/dist/Temml.woff2?url"
 import {checkMediaAutoplay} from "./media-autoplay"
@@ -207,6 +208,32 @@ await check("table ribbon insertion after Shift+Enter keeps cell text", async ()
     const image = cell.querySelector("picture")!.getBoundingClientRect()
     const text = caretRect(cell.firstChild!, 0)
     assert(image.width > 0 && image.top >= text.bottom - 1, "inserted image did not render below the first line")
+  }
+  finally { table.remove(); tableEditor.destroy() }
+})
+
+await check("table paste preserves content around the native selection", () => {
+  const table = document.createElement("table")
+  table.innerHTML = "<tbody><tr><td><p>Read this</p><p>Pick one <i>next</i></p></td><td>Neighbor</td></tr></tbody>"
+  fixture.append(table)
+  const tableEditor = new DOMEditor()
+  try {
+    const [cell, neighbor] = Array.from(table.rows[0].cells)
+    const [first, second] = Array.from(cell.children)
+    const tail = second.querySelector("i")!
+    const paste = (target: Element, plain: string, html?: string) => {
+      const clipboardData = new DataTransfer()
+      clipboardData.setData("text/plain", plain)
+      if(html) clipboardData.setData("text/html", html)
+      target.dispatchEvent(new ClipboardEvent("paste", {clipboardData, bubbles: true, cancelable: true}))
+    }
+    $.move(first.firstChild!, 5)
+    paste(first, "all ")
+    $.selectRange(second.firstChild!, 5, second.firstChild!, 8)
+    paste(second, "both", "<strong>both</strong>")
+    assert(first.textContent === "Read all this", "pasting at the caret replaced surrounding text")
+    assert(second.innerHTML === "Pick <b>both</b> <i>next</i>", "rich paste changed content outside the range")
+    assert(cell.contains(first) && cell.contains(second) && second.contains(tail) && neighbor.textContent === "Neighbor", "paste replaced unrelated nodes")
   }
   finally { table.remove(); tableEditor.destroy() }
 })
@@ -9079,6 +9106,40 @@ await check("ribbon elements drop on the blank canvas slot", async () => {
     assert(heading?.style.position === "absolute", "canvas slot did not insert the dropped heading")
   }
   finally { canvasEditor?.destroy(); frame.remove() }
+})
+
+await check("spatial ribbon drops use the Details body caret and preview", async () => {
+  for(const mode of ["canvas", "slides"] as const) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:900px;height:600px"
+    frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><details open><summary>Title</summary><p>Drop here</p></details></body>'
+    nativeRootEditor.addAppendix(frame)
+    try {
+      const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor, `Details editor did not initialize: ${view.editorError}`)
+      assert(view.editor.setDocumentLayout(mode, "document"), `${mode}: Details fixture did not convert`)
+      await layoutFrame()
+      const doc = frame.contentDocument!, details = doc.querySelector("details")!, paragraph = details.querySelector("p")!
+      const text = doc.createRange()
+      text.selectNodeContents(paragraph)
+      const rect = text.getBoundingClientRect()
+      assert(rect.width > 0 && rect.height > 0, `${mode}: Details body text had no visible rectangle`)
+      const dataTransfer = new DataTransfer()
+      dataTransfer.setData(elementDragType, "hr")
+      dataTransfer.setData(`${elementDragType}-hr`, "hr")
+      const init = {dataTransfer, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2, bubbles: true, cancelable: true, composed: true}
+      paragraph.dispatchEvent(new DragEvent("dragover", init))
+      const preview = doc.body.shadowRoot!.querySelector<HTMLElement>('[part~="drop-range-caret"]')!
+      assert(preview && Math.abs(preview.getBoundingClientRect().top - rect.top) < 24, `${mode}: Details preview missed the body caret`)
+      paragraph.dispatchEvent(new DragEvent("drop", init))
+      const rule = details.querySelector("hr")
+      assert(rule?.parentElement === details && !rule.style.position, `${mode}: dropped element did not stay in the Details body`)
+      assert(details.querySelector("summary")?.textContent === "Title" && details.textContent === "TitleDrop here", `${mode}: drop changed existing text`)
+      assert(!preview.isConnected, `${mode}: drop preview remained after insertion`)
+    }
+    finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+  }
 })
 
 await check("relayed standard elements preview and drop into a blank document", async () => {

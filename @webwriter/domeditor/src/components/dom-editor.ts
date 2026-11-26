@@ -8684,7 +8684,8 @@ export class DomEditor extends LitElement {
       const position = event.data.position as RibbonDropPosition | undefined
       if(!position || !position.anchor || typeof position.anchor !== "object"
         || !["document", "canvas", "slides"].includes(position.layout)
-        || position.layout !== "document" && (!Number.isFinite(position.x) || !Number.isFinite(position.y))) return
+        || position.nested !== undefined && (position.nested !== true || position.layout === "document")
+        || position.layout !== "document" && !position.nested && (!Number.isFinite(position.x) || !Number.isFinite(position.y))) return
       void this.insertRibbonDropAction(event.data.action, position)
       return
     }

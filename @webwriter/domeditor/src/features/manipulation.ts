@@ -595,8 +595,17 @@ export class ManipulationFeature extends EditorFeature {
     const ribbonShape = this.ribbonDragShape(event.dataTransfer!)
     if((ribbonTag || ribbonInsertion || graphicShape) && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
       event.preventDefault()
-      event.dataTransfer!.dropEffect = this.ribbonDropTarget(event) ? "copy" : "none"
-      this.clearDropSelection()
+      const target = this.ribbonDropTarget(event)
+      const range = target && this.nestedRibbonDropRange(event, target)
+      const allowed = range ? this.editor.allows("insert", getContainer(range.startContainer)) : Boolean(target)
+      event.dataTransfer!.dropEffect = allowed ? "copy" : "none"
+      if(range && allowed) {
+        this.clearFloatDropPreview("transfer")
+        this.showDropRangePreview(range, event)
+        if(!hasPresentationState(document.body, "drop-selection-active")) setPresentationState(document.body, "drop-selection-active")
+        this.markDropCaretHosts()
+      }
+      else this.clearDropSelection()
       return
     }
     event.preventDefault()
@@ -1464,6 +1473,8 @@ export class ManipulationFeature extends EditorFeature {
     const cell = cellForNode(selected ?? range.startContainer)
     if(!cell || !cell.isConnected || !getDocumentRoot().contains(cell)
       || atomicEditingContainer(cell, this.editor.schema)) return false
+    const scope = this.nestedInsertionSelectionScope()
+    if(scope && scope !== cell) return false
     if(!selected && (cellForNode(range.endContainer) !== cell
       || atomicEditingContainer(range.startContainer, this.editor.schema)
       || atomicEditingContainer(range.endContainer, this.editor.schema))) return false
@@ -1882,20 +1893,38 @@ export class ManipulationFeature extends EditorFeature {
     if(this.editor.features.graphic.dropPosition(event)) return null
     const target = this.ribbonDropTarget(event)
     if(this.editor.features.slides.active && !target) return null
+    const nested = target && this.nestedRibbonDropRange(event, target)
     const tag = event.dataTransfer && this.ribbonDragTag(event.dataTransfer)
     const shape = event.dataTransfer && this.ribbonDragShape(event.dataTransfer)
     source ??= shape ? this.editor.features.graphic.createGraphic(shape) : tag ? this.ribbonElement(tag) : this.insertionPreviewSource ?? document.createElement("div")
     const float = !target && this.floatDropTarget(event, source)
-    const range = target ? null : float ? document.createRange() : this.dropRange(event, null)
+    const range = nested ?? (target ? null : float ? document.createRange() : this.dropRange(event, null))
     if(float && range) { range.setStartBefore(float); range.collapse(true) }
     if(!target && !range) return null
     this.editor.doc.syncFromDOM()
-    const anchor = this.editor.doc.relativePositionFromDOMPoint(target ?? range!.startContainer, target ? 0 : range!.startOffset)
+    const anchor = this.editor.doc.relativePositionFromDOMPoint(range?.startContainer ?? target!, range?.startOffset ?? 0)
     if(!anchor) return null
     if(!target) return {anchor: relativePositionToJSON(anchor), layout: "document", ...(float ? {float: this.floatSide(float, event.clientX)} : {})}
+    const layout = target === document.body ? "canvas" : "slides"
+    if(nested) return {anchor: relativePositionToJSON(anchor), layout, nested: true}
     const point = target === document.body ? this.editor.features.canvas.clientPoint(event.clientX, event.clientY)
       : this.editor.features.slides.clientPoint(target, event.clientX, event.clientY)
-    return {anchor: relativePositionToJSON(anchor), layout: target === document.body ? "canvas" : "slides", ...point}
+    return {anchor: relativePositionToJSON(anchor), layout, ...point}
+  }
+
+  private nestedRibbonDropRange(event: DragEvent, root: HTMLElement) {
+    const point = this.dropPoint(event)
+    if(!point || !root.contains(point.node)) return null
+    const scope = this.nestedInsertionScope(point.node)
+    if(!scope) return null
+    if(!(event.target instanceof Node && scope.contains(event.target))) {
+      const {left, right, top, bottom} = renderedClientRect(scope)
+      if(event.clientX < left || event.clientX >= right || event.clientY < top || event.clientY >= bottom) return null
+    }
+    const range = document.createRange()
+    range.setStart(point.node, point.offset)
+    range.collapse(true)
+    return range
   }
 
   private placeRibbonElements(elements: Element[], target: HTMLElement, point: {x: number, y: number}) {
@@ -1932,14 +1961,16 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Drop placement changes the insertion point and geometry; the existing
    * commands retain ownership of their element-specific editing selection. */
-  private insertAtRibbonDrop(position: RibbonDropPosition, insert: () => void | boolean) {
+  private insertAtRibbonDrop(position: RibbonDropPosition, insert: (nested: boolean) => void | boolean) {
     if(!this.isEnabled || this.editor.isEditingLocked) return false
     let point: ReturnType<typeof this.editor.doc.domPointFromRelativePosition>
     try { point = this.editor.doc.domPointFromRelativePosition(createRelativePositionFromJSON(position.anchor as Parameters<typeof createRelativePositionFromJSON>[0])) }
     catch { return false }
     const layout = this.editor.features.canvas.active ? "canvas" : this.editor.features.slides.active ? "slides" : "document"
     if(!point || position.layout !== layout || graphicContainerForNode(point.node)) return false
-    const target = layout === "document" ? null : point.node
+    const nested = position.nested === true
+    if(nested && (!this.nestedInsertionScope(point.node) || !this.editor.allows("insert", getContainer(point.node)))) return false
+    const target = layout === "document" || nested ? null : point.node
     if(target && (!(target instanceof HTMLElement) || !(layout === "canvas" ? target === document.body : isSlide(target))
       || !Number.isFinite(position.x) || !Number.isFinite(position.y))) return false
     const end = this.editor.doc.beginUndoGroup()
@@ -1953,9 +1984,9 @@ export class ManipulationFeature extends EditorFeature {
         range.collapse(true)
         this.editor.features.selection.selectDropRange(range, {scrollIntoView: false})
         const previousPlacement = this.commandPlacement
-        this.commandPlacement = Boolean(position.float)
+        this.commandPlacement = Boolean(position.float || nested)
         this.ribbonDropInsertion = true
-        try { if(insert() === false) return false }
+        try { if(insert(nested) === false) return false }
         finally { this.ribbonDropInsertion = false; this.commandPlacement = previousPlacement }
         if(floatParent && floatTarget instanceof Element && floatTarget.parentElement === floatParent) {
           const added = Array.from(floatParent.children).filter(element => !before.includes(element))
@@ -1981,14 +2012,15 @@ export class ManipulationFeature extends EditorFeature {
     const generation = this.insertionGeneration
     const migrated = this.editor.features.migration.needsMigration(html) ? await this.editor.features.migration.migrate(html) : html
     if(migrated === null || generation !== this.insertionGeneration || this.editor.isEditingLocked) return false
-    return this.insertAtRibbonDrop(position, () => {
-      if(position.layout === "document" && !packageSnippet) this.insertHTML(migrated, false, false)
+    return this.insertAtRibbonDrop(position, nested => {
+      const flow = position.layout === "document" || nested
+      if(flow && !packageSnippet) this.insertHTML(migrated, false, nested)
       else {
         // Freeform roots have no flow content model to repair. Keep saved
         // valid nesting and comments intact while applying import sanitization.
-        const {fragment} = this.editor.parseHTMLFragment(migrated, false, position.layout === "document")
+        const {fragment} = this.editor.parseHTMLFragment(migrated, false, flow)
         if(packageSnippet) remapPastedAuthoredIds(fragment, document, undefined, this.editor.features.widget.isWidget)
-        return this.insertClipboardFragment(fragment)
+        return this.insertClipboardFragment(fragment, nested)
       }
     })
   }
@@ -2436,14 +2468,14 @@ export class ManipulationFeature extends EditorFeature {
 
   private insertRibbonCommand(action: string, position: RibbonDropPosition) {
     if(!ribbonElementInsertionAction(action)) return false
-    return this.insertAtRibbonDrop(position, () => {
+    return this.insertAtRibbonDrop(position, nested => {
       if(action.startsWith("element:")) this.createRibbonElement(action.slice("element:".length))
       else if(action.startsWith("insert-graphic-shape:")) {
         const shape = action.slice("insert-graphic-shape:".length)
         if(isGraphicShapeType(shape)) this.insertDroppedGraphic(this.editor.features.graphic.createGraphic(shape))
       }
       else if(action.startsWith("insert-math:")) {
-        if(position.layout !== "document" && !this.insertRibbonTextRoot()) return
+        if(position.layout !== "document" && !nested && !this.insertRibbonTextRoot()) return
         this.editor.features.math.actions.insertMath({type: "insertMath", structure: action.slice("insert-math:".length)})
       }
       else {
@@ -3811,6 +3843,29 @@ export class ManipulationFeature extends EditorFeature {
     return element ?? null
   }
 
+  private nestedInsertionScope(node: Node | null) {
+    const {canvas, slides} = this.editor.features
+    if((!canvas.active && !slides.active) || !node?.isConnected || atomicEditingContainer(node, this.editor.schema)) return null
+    const root = canvas.active ? document.body : slides.active ? slides.containingSlide(node) : null
+    if(!root || !root.contains(node)) return null
+    const cell = cellForNode(node)
+    for(let element = isElement(node) ? node : node.parentElement; element && element !== root; element = element.parentElement) {
+      if(element === cell || element.matches("details:not([is])") || isContentfulWidget(element, this.editor.schema)) return element
+    }
+    return null
+  }
+
+  private nestedInsertionSelectionScope() {
+    const selected = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
+    if(selected?.isConnected) return this.nestedInsertionScope(cellForNode(selected) === selected ? selected : selected.parentElement)
+    const [range, other] = $.ranges
+    if(!range || other) return null
+    const scope = this.nestedInsertionScope(range.startContainer)
+    return scope && scope === this.nestedInsertionScope(range.endContainer) ? scope : null
+  }
+
+  hasNestedInsertionSelection() { return Boolean(this.nestedInsertionSelectionScope()) }
+
   private widgetSplitMode(node: Node | null): "self" | "line" | null {
     const scope = this.widgetEditingScope(node)
     if(!scope) return null
@@ -3970,9 +4025,11 @@ export class ManipulationFeature extends EditorFeature {
   private insertBlocks(nodes: ChildNode[], paste = false) {
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     const schema = this.editor.schema
+    const container = getContainer($.range.startContainer)
+    if(this.nestedInsertionScope(container) === container && !this.canInsertAtSelection(...nodes)) return false
     const keepsPermissions = paste && nodes.some(hasDistributionInstructions)
     const replacesAtPoint = (block: Element) => isDocumentRoot(block) || isContentfulWidget(block, schema)
-      || isBoardCard(block) || this.editor.features.slides.active && isSlide(block)
+      || isBoardCard(block) || this.editor.features.slides.active && isSlide(block) || this.nestedInsertionScope(block) === block
     const canInsertBeside = (block: Element, parent: Element) => {
       const rule = schema.get(parent).content
       // Unrestricted flow containers accept each incoming block independently.
@@ -4290,15 +4347,14 @@ export class ManipulationFeature extends EditorFeature {
     if(!nodes.length) return
     const isVirtualSelection = $.isGapSelection || $.isEmptyDocumentSelection
     const isInlineContent = nodes.every(node => this.isInlineClipboardNode(node))
-    if(this.editor.features.slides.active && (!isInlineContent || nodes.some(node => node instanceof Element && !isMarkElement(node) && !node.matches("br,wbr"))) && !isSlide($.range.startContainer)) {
+    if(this.editor.features.slides.active && (!isInlineContent || nodes.some(node => node instanceof Element && !isMarkElement(node) && !node.matches("br,wbr"))) && !isSlide($.range.startContainer) && !this.hasNestedInsertionSelection()) {
       fragment.replaceChildren(...nodes)
       this.editor.features.canvas.insertCentered(() => this.insertClipboardFragment(fragment, commandInsertion, paste))
       return
     }
     const widget = nodes.length === 1 ? this.insertedWidget(nodes[0]) : null
     if(widget && !this.isInlineClipboardNode(widget)) {
-      this.withNormalization(() => this.insertBlockWidget(widget))
-      return
+      return this.withNormalization(() => this.insertBlockWidget(widget))
     }
     if(isVirtualSelection && isInlineContent && !this.ensureTextBlock()) return
     if(isVirtualSelection || isInlineContent) {
@@ -4731,16 +4787,19 @@ export class ManipulationFeature extends EditorFeature {
     return null
   }
 
-  /** Whether replacing the current selection with a node leaves its immediate
+  /** Whether replacing the current selection with content leaves its immediate
    * content model valid. Transparent mark content resolves through its parent. */
-  private canInsertAtSelection(node: Node) {
+  private canInsertAtSelection(...nodes: Node[]) {
     const container = getContainer($.range.startContainer)
     const simulation = this.cloneRangeIn(container, $.range)
     if(!simulation) return false
     try {
       simulation.range.deleteContents()
-      const inserted = cloneWithoutEditorMarkers(node, true, {inert: true})
-      simulation.range.insertNode(inserted)
+      const fragment = simulation.root.ownerDocument.createDocumentFragment()
+      const copies = nodes.map(node => cloneWithoutEditorMarkers(node, true, {inert: true}))
+      fragment.append(...copies)
+      simulation.range.insertNode(fragment)
+      const inserted = copies[0]
       const paragraph = inserted.parentElement?.closest("p:not([is])")
       return Boolean(inserted.parentElement)
         && this.editor.schema.isContentValid(inserted.parentElement!)
@@ -4798,8 +4857,8 @@ export class ManipulationFeature extends EditorFeature {
     const selection = document.getSelection()
     const range = selection?.rangeCount ? selection.getRangeAt(0) : null
     const root = getDocumentRoot()
-    // Canvas and slide commands create a new root item at the viewport center.
-    const spatial = features.canvas.active || features.slides.active ? document.body : null
+    // Outside an editable field, spatial commands create a new root item.
+    const spatial = (features.canvas.active || features.slides.active) && !this.hasNestedInsertionSelection() ? document.body : null
     const selected = features.selection.captureSelectedElement ?? $.selectedElement
     const point = spatial ?? selected?.parentElement ?? range?.startContainer ?? root
     const placement = this.insertionPlacementCheck(point, false)
@@ -5406,20 +5465,25 @@ export class ManipulationFeature extends EditorFeature {
     "beforeinput": ev => {
       if(ev.defaultPrevented || this.editor.features.mark.isSVGTextSelection) return
       if(["insertFromPaste", "insertFromDrop"].includes(ev.inputType)) {
-        ev.preventDefault()
+        const paste = ev.inputType === "insertFromPaste"
+        if(paste && !ev.cancelable) return
         const files = this.attachmentFiles(ev.dataTransfer)
         if(files.length) {
-          this.insertTransferredAttachments(files, ev.inputType === "insertFromPaste")
+          ev.preventDefault()
+          this.insertTransferredAttachments(files, paste)
           return
         }
+        if(paste) this.editor.features.table.handlePaste(ev, ev.dataTransfer)
+        if(ev.defaultPrevented) return
+        ev.preventDefault()
         const html = ev.dataTransfer?.getData("text/html")
         if(html && this.editor.features.migration.needsMigration(html)) {
-          void this.#insertMigratedClipboardContent(html, undefined, ev.inputType === "insertFromPaste")
+          void this.#insertMigratedClipboardContent(html, undefined, paste)
           return
         }
         const fragment = this.#dataTransferToFragment(ev.dataTransfer)
         if(fragment) {
-          if(ev.inputType === "insertFromPaste") this.insertPastedFragment(fragment)
+          if(paste) this.insertPastedFragment(fragment)
           else this.insertClipboardFragment(fragment)
         }
         return
@@ -5505,14 +5569,14 @@ export class ManipulationFeature extends EditorFeature {
       this.ensureTextBlock()
     },
     "paste": ev => {
-      if(ev.defaultPrevented) return
+      if(ev.defaultPrevented || !ev.cancelable) return
       const files = this.attachmentFiles(ev.clipboardData)
       if(files.length) {
         ev.preventDefault()
         this.insertTransferredAttachments(files, true)
         return
       }
-      this.editor.features.table.handlePaste(ev)
+      this.editor.features.table.handlePaste(ev, ev.clipboardData)
       if(ev.defaultPrevented) return
       const html = ev.clipboardData?.getData("text/html")
       if(html && this.editor.features.migration.needsMigration(html)) {
@@ -5623,7 +5687,8 @@ export class ManipulationFeature extends EditorFeature {
       }
     }
     if(node && commandInsertion && !this.ribbonDropInsertion && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
-      return this.editor.features.canvas.insertCentered(() => this.insert(node, splitDepth, strict, false))
+      if(!this.hasNestedInsertionSelection()) return this.editor.features.canvas.insertCentered(() => this.insert(node, splitDepth, strict, false))
+      if(!this.editor.allowsSelection("insert")) return false
     }
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if(!node && this.editor.features.board.active && this.editor.features.board.editingScope($.anchor)?.matches("h2")) return this.editor.features.board.addCard()
@@ -6091,7 +6156,11 @@ export class ManipulationFeature extends EditorFeature {
    * Inline content at an empty document or gap is wrapped in a text block.
    * Missing capabilities return false; supported API failures reject. */
   async paste() {
-    if(this.editor.features.table.pasteTargetCell) return this.editor.features.table.paste()
+    if(this.editor.features.table.pasteTargetCell) return this.editor.features.table.paste(async (html, plain, stillCurrent) => {
+      const migrated = html ? await this.editor.features.migration.migrate(html) : ""
+      if(!stillCurrent()) return false
+      return this.insertPastedFragment(this.#clipboardContentToFragment(migrated, plain)) !== false
+    })
     if(this.editor.features.graphic.textInsertionGraphic) return this.editor.features.graphic.paste()
     if(!navigator.clipboard?.read) return false
     const fragment = await this.#clipboardToFragment()
@@ -6679,6 +6748,8 @@ export class ManipulationFeature extends EditorFeature {
    * insertion would otherwise put it inside e.g. a paragraph, whose content
    * model only permits phrasing content. */
   private insertBlockWidget(widget: Element) {
+    const container = getContainer($.range.startContainer)
+    if(this.nestedInsertionScope(container) === container && !this.canInsertAtSelection(widget)) return false
     $.delete()
     const block = getContainer($.range.startContainer)
     if(isDocumentRoot(block) || isBoardCard(block) || this.editor.features.slides.active && isSlide(block)

@@ -1025,7 +1025,8 @@ export class TableFeature extends EditorFeature {
     return this.deleteSelection()
   }
 
-  private clipboardMatrix(html: string, plain: string) {
+  private clipboardMatrix(html: string, plain: string, target: HTMLTableCellElement) {
+    const wholeCells = this.hasCellSelection || $.selectedElement === target
     if(html) {
       const {fragment} = this.editor.parseHTMLFragment(html, true)
       const table = Array.from(fragment.querySelectorAll<HTMLTableElement>("table:not([is])")).find(candidate => {
@@ -1043,8 +1044,10 @@ export class TableFeature extends EditorFeature {
             : []
         }))
       }
-      if(fragment.childNodes.length) return [[Array.from(fragment.childNodes)]]
+      if(fragment.childNodes.length) return wholeCells ? [[Array.from(fragment.childNodes)]] : null
     }
+    // A caret or text range only targets cells when the clipboard contains a grid.
+    if(!wholeCells && !plain.includes("\t")) return null
     const ownerDocument = getInertDocument(document)
     return plain.split(/\r?\n/).map(row => row.split("\t").map(text => [ownerDocument.createTextNode(text)] as Node[]))
   }
@@ -1104,13 +1107,13 @@ export class TableFeature extends EditorFeature {
 
   /** Missing clipboard capabilities return false; supported API failures are
    * deliberately propagated without changing the selected cells. */
-  async paste() {
-    if(!this.isEnabled || !this.pasteTargetCell || !navigator.clipboard?.read) return false
+  async paste(insertContent?: (html: string, plain: string, stillCurrent: () => boolean) => Promise<boolean>) {
+    const target = this.pasteTargetCell
+    if(!this.isEnabled || !target || !navigator.clipboard?.read) return false
     const table = this.selectedTable
     if(!this.editableTable(table)) return false
     const anchor = this.anchorCell
     const focus = this.focusCell
-    const target = this.pasteTargetCell
     const selection = document.getSelection()
     const endpoints = selection && [selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset]
     const selected = this.selectedCells
@@ -1144,18 +1147,22 @@ export class TableFeature extends EditorFeature {
       if(!stillCurrent()) return false
     }
     const plain = textItem ? await (await textItem.getType("text/plain")).text() : ""
-    if(!stillCurrent()) return false
-    return this.pasteMatrix(this.clipboardMatrix(html, plain))
+    if(!stillCurrent() || !html && !plain) return false
+    const matrix = this.clipboardMatrix(html, plain, target)
+    return matrix ? this.pasteMatrix(matrix) : insertContent?.(html, plain, stillCurrent) ?? false
   }
 
-  handlePaste(event: ClipboardEvent) {
-    if(!this.isEnabled || event.defaultPrevented || isAppendixInteraction(event) || !this.pasteTargetCell || !event.clipboardData) return
-    const html = event.clipboardData.getData("text/html")
-    const plain = event.clipboardData.getData("text/plain")
+  handlePaste(event: ClipboardEvent | InputEvent, data: DataTransfer | null) {
+    const target = this.pasteTargetCell
+    if(!this.isEnabled || event.defaultPrevented || isAppendixInteraction(event) || !target || !data) return
+    const html = data.getData("text/html")
+    const plain = data.getData("text/plain")
     if(!html && !plain) return
+    const matrix = this.clipboardMatrix(html, plain, target)
+    if(!matrix) return
     event.preventDefault()
     event.stopImmediatePropagation()
-    this.pasteMatrix(this.clipboardMatrix(html, plain))
+    this.pasteMatrix(matrix)
   }
 
   private textEntryCell() {
@@ -1819,9 +1826,6 @@ export class TableFeature extends EditorFeature {
       event.clipboardData?.setData("text/html", content.html)
       event.clipboardData?.setData("text/plain", content.plain)
       this.deleteSelection()
-    },
-    paste: (event: ClipboardEvent) => {
-      this.handlePaste(event)
     },
   }
 }

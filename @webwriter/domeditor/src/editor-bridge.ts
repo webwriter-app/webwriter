@@ -144,6 +144,7 @@ export type ShapeKeyboardInput = {
 export type RibbonDropPosition = {
   anchor: unknown
   layout: "document" | "canvas" | "slides" | "board" | "graphic"
+  nested?: true
   x?: number
   y?: number
   float?: "left" | "right"

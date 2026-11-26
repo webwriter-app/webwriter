@@ -1184,11 +1184,10 @@ describe("table cell selection", () => {
     expect(cell.querySelector("demo-widget table td")?.textContent).toBe("Private")
   })
 
-  it.each(["caret", "element"])("replaces the contents of a %s-targeted cell with pasted HTML and supports undo", kind => {
+  it("replaces the contents of an explicitly selected cell with pasted HTML and supports undo", () => {
     document.body.innerHTML = '<table><tbody><tr><th title="keep"><p>Old</p></th><td>Other</td></tr></tbody></table>'
     const [cell, other] = cells()
-    if(kind === "caret") $.move(cell.querySelector("p")!.firstChild!, 1)
-    else $.selectElement(cell)
+    $.selectElement(cell)
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     const data = new DataTransfer()
@@ -1205,6 +1204,53 @@ describe("table cell selection", () => {
     expect(cells()[0].textContent).toBe("Old")
     editor.doc.redo()
     expect(cells()[0].textContent).toBe("New")
+  })
+
+  it.each([
+    ["plain text", "paste"], ["rich text", "paste"],
+    ["plain text", "beforeinput"], ["rich text", "beforeinput"],
+    ["plain text", "command"], ["rich text", "command"],
+  ])("pastes %s at the native selection inside a cell via %s", async (format, method) => {
+    document.body.innerHTML = '<table><tbody><tr><th title="keep"><p>left old right<i> tail</i></p><!--keep--></th><td>Other</td></tr></tbody></table>'
+    const [cell, other] = cells()
+    const paragraph = cell.querySelector("p")!
+    const text = paragraph.firstChild!
+    const tail = paragraph.querySelector("i")!
+    const comment = cell.lastChild
+    const rich = format === "rich text"
+    $.selectRange(text, 5, text, rich ? 8 : 5)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const data = new DataTransfer()
+    data.setData("text/plain", rich ? "new" : "new ")
+    if(rich) data.setData("text/html", "<strong>new</strong>")
+    if(method === "command") {
+      const read = navigator.clipboard.read
+      const content = Object.fromEntries(data.types.map(type => [type, new Blob([data.getData(type)], {type})]))
+      Object.defineProperty(navigator.clipboard, "read", {configurable: true, value: async () => [new ClipboardItem(content)]})
+      try { expect(await editor.features.manipulation.paste()).toBe(true) }
+      finally { Object.defineProperty(navigator.clipboard, "read", {configurable: true, value: read}) }
+    }
+    else {
+      const event = method === "paste"
+        ? new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true})
+        : new InputEvent("beforeinput", {inputType: "insertFromPaste", dataTransfer: data, bubbles: true, cancelable: true})
+      paragraph.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    const expected = rich ? "left <b>new</b> right<i> tail</i>" : "left new old right<i> tail</i>"
+    expect(paragraph.innerHTML).toBe(expected)
+    expect(cell.firstChild).toBe(paragraph)
+    expect(cell.lastChild).toBe(comment)
+    expect(paragraph.querySelector("i")).toBe(tail)
+    expect(cell.title).toBe("keep")
+    expect(other.textContent).toBe("Other")
+    expect(editor.features.table.hasCellSelection).toBe(false)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(cells()[0].querySelector("p")?.innerHTML).toBe("left old right<i> tail</i>")
+    editor.doc.redo()
+    expect(cells()[0].querySelector("p")?.innerHTML).toBe(expected)
   })
 
   it("does not apply a delayed clipboard read after the caret moves within a cell", async () => {

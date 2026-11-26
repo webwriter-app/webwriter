@@ -140,6 +140,23 @@ export async function checkSlideEditing(host?: DOMEditor) {
     }
     await navigate(0, slide)
     await navigate(2, third)
+    await navigate(1, emptySlide)
+    const style = new view.CSSStyleSheet()
+    style.replaceSync(":root { --ww-ui-transition: none; }")
+    doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, style]
+    const viewport = emptySlide.parentElement!, scrollLeft = viewport.scrollLeft
+    const edge = emptySlide.getBoundingClientRect()
+    emptySlide.dispatchEvent(new view.MouseEvent("dblclick", {bubbles: true, cancelable: true,
+      button: 0, clientX: edge.right - 2, clientY: edge.top + 50}))
+    const edgeText = emptySlide.lastElementChild!
+    await settle()
+    assert(edgeText.localName === "p" && edgeText.contains(selection.anchorNode), "double clicking near the slide edge moved the caret")
+    assert(Math.abs(viewport.scrollLeft - scrollLeft) < 1, "double clicking near the edge changed slides")
+    assert(doc.execCommand("insertText", false, "Wide text"), "native typing failed in the edge text box")
+    await settle()
+    assert(edgeText.textContent === "Wide text" && edgeText.contains(selection.anchorNode), "typing moved the caret out of the edge text box")
+    assert(Math.abs(viewport.scrollLeft - scrollLeft) < 1, "typing near the edge changed slides")
+    doc.adoptedStyleSheets = doc.adoptedStyleSheets.filter(sheet => sheet !== style)
     await navigate(0, slide)
     assert(!editor.toHTML(true).includes("◆"), "slide editing serialized editor markers")
   }
