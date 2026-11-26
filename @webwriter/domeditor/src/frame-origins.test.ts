@@ -17,4 +17,17 @@ describe("dedicated editor origin", () => {
   it("refuses to reverse the application and content roles on the application origin", () => {
     expect(() => editorHostOrigin(locationAt("127.0.0.1"))).toThrow("VITE_APP_ORIGIN")
   })
+
+  it("prefers the origins the server sets at startup, so one build serves several environments", () => {
+    globalThis.webwriterRuntimeConfig = {appOrigin: "https://app.example", editorOrigin: "https://frame.example"}
+    try {
+      expect(editorFrameOrigin(locationAt("app.example"))).toBe("https://frame.example")
+      expect(editorHostOrigin(locationAt("frame.example"))).toBe("https://app.example")
+      globalThis.webwriterRuntimeConfig = {appOrigin: "https://app.example/editor"}
+      expect(() => editorHostOrigin(locationAt("frame.example"))).toThrow("without a path")
+    }
+    finally {
+      delete globalThis.webwriterRuntimeConfig
+    }
+  })
 })

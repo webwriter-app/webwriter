@@ -3,6 +3,17 @@
 # if only one of them is set, startup fails instead of silently serving without a login.
 set -eu
 
+# Deployment settings served as /runtime-config.js (Caddyfile). Caddy inserts them verbatim into
+# JavaScript, so only plain URLs are accepted: scheme, host, optional port, no quotes or paths.
+for name in APP_ORIGIN EDITOR_ORIGIN EDUMIX_URL; do
+  eval "value=\${$name:-}"
+  if [ -n "$value" ] && ! printf '%s' "$value" | grep -Eq '^https?://[A-Za-z0-9.-]+(:[0-9]+)?$'; then
+    echo "runtime-config: $name must be an http(s) origin like https://example.org, got '$value'" >&2
+    exit 1
+  fi
+done
+echo "runtime-config: app=${APP_ORIGIN:-<build>} editor=${EDITOR_ORIGIN:-<build>} edumix=${EDUMIX_URL:-<build>}"
+
 # Same default as the Caddyfile; Kubernetes sets CADDY_AUTH_FILE under /tmp (read-only root).
 AUTH_FILE=${CADDY_AUTH_FILE:-/etc/caddy/auth.caddy}
 mkdir -p "$(dirname "$AUTH_FILE")"

@@ -11,6 +11,7 @@ import {liveExampleRuntimes} from './scripts/live-example-runtimes.mjs'
 import {siteHeaderPlugin} from './scripts/site-header.mjs'
 import {appEntryUrlsPlugin} from './scripts/app-entry-urls.mjs'
 import {appVersionPlugin} from './scripts/app-version.mjs'
+import {runtimeConfigPlugin} from './scripts/runtime-config.mjs'
 import {canvasSnapshotPlugin} from './scripts/canvas-snapshot-plugin.mjs'
 import {documentThemesPlugin} from './scripts/document-themes-plugin.mjs'
 import {minifiedReaderSourcePlugin} from './scripts/minified-reader-source-plugin.mjs'
@@ -100,7 +101,7 @@ export default defineConfig(({mode}) => {
   for(const directory of [...privateDirectories]) if(existsSync(directory)) privateDirectories.push(realpathSync(directory))
   const privatePaths = [...new Set(privateDirectories)].map(path => `${normalizePath(path).replace(/[?*\[\]{}()!+@]/g, "\\$&")}/**`)
   return {
-    plugins: [appVersionPlugin(), appEntryUrlsPlugin(), packageGalleryRoutes(), siteHeaderPlugin(), documentationPlugin(), liveExampleRuntimes(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
+    plugins: [appVersionPlugin(), runtimeConfigPlugin(), appEntryUrlsPlugin(), packageGalleryRoutes(), siteHeaderPlugin(), documentationPlugin(), liveExampleRuntimes(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
       referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url))),
       distributionReaderPlugin(), canvasSnapshotPlugin(), documentThemesPlugin(), minifiedReaderSourcePlugin()],
     appType: "mpa",

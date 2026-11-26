@@ -1,6 +1,15 @@
 (static) {
 	root * /srv
 	encode zstd gzip
+	# Deployment settings, read by the app before its modules (src/runtime-config.ts). The values
+	# come from the container environment and are checked by caddy-entrypoint.sh, so one image
+	# serves staging and production side by side. Empty values fall back to the build-time ones.
+	handle /runtime-config.js {
+		header Content-Type "text/javascript; charset=utf-8"
+		header Cache-Control "no-cache"
+		respond `globalThis.webwriterRuntimeConfig = {"appOrigin": "{$APP_ORIGIN}", "editorOrigin": "{$EDITOR_ORIGIN}", "edumixURL": "{$EDUMIX_URL}"}
+` 200
+	}
 	redir /gallery /packages/ 308
 	redir /gallery/ /packages/ 308
 	@packagePreview path_regexp packagePreview ^/packages/@[a-z0-9_][a-z0-9._-]*/[a-z0-9_][a-z0-9._-]*/?$

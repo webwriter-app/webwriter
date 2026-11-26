@@ -1,3 +1,5 @@
+import {runtimeSetting} from "./runtime-config"
+
 /** The editor and preview run on a distinct origin so script and same-origin
  * sandbox permissions cannot give them access to the application window. */
 const configuredOrigin = (value: string | undefined, name: string) => {
@@ -16,17 +18,17 @@ export const pairedLoopbackOrigin = (location: Pick<Location, "protocol" | "host
 }
 
 export function editorFrameOrigin(location: Location = window.location) {
-  const origin = configuredOrigin(import.meta.env.VITE_EDITOR_ORIGIN, "VITE_EDITOR_ORIGIN")
+  const origin = configuredOrigin(runtimeSetting("editorOrigin", import.meta.env.VITE_EDITOR_ORIGIN), "EDITOR_ORIGIN/VITE_EDITOR_ORIGIN")
     ?? pairedLoopbackOrigin(location)
-  if(!origin || origin === location.origin) throw new Error("Configure VITE_EDITOR_ORIGIN as a separate origin for editor frames")
+  if(!origin || origin === location.origin) throw new Error("Configure EDITOR_ORIGIN (runtime) or VITE_EDITOR_ORIGIN (build) as a separate origin for editor frames")
   return origin
 }
 
 export function editorHostOrigin(location: Location = window.location) {
-  const origin = configuredOrigin(import.meta.env.VITE_APP_ORIGIN, "VITE_APP_ORIGIN")
+  const origin = configuredOrigin(runtimeSetting("appOrigin", import.meta.env.VITE_APP_ORIGIN), "APP_ORIGIN/VITE_APP_ORIGIN")
     // The default application is 127.0.0.1. Reversing the pair on that
     // origin would let a content window bootstrap a document on the app.
     ?? (location.hostname === "localhost" ? pairedLoopbackOrigin(location) : null)
-  if(!origin || origin === location.origin) throw new Error("Configure VITE_APP_ORIGIN as the application origin for editor frames")
+  if(!origin || origin === location.origin) throw new Error("Configure APP_ORIGIN (runtime) or VITE_APP_ORIGIN (build) as the application origin for editor frames")
   return origin
 }
