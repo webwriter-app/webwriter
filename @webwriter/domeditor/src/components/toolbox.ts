@@ -81,6 +81,7 @@ export class DomEditorToolbox extends EditingControls {
     feedbackParticipant: {state: true},
     feedbackError: {state: true},
     disableAI: {type: Boolean, attribute: "disable-ai", reflect: true},
+    aiDisabledReason: {attribute: false},
     aiSidebar: {type: Boolean, attribute: "ai-sidebar", reflect: true},
     showStyleToolbox: {type: Boolean, attribute: "show-style-toolbox", reflect: true},
     activeTool: {type: String, attribute: "active-tool", reflect: true},
@@ -128,6 +129,7 @@ export class DomEditorToolbox extends EditingControls {
   private normalTool: ToolboxTool | null = null
 
   disableAI = false
+  aiDisabledReason = ""
   aiSidebar = false
 
   static styles = css`
@@ -494,7 +496,7 @@ export class DomEditorToolbox extends EditingControls {
       transition-delay: 90ms;
     }
 
-    .toolbox-tab-button:hover,
+    .toolbox-tab-button:hover:not([aria-disabled="true"]),
     .toolbox-tab-close:hover {
       color: #243447;
       background: #dbe7f2;
@@ -840,6 +842,7 @@ export class DomEditorToolbox extends EditingControls {
       opacity: 0.45;
       cursor: default;
     }
+    .toolbox-tab-button[aria-disabled="true"] {opacity: .45; cursor: not-allowed; filter: grayscale(1);}
 
     :host([popover]) {grid-template-rows: minmax(0, 1fr)}
     :host([popover]) .toolbox-pane {grid-row: 1}
@@ -1776,7 +1779,7 @@ export class DomEditorToolbox extends EditingControls {
 
   selectTool(tool: ToolboxTool | null, expand = false) {
     if(tool && (this.preview ? tool !== "Feedback" : tool === "Feedback")) return
-    if(tool === "AI" && this.disableAI) return
+    if(tool === "AI" && (this.disableAI || this.aiDisabledReason)) return
     if(tool === "Style" && !this.showStyleToolbox) return
     const nextTool = tool
     if(this.htmlPending && nextTool !== "Edit") return
@@ -1829,7 +1832,7 @@ export class DomEditorToolbox extends EditingControls {
       this.feedbackParticipant = ""
       this.feedbackError = ""
     }
-    if(this.disableAI && this.activeTool === "AI") this.selectTool(null)
+    if((this.disableAI || this.aiDisabledReason) && this.activeTool === "AI") this.selectTool(null)
     if(changed.has("activeTool") && this.activeTool === null) this.advancedOpen.clear()
     if(!this.showStyleToolbox && this.activeTool === "Style") {
       this.selectTool(null)
@@ -1992,6 +1995,7 @@ export class DomEditorToolbox extends EditingControls {
               const tabId = `toolbox-tab-${tool.label.toLowerCase()}`
               const contextualLabel = tool.label === "Edit" ? this.editTypeLabel : null
               const toolLabel = tool.label === "AI" ? "Ask AI" : tool.label
+              const disabledReason = tool.label === "AI" ? this.aiDisabledReason : ""
               const label = contextualLabel ?? toolLabel
               const commentCount = tool.label === "Review" ? this.commentState.count : 0
               const accessibilityCount = tool.label === "Review" && this.proofreadingState.enabled
@@ -2018,10 +2022,11 @@ export class DomEditorToolbox extends EditingControls {
                     aria-label=${tool.label === "Review" && this.proofreadingState.error
                       ? "Review. Issue checker unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
-                    title=${this.shortcutTitle(tool.label === "Review" && this.proofreadingState.error
+                    title=${disabledReason || this.shortcutTitle(tool.label === "Review" && this.proofreadingState.error
                       ? "Issue checker unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel, `toolbox:${tool.label}`)}
-                    aria-description=${reviewDescription || nothing}
+                    aria-description=${disabledReason || reviewDescription || nothing}
+                    aria-disabled=${disabledReason ? "true" : nothing}
                     aria-controls=${compact ? nothing : "toolbox-pane"}
                     aria-selected=${compact ? nothing : active}
                     aria-pressed=${compact ? active : nothing}

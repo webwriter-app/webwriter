@@ -36,6 +36,7 @@ describe("element drawer without layout presets", () => {
 describe("preview reader drawer", () => {
   const mount = async (live = false) => {
     const ribbon = new AppRibbon()
+    ribbon.backendState = "connected"
     ribbon.previewActive = true
     ribbon.liveSessionActive = live
     ribbon.liveSessionLink = live ? "https://webwriter.app/read/session" : ""

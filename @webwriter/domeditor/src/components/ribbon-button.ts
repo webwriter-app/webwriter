@@ -33,6 +33,7 @@ export class RibbonButton extends LitElement {
     compact: {type: Boolean, reflect: true},
     disabled: {type: Boolean, reflect: true},
     disabledReason: {attribute: false},
+    disabledTitle: {type: String, attribute: "disabled-title"},
     insertionDisabled: {type: Boolean, attribute: "insertion-disabled", reflect: true},
     loading: {type: Boolean, reflect: true},
     icon: {type: String},
@@ -897,6 +898,7 @@ export class RibbonButton extends LitElement {
 
     :host([variant="widget-action"]) .main-button:is(:disabled, [aria-disabled="true"]) {color: #748090; opacity: 1;}
     .main-button[aria-disabled="true"] {cursor: help;}
+    .main-button[data-disabled-title] {color: #69737f; cursor: not-allowed; opacity: .55; filter: grayscale(1);}
     :host([variant="widget-action"]) .button-label-text {white-space: normal; overflow-wrap: anywhere;}
     :host([variant="widget-action"]) .button-icon {flex: 0 0 .85rem; width: .85rem; height: .85rem;}
 
@@ -1112,6 +1114,7 @@ export class RibbonButton extends LitElement {
   compact = false
   disabled = false
   disabledReason = ""
+  disabledTitle = ""
   insertionDisabled = false
   icon = ""
   hoverIcon = ""
@@ -1471,7 +1474,8 @@ export class RibbonButton extends LitElement {
   }
 
   private get disabledTooltip() {
-    return this.disabled ? this.disabledReason : this.insertionDisabled ? "Unavailable at the current selection" : ""
+    return this.disabled ? this.disabledTitle ? "" : this.disabledReason
+      : this.insertionDisabled ? "Unavailable at the current selection" : ""
   }
 
   protected willUpdate() {
@@ -1489,6 +1493,7 @@ export class RibbonButton extends LitElement {
     const dragPackageInsertion = this.variant === "package" && ribbonInsertionAction(dragAction)
     const shapeGallery = this.submenu.some(item => typeof item !== "string" && item.category)
     const disabledTooltip = this.disabledTooltip
+    const disabledTitle = this.disabled ? this.disabledTitle : ""
     const title = this.variant === "element-conversion" ? `Conversion options for ${this.label}`
       : action.startsWith("widget-conversion:") ? `Convert to ${this.label}`
       : `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
@@ -1515,14 +1520,16 @@ export class RibbonButton extends LitElement {
           type="button"
           draggable=${String(Boolean(dragTag || dragPackageInsertion) && !this.disabled && !this.insertionDisabled)}
           aria-label=${conversion ? title : this.label}
-          aria-disabled=${disabledTooltip ? "true" : nothing}
+          aria-disabled=${disabledTooltip || disabledTitle ? "true" : nothing}
           aria-describedby=${disabledTooltip ? "disabled-reason" : nothing}
+          aria-description=${disabledTitle || nothing}
+          ?data-disabled-title=${disabledTitle}
           aria-busy=${this.loading ? "true" : nothing}
           aria-pressed=${this.toggle? String(this.active): nothing}
           aria-haspopup=${this.dropdownOnClick && hasDropdown ? this.dropdown !== null ? "dialog" : "menu" : nothing}
           aria-expanded=${this.dropdownOnClick && hasDropdown ? String(this.submenuOpen) : nothing}
-          title=${disabledTooltip ? "" : title}
-          ?disabled=${this.disabled && !disabledTooltip}
+          title=${disabledTitle || (disabledTooltip ? "" : title)}
+          ?disabled=${this.disabled && !disabledTooltip && !disabledTitle}
           @mouseenter=${() => this.dispatchInsertionHover(true, "pointer")}
           @mouseleave=${() => this.dispatchInsertionHover(false, "pointer")}
           @focus=${() => { this.showDetails(); this.dispatchInsertionHover(true, "focus") }}

@@ -81,6 +81,7 @@ describe("dialog ribbon controls", () => {
 
   it("restores the Share switch while a stop confirmation is pending", async () => {
     const ribbon = new AppRibbon()
+    ribbon.backendState = "connected"
     ribbon.previewActive = true
     ribbon.liveSessionActive = true
     ribbon.liveSessionRole = "host"

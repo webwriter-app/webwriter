@@ -9,6 +9,7 @@ export type CloudService = {
 }
 
 export const EDUMIX_URL = "https://edumix.eu"
+export const cloudConnectionRequired = "Connect to a cloud service in Settings to use this feature."
 
 export function cloudServiceURL(value: string) {
   const url = new URL(value)

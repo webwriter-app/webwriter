@@ -24,8 +24,9 @@ beforeEach(() => {
   vi.spyOn(fonts, "bunnyFonts").mockResolvedValue([])
 })
 
-async function mountRibbon() {
+async function mountRibbon(backendState?: "connected") {
   const ribbon = new AppRibbon()
+  if(backendState) ribbon.backendState = backendState
   document.body.append(ribbon)
   await ribbon.updateComplete
   const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Marks"]')!
@@ -202,7 +203,7 @@ describe("mark ribbon controls", () => {
   })
 
   it("renders the File tab as a rich document label and keeps file actions compact", async () => {
-    const {ribbon} = await mountRibbon()
+    const {ribbon} = await mountRibbon("connected")
     const saveEvents: string[] = []
     ribbon.addEventListener("ribbon-button-click", event => {
       saveEvents.push((event as CustomEvent<{label: string}>).detail.label)
@@ -345,7 +346,7 @@ describe("mark ribbon controls", () => {
   })
 
   it("disables Collaboration and closes its menu during preview", async () => {
-    const {ribbon} = await mountRibbon()
+    const {ribbon} = await mountRibbon("connected")
     const action = ribbon.shadowRoot!.querySelector<RibbonButton>(".file-share-action")!
     await action.updateComplete
     const button = action.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
@@ -370,7 +371,7 @@ describe("mark ribbon controls", () => {
   })
 
   it("shows at most two strongly overlapping collaborator initials in the top action", async () => {
-    const {ribbon} = await mountRibbon()
+    const {ribbon} = await mountRibbon("connected")
     ribbon.presenceUsers = [
       {clientId: 1, name: "Ada Lovelace", initials: "AL", color: "#123456"},
       {clientId: 2, name: "Lin Chen", initials: "LC", color: "#654321"},
@@ -388,7 +389,7 @@ describe("mark ribbon controls", () => {
   })
 
   it("closes the other menu when opening File or Share without pointer events", async () => {
-    const {ribbon} = await mountRibbon()
+    const {ribbon} = await mountRibbon("connected")
     const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
     const fileButton = fileTab.shadowRoot!.querySelector<HTMLButtonElement>("button")!
     const share = ribbon.shadowRoot!.querySelector<RibbonButton>(".file-share-action")!
@@ -1354,7 +1355,7 @@ it.each(["formula", "SVG text"])("keeps Strikethrough available in %s", async co
 })
 
 it("opens preview from the reader-sharing hint at the bottom of the collaboration menu", async () => {
-  const {ribbon} = await mountRibbon()
+  const {ribbon} = await mountRibbon("connected")
   const action = ribbon.shadowRoot!.querySelector<RibbonButton>(".file-share-action")!
   await action.updateComplete
   const commands = vi.fn()
@@ -1403,7 +1404,7 @@ it("opens preview from the reader-sharing hint at the bottom of the collaboratio
 })
 
 it("shows the empty-author hint regardless of invitations and the editing link only while enabled", async () => {
-  const {ribbon} = await mountRibbon()
+  const {ribbon} = await mountRibbon("connected")
   ribbon.collaborationLink = "https://webwriter.app/edit/lesson"
   ribbon.collaborationStatus = "disconnected"
   await ribbon.updateComplete

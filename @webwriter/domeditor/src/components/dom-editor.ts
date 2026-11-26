@@ -25,7 +25,7 @@ import type {FloatInfo} from "./float-info"
 import type {DOMEditor} from "../domeditor"
 import type {LiveWidgetAggregateInput} from "../widget-aggregate"
 import type {LiveWidgetAggregateOptions} from "../widget-aggregate-view"
-import {cloudServiceExpired, tokenExpiresAt, type CloudService} from "../cloud-services"
+import {cloudConnectionRequired, cloudServiceExpired, tokenExpiresAt, type CloudService} from "../cloud-services"
 import {appIconUrl, ribbonIcon} from "../ribbon-icons"
 import {themeAccentColumn, themeAccentProperties} from "../css-color"
 import {documentThemeProperties, type SavedDocumentTheme} from "../document-theme-options"
@@ -10043,6 +10043,7 @@ export class DomEditor extends LitElement {
         @shape-paint-change=${this.handleShapePaintChange}
         .proofreadingState=${this.proofreadingState}
         .disableAI=${this.settings.disableAI}
+        .aiDisabledReason=${this.backendState === "connected" ? "" : cloudConnectionRequired}
         .settings=${this.settings}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
         .distributionGeneral=${this.distributionGeneral}

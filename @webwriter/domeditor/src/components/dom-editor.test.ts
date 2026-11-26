@@ -3008,7 +3008,7 @@ describe("DomEditor iframe setup", () => {
   })
 
   it("focuses the AI bar and opens numbered toolboxes with the configured shortcuts", async () => {
-    const {editor, iframe} = await mountEditor()
+    const {editor, iframe} = await mountEditor(editor => Object.assign(editor, {backendState: "connected"}))
     const focus = vi.spyOn(HTMLElement.prototype, "focus")
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
@@ -3230,7 +3230,7 @@ describe("DomEditor iframe setup", () => {
   })
 
   it("keeps the AI toolbox open when the editor receives a pointer", async () => {
-    const {editor, iframe} = await mountEditor()
+    const {editor, iframe} = await mountEditor(editor => Object.assign(editor, {backendState: "connected"}))
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
 
@@ -8753,6 +8753,8 @@ describe("DomEditor.execute()", () => {
     const controls = editor.shadowRoot!.querySelector<LiveSessionControls>("live-session-controls")!
     const share = () => ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Learners"] ribbon-button[label="QR"]')!
     const toggle = () => ribbon.shadowRoot!.querySelector<HTMLInputElement>('input[role="switch"][aria-label="Share"]')!
+    const toggleRecording = (enabled: boolean) => (editor as any).toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled}}))
+    expect(toggle().disabled).toBe(true)
     expect(share().disabled).toBe(true)
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"] ribbon-button[label="Download"]')).not.toBeNull()
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"] ribbon-button[label="Print"]')).not.toBeNull()
@@ -8770,7 +8772,7 @@ describe("DomEditor.execute()", () => {
       await editor.updateComplete
       expect(controls.currentTime).toBe(2.5)
       expect(controls.duration).toBe(2.5)
-      toggle().click()
+      await toggleRecording(true)
       await editor.updateComplete
       await ribbon.updateComplete
       expect(share().disabled).toBe(true)
@@ -8782,7 +8784,7 @@ describe("DomEditor.execute()", () => {
       await vi.advanceTimersByTimeAsync(1500)
       await editor.updateComplete
       expect(controls.currentTime).toBe(1.5)
-      toggle().click()
+      const stopping = toggleRecording(false)
       await editor.updateComplete
       await ribbon.updateComplete
       const stopDialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#live-session-stop-dialog")!
@@ -8790,6 +8792,7 @@ describe("DomEditor.execute()", () => {
       expect(session.status).toBe("connected")
       stopDialog.querySelector<HTMLButtonElement>(".primary")!.click()
       await vi.advanceTimersByTimeAsync(0)
+      await stopping
       await editor.updateComplete
       await ribbon.updateComplete
       expect(session.status).toBe("stopped")
@@ -8805,7 +8808,7 @@ describe("DomEditor.execute()", () => {
   })
 
   it.each(["share", "preview", "return to editing", "file", "compact file", "new shortcut"])("requires confirmation to stop a live session through %s", async action => {
-    const {editor} = await mountEditor()
+    const {editor} = await mountEditor(editor => Object.assign(editor, {backendState: "connected"}))
     const host = editor as any
     await host.enterPreview()
     await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
@@ -11449,7 +11452,7 @@ describe("DomEditor.execute()", () => {
   })
 
   it("hides the AI bar, tab, and open sidebar when AI is disabled in settings", async () => {
-    const {editor} = await mountEditor()
+    const {editor} = await mountEditor(editor => Object.assign(editor, {backendState: "connected"}))
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     await ribbon.updateComplete
@@ -11488,7 +11491,7 @@ describe("DomEditor.execute()", () => {
   })
 
   it("opens AI in the toolbox or a closable sidebar and synchronizes the prompt", async () => {
-    const {editor} = await mountEditor()
+    const {editor} = await mountEditor(editor => Object.assign(editor, {backendState: "connected"}))
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     await toolbox.updateComplete
@@ -12758,6 +12761,78 @@ describe("cloud service settings integration", () => {
     adminUrl: "https://cloud.example/admin", capabilities: ["documents"], user: {id: "ada", name: "Ada"},
   }
   const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), {status, headers: {"Content-Type": "application/json"}})
+
+  it("gates AI, collaboration and preview sharing on the connection, while keeping local export available", async () => {
+    vi.stubGlobal("fetch", vi.fn(async(url: string) => response(String(url).endsWith("/session") ? session : {documents: []})))
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const root = ribbon.shadowRoot!
+    const collaboration = root.querySelector<RibbonButton>(".file-share-action")!
+    const chat = root.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
+    const prompt = root.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+    const aiTab = () => toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="AI"]')!
+    const providers = () => root.querySelector("ai-settings-dialog")!.shadowRoot!.querySelector<HTMLElement>(".provider-cards")!
+
+    await collaboration.updateComplete
+    const collaborationTrigger = collaboration.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    for(const control of [chat, aiTab(), collaborationTrigger]) {
+      expect(control.getAttribute("aria-disabled")).toBe("true")
+      expect(control.title).toContain("Connect to a cloud service")
+      control.click()
+    }
+    expect(ribbon.aiChatOpen).toBe(false)
+    expect(toolbox.activeTool).toBeNull()
+    expect(collaborationTrigger.getAttribute("aria-expanded")).toBe("false")
+    expect(prompt.disabled).toBe(true)
+
+    host.backendState = "unavailable"
+    await editor.updateComplete
+    await ribbon.updateComplete
+    root.querySelector<RibbonTab>('ribbon-tab[label="File"]')!.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    await ribbon.updateComplete
+    const fileMenu = root.querySelector<RibbonMenu>("#ribbon-file-menu")!
+    await fileMenu.updateComplete
+    fileMenu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Settings"]')!.click()
+    await ribbon.updateComplete
+    root.querySelector<HTMLButtonElement>("#settings-tab-cloud")!.click()
+    await vi.waitFor(() => expect(providers().querySelector("[inert]")).not.toBeNull())
+    expect(providers().title).toContain("Connect to a cloud service")
+
+    host.settings = {...defaultAppSettings(), cloudServices: [service], activeCloudServiceId: service.id, cloudServicesConfigured: true}
+    await host.loginToBackend()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    expect(providers().querySelector("[inert]")).toBeNull()
+    expect(aiTab().hasAttribute("aria-disabled")).toBe(false)
+    expect(prompt.disabled).toBe(false)
+    expect(collaboration.disabled).toBe(false)
+    root.querySelector<HTMLButtonElement>(".settings-close-button")!.click()
+
+    aiTab().click()
+    await vi.waitFor(() => expect(ribbon.aiChatOpen).toBe(true))
+    host.handleAppSettingsChange(new CustomEvent("app-settings-change", {detail: {...host.settings, activeCloudServiceId: null}}))
+    await vi.waitFor(() => expect(host.backendState).toBe("unavailable"))
+    expect(ribbon.aiChatOpen).toBe(false)
+    expect(aiTab().getAttribute("aria-disabled")).toBe("true")
+
+    await host.enterPreview()
+    await ribbon.updateComplete
+    const share = root.querySelector<HTMLInputElement>(".live-session-switch input")!
+    expect(share.disabled).toBe(true)
+    expect(share.closest("label")?.title).toContain("Connect to a cloud service")
+    share.click()
+    expect(host.liveSession).toBeNull()
+    for(const [label, method] of [["Download", "downloadDocument"], ["Print", "printDocument"]]) {
+      const action = root.querySelector<RibbonButton>(`ribbon-drawer[layout="sharing-preview"] ribbon-button[label="${label}"]`)!
+      expect(action.disabled).toBe(false)
+      const invoke = vi.spyOn(host, method).mockImplementation(() => {})
+      await action.updateComplete
+      action.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+      expect(invoke).toHaveBeenCalledOnce()
+    }
+  })
 
   it.each([false, true])("disconnects the document provider when changing services or selecting Local (opaque: %s)", async opaque => {
     const {editor, iframe} = await mountEditor()

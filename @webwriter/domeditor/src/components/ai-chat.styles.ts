@@ -103,6 +103,20 @@ export const aiChatStyles = css`
       box-shadow: 0 0 0 1px #3977c7;
     }
 
+    .ai-chat-panel[data-cloud-disabled] {
+      border-color: #c8d2df;
+      box-shadow: none;
+      opacity: .55;
+      filter: grayscale(1);
+      cursor: not-allowed;
+    }
+
+    .ai-chat-panel[data-cloud-disabled] .ai-chat-brand-button {
+      color: #3977c7;
+      background: transparent;
+      cursor: not-allowed;
+    }
+
     .ai-chat-panel[hidden] {
       display: none;
     }
