@@ -164,14 +164,14 @@ function glassware(x: Excerpt, hero = false) {
   return hero ? html`<svg viewBox="0 0 351 104" preserveAspectRatio="xMidYMid slice" class="lab-hero">
       ${Array.from({length: 9}, (_, row) => svg`<path d=${`M0 ${row * 13}h351`} class="grid"/>`)}${Array.from({length: 28}, (_, column) => svg`<path d=${`M${column * 13} 0v104`} class="grid"/>`)}
       <g class="glass"><path d="M58 18v14l-16 40a4 4 0 0 0 3.6 5.6h40.8a4 4 0 0 0 3.6-5.6l-16-40v-14M54 18h22"/><path d="M108 14h4v62a4 4 0 0 0 4 4h52a4 4 0 0 0 4-4v-62h4"/><path d="M182 14h4v62a4 4 0 0 0 4 4h52a4 4 0 0 0 4-4v-62h4"/><path d="M276 14v54a8 8 0 0 0 16 0v-54M272 14h24"/></g>
-      <path d="M50 60h30l6.6 13.8a3 3 0 0 1-2.7 4.2h-38a3 3 0 0 1-2.7-4.2z" class="water"/><rect x="113" y="46" width="58" height="33" class="acid"/><rect x="187" y="46" width="58" height="33" class="acid"/>
+      <path d="M47.9 60H84.1L89.1 72.5A3 3 0 0 1 86.3 76.6H45.7A3 3 0 0 1 42.9 72.5Z" class="water"/><rect x="113" y="46" width="58" height="33" class="acid"/><rect x="187" y="46" width="58" height="33" class="acid"/>
       ${[164, 238].flatMap(left => [30, 40, 50, 60, 70].map(top => svg`<path d=${`M${left} ${top}h6`} class="tick"/>`))}
       <path d="M277 60h14v8a7 7 0 0 1-14 0z" class="powder"/><g class="pour"><path d="M84 28q14-16 30-8"/><path d="M272 28q-14-16-28-8"/></g>
       <text x="66" y="96">H₂O</text><text x="142" y="96">${acid}</text><text x="216" y="96">${acid}</text><text x="284" y="96">NaHCO₃</text>
     </svg>`
     : html`<svg viewBox="0 0 150 80" class="lab">
       <g class="glass"><path d="M14 28v6l-9 30a3 3 0 0 0 3 4h24a3 3 0 0 0 3-4l-9-30v-6"/><path d="M42 22v44a3 3 0 0 0 3 3h30a3 3 0 0 0 3-3v-44"/><path d="M86 22v44a3 3 0 0 0 3 3h30a3 3 0 0 0 3-3v-44"/><path d="M132 26v36a4 4 0 0 0 8 0v-36"/></g>
-      <path d="M8.5 56h23l3 9a2 2 0 0 1-2 3h-25a2 2 0 0 1-2-3z" class="water"/><rect x="43" y="44" width="34" height="24" class="acid"/><rect x="87" y="44" width="34" height="24" class="acid"/><path d="M133 58h6v4a3 3 0 0 1-6 0z" class="powder"/>
+      <path d="M8.4 56H31.6L34.1 64.4A2 2 0 0 1 32.2 67H7.8A2 2 0 0 1 5.9 64.4Z" class="water"/><rect x="43" y="44" width="34" height="24" class="acid"/><rect x="87" y="44" width="34" height="24" class="acid"/><path d="M133 58h6v4a3 3 0 0 1-6 0z" class="powder"/>
       <text x="20" y="77">H₂O</text><text x="60" y="77">${acid}</text><text x="104" y="77">${acid}</text><text x="136" y="77">NaHCO₃</text>
     </svg>`
 }
