@@ -3,6 +3,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import type {WebWriterPackage} from "./packages"
 import {hasImportMapEntries, loadDocumentPackages, npmFileProvider, packageImportMapScript, packageModuleEntries, resolvePackageDependencies} from "./package-dependencies"
 import {NPM_FILE_TIMEOUT_MS} from "./npm-files"
+import {localPackageUrl} from "./local-package-worker"
 
 type GeneratorOptions = {defaultProvider: string, customProviders: Record<string, ReturnType<typeof npmFileProvider>>, ignore?: string[]}
 const generator = vi.hoisted(() => ({
@@ -86,6 +87,45 @@ describe("package dependency resolution", () => {
     expect(getPackage).toHaveBeenCalledWith({name: "@webwriter/offline", version: "4.5.6"})
     expect(source.querySelector("script")?.getAttribute("src")).toBe("data:text/javascript;base64,ZXhwb3J0IHt9")
     expect(source.querySelector("script")?.hasAttribute("data-webwriter-original-package-entries")).toBe(true)
+  })
+
+  it("uses an installed local build that satisfies an offline bundle's package reference", async () => {
+    const name = "@webwriter/demo"
+    const version = "2.0.0"
+    const entry = "dist/widgets/webwriter-demo.js"
+    const source = documentWith(`<script type="module" data-webwriter-original-package-entries='["https://cdn.jsdelivr.net/npm/${name}@${version}/${entry}"]'></script>
+      <webwriter-demo><p>Authored content</p></webwriter-demo>`)
+    const local = {
+      ...resolvedPackage(name, version, [localPackageUrl("demo", entry, 1)]),
+      developerSource: {kind: "local" as const, path: "demo"},
+    }
+    const latestCompatibleVersion = vi.fn()
+    const getPackage = vi.fn()
+
+    await expect(loadDocumentPackages(source, {latestCompatibleVersion, getPackage} as never, [local], {forEditing: true}))
+      .resolves.toEqual([local])
+    expect(getPackage).not.toHaveBeenCalled()
+    expect(latestCompatibleVersion).not.toHaveBeenCalled()
+    expect(source.querySelector("script")).toBeNull()
+    expect(source.querySelector("webwriter-demo p")?.textContent).toBe("Authored content")
+  })
+
+  it("reports all unavailable releases and requires a matching local version with the required exports", async () => {
+    const entry = "dist/widgets/webwriter-demo.js"
+    const source = documentWith(`<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/demo@2.0.0/${entry}"></script>
+      <script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/other@1.0.0/${entry}"></script>`)
+    const installed = [
+      {...resolvedPackage("@webwriter/demo", "1.0.0", [localPackageUrl("demo", entry)]),
+        developerSource: {kind: "local" as const, path: "demo"}},
+      {...resolvedPackage("@webwriter/other", "1.0.0", [localPackageUrl("other", "dist/other.js")]),
+        developerSource: {kind: "local" as const, path: "other"}},
+    ]
+    const latestCompatibleVersion = vi.fn().mockImplementation(async(_name, version) => version)
+    const getPackage = vi.fn().mockRejectedValue(new Error("Package metadata failed (404)"))
+
+    await expect(loadDocumentPackages(source, {latestCompatibleVersion, getPackage} as never, installed, {forEditing: true}))
+      .rejects.toThrow(/could not load @webwriter\/demo@2\.0\.0, @webwriter\/other@1\.0\.0.*Add from local folder/)
+    expect(source.querySelectorAll("script[src]")).toHaveLength(2)
   })
 
   it("reuses an installed exact version and propagates lookup failures", async () => {

@@ -1,7 +1,8 @@
 import {markEditorOnlyNode} from "./editor-artifacts"
 import type {IImportMap} from "@jspm/import-map"
-import {packageUpdateKind, packageVersionMajor, type WebWriterPackage, type WebWriterPackageRegistry} from "./packages"
+import {packageCdnUrl, packageUpdateKind, packageVersionMajor, type WebWriterPackage, type WebWriterPackageRegistry} from "./packages"
 import {canonicalNpmUrl, fetchWithin, JSDELIVR_DATA_ENDPOINT, JSDELIVR_NPM_ENDPOINT, NPM_FILE_MIRRORS, NPM_FILE_TIMEOUT_MS, npmPublishedVersions} from "./npm-files"
+import {parseLocalPackageRoute} from "./local-package-worker"
 export {runtimeDocumentBaseURL} from "./document-base-url"
 
 /** Runtime assets and their exact browser resolutions for one installed set. */
@@ -84,7 +85,22 @@ export async function loadDocumentPackages(
 
   if(!references.size) return []
   const activeRegistry = registry ?? new (await import("./packages")).WebWriterPackageRegistry()
-  const packages = await Promise.all([...references.values()].map(async({name, version: pinned, scripts: authored}) => {
+  const required = [...references.values()]
+  const pending = required.map(async({name, version: pinned, scripts: authored}) => {
+    if(forEditing) {
+      const local = installed.find(pkg => {
+        if(!pkg.developerSource || pkg.name !== name
+          || (pkg.version !== pinned && packageUpdateKind(pinned, pkg.version) !== "compatible")) return false
+        // The offline export names package files by their npm paths. A local
+        // build must provide the same entries through the local package worker.
+        const paths = new Set(pkg.scripts.flatMap(script => {
+          const entry = parseLocalPackageRoute(script)
+          return entry?.kind === "route" ? [packagePath(packageCdnUrl(name, pinned, entry.route.path))] : []
+        }))
+        return authored.every(({url}) => paths.has(packagePath(url)))
+      })
+      if(local) return local
+    }
     let version = pinned
     const existing = installed.find(pkg => pkg.name === name && !pkg.developerSource && (forEditing || pkg.version === pinned))
     if(forEditing) {
@@ -105,7 +121,20 @@ export async function loadDocumentPackages(
       return index === -1 ? Infinity : index
     }
     return {...pkg, scripts: [...pkg.scripts].sort((a, b) => position(a) - position(b))}
-  }))
+  })
+  const packages = forEditing ? await Promise.allSettled(pending).then(results => {
+    const failures = results.flatMap((result, index) => {
+      if(result.status === "fulfilled") return []
+      const {name, version} = required[index]
+      return [{release: `${name}@${version}`, reason: result.reason}]
+    })
+    if(failures.length) {
+      const releases = failures.map(failure => failure.release).join(", ")
+      throw new AggregateError(failures.map(failure => failure.reason),
+        `WebWriter could not load ${releases} and kept the current document open. For unpublished releases, choose Add from local folder in the Widgets search menu to load a matching build, then open the document again.`)
+    }
+    return results.flatMap(result => result.status === "fulfilled" ? [result.value] : [])
+  }) : await Promise.all(pending)
   if(forEditing) {
     const managedStyles = new Set(packages.flatMap(pkg => pkg.styles.map(url => packagePath(canonicalNpmUrl(url)))))
     for(const pkg of packages) {
