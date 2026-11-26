@@ -8,7 +8,7 @@ let view: LiveSessionShowcase
 async function mount(reducedMotion = true) {
   vi.spyOn(window, "matchMedia").mockReturnValue({matches: reducedMotion} as MediaQueryList)
   view = new LiveSessionShowcase()
-  view.innerHTML = ["share", "groups", "permissions"].map(slot => `<article slot="${slot}"><h3>${slot}</h3></article>`).join("")
+  view.innerHTML = `<p slot="status">Work in progress.</p>` + ["share", "groups", "permissions"].map(slot => `<article slot="${slot}"><h3>${slot}</h3></article>`).join("")
   document.body.append(view)
   await view.updateComplete
 }
@@ -24,9 +24,10 @@ const all = (selector: string) => [...view.shadowRoot!.querySelectorAll<HTMLElem
 const button = (name: string) => all("button").find(button => (button.getAttribute("aria-label") ?? button.textContent!.trim()) === name) as HTMLButtonElement
 const update = async (action: () => void) => { action(); await view.updateComplete }
 
-it("gives each page card a numbered place in the scene", async () => {
+it("rests the page notice on the scene and gives each card a numbered place", async () => {
   await mount()
-  expect(all("slot").map(slot => (slot as HTMLSlotElement).name)).toEqual(["share", "groups", "permissions"])
+  expect(all("slot").map(slot => (slot as HTMLSlotElement).name)).toEqual(["status", "share", "groups", "permissions"])
+  expect($(".status")!.nextElementSibling?.classList.contains("stage")).toBe(true)
   expect(all(".callout .number").map(number => number.textContent)).toEqual(["1", "2", "3"])
   expect(all(".marker").map(marker => marker.textContent)).toEqual(["1", "2", "3"])
 })
@@ -112,6 +113,8 @@ it("keeps hidden parts and blocked changes off the learner's phone", async () =>
 
 it("pairs each card with the controls it explains", async () => {
   await mount()
+  await update(() => view.querySelector('[slot="status"]')!.dispatchEvent(new Event("pointerover", {bubbles: true, composed: true})))
+  expect($(".showcase")!.hasAttribute("data-active")).toBe(false)
   await update(() => view.querySelector('[slot="share"]')!.dispatchEvent(new Event("pointerover", {bubbles: true, composed: true})))
   expect($(".showcase")!.dataset.active).toBe("share")
   expect($('.callout[data-step="share"]')!.hasAttribute("data-active")).toBe(true)

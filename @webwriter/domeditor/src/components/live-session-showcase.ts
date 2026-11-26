@@ -239,6 +239,8 @@ export class LiveSessionShowcase extends LitElement {
     .viewfinder svg {display: block; width: 100%; height: 100%; fill: #263142}
     .join .bar {width: 6em}
 
+    /* A page notice, such as availability, rests on top of the scene. */
+    .status {position: absolute; z-index: 3; top: 1rem; left: 50%; display: flex; justify-content: center; width: max-content; max-width: calc(100% - 2rem); translate: -50% 0}
     .callouts {position: absolute; inset: 0; pointer-events: none}
     .callout {position: absolute; width: 15.6em; pointer-events: auto}
     .callout[data-step="share"] {left: 1.2em; top: 9.2em}
@@ -256,7 +258,7 @@ export class LiveSessionShowcase extends LitElement {
       .callout, .callout[data-step] {position: relative; inset: auto; width: auto}
       ::slotted(article) {height: 100%; box-shadow: none}
     }
-    @container (max-width: 40rem) {.callouts {grid-template-columns: minmax(0, 1fr); gap: 1.25rem}}
+    @container (max-width: 40rem) {.callouts {grid-template-columns: minmax(0, 1fr); gap: 1.25rem} .status {top: .5rem; max-width: calc(100% - 1rem)}}
 
     @keyframes join {from {opacity: 0; transform: scale(.3)} to {opacity: 1; transform: none}}
     @keyframes appear {from {opacity: 0; transform: translateY(.6em)}}
@@ -275,6 +277,7 @@ export class LiveSessionShowcase extends LitElement {
     const mates = learners.slice(0, size)
     const sizeLabel = this.groupSize === 1 ? t("single") : this.groupSize === 2 ? t("pair") : t("groups")
     return html`<div class="showcase" data-active=${this.active ?? nothing}>
+      <div class="status"><slot name="status"></slot></div>
       <div class="stage" role="group" aria-label=${t("Live session preview")}>
         <div class="window">
           <div class="titlebar" aria-hidden="true"><img src=${appIconUrl} alt=""><span class="bar"></span><span class="preview">${ribbonIcon("Preview")}</span></div>

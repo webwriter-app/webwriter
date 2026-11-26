@@ -33,7 +33,8 @@ live-session-showcase article h3 { margin: 0 0 .4rem; font-size: .95rem; line-he
 live-session-showcase article p { margin: 0; font-size: .8125rem; line-height: 1.55; color: #536174; }
 live-session-showcase:not(:defined) { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1.75rem; }
 :is(.widget-showcase, .live-sharing) .section-intro p { max-inline-size: 45rem; margin-block: 1rem 0; font-size: .95rem; color: #536174; }
-.live-sharing .section-intro .status-note { display: inline-flex; align-items: center; gap: .5rem; padding: .45rem .8rem; border: 1px solid #ecd9ae; border-radius: .4rem; background: #fcf6e8; color: #6f4d12; font-size: .8125rem; line-height: 1.45; }
+live-session-showcase .status-note { display: flex; align-items: center; gap: .5rem; margin: 0; padding: .45rem .8rem; border: 1px solid #ecd9ae; border-radius: .4rem; background: #fcf6e8; color: #6f4d12; font-size: .8125rem; line-height: 1.45; box-shadow: 0 .4rem 1.2rem rgb(23 32 51 / .12); }
+live-session-showcase:not(:defined) .status-note { grid-column: 1 / -1; justify-self: start; box-shadow: none; }
 .status-note strong { font-weight: 650; }
 .status-icon svg { display: block; inline-size: 1rem; block-size: 1rem; }
 .share-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; margin-block-start: 2.5rem; }
@@ -64,7 +65,7 @@ live-session-showcase:not(:defined) { display: grid; grid-template-columns: repe
 .skip-link { position: absolute; top: .5rem; left: 1rem; padding: .5rem 1rem; background: white; transform: translateY(-200%); z-index: 1; }
 .skip-link:focus { transform: none; }
 @media (max-width: 60rem) { .hero { column-gap: 2rem; padding-block: 2.5rem; } .possibilities { grid-template-columns: 1fr; gap: 2rem; } .possibilities h2 br { display: none; } .developer-invitation { align-items: start; flex-direction: column; } }
-@media (max-width: 42rem) { .hero { grid-template-columns: 1fr; grid-template-rows: auto; } h1 { font-size: clamp(2.5rem, 9vw, 3.75rem); } .capabilities { grid-template-columns: 1fr; } .capabilities article { border-top: 1px solid var(--border); padding-block-start: 1rem; } .share-options { grid-template-columns: 1fr; gap: 1rem; } .share-options article { padding: 1.25rem; } .developer-invitation { padding: 1.5rem; } .research-background { flex-direction: column; align-items: start; gap: 1.5rem; } .research-logo { flex: none; inline-size: min(17rem, 100%); } }
+@media (max-width: 42rem) { .hero { grid-template-columns: 1fr; grid-template-rows: auto; } h1 { font-size: clamp(2.5rem, 9vw, 3.75rem); } .capabilities { grid-template-columns: 1fr; } .capabilities article { border-top: 1px solid var(--border); padding-block-start: 1rem; } .share-options { grid-template-columns: 1fr; gap: 1rem; } .share-options article { padding: 1.25rem; } live-session-showcase .status-note { gap: .4rem; padding: .3rem .6rem; font-size: .75rem; } .developer-invitation { padding: 1.5rem; } .research-background { flex-direction: column; align-items: start; gap: 1.5rem; } .research-logo { flex: none; inline-size: min(17rem, 100%); } }
 
 .legal-notice {max-inline-size: 54rem; padding-block: 3rem 4rem; overflow-wrap: anywhere}
 .legal-notice h1 {font-size: clamp(2.3rem, 5vw, 3.5rem)}

@@ -90,7 +90,7 @@ describe("site translation", () => {
     expect(section.nextElementSibling?.classList.contains("developer-invitation")).toBe(true)
     expect(section.querySelector(`#${section.getAttribute("aria-labelledby")}`)?.localName).toBe("h2")
     expect([...section.querySelectorAll("live-session-showcase > article")].map(card => card.slot)).toEqual(["share", "groups", "permissions"])
-    expect(section.querySelector(".section-intro .status-note")?.textContent).toBe("Work in progress. Live sharing is not available yet.")
+    expect(section.querySelector("live-session-showcase > .status-note[slot=status]")?.textContent).toBe("Work in progress. Live sharing is not available yet.")
     expect([...section.querySelectorAll(".share-options > article h3")].map(heading => heading.textContent)).toEqual(["Share a file", "Print it"])
     expect(section.querySelector(".share-options")?.previousElementSibling?.localName).toBe("live-session-showcase")
     const copy: string[] = []
